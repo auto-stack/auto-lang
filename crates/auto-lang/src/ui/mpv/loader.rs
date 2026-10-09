@@ -161,16 +161,14 @@ impl std::error::Error for MpvLoadError {}
 pub struct MpvSymbols {
     pub create: unsafe extern "C" fn() -> *mut c_void,
     pub initialize: unsafe extern "C" fn(*mut c_void) -> c_int,
-    pub set_option_string:
-        unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char) -> c_int,
+    pub set_option_string: unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char) -> c_int,
     /// `mpv_get_property(handle, name, mpv_format, void*)`。
     pub get_property: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut c_void) -> c_int,
     /// `mpv_set_property(handle, name, mpv_format, const void*)`。
     pub set_property: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut c_void) -> c_int,
     /// `mpv_get_property_string(handle, name)` —— 返回 mpv 分配的字符串，
     /// 调用方**必须**用 [`MpvSymbols::free`] 释放。
-    pub get_property_string:
-        unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_char,
+    pub get_property_string: unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_char,
     /// `mpv_set_property_string(handle, name, value)` —— 字符串形态设属性
     ///（PLAN-712 T-03：色彩协商选项如 `target-trc`/`video-output-levels`
     /// 是字符串选项面）。
@@ -210,10 +208,11 @@ impl MpvApi {
         // SAFETY: 只是把动态库映射进地址空间。符号地址的有效期由本结构体持有的
         // `Library` 担保；我们不在加载期调用任何东西（调用在 engine 里，且逐个
         // 遵守各函数的前置条件）。
-        let lib = unsafe { libloading::Library::new(path) }.map_err(|e| MpvLoadError::LoadFailed {
-            path: path.to_path_buf(),
-            detail: e.to_string(),
-        })?;
+        let lib =
+            unsafe { libloading::Library::new(path) }.map_err(|e| MpvLoadError::LoadFailed {
+                path: path.to_path_buf(),
+                detail: e.to_string(),
+            })?;
 
         // SAFETY: 每次 `get` 取的都是该符号的正确签名（照 include/mpv/*.h 抄写）。
         // `*sym` 解引用得到函数指针（Copy），因此拷贝出来后不再借用 `lib`。
@@ -221,10 +220,8 @@ impl MpvApi {
             ($name:literal, $ty:ty) => {{
                 let s: libloading::Symbol<$ty> =
                     unsafe { lib.get($name) }.map_err(|e| MpvLoadError::MissingSymbol {
-                        symbol: String::from_utf8_lossy(
-                            &$name[..$name.len().saturating_sub(1)],
-                        )
-                        .into_owned(),
+                        symbol: String::from_utf8_lossy(&$name[..$name.len().saturating_sub(1)])
+                            .into_owned(),
                         detail: e.to_string(),
                     })?;
                 *s

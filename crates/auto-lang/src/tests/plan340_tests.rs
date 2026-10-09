@@ -46,7 +46,11 @@ let n = 42
 print(Json.from_value(n))
 "#;
         let result = run_with_capture(code);
-        assert!(result.is_ok(), "from_value(int) should run: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "from_value(int) should run: {:?}",
+            result.err()
+        );
         let (_, stdout) = result.unwrap();
         eprintln!("plan340 from_value(int) = [{}]", stdout);
         assert!(stdout.contains("42"), "expected 42, got: [{}]", stdout);
@@ -60,7 +64,11 @@ let b = true
 print(Json.from_value(b))
 "#;
         let result = run_with_capture(code);
-        assert!(result.is_ok(), "from_value(bool) should run: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "from_value(bool) should run: {:?}",
+            result.err()
+        );
         let (_, stdout) = result.unwrap();
         eprintln!("plan340 from_value(bool) = [{}]", stdout);
         assert!(stdout.contains("true"), "expected true, got: [{}]", stdout);
@@ -78,7 +86,11 @@ let back = Json.from_value(arr)
 print(back)
 "#;
         let result = run_with_capture(code);
-        assert!(result.is_ok(), "to_value roundtrip should run: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "to_value roundtrip should run: {:?}",
+            result.err()
+        );
         let (_, stdout) = result.unwrap();
         eprintln!("plan340 to_value(array) roundtrip = [{}]", stdout);
         assert!(
@@ -100,7 +112,11 @@ let obj = Json.to_value(js)
 print(obj.title)
 "#;
         let result = run_with_capture(code);
-        assert!(result.is_ok(), "to_value(object) should run: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "to_value(object) should run: {:?}",
+            result.err()
+        );
         let (_, stdout) = result.unwrap();
         eprintln!("plan340 to_value(object).title = [{}]", stdout);
         assert!(
@@ -200,8 +216,16 @@ widget App {
             if us.is_c_import || us.is_rust_import {
                 continue;
             }
-            let Some(mp) = crate::resolve_module_path(&front, &us.module) else { continue };
-            collect_imports_test(&mp, &mut visited, &mut import_stmts, &mut seen, &mut import_session);
+            let Some(mp) = crate::resolve_module_path(&front, &us.module) else {
+                continue;
+            };
+            collect_imports_test(
+                &mp,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen,
+                &mut import_session,
+            );
             let qualifier = us.module.split('.').last().unwrap_or(&us.module);
             for item in &us.items {
                 aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
@@ -210,7 +234,11 @@ widget App {
 
         // SPLIT mode (api_over_http=true): rewrite to HTTP.
         let (module_split, _) = crate::ui::handler_codegen::synthesize_widget_module(
-            &widget, &[], import_stmts.clone(), &aliases, true,
+            &widget,
+            &[],
+            import_stmts.clone(),
+            &aliases,
+            true,
         )
         .expect("synthesize split");
 
@@ -221,7 +249,11 @@ widget App {
         });
         eprintln!(
             "plan340 split-mode relocs: {:?}",
-            module_split.relocs.iter().map(|r| &r.symbol_name).collect::<Vec<_>>()
+            module_split
+                .relocs
+                .iter()
+                .map(|r| &r.symbol_name)
+                .collect::<Vec<_>>()
         );
         assert!(
             !has_list_notes_reloc,
@@ -230,16 +262,24 @@ widget App {
 
         // MERGE mode (api_over_http=false): list_notes stays a CALL reloc.
         let (module_merge, _) = crate::ui::handler_codegen::synthesize_widget_module(
-            &widget, &[], import_stmts, &aliases, false,
+            &widget,
+            &[],
+            import_stmts,
+            &aliases,
+            false,
         )
         .expect("synthesize merge");
-        let has_list_notes_reloc_merge = module_merge.relocs.iter().any(|r| {
-            r.symbol_name == "list_notes"
-                || r.symbol_name.ends_with(".list_notes")
-        });
+        let has_list_notes_reloc_merge = module_merge
+            .relocs
+            .iter()
+            .any(|r| r.symbol_name == "list_notes" || r.symbol_name.ends_with(".list_notes"));
         eprintln!(
             "plan340 merge-mode relocs: {:?}",
-            module_merge.relocs.iter().map(|r| &r.symbol_name).collect::<Vec<_>>()
+            module_merge
+                .relocs
+                .iter()
+                .map(|r| &r.symbol_name)
+                .collect::<Vec<_>>()
         );
         assert!(
             has_list_notes_reloc_merge,
@@ -335,8 +375,16 @@ widget App {
             if us.is_c_import || us.is_rust_import {
                 continue;
             }
-            let Some(mp) = crate::resolve_module_path(&front, &us.module) else { continue };
-            collect_imports_test(&mp, &mut visited, &mut import_stmts, &mut seen, &mut import_session);
+            let Some(mp) = crate::resolve_module_path(&front, &us.module) else {
+                continue;
+            };
+            collect_imports_test(
+                &mp,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen,
+                &mut import_session,
+            );
             let qualifier = us.module.split('.').last().unwrap_or(&us.module);
             for item in &us.items {
                 aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
@@ -345,7 +393,11 @@ widget App {
 
         // SPLIT: 限定名调用同样改写为 HTTP（无 list_notes CALL reloc）。
         let (module_split, _) = crate::ui::handler_codegen::synthesize_widget_module(
-            &widget, &[], import_stmts.clone(), &aliases, true,
+            &widget,
+            &[],
+            import_stmts.clone(),
+            &aliases,
+            true,
         )
         .expect("synthesize split");
         let has_list_notes_reloc = module_split.relocs.iter().any(|r| {
@@ -354,7 +406,11 @@ widget App {
         });
         eprintln!(
             "plan648 qualified split-mode relocs: {:?}",
-            module_split.relocs.iter().map(|r| &r.symbol_name).collect::<Vec<_>>()
+            module_split
+                .relocs
+                .iter()
+                .map(|r| &r.symbol_name)
+                .collect::<Vec<_>>()
         );
         assert!(
             !has_list_notes_reloc,
@@ -363,7 +419,11 @@ widget App {
 
         // MERGE: 限定名调用保留进程内 CALL reloc（back 链扁平体直调）。
         let (module_merge, _) = crate::ui::handler_codegen::synthesize_widget_module(
-            &widget, &[], import_stmts, &aliases, false,
+            &widget,
+            &[],
+            import_stmts,
+            &aliases,
+            false,
         )
         .expect("synthesize merge");
         let has_list_notes_reloc_merge = module_merge.relocs.iter().any(|r| {
@@ -470,8 +530,16 @@ widget App {
             if us.is_c_import || us.is_rust_import {
                 continue;
             }
-            let Some(mp) = crate::resolve_module_path(&front, &us.module) else { continue };
-            collect_imports_test(&mp, &mut visited, &mut import_stmts, &mut seen, &mut import_session);
+            let Some(mp) = crate::resolve_module_path(&front, &us.module) else {
+                continue;
+            };
+            collect_imports_test(
+                &mp,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen,
+                &mut import_session,
+            );
             let qualifier = us.module.split('.').last().unwrap_or(&us.module);
             for item in &us.items {
                 aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
@@ -479,7 +547,11 @@ widget App {
         }
 
         let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
-            &widget, &[], import_stmts, &aliases, true,
+            &widget,
+            &[],
+            import_stmts,
+            &aliases,
+            true,
         )
         .expect("synthesize split");
 
@@ -612,8 +684,16 @@ widget App {
             if us.is_c_import || us.is_rust_import {
                 continue;
             }
-            let Some(mp) = crate::resolve_module_path(&front, &us.module) else { continue };
-            collect_imports_test(&mp, &mut visited, &mut import_stmts, &mut seen, &mut import_session);
+            let Some(mp) = crate::resolve_module_path(&front, &us.module) else {
+                continue;
+            };
+            collect_imports_test(
+                &mp,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen,
+                &mut import_session,
+            );
             let qualifier = us.module.split('.').last().unwrap_or(&us.module);
             for item in &us.items {
                 aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
@@ -621,7 +701,11 @@ widget App {
         }
 
         let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
-            &widget, &[], import_stmts, &aliases, true,
+            &widget,
+            &[],
+            import_stmts,
+            &aliases,
+            true,
         )
         .expect("synthesize split");
 
@@ -736,8 +820,16 @@ widget App {
             if us.is_c_import || us.is_rust_import {
                 continue;
             }
-            let Some(mp) = crate::resolve_module_path(&front, &us.module) else { continue };
-            collect_imports_test(&mp, &mut visited, &mut import_stmts, &mut seen, &mut import_session);
+            let Some(mp) = crate::resolve_module_path(&front, &us.module) else {
+                continue;
+            };
+            collect_imports_test(
+                &mp,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen,
+                &mut import_session,
+            );
             let qualifier = us.module.split('.').last().unwrap_or(&us.module);
             for item in &us.items {
                 aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
@@ -745,7 +837,11 @@ widget App {
         }
 
         let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
-            &widget, &[], import_stmts, &aliases, true,
+            &widget,
+            &[],
+            import_stmts,
+            &aliases,
+            true,
         )
         .expect("synthesize split");
 
@@ -892,8 +988,16 @@ widget App {
             if us.is_c_import || us.is_rust_import {
                 continue;
             }
-            let Some(mp) = crate::resolve_module_path(&front, &us.module) else { continue };
-            collect_imports_test(&mp, &mut visited, &mut import_stmts, &mut seen, &mut import_session);
+            let Some(mp) = crate::resolve_module_path(&front, &us.module) else {
+                continue;
+            };
+            collect_imports_test(
+                &mp,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen,
+                &mut import_session,
+            );
             let qualifier = us.module.split('.').last().unwrap_or(&us.module);
             for item in &us.items {
                 aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
@@ -901,7 +1005,11 @@ widget App {
         }
 
         let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
-            &widget, &[], import_stmts, &aliases, true,
+            &widget,
+            &[],
+            import_stmts,
+            &aliases,
+            true,
         )
         .expect("synthesize split");
 
@@ -922,11 +1030,17 @@ widget App {
             let trace: Vec<String> = (start..=idx)
                 .map(|j| format!("[{}]=0x{:02x}", j, module.code.get(j).copied().unwrap_or(0)))
                 .collect();
-            eprintln!("plan340 POP_N@{} cnt={} bytes: {}", idx, cnt, trace.join(" "));
+            eprintln!(
+                "plan340 POP_N@{} cnt={} bytes: {}",
+                idx,
+                cnt,
+                trace.join(" ")
+            );
         }
         eprintln!(
             "plan340 scalar-return: POP_N sites = {:?}, code len = {}",
-            pop_n, module.code.len()
+            pop_n,
+            module.code.len()
         );
         // The hazard is POP_N with count >= 1: a single 1-slot NanoValue was
         // pushed but 2+ slots would be popped, corrupting the stack. POP_N(0)
@@ -938,7 +1052,8 @@ widget App {
             over_pops.is_empty(),
             "HTTP-rewritten #[api] calls push a single 1-slot NanoValue; \
              POP_N(count>=1) must never be emitted for them (found {:?}, all sites {:?})",
-            over_pops, pop_n
+            over_pops,
+            pop_n
         );
     }
 
@@ -974,9 +1089,8 @@ widget App {
         } else {
             crate::session::CompilerSession::ui()
         };
-        let mut parser =
-            crate::Parser::new_with_type_store(code.as_str(), session.type_store())
-                .with_session(parser_session);
+        let mut parser = crate::Parser::new_with_type_store(code.as_str(), session.type_store())
+            .with_session(parser_session);
         let ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return,
@@ -1000,7 +1114,9 @@ widget App {
                         }
                     }
                 }
-                crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::EnumDecl(_) | crate::ast::Stmt::Ext(_) => {
+                crate::ast::Stmt::TypeDecl(_)
+                | crate::ast::Stmt::EnumDecl(_)
+                | crate::ast::Stmt::Ext(_) => {
                     if let Some(name) = crate::stmt_symbol_name(stmt) {
                         if seen.insert(name.clone()) {
                             out.push(stmt.clone());

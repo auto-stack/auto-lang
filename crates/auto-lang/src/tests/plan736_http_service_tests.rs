@@ -57,7 +57,9 @@ fn t02_bad_values_exit_named() {
         r#"{"profile":"proxy_service"}"#,
         r#"{"profile":"development","cors":{"allow_credentials":true}}"#,
     ] {
-        let e = resolve_service_config(json, None).err().unwrap_or_else(|| panic!("must reject: {json}"));
+        let e = resolve_service_config(json, None)
+            .err()
+            .unwrap_or_else(|| panic!("must reject: {json}"));
         assert!(!e.field.is_empty());
     }
 }
@@ -68,7 +70,10 @@ fn t02_cors_preflight_matrix() {
     // service 空 origins：一切跨域 preflight 拒绝（403，无 CORS 头）。
     let (status, acao, _) = c.cors.preflight(Some("http://a.com"), Some("GET"), &[]);
     assert_eq!((status, acao), (403, None));
-    assert_eq!(c.cors.actual_request(Some("http://a.com")), CorsOutcome::Absent);
+    assert_eq!(
+        c.cors.actual_request(Some("http://a.com")),
+        CorsOutcome::Absent
+    );
     // development `*`：preflight 放行任意 origin（方法/头仍校验）。
     let d = dev();
     let (status, _, vary) = d.cors.preflight(Some("http://x.io"), Some("GET"), &[]);
@@ -76,7 +81,10 @@ fn t02_cors_preflight_matrix() {
     assert!(!vary, "`*` 无 Vary");
     assert_eq!(
         d.cors.actual_request(Some("http://x.io")),
-        CorsOutcome::Allowed { allow_origin: "*".into(), vary_origin: false }
+        CorsOutcome::Allowed {
+            allow_origin: "*".into(),
+            vary_origin: false
+        }
     );
 }
 
@@ -107,8 +115,14 @@ fn t02_rate_limiter_conservative_on_full_table() {
     let a: std::net::IpAddr = "1.1.1.1".parse().unwrap();
     let b: std::net::IpAddr = "2.2.2.2".parse().unwrap();
     assert!(matches!(rl.check(a, 0), RateDecision::Allow));
-    assert!(matches!(rl.check(b, 100), RateDecision::Limited { .. }), "满表新身份保守 429");
-    assert!(matches!(rl.check(a, 1_100), RateDecision::Allow), "TTL 回收后可进");
+    assert!(
+        matches!(rl.check(b, 100), RateDecision::Limited { .. }),
+        "满表新身份保守 429"
+    );
+    assert!(
+        matches!(rl.check(a, 1_100), RateDecision::Allow),
+        "TTL 回收后可进"
+    );
 }
 
 #[test]
@@ -302,5 +316,3 @@ fn t02_active_config_seam_single_take() {
     assert_eq!(taken.effective_config_hash(), c.effective_config_hash());
     assert!(crate::http_service_config::take_active_service_config().is_none());
 }
-
-

@@ -1,9 +1,9 @@
 // Plan 076 Phase 1: Generic Type Support Tests
 // Tests for type parameter parsing and tracking in AutoVM codegen
 
-use crate::vm::codegen::Codegen;
-use crate::vm::generic::{GenericTable, GenericInstance, extract_generic_instance};
 use crate::ast::Type;
+use crate::vm::codegen::Codegen;
+use crate::vm::generic::{extract_generic_instance, GenericInstance, GenericTable};
 
 #[test]
 fn test_generic_table_list_int() {
@@ -24,7 +24,10 @@ fn test_generic_table_multiple_lists() {
     // Register List<int>
     table.register(GenericInstance::new("List".to_string(), vec![Type::Int]));
     // Register List<string>
-    table.register(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
+    table.register(GenericInstance::new(
+        "List".to_string(),
+        vec![Type::StrFixed(0)],
+    ));
     // Register List<bool>
     table.register(GenericInstance::new("List".to_string(), vec![Type::Bool]));
 
@@ -153,7 +156,10 @@ fn test_generic_table_clear() {
     let mut table = GenericTable::new();
 
     table.register(GenericInstance::new("List".to_string(), vec![Type::Int]));
-    table.register(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
+    table.register(GenericInstance::new(
+        "List".to_string(),
+        vec![Type::StrFixed(0)],
+    ));
 
     assert_eq!(table.len(), 2);
 
@@ -168,10 +174,7 @@ fn test_generic_instance_display() {
     let instance = GenericInstance::new("List".to_string(), vec![Type::Int]);
     assert_eq!(format!("{}", instance), "List<int>");
 
-    let instance2 = GenericInstance::new(
-        "MyType".to_string(),
-        vec![Type::Int, Type::Bool]
-    );
+    let instance2 = GenericInstance::new("MyType".to_string(), vec![Type::Int, Type::Bool]);
     assert_eq!(format!("{}", instance2), "MyType<int, bool>");
 }
 

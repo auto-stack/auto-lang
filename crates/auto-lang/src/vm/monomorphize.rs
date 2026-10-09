@@ -167,9 +167,9 @@ impl Default for Monomorphizer {
 /// Helper to determine if a type is monomorphizable
 pub fn is_monomorphizable(ty: &Type) -> bool {
     match ty {
-        Type::List(_) => true,  // List<T> is monomorphizable
-        Type::Map(_, _) => true,  // Map<K, V> is monomorphizable (Plan 160)
-        Type::GenericInstance(_) => true,  // User-defined generics
+        Type::List(_) => true,            // List<T> is monomorphizable
+        Type::Map(_, _) => true,          // Map<K, V> is monomorphizable (Plan 160)
+        Type::GenericInstance(_) => true, // User-defined generics
         _ => false,
     }
 }
@@ -273,7 +273,10 @@ mod tests {
         let mut mono = Monomorphizer::new();
 
         mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::Int]));
-        mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
+        mono.register_generic(GenericInstance::new(
+            "List".to_string(),
+            vec![Type::StrFixed(0)],
+        ));
         mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::Bool]));
 
         let modules = mono.monomorphize();

@@ -142,9 +142,7 @@ impl EnumDecl {
         Self {
             name,
             items,
-            kind: EnumKind::Scalar {
-                repr_type: None,
-            },
+            kind: EnumKind::Scalar { repr_type: None },
             doc: None,
             is_pub: false,
             attrs: Vec::new(),

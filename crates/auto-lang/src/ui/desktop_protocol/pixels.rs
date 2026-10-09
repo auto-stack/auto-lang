@@ -41,7 +41,12 @@ impl PixelsFrame {
         for _ in 0..w * h {
             bytes.extend_from_slice(&rgba);
         }
-        Self { rgba: bytes, w, h, stride }
+        Self {
+            rgba: bytes,
+            w,
+            h,
+            stride,
+        }
     }
 }
 
@@ -55,7 +60,9 @@ pub struct PixelsNoopSource {
 
 impl PixelsNoopSource {
     pub fn new() -> Self {
-        Self { rev: std::cell::Cell::new(1) }
+        Self {
+            rev: std::cell::Cell::new(1),
+        }
     }
 
     /// 内容版本推进（状态变更/快照注入时 +1）。
@@ -125,13 +132,18 @@ impl PixelsChild {
 
     /// 发起握手（Hello 过管道）。返回 false = 管道已断。
     pub fn start(&mut self) -> bool {
-        let Ok(hello) = self.endpoint.connect() else { return false };
+        let Ok(hello) = self.endpoint.connect() else {
+            return false;
+        };
         self.send(&hello)
     }
 
     /// 消息出口（update 层调用；发送失败 = 断连，渲染宿主收尾）。
     pub fn send(&mut self, msg: &ProtocolMsg) -> bool {
-        self.transport.lock().map(|mut t| t.send(msg).is_ok()).unwrap_or(false)
+        self.transport
+            .lock()
+            .map(|mut t| t.send(msg).is_ok())
+            .unwrap_or(false)
     }
 
     /// 处理一条宿主消息：端点状态机 + 像素臂语义（BufferAlloc 开段 /
@@ -164,17 +176,24 @@ impl PixelsChild {
         };
         let mut want_capture = false;
         match &msg {
-            ProtocolMsg::Handshake(HandshakeMsg::Welcome { frame_mode: FrameMode::Pixels, .. }) => {
+            ProtocolMsg::Handshake(HandshakeMsg::Welcome {
+                frame_mode: FrameMode::Pixels,
+                ..
+            }) => {
                 // Pixels 模式确认：握手完成即出首帧。
                 want_capture = true;
             }
-            ProtocolMsg::Frame(FrameMsg::BufferAlloc { shm: Some(name), width, height, .. }) => {
+            ProtocolMsg::Frame(FrameMsg::BufferAlloc {
+                shm: Some(name),
+                width,
+                height,
+                ..
+            }) => {
                 let slot_size = pixels_slot_size(*width, *height);
                 match SharedFrameBuffer::open(name, 2, slot_size) {
                     Ok(segment) => {
                         self.shm = Some(segment);
-                        want_capture = self.endpoint.state
-                            == super::endpoint::AppState::Active;
+                        want_capture = self.endpoint.state == super::endpoint::AppState::Active;
                     }
                     Err(_) => return (replies, false),
                 }
@@ -209,13 +228,9 @@ impl PixelsChild {
     pub fn capture(&mut self, frame: PixelsFrame) -> Option<FrameMsg> {
         self.capture_pending = false;
         let shm = self.shm.as_ref()?;
-        let msg = self.endpoint.produce_frame_pixels(
-            shm,
-            &frame.rgba,
-            frame.w,
-            frame.h,
-            frame.stride,
-        );
+        let msg =
+            self.endpoint
+                .produce_frame_pixels(shm, &frame.rgba, frame.w, frame.h, frame.stride);
         msg.ok().and_then(|m| match m {
             ProtocolMsg::Frame(frame) => Some(frame),
             _ => None,
@@ -278,8 +293,7 @@ where
 /// 像素桥协议轮询订阅（MCP/native_dock 订阅同型：std 通道短轮询——
 /// PipeEnd 读线程已把帧搬进 inbox，try_recv 零阻塞）。child 管道 EOF =
 /// 流终止（订阅 diff 重订阅自愈，下一轮消息面自然重拉）。
-pub fn pixels_protocol_subscription()
--> iced::Subscription<crate::ui::session::DesktopMessage> {
+pub fn pixels_protocol_subscription() -> iced::Subscription<crate::ui::session::DesktopMessage> {
     use crate::ui::session::{DesktopEvent, DesktopMessage};
 
     struct PixelsProtocolRecipe;
@@ -301,7 +315,7 @@ pub fn pixels_protocol_subscription()
             self: Box<Self>,
             _input: iced_futures::subscription::EventStream,
         ) -> iced_futures::BoxStream<Self::Output> {
-            use iced_futures::futures::stream::{StreamExt, unfold};
+            use iced_futures::futures::stream::{unfold, StreamExt};
             unfold((), |()| async move {
                 loop {
                     // 管道 inbox 探测（PipeEnd 读线程已搬帧，try_recv 零阻塞）；
@@ -341,7 +355,6 @@ pub(crate) fn poll_transport() -> Option<Result<ProtocolMsg, super::codec::Codec
         .ok()
         .and_then(|mut guard| guard.try_recv())
 }
-
 
 /// 物理像素帧 → 逻辑尺寸帧（盒降采样，497 快照同型）：screenshot 带
 /// scale_factor（HiDPI 物理尺寸），shm 槽按逻辑尺寸定档——两端口径经
@@ -404,13 +417,7 @@ mod tests {
         let listener = transport::listen(&pipe).expect("listen");
         let end = transport::connect(&pipe, 2000).expect("connect");
         let transport = Arc::new(Mutex::new(end));
-        let mut child = PixelsChild::new(
-            Arc::clone(&transport),
-            "hello",
-            "hello",
-            64.0,
-            32.0,
-        );
+        let mut child = PixelsChild::new(Arc::clone(&transport), "hello", "hello", 64.0, 32.0);
         let mut host_end = listener.wait_connect().expect("server");
 
         // 握手：child Hello → 宿主 Welcome(Pixels) + BufferAlloc。
@@ -438,11 +445,11 @@ mod tests {
         host_end
             .send(&ProtocolMsg::Frame(FrameMsg::BufferAlloc {
                 surface: 42,
-                slots:  2,
-                width:  64.0,
+                slots: 2,
+                width: 64.0,
                 height: 32.0,
-                shm:    Some(shm_name.clone()),
-                bm:     None,
+                shm: Some(shm_name.clone()),
+                bm: None,
             }))
             .unwrap();
 
@@ -492,7 +499,14 @@ mod tests {
 
         // 元数据一致性 + 宿主读槽字节 = 帧内容（straight RGBA）。
         let last = frames.last().unwrap();
-        let FrameMsg::FrameReadyPixels { w, h, stride, revision, .. } = last else {
+        let FrameMsg::FrameReadyPixels {
+            w,
+            h,
+            stride,
+            revision,
+            ..
+        } = last
+        else {
             panic!();
         };
         assert_eq!((*w, *h, *stride), (64, 32, 256));
@@ -516,17 +530,23 @@ mod tests {
         assert!(replies.is_empty());
         assert!(want, "输入触发截图");
         assert!(child.request_capture());
-        let m4 = child.capture(PixelsFrame::solid(64, 32, [9, 9, 9, 255])).unwrap();
+        let m4 = child
+            .capture(PixelsFrame::solid(64, 32, [9, 9, 9, 255]))
+            .unwrap();
         assert_eq!(frame_id_of(&m4), 4);
     }
 
     fn frame_id_of(m: &FrameMsg) -> u64 {
-        let FrameMsg::FrameReadyPixels { frame_id, .. } = m else { panic!("FrameReadyPixels") };
+        let FrameMsg::FrameReadyPixels { frame_id, .. } = m else {
+            panic!("FrameReadyPixels")
+        };
         *frame_id
     }
 
     fn slot_of(m: &FrameMsg) -> u8 {
-        let FrameMsg::FrameReadyPixels { slot, .. } = m else { panic!("FrameReadyPixels") };
+        let FrameMsg::FrameReadyPixels { slot, .. } = m else {
+            panic!("FrameReadyPixels")
+        };
         *slot
     }
     // -----------------------------------------------------------------------
@@ -572,8 +592,12 @@ mod tests {
             "example build failed: {}",
             String::from_utf8_lossy(&build_out.stderr)
         );
-        let target_dir = std::env::var("CARGO_TARGET_DIR")
-            .unwrap_or_else(|_| manifest_dir.join("../../target").to_string_lossy().into_owned());
+        let target_dir = std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| {
+            manifest_dir
+                .join("../../target")
+                .to_string_lossy()
+                .into_owned()
+        });
         let exe =
             std::path::Path::new(&target_dir).join("debug/examples/native_pixels_counter.exe");
         assert!(exe.exists(), "example exe missing: {}", exe.display());
@@ -675,9 +699,15 @@ mod tests {
         let mut last_frame_id = 0u64;
         let mut saw_pixels = false;
         for _ in 0..600 {
-            let Some(Ok(msg)) = host_end.recv_wait(50) else { continue };
+            let Some(Ok(msg)) = host_end.recv_wait(50) else {
+                continue;
+            };
             if let ProtocolMsg::Frame(FrameMsg::FrameReadyPixels {
-                frame_id, slot, w, h, ..
+                frame_id,
+                slot,
+                w,
+                h,
+                ..
             }) = msg
             {
                 assert_eq!((w, h), (64, 32), "逻辑尺寸对齐（降采样口径）");
@@ -704,7 +734,9 @@ mod tests {
             .unwrap();
         let mut second = false;
         for _ in 0..600 {
-            let Some(Ok(msg)) = host_end.recv_wait(50) else { continue };
+            let Some(Ok(msg)) = host_end.recv_wait(50) else {
+                continue;
+            };
             if let ProtocolMsg::Frame(FrameMsg::FrameReadyPixels { frame_id, .. }) = msg {
                 assert!(frame_id > last_frame_id, "Input 后 frame_id 递增");
                 second = true;
@@ -722,8 +754,13 @@ mod tests {
             .unwrap();
         let mut released = false;
         for _ in 0..200 {
-            let Some(Ok(msg)) = host_end.recv_wait(50) else { continue };
-            if let ProtocolMsg::Control(crate::ui::desktop_protocol::message::ControlMsg::ExitRequest { .. }) = msg {
+            let Some(Ok(msg)) = host_end.recv_wait(50) else {
+                continue;
+            };
+            if let ProtocolMsg::Control(
+                crate::ui::desktop_protocol::message::ControlMsg::ExitRequest { .. },
+            ) = msg
+            {
                 host_end
                     .send(&ProtocolMsg::Frame(FrameMsg::BufferRelease { surface: 42 }))
                     .unwrap();

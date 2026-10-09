@@ -35,7 +35,9 @@ pub struct ElemInfo {
 /// 描述文本进 Markdown/VitePress 前的 HTML 转义——schema 描述里出现
 /// `<prefix>_pts` 这类裸尖括号会被 Vue 模板编译器当未闭合标签,整站 build 失败。
 fn esc_desc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 pub fn prop_type_str(t: &PropType) -> String {
@@ -75,7 +77,8 @@ pub fn load_elements() -> Vec<ElemInfo> {
             tier,
             category: format!("{:?}", def.category).to_lowercase(),
             description: def.description.to_string(),
-            aliases: meta.map(|m| m.aliases.iter().map(|a| a.to_string()).collect())
+            aliases: meta
+                .map(|m| m.aliases.iter().map(|a| a.to_string()).collect())
                 .unwrap_or_default(),
             sub_widgets: meta
                 .map(|m| m.sub_widgets.iter().map(|s| s.to_string()).collect())
@@ -95,7 +98,9 @@ pub fn load_elements() -> Vec<ElemInfo> {
             allows_children: def.allows_children,
             web,
             iced,
-            vue_import: meta.and_then(|m| m.vue.as_ref()).and_then(|v| v.import.clone()),
+            vue_import: meta
+                .and_then(|m| m.vue.as_ref())
+                .and_then(|v| v.import.clone()),
             superseded_by: meta.and_then(|m| m.superseded_by.clone()),
         });
     }
@@ -163,11 +168,14 @@ pub fn generate_core_reference(root: &std::path::Path) -> String {
     );
 
     for tier in ["builtin_widget", "native_html"] {
-        md.push_str(&format!("## {}\n\n", if tier == "builtin_widget" {
-            "内置组件(builtin_widget)"
-        } else {
-            "原生直通(native_html)"
-        }));
+        md.push_str(&format!(
+            "## {}\n\n",
+            if tier == "builtin_widget" {
+                "内置组件(builtin_widget)"
+            } else {
+                "原生直通(native_html)"
+            }
+        ));
         for e in elems.iter().filter(|e| e.tier == tier) {
             md.push_str(&format!("### `{}`\n\n", e.canonical));
             md.push_str(&format!(
@@ -188,7 +196,11 @@ pub fn generate_core_reference(root: &std::path::Path) -> String {
             if !e.aliases.is_empty() {
                 md.push_str(&format!(
                     "别名:{}\n\n",
-                    e.aliases.iter().map(|a| format!("`{}`", a)).collect::<Vec<_>>().join(" ")
+                    e.aliases
+                        .iter()
+                        .map(|a| format!("`{}`", a))
+                        .collect::<Vec<_>>()
+                        .join(" ")
                 ));
             }
             if e.props.is_empty() {
@@ -198,7 +210,10 @@ pub fn generate_core_reference(root: &std::path::Path) -> String {
                 for (n, ty, d, desc) in &e.props {
                     md.push_str(&format!(
                         "| `{}` | `{}` | {} | {} |\n",
-                        n, ty, d, esc_desc(desc)
+                        n,
+                        ty,
+                        d,
+                        esc_desc(desc)
                     ));
                 }
                 md.push('\n');
@@ -206,7 +221,11 @@ pub fn generate_core_reference(root: &std::path::Path) -> String {
             if !e.sub_widgets.is_empty() {
                 md.push_str(&format!(
                     "子件:{}\n\n",
-                    e.sub_widgets.iter().map(|s| format!("`{}`", s)).collect::<Vec<_>>().join(" ")
+                    e.sub_widgets
+                        .iter()
+                        .map(|s| format!("`{}`", s))
+                        .collect::<Vec<_>>()
+                        .join(" ")
                 ));
             }
             md.push_str("---\n\n");
@@ -223,7 +242,11 @@ fn literal_prop_variants(prop: &(String, String, String, String)) -> Vec<String>
     }
     if let Some(opts) = ty.strip_prefix("one_of:") {
         // prop_type_str 用 | 连接 OneOf 取值
-        return opts.split('|').take(3).map(|v| v.trim().to_string()).collect();
+        return opts
+            .split('|')
+            .take(3)
+            .map(|v| v.trim().to_string())
+            .collect();
     }
     match ty.as_str() {
         "string" => vec!["sample".to_string()],
@@ -285,24 +308,29 @@ pub fn generate_kitchen_sink() -> String {
             at.push_str(sample);
             at.push('\n');
         } else {
-        // 默认形态(裸标签或 text 简写)。P499-6:视图关键字名元素
-        // (link/tag/use——`link` 被 parse_view_link 独占,Plan 105)不可
-        // 发射标签简写 `name "text" {}`(解析错级联 20×"Expected term,
-        // got RBrace" → serve 跳页 → router 悬空 500);link 用其关键字
-        // 形状 (text:,href:) 显式发射,其余关键字名退回裸形态。
-        const VIEW_KEYWORD_ELEMENTS: &[&str] = &["link", "tag", "use"];
-        if e.canonical == "spacer" {
-            at.push_str("                row (style: \"w-full items-center gap-2\") { text \"Start\" {} spacer {} text \"End\" {} }\n");
-        } else if e.canonical == "autodown_editor" {
-            at.push_str("                autodown_editor (content: \"Sample editor content\") {}\n");
-        } else if e.canonical == "link" {
-            at.push_str("                link (text: \"sample\", href: \"/button\") {}\n");
-        } else if VIEW_KEYWORD_ELEMENTS.contains(&e.canonical.as_str()) {
-            at.push_str(&format!("                {} {{}}\n", e.canonical));
-        } else if e.props.iter().any(|pr| pr.0 == "text") {
-            at.push_str(&format!("                {} \"sample\" {{}}\n", e.canonical));
-        } else if e.allows_children {
-            let child = match e.canonical.as_str() {
+            // 默认形态(裸标签或 text 简写)。P499-6:视图关键字名元素
+            // (link/tag/use——`link` 被 parse_view_link 独占,Plan 105)不可
+            // 发射标签简写 `name "text" {}`(解析错级联 20×"Expected term,
+            // got RBrace" → serve 跳页 → router 悬空 500);link 用其关键字
+            // 形状 (text:,href:) 显式发射,其余关键字名退回裸形态。
+            const VIEW_KEYWORD_ELEMENTS: &[&str] = &["link", "tag", "use"];
+            if e.canonical == "spacer" {
+                at.push_str("                row (style: \"w-full items-center gap-2\") { text \"Start\" {} spacer {} text \"End\" {} }\n");
+            } else if e.canonical == "autodown_editor" {
+                at.push_str(
+                    "                autodown_editor (content: \"Sample editor content\") {}\n",
+                );
+            } else if e.canonical == "link" {
+                at.push_str("                link (text: \"sample\", href: \"/button\") {}\n");
+            } else if VIEW_KEYWORD_ELEMENTS.contains(&e.canonical.as_str()) {
+                at.push_str(&format!("                {} {{}}\n", e.canonical));
+            } else if e.props.iter().any(|pr| pr.0 == "text") {
+                at.push_str(&format!(
+                    "                {} \"sample\" {{}}\n",
+                    e.canonical
+                ));
+            } else if e.allows_children {
+                let child = match e.canonical.as_str() {
                 "col" => "text \"Column item\" {} text \"Second item\" {}",
                 "container" => "text \"Contained sample\" {}",
                 "grid" => "text \"Cell one\" {} text \"Cell two\" {} text \"Cell three\" {}",
@@ -318,22 +346,29 @@ pub fn generate_kitchen_sink() -> String {
                 "slot" => "text \"Slot content\" {}",
                 _ => "text \"sample\" {}",
             };
-            if e.canonical == "scroll" {
-                at.push_str("                scroll (style: \"h-20 w-64\") { ");
-                at.push_str(child);
-                at.push_str(" }\n");
+                if e.canonical == "scroll" {
+                    at.push_str("                scroll (style: \"h-20 w-64\") { ");
+                    at.push_str(child);
+                    at.push_str(" }\n");
+                } else {
+                    at.push_str(&format!(
+                        "                {} {{ {} }}\n",
+                        e.canonical, child
+                    ));
+                }
             } else {
-                at.push_str(&format!("                {} {{ {} }}\n", e.canonical, child));
+                at.push_str(&format!("                {} {{}}\n", e.canonical));
             }
-        } else {
-            at.push_str(&format!("                {} {{}}\n", e.canonical));
-        }
         }
         if e.canonical == "toaster" {
-            at.push_str("                text \"Toast host (visible after a toast is queued)\" {}\n");
+            at.push_str(
+                "                text \"Toast host (visible after a toast is queued)\" {}\n",
+            );
         }
         if e.canonical == "workspace_preview" {
-            at.push_str("                text \"Workspace preview needs a live host snapshot.\" {}\n");
+            at.push_str(
+                "                text \"Workspace preview needs a live host snapshot.\" {}\n",
+            );
         }
         // 变体:每 prop 至多 2 个取值,总变体至多 4。
         // P7-2/D9:app 本地命令式外壳组件(import 非 @/components/ui/*)的
@@ -345,7 +380,9 @@ pub fn generate_kitchen_sink() -> String {
             .map_or(false, |p| !p.starts_with("@/components/ui/"));
         let mut variants = if overlay_sample.is_some() { 4 } else { 0 };
         for pr in &e.props {
-            if shell_component || variants >= 4 { break; }
+            if shell_component || variants >= 4 {
+                break;
+            }
             if e.canonical == "spacer" {
                 if pr.0 == "size" {
                     at.push_str("                row (style: \"w-full items-center gap-2\") { text \"Start\" {} spacer (size: 16) {} text \"End\" {} }\n");
@@ -354,11 +391,15 @@ pub fn generate_kitchen_sink() -> String {
                 continue;
             }
             for v in literal_prop_variants(pr).into_iter().take(2) {
-                if variants >= 4 { break; }
-                if pr.0 == "text" { continue; } // text 已用简写
-                // PLAN-528 W6(生成器固化,PLAN-536 T11): src 指向 public/icon.png
-                // ——裸词 "sample" 会被 vue 生成器当静态资源 import,vite 解析
-                // 不到整页 500(此前是手工版页面的例外注记)。
+                if variants >= 4 {
+                    break;
+                }
+                if pr.0 == "text" {
+                    continue;
+                } // text 已用简写
+                  // PLAN-528 W6(生成器固化,PLAN-536 T11): src 指向 public/icon.png
+                  // ——裸词 "sample" 会被 vue 生成器当静态资源 import,vite 解析
+                  // 不到整页 500(此前是手工版页面的例外注记)。
                 let v = if pr.0 == "src" {
                     "/icon.png".to_string()
                 } else if pr.0 == "to" || pr.0 == "href" {
@@ -368,7 +409,9 @@ pub fn generate_kitchen_sink() -> String {
                 };
                 at.push_str(&format!(
                     "                {} ({}: {}) {{}}\n",
-                    e.canonical, pr.0, quote_if_str(&v, &pr.1)
+                    e.canonical,
+                    pr.0,
+                    quote_if_str(&v, &pr.1)
                 ));
                 variants += 1;
             }

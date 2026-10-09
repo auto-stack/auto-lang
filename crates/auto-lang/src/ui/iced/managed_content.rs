@@ -22,9 +22,7 @@ use iced::advanced::text::Renderer as _TextRenderer;
 use iced::advanced::widget::Tree;
 use iced::advanced::widget::Widget;
 use iced::advanced::Renderer as _;
-use iced::{
-    Background, Border, Color, Element, Length, Point, Rectangle, Size, Theme, mouse,
-};
+use iced::{mouse, Background, Border, Color, Element, Length, Point, Rectangle, Size, Theme};
 
 use crate::ui::scroll::host::ScrollContentHost;
 use crate::ui::scroll::intent::{ScrollIntent, ScrollSource};

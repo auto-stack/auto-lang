@@ -16,12 +16,10 @@
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
-use a2r_std::http::{
-    UploadReceipt, UploadRequest, UploadSession,
-};
+use a2r_std::http::{UploadReceipt, UploadRequest, UploadSession};
 
-use crate::vm::ffi::convert::VMConvertible;
 use crate::vm::engine::{AutoVM, VMError};
+use crate::vm::ffi::convert::VMConvertible;
 use crate::vm::task::AutoTask;
 
 use super::async_http;
@@ -58,7 +56,10 @@ pub(crate) fn insert_upload_request(req: UploadRequest) -> u64 {
 
 /// 一次性消费（receive 首调；未知/已消费 id → None）。
 fn take_upload_request(id: u64) -> Option<UploadRequest> {
-    VM_UPLOAD_REQUESTS.lock().ok().and_then(|mut m| m.remove(&id))
+    VM_UPLOAD_REQUESTS
+        .lock()
+        .ok()
+        .and_then(|mut m| m.remove(&id))
 }
 
 /// 会话登记（receive 交付）+ scope 组绑定。
@@ -73,11 +74,17 @@ pub(crate) fn insert_upload_session(session: UploadSession) -> u64 {
 
 /// 会话快照查询（metadata 同步路径）。
 fn lookup_upload_session(id: u64) -> Option<UploadSession> {
-    VM_UPLOAD_SESSIONS.lock().ok().and_then(|m| m.get(&id).cloned())
+    VM_UPLOAD_SESSIONS
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&id).cloned())
 }
 
 fn take_upload_session(id: u64) -> Option<UploadSession> {
-    VM_UPLOAD_SESSIONS.lock().ok().and_then(|mut m| m.remove(&id))
+    VM_UPLOAD_SESSIONS
+        .lock()
+        .ok()
+        .and_then(|mut m| m.remove(&id))
 }
 
 /// 收据登记（push 句柄给 VM 前调用）。
@@ -94,7 +101,10 @@ pub(crate) fn insert_upload_receipt(receipt: UploadReceipt) -> u64 {
 
 /// 编组取出（单次交付；未登记 id → None）。
 pub(crate) fn take_upload_receipt(id: u64) -> Option<UploadReceipt> {
-    VM_UPLOAD_RECEIPTS.lock().ok().and_then(|mut m| m.remove(&id))
+    VM_UPLOAD_RECEIPTS
+        .lock()
+        .ok()
+        .and_then(|mut m| m.remove(&id))
 }
 
 // ── live-op 结果表：op_id → 交付物（唤醒经 complete_live_op；结果不走
@@ -341,7 +351,11 @@ pub(crate) fn scope_finalize_uploads(group: &[u64]) {
             m.remove(id);
         }
         // 会话（staged/receiving）：executor 取消+清理；快照出表。
-        if VM_UPLOAD_SESSIONS.lock().map(|m| m.contains_key(id)).unwrap_or(false) {
+        if VM_UPLOAD_SESSIONS
+            .lock()
+            .map(|m| m.contains_key(id))
+            .unwrap_or(false)
+        {
             a2r_std::http::cancel_upload_session(*id);
             if let Ok(mut m) = VM_UPLOAD_SESSIONS.lock() {
                 m.remove(id);

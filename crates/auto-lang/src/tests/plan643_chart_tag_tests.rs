@@ -72,11 +72,7 @@ fn t01_with_charts_vm_track_renders_charts() {
             "with_charts VM view must contain {expected:?}; snapshot: {texts:?}"
         );
     }
-    let _ = std::fs::remove_dir_all(
-        fixture
-            .parent()
-            .expect("fixture has scratch parent"),
-    );
+    let _ = std::fs::remove_dir_all(fixture.parent().expect("fixture has scratch parent"));
 }
 
 /// T-06 vue 轨:with_charts 变体生成 SFC——chart 组件引用与 bp 文本面进码。
@@ -106,11 +102,7 @@ fn t02_with_charts_vue_track_generates_sfc() {
             .filter(|w| w.rule == "S004")
             .collect::<Vec<_>>()
     );
-    let _ = std::fs::remove_dir_all(
-        fixture
-            .parent()
-            .expect("fixture has scratch parent"),
-    );
+    let _ = std::fs::remove_dir_all(fixture.parent().expect("fixture has scratch parent"));
 }
 
 /// T-05 正断言（bp 级）:dashboard/overview palette（含 chart 四 tag）对
@@ -149,7 +141,9 @@ fn collect_view_texts(
                 collect_view_texts(c, out);
             }
         }
-        View::Input { placeholder, value, .. } => {
+        View::Input {
+            placeholder, value, ..
+        } => {
             out.push(placeholder.clone());
             out.push(value.clone());
         }

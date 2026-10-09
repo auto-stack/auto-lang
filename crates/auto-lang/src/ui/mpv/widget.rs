@@ -285,7 +285,9 @@ impl iced_wgpu::primitive::Primitive for VideoPrimitive {
                     // 内容（全零=黑），而 mpv 那边完全正常（time-pos 在走）——
                     // T-20 实机验证时就是这么黑了 5 秒才定位到。
                     targets.channel.advance(gen, seq);
-                    let out = targets.channel.with_frame(gen, seq, |t| engine.render_sw_frame(&t));
+                    let out = targets
+                        .channel
+                        .with_frame(gen, seq, |t| engine.render_sw_frame(&t));
                     targets.seq = seq.wrapping_add(1);
                     // 失败不是常态，但也不能静默：只报第一次，避免每帧刷屏。
                     if let super::channel::FrameOutcome::RenderFailed(msg) = &out {

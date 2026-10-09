@@ -146,7 +146,11 @@ impl<T: Clone> std::ops::Index<usize> for List<T> {
         if let Some(val) = self.get(i) {
             Box::leak(Box::new(val))
         } else {
-            panic!("index out of bounds: the len is {} but the index is {}", self.len(), i);
+            panic!(
+                "index out of bounds: the len is {} but the index is {}",
+                self.len(),
+                i
+            );
         }
     }
 }
@@ -312,12 +316,14 @@ pub mod json {
 
     pub fn get_at(val: &Value, idx: usize) -> &Value {
         static NULL_VALUE: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
-        val.get(idx).unwrap_or_else(|| NULL_VALUE.get_or_init(|| Value::Null))
+        val.get(idx)
+            .unwrap_or_else(|| NULL_VALUE.get_or_init(|| Value::Null))
     }
 
     pub fn get<'a>(val: &'a Value, key: &str) -> &'a Value {
         static NULL_VALUE: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
-        val.get(key).unwrap_or_else(|| NULL_VALUE.get_or_init(|| Value::Null))
+        val.get(key)
+            .unwrap_or_else(|| NULL_VALUE.get_or_init(|| Value::Null))
     }
 
     pub fn get_owned(val: &Value, key: &str) -> Value {
@@ -406,7 +412,10 @@ pub mod json {
     }
 
     pub fn get_str(val: &Value, key: &str) -> String {
-        val.get(key).and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_default()
+        val.get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_default()
     }
 
     pub fn as_string(val: &Value) -> String {
@@ -414,7 +423,8 @@ pub mod json {
     }
 
     pub fn as_string_opt(val: Option<&Value>) -> String {
-        val.and_then(|v| v.as_str().map(|s| s.to_string())).unwrap_or_default()
+        val.and_then(|v| v.as_str().map(|s| s.to_string()))
+            .unwrap_or_default()
     }
 
     /// PLAN-714 r3 R3-T1: json.from_value（VM 同语义——struct/map 值序列
@@ -562,7 +572,8 @@ pub fn value_to_int(val: &serde_json::Value) -> i32 {
         s.parse::<i32>().ok()
     } else {
         None
-    }.unwrap_or(0)
+    }
+    .unwrap_or(0)
 }
 
 /// Get the length of a JSON value (string length for strings, 0 for other types)
@@ -597,7 +608,10 @@ pub mod io {
         let mut buf = String::new();
         match io::stdin().read_line(&mut buf) {
             Ok(_) => {
-                let trimmed = buf.trim_end_matches('\n').trim_end_matches('\r').to_string();
+                let trimmed = buf
+                    .trim_end_matches('\n')
+                    .trim_end_matches('\r')
+                    .to_string();
                 trimmed
             }
             Err(_) => String::new(),
@@ -693,7 +707,11 @@ pub mod fs {
     pub fn is_binary(path: impl AsRef<str>) -> i32 {
         match std::fs::read(path.as_ref()) {
             Ok(bytes) => {
-                if bytes.windows(2).any(|w| w == [0, 0]) { 1 } else { 0 }
+                if bytes.windows(2).any(|w| w == [0, 0]) {
+                    1
+                } else {
+                    0
+                }
             }
             Err(_) => 0,
         }
@@ -721,7 +739,11 @@ pub mod fs {
                 std::fs::copy(src, dst).map(|_| ())
             }
         }
-        rec(std::path::Path::new(src.as_ref()), std::path::Path::new(dst.as_ref())).is_ok()
+        rec(
+            std::path::Path::new(src.as_ref()),
+            std::path::Path::new(dst.as_ref()),
+        )
+        .is_ok()
     }
 
     /// PLAN-714 r3 R3-T1: File.read_bytes 的 list 形（VM read_bytes→int
@@ -772,7 +794,11 @@ pub mod fs {
     pub fn append_text(path: impl AsRef<str>, content: impl AsRef<str>) {
         use std::fs::OpenOptions;
         use std::io::Write;
-        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path.as_ref()) {
+        if let Ok(mut file) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path.as_ref())
+        {
             let _ = file.write_all(content.as_ref().as_bytes());
         }
     }
@@ -780,7 +806,13 @@ pub mod fs {
 
 /// Parse ~/.claude/settings.json into (api_key, base_url, vars HashMap)
 /// Returns (None, None, empty_map) if parsing fails
-pub fn parse_settings_json(text: &str) -> (Option<String>, Option<String>, std::collections::HashMap<String, String>) {
+pub fn parse_settings_json(
+    text: &str,
+) -> (
+    Option<String>,
+    Option<String>,
+    std::collections::HashMap<String, String>,
+) {
     let val: serde_json::Value = match serde_json::from_str(text) {
         Ok(v) => v,
         Err(_) => return (None, None, std::collections::HashMap::new()),
@@ -793,7 +825,8 @@ pub fn parse_settings_json(text: &str) -> (Option<String>, Option<String>, std::
             }
         }
     }
-    let api_key = vars.get("ANTHROPIC_API_KEY")
+    let api_key = vars
+        .get("ANTHROPIC_API_KEY")
         .or_else(|| vars.get("ANTHROPIC_AUTH_TOKEN"))
         .cloned();
     let base_url = vars.get("ANTHROPIC_BASE_URL").cloned();
@@ -846,18 +879,21 @@ pub mod http {
         parse_upload_receive_options, upload_commit, upload_error, upload_metadata,
         upload_metadata_json, upload_receive, upload_reject, upload_request_from_parts,
         UploadBodyStream, UploadErrorKind, UploadExecutor, UploadPhase, UploadPhaseHook,
-        UploadReceipt, UploadReceiveMode, UploadReceiveOptions, UploadReceivedMeta,
-        UploadRequest, UploadServeLimits, UploadSession, UploadSessionState,
+        UploadReceipt, UploadReceiveMode, UploadReceiveOptions, UploadReceivedMeta, UploadRequest,
+        UploadServeLimits, UploadSession, UploadSessionState,
     };
 
     fn auth_request_json(url: &str, body: &str, api_key: &str, bearer: bool) -> HttpRequest {
         let mut req = HttpRequest::new("POST", url);
-        req.headers.push(("content-type".into(), "application/json".into()));
+        req.headers
+            .push(("content-type".into(), "application/json".into()));
         if bearer {
-            req.headers.push(("Authorization".into(), format!("Bearer {}", api_key)));
+            req.headers
+                .push(("Authorization".into(), format!("Bearer {}", api_key)));
         } else {
             req.headers.push(("x-api-key".into(), api_key.to_string()));
-            req.headers.push(("anthropic-version".into(), "2023-06-01".into()));
+            req.headers
+                .push(("anthropic-version".into(), "2023-06-01".into()));
         }
         req.body = Some(body.as_bytes().to_vec());
         req
@@ -882,7 +918,12 @@ pub mod http {
                 if (200..300).contains(&status) {
                     (status, resp_body, String::new(), "ok".to_string())
                 } else {
-                    (status, resp_body, format!("HTTP {}", status), "error".to_string())
+                    (
+                        status,
+                        resp_body,
+                        format!("HTTP {}", status),
+                        "error".to_string(),
+                    )
                 }
             }
             Err(e) => (0, String::new(), error_message(&e), "error".to_string()),
@@ -892,20 +933,34 @@ pub mod http {
     /// Synchronous HTTP POST — blocking version for use in non-async contexts.
     /// Used by Auto's http.post_sync() when transpiled via a2r.
     /// 同步桥接边界：仅在允许阻塞的边界调用；async 上下文请用 [`post`]。
-    pub fn post_sync(url: impl AsRef<str>, body: impl AsRef<str>, api_key: impl AsRef<str>) -> (i32, String) {
+    pub fn post_sync(
+        url: impl AsRef<str>,
+        body: impl AsRef<str>,
+        api_key: impl AsRef<str>,
+    ) -> (i32, String) {
         let req = auth_request_json(url.as_ref(), body.as_ref(), api_key.as_ref(), false);
         match client::execute_blocking(req) {
-            Ok(resp) => (resp.status as i32, String::from_utf8_lossy(&resp.body).into_owned()),
+            Ok(resp) => (
+                resp.status as i32,
+                String::from_utf8_lossy(&resp.body).into_owned(),
+            ),
             Err(e) => (0, error_message(&e)),
         }
     }
 
     /// Async HTTP POST with Bearer token auth (for OpenAI-compatible APIs).
     /// Returns (status, body).
-    pub async fn post_bearer(url: impl AsRef<str>, body: impl AsRef<str>, api_key: impl AsRef<str>) -> (i32, String) {
+    pub async fn post_bearer(
+        url: impl AsRef<str>,
+        body: impl AsRef<str>,
+        api_key: impl AsRef<str>,
+    ) -> (i32, String) {
         let req = auth_request_json(url.as_ref(), body.as_ref(), api_key.as_ref(), true);
         match client::execute(req).await {
-            Ok(resp) => (resp.status as i32, String::from_utf8_lossy(&resp.body).into_owned()),
+            Ok(resp) => (
+                resp.status as i32,
+                String::from_utf8_lossy(&resp.body).into_owned(),
+            ),
             Err(e) => (0, format!("HTTP error: {}", error_message(&e))),
         }
     }
@@ -923,10 +978,17 @@ pub mod http {
     }
 
     /// Synchronous HTTP POST with Bearer token auth (blocking, for non-async contexts).
-    pub fn post_bearer_sync(url: impl AsRef<str>, body: impl AsRef<str>, api_key: impl AsRef<str>) -> (i32, String) {
+    pub fn post_bearer_sync(
+        url: impl AsRef<str>,
+        body: impl AsRef<str>,
+        api_key: impl AsRef<str>,
+    ) -> (i32, String) {
         let req = auth_request_json(url.as_ref(), body.as_ref(), api_key.as_ref(), true);
         match client::execute_blocking(req) {
-            Ok(resp) => (resp.status as i32, String::from_utf8_lossy(&resp.body).into_owned()),
+            Ok(resp) => (
+                resp.status as i32,
+                String::from_utf8_lossy(&resp.body).into_owned(),
+            ),
             Err(e) => (0, format!("HTTP error: {}", error_message(&e))),
         }
     }
@@ -949,7 +1011,9 @@ pub fn simple_hash(s: &str) -> String {
 /// Current timestamp as seconds since epoch (for session file naming)
 pub fn time_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     format!("{}", duration.as_secs())
 }
 
@@ -960,7 +1024,10 @@ pub fn time_now() -> String {
 #[allow(non_snake_case)]
 pub mod shell {
     fn json_escape(s: &str) -> String {
-        s.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "")
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "")
     }
 
     pub fn exec(cmd: impl AsRef<str>, timeout_ms: i32) -> String {
@@ -1007,13 +1074,16 @@ pub mod shell {
                                 let code = status.code().unwrap_or(-1);
                                 return format!(
                                     r#"{{"exit_code":{},"stdout":"{}","stderr":"{}"}}"#,
-                                    code, json_escape(&stdout), json_escape(&stderr)
+                                    code,
+                                    json_escape(&stdout),
+                                    json_escape(&stderr)
                                 );
                             }
                             Ok(None) => {
                                 if Instant::now() >= deadline {
                                     let _ = child.kill();
-                                    return r#"{"exit_code":-1,"stdout":"","stderr":"timeout"}"#.to_string();
+                                    return r#"{"exit_code":-1,"stdout":"","stderr":"timeout"}"#
+                                        .to_string();
                                 }
                                 std::thread::sleep(Duration::from_millis(50));
                             }
@@ -1040,7 +1110,9 @@ pub mod shell {
                     let code = o.status.code().unwrap_or(-1);
                     format!(
                         r#"{{"exit_code":{},"stdout":"{}","stderr":"{}"}}"#,
-                        code, json_escape(&stdout), json_escape(&stderr)
+                        code,
+                        json_escape(&stdout),
+                        json_escape(&stderr)
                     )
                 }
                 Err(e) => format!(
@@ -1061,7 +1133,13 @@ pub mod shell {
 pub mod re {
     pub fn r#match(pattern: &str, text: &str) -> i32 {
         match ::regex::Regex::new(pattern) {
-            Ok(re) => if re.is_match(text) { 1 } else { 0 },
+            Ok(re) => {
+                if re.is_match(text) {
+                    1
+                } else {
+                    0
+                }
+            }
             Err(_) => 0,
         }
     }
@@ -1093,8 +1171,15 @@ pub mod re {
     pub fn find_all(pattern: &str, text: &str) -> String {
         match ::regex::Regex::new(pattern) {
             Ok(re) => {
-                let matches: Vec<String> = re.find_iter(text).map(|m| format!("\"{}\"", m.as_str())).collect();
-                if matches.is_empty() { "[]".to_string() } else { format!("[{}]", matches.join(",")) }
+                let matches: Vec<String> = re
+                    .find_iter(text)
+                    .map(|m| format!("\"{}\"", m.as_str()))
+                    .collect();
+                if matches.is_empty() {
+                    "[]".to_string()
+                } else {
+                    format!("[{}]", matches.join(","))
+                }
             }
             Err(_) => "[]".to_string(),
         }

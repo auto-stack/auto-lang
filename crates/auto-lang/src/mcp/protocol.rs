@@ -45,14 +45,24 @@ pub enum Id {
 
 impl JsonRpcResponse {
     pub fn success(id: Option<Id>, result: serde_json::Value) -> Self {
-        Self { jsonrpc: "2.0".into(), id, result: Some(result), error: None }
+        Self {
+            jsonrpc: "2.0".into(),
+            id,
+            result: Some(result),
+            error: None,
+        }
     }
 
     pub fn error(id: Option<Id>, code: i32, message: impl Into<String>) -> Self {
         Self {
-            jsonrpc: "2.0".into(), id,
+            jsonrpc: "2.0".into(),
+            id,
             result: None,
-            error: Some(JsonRpcError { code, message: message.into(), data: None }),
+            error: Some(JsonRpcError {
+                code,
+                message: message.into(),
+                data: None,
+            }),
         }
     }
 }
@@ -126,11 +136,17 @@ pub enum ContentBlock {
 
 impl ToolResult {
     pub fn text(text: impl Into<String>) -> Self {
-        Self { content: vec![ContentBlock::Text { text: text.into() }], is_error: None }
+        Self {
+            content: vec![ContentBlock::Text { text: text.into() }],
+            is_error: None,
+        }
     }
 
     pub fn error(text: impl Into<String>) -> Self {
-        Self { content: vec![ContentBlock::Text { text: text.into() }], is_error: Some(true) }
+        Self {
+            content: vec![ContentBlock::Text { text: text.into() }],
+            is_error: Some(true),
+        }
     }
 }
 

@@ -1,8 +1,8 @@
 //! Symbol types extracted from universe.rs
 //! Plan 091: Part of Universe removal
 
-use auto_val::AutoStr;
 use crate::ast::Type;
+use auto_val::AutoStr;
 
 /// Location of a symbol in source code
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,7 +14,11 @@ pub struct SymbolLocation {
 
 impl SymbolLocation {
     pub fn new(line: usize, character: usize, pos: usize) -> Self {
-        Self { line, character, pos }
+        Self {
+            line,
+            character,
+            pos,
+        }
     }
 }
 

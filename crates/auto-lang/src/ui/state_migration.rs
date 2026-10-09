@@ -15,8 +15,8 @@
 use std::collections::HashMap;
 
 use crate::ast::Expr;
-use crate::aura::AuraStateDef;
 use crate::ast::Type;
+use crate::aura::AuraStateDef;
 use auto_val::{Op, Value};
 
 /// Result of a state migration operation.
@@ -98,10 +98,8 @@ pub fn migrate_state(
     }
 
     // Track dropped fields (for the report)
-    let new_field_names: HashMap<&str, ()> = new_fields
-        .iter()
-        .map(|f| (f.name.as_str(), ()))
-        .collect();
+    let new_field_names: HashMap<&str, ()> =
+        new_fields.iter().map(|f| (f.name.as_str(), ())).collect();
 
     for name in old_state.keys() {
         if !new_field_names.contains_key(name.as_str()) {
@@ -237,12 +235,8 @@ mod tests {
 
     #[test]
     fn test_migrate_adds_new_fields() {
-        let old_state = HashMap::from([
-            ("count".to_string(), Value::Int(5)),
-        ]);
-        let old_fields = vec![
-            field("count", Type::Int, Expr::Int(0)),
-        ];
+        let old_state = HashMap::from([("count".to_string(), Value::Int(5))]);
+        let old_fields = vec![field("count", Type::Int, Expr::Int(0))];
         let new_fields = vec![
             field("count", Type::Int, Expr::Int(0)),
             field("enabled", Type::Bool, Expr::Bool(true)),
@@ -265,11 +259,13 @@ mod tests {
         ]);
         let old_fields = vec![
             field("count", Type::Int, Expr::Int(0)),
-            field("legacy", Type::StrFixed(0), Expr::Str("".to_string().into())),
+            field(
+                "legacy",
+                Type::StrFixed(0),
+                Expr::Str("".to_string().into()),
+            ),
         ];
-        let new_fields = vec![
-            field("count", Type::Int, Expr::Int(0)),
-        ];
+        let new_fields = vec![field("count", Type::Int, Expr::Int(0))];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
 
@@ -283,15 +279,15 @@ mod tests {
 
     #[test]
     fn test_migrate_type_changed_uses_new_default() {
-        let old_state = HashMap::from([
-            ("value".to_string(), Value::Int(42)),
-        ]);
-        let old_fields = vec![
-            field("value", Type::Int, Expr::Int(0)),
-        ];
+        let old_state = HashMap::from([("value".to_string(), Value::Int(42))]);
+        let old_fields = vec![field("value", Type::Int, Expr::Int(0))];
         let new_fields = vec![
             // Type changed from Int to Str
-            field("value", Type::StrFixed(0), Expr::Str("default".to_string().into())),
+            field(
+                "value",
+                Type::StrFixed(0),
+                Expr::Str("default".to_string().into()),
+            ),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -308,7 +304,11 @@ mod tests {
         let old_fields: Vec<AuraStateDef> = vec![];
         let new_fields = vec![
             field("count", Type::Int, Expr::Int(10)),
-            field("name", Type::StrFixed(0), Expr::Str("test".to_string().into())),
+            field(
+                "name",
+                Type::StrFixed(0),
+                Expr::Str("test".to_string().into()),
+            ),
         ];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -322,12 +322,8 @@ mod tests {
 
     #[test]
     fn test_migrate_empty_new_fields() {
-        let old_state = HashMap::from([
-            ("count".to_string(), Value::Int(5)),
-        ]);
-        let old_fields = vec![
-            field("count", Type::Int, Expr::Int(0)),
-        ];
+        let old_state = HashMap::from([("count".to_string(), Value::Int(5))]);
+        let old_fields = vec![field("count", Type::Int, Expr::Int(0))];
         let new_fields: Vec<AuraStateDef> = vec![];
 
         let (migrated, report) = migrate_state(&old_state, &old_fields, &new_fields);
@@ -377,9 +373,7 @@ mod tests {
             field("b", Type::Int, Expr::Int(0)),
             field("c", Type::Int, Expr::Int(0)),
         ];
-        let new_fields = vec![
-            field("a", Type::Int, Expr::Int(0)),
-        ];
+        let new_fields = vec![field("a", Type::Int, Expr::Int(0))];
 
         let (_, report) = migrate_state(&old_state, &old_fields, &new_fields);
 
@@ -403,10 +397,7 @@ mod tests {
 
     #[test]
     fn test_eval_default_array() {
-        let val = eval_default(&Expr::Array(vec![
-            Expr::Int(1),
-            Expr::Int(2),
-        ]));
+        let val = eval_default(&Expr::Array(vec![Expr::Int(1), Expr::Int(2)]));
         match val {
             Value::Array(arr) => {
                 assert_eq!(arr.len(), 2);

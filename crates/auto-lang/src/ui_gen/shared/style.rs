@@ -83,7 +83,10 @@ pub const TW_SPACING_SCALE: &[f32] = &[
 
 /// Convert Tailwind spacing index to pixels
 pub fn tw_spacing(index: usize) -> f32 {
-    TW_SPACING_SCALE.get(index).copied().unwrap_or_else(|| index as f32 * 4.0)
+    TW_SPACING_SCALE
+        .get(index)
+        .copied()
+        .unwrap_or_else(|| index as f32 * 4.0)
 }
 
 /// Tailwind font size scale
@@ -115,7 +118,7 @@ pub fn tw_font_size(name: &str) -> Option<f32> {
 pub const TW_RADIUS_SCALE: &[(&str, f32)] = &[
     ("none", 0.0),
     ("sm", 2.0),
-    ("", 4.0),    // default
+    ("", 4.0), // default
     ("md", 4.0),
     ("lg", 8.0),
     ("xl", 12.0),

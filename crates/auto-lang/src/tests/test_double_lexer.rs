@@ -12,7 +12,12 @@ mod tests {
         let token = lexer.next().unwrap();
 
         println!("Token: {:?}", token);
-        assert_eq!(token.kind, TokenKind::Double, "Expected Double token, got {:?}", token.kind);
+        assert_eq!(
+            token.kind,
+            TokenKind::Double,
+            "Expected Double token, got {:?}",
+            token.kind
+        );
         // Note: lexer consumes the 'd' suffix but doesn't include it in token text
         assert_eq!(token.text.as_str(), "3.14");
     }
@@ -24,7 +29,12 @@ mod tests {
         let token = lexer.next().unwrap();
 
         println!("Token: {:?}", token);
-        assert_eq!(token.kind, TokenKind::Float, "Expected Float token, got {:?}", token.kind);
+        assert_eq!(
+            token.kind,
+            TokenKind::Float,
+            "Expected Float token, got {:?}",
+            token.kind
+        );
         // Note: lexer consumes the 'f' suffix but doesn't include it in token text
         assert_eq!(token.text.as_str(), "3.14");
     }
@@ -36,7 +46,12 @@ mod tests {
         let token = lexer.next().unwrap();
 
         println!("Token: {:?}", token);
-        assert_eq!(token.kind, TokenKind::Float, "Expected Float token, got {:?}", token.kind);
+        assert_eq!(
+            token.kind,
+            TokenKind::Float,
+            "Expected Float token, got {:?}",
+            token.kind
+        );
         assert_eq!(token.text.as_str(), "3.14");
     }
 
@@ -47,7 +62,12 @@ mod tests {
         let token = lexer.next().unwrap();
 
         println!("Token: {:?}", token);
-        assert_eq!(token.kind, TokenKind::Double, "Expected Double token, got {:?}", token.kind);
+        assert_eq!(
+            token.kind,
+            TokenKind::Double,
+            "Expected Double token, got {:?}",
+            token.kind
+        );
         // Note: lexer consumes the 'd' suffix but doesn't include it in token text
         assert_eq!(token.text.as_str(), "42");
     }

@@ -6,10 +6,10 @@ use std::{fmt, io as stdio};
 pub enum StoreKind {
     Let,
     Var,
-    Const, // const declaration (Plan 6B-3.4)
+    Const,  // const declaration (Plan 6B-3.4)
     Shared, // shared = static storage (Plan 6B-4.19)
-    CVar,  // C variable declaration
-    Field, // field of struct
+    CVar,   // C variable declaration
+    Field,  // field of struct
 }
 
 #[derive(Debug, Clone)]

@@ -9,12 +9,8 @@
 // （不新增失败面）。generate_book_expected 是书仓编辑期的再生成工作流，
 // 不经守卫。
 
-use crate::{
-    error::AutoResult,
-    trans::rust::transpile_rust,
-};
+use crate::{error::AutoResult, trans::rust::transpile_rust};
 use std::fs;
-
 
 /// PLAN-010 T4 (worktree usability, 452cdf57c precedent): the book lives
 /// OUTSIDE this repo as a sibling of the workspace (`D:/autostack/book`).
@@ -65,14 +61,17 @@ fn book_repo_dirty() -> Option<String> {
                 .lines()
                 .filter(|l| {
                     let t = l.trim();
-                    !t.is_empty()
-                        && !(t.starts_with("??") && t.ends_with("main.wrong.rs"))
+                    !t.is_empty() && !(t.starts_with("??") && t.ends_with("main.wrong.rs"))
                 })
                 .collect();
             if lines.is_empty() {
                 None
             } else {
-                Some(format!("{} dirty entries, e.g. {}", lines.len(), lines[0].trim()))
+                Some(format!(
+                    "{} dirty entries, e.g. {}",
+                    lines.len(),
+                    lines[0].trim()
+                ))
             }
         })
         .clone()
@@ -122,7 +121,9 @@ fn generate_book_expected() -> AutoResult<()> {
     let d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let listings_base = book_listings_root();
 
-    let chapters = ["ch01", "ch02", "ch03", "ch04", "ch05", "ch06", "ch07", "ch08", "ch09"];
+    let chapters = [
+        "ch01", "ch02", "ch03", "ch04", "ch05", "ch06", "ch07", "ch08", "ch09",
+    ];
     let mut generated = 0;
     let mut failed = 0;
 
@@ -143,11 +144,7 @@ fn generate_book_expected() -> AutoResult<()> {
                 continue;
             }
 
-            let listing_name = listing_dir
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap();
+            let listing_name = listing_dir.file_name().unwrap().to_str().unwrap();
             let src = fs::read_to_string(&at_path)?;
 
             match transpile_rust("main", &src) {

@@ -20,24 +20,33 @@ pub fn method_contract(method: &str) -> Option<crate::vm::native::NativeContract
     };
     Some(crate::vm::native::NativeContract {
         parameters: parameters.iter().map(|p| p.to_string()).collect(),
-        returns: returns.into(), producer: format!("vm::io::{method}"),
+        returns: returns.into(),
+        producer: format!("vm::io::{method}"),
         receiver: (method != "open").then(|| "File".into()),
-        is_static: method == "open", generics: Vec::new(),
+        is_static: method == "open",
+        generics: Vec::new(),
         parameter_modes: parameters.iter().map(|_| "View".into()).collect(),
         error_shape: "Value::Error".into(),
     })
 }
 
-pub fn selected_method_contract(method: &str, selected: super::VmMethod) -> Option<crate::vm::native::NativeContract> {
+pub fn selected_method_contract(
+    method: &str,
+    selected: super::VmMethod,
+) -> Option<crate::vm::native::NativeContract> {
     let producer: super::VmMethod = match method {
-        "read_text" => read_text_method, "read_line" => read_line_method,
-        "read_char" => read_char_method, "write_line" => write_line_method,
-        "flush" => flush_method, "close" => close_method,
+        "read_text" => read_text_method,
+        "read_line" => read_line_method,
+        "read_char" => read_char_method,
+        "write_line" => write_line_method,
+        "flush" => flush_method,
+        "close" => close_method,
         _ => return None,
     };
-    std::ptr::fn_addr_eq(producer, selected).then(|| method_contract(method)).flatten()
+    std::ptr::fn_addr_eq(producer, selected)
+        .then(|| method_contract(method))
+        .flatten()
 }
-
 
 pub fn open(ctx: &mut VmContext, path: Value) -> Value {
     match path {

@@ -159,10 +159,8 @@ impl RouteMerger {
     ///
     /// Returns a list of conflicts where the path matches but the module differs.
     pub fn find_conflicts(discovered: &[RouteDef], config: &[RouteDef]) -> Vec<RouteConflict> {
-        let discovered_map: HashMap<&str, &RouteDef> = discovered
-            .iter()
-            .map(|r| (r.path.as_str(), r))
-            .collect();
+        let discovered_map: HashMap<&str, &RouteDef> =
+            discovered.iter().map(|r| (r.path.as_str(), r)).collect();
 
         let mut conflicts = Vec::new();
 
@@ -274,15 +272,12 @@ mod tests {
 
     #[test]
     fn test_merge_config_overrides() {
-        let discovered = vec![
-            RouteDef::new("/admin", "admin_file").with_source(RouteSource::Convention),
-        ];
+        let discovered =
+            vec![RouteDef::new("/admin", "admin_file").with_source(RouteSource::Convention)];
 
-        let config = vec![
-            RouteDef::new("/admin", "admin_config")
-                .with_source(RouteSource::Config)
-                .with_meta("auth", "true"),
-        ];
+        let config = vec![RouteDef::new("/admin", "admin_config")
+            .with_source(RouteSource::Config)
+            .with_meta("auth", "true")];
 
         let merged = RouteMerger::merge(discovered, config);
 
@@ -312,13 +307,10 @@ mod tests {
 
     #[test]
     fn test_merge_no_conflict_different_paths() {
-        let discovered = vec![
-            RouteDef::new("/about", "about").with_source(RouteSource::Convention),
-        ];
+        let discovered =
+            vec![RouteDef::new("/about", "about").with_source(RouteSource::Convention)];
 
-        let config = vec![
-            RouteDef::new("/admin", "admin").with_source(RouteSource::Config),
-        ];
+        let config = vec![RouteDef::new("/admin", "admin").with_source(RouteSource::Config)];
 
         let merged = RouteMerger::merge(discovered, config);
         assert_eq!(merged.len(), 2);
@@ -331,9 +323,7 @@ mod tests {
             RouteDef::new("/about", "about").with_source(RouteSource::Convention),
         ];
 
-        let config = vec![
-            RouteDef::new("/admin", "admin").with_source(RouteSource::Config),
-        ];
+        let config = vec![RouteDef::new("/admin", "admin").with_source(RouteSource::Config)];
 
         let merged = RouteMerger::merge(discovered, config);
 
@@ -365,13 +355,10 @@ mod tests {
 
     #[test]
     fn test_find_conflicts() {
-        let discovered = vec![
-            RouteDef::new("/admin", "admin_file").with_source(RouteSource::Convention),
-        ];
+        let discovered =
+            vec![RouteDef::new("/admin", "admin_file").with_source(RouteSource::Convention)];
 
-        let config = vec![
-            RouteDef::new("/admin", "admin_config").with_source(RouteSource::Config),
-        ];
+        let config = vec![RouteDef::new("/admin", "admin_config").with_source(RouteSource::Config)];
 
         let conflicts = RouteMerger::find_conflicts(&discovered, &config);
 
@@ -383,13 +370,10 @@ mod tests {
 
     #[test]
     fn test_find_no_conflicts() {
-        let discovered = vec![
-            RouteDef::new("/about", "about").with_source(RouteSource::Convention),
-        ];
+        let discovered =
+            vec![RouteDef::new("/about", "about").with_source(RouteSource::Convention)];
 
-        let config = vec![
-            RouteDef::new("/admin", "admin").with_source(RouteSource::Config),
-        ];
+        let config = vec![RouteDef::new("/admin", "admin").with_source(RouteSource::Config)];
 
         let conflicts = RouteMerger::find_conflicts(&discovered, &config);
         assert!(conflicts.is_empty());
@@ -398,13 +382,10 @@ mod tests {
     #[test]
     fn test_find_conflicts_same_module() {
         // Same path and same module = no conflict
-        let discovered = vec![
-            RouteDef::new("/admin", "admin").with_source(RouteSource::Convention),
-        ];
+        let discovered =
+            vec![RouteDef::new("/admin", "admin").with_source(RouteSource::Convention)];
 
-        let config = vec![
-            RouteDef::new("/admin", "admin").with_source(RouteSource::Config),
-        ];
+        let config = vec![RouteDef::new("/admin", "admin").with_source(RouteSource::Config)];
 
         let conflicts = RouteMerger::find_conflicts(&discovered, &config);
         assert!(conflicts.is_empty());
@@ -427,9 +408,8 @@ mod tests {
 
     #[test]
     fn test_get_all_paths() {
-        let discovered = vec![
-            RouteDef::new("/about", "about").with_source(RouteSource::Convention),
-        ];
+        let discovered =
+            vec![RouteDef::new("/about", "about").with_source(RouteSource::Convention)];
 
         let config = vec![
             RouteDef::new("/admin", "admin").with_source(RouteSource::Config),
@@ -459,10 +439,10 @@ mod tests {
 
     #[test]
     fn test_merge_params_updated_from_config() {
-        let discovered = vec![RouteDef::new("/user/:id", "user").with_source(RouteSource::Convention)];
+        let discovered =
+            vec![RouteDef::new("/user/:id", "user").with_source(RouteSource::Convention)];
 
-        let config = vec![RouteDef::new("/user/:id", "user")
-            .with_source(RouteSource::Config)];
+        let config = vec![RouteDef::new("/user/:id", "user").with_source(RouteSource::Config)];
 
         let merged = RouteMerger::merge(discovered, config);
 

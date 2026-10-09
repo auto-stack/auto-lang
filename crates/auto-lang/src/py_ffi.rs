@@ -103,9 +103,9 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
             task.ram.push_nv(value_nv);
             let value = pop_auto_py_arg(task, vm, py)?;
             let attr_py = pop_auto_py_arg(task, vm, py)?;
-            let attr_name: String = attr_py.extract().map_err(|e| {
-                VMError::FFI(format!("py obj_set attr name not string: {}", e))
-            })?;
+            let attr_name: String = attr_py
+                .extract()
+                .map_err(|e| VMError::FFI(format!("py obj_set attr name not string: {}", e)))?;
             let obj = self.obj.bind(py);
             obj.setattr(&attr_name, (&value))
                 .map_err(|e| py_exc(py, &e))?;
@@ -116,11 +116,7 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
         Ok(())
     }
 
-    fn obj_len(
-        &self,
-        task: &mut AutoTask,
-        _vm: &AutoVM,
-    ) -> Result<(), VMError> {
+    fn obj_len(&self, task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
         Python::attach(|py| {
             let obj = self.obj.bind(py);
             let len = obj.len().map_err(|e| py_exc(py, &e))?;
@@ -130,11 +126,7 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
         Ok(())
     }
 
-    fn obj_call(
-        &self,
-        task: &mut AutoTask,
-        vm: &AutoVM,
-    ) -> Result<(), VMError> {
+    fn obj_call(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         // Plan 555 T06: 方法调用臂——receiver 已由组合子消费（self 即
         // receiver），方法名+实参按 shim 约定弹出（镜像 py_call 臂）。
         // 桥窗口让 py_callable 回调可重入本 task（539 T21 约束）。
@@ -156,17 +148,15 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
             }
             method_args.reverse();
             let method_py = pop_auto_py_arg(task, vm, py)?;
-            let method_name: String = method_py.extract().map_err(|e| {
-                VMError::FFI(format!("py obj_call method name not string: {}", e))
-            })?;
+            let method_name: String = method_py
+                .extract()
+                .map_err(|e| VMError::FFI(format!("py obj_call method name not string: {}", e)))?;
             let obj = self.obj.bind(py);
             let result = if method_args.is_empty() {
-                obj.call_method0(&method_name)
-                    .map_err(|e| py_exc(py, &e))?
+                obj.call_method0(&method_name).map_err(|e| py_exc(py, &e))?
             } else {
-                let args_tuple = PyTuple::new(py, &method_args).map_err(|e| {
-                    VMError::FFI(format!("py obj_call args tuple: {}", e))
-                })?;
+                let args_tuple = PyTuple::new(py, &method_args)
+                    .map_err(|e| VMError::FFI(format!("py obj_call args tuple: {}", e)))?;
                 obj.call_method1(&method_name, args_tuple)
                     .map_err(|e| py_exc(py, &e))?
             };
@@ -175,11 +165,7 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
         Ok(())
     }
 
-    fn obj_iter(
-        &self,
-        task: &mut AutoTask,
-        vm: &AutoVM,
-    ) -> Result<(), VMError> {
+    fn obj_iter(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         // Plan 555 T06: 迭代器物化臂——镜像 py_iter 臂（receiver=self）。
         Python::attach(|py| {
             let obj = self.obj.bind(py);
@@ -202,11 +188,7 @@ impl crate::vm::interop::ForeignObject for PyObjectHandle {
         Ok(())
     }
 
-    fn obj_type_name(
-        &self,
-        task: &mut AutoTask,
-        vm: &AutoVM,
-    ) -> Result<(), VMError> {
+    fn obj_type_name(&self, task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         Python::attach(|py| {
             let obj = self.obj.bind(py);
             let ty = obj.get_type();
@@ -380,7 +362,10 @@ impl PyFfiBridge {
     pub fn import_module(&mut self, module_name: &str) -> Result<(), VMError> {
         Python::attach(|py| {
             let module = py.import(module_name).map_err(|e| {
-                VMError::FFI(format!("Failed to import Python module '{}': {}", module_name, e))
+                VMError::FFI(format!(
+                    "Failed to import Python module '{}': {}",
+                    module_name, e
+                ))
             })?;
             self.modules.insert(module_name.to_string(), module.into());
             Ok(())
@@ -393,7 +378,9 @@ impl PyFfiBridge {
         py: Python<'py>,
         module_name: &str,
     ) -> Option<pyo3::Bound<'py, PyModule>> {
-        self.modules.get(module_name).map(|m| m.clone_ref(py).into_bound(py))
+        self.modules
+            .get(module_name)
+            .map(|m| m.clone_ref(py).into_bound(py))
     }
 
     pub fn register_function(
@@ -587,7 +574,8 @@ impl PyFfiBridge {
                 // Defensive: need at least obj + method_name.
                 if n < 2 {
                     return Err(VMError::FFI(format!(
-                        "py_call needs at least 2 args (obj, method), got {}", n
+                        "py_call needs at least 2 args (obj, method), got {}",
+                        n
                     )));
                 }
                 let extra = n - 2; // method args between method_name and obj
@@ -601,9 +589,9 @@ impl PyFfiBridge {
 
                 // Pop method name (must be a string).
                 let method_py = pop_auto_py_arg(task, vm, py)?;
-                let method_name: String = method_py.extract().map_err(|e| {
-                    VMError::FFI(format!("py_call method name not string: {}", e))
-                })?;
+                let method_name: String = method_py
+                    .extract()
+                    .map_err(|e| VMError::FFI(format!("py_call method name not string: {}", e)))?;
 
                 // Pop obj (should be a PyObjectHandle).
                 let obj_py = pop_auto_py_arg(task, vm, py)?;
@@ -629,7 +617,8 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface.register_static(NATIVE_PY_CALL, call_shim);
+        self.native_interface
+            .register_static(NATIVE_PY_CALL, call_shim);
 
         // ---- py_getattr(obj, attr_name) ----
         let getattr_shim = move |task: &mut AutoTask, vm: &AutoVM| {
@@ -638,16 +627,17 @@ impl PyFfiBridge {
                 let n = task.pending_native_arg_count as usize;
                 if n < 2 {
                     return Err(VMError::FFI(format!(
-                        "py_getattr needs 2 args (obj, attr), got {}", n
+                        "py_getattr needs 2 args (obj, attr), got {}",
+                        n
                     )));
                 }
                 // Any surplus args beyond the first two are ignored (defensive).
 
                 // Pop attr name (string).
                 let attr_py = pop_auto_py_arg(task, vm, py)?;
-                let attr_name: String = attr_py.extract().map_err(|e| {
-                    VMError::FFI(format!("py_getattr attr name not string: {}", e))
-                })?;
+                let attr_name: String = attr_py
+                    .extract()
+                    .map_err(|e| VMError::FFI(format!("py_getattr attr name not string: {}", e)))?;
 
                 // Pop obj (PyObjectHandle).
                 let obj_py = pop_auto_py_arg(task, vm, py)?;
@@ -655,7 +645,9 @@ impl PyFfiBridge {
                 let result = obj_py.getattr(&attr_name).map_err(|e| {
                     VMError::FFI(format!(
                         "Python getattr({}.{}) failed: {}",
-                        safe_type_name(&obj_py), attr_name, e
+                        safe_type_name(&obj_py),
+                        attr_name,
+                        e
                     ))
                 })?;
 
@@ -701,7 +693,9 @@ impl PyFfiBridge {
                     .try_iter()
                     .map_err(|e| VMError::FFI(format!("py_call_kw posargs not iterable: {}", e)))?
                     .collect::<Result<Vec<_>, _>>()
-                    .map_err(|e| VMError::FFI(format!("py_call_kw posargs iteration failed: {}", e)))?;
+                    .map_err(|e| {
+                        VMError::FFI(format!("py_call_kw posargs iteration failed: {}", e))
+                    })?;
                 let args_tuple = PyTuple::new(py, &pos_vec).map_err(|e| {
                     VMError::FFI(format!("Failed to build method args tuple: {}", e))
                 })?;
@@ -742,14 +736,19 @@ impl PyFfiBridge {
                 })?;
                 let obj_py = pop_auto_py_arg(task, vm, py)?;
 
-                let kwargs = build_kwargs(&kw_names_py, &kw_vals_py)
-                    .map_err(|e| VMError::FFI(format!("py_call_kw_may kwargs build failed: {}", e)))?;
+                let kwargs = build_kwargs(&kw_names_py, &kw_vals_py).map_err(|e| {
+                    VMError::FFI(format!("py_call_kw_may kwargs build failed: {}", e))
+                })?;
 
                 let pos_vec: Vec<Bound<'_, PyAny>> = posargs_py
                     .try_iter()
-                    .map_err(|e| VMError::FFI(format!("py_call_kw_may posargs not iterable: {}", e)))?
+                    .map_err(|e| {
+                        VMError::FFI(format!("py_call_kw_may posargs not iterable: {}", e))
+                    })?
                     .collect::<Result<Vec<_>, _>>()
-                    .map_err(|e| VMError::FFI(format!("py_call_kw_may posargs iteration failed: {}", e)))?;
+                    .map_err(|e| {
+                        VMError::FFI(format!("py_call_kw_may posargs iteration failed: {}", e))
+                    })?;
                 let args_tuple = PyTuple::new(py, &pos_vec).map_err(|e| {
                     VMError::FFI(format!("Failed to build method args tuple: {}", e))
                 })?;
@@ -898,7 +897,8 @@ impl PyFfiBridge {
                     .map_err(|e| {
                         VMError::FFI(format!(
                             "py_iter: {} is not iterable: {}",
-                            safe_type_name(&obj_py), e
+                            safe_type_name(&obj_py),
+                            e
                         ))
                     })?
                     .into_any();
@@ -977,7 +977,9 @@ impl PyFfiBridge {
                 }
                 let b = pop_auto_py_arg(task, vm, py)?;
                 let a = pop_auto_py_arg(task, vm, py)?;
-                let result = a.call_method1("__matmul__", (b,)).map_err(|e| py_exc(py, &e))?;
+                let result = a
+                    .call_method1("__matmul__", (b,))
+                    .map_err(|e| py_exc(py, &e))?;
                 py_auto_marshal_return(&result, task, vm)?;
                 Ok::<(), VMError>(())
             })?;
@@ -1147,7 +1149,8 @@ impl PyFfiBridge {
                     )));
                 }
                 let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
-                let _stake_closure = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+                let _stake_closure =
+                    crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
                 let ctx = pop_auto_py_arg(task, vm, py)?;
 
                 // __enter__ is invoked for protocol correctness; its return
@@ -1362,18 +1365,14 @@ impl PyFfiBridge {
                     return Err(VMError::FFI(format!("py_int needs 1 arg, got {}", n)));
                 }
                 let val = pop_auto_py_arg(task, vm, py)?;
-                let builtins = py.import("builtins").map_err(|e| {
-                    VMError::FFI(format!("py_int: builtins import failed: {}", e))
-                })?;
-                let int_fn = builtins.getattr("int").map_err(|e| {
-                    VMError::FFI(format!("py_int: builtins.int missing: {}", e))
-                })?;
-                let result = int_fn
-                    .call1((val,))
-                    .map_err(|e| py_exc(py, &e))?;
-                let i: i32 = result
-                    .extract()
-                    .map_err(|e| py_exc(py, &e))?;
+                let builtins = py
+                    .import("builtins")
+                    .map_err(|e| VMError::FFI(format!("py_int: builtins import failed: {}", e)))?;
+                let int_fn = builtins
+                    .getattr("int")
+                    .map_err(|e| VMError::FFI(format!("py_int: builtins.int missing: {}", e)))?;
+                let result = int_fn.call1((val,)).map_err(|e| py_exc(py, &e))?;
+                let i: i32 = result.extract().map_err(|e| py_exc(py, &e))?;
                 task.ram.push_i32(i);
                 Ok::<(), VMError>(())
             })?;
@@ -1451,14 +1450,16 @@ impl PyFfiBridge {
                 // TOS → bottom: value, attr_name, obj
                 let value = pop_auto_py_arg(task, vm, py)?;
                 let attr_py = pop_auto_py_arg(task, vm, py)?;
-                let attr_name: String = attr_py.extract().map_err(|e| {
-                    VMError::FFI(format!("py_setattr attr name not string: {}", e))
-                })?;
+                let attr_name: String = attr_py
+                    .extract()
+                    .map_err(|e| VMError::FFI(format!("py_setattr attr name not string: {}", e)))?;
                 let obj = pop_auto_py_arg(task, vm, py)?;
                 obj.setattr(&attr_name, (&value)).map_err(|e| {
                     VMError::FFI(format!(
                         "Python setattr({}.{}) failed: {}",
-                        safe_type_name(&obj), attr_name, e
+                        safe_type_name(&obj),
+                        attr_name,
+                        e
                     ))
                 })?;
                 // 与 py_setitem 同约：语句形态推 null 保栈平衡。
@@ -1476,10 +1477,7 @@ impl PyFfiBridge {
             Python::attach(|py| {
                 let n = task.pending_native_arg_count as usize;
                 if n != 1 {
-                    return Err(VMError::FFI(format!(
-                        "py_len needs 1 arg, got {}",
-                        n
-                    )));
+                    return Err(VMError::FFI(format!("py_len needs 1 arg, got {}", n)));
                 }
                 let obj = pop_auto_py_arg(task, vm, py)?;
                 let len = obj.len().map_err(|e| py_exc(py, &e))?;
@@ -1498,16 +1496,13 @@ impl PyFfiBridge {
             Python::attach(|py| {
                 let n = task.pending_native_arg_count as usize;
                 if n != 1 {
-                    return Err(VMError::FFI(format!(
-                        "py_type_name needs 1 arg, got {}",
-                        n
-                    )));
+                    return Err(VMError::FFI(format!("py_type_name needs 1 arg, got {}", n)));
                 }
                 let obj = pop_auto_py_arg(task, vm, py)?;
                 let ty = obj.get_type();
-                let name = ty.name().map_err(|e| {
-                    VMError::FFI(format!("py_type_name: type name failed: {}", e))
-                })?;
+                let name = ty
+                    .name()
+                    .map_err(|e| VMError::FFI(format!("py_type_name: type name failed: {}", e)))?;
                 let name = name.to_string();
                 let idx = vm.add_string(name.into_bytes());
                 vm.rc_push_str_idx(task, idx);
@@ -1534,7 +1529,8 @@ impl PyFfiBridge {
                 let contained = obj.contains(&key).map_err(|e| {
                     VMError::FFI(format!(
                         "Python contains on {} failed: {}",
-                        safe_type_name(&obj), e
+                        safe_type_name(&obj),
+                        e
                     ))
                 })?;
                 task.ram.push_nv(auto_val::encode_bool(contained));
@@ -1558,9 +1554,9 @@ impl PyFfiBridge {
                     )));
                 }
                 let name_py = pop_auto_py_arg(task, vm, py)?;
-                let name: String = name_py.extract().map_err(|e| {
-                    VMError::FFI(format!("py_module name not string: {}", e))
-                })?;
+                let name: String = name_py
+                    .extract()
+                    .map_err(|e| VMError::FFI(format!("py_module name not string: {}", e)))?;
                 let module = py.import(&name).map_err(|e| {
                     VMError::FFI(format!("py_module import '{}' failed: {}", name, e))
                 })?;
@@ -1581,10 +1577,7 @@ impl PyFfiBridge {
             Python::attach(|py| {
                 let n = task.pending_native_arg_count as usize;
                 if n != 1 {
-                    return Err(VMError::FFI(format!(
-                        "py_str needs 1 arg, got {}",
-                        n
-                    )));
+                    return Err(VMError::FFI(format!("py_str needs 1 arg, got {}", n)));
                 }
                 let obj = pop_auto_py_arg(task, vm, py)?;
                 let s = obj
@@ -1615,12 +1608,12 @@ impl PyFfiBridge {
                 }
                 let b = pop_auto_py_arg(task, vm, py)?;
                 let a = pop_auto_py_arg(task, vm, py)?;
-                let op_mod = py.import("operator").map_err(|e| {
-                    VMError::FFI(format!("py_pow: operator import failed: {}", e))
-                })?;
-                let pow_fn = op_mod.getattr("pow").map_err(|e| {
-                    VMError::FFI(format!("py_pow: operator.pow missing: {}", e))
-                })?;
+                let op_mod = py
+                    .import("operator")
+                    .map_err(|e| VMError::FFI(format!("py_pow: operator import failed: {}", e)))?;
+                let pow_fn = op_mod
+                    .getattr("pow")
+                    .map_err(|e| VMError::FFI(format!("py_pow: operator.pow missing: {}", e)))?;
                 let result = pow_fn
                     .call1((a, b))
                     .map_err(|e| VMError::FFI(format!("py_pow failed: {}", e)))?;
@@ -1637,18 +1630,12 @@ impl PyFfiBridge {
             Python::attach(|py| {
                 let n = task.pending_native_arg_count as usize;
                 if n != 1 {
-                    return Err(VMError::FFI(format!(
-                        "py_truthy needs 1 arg, got {}",
-                        n
-                    )));
+                    return Err(VMError::FFI(format!("py_truthy needs 1 arg, got {}", n)));
                 }
                 let x = pop_auto_py_arg(task, vm, py)?;
                 use pyo3::types::PyAnyMethods;
                 let b = x.is_truthy().map_err(|e| {
-                    VMError::FFI(format!(
-                        "py_truthy on {} failed: {}",
-                        safe_type_name(&x), e
-                    ))
+                    VMError::FFI(format!("py_truthy on {} failed: {}", safe_type_name(&x), e))
                 })?;
                 task.ram.push_nv(auto_val::encode_bool(b));
                 Ok::<(), VMError>(())
@@ -1675,8 +1662,7 @@ impl PyFfiBridge {
             })?;
             Ok(())
         };
-        self.native_interface
-            .register_static(NATIVE_PY_IS, is_shim);
+        self.native_interface.register_static(NATIVE_PY_IS, is_shim);
     }
 
     /// Plan 369 Task 11: Return true if `module.name` is callable (a function/type
@@ -1702,7 +1688,12 @@ impl PyFfiBridge {
 
     /// Plan 300: Use Python `inspect.signature()` to get the number of parameters for a function.
     /// Falls back to `default_count` if introspection fails.
-    pub fn inspect_param_count(&self, module_name: &str, func_name: &str, default_count: usize) -> usize {
+    pub fn inspect_param_count(
+        &self,
+        module_name: &str,
+        func_name: &str,
+        default_count: usize,
+    ) -> usize {
         Python::attach(|py| {
             let Some(mod_ref) = self.modules.get(module_name) else {
                 return default_count;
@@ -1725,12 +1716,10 @@ impl PyFfiBridge {
                 return default_count;
             };
             // Convert mappingproxy to list and iterate
-            let Ok(values_list) = params.call_method0("values")
-                .and_then(|v| {
-                    let builtins = py.import("builtins")?;
-                    builtins.call_method1("list", (v,))
-                })
-            else {
+            let Ok(values_list) = params.call_method0("values").and_then(|v| {
+                let builtins = py.import("builtins")?;
+                builtins.call_method1("list", (v,))
+            }) else {
                 return default_count;
             };
             let mut count = 0usize;
@@ -1754,7 +1743,11 @@ impl PyFfiBridge {
                     }
                 }
             }
-            if count == 0 { default_count } else { count }
+            if count == 0 {
+                default_count
+            } else {
+                count
+            }
         })
     }
 
@@ -1773,7 +1766,11 @@ impl PyFfiBridge {
 
     /// Plan 567 T16: 常量通道同法——模块级 `x: float = ...` 的注解
     /// （get_type_hints(module) 可读）。
-    pub fn inspect_constant_annotation(&self, module_name: &str, const_name: &str) -> Option<PyType> {
+    pub fn inspect_constant_annotation(
+        &self,
+        module_name: &str,
+        const_name: &str,
+    ) -> Option<PyType> {
         Python::attach(|py| {
             let mod_ref = self.modules.get(module_name)?;
             let module = mod_ref.bind(py);
@@ -1818,30 +1815,45 @@ impl PyFfiBridge {
                             if let Ok(sig) = inspect.call_method1("signature", (member,)) {
                                 if let Ok(params) = sig.getattr("parameters") {
                                     let param_empty = inspect.getattr("_empty").ok();
-                                    if let Ok(values_list) = params.call_method0("values")
+                                    if let Ok(values_list) = params
+                                        .call_method0("values")
                                         .and_then(|v| builtins.call_method1("list", (v,)))
                                     {
                                         let mut c = 0usize;
                                         let list_len = values_list.len().unwrap_or(0);
                                         for i in 0..list_len {
                                             if let Some(p) = values_list.get_item(i).ok() {
-                                                let required = if let Some(ref empty) = param_empty {
-                                                    p.getattr("default")
-                                                        .ok()
-                                                        .map_or(true, |d| d.eq(empty).unwrap_or(true))
-                                                } else { true };
-                                                let kind_ok = p.getattr("kind")
+                                                let required = if let Some(ref empty) = param_empty
+                                                {
+                                                    p.getattr("default").ok().map_or(true, |d| {
+                                                        d.eq(empty).unwrap_or(true)
+                                                    })
+                                                } else {
+                                                    true
+                                                };
+                                                let kind_ok = p
+                                                    .getattr("kind")
                                                     .ok()
                                                     .and_then(|k| k.extract::<i32>().ok())
                                                     .map_or(true, |k| k <= 1);
-                                                if required && kind_ok { c += 1; }
+                                                if required && kind_ok {
+                                                    c += 1;
+                                                }
                                             }
                                         }
                                         c
-                                    } else { 1 }
-                                } else { 1 }
-                            } else { 1 }
-                        } else { 1 };
+                                    } else {
+                                        1
+                                    }
+                                } else {
+                                    1
+                                }
+                            } else {
+                                1
+                            }
+                        } else {
+                            1
+                        };
                         callables.push((name, param_count));
                     }
                 }
@@ -2075,8 +2087,9 @@ fn run_closure_bridged<'py>(
         })?;
     }
 
-    vm.call_closure(task, closure_id, args.len())
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Auto callback body failed: {:?}", e)))?;
+    vm.call_closure(task, closure_id, args.len()).map_err(|e| {
+        pyo3::exceptions::PyRuntimeError::new_err(format!("Auto callback body failed: {:?}", e))
+    })?;
 
     // Marshal the closure's return value back to Python.
     let ret_nv = task.ram.pop_nv();
@@ -2331,13 +2344,15 @@ fn pop_auto_py_arg<'py>(
                             auto_val::ValueKey::Bool(b) => b.to_string(),
                         };
                         let py_val = value_to_py(v, py, vm);
-                        dict.set_item(py_key, py_val).map_err(|e| {
-                            VMError::FFI(format!("Failed to set dict item: {}", e))
-                        })?;
+                        dict.set_item(py_key, py_val)
+                            .map_err(|e| VMError::FFI(format!("Failed to set dict item: {}", e)))?;
                     }
                     return Ok(dict.into_any());
                 }
-                if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                if let Some(rust_obj) = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+                {
                     if let Some(obj) = rust_obj.downcast_ref::<auto_val::Obj>() {
                         let dict = PyDict::new(py);
                         for (k, v) in obj.iter() {
@@ -2385,7 +2400,9 @@ fn pop_auto_py_arg<'py>(
             if let Some(heap_obj) = vm.get_heap_object(list_id) {
                 let guard = heap_obj.read().unwrap();
                 use crate::vm::heap_object::downcast;
-                if let Some(list_data) = downcast::<crate::vm::types::ListData<auto_val::Value>>(&*guard) {
+                if let Some(list_data) =
+                    downcast::<crate::vm::types::ListData<auto_val::Value>>(&*guard)
+                {
                     let py_list = PyList::empty(py);
                     for v in &list_data.elems {
                         let py_val = value_to_py(v, py, vm);
@@ -2474,9 +2491,7 @@ fn build_kwargs<'py>(
         .into_iter()
         .map(|n: Bound<'_, PyAny>| n.extract())
         .collect::<Result<Vec<_>, _>>()?;
-    let vals: Vec<Bound<'py, PyAny>> = kw_vals
-        .try_iter()?
-        .collect::<Result<Vec<_>, _>>()?;
+    let vals: Vec<Bound<'py, PyAny>> = kw_vals.try_iter()?.collect::<Result<Vec<_>, _>>()?;
     let dict = PyDict::new(kw_names.py());
     for (name, val) in names.into_iter().zip(vals.into_iter()) {
         dict.set_item(name.as_str(), val)?;
@@ -2492,9 +2507,7 @@ fn value_to_py<'py>(val: &auto_val::Value, py: Python<'py>, vm: &AutoVM) -> Boun
     match val {
         auto_val::Value::Int(i) => i.into_pyobject(py).unwrap().into_any(),
         auto_val::Value::Uint(u) => (*u as i32).into_pyobject(py).unwrap().into_any(),
-        auto_val::Value::Float(f) | auto_val::Value::Double(f) => {
-            PyFloat::new(py, *f).into_any()
-        }
+        auto_val::Value::Float(f) | auto_val::Value::Double(f) => PyFloat::new(py, *f).into_any(),
         auto_val::Value::Bool(b) => pyo3::types::PyBool::new(py, *b).to_owned().into_any(),
         auto_val::Value::Str(s) => PyString::new(py, s.as_str()).into_any(),
         auto_val::Value::Nil | auto_val::Value::Null | auto_val::Value::None => {
@@ -2584,9 +2597,7 @@ fn value_to_py<'py>(val: &auto_val::Value, py: Python<'py>, vm: &AutoVM) -> Boun
 /// `typing.get_type_hints(func)` 取 `return` 项再分类；无注解/失败 → None。
 fn classify_return_annotation(py: Python<'_>, func: &Bound<'_, PyAny>) -> Option<PyType> {
     let typing = py.import("typing").ok()?;
-    let hints = typing
-        .call_method1("get_type_hints", (func,))
-        .ok()?;
+    let hints = typing.call_method1("get_type_hints", (func,)).ok()?;
     let ann = hints.get_item("return").ok()?;
     classify_annotation_value(py, &ann)
 }
@@ -2628,9 +2639,7 @@ fn classify_annotation_value(py: Python<'_>, ann: &Bound<'_, PyAny>) -> Option<P
         let args = typing.call_method1("get_args", (ann,)).ok()?;
         let none_type = {
             let builtins_none = builtins.getattr("None").ok()?;
-            builtins_none
-                .get_type()
-                .into_any()
+            builtins_none.get_type().into_any()
         };
         let mut members = Vec::new();
         let n = args.len().unwrap_or(0);
@@ -2692,12 +2701,7 @@ fn py_exc(py: Python<'_>, e: &pyo3::PyErr) -> VMError {
 
 /// Plan 567 T06 (P560-D2): may 变体公共 Err 出口——Python 异常落
 /// `Result.Err` 值（载荷构造与 py_exc 同源；py_call_may 原地内联版收编）。
-fn push_py_exception_err_value(
-    py: Python<'_>,
-    e: &pyo3::PyErr,
-    task: &mut AutoTask,
-    vm: &AutoVM,
-) {
+fn push_py_exception_err_value(py: Python<'_>, e: &pyo3::PyErr, task: &mut AutoTask, vm: &AutoVM) {
     let type_name = e
         .value(py)
         .get_type()
@@ -2759,9 +2763,9 @@ fn py_auto_marshal_return(
         // Plan 539 W2 (T18): top-level tuple returns flatten to an Auto
         // List (tuple-as-List mapping; immutability/hashability divergence
         // registered in known-divergences).
-        let tuple = py_val.cast::<PyTuple>().map_err(|e| {
-            VMError::FFI(format!("Cast to PyTuple failed: {}", e))
-        })?;
+        let tuple = py_val
+            .cast::<PyTuple>()
+            .map_err(|e| VMError::FFI(format!("Cast to PyTuple failed: {}", e)))?;
         let mut values = Vec::with_capacity(tuple.len());
         for item in tuple.iter() {
             values.push(py_any_to_value(&item, vm)?);
@@ -2777,14 +2781,14 @@ fn py_auto_marshal_return(
         vm.rc_push(task, auto_val::encode_object(id as u32));
     } else if py_val.is_instance_of::<PyDict>() {
         // pyo3 0.29: cast() returns reference, borrow for heap conversion
-        let dict = py_val.cast::<PyDict>().map_err(|e| {
-            VMError::FFI(format!("Cast to PyDict failed: {}", e))
-        })?;
+        let dict = py_val
+            .cast::<PyDict>()
+            .map_err(|e| VMError::FFI(format!("Cast to PyDict failed: {}", e)))?;
         py_dict_to_vm_heap(dict, task, vm)?;
     } else if py_val.is_instance_of::<PyList>() {
-        let list = py_val.cast::<PyList>().map_err(|e| {
-            VMError::FFI(format!("Cast to PyList failed: {}", e))
-        })?;
+        let list = py_val
+            .cast::<PyList>()
+            .map_err(|e| VMError::FFI(format!("Cast to PyList failed: {}", e)))?;
         py_list_to_vm_heap(list, task, vm)?;
     } else {
         // Plan 369 Task 12: opaque Python object. Keep the live Python object
@@ -2816,9 +2820,9 @@ fn py_dict_to_vm_heap(
 ) -> Result<(), VMError> {
     let mut obj = auto_val::Obj::new();
     for (key, value) in py_dict.iter() {
-        let key_str: String = key.extract().map_err(|e| {
-            VMError::FFI(format!("Dict key not string: {}", e))
-        })?;
+        let key_str: String = key
+            .extract()
+            .map_err(|e| VMError::FFI(format!("Dict key not string: {}", e)))?;
         let val = py_any_to_value(&value, vm)?;
         obj.set(auto_val::ValueKey::from(key_str.as_str()), val);
     }
@@ -2853,10 +2857,7 @@ fn py_list_to_vm_heap(
 
 /// Recursively convert a Python value to an AutoVal Value.
 /// Handles: bool, int, float, string, None, list, dict (nested).
-fn py_any_to_value(
-    py_val: &Bound<'_, PyAny>,
-    vm: &AutoVM,
-) -> Result<auto_val::Value, VMError> {
+fn py_any_to_value(py_val: &Bound<'_, PyAny>, vm: &AutoVM) -> Result<auto_val::Value, VMError> {
     // bool before int (bool is int subclass in Python)
     if let Ok(b) = py_val.extract::<bool>() {
         return Ok(auto_val::Value::Bool(b));
@@ -2926,7 +2927,8 @@ mod tests {
     fn test_py_ffi_import_and_register() {
         let mut bridge = PyFfiBridge::new().unwrap();
         bridge.import_module("json").unwrap();
-        let native_id = bridge.register_function("json", "dumps", PySignature::default_string_string());
+        let native_id =
+            bridge.register_function("json", "dumps", PySignature::default_string_string());
         assert!(native_id.is_ok());
         assert_eq!(native_id.unwrap(), 500);
     }
@@ -2941,7 +2943,8 @@ mod tests {
     #[test]
     fn test_py_ffi_register_without_import() {
         let mut bridge = PyFfiBridge::new().unwrap();
-        let result = bridge.register_function("nonexistent", "func", PySignature::default_string_string());
+        let result =
+            bridge.register_function("nonexistent", "func", PySignature::default_string_string());
         assert!(result.is_err());
     }
 
@@ -2949,7 +2952,9 @@ mod tests {
     fn test_py_signature_int_float() {
         let mut bridge = PyFfiBridge::new().unwrap();
         bridge.import_module("math").unwrap();
-        let sig = PySignature::new().param(PyType::Float).returns(PyType::Float);
+        let sig = PySignature::new()
+            .param(PyType::Float)
+            .returns(PyType::Float);
         let native_id = bridge.register_function("math", "sqrt", sig);
         assert!(native_id.is_ok());
         assert_eq!(native_id.unwrap(), 500);
@@ -2959,7 +2964,9 @@ mod tests {
     fn test_py_signature_auto_return() {
         let mut bridge = PyFfiBridge::new().unwrap();
         bridge.import_module("builtins").unwrap();
-        let sig = PySignature::new().param(PyType::String).returns(PyType::Auto);
+        let sig = PySignature::new()
+            .param(PyType::String)
+            .returns(PyType::Auto);
         let native_id = bridge.register_function("builtins", "len", sig);
         assert!(native_id.is_ok());
     }
@@ -3055,10 +3062,8 @@ mod tests {
                 auto_val::Value::Double(2.5),
                 auto_val::Value::Str("x".into()),
             ]));
-            let outer = auto_val::Value::Array(auto_val::Array::from(vec![
-                auto_val::Value::Int(0),
-                inner,
-            ]));
+            let outer =
+                auto_val::Value::Array(auto_val::Array::from(vec![auto_val::Value::Int(0), inner]));
             let py_val = value_to_py(&outer, py, &vm);
             let back: Vec<pyo3::Bound<'_, PyAny>> = py_val.extract().unwrap();
             assert_eq!(back.len(), 2);
@@ -3074,10 +3079,7 @@ mod tests {
                 auto_val::ValueKey::from("bias"),
                 auto_val::Value::Bool(false),
             );
-            obj.set(
-                auto_val::ValueKey::from("lr"),
-                auto_val::Value::Double(0.1),
-            );
+            obj.set(auto_val::ValueKey::from("lr"), auto_val::Value::Double(0.1));
             let py_val = value_to_py(&auto_val::Value::Obj(Box::new(obj)), py, &vm);
             let dict = py_val.cast::<PyDict>().unwrap();
             assert_eq!(dict.len(), 2);
@@ -3088,7 +3090,11 @@ mod tests {
                 .extract::<bool>()
                 .unwrap());
             assert_eq!(
-                dict.get_item("lr").unwrap().expect("lr").extract::<f64>().unwrap(),
+                dict.get_item("lr")
+                    .unwrap()
+                    .expect("lr")
+                    .extract::<f64>()
+                    .unwrap(),
                 0.1
             );
         });
@@ -3162,8 +3168,14 @@ mod tests {
         let mut bridge = PyFfiBridge::new().unwrap();
         bridge.register_object_shims();
         let ni = bridge.native_interface();
-        assert!(ni.get(NATIVE_PY_CALL).is_some(), "py_call shim not registered");
-        assert!(ni.get(NATIVE_PY_GETATTR).is_some(), "py_getattr shim not registered");
+        assert!(
+            ni.get(NATIVE_PY_CALL).is_some(),
+            "py_call shim not registered"
+        );
+        assert!(
+            ni.get(NATIVE_PY_GETATTR).is_some(),
+            "py_getattr shim not registered"
+        );
     }
 
     // ========================================================================
@@ -3175,7 +3187,10 @@ mod tests {
         let mut bridge = PyFfiBridge::new().unwrap();
         bridge.register_object_shims();
         let ni = bridge.native_interface();
-        assert!(ni.get(NATIVE_PY_CALL_KW).is_some(), "py_call_kw shim not registered");
+        assert!(
+            ni.get(NATIVE_PY_CALL_KW).is_some(),
+            "py_call_kw shim not registered"
+        );
     }
 
     #[test]
@@ -3316,7 +3331,9 @@ mod tests {
         assert!(auto_val::is_object(nv), "tensor + 1 should stay a handle");
         // verify via sum -> 21
         Python::attach(|py| {
-            let obj = vm.get_heap_object(auto_val::decode_object(nv) as u64).unwrap();
+            let obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
             let guard = obj.read().unwrap();
             let pyh = guard.as_any().downcast_ref::<PyObjectHandle>().unwrap();
             let bound = pyh.obj.clone_ref(py).into_bound(py);
@@ -3330,7 +3347,9 @@ mod tests {
         let nv = task.ram.pop_nv();
         assert!(auto_val::is_object(nv));
         Python::attach(|py| {
-            let obj = vm.get_heap_object(auto_val::decode_object(nv) as u64).unwrap();
+            let obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
             let guard = obj.read().unwrap();
             let pyh = guard.as_any().downcast_ref::<PyObjectHandle>().unwrap();
             let bound = pyh.obj.clone_ref(py).into_bound(py);
@@ -3459,7 +3478,10 @@ mod tests {
         py_subclass_impl(&mut task, &vm).unwrap();
 
         let nv = task.ram.pop_nv();
-        assert!(auto_val::is_object(nv), "factory must return a class handle");
+        assert!(
+            auto_val::is_object(nv),
+            "factory must return a class handle"
+        );
         Python::attach(|py| {
             let obj = vm
                 .get_heap_object(auto_val::decode_object(nv) as u64)
@@ -3474,11 +3496,17 @@ mod tests {
             // Callback methods are real defs on the class (self binding).
             let fwd = cls.getattr("forward").unwrap();
             assert_eq!(
-                fwd.getattr("__name__").unwrap().extract::<String>().unwrap(),
+                fwd.getattr("__name__")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
                 "forward"
             );
             assert_eq!(
-                cls.getattr("__name__").unwrap().extract::<String>().unwrap(),
+                cls.getattr("__name__")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
                 "Probe"
             );
         });
@@ -3494,7 +3522,8 @@ mod tests {
             let owned: pyo3::Py<pyo3::PyAny> = py
                 .eval(&std::ffi::CString::new("[1, 2, 3]").unwrap(), None, None)
                 .unwrap()
-                .clone().unbind();
+                .clone()
+                .unbind();
             let handle = PyObjectHandle::new("list".to_string(), owned);
             let fo: &dyn ForeignObject = &handle;
             assert_eq!(fo.foreign_kind(), "py");
@@ -3563,7 +3592,9 @@ mod tests {
         let nv = task.ram.pop_nv();
         assert!(auto_val::is_object(nv));
         Python::attach(|py| {
-            let obj = vm.get_heap_object(auto_val::decode_object(nv) as u64).unwrap();
+            let obj = vm
+                .get_heap_object(auto_val::decode_object(nv) as u64)
+                .unwrap();
             let guard = obj.read().unwrap();
             let pyh = guard.as_any().downcast_ref::<PyObjectHandle>().unwrap();
             let bound = pyh.obj.clone_ref(py).into_bound(py);
@@ -3667,7 +3698,10 @@ mod tests {
 
         // getattr_may: math has no attribute "no_such" -> Result.Err
         {
-            let shim = bridge.native_interface().get(NATIVE_PY_GETATTR_MAY).unwrap();
+            let shim = bridge
+                .native_interface()
+                .get(NATIVE_PY_GETATTR_MAY)
+                .unwrap();
             let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
             Python::attach(|py| {
                 let math_mod: Py<PyModule> = py.import("math").unwrap().into();
@@ -3701,7 +3735,10 @@ mod tests {
 
         // getitem_may: list index out of range -> Result.Err; in-range -> Result.Ok
         {
-            let shim = bridge.native_interface().get(NATIVE_PY_GETITEM_MAY).unwrap();
+            let shim = bridge
+                .native_interface()
+                .get(NATIVE_PY_GETITEM_MAY)
+                .unwrap();
             let mut task = crate::vm::task::AutoTask::new(0, 256, 0);
             Python::attach(|py| {
                 let lst = py.eval(c"[10, 20]", None, None).unwrap();
@@ -3758,7 +3795,10 @@ mod tests {
         let mut bridge = PyFfiBridge::new().unwrap();
         bridge.import_module("math").unwrap();
         bridge.register_object_shims();
-        let shim = bridge.native_interface().get(NATIVE_PY_CALL_KW_MAY).unwrap();
+        let shim = bridge
+            .native_interface()
+            .get(NATIVE_PY_CALL_KW_MAY)
+            .unwrap();
 
         fn push_str_arg(vm: &AutoVM, task: &mut crate::vm::task::AutoTask, s: &str) {
             let idx = vm.add_string(s.as_bytes().to_vec());
@@ -3791,7 +3831,11 @@ mod tests {
                 &mut task,
                 vec![auto_val::Value::Str("sep".to_string().into())],
             );
-            push_list_arg(&vm, &mut task, vec![auto_val::Value::Str("b".to_string().into())]);
+            push_list_arg(
+                &vm,
+                &mut task,
+                vec![auto_val::Value::Str("b".to_string().into())],
+            );
             task.pending_native_arg_count = 5;
             shim(&mut task, &vm).unwrap();
             let nv = task.ram.pop_nv();
@@ -3829,7 +3873,11 @@ mod tests {
             assert_eq!(inst.mono_name, "Result.Err");
             match &inst.fields[0] {
                 auto_val::Value::Str(s) => {
-                    assert!(s.as_str().starts_with("PyException TypeError"), "got {}", s.as_str());
+                    assert!(
+                        s.as_str().starts_with("PyException TypeError"),
+                        "got {}",
+                        s.as_str()
+                    );
                 }
                 other => panic!("expected Str payload, got {:?}", other),
             }
@@ -3897,7 +3945,11 @@ def _a_opt() -> Optional[int]:
             assert_eq!(coerce_scalar_i32(py, &f_val).unwrap(), 2);
             let bad = py.eval(c"'x'", None, None).unwrap();
             let err = coerce_scalar_f64(py, &bad).unwrap_err();
-            assert!(format!("{:?}", err).contains("PyException"), "got {:?}", err);
+            assert!(
+                format!("{:?}", err).contains("PyException"),
+                "got {:?}",
+                err
+            );
         });
     }
 
@@ -3950,7 +4002,10 @@ def _a_opt() -> Optional[int]:
             let tup = py.eval(c"(1, 2)", None, None).unwrap();
             py_auto_marshal_return(&tup, &mut task, &vm).unwrap();
             let nv = task.ram.pop_nv();
-            assert!(auto_val::is_object(nv), "plain tuple should be a heap value");
+            assert!(
+                auto_val::is_object(nv),
+                "plain tuple should be a heap value"
+            );
             let heap_obj = vm
                 .get_heap_object(auto_val::decode_object(nv) as u64)
                 .unwrap();

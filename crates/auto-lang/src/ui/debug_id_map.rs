@@ -8,8 +8,8 @@
 //! tracking which AuraNodeId produced each View node. This enables the renderer to
 //! look up source spans directly without fragile counter-based heuristics.
 
-use std::collections::HashMap;
 use crate::aura::AuraNodeId;
+use std::collections::HashMap;
 
 /// View tree path → AuraNodeId mapping.
 /// Built during AuraViewBuilder conversion, consumed by DebugRenderCtx.

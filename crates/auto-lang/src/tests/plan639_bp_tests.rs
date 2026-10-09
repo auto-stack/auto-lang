@@ -24,8 +24,7 @@ fn fixture_app_at() -> Option<PathBuf> {
         .ancestors()
         .nth(2)?
         .to_path_buf();
-    let app = repo_root
-        .join("examples/capability-tests/046-bp-import/src/front/app.at");
+    let app = repo_root.join("examples/capability-tests/046-bp-import/src/front/app.at");
     app.is_file().then_some(app)
 }
 
@@ -33,7 +32,12 @@ fn fixture_app_at() -> Option<PathBuf> {
 fn collect_snapshot(node: &crate::aura::AuraNode, tags: &mut Vec<String>, texts: &mut Vec<String>) {
     use crate::ast::Expr;
     match node {
-        crate::aura::AuraNode::Element { tag, props, children, .. } => {
+        crate::aura::AuraNode::Element {
+            tag,
+            props,
+            children,
+            ..
+        } => {
             tags.push(tag.clone());
             for v in props.values() {
                 if let crate::aura::AuraPropValue::Expr(Expr::Str(s)) = v {
@@ -52,7 +56,11 @@ fn collect_snapshot(node: &crate::aura::AuraNode, tags: &mut Vec<String>, texts:
                 collect_snapshot(c, tags, texts);
             }
         }
-        crate::aura::AuraNode::Conditional { then_body, else_body, .. } => {
+        crate::aura::AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             for c in then_body {
                 collect_snapshot(c, tags, texts);
             }
@@ -72,7 +80,10 @@ fn collect_snapshot(node: &crate::aura::AuraNode, tags: &mut Vec<String>, texts:
 }
 
 /// Runtime View 收集器：取文本面（Text/Button/Input/容器）。
-fn collect_view_texts(view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+fn collect_view_texts(
+    view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+    out: &mut Vec<String>,
+) {
     use crate::ui::view::View;
     match view {
         View::Text { content, .. } => out.push(content.clone()),
@@ -82,7 +93,9 @@ fn collect_view_texts(view: &crate::ui::view::View<crate::ui::interpreter::Dynam
                 collect_view_texts(c, out);
             }
         }
-        View::Input { placeholder, value, .. } => {
+        View::Input {
+            placeholder, value, ..
+        } => {
             out.push(placeholder.clone());
             out.push(value.clone());
         }
@@ -150,7 +163,9 @@ fn t04_vue_track_emits_imported_bp() {
 
     // L1 形态：宿主经 GENERATED 绑定工件消费 bp（app → LoginBind → LoginForm）。
     assert!(
-        result.vue_code.contains("import LoginBind from '@/components/LoginBind.vue'"),
+        result
+            .vue_code
+            .contains("import LoginBind from '@/components/LoginBind.vue'"),
         "vue App SFC must import the L1 bind component; code:
 {}",
         result.vue_code
@@ -168,15 +183,15 @@ fn t04_vue_track_emits_imported_bp() {
     .expect("bind artifact must generate");
     crate::drain_store_extra_files();
     assert!(
-        bind_result.vue_code.contains("import LoginForm from '@/components/LoginForm.vue'"),
+        bind_result
+            .vue_code
+            .contains("import LoginForm from '@/components/LoginForm.vue'"),
         "bind artifact SFC must import the bp component; code:
 {}",
         bind_result.vue_code
     );
     assert!(
-        !bind_result
-            .vue_code
-            .contains("you@example.com"),
+        !bind_result.vue_code.contains("you@example.com"),
         "bind artifact must NOT inline bp source (zero-copy discipline); code:
 {}",
         bind_result.vue_code
@@ -224,7 +239,6 @@ fn t05_vue_track_synth_menubar_from_ui_config() {
         result.vue_code
     );
 }
-
 
 /// PLAN-070 T-05：组件级 ui_config 选择性继承（app.at 壳专属门的扩展）——
 /// 含匹配 handler 的组件继承 ActionsBlock（menubar 合成正断言）；无匹配

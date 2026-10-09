@@ -68,19 +68,22 @@ impl BackendMapping {
 
     /// Add a property mapping
     pub fn with_prop(mut self, aura_prop: &str, backend_prop: &str) -> Self {
-        self.props.insert(aura_prop.to_string(), backend_prop.to_string());
+        self.props
+            .insert(aura_prop.to_string(), backend_prop.to_string());
         self
     }
 
     /// Add an event mapping
     pub fn with_event(mut self, aura_event: &str, backend_event: &str) -> Self {
-        self.events.insert(aura_event.to_string(), backend_event.to_string());
+        self.events
+            .insert(aura_event.to_string(), backend_event.to_string());
         self
     }
 
     /// Add extra components
     pub fn with_extra_components(mut self, components: &[&str]) -> Self {
-        self.extra_components.extend(components.iter().map(|s| s.to_string()));
+        self.extra_components
+            .extend(components.iter().map(|s| s.to_string()));
         self
     }
 
@@ -186,8 +189,7 @@ mod tests {
 
     #[test]
     fn test_widget_spec_with_alias() {
-        let spec = WidgetSpec::new("Column", WidgetCategory::Layout)
-            .with_alias("col");
+        let spec = WidgetSpec::new("Column", WidgetCategory::Layout).with_alias("col");
         assert_eq!(spec.name, "Column");
         assert_eq!(spec.aliases, vec!["col"]);
     }

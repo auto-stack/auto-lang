@@ -183,7 +183,11 @@ widget App {{
         assert_eq!(b, truth, "var int 赋值须落 Rust lane 同值（下游实录 0）");
         // 断② str 保真：真值数字串（下游实录 None）。
         let s = call_str(&bridge, "probe_str");
-        assert_eq!(s, truth.to_string(), ".str() 出口须为真值数字串（下游实录 None）");
+        assert_eq!(
+            s,
+            truth.to_string(),
+            ".str() 出口须为真值数字串（下游实录 None）"
+        );
         // 断③ 复合面保真：obj 字面量构造+字段读真值（下游实录
         // json.from_value→0）。注记：json.encode/from_value 的 obj 编码链
         // 在 bridge 语境预存断（纯字面量同断出垃圾值——独立发现随任务行
@@ -251,8 +255,16 @@ widget App {{
         let b = crate::a2r_std::frame::begin_ms();
         let p = crate::a2r_std::frame::present_ms();
         assert!(b >= 0 && p >= 0);
-        assert_eq!(b as i64, crate::ui::frame_bench::frame_begin_ms(), "双轨同源");
-        assert_eq!(p as i64, crate::ui::frame_bench::frame_present_ms(), "双轨同源");
+        assert_eq!(
+            b as i64,
+            crate::ui::frame_bench::frame_begin_ms(),
+            "双轨同源"
+        );
+        assert_eq!(
+            p as i64,
+            crate::ui::frame_bench::frame_present_ms(),
+            "双轨同源"
+        );
         // PLAN-725 T-06 供⑬编译级证明：i32 直承接（widget 状态 `int` 字段
         // 同车道）——E0308 形态清偿的类型面断言（编译即证）。
         let fb_i32: i32 = crate::a2r_std::frame::begin_ms();
@@ -362,12 +374,14 @@ widget App {{
 
         // 窗口投影（下游 600 行窗——016 渲染窗形态）。
         let t1 = std::time::Instant::now();
-        let win = crate::ui::code_editor::diff::envelope::diff_files_envelope_window(&a, &b, 3, 0, 600);
+        let win =
+            crate::ui::code_editor::diff::envelope::diff_files_envelope_window(&a, &b, 3, 0, 600);
         let win_ms = t1.elapsed().as_millis();
 
         // 越头窗（分页形）对照。
         let t2 = std::time::Instant::now();
-        let win2 = crate::ui::code_editor::diff::envelope::diff_files_envelope_window(&a, &b, 3, 600, 600);
+        let win2 =
+            crate::ui::code_editor::diff::envelope::diff_files_envelope_window(&a, &b, 3, 600, 600);
         let win2_ms = t2.elapsed().as_millis();
 
         eprintln!(
@@ -406,11 +420,20 @@ widget App {{
             "fn probe_diffwin() str {{\n    return diff_files_window(\"{pa}\", \"{pb}\", 3, 0, 2)\n}}\n"
         ));
         let json = call_str(&bridge, "probe_diffwin");
-        assert!(json.contains("rows_total"), "窗口 envelope rows_total 在场: {json}");
+        assert!(
+            json.contains("rows_total"),
+            "窗口 envelope rows_total 在场: {json}"
+        );
         assert!(json.contains("\"rows_total\":3"), "rows_total 真值: {json}");
         assert!(json.contains("\"truncated\":true"), "窗口截断置位: {json}");
-        assert!(json.contains("\"adds\":1"), "行内容真值（非 err 净形）: {json}");
-        assert!(json.contains("\"hunks\":[{\"a1\":0,\"a2\":3,\"b1\":0,\"b2\":3}]"), "hunks 全量保持: {json}");
+        assert!(
+            json.contains("\"adds\":1"),
+            "行内容真值（非 err 净形）: {json}"
+        );
+        assert!(
+            json.contains("\"hunks\":[{\"a1\":0,\"a2\":3,\"b1\":0,\"b2\":3}]"),
+            "hunks 全量保持: {json}"
+        );
         assert!(!json.contains("gamma"), "窗口外行不物化: {json}");
     }
 
@@ -538,13 +561,14 @@ widget App {{
     /// 形两轨同缺，本探针两轨同锁。
     #[test]
     fn frame_two_segment_handler_arm() {
-        let rs = gen_rust(
-            ".Init -> { let _b = frame.begin_ms(); let _p = frame.present_ms() }",
-        );
+        let rs = gen_rust(".Init -> { let _b = frame.begin_ms(); let _p = frame.present_ms() }");
         assert!(
             !rs.contains("frame.begin_ms"),
             "handler 体二段名不得原文发射（E0425 源）: {}",
-            rs.lines().filter(|l| l.contains("frame")).collect::<Vec<_>>().join("\n")
+            rs.lines()
+                .filter(|l| l.contains("frame"))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
         assert!(
             rs.contains("auto_lang::ui::frame_bench::frame_begin_ms()"),
@@ -568,7 +592,10 @@ widget App {{
         assert!(
             !code.contains("frame.begin_ms"),
             "模块体二段名不得原文发射: {}",
-            code.lines().filter(|l| l.contains("frame")).collect::<Vec<_>>().join("\n")
+            code.lines()
+                .filter(|l| l.contains("frame"))
+                .collect::<Vec<_>>()
+                .join("\n")
         );
         assert!(
             code.contains("a2r_std::frame::begin_ms"),

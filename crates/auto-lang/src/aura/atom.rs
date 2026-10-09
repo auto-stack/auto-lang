@@ -63,8 +63,12 @@ fn serialize_widget(widget: &AuraWidget, output: &mut String, indent: usize) {
     if !widget.state_vars.is_empty() {
         output.push_str(&format!("{}    states: [\n", ind));
         for state in &widget.state_vars {
-            output.push_str(&format!("{}        {{ name: \"{}\", type: \"{}\", default: ",
-                ind, state.name, type_to_string(&state.type_info)));
+            output.push_str(&format!(
+                "{}        {{ name: \"{}\", type: \"{}\", default: ",
+                ind,
+                state.name,
+                type_to_string(&state.type_info)
+            ));
             serialize_expr(&state.initial, output);
             output.push_str(" },\n");
         }
@@ -91,8 +95,12 @@ fn serialize_widget(widget: &AuraWidget, output: &mut String, indent: usize) {
     if !widget.props.is_empty() {
         output.push_str(&format!("{}    props: [\n", ind));
         for prop in &widget.props {
-            output.push_str(&format!("{}        {{ name: \"{}\", type: \"{}\"",
-                ind, prop.name, type_to_string(&prop.type_info)));
+            output.push_str(&format!(
+                "{}        {{ name: \"{}\", type: \"{}\"",
+                ind,
+                prop.name,
+                type_to_string(&prop.type_info)
+            ));
             if let Some(default) = &prop.default {
                 output.push_str(", default: ");
                 serialize_expr(default, output);
@@ -126,7 +134,13 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
     let ind = "    ".repeat(indent);
 
     match node {
-        AuraNode::Element { tag, props, events, children, .. } => {
+        AuraNode::Element {
+            tag,
+            props,
+            events,
+            children,
+            ..
+        } => {
             output.push_str(&format!("Node {{\n"));
             output.push_str(&format!("{}    tag: \"{}\",\n", ind, tag));
 
@@ -142,7 +156,9 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
                         AuraPropValue::StyleBinding(bindings) => {
                             output.push_str("StyleBinding({");
                             for (i, b) in bindings.iter().enumerate() {
-                                if i > 0 { output.push_str(", "); }
+                                if i > 0 {
+                                    output.push_str(", ");
+                                }
                                 output.push_str(&format!("\"{}\": ", b.style_name));
                                 serialize_expr(&b.condition, output);
                             }
@@ -159,10 +175,18 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
                 output.push_str(&format!("{}    events: {{\n", ind));
                 for (event, aura_event) in events {
                     if aura_event.params.is_empty() {
-                        output.push_str(&format!("{}        \"{}\": Dispatch(\"{}\"),\n", ind, event, aura_event.handler));
+                        output.push_str(&format!(
+                            "{}        \"{}\": Dispatch(\"{}\"),\n",
+                            ind, event, aura_event.handler
+                        ));
                     } else {
-                        output.push_str(&format!("{}        \"{}\": Dispatch(\"{}\", params: [{}]),\n",
-                            ind, event, aura_event.handler, aura_event.params.join(", ")));
+                        output.push_str(&format!(
+                            "{}        \"{}\": Dispatch(\"{}\", params: [{}]),\n",
+                            ind,
+                            event,
+                            aura_event.handler,
+                            aura_event.params.join(", ")
+                        ));
                     }
                 }
                 output.push_str(&format!("{}    }},\n", ind));
@@ -182,26 +206,32 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             output.push_str(&format!("{}}}", ind));
         }
 
-        AuraNode::Text(content) => {
-            match content {
-                AuraTextContent::Literal(s) => {
-                    output.push_str(&format!("Text(\"{}\")", escape_string(s)));
-                }
-                AuraTextContent::Interpolated { template, bindings } => {
-                    output.push_str(&format!("Interpolated(\"{}\", bindings: [",
-                        escape_string(template)));
-                    for (i, b) in bindings.iter().enumerate() {
-                        if i > 0 {
-                            output.push_str(", ");
-                        }
-                        output.push_str(&format!("\"{}\"", b));
-                    }
-                    output.push_str("])");
-                }
+        AuraNode::Text(content) => match content {
+            AuraTextContent::Literal(s) => {
+                output.push_str(&format!("Text(\"{}\")", escape_string(s)));
             }
-        }
+            AuraTextContent::Interpolated { template, bindings } => {
+                output.push_str(&format!(
+                    "Interpolated(\"{}\", bindings: [",
+                    escape_string(template)
+                ));
+                for (i, b) in bindings.iter().enumerate() {
+                    if i > 0 {
+                        output.push_str(", ");
+                    }
+                    output.push_str(&format!("\"{}\"", b));
+                }
+                output.push_str("])");
+            }
+        },
 
-        AuraNode::ForLoop { var, index, iterable, body, .. } => {
+        AuraNode::ForLoop {
+            var,
+            index,
+            iterable,
+            body,
+            ..
+        } => {
             output.push_str(&format!("ForLoop {{\n"));
             output.push_str(&format!("{}    var: \"{}\",\n", ind, var));
             if let Some(idx) = index {
@@ -220,7 +250,12 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             output.push_str(&format!("{}}}", ind));
         }
 
-        AuraNode::Conditional { condition, then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            condition,
+            then_body,
+            else_body,
+            ..
+        } => {
             output.push_str(&format!("Conditional {{\n"));
             output.push_str(&format!("{}    condition: \"{}\",\n", ind, condition));
             output.push_str(&format!("{}    then_body: [\n", ind));
@@ -244,7 +279,12 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             output.push_str(&format!("{}}}", ind));
         }
 
-        AuraNode::Component { name, props, events, .. } => {
+        AuraNode::Component {
+            name,
+            props,
+            events,
+            ..
+        } => {
             output.push_str(&format!("Component {{\n"));
             output.push_str(&format!("{}    name: \"{}\",\n", ind, name));
             if !props.is_empty() {
@@ -260,10 +300,18 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
                 output.push_str(&format!("{}    events: {{\n", ind));
                 for (event, aura_event) in events {
                     if aura_event.params.is_empty() {
-                        output.push_str(&format!("{}        \"{}\": \"{}\",\n", ind, event, aura_event.handler));
+                        output.push_str(&format!(
+                            "{}        \"{}\": \"{}\",\n",
+                            ind, event, aura_event.handler
+                        ));
                     } else {
-                        output.push_str(&format!("{}        \"{}\": \"{}({})\",\n",
-                            ind, event, aura_event.handler, aura_event.params.join(", ")));
+                        output.push_str(&format!(
+                            "{}        \"{}\": \"{}({})\",\n",
+                            ind,
+                            event,
+                            aura_event.handler,
+                            aura_event.params.join(", ")
+                        ));
                     }
                 }
                 output.push_str(&format!("{}    }},\n", ind));
@@ -277,7 +325,9 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
         }
 
         // PLAN-046: explicit memo block — serialize deps shapes + body.
-        AuraNode::MemoBlock { deps, exact, body, .. } => {
+        AuraNode::MemoBlock {
+            deps, exact, body, ..
+        } => {
             output.push_str(&format!("MemoBlock {{\n"));
             output.push_str(&format!("{}    exact: {},\n", ind, exact));
             output.push_str(&format!("{}    deps: [\n", ind));
@@ -293,7 +343,13 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
             output.push_str(&format!("{}}}\n", ind));
         }
 
-        AuraNode::Link { to, text, href, children, .. } => {
+        AuraNode::Link {
+            to,
+            text,
+            href,
+            children,
+            ..
+        } => {
             output.push_str(&format!("Link {{\n"));
             output.push_str(&format!("{}    to: \"{}\",\n", ind, to));
             if !text.is_empty() {
@@ -320,7 +376,9 @@ fn serialize_node(node: &AuraNode, output: &mut String, indent: usize) {
 fn serialize_expr(expr: &crate::ast::Expr, output: &mut String) {
     use crate::ast::Expr;
     match expr {
-        Expr::Str(s) | Expr::CStr(s) => output.push_str(&format!("\"{}\"", escape_string(s.as_str()))),
+        Expr::Str(s) | Expr::CStr(s) => {
+            output.push_str(&format!("\"{}\"", escape_string(s.as_str())))
+        }
         Expr::Int(n) => output.push_str(&n.to_string()),
         Expr::Float(n, _) | Expr::Double(n, _) => output.push_str(&n.to_string()),
         Expr::Bool(b) => output.push_str(&b.to_string()),
@@ -342,14 +400,19 @@ fn serialize_expr(expr: &crate::ast::Expr, output: &mut String) {
                 output.push_str("MethodCall(");
                 serialize_expr(object, output);
                 output.push_str(&format!(", \"{}\", [", method));
-                let args: Vec<&crate::ast::Expr> = call.args.args.iter()
+                let args: Vec<&crate::ast::Expr> = call
+                    .args
+                    .args
+                    .iter()
                     .filter_map(|a| match a {
                         crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e),
                         _ => None,
                     })
                     .collect();
                 for (i, arg) in args.iter().enumerate() {
-                    if i > 0 { output.push_str(", "); }
+                    if i > 0 {
+                        output.push_str(", ");
+                    }
                     serialize_expr(arg, output);
                 }
                 output.push_str("])");
@@ -357,14 +420,19 @@ fn serialize_expr(expr: &crate::ast::Expr, output: &mut String) {
                 output.push_str("Call(");
                 serialize_expr(&call.name, output);
                 output.push_str(", [");
-                let args: Vec<&crate::ast::Expr> = call.args.args.iter()
+                let args: Vec<&crate::ast::Expr> = call
+                    .args
+                    .args
+                    .iter()
                     .filter_map(|a| match a {
                         crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e),
                         _ => None,
                     })
                     .collect();
                 for (i, arg) in args.iter().enumerate() {
-                    if i > 0 { output.push_str(", "); }
+                    if i > 0 {
+                        output.push_str(", ");
+                    }
                     serialize_expr(arg, output);
                 }
                 output.push_str("])");
@@ -373,7 +441,9 @@ fn serialize_expr(expr: &crate::ast::Expr, output: &mut String) {
         Expr::Array(elems) => {
             output.push_str("Array([");
             for (i, elem) in elems.iter().enumerate() {
-                if i > 0 { output.push_str(", "); }
+                if i > 0 {
+                    output.push_str(", ");
+                }
                 serialize_expr(elem, output);
             }
             output.push_str("])");
@@ -381,7 +451,9 @@ fn serialize_expr(expr: &crate::ast::Expr, output: &mut String) {
         Expr::Object(pairs) => {
             output.push_str("Object({");
             for (i, p) in pairs.iter().enumerate() {
-                if i > 0 { output.push_str(", "); }
+                if i > 0 {
+                    output.push_str(", ");
+                }
                 output.push_str(&format!("\"{}\": ", p.key));
                 serialize_expr(&p.value, output);
             }
@@ -403,7 +475,9 @@ fn serialize_expr(expr: &crate::ast::Expr, output: &mut String) {
             serialize_expr(path, output);
             output.push_str(", {");
             for (i, p) in params.iter().enumerate() {
-                if i > 0 { output.push_str(", "); }
+                if i > 0 {
+                    output.push_str(", ");
+                }
                 output.push_str(&format!("\"{}\": ", p.key));
                 serialize_expr(&p.value, output);
             }
@@ -522,8 +596,7 @@ mod tests {
             watchers: Vec::new(),
             exposes: Vec::new(),
             setup: None,
-        }
-;
+        };
 
         let atom = to_atom(&widget);
 
@@ -603,12 +676,12 @@ mod tests {
                 handler_params: HashMap::new(),
                 span_map: HashMap::new(),
                 key_bindings: HashMap::new(),
-            api_imports: vec![],
-            style_css: None,
-            ext_imports: Vec::new(),
-            watchers: Vec::new(),
-            exposes: Vec::new(),
-            setup: None,
+                api_imports: vec![],
+                style_css: None,
+                ext_imports: Vec::new(),
+                watchers: Vec::new(),
+                exposes: Vec::new(),
+                setup: None,
             }],
             messages: vec![],
             app: Some(AuraApp {

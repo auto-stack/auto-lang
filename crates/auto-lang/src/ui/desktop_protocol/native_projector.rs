@@ -30,16 +30,16 @@
 use std::time::Instant;
 
 use super::client_runtime::{
-    dim_if, measure_text, NodeStyle, bg, button_bg, input_bg, input_border, image_placeholder,
-    placeholder_fg, primary_fill, accent_fill, progress_track, text_fg, BUTTON_H, BUTTON_MIN_W,
+    accent_fill, bg, button_bg, dim_if, image_placeholder, input_bg, input_border, measure_text,
+    placeholder_fg, primary_fill, progress_track, text_fg, NodeStyle, BUTTON_H, BUTTON_MIN_W,
     BUTTON_PAD, DISABLED_ALPHA, LINE_H_FACTOR, MARGIN, TEXT_SIZE,
 };
 // PLAN-674 T-01：codeeditor 投影臂/键入回传面（CODE_EDITORS 注册表 +
 // core handle_input 全键面——ui-iced ⊇ code-editor，无 cfg 面）。
-use crate::ui::code_editor as ce;
 use super::coverage::{self, Coverage, Verdict};
 use super::endpoint::FrameSource;
 use super::message::{ControlMsg, DrawList, DrawOp, ImageFit, InputMsg, MouseButton, Rgba8, WRect};
+use crate::ui::code_editor as ce;
 use crate::ui::component::Component;
 use crate::ui::style::{Color, Style, StyleClass};
 use crate::ui::view::{
@@ -92,7 +92,13 @@ enum HitEntry<M: Clone + std::fmt::Debug> {
     /// 键入后全文（on_change 零参派发前代写）。编辑器恒登记命中
     /// （聚焦/光标定位即交互面——on_change 缺席不省略，与平面 input
     /// 的"登记省略"差分随注）。
-    Input { rect: WRect, value: String, on_change: Option<M>, slot: usize, editor: Option<String> },
+    Input {
+        rect: WRect,
+        value: String,
+        on_change: Option<M>,
+        slot: usize,
+        editor: Option<String>,
+    },
     /// slider：轨道点击 → 几何换算 f32（min..=max 线性 + step 取整）→
     /// 回调物化派发（T-01 附带定案：v1 点击定位，拖拽 not-yet；
     /// PLAN-661 T-02：on_change 转 `Option<SliderChangeHandler>`——None
@@ -124,7 +130,11 @@ enum HitEntry<M: Clone + std::fmt::Debug> {
     /// PLAN-032 T-03（D2）：tabs 托盘项——点击 → TabsSelectCallback::
     /// call(index) 物化消息（VM 轨首参 = value 串在回调内包装；
     /// on_select 缺席不登记——受控语义，convert_tabs 契约）。
-    TabSelect { rect: WRect, index: usize, on_select: TabsSelectCallback<M> },
+    TabSelect {
+        rect: WRect,
+        index: usize,
+        on_select: TabsSelectCallback<M>,
+    },
 }
 
 impl<M: Clone + std::fmt::Debug> HitEntry<M> {
@@ -236,12 +246,23 @@ fn shift_draw_op(op: &DrawOp, dx: f32, dy: f32) -> DrawOp {
             rect: WRect::new(rect.x + dx, rect.y + dy, rect.w, rect.h),
             color: *color,
         },
-        DrawOp::QuadR { rect, color, radius } => DrawOp::QuadR {
+        DrawOp::QuadR {
+            rect,
+            color,
+            radius,
+        } => DrawOp::QuadR {
             rect: WRect::new(rect.x + dx, rect.y + dy, rect.w, rect.h),
             color: *color,
             radius: *radius,
         },
-        DrawOp::Text { x, y, size, line_height, color, text } => DrawOp::Text {
+        DrawOp::Text {
+            x,
+            y,
+            size,
+            line_height,
+            color,
+            text,
+        } => DrawOp::Text {
             x: x + dx,
             y: y + dy,
             size: *size,
@@ -249,18 +270,25 @@ fn shift_draw_op(op: &DrawOp, dx: f32, dy: f32) -> DrawOp {
             color: *color,
             text: text.clone(),
         },
-        DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
-            DrawOp::TextStyled {
-                x: x + dx,
-                y: y + dy,
-                size: *size,
-                line_height: *line_height,
-                color: *color,
-                weight: *weight,
-                italic: *italic,
-                text: text.clone(),
-            }
-        }
+        DrawOp::TextStyled {
+            x,
+            y,
+            size,
+            line_height,
+            color,
+            weight,
+            italic,
+            text,
+        } => DrawOp::TextStyled {
+            x: x + dx,
+            y: y + dy,
+            size: *size,
+            line_height: *line_height,
+            color: *color,
+            weight: *weight,
+            italic: *italic,
+            text: text.clone(),
+        },
         DrawOp::Scissor { rect } => DrawOp::Scissor {
             rect: WRect::new(rect.x + dx, rect.y + dy, rect.w, rect.h),
         },
@@ -401,7 +429,9 @@ pub struct RqProjector<C: Component> {
 
 impl<C: Component> RqProjector<C> {
     pub fn new(component: C, width: f32, height: f32) -> Self {
-        let autocenter = std::env::var("AUTO_NO_AUTOCENTER").map(|v| v != "1").unwrap_or(true);
+        let autocenter = std::env::var("AUTO_NO_AUTOCENTER")
+            .map(|v| v != "1")
+            .unwrap_or(true);
         Self {
             component,
             hits: Vec::new(),
@@ -516,7 +546,11 @@ impl RqProjector<crate::ui::dynamic::DynamicComponent> {
                     }
                     DynamicMessage::String(name) => Some((*rect, format!("button:{name}"))),
                 },
-                HitEntry::Input { rect, on_change: Some(msg), .. } => match msg {
+                HitEntry::Input {
+                    rect,
+                    on_change: Some(msg),
+                    ..
+                } => match msg {
                     DynamicMessage::Typed { event_name, .. } => {
                         let field = self
                             .component
@@ -591,14 +625,31 @@ impl<C: Component> FrameSource for RqProjector<C> {
         let mut max_y = f32::MIN;
         for op in &ctx.ops {
             match op {
-                DrawOp::Quad { rect, .. } | DrawOp::QuadR { rect, .. } | DrawOp::Scissor { rect } | DrawOp::Image { rect, .. } => {
+                DrawOp::Quad { rect, .. }
+                | DrawOp::QuadR { rect, .. }
+                | DrawOp::Scissor { rect }
+                | DrawOp::Image { rect, .. } => {
                     min_x = min_x.min(rect.x);
                     min_y = min_y.min(rect.y);
                     max_x = max_x.max(rect.x + rect.w);
                     max_y = max_y.max(rect.y + rect.h);
                 }
-                DrawOp::Text { x, y, size, line_height, text, .. }
-                | DrawOp::TextStyled { x, y, size, line_height, text, .. } => {
+                DrawOp::Text {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    text,
+                    ..
+                }
+                | DrawOp::TextStyled {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    text,
+                    ..
+                } => {
                     min_x = min_x.min(*x);
                     min_y = min_y.min(*y);
                     max_x = max_x.max(*x + measure_text(text, *size));
@@ -612,8 +663,10 @@ impl<C: Component> FrameSource for RqProjector<C> {
             // 豁免（与 iced 轨显式类零改动同律；min-h-* 同 min_height 在场
             // 豁免纵轴）。
             let root_node = node_style_of_view(&view);
-            let fill_w =
-                matches!(root_node.box_layout.width, Some(crate::ui::style::SizeValue::Screen | crate::ui::style::SizeValue::Full));
+            let fill_w = matches!(
+                root_node.box_layout.width,
+                Some(crate::ui::style::SizeValue::Screen | crate::ui::style::SizeValue::Full)
+            );
             let fill_h = matches!(
                 root_node.box_layout.height,
                 Some(crate::ui::style::SizeValue::Screen | crate::ui::style::SizeValue::Full)
@@ -646,7 +699,14 @@ impl<C: Component> FrameSource for RqProjector<C> {
             let mut oy = ov.rect.y + ov.rect.h;
             for (i, opt) in ov.options.iter().enumerate() {
                 let or = WRect::new(ov.rect.x, oy, ov.rect.w, INPUT_H);
-                ctx.push_quad(or, if ov.selected_index == Some(i) { accent_fill() } else { input_bg() });
+                ctx.push_quad(
+                    or,
+                    if ov.selected_index == Some(i) {
+                        accent_fill()
+                    } else {
+                        input_bg()
+                    },
+                );
                 ctx.ops.push(DrawOp::Text {
                     x: or.x + INPUT_PAD,
                     y: or.y + (INPUT_H - line_h) / 2.0,
@@ -707,7 +767,10 @@ impl<C: Component> FrameSource for RqProjector<C> {
             };
             for op in &mut ctx.ops {
                 match op {
-                    DrawOp::Quad { rect, .. } | DrawOp::QuadR { rect, .. } | DrawOp::Scissor { rect } | DrawOp::Image { rect, .. } => {
+                    DrawOp::Quad { rect, .. }
+                    | DrawOp::QuadR { rect, .. }
+                    | DrawOp::Scissor { rect }
+                    | DrawOp::Image { rect, .. } => {
                         shift(rect);
                     }
                     DrawOp::Text { x, y, .. } | DrawOp::TextStyled { x, y, .. } => {
@@ -731,7 +794,10 @@ impl<C: Component> FrameSource for RqProjector<C> {
         // 都过线，宿主后到者胜；同签名场景已被臂内去重）。
         self.pending_bitmaps.extend(ctx.pending_bitmaps);
         self.canvas_scene_sig = ctx.canvas_scene_sig;
-        DrawList { clear: Some(bg()), ops: ctx.ops }
+        DrawList {
+            clear: Some(bg()),
+            ops: ctx.ops,
+        }
     }
 
     fn on_input(&mut self, input: &InputMsg) {
@@ -739,12 +805,22 @@ impl<C: Component> FrameSource for RqProjector<C> {
             // 最近指针位跟踪（滚轮定位消费——wire Scroll 无坐标，T-01 D5
             // 执行期附注）。
             InputMsg::PointerMoved { x, y, .. } => self.pointer = (*x, *y),
-            InputMsg::PointerPressed { x, y, button: MouseButton::Left, .. } => {
+            InputMsg::PointerPressed {
+                x,
+                y,
+                button: MouseButton::Left,
+                ..
+            } => {
                 self.pointer = (*x, *y);
                 self.pointer_down_left(*x, *y);
             }
             // 右键命中派发（`on_right_click` 物化消息——倒序置顶优先）。
-            InputMsg::PointerPressed { x, y, button: MouseButton::Right, .. } => {
+            InputMsg::PointerPressed {
+                x,
+                y,
+                button: MouseButton::Right,
+                ..
+            } => {
                 self.pointer = (*x, *y);
                 // PLAN-029 T-04：Pointer placement 面板原点跟踪。
                 self.last_right_click = (*x, *y);
@@ -804,7 +880,10 @@ impl<C: Component> FrameSource for RqProjector<C> {
                 if self.select_open.take().is_some() {
                     self.rev += 1;
                 } else if let Some(msg) = self.hits.iter().rev().find_map(|e| match e {
-                    HitEntry::PopoverDismiss { on_dismiss: Some(m), .. } => Some(m.clone()),
+                    HitEntry::PopoverDismiss {
+                        on_dismiss: Some(m),
+                        ..
+                    } => Some(m.clone()),
                     _ => None,
                 }) {
                     // PLAN-029 T-04：Esc 关开态 popover（最顶者——rev 序
@@ -869,8 +948,7 @@ impl<C: Component> FrameSource for RqProjector<C> {
         match self.tick_last {
             None => self.tick_last = Some(now),
             Some(last) => {
-                if now.duration_since(last)
-                    >= std::time::Duration::from_millis(u64::from(interval))
+                if now.duration_since(last) >= std::time::Duration::from_millis(u64::from(interval))
                 {
                     self.tick_last = Some(now);
                     if let Some(msg) = self.component.tick_msg() {
@@ -890,7 +968,9 @@ impl<C: Component> RqProjector<C> {
         // → 物化消息派发；未命中（外点）→ 仅关闭（吞掉不下穿主块）。
         if self.select_open.is_some() {
             let hit = self.hits.iter().rev().find_map(|e| match e {
-                HitEntry::SelectOption { rect, msg } if rect_contains(rect, x, y) => Some(msg.clone()),
+                HitEntry::SelectOption { rect, msg } if rect_contains(rect, x, y) => {
+                    Some(msg.clone())
+                }
                 _ => None,
             });
             self.select_open = None;
@@ -917,7 +997,13 @@ impl<C: Component> RqProjector<C> {
             // PLAN-674 T-01：编辑器槽位（editor = 存储键）——旧编辑器
             // FocusLost → FocusGained + 光标定位（局部坐标 = 命中点 -
             // rect 原点；core handle_mouse_press 引擎态光标/选区）。
-            Some(HitEntry::Input { rect, value, slot, editor, .. }) => {
+            Some(HitEntry::Input {
+                rect,
+                value,
+                slot,
+                editor,
+                ..
+            }) => {
                 if let Some(sk) = editor {
                     let prev = self.focused_editor_key();
                     if prev.as_deref() != Some(sk.as_str()) {
@@ -929,7 +1015,11 @@ impl<C: Component> RqProjector<C> {
                     let (lx, ly) = (x - rect.x, y - rect.y);
                     self.feed_editor_input(
                         sk.as_str(),
-                        ce::EditorInput::MousePressed { button: ce::EditorButton::Left, x: lx, y: ly },
+                        ce::EditorInput::MousePressed {
+                            button: ce::EditorButton::Left,
+                            x: lx,
+                            y: ly,
+                        },
                     );
                 }
                 self.focused_input = Some(slot);
@@ -939,7 +1029,13 @@ impl<C: Component> RqProjector<C> {
             }
             // 轨道点击 → f32 = min + clamp((x-x0)/w)×range（step 取整）→
             // 回调物化派发（零 thread-local——载荷自足；登记时已滤 None）。
-            Some(HitEntry::Slider { rect, min, max, step, on_change }) => {
+            Some(HitEntry::Slider {
+                rect,
+                min,
+                max,
+                step,
+                on_change,
+            }) => {
                 let t = if rect.w > 0.0 {
                     ((x - rect.x) / rect.w).clamp(0.0, 1.0)
                 } else {
@@ -974,7 +1070,9 @@ impl<C: Component> RqProjector<C> {
             }
             // PLAN-032 T-03（D2）：tabs 托盘项 → index 物化派发（回调内
             // 包装 value 串载荷——受控切换由 app 状态经 view() 重入驱动）。
-            Some(HitEntry::TabSelect { index, on_select, .. }) => {
+            Some(HitEntry::TabSelect {
+                index, on_select, ..
+            }) => {
                 self.component.on(on_select.call(index));
                 self.rev += 1;
             }
@@ -986,7 +1084,9 @@ impl<C: Component> RqProjector<C> {
     fn focused_on_change(&self) -> Option<C::Msg> {
         let slot = self.focused_input?;
         self.hits.iter().find_map(|e| match e {
-            HitEntry::Input { on_change, slot: s, .. } if *s == slot => on_change.clone(),
+            HitEntry::Input {
+                on_change, slot: s, ..
+            } if *s == slot => on_change.clone(),
             _ => None,
         })
     }
@@ -997,7 +1097,11 @@ impl<C: Component> RqProjector<C> {
     fn focused_editor_key(&self) -> Option<String> {
         let slot = self.focused_input?;
         self.hits.iter().find_map(|e| match e {
-            HitEntry::Input { editor: Some(sk), slot: s, .. } if *s == slot => Some(sk.clone()),
+            HitEntry::Input {
+                editor: Some(sk),
+                slot: s,
+                ..
+            } if *s == slot => Some(sk.clone()),
             _ => None,
         })
     }
@@ -1057,7 +1161,9 @@ impl<C: Component> RqProjector<C> {
         if self.focused_input.is_none() {
             return;
         }
-        let Some(msg) = self.focused_on_change() else { return };
+        let Some(msg) = self.focused_on_change() else {
+            return;
+        };
         self.input_buffer.push(ch);
         self.dispatch_input_edit(msg);
     }
@@ -1068,7 +1174,9 @@ impl<C: Component> RqProjector<C> {
         if self.focused_input.is_none() {
             return;
         }
-        let Some(msg) = self.focused_on_change() else { return };
+        let Some(msg) = self.focused_on_change() else {
+            return;
+        };
         self.input_buffer.pop();
         self.dispatch_input_edit(msg);
     }
@@ -1108,34 +1216,63 @@ impl<C: Component> RqProjector<C> {
     /// 悬停滚动即编辑器惯例），无编辑器命中走既有 Scrollable 路由。
     fn wheel(&mut self, dx: f32, dy: f32) {
         let editor_hit = self.hits.iter().rev().find_map(|e| match e {
-            HitEntry::Input { rect, editor: Some(sk), .. }
-                if rect_contains(rect, self.pointer.0, self.pointer.1) =>
-            {
-                Some(sk.clone())
-            }
+            HitEntry::Input {
+                rect,
+                editor: Some(sk),
+                ..
+            } if rect_contains(rect, self.pointer.0, self.pointer.1) => Some(sk.clone()),
             _ => None,
         });
         if let Some(sk) = editor_hit {
-            self.feed_editor_input(&sk, ce::EditorInput::WheelScrolled { dx, dy, shift: false });
+            self.feed_editor_input(
+                &sk,
+                ce::EditorInput::WheelScrolled {
+                    dx,
+                    dy,
+                    shift: false,
+                },
+            );
             return;
         }
         let entry = {
-            let containing = self.hits.iter().enumerate().rev().find_map(|(i, e)| match e {
-                HitEntry::Scroll { .. } if rect_contains(e.rect(), self.pointer.0, self.pointer.1) => Some(i),
-                _ => None,
-            });
+            let containing = self
+                .hits
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(i, e)| match e {
+                    HitEntry::Scroll { .. }
+                        if rect_contains(e.rect(), self.pointer.0, self.pointer.1) =>
+                    {
+                        Some(i)
+                    }
+                    _ => None,
+                });
             let idx = containing.or_else(|| {
                 let scrolls: Vec<usize> = self
                     .hits
                     .iter()
                     .enumerate()
-                    .filter_map(|(i, e)| if matches!(e, HitEntry::Scroll { .. }) { Some(i) } else { None })
+                    .filter_map(|(i, e)| {
+                        if matches!(e, HitEntry::Scroll { .. }) {
+                            Some(i)
+                        } else {
+                            None
+                        }
+                    })
                     .collect();
                 (scrolls.len() == 1).then_some(scrolls[0])
             });
             idx.and_then(|i| self.hits.get(i).cloned())
         };
-        let Some(HitEntry::Scroll { offset, viewport, content, callback, .. }) = entry else {
+        let Some(HitEntry::Scroll {
+            offset,
+            viewport,
+            content,
+            callback,
+            ..
+        }) = entry
+        else {
             return;
         };
         let max_y = (content.1 - viewport.1).max(0.0);
@@ -1217,7 +1354,11 @@ impl<M: Clone + std::fmt::Debug> NativeCtx<M> {
         match radius {
             Some(r) if r > 0.5 => {
                 let r = r.min(rect.w.min(rect.h) / 2.0);
-                self.ops.push(DrawOp::QuadR { rect, color, radius: r });
+                self.ops.push(DrawOp::QuadR {
+                    rect,
+                    color,
+                    radius: r,
+                });
             }
             _ => self.push_quad(rect, color),
         }
@@ -1313,13 +1454,16 @@ fn place_absolute_children<M: Clone + std::fmt::Debug>(
             (None, Some(b)) => y + h - laid.size.1 - b,
             (None, None) => y,
         };
-        ctx.ops.extend(tmp.ops.iter().map(|op| shift_draw_op(op, ax, ay)));
-        ctx.hits.extend(tmp.hits.into_iter().map(|hh| hh.shifted(ax, ay)));
-        ctx.right_hits.extend(tmp.right_hits.into_iter().map(|(mut r, m)| {
-            r.x += ax;
-            r.y += ay;
-            (r, m)
-        }));
+        ctx.ops
+            .extend(tmp.ops.iter().map(|op| shift_draw_op(op, ax, ay)));
+        ctx.hits
+            .extend(tmp.hits.into_iter().map(|hh| hh.shifted(ax, ay)));
+        ctx.right_hits
+            .extend(tmp.right_hits.into_iter().map(|(mut r, m)| {
+                r.x += ax;
+                r.y += ay;
+                (r, m)
+            }));
         ctx.uncovered.extend(tmp.uncovered);
         ctx.input_slots = tmp.input_slots;
         ctx.select_slots = tmp.select_slots;
@@ -1345,7 +1489,12 @@ fn layout_grid_cells<M: Clone + std::fmt::Debug>(
     avail_w: f32,
 ) -> Laid {
     let cols = cols.max(1);
-    let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
+    let pad = (
+        style.pad_left(),
+        style.pad_top(),
+        style.pad_right(),
+        style.pad_bottom(),
+    );
     let inner_w = (avail_w - pad.0 - pad.2).max(0.0);
     let cell_w = if cells.is_empty() {
         0.0
@@ -1361,12 +1510,16 @@ fn layout_grid_cells<M: Clone + std::fmt::Debug>(
             let mut row_h = 0.0f32;
             for (ci, cell) in row.iter().enumerate() {
                 let cell_x = ci as f32 * (cell_w + gap);
-                let laid = layout_view_node(ctx, cell, x + pad.0 + cell_x, y + pad.1 + row_y, cell_w);
+                let laid =
+                    layout_view_node(ctx, cell, x + pad.0 + cell_x, y + pad.1 + row_y, cell_w);
                 row_h = row_h.max(laid.size.1);
             }
             row_y += row_h;
         }
-        (cell_w * cols as f32 + gap * (cols.saturating_sub(1)) as f32, row_y)
+        (
+            cell_w * cols as f32 + gap * (cols.saturating_sub(1)) as f32,
+            row_y,
+        )
     };
     let ops_mark = ctx.ops.len();
     let hits_mark = ctx.hits.len();
@@ -1388,7 +1541,9 @@ fn layout_grid_cells<M: Clone + std::fmt::Debug>(
     if let Some(border) = style.border {
         ctx.push_border(WRect::new(x, y, outer_w, outer_h), border);
     }
-    Laid { size: (outer_w, outer_h) }
+    Laid {
+        size: (outer_w, outer_h),
+    }
 }
 
 /// 块流布局：把一列视图排进 `(x, y, w)` 内容盒，返回内容尺寸。
@@ -1409,15 +1564,12 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
     // GridRows 类时整体改走网格布局（复用 Grid walker，024 真源 =
     // `col (style: "grid grid-cols-2 gap-2")`）。
     if parent.grid_cols.is_some() || parent.grid_rows.is_some() {
-        let cols = parent
-            .grid_cols
-            .map(|c| c.max(1))
-            .unwrap_or_else(|| {
-                parent
-                    .grid_rows
-                    .map(|r| (views.len() + r - 1) / r.max(1))
-                    .expect("choke 条件保证 grid_cols/grid_rows 至少其一")
-            });
+        let cols = parent.grid_cols.map(|c| c.max(1)).unwrap_or_else(|| {
+            parent
+                .grid_rows
+                .map(|r| (views.len() + r - 1) / r.max(1))
+                .expect("choke 条件保证 grid_cols/grid_rows 至少其一")
+        });
         return layout_grid_cells(ctx, views, cols, gap, parent, x, y, w);
     }
     let ops_mark = ctx.ops.len();
@@ -1485,7 +1637,11 @@ fn layout_view_block<M: Clone + std::fmt::Debug>(
     let mut flex_applied = false;
     if dir == Dir::Horizontal && h_meta.iter().any(|(_, f)| *f > 0.0) {
         let gaps_total = gap * h_meta.len().saturating_sub(1) as f32;
-        let fixed_total: f32 = h_meta.iter().filter(|(_, f)| *f == 0.0).map(|(n, _)| *n).sum();
+        let fixed_total: f32 = h_meta
+            .iter()
+            .filter(|(_, f)| *f == 0.0)
+            .map(|(n, _)| *n)
+            .sum();
         let flex_total: f32 = h_meta.iter().filter(|m| m.1 > 0.0).map(|m| m.1).sum();
         let share = ((w - gaps_total - fixed_total) / flex_total.max(1.0)).max(0.0);
         let snap = (
@@ -1664,7 +1820,11 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                         continue;
                     }
                     let pw = measure_text(word, size);
-                    let sep = if cur.is_empty() { 0.0 } else { measure_text(" ", size) };
+                    let sep = if cur.is_empty() {
+                        0.0
+                    } else {
+                        measure_text(" ", size)
+                    };
                     if cur_w + sep + pw <= avail_w {
                         if !cur.is_empty() {
                             cur.push(' ');
@@ -1743,9 +1903,18 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                     });
                 }
             }
-            Laid { size: (w, line_n * line_h) }
+            Laid {
+                size: (w, line_n * line_h),
+            }
         }
-        View::Button { label, onclick, on_right_click, content, disabled, .. } => {
+        View::Button {
+            label,
+            onclick,
+            on_right_click,
+            content,
+            disabled,
+            ..
+        } => {
             let size = style.font_size.unwrap_or(14.0);
             let label_w = measure_text(label, size);
             let w = style
@@ -1798,22 +1967,32 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
         // —— PLAN-025 T-02 form 族臂（视觉镜像解释态 layout_input/
         // layout_textarea/checkbox/radio；命中/聚焦/编辑闭环 = 分型命中表
         // + 聚焦槽位，T-01 D1/D2 定案）。
-        View::Input { placeholder, value, on_change, width, .. } => {
-            layout_view_input(
-                ctx,
-                placeholder,
-                value,
-                on_change.as_ref(),
-                false,
-                style.fixed_w().or_else(|| width.map(f32::from)),
-                None,
-                &style,
-                x,
-                y,
-                avail_w,
-            )
-        }
-        View::Textarea { placeholder, value, on_change, height, .. } => {
+        View::Input {
+            placeholder,
+            value,
+            on_change,
+            width,
+            ..
+        } => layout_view_input(
+            ctx,
+            placeholder,
+            value,
+            on_change.as_ref(),
+            false,
+            style.fixed_w().or_else(|| width.map(f32::from)),
+            None,
+            &style,
+            x,
+            y,
+            avail_w,
+        ),
+        View::Textarea {
+            placeholder,
+            value,
+            on_change,
+            height,
+            ..
+        } => {
             // 多行框复用 input 命中/编辑闭环（槽位合一计数——D1）；行数
             // = height px 折行数（rows 语义的解释态缺省 4 行档对齐）。
             let size = style.font_size.unwrap_or(14.0);
@@ -1839,16 +2018,52 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
         }
         // checkbox/radio：勾选图形 + 标签文本；命中 = handler 在场才登记
         // （native 无字段写回路径——自动翻转不可达，T-01 D2）。
-        View::Checkbox { is_checked, label, on_toggle, .. } => {
-            layout_view_toggle(ctx, *is_checked, label, on_toggle.as_ref(), &style, x, y, avail_w, false)
-        }
-        View::Radio { label, is_selected, on_select, .. } => {
-            layout_view_toggle(ctx, *is_selected, label, on_select.as_ref(), &style, x, y, avail_w, true)
-        }
+        View::Checkbox {
+            is_checked,
+            label,
+            on_toggle,
+            ..
+        } => layout_view_toggle(
+            ctx,
+            *is_checked,
+            label,
+            on_toggle.as_ref(),
+            &style,
+            x,
+            y,
+            avail_w,
+            false,
+        ),
+        View::Radio {
+            label,
+            is_selected,
+            on_select,
+            ..
+        } => layout_view_toggle(
+            ctx,
+            *is_selected,
+            label,
+            on_select.as_ref(),
+            &style,
+            x,
+            y,
+            avail_w,
+            true,
+        ),
         // PLAN-025 T-03 slider 臂：track 底 + fill + knob（值比例几何）+
         // 轨道命中（点击 → f32 → fn 指针物化派发；step 取整在派发侧）。
-        View::Slider { min, max, value, on_change, step, .. } => {
-            let w = style.fixed_w().unwrap_or(avail_w.min(320.0)).min(avail_w.max(0.0));
+        View::Slider {
+            min,
+            max,
+            value,
+            on_change,
+            step,
+            ..
+        } => {
+            let w = style
+                .fixed_w()
+                .unwrap_or(avail_w.min(320.0))
+                .min(avail_w.max(0.0));
             let h = style.fixed_h().unwrap_or(SLIDER_H);
             let cy = y + h / 2.0;
             let t = if *max > *min {
@@ -1857,12 +2072,23 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 0.0
             };
             let vx = x + w * t;
-            ctx.push_quad(WRect::new(x, cy - SLIDER_TRACK_H / 2.0, w, SLIDER_TRACK_H), progress_track());
+            ctx.push_quad(
+                WRect::new(x, cy - SLIDER_TRACK_H / 2.0, w, SLIDER_TRACK_H),
+                progress_track(),
+            );
             if vx > x {
-                ctx.push_quad(WRect::new(x, cy - SLIDER_TRACK_H / 2.0, vx - x, SLIDER_TRACK_H), primary_fill());
+                ctx.push_quad(
+                    WRect::new(x, cy - SLIDER_TRACK_H / 2.0, vx - x, SLIDER_TRACK_H),
+                    primary_fill(),
+                );
             }
             ctx.push_quad(
-                WRect::new(vx - SLIDER_KNOB / 2.0, cy - SLIDER_KNOB / 2.0, SLIDER_KNOB, SLIDER_KNOB),
+                WRect::new(
+                    vx - SLIDER_KNOB / 2.0,
+                    cy - SLIDER_KNOB / 2.0,
+                    SLIDER_KNOB,
+                    SLIDER_KNOB,
+                ),
                 text_fg(),
             );
             // None 不登记（无动作面——HitEntry::Slider 文档同口径）。
@@ -1879,14 +2105,29 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
         }
         // PLAN-025 T-04 select 臂（D3）：闭态 = 值盒 + ▾ + 点击开；开态
         // = 值盒照常 + 覆盖序选项列（render_frame 尾追加）+ 命中互斥。
-        View::Select { options, selected_index, on_select, .. } => {
-            let w = style.fixed_w().unwrap_or(avail_w.min(320.0)).min(avail_w.max(0.0));
+        View::Select {
+            options,
+            selected_index,
+            on_select,
+            ..
+        } => {
+            let w = style
+                .fixed_w()
+                .unwrap_or(avail_w.min(320.0))
+                .min(avail_w.max(0.0));
             let h = style.fixed_h().unwrap_or(INPUT_H);
             let slot = ctx.select_slots;
             ctx.select_slots += 1;
             let open = ctx.select_open == Some(slot);
-            ctx.push_quad_rounded(WRect::new(x, y, w, h), style.bg.unwrap_or(input_bg()), style.radius);
-            ctx.push_border(WRect::new(x, y, w, h), style.border.unwrap_or(input_border()));
+            ctx.push_quad_rounded(
+                WRect::new(x, y, w, h),
+                style.bg.unwrap_or(input_bg()),
+                style.radius,
+            );
+            ctx.push_border(
+                WRect::new(x, y, w, h),
+                style.border.unwrap_or(input_border()),
+            );
             let size = style.font_size.unwrap_or(14.0);
             let line_h = size * LINE_H_FACTOR;
             if let Some(label) = selected_index.and_then(|i| options.get(i)) {
@@ -1908,7 +2149,10 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 text: '\u{25be}'.to_string(),
             });
             if !open {
-                ctx.hits.push(HitEntry::SelectBox { rect: WRect::new(x, y, w, h), slot });
+                ctx.hits.push(HitEntry::SelectBox {
+                    rect: WRect::new(x, y, w, h),
+                    slot,
+                });
             } else {
                 ctx.overlays.push(SelectOverlay {
                     rect: WRect::new(x, y, w, h),
@@ -1929,10 +2173,16 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             // §1.8 占位保真注释核销，占位转宿主侧未解析兜底语义）。
             // icon 经 codegen 降级到本臂（src = "lucide:{name}"，宿主
             // 字形解析 not-yet → 未解析降级占位，行为与旧占位口径连续）。
-            let w = style.fixed_w().unwrap_or(avail_w.min(96.0)).min(avail_w.max(0.0));
+            let w = style
+                .fixed_w()
+                .unwrap_or(avail_w.min(96.0))
+                .min(avail_w.max(0.0));
             let h = style.fixed_h().unwrap_or(w);
             if src.is_empty() {
-                ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(image_placeholder()));
+                ctx.push_quad(
+                    WRect::new(x, y, w, h),
+                    style.bg.unwrap_or(image_placeholder()),
+                );
             } else {
                 ctx.ops.push(DrawOp::Image {
                     rect: WRect::new(x, y, w, h),
@@ -1949,7 +2199,14 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
         // 节点命中物化（049 图元三表同律）；pen 三件套 not-yet（坐标
         // 回传路径归 M7-c terminal 撞面批裁定）；labels not-yet（软栅格
         // 无文本面——043 样板 strokes 主路径无撞）。
-        View::Canvas { scene, logical_extent, clear, on_hit, style: _, .. } => {
+        View::Canvas {
+            scene,
+            logical_extent,
+            clear,
+            on_hit,
+            style: _,
+            ..
+        } => {
             // style 用 fn 顶 NodeStyle（解构位是 Option<Style> 原始声明）。
             let logical_extent = *logical_extent;
             let (dw, dh) = logical_extent.unwrap_or((avail_w.max(1.0), 240.0));
@@ -1994,16 +2251,16 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 for node in &scene.nodes {
                     let (nx, ny) = (x + node.x * sx, y + node.y * sy);
                     let rect = if node.shape == "rect" {
-                        let (rw, rh) = (
-                            node.w.unwrap_or(40.0) * sx,
-                            node.h.unwrap_or(40.0) * sy,
-                        );
+                        let (rw, rh) = (node.w.unwrap_or(40.0) * sx, node.h.unwrap_or(40.0) * sy);
                         WRect::new(nx - rw / 2.0, ny - rh / 2.0, rw, rh)
                     } else {
                         let r = node.r.unwrap_or(16.0) * sx;
                         WRect::new(nx - r, ny - r, r * 2.0, r * 2.0)
                     };
-                    ctx.hits.push(HitEntry::Msg { rect, msg: on_hit.call(node.id.clone()) });
+                    ctx.hits.push(HitEntry::Msg {
+                        rect,
+                        msg: on_hit.call(node.id.clone()),
+                    });
                 }
             }
             Laid { size: (w, h) }
@@ -2016,26 +2273,42 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let h = style.fixed_h().unwrap_or(8.0);
             ctx.push_quad(WRect::new(x, y, w, h), progress_track());
             if frac > 0.0 {
-                ctx.push_quad(WRect::new(x, y, w * frac, h), style.bg.unwrap_or(primary_fill()));
+                ctx.push_quad(
+                    WRect::new(x, y, w * frac, h),
+                    style.bg.unwrap_or(primary_fill()),
+                );
             }
             Laid { size: (w, h) }
         }
         // PLAN-026 T-04 grid walker（镜像 client_runtime::layout_grid
         // :831——cols 等宽格 × row-major 行序，行高 = 行内最大，bg 底色
         // 两遍法置子级之下）。
-        View::Grid { cols, gap, cells, .. } => {
+        View::Grid {
+            cols, gap, cells, ..
+        } => {
             // gap：Grid.gap 字段（a2r codegen .spacing() 通道）优先，
             // style gap- 类回退档（解释态 layout_grid 同序）。
             // PLAN-032 T-04（D4）：walker 体提取为 layout_grid_cells
             // 单源，样式版 grid 分岔共用（语义零变化）。
-            let gap = if *gap > 0 { f32::from(*gap) } else { style.gap() };
+            let gap = if *gap > 0 {
+                f32::from(*gap)
+            } else {
+                style.gap()
+            };
             layout_grid_cells(ctx, cells, *cols, gap, &style, x, y, avail_w)
         }
         // PLAN-025 T-05 scrollable 臂：溢出裁剪（Scissor push/pop——镜像
         // client_runtime::layout_scroll :953-1020）+ 滚轮命中（on_scroll
         // 在场才登记——I3；先登记后走子级：嵌套时内层倒序胜，D5）。滚动
         // 偏移 = app 状态经 on_scroll 重入 view()（投影器只裁剪不缓存）。
-        View::Scrollable { child, width, height, offset, on_scroll, .. } => {
+        View::Scrollable {
+            child,
+            width,
+            height,
+            offset,
+            on_scroll,
+            ..
+        } => {
             let outer_w = style
                 .fixed_w()
                 .or_else(|| width.map(f32::from))
@@ -2054,7 +2327,9 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                     Dir::Vertical,
                     &style,
                 );
-                return Laid { size: (outer_w, laid.size.1) };
+                return Laid {
+                    size: (outer_w, laid.size.1),
+                };
             };
             // Scroll 命中先登记（on_scroll 在场才登记——I3 滚轮不路由
             // 留痕；content_h 两遍法后补——见下）。
@@ -2084,7 +2359,9 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 // 溢出：撤首轮 → Scissor push → 子级 → pop；视口外命中
                 // 区不登记（几何判交——嵌套组合正确，解释态同款）。
                 ctx.ops.truncate(ops_mark);
-                ctx.ops.push(DrawOp::Scissor { rect: WRect::new(x, y, outer_w, vh) });
+                ctx.ops.push(DrawOp::Scissor {
+                    rect: WRect::new(x, y, outer_w, vh),
+                });
                 let _ = layout_view_block(
                     ctx,
                     std::slice::from_ref(child.as_ref()),
@@ -2099,8 +2376,10 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 let child_hits: Vec<HitEntry<M>> = ctx.hits.drain(hits_mark..).collect();
                 for h in child_hits {
                     let r = h.rect();
-                    let intersects =
-                        r.x < clip.x + clip.w && r.x + r.w > clip.x && r.y < clip.y + clip.h && r.y + r.h > clip.y;
+                    let intersects = r.x < clip.x + clip.w
+                        && r.x + r.w > clip.x
+                        && r.y < clip.y + clip.h
+                        && r.y + r.h > clip.y;
                     if intersects {
                         ctx.hits.push(h);
                     }
@@ -2110,7 +2389,9 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 content.1 = content_h;
             }
             // 视口占位 = viewport_h（溢出不影响兄弟节点位置——解释态同款）。
-            Laid { size: (outer_w, vh) }
+            Laid {
+                size: (outer_w, vh),
+            }
         }
         View::Row { .. } => {
             let dir = Dir::Horizontal;
@@ -2120,26 +2401,38 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let dir = Dir::Vertical;
             layout_view_group(ctx, view, &style, x, y, avail_w, dir)
         }
-        View::Container { child, on_right_click, center_x, center_y, width, height, .. } => {
-            layout_view_container(
-                ctx,
-                child,
-                on_right_click.clone(),
-                *center_x,
-                *center_y,
-                *width,
-                *height,
-                &style,
-                x,
-                y,
-                avail_w,
-            )
-        }
+        View::Container {
+            child,
+            on_right_click,
+            center_x,
+            center_y,
+            width,
+            height,
+            ..
+        } => layout_view_container(
+            ctx,
+            child,
+            on_right_click.clone(),
+            *center_x,
+            *center_y,
+            *width,
+            *height,
+            &style,
+            x,
+            y,
+            avail_w,
+        ),
         // PLAN-029 T-04（D3）：popover 臂——锚子树主流量渲染；开态 = 面板
         // 子树临时 ctx @0,0 走线（槽位计数接续——树序身份稳定）→ 量尺
         // 寸 → 几何定原点 → 平移入覆盖序记录（主块后追加，paint order
         // 置顶）；闭态零面板 ops/hits（open 随帧，投影器零开合状态机）。
-        View::Popover { anchor, content, placement, open, on_dismiss } => {
+        View::Popover {
+            anchor,
+            content,
+            placement,
+            open,
+            on_dismiss,
+        } => {
             let site = match anchor {
                 PopoverAnchor::Widget(child) => {
                     let laid = layout_view_node(ctx, child, x, y, avail_w);
@@ -2181,12 +2474,14 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             // 未发生——select overlay 只在 render_frame 顶层追加；嵌 select
             // 面板 v1 以闭态渲染，随注）。
             let panel = match placement {
-                PopoverPlacement::EdgeLeft | PopoverPlacement::EdgeRight => {
-                    (laid.size.0.max(200.0).min(ctx.viewport.0 / 2.0), ctx.viewport.1 - POP_MARGIN * 2.0)
-                }
-                PopoverPlacement::EdgeTop | PopoverPlacement::EdgeBottom => {
-                    (ctx.viewport.0 - POP_MARGIN * 2.0, laid.size.1.min(ctx.viewport.1 / 2.0))
-                }
+                PopoverPlacement::EdgeLeft | PopoverPlacement::EdgeRight => (
+                    laid.size.0.max(200.0).min(ctx.viewport.0 / 2.0),
+                    ctx.viewport.1 - POP_MARGIN * 2.0,
+                ),
+                PopoverPlacement::EdgeTop | PopoverPlacement::EdgeBottom => (
+                    ctx.viewport.0 - POP_MARGIN * 2.0,
+                    laid.size.1.min(ctx.viewport.1 / 2.0),
+                ),
                 _ => (laid.size.0.max(40.0), laid.size.1.max(INPUT_H)),
             };
             let (px, py) =
@@ -2196,15 +2491,20 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             // 几何按 tmp 空间推导后整体平移——翻转边界以真视口近似，v1）。
             let ops = tmp.ops.iter().map(|op| shift_draw_op(op, px, py)).collect();
             let hits = tmp.hits.into_iter().map(|h| h.shifted(px, py)).collect();
-            ctx.right_hits.extend(tmp.right_hits.into_iter().map(|(mut r, m)| {
-                r.x += px;
-                r.y += py;
-                (r, m)
-            }));
+            ctx.right_hits
+                .extend(tmp.right_hits.into_iter().map(|(mut r, m)| {
+                    r.x += px;
+                    r.y += py;
+                    (r, m)
+                }));
             for mut nested in std::mem::take(&mut tmp.popover_overlays) {
                 nested.rect.x += px;
                 nested.rect.y += py;
-                nested.ops = nested.ops.iter().map(|op| shift_draw_op(op, px, py)).collect();
+                nested.ops = nested
+                    .ops
+                    .iter()
+                    .map(|op| shift_draw_op(op, px, py))
+                    .collect();
                 nested.hits = nested.hits.into_iter().map(|h| h.shifted(px, py)).collect();
                 ctx.popover_overlays.push(nested);
             }
@@ -2231,10 +2531,19 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
         // `thumbnail://{wid}!{fallback}` / `workspace://{ws}!{fallback}`
         //（028 宿主解析直用；miss → 宿主转 `lucide:{fallback}` 占位图标
         // 真渲——I3 降级升级，语法入册 §1.10）。几何同 Image 臂。
-        View::WindowThumbnail { wid, fallback_icon, .. } => {
-            let w = style.fixed_w().unwrap_or(avail_w.min(192.0)).min(avail_w.max(0.0));
+        View::WindowThumbnail {
+            wid, fallback_icon, ..
+        } => {
+            let w = style
+                .fixed_w()
+                .unwrap_or(avail_w.min(192.0))
+                .min(avail_w.max(0.0));
             let h = style.fixed_h().unwrap_or(w * 112.0 / 192.0);
-            let fallback = if fallback_icon.is_empty() { "app-window" } else { fallback_icon };
+            let fallback = if fallback_icon.is_empty() {
+                "app-window"
+            } else {
+                fallback_icon
+            };
             ctx.ops.push(DrawOp::Image {
                 rect: WRect::new(x, y, w, h),
                 src: format!("thumbnail://{wid}!{fallback}"),
@@ -2242,10 +2551,19 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             });
             Laid { size: (w, h) }
         }
-        View::WorkspacePreview { ws, fallback_icon, .. } => {
-            let w = style.fixed_w().unwrap_or(avail_w.min(176.0)).min(avail_w.max(0.0));
+        View::WorkspacePreview {
+            ws, fallback_icon, ..
+        } => {
+            let w = style
+                .fixed_w()
+                .unwrap_or(avail_w.min(176.0))
+                .min(avail_w.max(0.0));
             let h = style.fixed_h().unwrap_or(w * 64.0 / 176.0);
-            let fallback = if fallback_icon.is_empty() { "app-window" } else { fallback_icon };
+            let fallback = if fallback_icon.is_empty() {
+                "app-window"
+            } else {
+                fallback_icon
+            };
             ctx.ops.push(DrawOp::Image {
                 rect: WRect::new(x, y, w, h),
                 src: format!("workspace://{ws}!{fallback}"),
@@ -2259,12 +2577,21 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
         // on_enter/on_exit/on_move/on_release/on_double_click = hover/时序
         // 语义 not-yet（投影器无 hover 态，I3 随注——shell ×13 全
         // click/contextmenu 族不受影响）。
-        View::MouseArea { content, on_click, on_context_menu, logical_extent, .. } => {
+        View::MouseArea {
+            content,
+            on_click,
+            on_context_menu,
+            logical_extent,
+            ..
+        } => {
             let (ew, eh) = logical_extent.unwrap_or((avail_w.min(120.0), 24.0));
             let rect = WRect::new(x, y, ew, eh);
             // area 命中先 push（rev 序 content 项优先胜——空白落 area）。
             if let Some(msg) = on_click {
-                ctx.hits.push(HitEntry::Msg { rect, msg: msg.clone() });
+                ctx.hits.push(HitEntry::Msg {
+                    rect,
+                    msg: msg.clone(),
+                });
             }
             if let Some(msg) = on_context_menu {
                 ctx.right_hits.push((rect, msg.clone()));
@@ -2281,7 +2608,15 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
         // 形态（托盘底 + 选中下划线，PLAN-641 视觉子集）。position：
         // Top/Bottom = 托盘上/下；Left/Right 渲染降级 Top（not-yet 随注
         //——扫描面不含 position 载荷，判定无感）。
-        View::Tabs { labels, contents, selected, position, on_select, variant, .. } => {
+        View::Tabs {
+            labels,
+            contents,
+            selected,
+            position,
+            on_select,
+            variant,
+            ..
+        } => {
             let n = labels.len().max(1);
             let sel = (*selected).min(n - 1);
             let font = style.font_size.unwrap_or(14.0);
@@ -2298,7 +2633,11 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                         TabsVariant::Default => {
                             ctx.push_quad(
                                 rect,
-                                if active { style.bg.unwrap_or(primary_fill()) } else { input_bg() },
+                                if active {
+                                    style.bg.unwrap_or(primary_fill())
+                                } else {
+                                    input_bg()
+                                },
                             );
                             if let Some(border) = style.border {
                                 ctx.push_border(rect, border);
@@ -2328,12 +2667,20 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                         text: label.clone(),
                     });
                     if let Some(cb) = on_select {
-                        ctx.hits.push(HitEntry::TabSelect { rect, index: i, on_select: cb.clone() });
+                        ctx.hits.push(HitEntry::TabSelect {
+                            rect,
+                            index: i,
+                            on_select: cb.clone(),
+                        });
                     }
                 }
             };
             let tray_first = !matches!(position, TabsPosition::Bottom);
-            let (tray_y, content_y) = if tray_first { (y, y + tab_h) } else { (y + tab_h, y) };
+            let (tray_y, content_y) = if tray_first {
+                (y, y + tab_h)
+            } else {
+                (y + tab_h, y)
+            };
             // 内容区：空内容 = 透明占位（enclosed 连通边框 v1 以托盘下缘
             // 线承载，内容边框 not-yet 随注——视觉子集，I3）。ops 序随
             // position 自然阅读序：Top 托盘先、Bottom 内容先（几何不重叠，
@@ -2355,7 +2702,9 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
                 h
             };
             let outer_w = style.fixed_w().unwrap_or(avail_w.max(0.0));
-            Laid { size: (outer_w, tab_h + content_h) }
+            Laid {
+                size: (outer_w, tab_h + content_h),
+            }
         }
         // PLAN-674 T-01（§10-1 裁定 A：结构 DrawOps）：codeeditor 投影臂。
         // 状态面 = CODE_EDITORS 注册表 get-or-create（`code_editor(sk,
@@ -2387,7 +2736,7 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             tab_width,
             font_size,
             on_change,
-            on_cursor: _,   // R-1：显式降级弃置（见上注/P674-D4），非静默
+            on_cursor: _, // R-1：显式降级弃置（见上注/P674-D4），非静默
             on_context_menu,
             search,
             style: _,
@@ -2414,8 +2763,9 @@ fn layout_view_node<M: Clone + std::fmt::Debug>(
             let w = style.fixed_w().unwrap_or(avail_w.max(0.0)).max(1.0);
             let h = style.fixed_h().unwrap_or(240.0).max(1.0);
             let rect = WRect::new(x, y, w, h);
-            let list =
-                ce::with_font_system(|fs| crate::ui::code_editor::core::render::render(core, fs, w, h, None));
+            let list = ce::with_font_system(|fs| {
+                crate::ui::code_editor::core::render::render(core, fs, w, h, None)
+            });
             let frame = super::editor_frame::lower_editor_frame(&list);
             for op in &frame.ops {
                 ctx.ops.push(shift_draw_op(op, x, y));
@@ -2469,8 +2819,18 @@ fn layout_view_group<M: Clone + std::fmt::Debug>(
     dir: Dir,
 ) -> Laid {
     let (children, legacy_spacing, legacy_padding) = match view {
-        View::Row { children, spacing, padding, .. }
-        | View::Column { children, spacing, padding, .. } => (children, *spacing, *padding),
+        View::Row {
+            children,
+            spacing,
+            padding,
+            ..
+        }
+        | View::Column {
+            children,
+            spacing,
+            padding,
+            ..
+        } => (children, *spacing, *padding),
         View::List { items, spacing, .. } => (items, *spacing, 0u16),
         _ => unreachable!("layout_view_group 只接堆叠族"),
     };
@@ -2526,9 +2886,11 @@ fn layout_view_group<M: Clone + std::fmt::Debug>(
         let outer = WRect::new(x, y, outer_w, outer_h);
         ctx.ops.truncate(ops_mark);
         ctx.hits.truncate(hits_mark);
-        if let (Some(vertical), Some(from), Some(to)) =
-            (group_style.grad_dir, group_style.grad_from, group_style.grad_to)
-        {
+        if let (Some(vertical), Some(from), Some(to)) = (
+            group_style.grad_dir,
+            group_style.grad_from,
+            group_style.grad_to,
+        ) {
             ctx.push_gradient(outer, vertical, from, to);
         } else if let Some(bg) = group_style.bg {
             ctx.push_quad_rounded(outer, bg, group_style.radius);
@@ -2558,7 +2920,8 @@ fn layout_view_group<M: Clone + std::fmt::Debug>(
         _ => None,
     };
     if let Some(rc) = rc {
-        ctx.right_hits.push((WRect::new(x, y, laid.size.0, laid.size.1), rc));
+        ctx.right_hits
+            .push((WRect::new(x, y, laid.size.0, laid.size.1), rc));
     }
     laid
 }
@@ -2580,7 +2943,12 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
     avail_w: f32,
 ) -> Laid {
     let container_right_click = right_click;
-    let pad = (style.pad_left(), style.pad_top(), style.pad_right(), style.pad_bottom());
+    let pad = (
+        style.pad_left(),
+        style.pad_top(),
+        style.pad_right(),
+        style.pad_bottom(),
+    );
     // PLAN-026 T-04：legacy width/height 兜底（View::container/.center()
     // builder 字段——iced 消费面同源，typed style 优先）。
     let mut inner_w = avail_w;
@@ -2658,9 +3026,12 @@ fn layout_view_container<M: Clone + std::fmt::Debug>(
     }
     // 右键命中（T-05）：容器整框登记（`on_right_click`——div 形态消费面）。
     if let Some(rc) = container_right_click {
-        ctx.right_hits.push((WRect::new(x, y, outer_w, outer_h), rc));
+        ctx.right_hits
+            .push((WRect::new(x, y, outer_w, outer_h), rc));
     }
-    Laid { size: (outer_w, outer_h) }
+    Laid {
+        size: (outer_w, outer_h),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2685,32 +3056,47 @@ fn layout_view_input<M: Clone + std::fmt::Debug>(
     y: f32,
     avail_w: f32,
 ) -> Laid {
-    let w = fixed_w.unwrap_or_else(|| {
-        if multiline {
-            avail_w.max(0.0)
-        } else {
-            avail_w.min(320.0)
-        }
-    })
-    .min(avail_w.max(0.0));
+    let w = fixed_w
+        .unwrap_or_else(|| {
+            if multiline {
+                avail_w.max(0.0)
+            } else {
+                avail_w.min(320.0)
+            }
+        })
+        .min(avail_w.max(0.0));
     let h = h_override.unwrap_or(INPUT_H);
     ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(input_bg()));
     let slot = ctx.input_slots;
     let focused = ctx.focused_input == Some(slot);
-    let border = if focused { primary_fill() } else { input_border() };
+    let border = if focused {
+        primary_fill()
+    } else {
+        input_border()
+    };
     ctx.push_border(WRect::new(x, y, w, h), style.border.unwrap_or(border));
     ctx.input_slots += 1;
     // 显示面（D2）：聚焦框显 buffer（编辑面——解析失败时组件状态不变，
     // 用户意图仍可见），非聚焦框显视图值；空显 placeholder。
     // PLAN-026 T-05（D2-A）：IME preedit 尾拼——聚焦框 buffer 后接组合串
     // （单行 = 独立 Text op 差分色显示；多行 = 并入末行同色，边界随注）。
-    let shown = if focused { ctx.input_buffer.clone() } else { value.to_string() };
-    let preedit_tail =
-        if focused { ctx.ime_preedit.clone().unwrap_or_default() } else { String::new() };
+    let shown = if focused {
+        ctx.input_buffer.clone()
+    } else {
+        value.to_string()
+    };
+    let preedit_tail = if focused {
+        ctx.ime_preedit.clone().unwrap_or_default()
+    } else {
+        String::new()
+    };
     let (text, color) = if shown.is_empty() && preedit_tail.is_empty() {
         (placeholder.to_string(), placeholder_fg())
     } else if multiline && !preedit_tail.is_empty() {
-        (format!("{shown}{preedit_tail}"), style.fg.unwrap_or(text_fg()))
+        (
+            format!("{shown}{preedit_tail}"),
+            style.fg.unwrap_or(text_fg()),
+        )
     } else {
         (shown.clone(), style.fg.unwrap_or(text_fg()))
     };
@@ -2733,7 +3119,11 @@ fn layout_view_input<M: Clone + std::fmt::Debug>(
     } else if !text.is_empty() {
         // preedit 尾拼 op（差分色——真下划线无 DrawOp 通道，PLACEHOLDER_FG
         // 近似 + 随注；文本排布 = buffer 尾 x 累进）。
-        let tail = if focused { preedit_tail.clone() } else { String::new() };
+        let tail = if focused {
+            preedit_tail.clone()
+        } else {
+            String::new()
+        };
         let shown_w = measure_text(&text, size);
         ctx.ops.push(DrawOp::Text {
             x: x + INPUT_PAD,
@@ -2790,7 +3180,10 @@ fn layout_view_toggle<M: Clone + std::fmt::Debug>(
     let w = style.fixed_w().unwrap_or(box_w).min(avail_w.max(0.0));
     let h = style.fixed_h().unwrap_or(w);
     ctx.push_quad(WRect::new(x, y, w, h), style.bg.unwrap_or(input_bg()));
-    ctx.push_border(WRect::new(x, y, w, h), style.border.unwrap_or(input_border()));
+    ctx.push_border(
+        WRect::new(x, y, w, h),
+        style.border.unwrap_or(input_border()),
+    );
     if checked {
         let inset = (w.min(h) * inset_factor).clamp(1.5, inset_clamp);
         ctx.push_quad(
@@ -2821,7 +3214,9 @@ fn layout_view_toggle<M: Clone + std::fmt::Debug>(
             msg: msg.clone(),
         });
     }
-    Laid { size: (outer_w, outer_h) }
+    Laid {
+        size: (outer_w, outer_h),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2913,10 +3308,13 @@ fn apply_style_class(class: &StyleClass, s: &mut NodeStyle) {
         StyleClass::RoundedFull => s.radius = Some(9999.0),
         StyleClass::RoundedNone => s.radius = None,
         StyleClass::BgGradient(d) => {
-            s.grad_dir = Some(matches!(d, crate::ui::style::GradientDir::ToB
-                | crate::ui::style::GradientDir::ToT
-                | crate::ui::style::GradientDir::ToTR
-                | crate::ui::style::GradientDir::ToTL));
+            s.grad_dir = Some(matches!(
+                d,
+                crate::ui::style::GradientDir::ToB
+                    | crate::ui::style::GradientDir::ToT
+                    | crate::ui::style::GradientDir::ToTR
+                    | crate::ui::style::GradientDir::ToTL
+            ));
         }
         StyleClass::GradientFrom(c) => s.grad_from = resolve_typed_color(c),
         StyleClass::GradientTo(c) => s.grad_to = resolve_typed_color(c),
@@ -3053,7 +3451,11 @@ fn rasterize_canvas_scene(
         if stroke.points.is_empty() {
             continue;
         }
-        let color = css_color_tiny(if stroke.eraser { eraser_color } else { &stroke.color });
+        let color = css_color_tiny(if stroke.eraser {
+            eraser_color
+        } else {
+            &stroke.color
+        });
         if stroke.points.len() == 1 {
             let (px, py) = stroke.points[0];
             let path = tiny_skia::PathBuilder::from_circle(
@@ -3061,7 +3463,13 @@ fn rasterize_canvas_scene(
                 py * sy,
                 (stroke.width / 2.0).max(0.5),
             )?;
-            pm.fill_path(&path, &solid_paint(color), tiny_skia::FillRule::Winding, identity, None);
+            pm.fill_path(
+                &path,
+                &solid_paint(color),
+                tiny_skia::FillRule::Winding,
+                identity,
+                None,
+            );
             continue;
         }
         let mut pb = tiny_skia::PathBuilder::new();
@@ -3112,7 +3520,13 @@ fn rasterize_canvas_scene(
         } else {
             tiny_skia::PathBuilder::from_circle(cx, cy, node.r.unwrap_or(16.0) * sx)?
         };
-        pm.fill_path(&path, &solid_paint(color), tiny_skia::FillRule::Winding, identity, None);
+        pm.fill_path(
+            &path,
+            &solid_paint(color),
+            tiny_skia::FillRule::Winding,
+            identity,
+            None,
+        );
     }
     // labels：软栅格无文本面——not-yet（043 样板 strokes 主路径无撞；
     // 049 label 视觉缺席为已知边界，文本栅格归后续字体臂）。
@@ -3155,12 +3569,11 @@ mod tests {
         fn view(&self) -> View<Self::Msg> {
             View::col()
                 .spacing(8)
-                .child(
-                    View::text_styled(format!("count: {}", self.count), "text-lg text-slate-200"),
-                )
-                .child(
-                    View::button("+").on_click(|_| CounterMsg::Inc).build(),
-                )
+                .child(View::text_styled(
+                    format!("count: {}", self.count),
+                    "text-lg text-slate-200",
+                ))
+                .child(View::button("+").on_click(|_| CounterMsg::Inc).build())
                 .build()
         }
     }
@@ -3232,7 +3645,9 @@ mod tests {
         fn on(&mut self, _msg: ()) {}
 
         fn view(&self) -> View<Self::Msg> {
-            View::col().child(View::text_styled("abcd", "text-base")).build()
+            View::col()
+                .child(View::text_styled("abcd", "text-base"))
+                .build()
         }
     }
 
@@ -3246,10 +3661,22 @@ mod tests {
             .ops
             .iter()
             .filter_map(|op| match op {
-                DrawOp::Text { x, y, size, line_height, text, .. }
-                | DrawOp::TextStyled { x, y, size, line_height, text, .. } => {
-                    Some((*x, *y, *line_height, measure_text(text, *size)))
+                DrawOp::Text {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    text,
+                    ..
                 }
+                | DrawOp::TextStyled {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    text,
+                    ..
+                } => Some((*x, *y, *line_height, measure_text(text, *size))),
                 _ => None,
             })
             .collect();
@@ -3259,8 +3686,14 @@ mod tests {
         let avail_h = 320.0 - MARGIN * 2.0;
         let want_x = MARGIN + (avail_w - natural) / 2.0;
         let want_y = MARGIN + (avail_h - line_h) / 2.0;
-        assert!((x - want_x).abs() < 1.0, "文本 x 应居中于 {want_x}，实得 {x}");
-        assert!((y - want_y).abs() < 1.0, "文本 y 应居中于 {want_y}，实得 {y}");
+        assert!(
+            (x - want_x).abs() < 1.0,
+            "文本 x 应居中于 {want_x}，实得 {x}"
+        );
+        assert!(
+            (y - want_y).abs() < 1.0,
+            "文本 y 应居中于 {want_y}，实得 {y}"
+        );
     }
 
     /// 根显式视口类（h-screen/w-screen 族）= 满幅意图 → 双轴豁免，
@@ -3290,7 +3723,11 @@ mod tests {
             })
             .collect();
         assert_eq!(xs.len(), 1);
-        assert!((xs[0] - MARGIN).abs() < 1.0, "视口类根应豁免平移（x={}), 期望 {MARGIN}", xs[0]);
+        assert!(
+            (xs[0] - MARGIN).abs() < 1.0,
+            "视口类根应豁免平移（x={}), 期望 {MARGIN}",
+            xs[0]
+        );
     }
 
     /// AUTO_NO_AUTOCENTER=1 → 通道旁路（构造期读取——nextest 逐测试
@@ -3309,7 +3746,11 @@ mod tests {
             })
             .collect();
         assert_eq!(xs.len(), 1);
-        assert!((xs[0] - MARGIN).abs() < 1.0, "env 门应旁路平移（x={}), 期望 {MARGIN}", xs[0]);
+        assert!(
+            (xs[0] - MARGIN).abs() < 1.0,
+            "env 门应旁路平移（x={}), 期望 {MARGIN}",
+            xs[0]
+        );
     }
 
     /// 命中表与 ops 同 delta（按钮探针：hit rect 中心 = 视口中心 ±1）。
@@ -3339,8 +3780,7 @@ mod tests {
         assert!(!quads.is_empty(), "按钮 quad 形态");
         assert!(!p.hits.is_empty(), "按钮命中登记（on_click 在场）");
         // ops 与 hits 的联合包围盒中心 = 视口中心（双轴）。
-        let (mut min_x, mut min_y, mut max_x, mut max_y) =
-            (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        let (mut min_x, mut min_y, mut max_x, mut max_y) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
         for r in quads.iter().copied() {
             min_x = min_x.min(r.x);
             min_y = min_y.min(r.y);
@@ -3390,7 +3830,11 @@ mod tests {
         let DrawOp::Text { color, size, .. } = frame.ops[0] else {
             panic!("首 op 应为 Text");
         };
-        assert_eq!(color, Rgba8::new(226, 232, 240, 255), "text-slate-200 语义色");
+        assert_eq!(
+            color,
+            Rgba8::new(226, 232, 240, 255),
+            "text-slate-200 语义色"
+        );
         assert_eq!(size, 18.0, "text-lg 字号档");
     }
 
@@ -3493,7 +3937,9 @@ mod tests {
             type Msg = WMsg;
             fn on(&mut self, _msg: Self::Msg) {}
             fn view(&self) -> View<Self::Msg> {
-                View::slider(0.0..=1.0, 0.5).on_change(|_| WMsg::Nop).build()
+                View::slider(0.0..=1.0, 0.5)
+                    .on_change(|_| WMsg::Nop)
+                    .build()
             }
         }
 
@@ -3565,7 +4011,10 @@ mod tests {
 
         let p = proj_center_off(Shadowed, 480.0, 320.0);
         let err = p.ensure_covered().unwrap_err();
-        assert!(err.contains("style:rotate-1"), "native 无 rotate 渲染: {err}");
+        assert!(
+            err.contains("style:rotate-1"),
+            "native 无 rotate 渲染: {err}"
+        );
     }
 
     /// PLAN-032 T-02（D3）：hidden = display:none——子树整体不渲染不占位
@@ -3603,7 +4052,10 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(lines.iter().map(|(_, t)| *t).collect::<Vec<_>>(), vec!["A", "C"]);
+        assert_eq!(
+            lines.iter().map(|(_, t)| *t).collect::<Vec<_>>(),
+            vec!["A", "C"]
+        );
         let yc = lines[1].0;
 
         #[derive(Debug)]
@@ -3694,10 +4146,24 @@ mod tests {
                 // 直加，z-20 后绘置顶）。
                 View::col()
                     .style("relative w-full")
-                    .child(View::button("cover").style("h-32 w-full").on_click(|_| AMsg::Noop).build())
-                    .child(View::text_styled("badge", "absolute bottom-0 left-0 right-0 text-xs"))
-                    .child(View::text_styled("tag", "absolute top-1 left-2 z-20 text-xs"))
-                    .child(View::text_styled("under", "absolute top-1 left-2 z-10 text-xs"))
+                    .child(
+                        View::button("cover")
+                            .style("h-32 w-full")
+                            .on_click(|_| AMsg::Noop)
+                            .build(),
+                    )
+                    .child(View::text_styled(
+                        "badge",
+                        "absolute bottom-0 left-0 right-0 text-xs",
+                    ))
+                    .child(View::text_styled(
+                        "tag",
+                        "absolute top-1 left-2 z-20 text-xs",
+                    ))
+                    .child(View::text_styled(
+                        "under",
+                        "absolute top-1 left-2 z-10 text-xs",
+                    ))
                     .build()
             }
         }
@@ -3721,16 +4187,29 @@ mod tests {
         // - 行高(12×1.35=16.2) = 121.8；right-0 反算被 left-0 过约束覆盖
         ///（left 胜——CSS ltr 同语义），x = 父左 10。
         let (bx, by) = find("badge");
-        assert!((by - (10.0 + 128.0 - 16.2)).abs() < 0.01, "badge bottom 反算: {by}");
-        assert!((bx - 10.0).abs() < 0.01, "badge left-0（right 过约束让位）: {bx}");
+        assert!(
+            (by - (10.0 + 128.0 - 16.2)).abs() < 0.01,
+            "badge bottom 反算: {by}"
+        );
+        assert!(
+            (bx - 10.0).abs() < 0.01,
+            "badge left-0（right 过约束让位）: {bx}"
+        );
         // tag/under：top-1(4px)/left-2(8px) 直加；z-10 先绘、z-20 后绘
         ///（ops 序 = 覆盖序，稳定排序文档序同 z）。
         let (tx, ty) = find("tag");
         let (ux, uy) = find("under");
-        assert!((tx - 18.0).abs() < 0.01 && (ty - 14.0).abs() < 0.01, "tag top/left 直加: {tx},{ty}");
-        assert!((ux - 18.0).abs() < 0.01 && (uy - 14.0).abs() < 0.01, "under 同锚");
         assert!(
-            ops.iter().position(|(_, _, n)| *n == "under") < ops.iter().position(|(_, _, n)| *n == "tag"),
+            (tx - 18.0).abs() < 0.01 && (ty - 14.0).abs() < 0.01,
+            "tag top/left 直加: {tx},{ty}"
+        );
+        assert!(
+            (ux - 18.0).abs() < 0.01 && (uy - 14.0).abs() < 0.01,
+            "under 同锚"
+        );
+        assert!(
+            ops.iter().position(|(_, _, n)| *n == "under")
+                < ops.iter().position(|(_, _, n)| *n == "tag"),
             "z-20 tag 后绘置顶（z-10 under 先绘）"
         );
         // 覆盖序：absolutes 追加主序之后（cover 按钮文本在前）。
@@ -3741,7 +4220,11 @@ mod tests {
         );
         // absolutes 零流内占位：badge 之前仅 cover 一项文本（tag/under 均
         /// 延后），父内容高 = 纯流内件（button 128）。
-        assert_eq!(ops.iter().take_while(|(_, _, n)| *n != "badge").count(), 1, "absolutes 零流内占位");
+        assert_eq!(
+            ops.iter().take_while(|(_, _, n)| *n != "badge").count(),
+            1,
+            "absolutes 零流内占位"
+        );
     }
 
     /// PLAN-032 T-05（D1 分层）：fixed/sticky 降级放行——in-flow no-op
@@ -3783,7 +4266,8 @@ mod tests {
         }
 
         let mut p = proj_center_off(DegradedBox, 480.0, 320.0);
-        p.ensure_covered().expect("fixed/sticky 降级放行（prefixes ⑪）");
+        p.ensure_covered()
+            .expect("fixed/sticky 降级放行（prefixes ⑪）");
         let frame = p.render_frame();
         let mut q = proj_center_off(ControlBox, 480.0, 320.0);
         let control = q.render_frame();
@@ -3796,7 +4280,11 @@ mod tests {
                 })
                 .collect()
         }
-        assert_eq!(coords(&frame), coords(&control), "fixed/sticky = in-flow 原位渲染（降级随注非错绘）");
+        assert_eq!(
+            coords(&frame),
+            coords(&control),
+            "fixed/sticky = in-flow 原位渲染（降级随注非错绘）"
+        );
     }
 
     /// PLAN-032 T-04（D4）：样式版 grid 分岔——`col (style: "grid
@@ -3876,7 +4364,11 @@ mod tests {
                 })
                 .collect()
         };
-        assert_eq!(coords(&style_frame), coords(&variant_frame), "样式 grid 与变体 Grid 同构");
+        assert_eq!(
+            coords(&style_frame),
+            coords(&variant_frame),
+            "样式 grid 与变体 Grid 同构"
+        );
         // 2 列几何：a/b 同行（y 相等），c/d 同行且 y 前进一行高。
         let cs = coords(&style_frame);
         let (a, b, c) = (cs[0].clone(), cs[1].clone(), cs[2].clone());
@@ -3885,7 +4377,11 @@ mod tests {
         // GridRows(2) × 4 cells → 2 列（与 cols-2 同布局）。
         let mut r = proj_center_off(RowsGrid, 480.0, 320.0);
         let rows_frame = r.render_frame();
-        assert_eq!(coords(&rows_frame), coords(&style_frame), "grid-rows-2 × 4 = 2 列同构");
+        assert_eq!(
+            coords(&rows_frame),
+            coords(&style_frame),
+            "grid-rows-2 × 4 = 2 列同构"
+        );
     }
 
     /// PLAN-032 T-03（D2）：tabs kind golden——default/enclosed 两变体 ×
@@ -3930,13 +4426,25 @@ mod tests {
                         TbMsg::Pick(idx, val.to_string())
                     })),
                     style: None,
-                    variant: if self.which == 0 { TabsVariant::Default } else { TabsVariant::Enclosed },
+                    variant: if self.which == 0 {
+                        TabsVariant::Default
+                    } else {
+                        TabsVariant::Enclosed
+                    },
                 }
             }
         }
 
         // default：托盘两等宽按钮 + 选中面板；切换闭环。
-        let mut p = proj_center_off(TabsBox { which: 0, sel: 0, seen: vec![] }, 480.0, 320.0);
+        let mut p = proj_center_off(
+            TabsBox {
+                which: 0,
+                sel: 0,
+                seen: vec![],
+            },
+            480.0,
+            320.0,
+        );
         p.ensure_covered().expect("tabs 入覆盖集");
         let frame = p.render_frame();
         assert_eq!(
@@ -3946,12 +4454,18 @@ mod tests {
         );
         let w = (480.0 - 20.0) / 2.0;
         assert!(
-            quads_of(&frame).iter().any(|r| *r == WRect::new(10.0, 10.0, w, 26.9)),
+            quads_of(&frame)
+                .iter()
+                .any(|r| *r == WRect::new(10.0, 10.0, w, 26.9)),
             "等宽托盘项: {:?}",
             quads_of(&frame)
         );
         click(&mut p, 10.0 + w + 10.0, 18.0); // 第二项（Beta）
-        assert_eq!(p.component().seen, vec!["b".to_string()], "on_select value 串载荷");
+        assert_eq!(
+            p.component().seen,
+            vec!["b".to_string()],
+            "on_select value 串载荷"
+        );
         let frame = p.render_frame();
         assert_eq!(
             texts_of(&frame),
@@ -3960,9 +4474,21 @@ mod tests {
         );
 
         // enclosed：托盘底 + 选中下划线（2px 底缘条）。
-        let mut q = proj_center_off(TabsBox { which: 1, sel: 1, seen: vec![] }, 480.0, 320.0);
+        let mut q = proj_center_off(
+            TabsBox {
+                which: 1,
+                sel: 1,
+                seen: vec![],
+            },
+            480.0,
+            320.0,
+        );
         let frame = q.render_frame();
-        assert_eq!(texts_of(&frame), vec!["Alpha", "Beta", "panel-b"], "enclosed：内容同律");
+        assert_eq!(
+            texts_of(&frame),
+            vec!["Alpha", "Beta", "panel-b"],
+            "enclosed：内容同律"
+        );
         assert!(
             quads_of(&frame)
                 .iter()
@@ -4041,9 +4567,8 @@ mod tests {
             }
             fn view(&self) -> View<Self::Msg> {
                 // 门时刻 imagesurface 不可见 → Covered；Toggle 后动态出现。
-                let mut col = View::col().child(
-                    View::button("t").on_click(|_| BMsg::Toggle).build(),
-                );
+                let mut col =
+                    View::col().child(View::button("t").on_click(|_| BMsg::Toggle).build());
                 if self.show_grid {
                     col = col.child(View::image_surface("x.png"));
                 }
@@ -4067,7 +4592,9 @@ mod tests {
         let frame = p.render_frame();
         assert_eq!(p.uncovered_seen(), ["imagesurface"], "动态分支遭遇留痕");
         assert!(
-            texts_of(&frame).iter().any(|t| t.starts_with("not-rendered: imagesurface")),
+            texts_of(&frame)
+                .iter()
+                .any(|t| t.starts_with("not-rendered: imagesurface")),
             "占位盒显式标记: {:?}",
             texts_of(&frame)
         );
@@ -4161,13 +4688,24 @@ mod tests {
     /// 色 op）；Cancelled 消解；无聚焦丢弃 + ime_dropped 留痕）。
     #[test]
     fn ime_commit_preedit_cancelled_loop() {
-        let mut p = proj_center_off(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
+        let mut p = proj_center_off(
+            Converter {
+                celsius: 0.0,
+                fahrenheit: 32.0,
+            },
+            480.0,
+            320.0,
+        );
         p.ensure_covered().expect("converter Covered");
         let _ = p.render_frame(); // 命中表首帧（click 消费上一帧 hits）
-        // 聚焦 celsius（首 input 槽位——003 金样同位坐标）。
+                                  // 聚焦 celsius（首 input 槽位——003 金样同位坐标）。
         click(&mut p, 100.0, 26.0);
         // ① ImePreedit：暂存 → 聚焦框尾拼 op（差分色）。
-        p.on_input(&InputMsg::ImePreedit { wid: 1, text: "中文".into(), selection: None });
+        p.on_input(&InputMsg::ImePreedit {
+            wid: 1,
+            text: "中文".into(),
+            selection: None,
+        });
         let frame = p.render_frame();
         let texts = texts_of(&frame);
         assert!(
@@ -4188,8 +4726,14 @@ mod tests {
             "Cancelled 消解 preedit"
         );
         // ③ ImeCommit：并入 buffer → on_change 派发（值 5 → 帧联动）。
-        p.on_input(&InputMsg::ImeCommit { wid: 1, text: "5".into() });
-        p.on_input(&InputMsg::ImeCommit { wid: 1, text: "中文".into() });
+        p.on_input(&InputMsg::ImeCommit {
+            wid: 1,
+            text: "5".into(),
+        });
+        p.on_input(&InputMsg::ImeCommit {
+            wid: 1,
+            text: "中文".into(),
+        });
         assert_eq!(p.ime_dropped(), 0, "聚焦在册不丢弃");
         let frame = p.render_frame();
         let texts = texts_of(&frame);
@@ -4202,10 +4746,28 @@ mod tests {
             "on_change 派发联动帧（celsius=5中文 parse 前缀 5 → f=41）: {texts:?}"
         );
         // ④ 无聚焦 Commit = 丢弃留痕。
-        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 27, modifiers: 0 }); // Esc 不失焦——改走结构变化失焦：省略，直接测无聚焦路径
-        let mut p2 = proj_center_off(Converter { celsius: 0.0, fahrenheit: 32.0 }, 480.0, 320.0);
-        p2.on_input(&InputMsg::ImeCommit { wid: 1, text: "x".into() });
-        p2.on_input(&InputMsg::ImePreedit { wid: 1, text: "y".into(), selection: None });
+        p.on_input(&InputMsg::KeyPressed {
+            wid: 1,
+            key: 27,
+            modifiers: 0,
+        }); // Esc 不失焦——改走结构变化失焦：省略，直接测无聚焦路径
+        let mut p2 = proj_center_off(
+            Converter {
+                celsius: 0.0,
+                fahrenheit: 32.0,
+            },
+            480.0,
+            320.0,
+        );
+        p2.on_input(&InputMsg::ImeCommit {
+            wid: 1,
+            text: "x".into(),
+        });
+        p2.on_input(&InputMsg::ImePreedit {
+            wid: 1,
+            text: "y".into(),
+            selection: None,
+        });
         assert_eq!(p2.ime_dropped(), 2, "无聚焦丢弃留痕");
     }
 
@@ -4255,7 +4817,11 @@ mod tests {
         let frame = p.render_frame();
         // 盒 (10,10,320,32) + 1px 边框 + 值文本（未聚焦 = 视图值）。
         assert_eq!(quads_of(&frame)[0], WRect::new(10.0, 10.0, 320.0, 32.0));
-        assert_eq!(texts_of(&frame), vec!["Zhang"], "值文本（placeholder 隐藏）");
+        assert_eq!(
+            texts_of(&frame),
+            vec!["Zhang"],
+            "值文本（placeholder 隐藏）"
+        );
         // 空值 → placeholder（PLACEHOLDER_FG 色）。
         #[derive(Debug)]
         struct Empty;
@@ -4296,15 +4862,22 @@ mod tests {
     #[test]
     fn focus_edit_closure_converter() {
         let mut p = proj_center_off(
-            Converter { celsius: 0.0, fahrenheit: 32.0 },
+            Converter {
+                celsius: 0.0,
+                fahrenheit: 32.0,
+            },
             480.0,
             320.0,
         );
         p.ensure_covered().expect("form 级入覆盖集");
         let frame = p.render_frame();
         // 双 input 框（槽 0 = celsius y=10，槽 1 = fahrenheit y=50——gap 8）。
-        assert!(quads_of(&frame).iter().any(|r| *r == WRect::new(10.0, 10.0, 320.0, 32.0)));
-        assert!(quads_of(&frame).iter().any(|r| *r == WRect::new(10.0, 50.0, 320.0, 32.0)));
+        assert!(quads_of(&frame)
+            .iter()
+            .any(|r| *r == WRect::new(10.0, 10.0, 320.0, 32.0)));
+        assert!(quads_of(&frame)
+            .iter()
+            .any(|r| *r == WRect::new(10.0, 50.0, 320.0, 32.0)));
 
         // 点击聚焦槽 0 → 键入 "100" → 换算联动（fahrenheit = 212）。
         click(&mut p, 100.0, 26.0);
@@ -4326,7 +4899,11 @@ mod tests {
         click(&mut p, 100.0, 66.0);
         assert_eq!(p.focused_input, Some(1));
         assert_eq!(p.input_buffer, "212", "聚焦时 buffer 自视图值初始化");
-        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 8, modifiers: 0 });
+        p.on_input(&InputMsg::KeyPressed {
+            wid: 1,
+            key: 8,
+            modifiers: 0,
+        });
         let frame = p.render_frame();
         let f = 21.0_f64;
         let c = (f - 32.0) * 5.0 / 9.0;
@@ -4361,7 +4938,11 @@ mod tests {
         }
         fn view(&self) -> View<Self::Msg> {
             View::col()
-                .child(View::slider(0.0..=100.0, self.vol).on_change(SMsg::Vol).build())
+                .child(
+                    View::slider(0.0..=100.0, self.vol)
+                        .on_change(SMsg::Vol)
+                        .build(),
+                )
                 .child(View::text(format!("vol: {}", self.vol)))
                 .build()
         }
@@ -4375,9 +4956,18 @@ mod tests {
         // track (10, 18, 320, 4) 底；fill (10,18,80,4)（25%）；knob
         // (84,14,12,12)。布局：h=20 → cy=20；vx = 10 + 320×0.25 = 90。
         let qs = quads_of(&frame);
-        assert!(qs.iter().any(|r| *r == WRect::new(10.0, 18.0, 320.0, 4.0)), "track: {qs:?}");
-        assert!(qs.iter().any(|r| *r == WRect::new(10.0, 18.0, 80.0, 4.0)), "fill 25%");
-        assert!(qs.iter().any(|r| *r == WRect::new(84.0, 14.0, 12.0, 12.0)), "knob: {qs:?}");
+        assert!(
+            qs.iter().any(|r| *r == WRect::new(10.0, 18.0, 320.0, 4.0)),
+            "track: {qs:?}"
+        );
+        assert!(
+            qs.iter().any(|r| *r == WRect::new(10.0, 18.0, 80.0, 4.0)),
+            "fill 25%"
+        );
+        assert!(
+            qs.iter().any(|r| *r == WRect::new(84.0, 14.0, 12.0, 12.0)),
+            "knob: {qs:?}"
+        );
         // 值文本（第二子）。
         assert!(texts_of(&frame).iter().any(|t| t.starts_with("vol: 25")),);
     }
@@ -4417,7 +5007,10 @@ mod tests {
                 }
             }
             fn view(&self) -> View<Self::Msg> {
-                View::slider(0.0..=100.0, self.seen).on_change(SMsg::Vol).step(30.0).build()
+                View::slider(0.0..=100.0, self.seen)
+                    .on_change(SMsg::Vol)
+                    .step(30.0)
+                    .build()
             }
         }
         let mut sp = proj_center_off(Stepper { seen: 0.0 }, 480.0, 320.0);
@@ -4455,7 +5048,11 @@ mod tests {
             }
         }
         fn view(&self) -> View<Self::Msg> {
-            let options = vec!["Small".to_string(), "Medium".to_string(), "Large".to_string()];
+            let options = vec![
+                "Small".to_string(),
+                "Medium".to_string(),
+                "Large".to_string(),
+            ];
             let selected_index = options.iter().position(|o| o == &self.pick);
             View::col()
                 .child(View::Select {
@@ -4472,7 +5069,10 @@ mod tests {
     #[test]
     fn select_closed_golden_and_open() {
         let mut p = proj_center_off(
-            SelectBox { pick: "Small".into(), open_seen: false },
+            SelectBox {
+                pick: "Small".into(),
+                open_seen: false,
+            },
             480.0,
             320.0,
         );
@@ -4480,18 +5080,26 @@ mod tests {
         let frame = p.render_frame();
         // 闭态：值盒 + 当前值 + ▾；无选项列。
         assert_eq!(texts_of(&frame), vec!["Small", "▾", "pick: Small"]);
-        assert!(quads_of(&frame).iter().any(|r| *r == WRect::new(10.0, 10.0, 320.0, 32.0)));
+        assert!(quads_of(&frame)
+            .iter()
+            .any(|r| *r == WRect::new(10.0, 10.0, 320.0, 32.0)));
 
         // 点击盒 → 开（覆盖序选项列在主块后追加）。
         click(&mut p, 100.0, 26.0);
         let frame = p.render_frame();
         let texts = texts_of(&frame);
-        assert_eq!(&texts[..5], &["Small", "▾", "pick: Small", "Small", "Medium"], "选项列置顶: {texts:?}");
+        assert_eq!(
+            &texts[..5],
+            &["Small", "▾", "pick: Small", "Small", "Medium"],
+            "选项列置顶: {texts:?}"
+        );
         assert!(texts.contains(&"Large"));
         // 高亮当前项（选项 0 rect (10,42,320,32) quad = BUTTON_BG；其余
         // 选项 INPUT_BG）。
         let hl = frame.ops.iter().find_map(|op| match op {
-            DrawOp::Quad { rect, color } if *rect == WRect::new(10.0, 42.0, 320.0, 32.0) => Some(*color),
+            DrawOp::Quad { rect, color } if *rect == WRect::new(10.0, 42.0, 320.0, 32.0) => {
+                Some(*color)
+            }
             _ => None,
         });
         assert_eq!(hl, Some(accent_fill()), "当前项高亮");
@@ -4500,15 +5108,18 @@ mod tests {
     #[test]
     fn select_option_dispatch_and_close() {
         let mut p = proj_center_off(
-            SelectBox { pick: "Small".into(), open_seen: false },
+            SelectBox {
+                pick: "Small".into(),
+                open_seen: false,
+            },
             480.0,
             320.0,
         );
         let _ = p.render_frame();
         click(&mut p, 100.0, 26.0); // 开
         let _ = p.render_frame(); // 开态帧刷新命中表（泵语义：rev 前进即产帧）。
-        // 命中选项 1（Medium）——rect (10, 74, 320, 32) 中心（选项列
-        // 自盒底 42 起每项 32px）。
+                                  // 命中选项 1（Medium）——rect (10, 74, 320, 32) 中心（选项列
+                                  // 自盒底 42 起每项 32px）。
         click(&mut p, 170.0, 90.0);
         let frame = p.render_frame();
         assert!(
@@ -4524,7 +5135,10 @@ mod tests {
     #[test]
     fn select_outside_click_closes_only() {
         let mut p = proj_center_off(
-            SelectBox { pick: "Small".into(), open_seen: false },
+            SelectBox {
+                pick: "Small".into(),
+                open_seen: false,
+            },
             480.0,
             320.0,
         );
@@ -4537,7 +5151,9 @@ mod tests {
         let frame = p.render_frame();
         assert_eq!(p.select_open, None, "外点关闭");
         assert!(
-            texts_of(&frame).iter().any(|t| t.starts_with(&format!("pick: {before_pick}"))),
+            texts_of(&frame)
+                .iter()
+                .any(|t| t.starts_with(&format!("pick: {before_pick}"))),
             "外点不派发: {:?}",
             texts_of(&frame)
         );
@@ -4546,17 +5162,28 @@ mod tests {
     #[test]
     fn select_esc_closes() {
         let mut p = proj_center_off(
-            SelectBox { pick: "Small".into(), open_seen: false },
+            SelectBox {
+                pick: "Small".into(),
+                open_seen: false,
+            },
             480.0,
             320.0,
         );
         let _ = p.render_frame();
         click(&mut p, 100.0, 26.0); // 开
         assert_eq!(p.select_open, Some(0));
-        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 27, modifiers: 0 });
+        p.on_input(&InputMsg::KeyPressed {
+            wid: 1,
+            key: 27,
+            modifiers: 0,
+        });
         assert_eq!(p.select_open, None, "Esc 关闭");
         let frame = p.render_frame();
-        assert_eq!(texts_of(&frame), vec!["Small", "▾", "pick: Small"], "回闭态");
+        assert_eq!(
+            texts_of(&frame),
+            vec!["Small", "▾", "pick: Small"],
+            "回闭态"
+        );
     }
 
     // —— PLAN-025 T-05 右键/滚轮/Scissor 单测 ——
@@ -4602,7 +5229,8 @@ mod tests {
     #[test]
     fn scrollable_scissor_frame_and_wheel() {
         let mut p = proj_center_off(Scroller { offset_y: 0.0 }, 480.0, 320.0);
-        p.ensure_covered().expect("scroll 入覆盖集（layouts + scroll）");
+        p.ensure_covered()
+            .expect("scroll 入覆盖集（layouts + scroll）");
         let frame = p.render_frame();
         // 溢出（内容 72.9 > 视口 40）→ Scissor push/pop 对在册。
         let scissors = frame
@@ -4614,7 +5242,11 @@ mod tests {
 
         // 滚轮（唯一 Scrollable 兜底——指针位缺席也能定位）dy=+15 →
         // offset' = clamp(0+15, 0..=32.9) = 15 → on_scroll 派发 → app 状态。
-        p.on_input(&InputMsg::Scroll { wid: 1, dx: 0.0, dy: 15.0 });
+        p.on_input(&InputMsg::Scroll {
+            wid: 1,
+            dx: 0.0,
+            dy: 15.0,
+        });
         let frame = p.render_frame();
         assert!(
             texts_of(&frame).iter().any(|t| *t == "oy: 15"),
@@ -4624,7 +5256,11 @@ mod tests {
 
         // 越界钳制：dy=+1000 → offset' = content_h - viewport_h
         // （内容 3×21.6 + 2×gap8 = 80.8 → max_oy ≈ 40.8）。
-        p.on_input(&InputMsg::Scroll { wid: 1, dx: 0.0, dy: 1000.0 });
+        p.on_input(&InputMsg::Scroll {
+            wid: 1,
+            dx: 0.0,
+            dy: 1000.0,
+        });
         let frame = p.render_frame();
         assert!(
             texts_of(&frame).iter().any(|t| t.starts_with("oy: 40.8")),
@@ -4655,21 +5291,26 @@ mod tests {
             }
             fn view(&self) -> View<Self::Msg> {
                 View::col()
-                    .child(
-                        View::Button {
-                            label: "ctx".into(),
-                            onclick: RMsg::Left,
-                            style: None,
-                            on_right_click: Some(RMsg::Right),
-                            content: None,
-                            disabled: false,
-                        },
-                    )
+                    .child(View::Button {
+                        label: "ctx".into(),
+                        onclick: RMsg::Left,
+                        style: None,
+                        on_right_click: Some(RMsg::Right),
+                        content: None,
+                        disabled: false,
+                    })
                     .child(View::text(format!("l{} r{}", self.lefts, self.rights)))
                     .build()
             }
         }
-        let mut p = proj_center_off(RClick { lefts: 0, rights: 0 }, 480.0, 320.0);
+        let mut p = proj_center_off(
+            RClick {
+                lefts: 0,
+                rights: 0,
+            },
+            480.0,
+            320.0,
+        );
         let _ = p.render_frame();
         // 按钮盒 (10,10,120,36) 中心右键 → Right 派发（帧文本 l0 r1）。
         p.on_input(&InputMsg::PointerPressed {
@@ -4730,7 +5371,11 @@ mod tests {
                     .child(View::textarea("ta").build())
                     .child(View::checkbox(true, "cb"))
                     .child(View::radio(false, "r"))
-                    .child(View::slider(0.0..=1.0, 0.5).on_change(|_| MMsg::Nop).build())
+                    .child(
+                        View::slider(0.0..=1.0, 0.5)
+                            .on_change(|_| MMsg::Nop)
+                            .build(),
+                    )
                     .child(View::Select {
                         options: vec!["o".into()],
                         selected_index: Some(0),
@@ -4808,13 +5453,23 @@ mod tests {
                             .line_numbers(true)
                             .build(),
                     )
-                    .child(View::grid().cols(2).spacing(8).child(View::text("g1")).child(View::text("g2")).build())
+                    .child(
+                        View::grid()
+                            .cols(2)
+                            .spacing(8)
+                            .child(View::text("g1"))
+                            .child(View::text("g2"))
+                            .build(),
+                    )
                     .child(View::row().child(View::text("r1")).build())
                     .child(View::container(View::text("c")).build())
                     .child(View::list(vec![View::text("l1")]).build())
                     // 透传壳（layouts: empty / anchorslot）。
                     .child(View::spacer())
-                    .child(View::AnchorSlot { index: 0, child: Box::new(View::text("a")) })
+                    .child(View::AnchorSlot {
+                        index: 0,
+                        child: Box::new(View::text("a")),
+                    })
                     .build()
             }
         }
@@ -4851,7 +5506,10 @@ mod tests {
             assert!(produced.contains(kind), "表内 kind 无投影臂夹具: {kind}");
         }
         for layout in &set.layouts {
-            assert!(produced.contains(layout), "表内 layout 无投影臂夹具: {layout}");
+            assert!(
+                produced.contains(layout),
+                "表内 layout 无投影臂夹具: {layout}"
+            );
         }
     }
 
@@ -4890,7 +5548,9 @@ mod tests {
         p.ensure_covered().expect("codeeditor 入覆盖集");
         let frame = p.render_frame();
         assert!(
-            texts_of(&frame).iter().any(|t| t.contains("let") || t.contains("x")),
+            texts_of(&frame)
+                .iter()
+                .any(|t| t.contains("let") || t.contains("x")),
             "codeeditor 文本 run 入帧: {:?}",
             texts_of(&frame)
         );
@@ -4900,16 +5560,32 @@ mod tests {
         click(&mut p, 240.0, 100.0);
         p.on_input(&InputMsg::CharTyped { wid: 1, ch: '0' });
         let after = ce::code_editor_text(&key).expect("注册表键在场");
-        assert_eq!(after.len(), before.len() + 1, "键入 1 字符入注册表: {after:?}");
+        assert_eq!(
+            after.len(),
+            before.len() + 1,
+            "键入 1 字符入注册表: {after:?}"
+        );
         assert_eq!(p.component().changed, 1, "on_change 派发 1 次");
-        assert_eq!(crate::ui::iced::last_input_text(), after, "INPUT_TEXT 全文代写");
+        assert_eq!(
+            crate::ui::iced::last_input_text(),
+            after,
+            "INPUT_TEXT 全文代写"
+        );
         // 退格回原长 + 同通道派发。
-        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 8, modifiers: 0 });
+        p.on_input(&InputMsg::KeyPressed {
+            wid: 1,
+            key: 8,
+            modifiers: 0,
+        });
         assert_eq!(ce::code_editor_text(&key).unwrap().len(), before.len());
         assert_eq!(p.component().changed, 2, "退格同通道派发");
         // 回车 = 换行插入（key 13 编辑器键面——平面 input 的 Enter
         // not-yet 不受影响，编辑器键位表先行）。
-        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 13, modifiers: 0 });
+        p.on_input(&InputMsg::KeyPressed {
+            wid: 1,
+            key: 13,
+            modifiers: 0,
+        });
         assert_eq!(
             ce::code_editor_text(&key).unwrap().matches('\n').count(),
             1,
@@ -4917,8 +5593,14 @@ mod tests {
         );
         assert_eq!(p.component().changed, 3, "回车文本变化同通道派发");
         // IME 提交 = 组合串并入（同流）。
-        p.on_input(&InputMsg::ImeCommit { wid: 1, text: "字".to_string() });
-        assert!(ce::code_editor_text(&key).unwrap().ends_with('字'), "IME 提交并入");
+        p.on_input(&InputMsg::ImeCommit {
+            wid: 1,
+            text: "字".to_string(),
+        });
+        assert!(
+            ce::code_editor_text(&key).unwrap().ends_with('字'),
+            "IME 提交并入"
+        );
         // 复帧（rev 前进——换行后两行仍入帧）。
         let frame2 = p.render_frame();
         assert!(!frame2.ops.is_empty());
@@ -4932,17 +5614,23 @@ mod tests {
     /// 像素臂在册。
     #[test]
     fn native_queue_golden_003_shape() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("test/parity/native");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("test/parity/native");
         std::fs::create_dir_all(&dir).expect("mkdir parity/native");
         let mut p = proj_center_off(
-            Converter { celsius: 0.0, fahrenheit: 32.0 },
+            Converter {
+                celsius: 0.0,
+                fahrenheit: 32.0,
+            },
             480.0,
             320.0,
         );
         let mut out = String::new();
         out.push_str("---- frame 1 ----\n");
-        out.push_str(&crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(&p.render_frame()));
+        out.push_str(
+            &crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(
+                &p.render_frame(),
+            ),
+        );
         // 输入交互差分：聚焦 celsius → 键入 "0100"（视图值 0 + 100）→
         // 换算联动复帧。
         click(&mut p, 100.0, 26.0);
@@ -4950,19 +5638,21 @@ mod tests {
             p.on_input(&InputMsg::CharTyped { wid: 1, ch });
         }
         out.push_str("---- after input ----\n");
-        out.push_str(&crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(&p.render_frame()));
+        out.push_str(
+            &crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(
+                &p.render_frame(),
+            ),
+        );
 
         let exp_path = dir.join("003-converter.expected.txt");
         if std::env::var("AUTO_WRITE_GOLDEN").is_ok() || !exp_path.is_file() {
             std::fs::write(&exp_path, &out).expect("write golden");
         }
-        let expected = std::fs::read_to_string(&exp_path)
-            .unwrap_or_else(|e| panic!("read golden: {e}"));
+        let expected =
+            std::fs::read_to_string(&exp_path).unwrap_or_else(|e| panic!("read golden: {e}"));
         if out != expected {
             let _ = std::fs::write(dir.join("003-converter.wrong.txt"), &out);
-            panic!(
-                "003 native queue 金样不匹配（见 test/parity/native/003-converter.wrong.txt）"
-            );
+            panic!("003 native queue 金样不匹配（见 test/parity/native/003-converter.wrong.txt）");
         }
     }
 
@@ -5012,9 +5702,7 @@ mod tests {
                 .ops
                 .iter()
                 .filter_map(|op| match op {
-                    DrawOp::Quad { rect, color } => {
-                        Some((rect.x, rect.y, rect.w, rect.h, *color))
-                    }
+                    DrawOp::Quad { rect, color } => Some((rect.x, rect.y, rect.w, rect.h, *color)),
                     _ => None,
                 })
                 .collect()
@@ -5055,10 +5743,8 @@ mod tests {
             .copied()
             .expect("progress track 80×8 (w-20/h-2 刻度)");
         assert!(
-            qs.iter().any(|&(x, y, w, h, _)| x == track.0
-                && y == track.1
-                && w == 40.0
-                && h == 8.0),
+            qs.iter()
+                .any(|&(x, y, w, h, _)| x == track.0 && y == track.1 && w == 40.0 && h == 8.0),
             "progress 0.5 → fill 40×8 同位: {qs:?}"
         );
         // progress 0.25 无尺寸类：w = avail = 480；fill = 120 同位。
@@ -5069,10 +5755,7 @@ mod tests {
             .expect("progress 缺省宽 460×8");
         let fill2 = qs
             .iter()
-            .find(|&&(x, y, w, h, _)| x == track2.0
-                && y == track2.1
-                && w == 115.0
-                && h == 8.0)
+            .find(|&&(x, y, w, h, _)| x == track2.0 && y == track2.1 && w == 115.0 && h == 8.0)
             .copied()
             .expect("progress 0.25 → fill 115×8 同位");
         assert_ne!(
@@ -5127,9 +5810,13 @@ mod tests {
         // 第 1 行第 1 格（文本 a 无 quad）；第 1 行第 2 格按钮 b1：格 x =
         // MARGIN + 1×(226+8) = 244；第 2 行第 1 格 b2：y 下移一行。
         // 按钮宽 = 内容驱动（BUTTON_MIN_W 档），格位 = 等宽格起点。
-        let b1 = quads.iter().find(|&&(x, y, _, _)| x == 244.0 && y == 10.0)
+        let b1 = quads
+            .iter()
+            .find(|&&(x, y, _, _)| x == 244.0 && y == 10.0)
             .expect("b1 格位 (244,10)");
-        let b2 = quads.iter().find(|&&(x, y, _, _)| x == 10.0 && y > b1.1)
+        let b2 = quads
+            .iter()
+            .find(|&&(x, y, _, _)| x == 10.0 && y > b1.1)
             .expect("b2 次行首格");
         let _ = (b1, b2);
         // 命中：b1 按钮中心点击派发 Hit。
@@ -5215,10 +5902,21 @@ mod tests {
                     .build()
             }
         }
-        let mut p = proj_center_off(Toggles { on: false, picked: false }, 480.0, 320.0);
+        let mut p = proj_center_off(
+            Toggles {
+                on: false,
+                picked: false,
+            },
+            480.0,
+            320.0,
+        );
         p.ensure_covered().expect("toggle 族入覆盖集");
         let frame = p.render_frame();
-        assert_eq!(texts_of(&frame), vec!["opt", "pick", "no handler"], "标签随盒渲染");
+        assert_eq!(
+            texts_of(&frame),
+            vec!["opt", "pick", "no handler"],
+            "标签随盒渲染"
+        );
         // checkbox 命中（盒 + 标签整行）：盒 18×18 @ (10,10)，中心 (19,19)。
         click(&mut p, 19.0, 19.0);
         let frame = p.render_frame();
@@ -5253,7 +5951,9 @@ mod tests {
     /// 点击 → count 递增 → L2Detach 出口。
     #[test]
     fn native_client_full_cycle_over_pipe() {
-        use crate::ui::desktop_protocol::client_runtime::{ClientExit, ClientPump, ReconnectPolicy};
+        use crate::ui::desktop_protocol::client_runtime::{
+            ClientExit, ClientPump, ReconnectPolicy,
+        };
         use crate::ui::desktop_protocol::host::ProtocolHost;
         use crate::ui::session::DesktopSession;
 
@@ -5274,9 +5974,12 @@ mod tests {
         let app_end = transport::connect(&pipe, 2000).expect("connect");
         let projector = proj_center_off(Counter { count: 0 }, 480.0, 320.0);
         projector.ensure_covered().expect("counter 级入覆盖集");
-        let reconnect = ReconnectPolicy { pipe: pipe.clone(), budget_ms: 30_000, interval_ms: 50 };
-        let mut client =
-            ClientPump::new(app_end, projector, config, Some(reconnect));
+        let reconnect = ReconnectPolicy {
+            pipe: pipe.clone(),
+            budget_ms: 30_000,
+            interval_ms: 50,
+        };
+        let mut client = ClientPump::new(app_end, projector, config, Some(reconnect));
         let mut server_end = listener.wait_connect().expect("server connect");
 
         // 桌面侧：真实 462 会话 + ProtocolHost 泵（合成走既有通道）。
@@ -5326,14 +6029,19 @@ mod tests {
         let wid = wid.expect("child 已孵化");
         let composed = ph.composed(wid.0).expect("Active 首帧已合成");
         assert!(
-            composed.ops.iter().any(|op| matches!(op, DrawOp::Text { text, .. } if text == "count: 0")),
+            composed
+                .ops
+                .iter()
+                .any(|op| matches!(op, DrawOp::Text { text, .. } if text == "count: 0")),
             "native View 投影帧已入宿主: {composed:?}"
         );
 
         // 协议点击（按钮区内）→ native 命中派发 → 帧递增。
         // 布局：col 顶部 text(10,10,h≈24.3) + gap 8 → 按钮 y≈42.3 x=10
         // w=120 h=36 → 点 (70, 60)。
-        let injected = ph.pointer_down(70.0, 60.0, MouseButton::Left).expect("窗内命中");
+        let injected = ph
+            .pointer_down(70.0, 60.0, MouseButton::Left)
+            .expect("窗内命中");
         server_end.send(&injected).unwrap();
         let mut count_seen = false;
         for _ in 0..1000 {
@@ -5341,7 +6049,11 @@ mod tests {
                 panic!("点击阶段意外出口 {exit:?}");
             }
             if let Some(list) = ph.composed(wid.0) {
-                if list.ops.iter().any(|op| matches!(op, DrawOp::Text { text, .. } if text == "count: 1")) {
+                if list
+                    .ops
+                    .iter()
+                    .any(|op| matches!(op, DrawOp::Text { text, .. } if text == "count: 1"))
+                {
                     count_seen = true;
                     break;
                 }
@@ -5387,7 +6099,10 @@ mod tests {
 
         let app_end = transport::connect(&pipe, 2000).expect("connect");
         let projector = proj_center_off(
-            Converter { celsius: 0.0, fahrenheit: 32.0 },
+            Converter {
+                celsius: 0.0,
+                fahrenheit: 32.0,
+            },
             480.0,
             320.0,
         );
@@ -5450,7 +6165,9 @@ mod tests {
 
         // 协议点击 input 0（rect (10,10,320,32) 中心）→ 聚焦（聚焦
         // 推版一帧——泵数轮消化）。
-        let injected = ph.pointer_down(170.0, 26.0, MouseButton::Left).expect("窗内命中");
+        let injected = ph
+            .pointer_down(170.0, 26.0, MouseButton::Left)
+            .expect("窗内命中");
         server_end.send(&injected).unwrap();
         for _ in 0..10 {
             drive(&mut server_end, &mut ph, &mut client);
@@ -5459,7 +6176,10 @@ mod tests {
 
         // 协议级 CharTyped 注入 "5" → buffer "05" → celsius=5 →
         // fahrenheit=41 联动帧。
-        let typed = ProtocolMsg::Input(InputMsg::CharTyped { wid: wid.0, ch: '5' });
+        let typed = ProtocolMsg::Input(InputMsg::CharTyped {
+            wid: wid.0,
+            ch: '5',
+        });
         server_end.send(&typed).unwrap();
         let mut seen = false;
         for _ in 0..1000 {
@@ -5470,7 +6190,11 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        assert!(seen, "CharTyped 经 INPUT_TEXT → on_change → 换算联动帧: {:?}", ph.composed(wwid));
+        assert!(
+            seen,
+            "CharTyped 经 INPUT_TEXT → on_change → 换算联动帧: {:?}",
+            ph.composed(wwid)
+        );
     }
 
     // —— PLAN-029 T-04 popover 臂（D3 全 14 placement + 覆盖序/命中/Esc）——
@@ -5493,7 +6217,12 @@ mod tests {
 
     impl PopHost {
         fn widget(open: bool, placement: PopoverPlacement) -> Self {
-            Self { open, point_anchor: false, placement, last: None }
+            Self {
+                open,
+                point_anchor: false,
+                placement,
+                last: None,
+            }
         }
     }
 
@@ -5538,12 +6267,27 @@ mod tests {
         let panel = (288.0, 96.0);
         let vp = (480.0, 320.0);
         // Bottom 族：y = 锚底 + GAP；Start 左对齐 / 居中 clamp。
-        assert_eq!(popover_panel_origin(&site, &PP::BottomStart, panel, vp, (0.0, 0.0)), (100.0, 80.0));
-        assert_eq!(popover_panel_origin(&site, &PP::Bottom, panel, vp, (0.0, 0.0)), (8.0, 80.0));
-        assert_eq!(popover_panel_origin(&site, &PP::BottomEnd, panel, vp, (0.0, 0.0)), (8.0, 80.0));
+        assert_eq!(
+            popover_panel_origin(&site, &PP::BottomStart, panel, vp, (0.0, 0.0)),
+            (100.0, 80.0)
+        );
+        assert_eq!(
+            popover_panel_origin(&site, &PP::Bottom, panel, vp, (0.0, 0.0)),
+            (8.0, 80.0)
+        );
+        assert_eq!(
+            popover_panel_origin(&site, &PP::BottomEnd, panel, vp, (0.0, 0.0)),
+            (8.0, 80.0)
+        );
         // Top 族上溢 → 对向翻转到下方。
-        assert_eq!(popover_panel_origin(&site, &PP::TopStart, panel, vp, (0.0, 0.0)), (100.0, 80.0));
-        assert_eq!(popover_panel_origin(&site, &PP::Top, panel, vp, (0.0, 0.0)), (8.0, 80.0));
+        assert_eq!(
+            popover_panel_origin(&site, &PP::TopStart, panel, vp, (0.0, 0.0)),
+            (100.0, 80.0)
+        );
+        assert_eq!(
+            popover_panel_origin(&site, &PP::Top, panel, vp, (0.0, 0.0)),
+            (8.0, 80.0)
+        );
         // Left 左溢 → 右翻（右位 186 → clamp 184）。
         assert_eq!(
             popover_panel_origin(&site, &PP::Left, panel, vp, (0.0, 0.0)),
@@ -5556,11 +6300,26 @@ mod tests {
             (8.0, 14.0)
         );
         // Modal 居中 / Edge* 贴边。
-        assert_eq!(popover_panel_origin(&site, &PP::Modal, panel, vp, (0.0, 0.0)), (96.0, 112.0));
-        assert_eq!(popover_panel_origin(&site, &PP::EdgeLeft, panel, vp, (0.0, 0.0)), (8.0, 112.0));
-        assert_eq!(popover_panel_origin(&site, &PP::EdgeRight, panel, vp, (0.0, 0.0)), (184.0, 112.0));
-        assert_eq!(popover_panel_origin(&site, &PP::EdgeTop, panel, vp, (0.0, 0.0)), (96.0, 8.0));
-        assert_eq!(popover_panel_origin(&site, &PP::EdgeBottom, panel, vp, (0.0, 0.0)), (96.0, 216.0));
+        assert_eq!(
+            popover_panel_origin(&site, &PP::Modal, panel, vp, (0.0, 0.0)),
+            (96.0, 112.0)
+        );
+        assert_eq!(
+            popover_panel_origin(&site, &PP::EdgeLeft, panel, vp, (0.0, 0.0)),
+            (8.0, 112.0)
+        );
+        assert_eq!(
+            popover_panel_origin(&site, &PP::EdgeRight, panel, vp, (0.0, 0.0)),
+            (184.0, 112.0)
+        );
+        assert_eq!(
+            popover_panel_origin(&site, &PP::EdgeTop, panel, vp, (0.0, 0.0)),
+            (96.0, 8.0)
+        );
+        assert_eq!(
+            popover_panel_origin(&site, &PP::EdgeBottom, panel, vp, (0.0, 0.0)),
+            (96.0, 216.0)
+        );
         // Pointer = 最近右键点。
         assert_eq!(
             popover_panel_origin(&site, &PP::Pointer, panel, vp, (30.0, 40.0)),
@@ -5568,9 +6327,15 @@ mod tests {
         );
         // Point 锚恒 BottomStart 语义（原点对齐）。
         let pt = PopoverAnchorSite::Point { x: 40.0, y: 60.0 };
-        assert_eq!(popover_panel_origin(&pt, &PP::BottomStart, panel, vp, (0.0, 0.0)), (40.0, 60.0));
+        assert_eq!(
+            popover_panel_origin(&pt, &PP::BottomStart, panel, vp, (0.0, 0.0)),
+            (40.0, 60.0)
+        );
         // Top 对 Point 锚同样回落 BottomStart 语义（缺省先例）。
-        assert_eq!(popover_panel_origin(&pt, &PP::Top, panel, vp, (0.0, 0.0)), (40.0, 60.0));
+        assert_eq!(
+            popover_panel_origin(&pt, &PP::Top, panel, vp, (0.0, 0.0)),
+            (40.0, 60.0)
+        );
     }
 
     /// 开态覆盖序渲染（面板 ops 主块后追加 = paint order 置顶）+ 命中
@@ -5578,7 +6343,11 @@ mod tests {
     /// 面板 ops（open 随帧）。
     #[test]
     fn popover_open_closed_render_and_hit_semantics() {
-        let mut p = proj_center_off(PopHost::widget(true, PopoverPlacement::BottomStart), 480.0, 320.0);
+        let mut p = proj_center_off(
+            PopHost::widget(true, PopoverPlacement::BottomStart),
+            480.0,
+            320.0,
+        );
         p.ensure_covered().expect("popover 载体 Covered");
         let frame = p.render_frame();
         // 开态：面板底 Quad（POP_BG）+ 面板文本在场。
@@ -5591,7 +6360,11 @@ mod tests {
             })
             .collect();
         assert_eq!(panel_quads.len(), 1, "单面板底: {panel_quads:?}");
-        assert!(texts_of(&frame).iter().any(|t| *t == "panel-item"), "面板子树渲染: {:?}", texts_of(&frame));
+        assert!(
+            texts_of(&frame).iter().any(|t| *t == "panel-item"),
+            "面板子树渲染: {:?}",
+            texts_of(&frame)
+        );
         // 命中登记序：catcher 在场且面板项（Msg）在其后（rev 序面板项胜）。
         let dismiss_idx = p
             .hits
@@ -5617,15 +6390,25 @@ mod tests {
         // 应用态自关 → 闭帧行零面板。
         let closed = p.render_frame();
         assert!(
-            !closed.ops.iter().any(|op| matches!(op, DrawOp::Quad { color, .. } if *color == pop_bg())),
+            !closed
+                .ops
+                .iter()
+                .any(|op| matches!(op, DrawOp::Quad { color, .. } if *color == pop_bg())),
             "闭态零面板 ops（open 随帧）"
         );
-        assert!(!p.hits.iter().any(|e| matches!(e, HitEntry::PopoverDismiss { .. })));
+        assert!(!p
+            .hits
+            .iter()
+            .any(|e| matches!(e, HitEntry::PopoverDismiss { .. })));
 
         // Esc → on_dismiss（重开态）。
         p.component.open = true;
         let _ = p.render_frame();
-        p.on_input(&InputMsg::KeyPressed { wid: 1, key: 27, modifiers: 0 });
+        p.on_input(&InputMsg::KeyPressed {
+            wid: 1,
+            key: 27,
+            modifiers: 0,
+        });
         assert_eq!(p.component.last, Some(PopMsg::Dismiss), "Esc → on_dismiss");
 
         // 面板项命中 → 项消息派发（Go——非 Dismiss）。
@@ -5654,11 +6437,7 @@ mod tests {
     /// Modal scrim：全屏半透明 Quad 先于面板 ops。
     #[test]
     fn popover_modal_scrim_order() {
-        let mut p = proj_center_off(
-            PopHost::widget(true, PopoverPlacement::Modal),
-            480.0,
-            320.0,
-        );
+        let mut p = proj_center_off(PopHost::widget(true, PopoverPlacement::Modal), 480.0, 320.0);
         let frame = p.render_frame();
         let scrim_idx = frame
             .ops
@@ -5707,11 +6486,7 @@ mod tests {
                     style: None,
                 })
                 .child(View::MouseArea {
-                    content: Box::new(
-                        View::button("inner")
-                            .on_click(|_| BridgeMsg::Inner)
-                            .build(),
-                    ),
+                    content: Box::new(View::button("inner").on_click(|_| BridgeMsg::Inner).build()),
                     on_enter: None,
                     on_exit: None,
                     on_double_click: None,
@@ -5763,13 +6538,10 @@ mod tests {
         let mut p = proj_center_off(BridgeHost { last: None }, 480.0, 320.0);
         let frame = p.render_frame();
         // area 命中盒（200×60 逻辑_extent）。
-        let area_rect = frame
-            .ops
-            .iter()
-            .find_map(|op| match op {
-                DrawOp::Quad { rect, .. } if rect.w == 200.0 && rect.h == 60.0 => Some(*rect),
-                _ => None,
-            });
+        let area_rect = frame.ops.iter().find_map(|op| match op {
+            DrawOp::Quad { rect, .. } if rect.w == 200.0 && rect.h == 60.0 => Some(*rect),
+            _ => None,
+        });
         let _ = area_rect;
         // 按钮盒（inner）与 area 盒皆从 hits 取（同文件测试可及）。
         let (btn, area) = {
@@ -5911,7 +6683,11 @@ mod tests {
         });
         // buffer 自视图值初始化（double 0 → "0"）再追加键入——native 臂
         // 编辑语义（a2r 同构）；注入 t = 全量 buffer 文本。
-        assert_eq!(out, Some("021".to_string()), "单参注入 t = 全量 buffer 文本");
+        assert_eq!(
+            out,
+            Some("021".to_string()),
+            "单参注入 t = 全量 buffer 文本"
+        );
     }
 
     /// PLAN-033 T-03②（AC-02）：VM timer 经泵侧周期拍派发（D2=B）——首拍
@@ -5923,7 +6699,11 @@ mod tests {
         let mut p = proj_center_off(comp, 480.0, 320.0);
         let rev0 = p.revision();
         p.poll_tick();
-        assert_eq!(int_state(&p, "beat"), Some(0), "首拍对齐 interval（不立即拍）");
+        assert_eq!(
+            int_state(&p, "beat"),
+            Some(0),
+            "首拍对齐 interval（不立即拍）"
+        );
         std::thread::sleep(std::time::Duration::from_millis(80));
         p.poll_tick();
         assert_eq!(int_state(&p, "beat"), Some(1), "到期拍派发 handler");
@@ -5939,7 +6719,10 @@ mod tests {
         let mut p = proj_center_off(comp, 480.0, 320.0);
         assert!(p.drain_desktop_commands().is_empty(), "空态幂等");
         p.component_mut()
-            .write_state("__desktop_cmd", auto_val::Value::str("launch\u{1f}counter\nnotify\u{1f}hi"))
+            .write_state(
+                "__desktop_cmd",
+                auto_val::Value::str("launch\u{1f}counter\nnotify\u{1f}hi"),
+            )
             .expect("write");
         assert_eq!(
             p.drain_desktop_commands(),
@@ -6034,9 +6817,16 @@ mod tests {
         let uploads = FrameSource::drain_bitmap_uploads(&mut proj);
         assert_eq!(uploads.len(), 1, "首渲染产出一次上传");
         let up = &uploads[0];
-        assert_eq!((up.w, up.h, up.stride as usize), (8, 4, 8 * 4), "幅面 = 逻辑 extent");
+        assert_eq!(
+            (up.w, up.h, up.stride as usize),
+            (8, 4, 8 * 4),
+            "幅面 = 逻辑 extent"
+        );
         assert_eq!(up.rgba.len(), 8 * 4 * 4, "RGBA 长度");
-        assert!(up.rgba.chunks(4).any(|px| px[0] > 200 && px[1] > 200), "clear 白底在场");
+        assert!(
+            up.rgba.chunks(4).any(|px| px[0] > 200 && px[1] > 200),
+            "clear 白底在场"
+        );
         assert!(
             up.rgba.chunks(4).any(|px| px[0] < 100 && px[1] < 100),
             "笔画 ink 在场（栅格化孪生真像素）"

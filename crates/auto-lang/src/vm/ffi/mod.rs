@@ -41,19 +41,19 @@ pub mod async_http;
 mod generated_std;
 // Plan 430 C2: 三方 crate 方法 shim 包的运行期注册表与 dispatch
 pub mod dep_methods;
-pub mod rust_stdlib;
-pub mod http_server;  // Plan 321/322: AutoHttpServer unified shim
+pub mod http_server;
+pub mod rust_stdlib; // Plan 321/322: AutoHttpServer unified shim
 
-pub mod http_stream;  // PLAN-707: 外部 HTTP/SSE 流统一资源表与生产者
-// PLAN-727 T-05: 文件传输桥——共享传输核心（a2r_std::http::transfer）的宿主
-// 注册表/park/legacy 迁移面。
+pub mod http_stream; // PLAN-707: 外部 HTTP/SSE 流统一资源表与生产者
+                     // PLAN-727 T-05: 文件传输桥——共享传输核心（a2r_std::http::transfer）的宿主
+                     // 注册表/park/legacy 迁移面。
+pub mod http_server_file; // PLAN-729: 服务端文件响应描述符桥
 pub mod http_transfer;
-pub mod http_server_file;  // PLAN-729: 服务端文件响应描述符桥
-pub mod http_upload;  // PLAN-730: 服务端上传句柄/会话/收据桥
-// PLAN-699: Axum/Hyper HTTP/1.1 transport (network thread + owned bridge).
+pub mod http_upload; // PLAN-730: 服务端上传句柄/会话/收据桥
+                     // PLAN-699: Axum/Hyper HTTP/1.1 transport (network thread + owned bridge).
 pub mod http_transport;
-pub mod websocket;   // Plan 350: WebSocket client
-// auto-os Plan 013 T2: AutoTerm 引擎桥(auto.term.*,libloading → autoterm_core.dll)
+pub mod websocket; // Plan 350: WebSocket client
+                   // auto-os Plan 013 T2: AutoTerm 引擎桥(auto.term.*,libloading → autoterm_core.dll)
 pub mod term_engine;
 // Plan 442 C2: axum → AutoVM serve adapter (Router/extractor marshalling)
 pub mod axum_adapter;
@@ -64,10 +64,10 @@ pub mod c_ffi;
 
 pub use convert::VMConvertible;
 // Plan 377 §4.3: heap-aware 64-bit encode/decode（>2^48 BigInt 堆装箱兜底）
-pub use convert::{encode_i64_with_heap, encode_u64_with_heap, decode_i64_full, decode_u64_full};
+pub use c_ffi::CFfiRuntime;
+pub use convert::{decode_i64_full, decode_u64_full, encode_i64_with_heap, encode_u64_with_heap};
 pub use error::FFIError;
 pub use stdlib::register_stdlib_ffi;
-pub use c_ffi::CFfiRuntime;
 
 /// Inventory-collected FFI registration entry (Plan 198).
 ///
@@ -76,7 +76,10 @@ pub use c_ffi::CFfiRuntime;
 /// all submissions and registers them by looking up the ID from BIGVM_NATIVES.
 pub struct StaticFFIRegistration {
     pub name: &'static str,
-    pub shim: fn(&mut crate::vm::task::AutoTask, &crate::vm::engine::AutoVM) -> Result<(), crate::vm::engine::VMError>,
+    pub shim: fn(
+        &mut crate::vm::task::AutoTask,
+        &crate::vm::engine::AutoVM,
+    ) -> Result<(), crate::vm::engine::VMError>,
     pub parameters: &'static [&'static str],
     pub returns: &'static str,
     pub producer: &'static str,

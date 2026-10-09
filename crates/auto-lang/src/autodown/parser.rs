@@ -161,24 +161,17 @@ impl<'a> AdocParser<'a> {
 
             AdTokenKind::Dollar => self.parse_code_block(),
 
-
             AdTokenKind::InterpolateStart => self.parse_interpolation_as_block(),
-
 
             AdTokenKind::MathStart => self.parse_math_block(),
 
-
             AdTokenKind::ListItem => self.parse_list(),
-
 
             AdTokenKind::NumberedList => self.parse_numbered_list(),
 
-
             AdTokenKind::CodeFence => self.parse_fenced_code(),
 
-
             AdTokenKind::Blockquote => self.parse_blockquote(),
-
 
             AdTokenKind::HorizontalRule => {
                 self.advance()?;
@@ -193,11 +186,9 @@ impl<'a> AdocParser<'a> {
         }
     }
 
-
     /// Parse a paragraph
     fn parse_paragraph(&mut self) -> AdocResult<Option<AdocBlock>> {
         let mut inlines = Vec::new();
-
 
         loop {
             match &self.current.kind {
@@ -205,7 +196,6 @@ impl<'a> AdocParser<'a> {
                     inlines.push(AdocInline::Text(self.current.text.clone()));
                     self.advance()?;
                 }
-
 
                 AdTokenKind::StarStar => {
                     self.advance()?;

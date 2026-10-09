@@ -8,10 +8,10 @@
 
 #![cfg(test)]
 
-use crate::ui::view::View;
 use crate::ui::dynamic::DynamicComponent;
 use crate::ui::interpreter::DynamicMessage;
-use crate::ui::style::{Style, StyleClass, Color};
+use crate::ui::style::{Color, Style, StyleClass};
+use crate::ui::view::View;
 
 /// Recursively collect every Button in the view tree (any depth).
 fn collect_buttons<'a>(
@@ -25,7 +25,11 @@ fn collect_buttons<'a>(
                 collect_buttons(c, out);
             }
         }
-        View::Row { children, .. } | View::Column { children, .. } | View::List { items: children, .. } => {
+        View::Row { children, .. }
+        | View::Column { children, .. }
+        | View::List {
+            items: children, ..
+        } => {
             for child in children {
                 collect_buttons(child, out);
             }
@@ -56,7 +60,9 @@ fn collect_buttons<'a>(
 /// `__navigate` for links or the theme-picker `openThemePicker`).
 fn has_onclick_event(view: &View<DynamicMessage>, event: &str) -> bool {
     match view {
-        View::Button { onclick, content, .. } => {
+        View::Button {
+            onclick, content, ..
+        } => {
             let hits = match onclick {
                 DynamicMessage::Typed { event_name, .. } => event_name == event,
                 DynamicMessage::String(s) => s == event,
@@ -69,9 +75,11 @@ fn has_onclick_event(view: &View<DynamicMessage>, event: &str) -> bool {
             }
             false
         }
-        View::Row { children, .. } | View::Column { children, .. } | View::List { items: children, .. } => {
-            children.iter().any(|c| has_onclick_event(c, event))
-        }
+        View::Row { children, .. }
+        | View::Column { children, .. }
+        | View::List {
+            items: children, ..
+        } => children.iter().any(|c| has_onclick_event(c, event)),
         View::Grid { cells, .. } => cells.iter().any(|c| has_onclick_event(c, event)),
         View::Container { child, .. } | View::Scrollable { child, .. } => {
             has_onclick_event(child, event)
@@ -84,7 +92,8 @@ fn has_onclick_event(view: &View<DynamicMessage>, event: &str) -> bool {
 /// view tree. None when the example sources aren't present (graceful no-op).
 #[cfg(feature = "ui-iced")]
 fn build_gallery_view() -> Option<View<DynamicMessage>> {
-    let comp: DynamicComponent = crate::plan370_test_support::build_example_component("widgets-gallery")?;
+    let comp: DynamicComponent =
+        crate::plan370_test_support::build_example_component("widgets-gallery")?;
     let (view, _, _) = comp.view_with_debug();
     Some(view)
 }
@@ -107,10 +116,18 @@ fn build_gallery_page(page_file: &str, widget_name: &str) -> Option<View<Dynamic
     let candidates = [
         std::env::var("CARGO_MANIFEST_DIR")
             .ok()
-            .map(|d| std::path::PathBuf::from(d).join(format!("../../examples/widgets-gallery/src/front/pages/{}", page_file)))
+            .map(|d| {
+                std::path::PathBuf::from(d).join(format!(
+                    "../../examples/widgets-gallery/src/front/pages/{}",
+                    page_file
+                ))
+            })
             .filter(|p| p.exists()),
-        Some(std::path::PathBuf::from(format!("examples/widgets-gallery/src/front/pages/{}", page_file)))
-            .filter(|p| p.exists()),
+        Some(std::path::PathBuf::from(format!(
+            "examples/widgets-gallery/src/front/pages/{}",
+            page_file
+        )))
+        .filter(|p| p.exists()),
         // PLAN-590:画廊迁 auto-os 顶层后的新家(解析序定位)。
         crate::plan370_test_support::locate_gallery_file(
             "widgets-gallery",
@@ -194,7 +211,10 @@ fn plain_link_without_children_keeps_to_label() {
     let self_closing = buttons.iter().find(|(label, _)| label.starts_with('/'));
     match self_closing {
         Some((_label, content)) => {
-            assert!(content.is_none(), "leaf link must not fabricate a content subtree");
+            assert!(
+                content.is_none(),
+                "leaf link must not fabricate a content subtree"
+            );
         }
         None => {
             // All links in the current gallery carry children; the guard is
@@ -227,7 +247,9 @@ fn theme_accent_color_state_and_handlers() {
     // SetAccent("coral") updates the state → the renderer's per-frame sync
     // (iced_adapter ACCENT_NAME) then resolves Color::Primary to coral.
     comp.on_with_input_for("App", "SetAccent", Some("coral".to_string()));
-    let updated = comp.read_state("accent_color").expect("accent_color after SetAccent");
+    let updated = comp
+        .read_state("accent_color")
+        .expect("accent_color after SetAccent");
     assert_eq!(
         format!("{:?}", updated),
         format!("{:?}", auto_val::Value::str("coral")),
@@ -268,9 +290,14 @@ fn theme_palette_ui_and_primary_rendering() {
         texts.iter().map(|(t, _)| *t).collect::<Vec<_>>()
     );
     let (_, style) = hero.unwrap();
-    let classes = style.as_ref().map(|s| s.classes.clone()).unwrap_or_default();
+    let classes = style
+        .as_ref()
+        .map(|s| s.classes.clone())
+        .unwrap_or_default();
     assert!(
-        classes.iter().any(|c| matches!(c, StyleClass::TextColor(Color::Primary))),
+        classes
+            .iter()
+            .any(|c| matches!(c, StyleClass::TextColor(Color::Primary))),
         "Auto UI hero must use text-primary (theme color); classes: {:?}",
         classes
     );
@@ -290,10 +317,7 @@ fn theme_palette_ui_and_primary_rendering() {
 
 /// Collect every Text node (content, style) in the view tree.
 #[cfg(feature = "ui-iced")]
-fn collect_texts<'a>(
-    view: &'a View<DynamicMessage>,
-    out: &mut Vec<(&'a str, &'a Option<Style>)>,
-) {
+fn collect_texts<'a>(view: &'a View<DynamicMessage>, out: &mut Vec<(&'a str, &'a Option<Style>)>) {
     match view {
         View::Text { content, style, .. } => out.push((content.as_str(), style)),
         View::Button { content, .. } => {
@@ -301,7 +325,11 @@ fn collect_texts<'a>(
                 collect_texts(c, out);
             }
         }
-        View::Row { children, .. } | View::Column { children, .. } | View::List { items: children, .. } => {
+        View::Row { children, .. }
+        | View::Column { children, .. }
+        | View::List {
+            items: children, ..
+        } => {
             for child in children {
                 collect_texts(child, out);
             }

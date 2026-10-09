@@ -16,7 +16,7 @@
 use crate::{
     error::AutoResult,
     parser::Parser,
-    trans::{Sink, Trans, typescript::TypeScriptTrans},
+    trans::{typescript::TypeScriptTrans, Sink, Trans},
 };
 
 fn transpile_inline(name: &str, src: &str) -> String {
@@ -90,9 +90,7 @@ fn assert_tsc_clean(name: &str, src: &str) {
     let ts = transpile_inline(name, src);
     match tsc_check(name, &ts) {
         TscOutcome::Unavailable => {
-            eprintln!(
-                "SKIP (no tsc found — set AUTO_TSC to a tsc.js path to enable): {name}"
-            );
+            eprintln!("SKIP (no tsc found — set AUTO_TSC to a tsc.js path to enable): {name}");
         }
         TscOutcome::Errors(err) => {
             panic!("tsc reported errors for {name}:\n{err}\n--- emitted TS ---\n{ts}");

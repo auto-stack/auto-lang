@@ -33,15 +33,14 @@ fn compile_and_link(code: &str) -> AutoResult<(Vec<u8>, Vec<Vec<u8>>)> {
     let mut parser = crate::parser::Parser::new(code);
     let ast = parser.parse()?;
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
-    let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast
-        .stmts
-        .iter()
-        .partition(|stmt| {
-            matches!(
-                stmt,
-                crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_)
-            )
-        });
+    let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
+        matches!(
+            stmt,
+            crate::ast::Stmt::TypeDecl(_)
+                | crate::ast::Stmt::Ext(_)
+                | crate::ast::Stmt::EnumDecl(_)
+        )
+    });
     for stmt in &type_decls {
         codegen.compile_stmt(stmt)?;
     }
@@ -68,7 +67,8 @@ fn compile_and_link(code: &str) -> AutoResult<(Vec<u8>, Vec<Vec<u8>>)> {
         object_types: codegen.object_types.clone(),
         has_globals: false,
     });
-    let (final_code, _symbols) = linker.link()
+    let (final_code, _symbols) = linker
+        .link()
         .map_err(|e| crate::error::AutoError::Msg(e.message.clone()))?;
     Ok((final_code, codegen.strings.clone()))
 }
@@ -92,7 +92,10 @@ fn normalized_dump(code: &[u8], strings: &[Vec<u8>]) -> String {
             let mut pairs: Vec<(usize, usize, usize, (usize, String, String))> = Vec::new();
             // (slot, push_off, store_off, store_line)
             let mut j = i;
-            while j + 1 < lines.len() && lines[j].1 == "push.nil" && is_release_store(&lines[j + 1].1) {
+            while j + 1 < lines.len()
+                && lines[j].1 == "push.nil"
+                && is_release_store(&lines[j + 1].1)
+            {
                 pairs.push((
                     slot_of(&lines[j + 1].1, &lines[j + 1].2),
                     lines[j].0,
@@ -121,7 +124,10 @@ fn normalized_dump(code: &[u8], strings: &[Vec<u8>]) -> String {
                 .and_then(|r| r.strip_suffix(']'))
                 .and_then(|r| r.parse::<usize>().ok())
                 .unwrap_or(0);
-            format!("{:?}", String::from_utf8_lossy(strings.get(idx).map(|b| b.as_slice()).unwrap_or(b"")))
+            format!(
+                "{:?}",
+                String::from_utf8_lossy(strings.get(idx).map(|b| b.as_slice()).unwrap_or(b""))
+            )
         } else if mn == "get.field" || mn == "set.generic.field" {
             // P532 W2 根修⑧:字段下标经池解析为名字(镜像 load.str 内容
             // 替换;两侧池布局不同,下标比较误报字段错位)
@@ -185,7 +191,10 @@ fn m4_expected(code: &str) -> AutoResult<(String, Vec<u8>)> {
 }
 
 #[test]
-#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
+#[cfg_attr(
+    windows,
+    ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量"
+)]
 fn test_aavm2_m4_codegen_corpus() {
     // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
     // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
@@ -201,7 +210,11 @@ fn test_aavm2_m4_codegen_corpus() {
         .filter(|p| p.extension().map(|x| x == "at").unwrap_or(false))
         .collect();
     entries.sort();
-    assert!(!entries.is_empty(), "no corpus files under {}", dir.display());
+    assert!(
+        !entries.is_empty(),
+        "no corpus files under {}",
+        dir.display()
+    );
     // Plan 565 L1:AAVM 侧走 once-compiled runner(编译一次+File.read_text
     // 注入,见 aavm2_corpus_runner.rs);判据断言原样保留。
     let cases: Vec<crate::tests::aavm2_corpus_runner::CorpusCase> = entries
@@ -211,8 +224,9 @@ fn test_aavm2_m4_codegen_corpus() {
             path: p,
         })
         .collect();
-    let outs = crate::tests::aavm2_corpus_runner::run_corpus_once_compiled("m4", "codegen_dump", &cases)
-        .unwrap_or_else(|e| panic!("M4 corpus runner: {e}"));
+    let outs =
+        crate::tests::aavm2_corpus_runner::run_corpus_once_compiled("m4", "codegen_dump", &cases)
+            .unwrap_or_else(|e| panic!("M4 corpus runner: {e}"));
     let mut checked = 0;
     for (case, stdout) in cases.iter().zip(&outs) {
         let (expected, linked) = m4_expected(&case.code).unwrap();
@@ -238,7 +252,6 @@ fn test_aavm2_m4_codegen_corpus() {
     eprintln!("M4 corpus: {checked} files, bytecode identical (once-compiled runner)");
 }
 
-
 // ── Plan 511 W3:corpus_use 多文件腿(Rust 侧镜像 resolve_uses+Linker)──
 
 fn corpus_use_dir() -> PathBuf {
@@ -258,7 +271,10 @@ fn normalized_dump_lines(lines: Vec<crate::vm::disasm::DisasmLine>, strings: &[S
         if lines[i].1 == "push.nil" && i + 1 < lines.len() && is_release_store(&lines[i + 1].1) {
             let mut pairs: Vec<(usize, usize, usize, (usize, String, String))> = Vec::new();
             let mut j = i;
-            while j + 1 < lines.len() && lines[j].1 == "push.nil" && is_release_store(&lines[j + 1].1) {
+            while j + 1 < lines.len()
+                && lines[j].1 == "push.nil"
+                && is_release_store(&lines[j + 1].1)
+            {
                 pairs.push((
                     slot_of(&lines[j + 1].1, &lines[j + 1].2),
                     lines[j].0,
@@ -293,20 +309,28 @@ fn normalized_dump_lines(lines: Vec<crate::vm::disasm::DisasmLine>, strings: &[S
     }
     let mut out = String::new();
     for (off, mn, ops) in out_lines {
-        out.push_str(&format!("{:04x}  {} {}
-", off, mn, ops));
+        out.push_str(&format!(
+            "{:04x}  {} {}
+",
+            off, mn, ops
+        ));
     }
     out
 }
 
 fn aavm_lib_program(call: &str) -> AutoResult<String> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
     let lib_code = crate::aavm2_lib_source(&root)?;
-    Ok(format!("{}
+    Ok(format!(
+        "{}
 fn main() {{
     print({})
 }}
-", lib_code, call))
+",
+        lib_code, call
+    ))
 }
 
 /// Plan 511 W3:多模块 S4 形态编译链接(session.resolve_uses 取 dep 模块 +
@@ -322,15 +346,14 @@ fn compile_and_link_multi(dir: &std::path::Path) -> AutoResult<(Vec<u8>, Vec<Vec
     let mut parser = crate::parser::Parser::new_with_type_store(&main_code, session.type_store());
     let ast = parser.parse()?;
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
-    let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast
-        .stmts
-        .iter()
-        .partition(|stmt| {
-            matches!(
-                stmt,
-                crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_)
-            )
-        });
+    let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
+        matches!(
+            stmt,
+            crate::ast::Stmt::TypeDecl(_)
+                | crate::ast::Stmt::Ext(_)
+                | crate::ast::Stmt::EnumDecl(_)
+        )
+    });
     for stmt in &type_decls {
         codegen.compile_stmt(stmt)?;
     }
@@ -384,7 +407,8 @@ fn compile_and_link_multi(dir: &std::path::Path) -> AutoResult<(Vec<u8>, Vec<Vec
         object_types: codegen.object_types.clone(),
         has_globals: !codegen.global_vars.is_empty(),
     });
-    let (final_code, _symbols) = linker.link()
+    let (final_code, _symbols) = linker
+        .link()
         .map_err(|e| crate::error::AutoError::Msg(e.message.clone()))?;
     Ok((final_code, strings))
 }
@@ -437,7 +461,10 @@ fn test_aavm2_m4_use_harness_selfcheck() {
 /// native 直连,判定面非镜像对象——行为由 M5+⑤腿兜底,KNOWN-DEBT
 /// 登记)/fn.prolog args 保留。
 #[test]
-#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
+#[cfg_attr(
+    windows,
+    ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量"
+)]
 fn test_aavm2_p532_lib_static_diff() {
     // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
     // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
@@ -445,7 +472,9 @@ fn test_aavm2_p532_lib_static_diff() {
     if !crate::tests::heavy_gate::heavy_gate("test_aavm2_p532_lib_static_diff") {
         return;
     }
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
     let case_dir = root.join("scratch532").join("libdiff");
     std::fs::create_dir_all(&case_dir).expect("case dir");
     std::fs::write(
@@ -461,19 +490,17 @@ fn test_aavm2_p532_lib_static_diff() {
     session.add_source_dir(root.clone());
     session.resolve_uses(&main_code).expect("resolve uses");
     let mut dep_modules = session.take_compiled_modules();
-    let mut parser =
-        crate::parser::Parser::new_with_type_store(&main_code, session.type_store());
+    let mut parser = crate::parser::Parser::new_with_type_store(&main_code, session.type_store());
     let ast = parser.parse().expect("parse");
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
-    let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast
-        .stmts
-        .iter()
-        .partition(|stmt| {
-            matches!(
-                stmt,
-                crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_)
-            )
-        });
+    let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
+        matches!(
+            stmt,
+            crate::ast::Stmt::TypeDecl(_)
+                | crate::ast::Stmt::Ext(_)
+                | crate::ast::Stmt::EnumDecl(_)
+        )
+    });
     for stmt in &type_decls {
         codegen.compile_stmt(stmt).expect("type decl");
     }
@@ -622,7 +649,9 @@ fn test_aavm2_p532_lib_static_diff() {
     match first_diff {
         None => eprintln!("P532 static diff: SEMANTICALLY IDENTICAL"),
         Some((i, rl, al)) => {
-            panic!("P532 static diff: FIRST DIVERGENCE at canon line {i}\n  rust: {rl}\n  aavm: {al}");
+            panic!(
+                "P532 static diff: FIRST DIVERGENCE at canon line {i}\n  rust: {rl}\n  aavm: {al}"
+            );
         }
     }
 }
@@ -631,7 +660,10 @@ fn test_aavm2_p532_lib_static_diff() {
 /// codegen_dump_files)。aavm 侧 ev_run_files/codegen_dump_files 未实现时
 /// 以运行期错误形态转红(W3 实现启动条件)。
 #[test]
-#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
+#[cfg_attr(
+    windows,
+    ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量"
+)]
 fn test_aavm2_m4_use_corpus() {
     // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
     // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
@@ -645,7 +677,12 @@ fn test_aavm2_m4_use_corpus() {
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.is_dir())
-        .filter(|p| p.file_name().and_then(|n| n.to_str()).map(|n| n != "errors").unwrap_or(true))
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n != "errors")
+                .unwrap_or(true)
+        })
         .collect();
     cases.sort();
     assert!(!cases.is_empty(), "no corpus_use cases");
@@ -679,7 +716,6 @@ fn test_aavm2_m4_use_corpus() {
     eprintln!("M4 use corpus: multi-file bytecode identical");
 }
 
-
 /// 诊断用:corpus_use 各例的 Rust 参考侧规范化反汇编(写入
 /// target/aavm2_use_disasm.txt,避免 nocapture 吞输出)。
 #[test]
@@ -690,7 +726,12 @@ fn test_aavm2_m4_use_rust_disasm_print() {
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.is_dir())
-        .filter(|p| p.file_name().and_then(|n| n.to_str()).map(|n| n != "errors").unwrap_or(true))
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n != "errors")
+                .unwrap_or(true)
+        })
         .collect();
     cases.sort();
     let nl = 10u8 as char;
@@ -698,7 +739,11 @@ fn test_aavm2_m4_use_rust_disasm_print() {
     for case in &cases {
         match compile_and_link_multi(case) {
             Ok((code, strings)) => {
-                out.push_str(&format!("=== {} ==={nl}{}", case.display(), normalized_dump(&code, &strings)));
+                out.push_str(&format!(
+                    "=== {} ==={nl}{}",
+                    case.display(),
+                    normalized_dump(&code, &strings)
+                ));
             }
             Err(e) => out.push_str(&format!("=== {} === ERR {}{nl}", case.display(), e)),
         }
@@ -722,13 +767,20 @@ fn test_aavm2_m4_rust_disasm_print() {
         let code = std::fs::read_to_string(&p).unwrap();
         match compile_and_link(&code) {
             Ok((bc, strs)) => {
-                eprintln!("=== {} ===
+                eprintln!(
+                    "=== {} ===
 {}
-", p.display(), normalized_dump(&bc, &strs))
+",
+                    p.display(),
+                    normalized_dump(&bc, &strs)
+                )
             }
-            Err(e) => eprintln!("=== {} === COMPILE ERROR: {}
-", p.display(), e),
+            Err(e) => eprintln!(
+                "=== {} === COMPILE ERROR: {}
+",
+                p.display(),
+                e
+            ),
         }
     }
 }
-

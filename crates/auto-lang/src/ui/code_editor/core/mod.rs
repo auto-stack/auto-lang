@@ -57,7 +57,12 @@ pub struct EditorModifiers {
 
 impl EditorModifiers {
     pub const fn none() -> Self {
-        Self { shift: false, control: false, alt: false, logo: false }
+        Self {
+            shift: false,
+            control: false,
+            alt: false,
+            logo: false,
+        }
     }
 
     pub const fn shift(&self) -> bool {
@@ -220,7 +225,9 @@ impl Default for CodeEditorConfig {
 
 impl CodeEditorConfig {
     pub fn line_height(&self) -> f32 {
-        (self.font_size * 4.0 / 3.0).round().max(self.font_size + 3.0)
+        (self.font_size * 4.0 / 3.0)
+            .round()
+            .max(self.font_size + 3.0)
     }
 }
 
@@ -242,9 +249,13 @@ enum Drag {
     Buffer,
     /// Dragging the vertical scrollbar thumb (grab offset in px, scroll at
     /// grab time).
-    ScrollbarV { grab_offset: f32 },
+    ScrollbarV {
+        grab_offset: f32,
+    },
     /// Dragging the horizontal scrollbar thumb.
-    ScrollbarH { grab_offset: f32 },
+    ScrollbarH {
+        grab_offset: f32,
+    },
 }
 
 /// `ViEditor` behind a Send wrapper: syntect's onig engine holds raw
@@ -545,9 +556,15 @@ impl CodeEditorCore {
         let key = key.into();
         let attrs = Attrs::new().family(mono_family());
 
-        let mut buffer = Buffer::new(font_system, Metrics::new(config.font_size, config.line_height()));
+        let mut buffer = Buffer::new(
+            font_system,
+            Metrics::new(config.font_size, config.line_height()),
+        );
         buffer.set_text(font_system, "", &attrs, Shaping::Advanced, None);
-        buffer.set_wrap(font_system, if config.wrap { Wrap::Word } else { Wrap::None });
+        buffer.set_wrap(
+            font_system,
+            if config.wrap { Wrap::Word } else { Wrap::None },
+        );
 
         let arc = Arc::new(buffer);
 
@@ -636,13 +653,12 @@ impl CodeEditorCore {
                 // undo history resets on language switch).
                 if let BufferRef::Arc(arc) = editor.0.buffer_ref().clone() {
                     let system = highlight::syntax_system();
-                    let mut syntax_editor =
-                        SyntaxEditor::new(arc, system, "base16-eighties.dark")
-                            .expect("bootstrap syntax theme must exist");
+                    let mut syntax_editor = SyntaxEditor::new(arc, system, "base16-eighties.dark")
+                        .expect("bootstrap syntax theme must exist");
                     if let Some(ext) = highlight::lang_to_extension(&new_config.lang) {
                         syntax_editor.syntax_by_extension(ext);
                     }
-                    let cursor = editor.0.cursor();  // raw guard
+                    let cursor = editor.0.cursor(); // raw guard
                     let passthrough = !new_config.vi;
                     let mut vi = ViEditor::new(syntax_editor);
                     vi.set_passthrough(passthrough);
@@ -654,14 +670,20 @@ impl CodeEditorCore {
                 }
             }
             if wrap_changed {
-                let wrap = if new_config.wrap { Wrap::Word } else { Wrap::None };
+                let wrap = if new_config.wrap {
+                    Wrap::Word
+                } else {
+                    Wrap::None
+                };
                 editor.0.with_buffer_mut(|b| b.set_wrap(font_system, wrap));
             }
             if vi_changed {
                 editor.0.set_passthrough(!new_config.vi);
             }
             if tab_changed {
-                editor.0.set_tab_width(font_system, new_config.tab_width.max(1));
+                editor
+                    .0
+                    .set_tab_width(font_system, new_config.tab_width.max(1));
             }
             let _ = font_changed; // metrics applied in render() each frame
         }
@@ -699,8 +721,13 @@ impl CodeEditorCore {
     /// the interval derivation diffs against the pre-edit rope snapshot.
     /// Everyone else goes through `text()` (rope).
     fn buffer_text(&self) -> String {
-        self.editor_lock()
-            .with_buffer(|b| b.lines.iter().map(|l| l.text()).collect::<Vec<_>>().join("\n"))
+        self.editor_lock().with_buffer(|b| {
+            b.lines
+                .iter()
+                .map(|l| l.text())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
     }
 
     /// Programmatic set (external value diff). Only rewrites when the text
@@ -725,7 +752,11 @@ impl CodeEditorCore {
         // Plan 673 §4: a whole-document rewrite is one full-replace delta
         // (old_len measured from the pre-rewrite text; the equality guard
         // above already guarantees the text changed).
-        self.push_delta(TextDelta { start: 0, end: current.len(), replacement: text.to_string() });
+        self.push_delta(TextDelta {
+            start: 0,
+            end: current.len(),
+            replacement: text.to_string(),
+        });
     }
 
     /// Plan 673 §4.3 structured write (agent/programmatic edit). Splices
@@ -769,7 +800,11 @@ impl CodeEditorCore {
         }
         self.rewrite(&new, font_system);
         self.revision.fetch_add(1, Ordering::Relaxed);
-        self.push_delta(TextDelta { start, end, replacement: replacement.to_string() });
+        self.push_delta(TextDelta {
+            start,
+            end,
+            replacement: replacement.to_string(),
+        });
         true
     }
 
@@ -816,7 +851,11 @@ impl CodeEditorCore {
                 } else if start < st.window_base + st.window_bytes {
                     // Intersecting (or inside): re-materialize at the same
                     // base line so the view tracks the edit.
-                    rewindow = Some(Self::materialize_window(&doc, st.base_line, PAGED_WINDOW_BYTES));
+                    rewindow = Some(Self::materialize_window(
+                        &doc,
+                        st.base_line,
+                        PAGED_WINDOW_BYTES,
+                    ));
                 }
             }
         }
@@ -831,7 +870,11 @@ impl CodeEditorCore {
             }
         }
         self.revision.fetch_add(1, Ordering::Relaxed);
-        self.push_delta(TextDelta { start, end, replacement: replacement.to_string() });
+        self.push_delta(TextDelta {
+            start,
+            end,
+            replacement: replacement.to_string(),
+        });
         true
     }
 
@@ -848,8 +891,16 @@ impl CodeEditorCore {
         // the real viewport each frame.
         let info = self.layout_info.lock().unwrap().clone();
         let (w, h) = (
-            if info.viewport_w > 1.0 { info.viewport_w } else { 800.0 },
-            if info.viewport_h > 1.0 { info.viewport_h } else { 1.0 },
+            if info.viewport_w > 1.0 {
+                info.viewport_w
+            } else {
+                800.0
+            },
+            if info.viewport_h > 1.0 {
+                info.viewport_h
+            } else {
+                1.0
+            },
         );
         let mut editor = self.editor_lock();
         editor.with_buffer_mut(|b| {
@@ -953,7 +1004,8 @@ impl CodeEditorCore {
             st.window_base = base;
             st.base_line = base_line;
             st.window_bytes = text.len();
-            st.store.prefetch_byte_range(base as u64, (base + text.len()) as u64);
+            st.store
+                .prefetch_byte_range(base as u64, (base + text.len()) as u64);
         }
         base_line
     }
@@ -1021,11 +1073,13 @@ impl CodeEditorCore {
         let mut paged = self.paged.lock().unwrap();
         if let Some(st) = paged.as_mut() {
             let base = st.window_base;
-            st.window_bytes =
-                (st.window_bytes as isize + d.replacement.len() as isize - (d.end - d.start) as isize)
-                    as usize;
+            st.window_bytes = (st.window_bytes as isize + d.replacement.len() as isize
+                - (d.end - d.start) as isize) as usize;
             drop(paged);
-            self.doc.lock().unwrap().replace_bytes(base + d.start, base + d.end, &d.replacement);
+            self.doc
+                .lock()
+                .unwrap()
+                .replace_bytes(base + d.start, base + d.end, &d.replacement);
             self.push_delta(TextDelta {
                 start: base + d.start,
                 end: base + d.end,
@@ -1034,7 +1088,10 @@ impl CodeEditorCore {
         } else {
             drop(paged);
             // The delta interval IS the rope edit — O(log n) locate + O(k).
-            self.doc.lock().unwrap().replace_bytes(d.start, d.end, &d.replacement);
+            self.doc
+                .lock()
+                .unwrap()
+                .replace_bytes(d.start, d.end, &d.replacement);
             self.push_delta(d);
         }
     }
@@ -1079,7 +1136,12 @@ impl CodeEditorCore {
         let col = editor.with_buffer(|b| {
             b.lines
                 .get(cursor.line)
-                .map(|l| l.text().get(..cursor.index).map(|s| s.chars().count()).unwrap_or(0))
+                .map(|l| {
+                    l.text()
+                        .get(..cursor.index)
+                        .map(|s| s.chars().count())
+                        .unwrap_or(0)
+                })
                 .unwrap_or(0)
         });
         let sel = editor
@@ -1159,7 +1221,8 @@ impl CodeEditorCore {
     /// request). Valid after the first render.
     pub fn caret_rect(&self) -> Option<Rect> {
         let info = self.layout_info.lock().unwrap().clone();
-        info.caret.map(|c| Rect::new(info.text.x + c.x, info.text.y + c.y, c.w, c.h))
+        info.caret
+            .map(|c| Rect::new(info.text.x + c.x, info.text.y + c.y, c.w, c.h))
     }
 
     pub fn preedit(&self) -> Option<String> {
@@ -1228,11 +1291,14 @@ impl CodeEditorCore {
             let line_i = (start.line + offset) % line_count.max(1);
             let text = snap.line(line_i).into_owned();
             let from = if offset == 0 { start.index } else { 0 };
-            let hit = regex.find_iter(&text[from.min(text.len())..]).next().map(|m| {
-                let s = from + m.start();
-                let e = from + m.end();
-                (line_i, s, e)
-            });
+            let hit = regex
+                .find_iter(&text[from.min(text.len())..])
+                .next()
+                .map(|m| {
+                    let s = from + m.start();
+                    let e = from + m.end();
+                    (line_i, s, e)
+                });
             if let Some(hit) = hit {
                 // On the wrap-around pass, stop before reaching the start
                 // position again.
@@ -1301,7 +1367,9 @@ impl CodeEditorCore {
     }
 
     pub(crate) fn editor_lock(&self) -> EditorGuard<'_> {
-        EditorGuard { inner: self.editor.lock().unwrap() }
+        EditorGuard {
+            inner: self.editor.lock().unwrap(),
+        }
     }
 
     pub(crate) fn record_layout(&self, info: LayoutInfo) {
@@ -1466,13 +1534,19 @@ impl CodeEditorCore {
         match input {
             EditorInput::FocusGained => {
                 self.focused.store(true, Ordering::Relaxed);
-                CoreOutput { request_redraw: true, ..CoreOutput::default() }
+                CoreOutput {
+                    request_redraw: true,
+                    ..CoreOutput::default()
+                }
             }
             EditorInput::FocusLost => {
                 self.focused.store(false, Ordering::Relaxed);
                 *self.preedit.lock().unwrap() = None;
                 *self.drag.lock().unwrap() = Drag::None;
-                CoreOutput { request_redraw: true, ..CoreOutput::default() }
+                CoreOutput {
+                    request_redraw: true,
+                    ..CoreOutput::default()
+                }
             }
             EditorInput::Rescaled(f) => {
                 *self.scale.lock().unwrap() = f;
@@ -1492,13 +1566,16 @@ impl CodeEditorCore {
             }
             EditorInput::KeyReleased => CoreOutput::default(),
 
-            EditorInput::KeyPressed { key, text, modifiers } => {
+            EditorInput::KeyPressed {
+                key,
+                text,
+                modifiers,
+            } => {
                 *self.modifiers.lock().unwrap() = modifiers;
                 if !self.focused.load(Ordering::Relaxed) {
                     return CoreOutput::default();
                 }
-                let mut out =
-                    self.handle_key(font_system, key, text, modifiers, clipboard);
+                let mut out = self.handle_key(font_system, key, text, modifiers, clipboard);
                 // Plan 428 P4: arrow/edit motion may walk the caret into a
                 // folded body — reveal it before the frame paints.
                 self.auto_unfold_at_cursor(&mut out);
@@ -1521,10 +1598,17 @@ impl CodeEditorCore {
                 self.handle_wheel(font_system, dx, dy, shift).captured()
             }
 
-            EditorInput::ImeOpened => CoreOutput { request_redraw: true, ..CoreOutput::default() },
+            EditorInput::ImeOpened => CoreOutput {
+                request_redraw: true,
+                ..CoreOutput::default()
+            },
             EditorInput::ImePreedit(p) => {
                 *self.preedit.lock().unwrap() = if p.is_empty() { None } else { Some(p) };
-                CoreOutput { request_redraw: true, ..CoreOutput::default() }.captured()
+                CoreOutput {
+                    request_redraw: true,
+                    ..CoreOutput::default()
+                }
+                .captured()
             }
             EditorInput::ImeCommit(content) => {
                 *self.preedit.lock().unwrap() = None;
@@ -1548,7 +1632,11 @@ impl CodeEditorCore {
             }
             EditorInput::ImeClosed => {
                 *self.preedit.lock().unwrap() = None;
-                CoreOutput { request_redraw: true, ..CoreOutput::default() }.captured()
+                CoreOutput {
+                    request_redraw: true,
+                    ..CoreOutput::default()
+                }
+                .captured()
             }
         }
     }
@@ -1632,64 +1720,83 @@ impl CodeEditorCore {
         if modifiers.control() {
             if let EditorKey::Char(c) = &key {
                 let out = match c {
-                'c' | 'C' => {
-                    if let Some(selection) = self.editor_lock().copy_selection() {
-                        clipboard.write(&selection);
-                    }
-                    CoreOutput::default()
-                }
-                'x' | 'X' => {
-                    let mut editor = self.editor_lock();
-                    if let Some(selection) = editor.copy_selection() {
-                        clipboard.write(&selection);
-                        editor.action(font_system, Action::Backspace);
-                        drop(editor);
-                        self.bump_after_edit();
-                        CoreOutput { text_changed: true, cursor_changed: true, ..CoreOutput::default() }
-                    } else {
+                    'c' | 'C' => {
+                        if let Some(selection) = self.editor_lock().copy_selection() {
+                            clipboard.write(&selection);
+                        }
                         CoreOutput::default()
                     }
-                }
-                'v' | 'V' => {
-                    if let Some(contents) = clipboard.read() {
-                        self.editor_lock().insert_string(&contents, None);
-                        self.bump_after_edit();
-                        CoreOutput { text_changed: true, cursor_changed: true, ..CoreOutput::default() }
-                    } else {
-                        CoreOutput::default()
+                    'x' | 'X' => {
+                        let mut editor = self.editor_lock();
+                        if let Some(selection) = editor.copy_selection() {
+                            clipboard.write(&selection);
+                            editor.action(font_system, Action::Backspace);
+                            drop(editor);
+                            self.bump_after_edit();
+                            CoreOutput {
+                                text_changed: true,
+                                cursor_changed: true,
+                                ..CoreOutput::default()
+                            }
+                        } else {
+                            CoreOutput::default()
+                        }
                     }
-                }
-                'z' | 'Z' => {
-                    let mut editor = self.editor_lock();
-                    // Clear the selection first: a selection spanning text
-                    // that undo is about to remove would panic the engine's
-                    // delete_range on the next edit.
-                    editor.set_selection(Selection::None);
-                    if modifiers.shift {
+                    'v' | 'V' => {
+                        if let Some(contents) = clipboard.read() {
+                            self.editor_lock().insert_string(&contents, None);
+                            self.bump_after_edit();
+                            CoreOutput {
+                                text_changed: true,
+                                cursor_changed: true,
+                                ..CoreOutput::default()
+                            }
+                        } else {
+                            CoreOutput::default()
+                        }
+                    }
+                    'z' | 'Z' => {
+                        let mut editor = self.editor_lock();
+                        // Clear the selection first: a selection spanning text
+                        // that undo is about to remove would panic the engine's
+                        // delete_range on the next edit.
+                        editor.set_selection(Selection::None);
+                        if modifiers.shift {
+                            editor.redo();
+                        } else {
+                            editor.undo();
+                        }
+                        CoreOutput {
+                            text_changed: true,
+                            cursor_changed: true,
+                            ..CoreOutput::default()
+                        }
+                    }
+                    'y' | 'Y' => {
+                        let mut editor = self.editor_lock();
+                        editor.set_selection(Selection::None);
                         editor.redo();
-                    } else {
-                        editor.undo();
+                        CoreOutput {
+                            text_changed: true,
+                            cursor_changed: true,
+                            ..CoreOutput::default()
+                        }
                     }
-                    CoreOutput { text_changed: true, cursor_changed: true, ..CoreOutput::default() }
-                }
-                'y' | 'Y' => {
-                    let mut editor = self.editor_lock();
-                    editor.set_selection(Selection::None);
-                    editor.redo();
-                    CoreOutput { text_changed: true, cursor_changed: true, ..CoreOutput::default() }
-                }
-                'a' | 'A' => {
-                    let mut editor = self.editor_lock();
-                    let end = editor.with_buffer(|b| {
-                        Cursor::new(
-                            b.lines.len().saturating_sub(1),
-                            b.lines.last().map(|l| l.text().len()).unwrap_or(0),
-                        )
-                    });
-                    editor.set_cursor(Cursor::new(0, 0));
-                    editor.set_selection(Selection::Normal(end));
-                    CoreOutput { cursor_changed: true, ..CoreOutput::default() }
-                }
+                    'a' | 'A' => {
+                        let mut editor = self.editor_lock();
+                        let end = editor.with_buffer(|b| {
+                            Cursor::new(
+                                b.lines.len().saturating_sub(1),
+                                b.lines.last().map(|l| l.text().len()).unwrap_or(0),
+                            )
+                        });
+                        editor.set_cursor(Cursor::new(0, 0));
+                        editor.set_selection(Selection::Normal(end));
+                        CoreOutput {
+                            cursor_changed: true,
+                            ..CoreOutput::default()
+                        }
+                    }
                     // Unhandled ctrl+letters must BUBBLE: the app-level
                     // shortcut layer (action-config fallback, Plan 418 P2-4)
                     // only receives uncaptured events — force-capturing here
@@ -1715,7 +1822,11 @@ impl CodeEditorCore {
         };
         if let Some(motion) = motion {
             self.apply_motion(font_system, motion, modifiers);
-            return CoreOutput { cursor_changed: true, ..CoreOutput::default() }.captured();
+            return CoreOutput {
+                cursor_changed: true,
+                ..CoreOutput::default()
+            }
+            .captured();
         }
 
         let action = match key {
@@ -1815,7 +1926,12 @@ impl CodeEditorCore {
 
     /// Cursor motion with Ctrl word/buffer jumps and Shift selection
     /// (anchored by the shift-anchor tracked on modifier changes).
-    fn apply_motion(&self, font_system: &mut FontSystem, motion: Motion, modifiers: EditorModifiers) {
+    fn apply_motion(
+        &self,
+        font_system: &mut FontSystem,
+        motion: Motion,
+        modifiers: EditorModifiers,
+    ) {
         let motion = match (motion, modifiers.control()) {
             (Motion::Left, true) => Motion::LeftWord,
             (Motion::Right, true) => Motion::RightWord,
@@ -1826,7 +1942,11 @@ impl CodeEditorCore {
         let mut editor = self.editor_lock();
         if modifiers.shift {
             if matches!(editor.selection(), Selection::None) {
-                let anchor = self.shift_anchor.lock().unwrap().unwrap_or_else(|| editor.cursor());
+                let anchor = self
+                    .shift_anchor
+                    .lock()
+                    .unwrap()
+                    .unwrap_or_else(|| editor.cursor());
                 editor.set_selection(Selection::Normal(anchor));
             }
         } else if !matches!(editor.selection(), Selection::None) {
@@ -1861,14 +1981,21 @@ impl CodeEditorCore {
     ) -> CoreOutput {
         let info = self.layout_info.lock().unwrap().clone();
 
-        if !Rect::new(0.0, 0.0, info.viewport_w, info.viewport_h).contains(super::draw::Pt::new(x, y))
+        if !Rect::new(0.0, 0.0, info.viewport_w, info.viewport_h)
+            .contains(super::draw::Pt::new(x, y))
         {
             // Click outside the widget unfocuses (cosmic-edit behavior).
             self.focused.store(false, Ordering::Relaxed);
-            return CoreOutput { request_redraw: true, ..CoreOutput::default() };
+            return CoreOutput {
+                request_redraw: true,
+                ..CoreOutput::default()
+            };
         }
         self.focused.store(true, Ordering::Relaxed);
-        let mut out = CoreOutput { request_redraw: true, ..CoreOutput::default() };
+        let mut out = CoreOutput {
+            request_redraw: true,
+            ..CoreOutput::default()
+        };
 
         match button {
             EditorButton::Right => {
@@ -2012,26 +2139,48 @@ impl CodeEditorCore {
                 let mut by = (by_fold + scroll_y).max(0.0) as i32;
                 if y > info.viewport_h {
                     let mut editor = self.editor_lock();
-                    editor.action(font_system, Action::Scroll { pixels: info.viewport_h - y });
+                    editor.action(
+                        font_system,
+                        Action::Scroll {
+                            pixels: info.viewport_h - y,
+                        },
+                    );
                     by = (info.viewport_h - info.text.y + scroll_y).max(0.0) as i32;
                 } else if y < info.text.y {
                     let mut editor = self.editor_lock();
-                    editor.action(font_system, Action::Scroll { pixels: y - info.text.y });
+                    editor.action(
+                        font_system,
+                        Action::Scroll {
+                            pixels: y - info.text.y,
+                        },
+                    );
                     by = scroll_y.max(0.0) as i32;
                 }
                 let bx = (x - info.text.x + scroll_x).max(0.0) as i32;
                 let mut editor = self.editor_lock();
                 editor.action(font_system, Action::Drag { x: bx, y: by });
-                CoreOutput { cursor_changed: true, request_redraw: true, ..CoreOutput::default() }
-                    .captured()
+                CoreOutput {
+                    cursor_changed: true,
+                    request_redraw: true,
+                    ..CoreOutput::default()
+                }
+                .captured()
             }
             Drag::ScrollbarV { .. } => {
                 self.drag_scrollbar_v(font_system, y);
-                CoreOutput { request_redraw: true, ..CoreOutput::default() }.captured()
+                CoreOutput {
+                    request_redraw: true,
+                    ..CoreOutput::default()
+                }
+                .captured()
             }
             Drag::ScrollbarH { .. } => {
                 self.drag_scrollbar_h(font_system, x);
-                CoreOutput { request_redraw: true, ..CoreOutput::default() }.captured()
+                CoreOutput {
+                    request_redraw: true,
+                    ..CoreOutput::default()
+                }
+                .captured()
             }
         }
     }
@@ -2043,7 +2192,9 @@ impl CodeEditorCore {
             Drag::ScrollbarV { grab_offset } => grab_offset,
             _ => return,
         };
-        let Some(track_h) = info.scrollbar_v.map(|sb| sb.h) else { return };
+        let Some(track_h) = info.scrollbar_v.map(|sb| sb.h) else {
+            return;
+        };
         let total_lines = self.editor_lock().with_buffer(|b| b.lines.len()).max(1);
         // Thumb of height `thumb_h` moves in a track of `track_h`; line
         // position proportional to thumb center.
@@ -2052,8 +2203,8 @@ impl CodeEditorCore {
         let travel = (track_h - thumb_h).max(1.0);
         let center = (y - grab + thumb_h / 2.0 - info.scrollbar_v.map(|s| s.y).unwrap_or(0.0))
             .clamp(0.0, track_h);
-        let line = ((center - thumb_h / 2.0).max(0.0) / travel * (total_lines as f32 - 1.0))
-            .round() as usize;
+        let line = ((center - thumb_h / 2.0).max(0.0) / travel * (total_lines as f32 - 1.0)).round()
+            as usize;
         let mut editor = self.editor_lock();
         editor.with_buffer_mut(|b| {
             let mut scroll = b.scroll();
@@ -2083,8 +2234,8 @@ impl CodeEditorCore {
         let mut editor = self.editor_lock();
         editor.with_buffer_mut(|b| {
             let mut scroll = b.scroll();
-            scroll.horizontal = (frac * (max_w - b.size().0.unwrap_or(max_w)).max(0.0))
-                .clamp(0.0, max_w);
+            scroll.horizontal =
+                (frac * (max_w - b.size().0.unwrap_or(max_w)).max(0.0)).clamp(0.0, max_w);
             b.set_scroll(scroll);
         });
     }
@@ -2124,7 +2275,10 @@ impl CodeEditorCore {
             // Scroll position unchanged (already at a boundary): no repaint.
             return CoreOutput::default();
         }
-        CoreOutput { request_redraw: true, ..CoreOutput::default() }
+        CoreOutput {
+            request_redraw: true,
+            ..CoreOutput::default()
+        }
     }
 
     fn bump_after_edit(&self) {
@@ -2225,7 +2379,6 @@ impl CodeEditorCore {
         let line_height = self.config.lock().unwrap().line_height();
         Some(map.project_y(cursor.line, cursor.line as f32 * line_height))
     }
-
 
     // ── Plan 418: programmatic actions (menu/toolbar handlers) ──────────
     // Same semantics as the Ctrl+Z/Y/A/C/X/V arms of handle_key, callable
@@ -2361,9 +2514,8 @@ pub fn code_editor(key: &str, config: &CodeEditorConfig) -> &'static CodeEditorC
             map.remove(&k);
         }
     }
-    let core: &'static CodeEditorCore = with_font_system(|fs| {
-        Box::leak(Box::new(CodeEditorCore::new(key, config.clone(), fs)))
-    });
+    let core: &'static CodeEditorCore =
+        with_font_system(|fs| Box::leak(Box::new(CodeEditorCore::new(key, config.clone(), fs))));
     core.last_used.store(lru_tick(), Ordering::Relaxed);
     map.insert(key.to_owned(), core);
     core
@@ -2480,10 +2632,7 @@ pub fn code_editor_load_file(key: &str, path: &str) -> Option<i64> {
         Err(_) => return None,
     };
     if file_len > PAGED_LOAD_THRESHOLD {
-        let paged = rope::Rope::open_file_backed(
-            Path::new(path),
-            rope::PageConfig::default(),
-        );
+        let paged = rope::Rope::open_file_backed(Path::new(path), rope::PageConfig::default());
         match paged {
             Ok((rope, store)) => {
                 with_font_system(|fs| core.set_doc_file_backed(rope, store, fs));
@@ -2628,14 +2777,32 @@ pub fn code_editor_find(key: &str) -> bool {
 pub fn code_editor_undo(key: &str) -> bool {
     let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
-    map.get(&key).map(|core| { if core.is_readonly() { return false; } core.do_undo(); core.mark_external_dirty(); true }).unwrap_or(false)
+    map.get(&key)
+        .map(|core| {
+            if core.is_readonly() {
+                return false;
+            }
+            core.do_undo();
+            core.mark_external_dirty();
+            true
+        })
+        .unwrap_or(false)
 }
 
 /// Plan 418: programmatic redo (mirrors the Ctrl+Y arm of handle_key).
 pub fn code_editor_redo(key: &str) -> bool {
     let key = normalize_payload_key(key);
     let map = CODE_EDITORS.lock().unwrap();
-    map.get(&key).map(|core| { if core.is_readonly() { return false; } core.do_redo(); core.mark_external_dirty(); true }).unwrap_or(false)
+    map.get(&key)
+        .map(|core| {
+            if core.is_readonly() {
+                return false;
+            }
+            core.do_redo();
+            core.mark_external_dirty();
+            true
+        })
+        .unwrap_or(false)
 }
 
 /// Plan 418: select all text (mirrors the Ctrl+A arm of handle_key).
@@ -2715,11 +2882,17 @@ mod tests {
     }
 
     fn ctrl_mods() -> EditorModifiers {
-        EditorModifiers { control: true, ..EditorModifiers::none() }
+        EditorModifiers {
+            control: true,
+            ..EditorModifiers::none()
+        }
     }
 
     fn shift_mods() -> EditorModifiers {
-        EditorModifiers { shift: true, ..EditorModifiers::none() }
+        EditorModifiers {
+            shift: true,
+            ..EditorModifiers::none()
+        }
     }
 
     #[test]
@@ -2735,11 +2908,12 @@ mod tests {
         assert_eq!(core.text(), "hello world");
 
         let mut clip = NullClipboard;
-        let press = |key: EditorKey, text: Option<&str>, m: EditorModifiers| EditorInput::KeyPressed {
-            key,
-            text: text.map(|t| t.to_owned()),
-            modifiers: m,
-        };
+        let press =
+            |key: EditorKey, text: Option<&str>, m: EditorModifiers| EditorInput::KeyPressed {
+                key,
+                text: text.map(|t| t.to_owned()),
+                modifiers: m,
+            };
 
         // End + type
         let out = core.handle_input(&mut fs, press(EditorKey::End, None, none_mods()), &mut clip);
@@ -2753,13 +2927,25 @@ mod tests {
         assert_eq!(core.text(), "hello world!");
 
         // Shift+Home selects
-        core.handle_input(&mut fs, EditorInput::ModifiersChanged(shift_mods()), &mut clip);
-        core.handle_input(&mut fs, press(EditorKey::Home, None, shift_mods()), &mut clip);
+        core.handle_input(
+            &mut fs,
+            EditorInput::ModifiersChanged(shift_mods()),
+            &mut clip,
+        );
+        core.handle_input(
+            &mut fs,
+            press(EditorKey::Home, None, shift_mods()),
+            &mut clip,
+        );
         let (start, end) = core.editor_lock().selection_bounds().expect("selection");
         assert_eq!((start.index, end.index), (0, 12));
 
         // Undo removes the '!'
-        core.handle_input(&mut fs, press(EditorKey::Char('z'), None, ctrl_mods()), &mut clip);
+        core.handle_input(
+            &mut fs,
+            press(EditorKey::Char('z'), None, ctrl_mods()),
+            &mut clip,
+        );
         assert_eq!(core.text(), "hello world");
 
         // IME commit inserts
@@ -2805,7 +2991,10 @@ mod tests {
     #[test]
     fn gutter_fold_chevrons_on_block_openers() {
         let mut fs = FontSystem::new();
-        let config = CodeEditorConfig { lang: "auto".to_owned(), ..CodeEditorConfig::default() };
+        let config = CodeEditorConfig {
+            lang: "auto".to_owned(),
+            ..CodeEditorConfig::default()
+        };
         let core = CodeEditorCore::new("test-gutter-folds", config, &mut fs);
         core.set_text(
             "// header
@@ -2830,11 +3019,15 @@ fn add(a int, b int) int {
         assert!(!gutter.folds[0].folded, "fresh render: nothing folded yet");
 
         // Brace-free text has no fold markers.
-        let core2 = CodeEditorCore::new("test-gutter-nofolds", CodeEditorConfig::default(), &mut fs);
-        core2.set_text("plain
+        let core2 =
+            CodeEditorCore::new("test-gutter-nofolds", CodeEditorConfig::default(), &mut fs);
+        core2.set_text(
+            "plain
 text
 only
-", &mut fs);
+",
+            &mut fs,
+        );
         let list2 = render::render(&core2, &mut fs, 400.0, 200.0, None);
         assert!(list2.gutter.expect("gutter").folds.is_empty());
     }
@@ -2846,7 +3039,10 @@ only
     #[test]
     fn content_height_fold_fastpath_equivalence() {
         let mut fs = FontSystem::new();
-        let config = CodeEditorConfig { lang: "auto".to_owned(), ..CodeEditorConfig::default() };
+        let config = CodeEditorConfig {
+            lang: "auto".to_owned(),
+            ..CodeEditorConfig::default()
+        };
         let core = CodeEditorCore::new("test-p725-height", config, &mut fs);
         core.set_text(
             "// header
@@ -2988,7 +3184,10 @@ fn add(a int, b int) int {
         set_font_system_call(test_font_system);
 
         let mut fs = FontSystem::new();
-        let cfg = CodeEditorConfig { readonly: true, ..CodeEditorConfig::default() };
+        let cfg = CodeEditorConfig {
+            readonly: true,
+            ..CodeEditorConfig::default()
+        };
         let core = CodeEditorCore::new("test-readonly-gate", cfg, &mut fs);
         core.set_text("hello world", &mut fs);
 
@@ -2998,7 +3197,11 @@ fn add(a int, b int) int {
             for key in [EditorKey::Char('X'), EditorKey::Enter, EditorKey::Backspace] {
                 core.handle_input(
                     fs,
-                    EditorInput::KeyPressed { key, text: None, modifiers: EditorModifiers::none() },
+                    EditorInput::KeyPressed {
+                        key,
+                        text: None,
+                        modifiers: EditorModifiers::none(),
+                    },
                     &mut NullClipboard,
                 );
             }
@@ -3008,11 +3211,18 @@ fn add(a int, b int) int {
                 EditorInput::KeyPressed {
                     key: EditorKey::Char('v'),
                     text: None,
-                    modifiers: EditorModifiers { control: true, ..EditorModifiers::none() },
+                    modifiers: EditorModifiers {
+                        control: true,
+                        ..EditorModifiers::none()
+                    },
                 },
                 &mut NullClipboard,
             );
-            assert_eq!(core.text(), "hello world", "readonly swallows mutating keys");
+            assert_eq!(
+                core.text(),
+                "hello world",
+                "readonly swallows mutating keys"
+            );
 
             // Navigation reaches the caret: Home → col 0.
             core.handle_input(
@@ -3032,7 +3242,10 @@ fn add(a int, b int) int {
         // (Copy-only exemption asserted in core_external_dirty_roundtrip).
         let ro_key = storage_key("test-readonly-menu");
         code_editor_dispose(&ro_key);
-        let ro_cfg = CodeEditorConfig { readonly: true, ..CodeEditorConfig::default() };
+        let ro_cfg = CodeEditorConfig {
+            readonly: true,
+            ..CodeEditorConfig::default()
+        };
         let _ro = code_editor(&ro_key, &ro_cfg);
         assert!(!code_editor_undo(&ro_key), "menu undo refused");
         assert!(!code_editor_redo(&ro_key), "menu redo refused");
@@ -3073,11 +3286,7 @@ fn add(a int, b int) int {
     #[test]
     fn core_config_diff_toggles_wrap_and_vi() {
         let mut fs = FontSystem::new();
-        let core = CodeEditorCore::new(
-            "test-core-config",
-            CodeEditorConfig::default(),
-            &mut fs,
-        );
+        let core = CodeEditorCore::new("test-core-config", CodeEditorConfig::default(), &mut fs);
         core.set_text("aaaa bbbb cccc dddd eeee ffff gggg hhhh iiii jjjj", &mut fs);
         let list = render::render(&core, &mut fs, 120.0, 100.0, None);
         assert!(
@@ -3085,9 +3294,16 @@ fn add(a int, b int) int {
             "wide single line in a narrow viewport shows the h scrollbar"
         );
 
-        let wrapped = CodeEditorConfig { wrap: true, ..CodeEditorConfig::default() };
+        let wrapped = CodeEditorConfig {
+            wrap: true,
+            ..CodeEditorConfig::default()
+        };
         core.apply_config(&wrapped, &mut fs);
-        let vi = CodeEditorConfig { vi: true, wrap: true, ..CodeEditorConfig::default() };
+        let vi = CodeEditorConfig {
+            vi: true,
+            wrap: true,
+            ..CodeEditorConfig::default()
+        };
         core.apply_config(&vi, &mut fs);
         let (line, _col, _sel) = core.cursor_info();
         assert_eq!(line, 0);
@@ -3096,14 +3312,13 @@ fn add(a int, b int) int {
     #[test]
     fn core_search_highlights_and_finds() {
         let mut fs = FontSystem::new();
-        let core = CodeEditorCore::new(
-            "test-core-search",
-            CodeEditorConfig::default(),
+        let core = CodeEditorCore::new("test-core-search", CodeEditorConfig::default(), &mut fs);
+        core.set_text(
+            "let alpha = 1;
+let beta = alpha + 2;
+",
             &mut fs,
         );
-        core.set_text("let alpha = 1;
-let beta = alpha + 2;
-", &mut fs);
 
         // No pattern → no matches.
         let list = render::render(&core, &mut fs, 400.0, 200.0, None);
@@ -3147,7 +3362,10 @@ let beta = alpha + 2;
         );
         // Recently used keys survive.
         assert!(code_editor_text(&storage_key("lru-39")).is_some());
-        assert!(code_editor_text(&storage_key("lru-0")).is_none(), "oldest swept");
+        assert!(
+            code_editor_text(&storage_key("lru-0")).is_none(),
+            "oldest swept"
+        );
     }
 
     // ── global registry keying (Plan 413 §5.4) ──────────────────────────
@@ -3207,7 +3425,11 @@ let beta = alpha + 2;
             "bottom must be reachable: scroll {bottom:?} vs {line_count} lines"
         );
         let out = with_font_system(|fs| core.handle_wheel(fs, 0.0, -3.0, false));
-        assert_eq!(scroll_of(), bottom, "clamped at bottom: no further movement");
+        assert_eq!(
+            scroll_of(),
+            bottom,
+            "clamped at bottom: no further movement"
+        );
         assert!(
             !out.request_redraw,
             "at-boundary wheel must not request a repaint"
@@ -3221,7 +3443,10 @@ let beta = alpha + 2;
         assert_eq!(top.line, 0, "top clamp");
         assert_eq!(top.vertical, 0.0, "top clamp");
         let out = with_font_system(|fs| core.handle_wheel(fs, 0.0, 3.0, false));
-        assert!(!out.request_redraw, "at-top wheel must not request a repaint");
+        assert!(
+            !out.request_redraw,
+            "at-top wheel must not request a repaint"
+        );
     }
 
     /// PLAN-629 T-01: hosted-scroller contract — content height reporting,
@@ -3242,9 +3467,15 @@ let beta = alpha + 2;
     c
 }
 "
-            .to_string()
-            + &(5..60).map(|i| format!("fill {i}")).collect::<Vec<_>>().join("
-").as_str();
+        .to_string()
+            + &(5..60)
+                .map(|i| format!("fill {i}"))
+                .collect::<Vec<_>>()
+                .join(
+                    "
+",
+                )
+                .as_str();
         with_font_system(|fs| core.set_text(&text, fs));
         with_font_system(|fs| {
             let mut editor = core.editor_lock();
@@ -3253,7 +3484,10 @@ let beta = alpha + 2;
 
         // Height report: 60 lines, nothing folded.
         let h0 = core.content_height();
-        assert!((h0 - 60.0 * line_height).abs() < 1.0, "content height, got {h0}");
+        assert!(
+            (h0 - 60.0 * line_height).abs() < 1.0,
+            "content height, got {h0}"
+        );
 
         // Absolute-offset sync lands the viewport near the request.
         with_font_system(|fs| core.sync_external_scroll(fs, 300.0));
@@ -3264,7 +3498,10 @@ let beta = alpha + 2;
                 s.line as f32 * line_height + s.vertical
             })
         });
-        assert!((abs - 300.0).abs() <= line_height, "absolute offset ≈ request, got {abs}");
+        assert!(
+            (abs - 300.0).abs() <= line_height,
+            "absolute offset ≈ request, got {abs}"
+        );
 
         // Clamps past the bottom: content_height - viewport_h.
         with_font_system(|fs| core.sync_external_scroll(fs, 100_000.0));
@@ -3276,7 +3513,10 @@ let beta = alpha + 2;
             })
         });
         let want = (h0 - 200.0).max(0.0);
-        assert!((abs_bottom - want).abs() <= 2.0 * line_height, "bottom clamp ≈ {want}, got {abs_bottom}");
+        assert!(
+            (abs_bottom - want).abs() <= 2.0 * line_height,
+            "bottom clamp ≈ {want}, got {abs_bottom}"
+        );
 
         // Folding the fn block hides its 4-line body (lines 1-4 — the `…`
         // marker rides on the opener line), shrinking the height by 4 lines.
@@ -3318,8 +3558,10 @@ let beta = alpha + 2;
         let text = (0..line_count)
             .map(|i| format!("line {i}"))
             .collect::<Vec<_>>()
-            .join("
-");
+            .join(
+                "
+",
+            );
         with_font_system(|fs| core.set_text(&text, fs));
 
         // A render pass populates layout_info (scrollbar rects, visible
@@ -3350,7 +3592,10 @@ let beta = alpha + 2;
                 (s.line, s.vertical)
             })
         });
-        assert!(line > 0, "dragging down must advance scroll.line, got {line}");
+        assert!(
+            line > 0,
+            "dragging down must advance scroll.line, got {line}"
+        );
         assert!(
             vertical.abs() < line_count as f32 * 100.0,
             "vertical must stay normalized, got {vertical}"
@@ -3419,7 +3664,10 @@ let beta = alpha + 2;
         set_font_system_call(test_font_system);
         let key = storage_key("test-resync-keeps-edit");
         code_editor_dispose(&key);
-        let config = CodeEditorConfig { lang: "rust".to_owned(), ..CodeEditorConfig::default() };
+        let config = CodeEditorConfig {
+            lang: "rust".to_owned(),
+            ..CodeEditorConfig::default()
+        };
         let core = code_editor(&key, &config);
         // First external push seeds the editor (top-level: the registry
         // wrapper takes the font-system lock internally — must never be
@@ -3499,11 +3747,10 @@ let beta = alpha + 2;
         assert!(core.text().contains("fn main()"));
         // Missing editor / missing file → None.
         assert!(code_editor_load_file("no-such-editor-687", p.to_str().unwrap()).is_none());
-        assert!(code_editor_load_file(
-            &key,
-            dir.join("definitely_missing.txt").to_str().unwrap()
-        )
-        .is_none());
+        assert!(
+            code_editor_load_file(&key, dir.join("definitely_missing.txt").to_str().unwrap())
+                .is_none()
+        );
         code_editor_dispose(&key);
         std::fs::remove_file(&p).ok();
     }
@@ -3533,7 +3780,10 @@ let beta = alpha + 2;
         std::fs::remove_file(&dst).ok();
         let loaded = code_editor_load_file(&key, src.to_str().unwrap()).expect("load");
         assert_eq!(loaded, payload.len() as i64);
-        assert!(code_editor_save(&key, dst.to_str().unwrap()), "save must succeed");
+        assert!(
+            code_editor_save(&key, dst.to_str().unwrap()),
+            "save must succeed"
+        );
         let written = std::fs::read(&dst).expect("dst readable");
         assert_eq!(
             written, payload,
@@ -3546,7 +3796,10 @@ let beta = alpha + 2;
         let written2 = std::fs::read(&dst).unwrap();
         assert_eq!(&written2[..2], b"FN", "post-edit save persists the edit");
         // Missing editor → false; unwritable path (dir-as-file) → false.
-        assert!(!code_editor_save("no-such-editor-701", dst.to_str().unwrap()));
+        assert!(!code_editor_save(
+            "no-such-editor-701",
+            dst.to_str().unwrap()
+        ));
         assert!(!code_editor_save(&key, dir.to_str().unwrap()));
         code_editor_dispose(&key);
         std::fs::remove_file(&src).ok();
@@ -3570,12 +3823,20 @@ let beta = alpha + 2;
         code_editor_set_text(&key, "abc\n你好de\nxyz");
         // In-range: line 1, char col 2 (multi-byte line — char col, not byte).
         assert!(code_editor_set_cursor(&key, 1, 2));
-        assert_eq!(code_editor_cursor(&key), Some((1, 2, 0)), "0-based line/char-col round-trip");
+        assert_eq!(
+            code_editor_cursor(&key),
+            Some((1, 2, 0)),
+            "0-based line/char-col round-trip"
+        );
         // Out-of-range line clamps to last; out-of-range col clamps to EOL.
         assert!(code_editor_set_cursor(&key, 99, 0));
         assert_eq!(code_editor_cursor(&key).map(|(l, _, _)| l), Some(2));
         assert!(code_editor_set_cursor(&key, 0, 999));
-        assert_eq!(code_editor_cursor(&key), Some((0, 3, 0)), "col clamps to line char count");
+        assert_eq!(
+            code_editor_cursor(&key),
+            Some((0, 3, 0)),
+            "col clamps to line char count"
+        );
         // Missing editor → false.
         assert!(!code_editor_set_cursor("no-such-editor-701", 0, 0));
         code_editor_dispose(&key);
@@ -3594,15 +3855,18 @@ let beta = alpha + 2;
     #[test]
     fn set_text_pushes_full_replace_delta() {
         let mut fs = FontSystem::new();
-        let core =
-            CodeEditorCore::new("test-delta-set-text", CodeEditorConfig::default(), &mut fs);
+        let core = CodeEditorCore::new("test-delta-set-text", CodeEditorConfig::default(), &mut fs);
         // Fresh core: old text is empty → old_len 0.
         core.set_text("hello world", &mut fs);
         let (rev, deltas) = core.take_deltas();
         assert_eq!(rev, 1, "one edit bumps the watermark to 1");
         assert_eq!(
             deltas,
-            vec![TextDelta { start: 0, end: 0, replacement: "hello world".to_string() }]
+            vec![TextDelta {
+                start: 0,
+                end: 0,
+                replacement: "hello world".to_string()
+            }]
         );
         // Second rewrite: end = byte length of the PREVIOUS text (11 bytes).
         core.set_text("héllo", &mut fs);
@@ -3610,7 +3874,11 @@ let beta = alpha + 2;
         assert_eq!(rev2, 2);
         assert_eq!(
             deltas2,
-            vec![TextDelta { start: 0, end: 11, replacement: "héllo".to_string() }]
+            vec![TextDelta {
+                start: 0,
+                end: 11,
+                replacement: "héllo".to_string()
+            }]
         );
     }
 
@@ -3626,7 +3894,10 @@ let beta = alpha + 2;
         assert_eq!(deltas.len(), 1);
         core.set_text("same", &mut fs); // early return — no rewrite
         let (_, deltas) = core.take_deltas();
-        assert!(deltas.is_empty(), "no-change set_text must not push a delta");
+        assert!(
+            deltas.is_empty(),
+            "no-change set_text must not push a delta"
+        );
     }
 
     /// Plan 673 §4.2 registry read面: `code_editor_delta` serializes
@@ -3639,7 +3910,10 @@ let beta = alpha + 2;
         set_font_system_call(test_font_system);
         let key = storage_key("test-delta-registry");
         code_editor_dispose(&key);
-        let config = CodeEditorConfig { lang: "rust".to_owned(), ..CodeEditorConfig::default() };
+        let config = CodeEditorConfig {
+            lang: "rust".to_owned(),
+            ..CodeEditorConfig::default()
+        };
         let _core = code_editor(&key, &config);
 
         // Unknown key → None (mirrors code_editor_text).
@@ -3684,27 +3958,47 @@ let beta = alpha + 2;
         // Mid-string insertion (suffix absorbs the shared " world").
         assert_eq!(
             d("hello world", "hello brave world"),
-            Some(TextDelta { start: 6, end: 6, replacement: "brave ".to_string() })
+            Some(TextDelta {
+                start: 6,
+                end: 6,
+                replacement: "brave ".to_string()
+            })
         );
         // Deletion of a CJK char (3-byte boundaries).
         assert_eq!(
             d("你好world", "你world"),
-            Some(TextDelta { start: 3, end: 6, replacement: "".to_string() })
+            Some(TextDelta {
+                start: 3,
+                end: 6,
+                replacement: "".to_string()
+            })
         );
         // Replacement touching a 4-byte emoji.
         assert_eq!(
             d("a😀b", "a🎉b"),
-            Some(TextDelta { start: 1, end: 5, replacement: "🎉".to_string() })
+            Some(TextDelta {
+                start: 1,
+                end: 5,
+                replacement: "🎉".to_string()
+            })
         );
         // Append at the end.
         assert_eq!(
             d("abc", "abc!"),
-            Some(TextDelta { start: 3, end: 3, replacement: "!".to_string() })
+            Some(TextDelta {
+                start: 3,
+                end: 3,
+                replacement: "!".to_string()
+            })
         );
         // Whole-document replace.
         assert_eq!(
             d("old", "new"),
-            Some(TextDelta { start: 0, end: 3, replacement: "new".to_string() })
+            Some(TextDelta {
+                start: 0,
+                end: 3,
+                replacement: "new".to_string()
+            })
         );
         // No change → None.
         assert_eq!(d("same", "same"), None);
@@ -3716,16 +4010,23 @@ let beta = alpha + 2;
     #[test]
     fn commit_derived_edit_syncs_rope_and_delta() {
         let mut fs = FontSystem::new();
-        let core =
-            CodeEditorCore::new("test-delta-commit", CodeEditorConfig::default(), &mut fs);
+        let core = CodeEditorCore::new("test-delta-commit", CodeEditorConfig::default(), &mut fs);
         core.set_text("hello world", &mut fs);
         core.take_deltas();
         // Simulate a typed edit: pre-edit rope text + post-edit buffer text.
         core.push_delta_from_texts("hello world", "hello brave world");
-        assert_eq!(core.text(), "hello brave world", "rope must receive the derived interval");
+        assert_eq!(
+            core.text(),
+            "hello brave world",
+            "rope must receive the derived interval"
+        );
         assert_eq!(
             core.take_deltas().1,
-            vec![TextDelta { start: 6, end: 6, replacement: "brave ".to_string() }]
+            vec![TextDelta {
+                start: 6,
+                end: 6,
+                replacement: "brave ".to_string()
+            }]
         );
         // No-change commit: rope untouched, nothing queued.
         core.push_delta_from_texts(core.text().as_str(), "hello brave world");
@@ -3742,7 +4043,10 @@ let beta = alpha + 2;
         set_font_system_call(test_font_system);
         let key = storage_key("test-edit-registry");
         code_editor_dispose(&key);
-        let config = CodeEditorConfig { lang: "rust".to_owned(), ..CodeEditorConfig::default() };
+        let config = CodeEditorConfig {
+            lang: "rust".to_owned(),
+            ..CodeEditorConfig::default()
+        };
         let _core = code_editor(&key, &config);
         assert!(code_editor_set_text(&key, "hello world"));
         // Drain the seeding full-replace delta.
@@ -3752,19 +4056,40 @@ let beta = alpha + 2;
         // Insert form (start == end).
         assert!(code_editor_edit(&key, 5, 5, ","));
         let (_, d) = code_editor_with(&key, |c| c.take_deltas()).unwrap();
-        assert_eq!(d, vec![TextDelta { start: 5, end: 5, replacement: ",".to_string() }]);
+        assert_eq!(
+            d,
+            vec![TextDelta {
+                start: 5,
+                end: 5,
+                replacement: ",".to_string()
+            }]
+        );
         assert_eq!(code_editor_text(&key).as_deref(), Some("hello, world"));
 
         // Replace form.
         assert!(code_editor_edit(&key, 0, 5, "goodbye"));
         let (_, d) = code_editor_with(&key, |c| c.take_deltas()).unwrap();
-        assert_eq!(d, vec![TextDelta { start: 0, end: 5, replacement: "goodbye".to_string() }]);
+        assert_eq!(
+            d,
+            vec![TextDelta {
+                start: 0,
+                end: 5,
+                replacement: "goodbye".to_string()
+            }]
+        );
         assert_eq!(code_editor_text(&key).as_deref(), Some("goodbye, world"));
 
         // Delete form (empty replacement): drop ", world" (bytes 7..14).
         assert!(code_editor_edit(&key, 7, 14, ""));
         let (_, d) = code_editor_with(&key, |c| c.take_deltas()).unwrap();
-        assert_eq!(d, vec![TextDelta { start: 7, end: 14, replacement: "".to_string() }]);
+        assert_eq!(
+            d,
+            vec![TextDelta {
+                start: 7,
+                end: 14,
+                replacement: "".to_string()
+            }]
+        );
         assert_eq!(code_editor_text(&key).as_deref(), Some("goodbye"));
 
         // Invalid: start > end, out of bounds, non-char boundary on CJK —
@@ -3787,8 +4112,7 @@ let beta = alpha + 2;
     #[test]
     fn three_sources_share_one_delta_stream() {
         let mut fs = FontSystem::new();
-        let core =
-            CodeEditorCore::new("test-delta-3src", CodeEditorConfig::default(), &mut fs);
+        let core = CodeEditorCore::new("test-delta-3src", CodeEditorConfig::default(), &mut fs);
         core.set_text("fn main() {", &mut fs);
         core.take_deltas(); // drain the seeding full-replace
 
@@ -3822,9 +4146,21 @@ let beta = alpha + 2;
         assert_eq!(
             deltas,
             vec![
-                TextDelta { start: 0, end: 0, replacement: "// ".to_string() },
-                TextDelta { start: 14, end: 14, replacement: "!".to_string() },
-                TextDelta { start: 14, end: 15, replacement: "".to_string() },
+                TextDelta {
+                    start: 0,
+                    end: 0,
+                    replacement: "// ".to_string()
+                },
+                TextDelta {
+                    start: 14,
+                    end: 14,
+                    replacement: "!".to_string()
+                },
+                TextDelta {
+                    start: 14,
+                    end: 15,
+                    replacement: "".to_string()
+                },
             ],
             "agent write, typed keystroke and undo must share one ordered stream"
         );
@@ -3841,7 +4177,10 @@ let beta = alpha + 2;
         let line = "    let value = compute_something(x_i + y_i * 3) / total; // keep going\n";
         let n_lines = 1_000_000 / line.len();
         let big: String = line.repeat(n_lines);
-        let config = CodeEditorConfig { lang: "rust".to_owned(), ..CodeEditorConfig::default() };
+        let config = CodeEditorConfig {
+            lang: "rust".to_owned(),
+            ..CodeEditorConfig::default()
+        };
         let core = code_editor(&storage_key("test-large"), &config);
         let t0 = std::time::Instant::now();
         code_editor_set_text(&storage_key("test-large"), &big);
@@ -3926,7 +4265,10 @@ let beta = alpha + 2;
         );
 
         let mut fs = FontSystem::new();
-        let config = CodeEditorConfig { lang: "rust".to_owned(), ..CodeEditorConfig::default() };
+        let config = CodeEditorConfig {
+            lang: "rust".to_owned(),
+            ..CodeEditorConfig::default()
+        };
         let core = CodeEditorCore::new("smoke-100mb", config, &mut fs);
 
         // ── Phase 1: open (rope build + full buffer materialization) ──
@@ -3942,7 +4284,10 @@ let beta = alpha + 2;
             std::hint::black_box(core.doc.lock().unwrap().line_count());
             std::hint::black_box(core.doc.lock().unwrap().len_bytes());
         }
-        println!("[receipt] phase 2 summaries: {:?} for 100k×(line_count+len_bytes)", t.elapsed());
+        println!(
+            "[receipt] phase 2 summaries: {:?} for 100k×(line_count+len_bytes)",
+            t.elapsed()
+        );
 
         // ── Phase 3: locate at 100 depths (O(log n) each) ──
         let t = Instant::now();
@@ -3970,7 +4315,10 @@ let beta = alpha + 2;
             },
             &mut NullClipboard,
         );
-        println!("[receipt] phase 4 typed edit (1 keystroke, incl. O(n) snapshots): {:?}", t.elapsed());
+        println!(
+            "[receipt] phase 4 typed edit (1 keystroke, incl. O(n) snapshots): {:?}",
+            t.elapsed()
+        );
 
         // ── Phase 5: agent edit (code_editor_edit = full rewrite path) ──
         let mid = text.len() / 2;
@@ -3978,15 +4326,24 @@ let beta = alpha + 2;
         assert!(core.edit(mid, mid, "// agent\n", &mut fs));
         let agent = t.elapsed();
         assert!(core.edit(mid, mid + 9, "", &mut fs));
-        println!("[receipt] phase 5 agent edit: {agent:?} (edit + inverse, full O(n) rewrite each)");
+        println!(
+            "[receipt] phase 5 agent edit: {agent:?} (edit + inverse, full O(n) rewrite each)"
+        );
 
         // ── Phase 6: save readout through the rope ──
         let expected_len = core.text().len(); // corpus + phase-4 '!' (phase 5 cancels out)
         let t = Instant::now();
         let saved = core.text();
         let save = t.elapsed();
-        assert_eq!(saved.len(), expected_len, "save readout must match the live document");
-        println!("[receipt] phase 6 save readout: {save:?} for {} bytes", saved.len());
+        assert_eq!(
+            saved.len(),
+            expected_len,
+            "save readout must match the live document"
+        );
+        println!(
+            "[receipt] phase 6 save readout: {save:?} for {} bytes",
+            saved.len()
+        );
 
         // ── Phase 7: snapshot isolation under concurrent edits ──
         let snap = core.doc.lock().unwrap().snapshot();
@@ -4005,14 +4362,20 @@ let beta = alpha + 2;
             }
         }
         let (snap_len, snap_time) = worker.join().unwrap();
-        assert_eq!(snap_len, expected_len, "snapshot sees the frozen pre-edit document");
+        assert_eq!(
+            snap_len, expected_len,
+            "snapshot sees the frozen pre-edit document"
+        );
         println!(
             "[receipt] phase 7 concurrency: worker to_string({} bytes) {:?} WHILE main rope applied 100 edit pairs ({:?} total)",
             snap_len, snap_time, t.elapsed()
         );
 
         std::fs::remove_file(&path).ok();
-        println!("[receipt] cleanup: corpus file deleted; corpus was {:.1} MB on disk", target_bytes as f64 / 1024.0 / 1024.0);
+        println!(
+            "[receipt] cleanup: corpus file deleted; corpus was {:.1} MB on disk",
+            target_bytes as f64 / 1024.0 / 1024.0
+        );
     }
     // ── Plan 428: folding render + interaction integration ──────────────
 
@@ -4032,11 +4395,7 @@ fn sub(a int, b int) int {
     fn fold_toggle_projects_render() {
         set_font_system_call(test_font_system);
         let mut fs = FontSystem::new();
-        let core = CodeEditorCore::new(
-            "test-fold-render",
-            CodeEditorConfig::default(),
-            &mut fs,
-        );
+        let core = CodeEditorCore::new("test-fold-render", CodeEditorConfig::default(), &mut fs);
         core.set_text(FOLD_SRC, &mut fs);
 
         // Fold `fn add` (opener line index 1).
@@ -4080,11 +4439,7 @@ fn sub(a int, b int) int {
     fn fold_column_click_toggles() {
         set_font_system_call(test_font_system);
         let mut fs = FontSystem::new();
-        let core = CodeEditorCore::new(
-            "test-fold-click",
-            CodeEditorConfig::default(),
-            &mut fs,
-        );
+        let core = CodeEditorCore::new("test-fold-click", CodeEditorConfig::default(), &mut fs);
         core.set_text(FOLD_SRC, &mut fs);
         // First render records the fold column + bands.
         let _ = render::render(&core, &mut fs, 400.0, 200.0, None);
@@ -4103,7 +4458,11 @@ fn sub(a int, b int) int {
         let mut clip = NullClipboard;
         let out = core.handle_input(
             &mut fs,
-            EditorInput::MousePressed { button: EditorButton::Left, x: fc_x, y: opener_y + 1.0 },
+            EditorInput::MousePressed {
+                button: EditorButton::Left,
+                x: fc_x,
+                y: opener_y + 1.0,
+            },
             &mut clip,
         );
         assert!(out.captured, "fold click captured");
@@ -4114,7 +4473,11 @@ fn sub(a int, b int) int {
         let _ = render::render(&core, &mut fs, 400.0, 200.0, None);
         let _ = core.handle_input(
             &mut fs,
-            EditorInput::MousePressed { button: EditorButton::Left, x: fc_x, y: opener_y + 1.0 },
+            EditorInput::MousePressed {
+                button: EditorButton::Left,
+                x: fc_x,
+                y: opener_y + 1.0,
+            },
             &mut clip,
         );
         assert!(!core.fold_is_folded(1), "second click unfolds");
@@ -4126,11 +4489,8 @@ fn sub(a int, b int) int {
     fn cursor_into_fold_auto_expands() {
         set_font_system_call(test_font_system);
         let mut fs = FontSystem::new();
-        let core = CodeEditorCore::new(
-            "test-fold-autoexpand",
-            CodeEditorConfig::default(),
-            &mut fs,
-        );
+        let core =
+            CodeEditorCore::new("test-fold-autoexpand", CodeEditorConfig::default(), &mut fs);
         core.set_text(FOLD_SRC, &mut fs);
         assert!(core.fold_toggle(1));
 
@@ -4145,7 +4505,11 @@ fn sub(a int, b int) int {
         core.handle_input(&mut fs, EditorInput::FocusGained, &mut clip);
         core.handle_input(
             &mut fs,
-            EditorInput::KeyPressed { key: EditorKey::Down, text: None, modifiers: none_mods },
+            EditorInput::KeyPressed {
+                key: EditorKey::Down,
+                text: None,
+                modifiers: none_mods,
+            },
             &mut clip,
         );
         assert_eq!(
@@ -4159,21 +4523,31 @@ fn sub(a int, b int) int {
     fn core_value_diff_preserves_cursor() {
         let mut fs = FontSystem::new();
         let core = CodeEditorCore::new("test-core-diff", CodeEditorConfig::default(), &mut fs);
-        core.set_text("line one
-line two", &mut fs);
+        core.set_text(
+            "line one
+line two",
+            &mut fs,
+        );
         // Move cursor to line 2
         core.set_focused(true);
         let mut clip = NullClipboard;
-        core.handle_input(&mut fs, EditorInput::KeyPressed {
-            key: EditorKey::Down,
-            text: None,
-            modifiers: EditorModifiers::none(),
-        }, &mut clip);
+        core.handle_input(
+            &mut fs,
+            EditorInput::KeyPressed {
+                key: EditorKey::Down,
+                text: None,
+                modifiers: EditorModifiers::none(),
+            },
+            &mut clip,
+        );
         let (line, _, _) = core.cursor_info();
         assert_eq!(line, 1);
         // Same-value set_text is a no-op (cursor must not jump)
-        core.set_text("line one
-line two", &mut fs);
+        core.set_text(
+            "line one
+line two",
+            &mut fs,
+        );
         let (line, col, _) = core.cursor_info();
         assert_eq!((line, col), (1, 0));
     }
@@ -4186,7 +4560,10 @@ line two", &mut fs);
     #[test]
     fn cjk_click_keeps_cursor_on_char_boundary() {
         let mut fs = FontSystem::new();
-        let config = CodeEditorConfig { lang: "auto".to_owned(), ..CodeEditorConfig::default() };
+        let config = CodeEditorConfig {
+            lang: "auto".to_owned(),
+            ..CodeEditorConfig::default()
+        };
         let core = CodeEditorCore::new("test-cjk-click", config, &mut fs);
         core.set_text(
             "// 预填文本显示测试 — 你好世界\nfn add(a int, b int) int {\n    return a + b\n}\n",
@@ -4239,14 +4616,20 @@ line two", &mut fs);
         core.set_text("some text\nmore", &mut fs);
         core.set_focused(true);
         let mut clip = NullClipboard;
-        let ctrl = EditorModifiers { control: true, ..EditorModifiers::none() };
+        let ctrl = EditorModifiers {
+            control: true,
+            ..EditorModifiers::none()
+        };
         let press = |key: EditorKey| EditorInput::KeyPressed {
             key,
             text: None,
             modifiers: ctrl,
         };
         let out_j = core.handle_input(&mut fs, press(EditorKey::Char('j')), &mut clip);
-        assert!(!out_j.captured, "Ctrl+J is the app's console toggle — must bubble");
+        assert!(
+            !out_j.captured,
+            "Ctrl+J is the app's console toggle — must bubble"
+        );
         let out_s = core.handle_input(&mut fs, press(EditorKey::Char('s')), &mut clip);
         assert!(!out_s.captured, "Ctrl+S is the app's save — must bubble");
         // Handled combos stay captured (editor bindings keep working).
@@ -4262,9 +4645,13 @@ line two", &mut fs);
     #[test]
     fn set_text_resync_after_edit_keeps_cursor_on_boundary() {
         let mut fs = FontSystem::new();
-        let config = CodeEditorConfig { lang: "auto".to_owned(), ..CodeEditorConfig::default() };
+        let config = CodeEditorConfig {
+            lang: "auto".to_owned(),
+            ..CodeEditorConfig::default()
+        };
         let core = CodeEditorCore::new("test-cjk-resync", config, &mut fs);
-        let original = "// 预填文本显示测试 — 你好世界\nfn add(a int, b int) int {\n    return a + b\n}\n";
+        let original =
+            "// 预填文本显示测试 — 你好世界\nfn add(a int, b int) int {\n    return a + b\n}\n";
         core.set_text(original, &mut fs);
         core.set_focused(true);
         render::render(&core, &mut fs, 600.0, 400.0, None);
@@ -4290,7 +4677,10 @@ line two", &mut fs);
             },
             &mut clip,
         );
-        assert!(core.text() != original, "edit must diverge from the DSL value");
+        assert!(
+            core.text() != original,
+            "edit must diverge from the DSL value"
+        );
         // The framework re-syncs the value: buffer rewritten + cursor clamped.
         core.set_text(original, &mut fs);
         // The next keystroke must not panic (cursor on a char boundary).

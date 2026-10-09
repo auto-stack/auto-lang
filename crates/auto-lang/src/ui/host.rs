@@ -16,8 +16,8 @@
 //! - Historical note: a GPUI variant existed behind `ui-gpui` until
 //!   PLAN-691 removed the never-enabled backend (2026-09-22).
 
-use super::Component;
 use super::app::AppResult;
+use super::Component;
 
 /// Identifies which host backend to run an app under.
 ///
@@ -58,9 +58,7 @@ impl HostBackend {
                 Ok(())
             }
             #[cfg(feature = "ui-iced")]
-            HostBackend::Iced => {
-                super::iced::run_app::<C>()
-            }
+            HostBackend::Iced => super::iced::run_app::<C>(),
         }
     }
 
@@ -80,10 +78,7 @@ impl HostBackend {
         }
         #[cfg(not(any(feature = "ui-headless", feature = "ui-iced")))]
         {
-            return Err(
-                "No UI backend enabled. Enable one of: 'ui-headless', 'ui-iced'."
-                    .into(),
-            );
+            return Err("No UI backend enabled. Enable one of: 'ui-headless', 'ui-iced'.".into());
         }
 
         // Unreachable, but Rust needs a fallback when the cfg-gated returns

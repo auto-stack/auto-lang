@@ -155,9 +155,14 @@ fn main() {
     std::fs::create_dir_all(&run_dir).unwrap();
     std::fs::copy(&dll, run_dir.join("engine_add_auto.dll")).unwrap();
     std::fs::copy(&exe, run_dir.join("mvp_consumer.exe")).unwrap();
-    let (stdout, code) = run_capture(Command::new(run_dir.join("mvp_consumer.exe")).current_dir(&run_dir));
+    let (stdout, code) =
+        run_capture(Command::new(run_dir.join("mvp_consumer.exe")).current_dir(&run_dir));
     assert_eq!(code, Some(0), "consumer exit code, stdout: {}", stdout);
-    assert!(stdout.contains("cabi_export_ok"), "witness missing: {}", stdout);
+    assert!(
+        stdout.contains("cabi_export_ok"),
+        "witness missing: {}",
+        stdout
+    );
 }
 
 /// AC-03: 005 corpus → cdylib (real autoterm-core) → 597 a2c driver relinked
@@ -167,8 +172,8 @@ fn main() {
 fn a2r_cabi_engine_face_gate() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let corpus_at = manifest.join("test/a2r/27_c_abi/005_engine_face_auto/engine_face_auto.at");
-    let src = std::fs::read_to_string(&corpus_at)
-        .unwrap_or_else(|e| panic!("read corpus failed: {}", e));
+    let src =
+        std::fs::read_to_string(&corpus_at).unwrap_or_else(|e| panic!("read corpus failed: {}", e));
     let lib_rs = transpile_at_src("engine_face_auto", &src);
 
     // 1. cdylib project against the real engine (597 layout prerequisite).
@@ -180,7 +185,11 @@ fn a2r_cabi_engine_face_gate() {
     write_file(&stage.join("src/lib.rs"), &lib_rs);
     cargo_build(&stage);
     let dll = stage.join("target/debug/engine_face_auto.dll");
-    assert!(dll.exists(), "engine-face cdylib not produced: {}", dll.display());
+    assert!(
+        dll.exists(),
+        "engine-face cdylib not produced: {}",
+        dll.display()
+    );
     // Windows backslashes: the 597 script's copy /y chokes on fwd-slash paths.
     let dll_win = dll.to_string_lossy().replace('/', "\\");
 
@@ -198,11 +207,15 @@ fn a2r_cabi_engine_face_gate() {
     );
     let driver_exe = repo_target_dir().join("engine-face-a2c/engine-face-a2c.exe");
     assert!(driver_exe.exists(), "driver exe missing");
-    let (stdout, code) = run_capture(Command::new(&driver_exe).current_dir(driver_exe.parent().unwrap()));
+    let (stdout, code) =
+        run_capture(Command::new(&driver_exe).current_dir(driver_exe.parent().unwrap()));
     assert_eq!(code, Some(0), "driver exit code, stdout: {}", stdout);
-    assert!(stdout.contains("CFACE_OK"), "CFACE_OK witness missing: {}", stdout);
+    assert!(
+        stdout.contains("CFACE_OK"),
+        "CFACE_OK witness missing: {}",
+        stdout
+    );
 }
-
 
 /// Plan 610 ⑥ driver source (AC-04/05/06): the 597 a2c engine-face driver
 /// rewritten in Auto — spawn cmd, echo the anchor, poll feed/damage, scan
@@ -262,8 +275,8 @@ fn main() {
 fn build_engine_face_cdylib() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let corpus_at = manifest.join("test/a2r/27_c_abi/005_engine_face_auto/engine_face_auto.at");
-    let src = std::fs::read_to_string(&corpus_at)
-        .unwrap_or_else(|e| panic!("read corpus failed: {}", e));
+    let src =
+        std::fs::read_to_string(&corpus_at).unwrap_or_else(|e| panic!("read corpus failed: {}", e));
     let lib_rs = transpile_at_src("engine_face_auto", &src);
 
     let stage = repo_target_dir().join("plan610/engine_face_auto");
@@ -295,9 +308,7 @@ fn build_engine_face_cdylib() -> PathBuf {
 fn a2r_cabi_use_c_gate() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let stage = repo_target_dir().join("plan610/use_c_gate");
-    let engine_dll_lib = PathBuf::from(
-        "D:/autostack/auto-term/target/debug/autoterm_core.dll.lib",
-    );
+    let engine_dll_lib = PathBuf::from("D:/autostack/auto-term/target/debug/autoterm_core.dll.lib");
     let engine_dll = PathBuf::from("D:/autostack/auto-term/target/debug/autoterm_core.dll");
     assert!(
         engine_dll_lib.is_file() && engine_dll.is_file(),
@@ -344,13 +355,20 @@ fn a2r_cabi_use_c_gate() {
             String::from_utf8_lossy(&out.stderr)
         );
     };
-    link(&s_dir.join("lib"), "driver_s", &stage.join("driver_s.rs"), &s_dir);
-    std::fs::copy(&engine_dll, s_dir.join("autoterm_core.dll")).unwrap();
-    let (stdout, code) = run_capture(
-        Command::new(s_dir.join("driver_s.exe")).current_dir(&s_dir),
+    link(
+        &s_dir.join("lib"),
+        "driver_s",
+        &stage.join("driver_s.rs"),
+        &s_dir,
     );
+    std::fs::copy(&engine_dll, s_dir.join("autoterm_core.dll")).unwrap();
+    let (stdout, code) = run_capture(Command::new(s_dir.join("driver_s.exe")).current_dir(&s_dir));
     assert_eq!(code, Some(0), "AC-04 leg exit, stdout: {}", stdout);
-    assert!(stdout.contains("CFACE_OK"), "AC-04 witness missing: {}", stdout);
+    assert!(
+        stdout.contains("CFACE_OK"),
+        "AC-04 witness missing: {}",
+        stdout
+    );
 
     // AC-05: SAME product, relinked against the ⑤ product (Auto-written
     // engine face cdylib from the 005 corpus).
@@ -368,9 +386,7 @@ fn a2r_cabi_use_c_gate() {
         &s2,
     );
     std::fs::copy(&auto5_dll, s2.join(auto5_dll.file_name().unwrap())).unwrap();
-    let (stdout, code) = run_capture(
-        Command::new(s2.join("driver_a5.exe")).current_dir(&s2),
-    );
+    let (stdout, code) = run_capture(Command::new(s2.join("driver_a5.exe")).current_dir(&s2));
     assert_eq!(code, Some(0), "AC-05 closed-loop exit, stdout: {}", stdout);
     assert!(
         stdout.contains("CFACE_OK"),
@@ -398,9 +414,12 @@ fn a2r_cabi_use_c_gate() {
     assert!(exe.exists(), "D-form exe not produced");
     std::fs::copy(&exe, dyn_dir.join("driver_dyn.exe")).unwrap();
     std::fs::copy(&engine_dll, dyn_dir.join("autoterm_core.dll")).unwrap();
-    let (stdout, code) = run_capture(
-        Command::new(dyn_dir.join("driver_dyn.exe")).current_dir(&dyn_dir),
-    );
+    let (stdout, code) =
+        run_capture(Command::new(dyn_dir.join("driver_dyn.exe")).current_dir(&dyn_dir));
     assert_eq!(code, Some(0), "AC-06 D-form exit, stdout: {}", stdout);
-    assert!(stdout.contains("CFACE_OK"), "AC-06 witness missing: {}", stdout);
+    assert!(
+        stdout.contains("CFACE_OK"),
+        "AC-06 witness missing: {}",
+        stdout
+    );
 }

@@ -82,7 +82,10 @@ mod plan058_nanbox_int_float {
 }
 "#;
         let mut comp = crate::build_dynamic_component(src, None).expect("compile");
-        comp.on_with_input("Tri\u{1F}f\u{1F}240.0\u{1F}f\u{1F}800.5\u{1F}f\u{1F}0.0", None);
+        comp.on_with_input(
+            "Tri\u{1F}f\u{1F}240.0\u{1F}f\u{1F}800.5\u{1F}f\u{1F}0.0",
+            None,
+        );
         let f_state = |comp: &crate::ui::dynamic::DynamicComponent, f: &str| match comp
             .read_state(f)
             .expect(f)
@@ -158,10 +161,7 @@ mod plan058_child_emit_computed {
         crate::plan370_test_support::build_component_from_app(&manifest)
     }
 
-    fn f_state(
-        dc: &crate::ui::dynamic::DynamicComponent,
-        field: &str,
-    ) -> auto_val::Value {
+    fn f_state(dc: &crate::ui::dynamic::DynamicComponent, field: &str) -> auto_val::Value {
         dc.read_state(field).expect(field)
     }
 

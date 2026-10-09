@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 
-use crate::ui::vnode::{VNodeKind, VNodeId};
 use super::Rect;
+use crate::ui::vnode::{VNodeId, VNodeKind};
 
 /// Snapshot of a single node's inspectable properties.
 ///

@@ -34,7 +34,9 @@ impl ExecutionEngine {
                     "autovm" | "vm" => ExecutionEngine::AutoVM,
                     "evaluator" | "eval" | "tree" => {
                         // Plan 091: Evaluator deprecated, log warning and use AutoVM
-                        eprintln!("WARNING: 'evaluator' engine is deprecated. Using AutoVM instead.");
+                        eprintln!(
+                            "WARNING: 'evaluator' engine is deprecated. Using AutoVM instead."
+                        );
                         ExecutionEngine::AutoVM
                     }
                     _ => ExecutionEngine::default_engine(),
@@ -65,7 +67,10 @@ pub fn execute_with_engine(engine: ExecutionEngine, code: &str) -> AutoResult<St
 }
 
 /// Plan 177: Execute code with stdout capture for testing
-pub fn execute_with_engine_capture(engine: ExecutionEngine, code: &str) -> AutoResult<(String, String)> {
+pub fn execute_with_engine_capture(
+    engine: ExecutionEngine,
+    code: &str,
+) -> AutoResult<(String, String)> {
     match engine {
         ExecutionEngine::AutoVM => crate::run_autovm_capture(code),
         #[allow(deprecated)]

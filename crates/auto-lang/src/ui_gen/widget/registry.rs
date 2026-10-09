@@ -9,12 +9,9 @@ use std::collections::HashMap;
 /// Core widgets that are auto-imported (no explicit `use` statement needed)
 pub const AUTO_IMPORTED_WIDGETS: &[&str] = &[
     // Layout
-    "col", "row", "stack", "scroll", "center",
-    // Display
-    "text", "image",
-    // Form
-    "button", "input",
-    // Feedback
+    "col", "row", "stack", "scroll", "center", // Display
+    "text", "image", // Form
+    "button", "input", // Feedback
     "alert", "progress",
 ];
 
@@ -101,21 +98,19 @@ impl WidgetRegistry {
             let hit = std::iter::once(&spec.name)
                 .chain(spec.aliases.iter())
                 .find_map(|k| {
-                    schema
-                        .resolve_tag(k)
-                        .and_then(|(canon, def)| {
-                            entries.get(&fold(canon)).map(|e| {
-                                // Plan 437 P1:props 契约随 vue 映射一并落库 ——
-                                // 声明名即 vue 属性名(kebab),发射侧(生成器)
-                                // 遍历此映射,实现与声明不再分离。
-                                let props: HashMap<String, String> = def
-                                    .props
-                                    .iter()
-                                    .map(|p| (p.name.to_string(), p.name.to_string()))
-                                    .collect();
-                                (e.clone(), props)
-                            })
+                    schema.resolve_tag(k).and_then(|(canon, def)| {
+                        entries.get(&fold(canon)).map(|e| {
+                            // Plan 437 P1:props 契约随 vue 映射一并落库 ——
+                            // 声明名即 vue 属性名(kebab),发射侧(生成器)
+                            // 遍历此映射,实现与声明不再分离。
+                            let props: HashMap<String, String> = def
+                                .props
+                                .iter()
+                                .map(|p| (p.name.to_string(), p.name.to_string()))
+                                .collect();
+                            (e.clone(), props)
                         })
+                    })
                 });
             if let Some((e, props)) = hit {
                 spec.backends.insert(
@@ -144,12 +139,14 @@ impl WidgetRegistry {
             .widgets
             .values()
             .flat_map(|spec| {
-                std::iter::once(&spec.name).chain(spec.aliases.iter()).map(|k| {
-                    schema
-                        .resolve_tag(k)
-                        .map(|(canon, _)| fold(canon))
-                        .unwrap_or_else(|| fold(k))
-                })
+                std::iter::once(&spec.name)
+                    .chain(spec.aliases.iter())
+                    .map(|k| {
+                        schema
+                            .resolve_tag(k)
+                            .map(|(canon, _)| fold(canon))
+                            .unwrap_or_else(|| fold(k))
+                    })
             })
             .collect();
         for (tag, meta) in &schema.meta {
@@ -159,7 +156,9 @@ impl WidgetRegistry {
                 continue;
             }
             // ElementDef 承载 props/allows_children（ElementMeta 只有家族面）。
-            let Some((_, def)) = schema.resolve_tag(tag) else { continue };
+            let Some((_, def)) = schema.resolve_tag(tag) else {
+                continue;
+            };
             let mut spec = WidgetSpec::new(tag, WidgetCategory::Overlay);
             spec.has_children = def.allows_children;
             // DSL 侧标签是 kebab（command-input），registry get() 按 lowercase
@@ -213,72 +212,93 @@ impl WidgetRegistry {
 
     fn register_layout_widgets(&mut self) {
         // Column
-        let mut col = WidgetSpec::new("Column", WidgetCategory::Layout)
-            .with_alias("col");
+        let mut col = WidgetSpec::new("Column", WidgetCategory::Layout).with_alias("col");
         col.has_children = true;
-        col.backends.insert("ark".to_string(), BackendMapping {
-            component: "Column".to_string(),
-            import: None, // Built-in
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        col.backends.insert("jet".to_string(), BackendMapping {
-            component: "Column".to_string(),
-            import: Some("androidx.compose.foundation.layout.Column".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        col.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Column".to_string(),
+                import: None, // Built-in
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        col.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "Column".to_string(),
+                import: Some("androidx.compose.foundation.layout.Column".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(col);
 
         // Center - Column with center alignment (syntax sugar)
-        let mut center = WidgetSpec::new("Center", WidgetCategory::Layout)
-            .with_alias("center");
+        let mut center = WidgetSpec::new("Center", WidgetCategory::Layout).with_alias("center");
         center.has_children = true;
-        center.default_props.insert("style".to_string(), "w-full h-full".to_string());
-        center.default_props.insert("align".to_string(), "center".to_string());
-        center.default_props.insert("arrange".to_string(), "center".to_string());
-        center.backends.insert("ark".to_string(), BackendMapping {
-            component: "Column".to_string(),
-            import: None, // Built-in
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        center.backends.insert("jet".to_string(), BackendMapping {
-            component: "Column".to_string(),
-            import: Some("androidx.compose.foundation.layout.Column".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        center
+            .default_props
+            .insert("style".to_string(), "w-full h-full".to_string());
+        center
+            .default_props
+            .insert("align".to_string(), "center".to_string());
+        center
+            .default_props
+            .insert("arrange".to_string(), "center".to_string());
+        center.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Column".to_string(),
+                import: None, // Built-in
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        center.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "Column".to_string(),
+                import: Some("androidx.compose.foundation.layout.Column".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(center);
 
         // Row
-        let mut row = WidgetSpec::new("Row", WidgetCategory::Layout)
-            .with_alias("row");
+        let mut row = WidgetSpec::new("Row", WidgetCategory::Layout).with_alias("row");
         row.has_children = true;
-        row.backends.insert("ark".to_string(), BackendMapping {
-            component: "Row".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        row.backends.insert("jet".to_string(), BackendMapping {
-            component: "Row".to_string(),
-            import: Some("androidx.compose.foundation.layout.Row".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        row.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Row".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        row.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "Row".to_string(),
+                import: Some("androidx.compose.foundation.layout.Row".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(row);
 
         // Stack
@@ -286,103 +306,121 @@ impl WidgetRegistry {
             .with_alias("stack")
             .with_alias("box");
         stack.has_children = true;
-        stack.backends.insert("ark".to_string(), BackendMapping {
-            component: "Stack".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        stack.backends.insert("jet".to_string(), BackendMapping {
-            component: "Box".to_string(),
-            import: Some("androidx.compose.foundation.layout.Box".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        stack.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Stack".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        stack.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "Box".to_string(),
+                import: Some("androidx.compose.foundation.layout.Box".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(stack);
 
         // Scroll
-        let mut scroll = WidgetSpec::new("Scroll", WidgetCategory::Layout)
-            .with_alias("scroll");
+        let mut scroll = WidgetSpec::new("Scroll", WidgetCategory::Layout).with_alias("scroll");
         scroll.has_children = true;
-        scroll.backends.insert("ark".to_string(), BackendMapping {
-            component: "Scroll".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        scroll.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Scroll".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(scroll);
 
         // Spacer - fills available space in Row/Column (maps to Blank in ArkTS, Spacer in Compose)
-        let mut spacer = WidgetSpec::new("Spacer", WidgetCategory::Layout)
-            .with_alias("spacer");
+        let mut spacer = WidgetSpec::new("Spacer", WidgetCategory::Layout).with_alias("spacer");
         spacer.has_children = false;
-        spacer.backends.insert("ark".to_string(), BackendMapping {
-            component: "Blank".to_string(),
-            import: None, // Built-in
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        spacer.backends.insert("jet".to_string(), BackendMapping {
-            component: "Spacer".to_string(),
-            import: Some("androidx.compose.foundation.layout.Spacer".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        spacer.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Blank".to_string(),
+                import: None, // Built-in
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        spacer.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "Spacer".to_string(),
+                import: Some("androidx.compose.foundation.layout.Spacer".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(spacer);
 
         // Card - maps to Column with card-like styling (ArkUI has no built-in Card)
-        let mut card = WidgetSpec::new("Card", WidgetCategory::Layout)
-            .with_alias("card");
+        let mut card = WidgetSpec::new("Card", WidgetCategory::Layout).with_alias("card");
         card.has_children = true;
-        card.backends.insert("ark".to_string(), BackendMapping {
-            component: "Column".to_string(), // Use Column instead of Card
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        card.backends.insert("jet".to_string(), BackendMapping {
-            component: "Card".to_string(),
-            import: Some("androidx.compose.material3.Card".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        card.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Column".to_string(), // Use Column instead of Card
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        card.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "Card".to_string(),
+                import: Some("androidx.compose.material3.Card".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(card);
 
         // CardHeader
-        let mut card_header = WidgetSpec::new("CardHeader", WidgetCategory::Layout)
-            .with_alias("card-header");
+        let mut card_header =
+            WidgetSpec::new("CardHeader", WidgetCategory::Layout).with_alias("card-header");
         card_header.has_children = true;
         self.register(card_header);
 
         // CardContent
-        let mut card_content = WidgetSpec::new("CardContent", WidgetCategory::Layout)
-            .with_alias("card-content");
+        let mut card_content =
+            WidgetSpec::new("CardContent", WidgetCategory::Layout).with_alias("card-content");
         card_content.has_children = true;
         self.register(card_content);
 
         // CardFooter
-        let mut card_footer = WidgetSpec::new("CardFooter", WidgetCategory::Layout)
-            .with_alias("card-footer");
+        let mut card_footer =
+            WidgetSpec::new("CardFooter", WidgetCategory::Layout).with_alias("card-footer");
         card_footer.has_children = true;
         self.register(card_footer);
 
         // CardTitle
-        let mut card_title = WidgetSpec::new("CardTitle", WidgetCategory::Layout)
-            .with_alias("card-title");
+        let mut card_title =
+            WidgetSpec::new("CardTitle", WidgetCategory::Layout).with_alias("card-title");
         card_title.has_children = true;
         self.register(card_title);
 
@@ -397,14 +435,17 @@ impl WidgetRegistry {
             .with_alias("scroll-area")
             .with_alias("scroll");
         scroll_area.has_children = true;
-        scroll_area.backends.insert("ark".to_string(), BackendMapping {
-            component: "Scroll".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        scroll_area.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Scroll".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(scroll_area);
 
         // ScrollAreaViewport
@@ -424,22 +465,25 @@ impl WidgetRegistry {
         self.register(scroll_thumb);
 
         // AspectRatio
-        let mut aspect_ratio = WidgetSpec::new("AspectRatio", WidgetCategory::Layout)
-            .with_alias("aspect-ratio");
+        let mut aspect_ratio =
+            WidgetSpec::new("AspectRatio", WidgetCategory::Layout).with_alias("aspect-ratio");
         aspect_ratio.has_children = true;
-        aspect_ratio.backends.insert("ark".to_string(), BackendMapping {
-            component: "AspectRatio".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        aspect_ratio.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "AspectRatio".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(aspect_ratio);
 
         // Collapsible
-        let mut collapsible = WidgetSpec::new("Collapsible", WidgetCategory::Layout)
-            .with_alias("collapsible");
+        let mut collapsible =
+            WidgetSpec::new("Collapsible", WidgetCategory::Layout).with_alias("collapsible");
         collapsible.has_children = true;
         self.register(collapsible);
 
@@ -456,22 +500,25 @@ impl WidgetRegistry {
         self.register(collapsible_content);
 
         // Accordion
-        let mut accordion = WidgetSpec::new("Accordion", WidgetCategory::Layout)
-            .with_alias("accordion");
+        let mut accordion =
+            WidgetSpec::new("Accordion", WidgetCategory::Layout).with_alias("accordion");
         accordion.has_children = true;
-        accordion.backends.insert("ark".to_string(), BackendMapping {
-            component: "Accordion".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        accordion.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Accordion".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(accordion);
 
         // AccordionItem
-        let mut accordion_item = WidgetSpec::new("AccordionItem", WidgetCategory::Layout)
-            .with_alias("accordion-item");
+        let mut accordion_item =
+            WidgetSpec::new("AccordionItem", WidgetCategory::Layout).with_alias("accordion-item");
         accordion_item.has_children = true;
         self.register(accordion_item);
 
@@ -490,89 +537,110 @@ impl WidgetRegistry {
 
     fn register_form_widgets(&mut self) {
         // Button
-        let mut button = WidgetSpec::new("Button", WidgetCategory::Form)
-            .with_alias("button");
+        let mut button = WidgetSpec::new("Button", WidgetCategory::Form).with_alias("button");
         button.primary_prop = Some("text".to_string());
-        button.backends.insert("ark".to_string(), BackendMapping {
-            component: "Button".to_string(),
-            import: Some("@kit.ArkUI".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        button.backends.insert("jet".to_string(), BackendMapping {
-            component: "Button".to_string(),
-            import: Some("androidx.compose.material3.Button".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        button.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Button".to_string(),
+                import: Some("@kit.ArkUI".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        button.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "Button".to_string(),
+                import: Some("androidx.compose.material3.Button".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(button);
 
         // Input (TextInput in Ark)
-        let mut input = WidgetSpec::new("Input", WidgetCategory::Form)
-            .with_alias("input");
-        input.backends.insert("ark".to_string(), BackendMapping {
-            component: "TextInput".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        input.backends.insert("jet".to_string(), BackendMapping {
-            component: "OutlinedTextField".to_string(),
-            import: Some("androidx.compose.material3.OutlinedTextField".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        let mut input = WidgetSpec::new("Input", WidgetCategory::Form).with_alias("input");
+        input.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "TextInput".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        input.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "OutlinedTextField".to_string(),
+                import: Some("androidx.compose.material3.OutlinedTextField".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(input);
 
         // Checkbox
-        let mut checkbox = WidgetSpec::new("Checkbox", WidgetCategory::Form)
-            .with_alias("checkbox");
-        checkbox.backends.insert("ark".to_string(), BackendMapping {
-            component: "Checkbox".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        checkbox.backends.insert("jet".to_string(), BackendMapping {
-            component: "Checkbox".to_string(),
-            import: Some("androidx.compose.material3.Checkbox".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        let mut checkbox = WidgetSpec::new("Checkbox", WidgetCategory::Form).with_alias("checkbox");
+        checkbox.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Checkbox".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        checkbox.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "Checkbox".to_string(),
+                import: Some("androidx.compose.material3.Checkbox".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(checkbox);
 
         // Switch
         let mut switch = WidgetSpec::new("Switch", WidgetCategory::Form)
             .with_alias("switch")
             .with_alias("toggle");
-        switch.backends.insert("ark".to_string(), BackendMapping {
-            component: "Toggle".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        switch.backends.insert("jet".to_string(), BackendMapping {
-            component: "Switch".to_string(),
-            import: Some("androidx.compose.material3.Switch".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        switch.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Toggle".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        switch.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "Switch".to_string(),
+                import: Some("androidx.compose.material3.Switch".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(switch);
 
         // PLAN-528 W7: ToggleGroup / ToggleGroupItem——shadcn-vue toggle-group
@@ -580,8 +648,8 @@ impl WidgetRegistry {
         // togglegroup 标签塌缩为裸 div,B/I/U 纵向裸排。
         // canonical 名小写即 "togglegroup";页面书写 toggle-group/togglegroup
         // 均可达。item 的页面拼写 togglegroup-item 由显式别名覆盖。
-        let mut toggle_group = WidgetSpec::new("ToggleGroup", WidgetCategory::Form)
-            .with_alias("toggle-group");
+        let mut toggle_group =
+            WidgetSpec::new("ToggleGroup", WidgetCategory::Form).with_alias("toggle-group");
         toggle_group.has_children = true;
         self.register(toggle_group);
 
@@ -592,232 +660,261 @@ impl WidgetRegistry {
         self.register(toggle_group_item);
 
         // Select
-        let mut select = WidgetSpec::new("Select", WidgetCategory::Form)
-            .with_alias("select");
+        let mut select = WidgetSpec::new("Select", WidgetCategory::Form).with_alias("select");
         select.has_children = true;
-        select.backends.insert("ark".to_string(), BackendMapping {
-            component: "Select".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        select.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Select".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(select);
 
         // SelectTrigger
-        let mut select_trigger = WidgetSpec::new("SelectTrigger", WidgetCategory::Form)
-            .with_alias("select-trigger");
+        let mut select_trigger =
+            WidgetSpec::new("SelectTrigger", WidgetCategory::Form).with_alias("select-trigger");
         select_trigger.has_children = true;
         self.register(select_trigger);
 
         // SelectValue
-        let mut select_value = WidgetSpec::new("SelectValue", WidgetCategory::Form)
-            .with_alias("select-value");
+        let mut select_value =
+            WidgetSpec::new("SelectValue", WidgetCategory::Form).with_alias("select-value");
         self.register(select_value);
 
         // SelectContent
-        let mut select_content = WidgetSpec::new("SelectContent", WidgetCategory::Form)
-            .with_alias("select-content");
+        let mut select_content =
+            WidgetSpec::new("SelectContent", WidgetCategory::Form).with_alias("select-content");
         select_content.has_children = true;
         self.register(select_content);
 
         // SelectItem
-        let mut select_item = WidgetSpec::new("SelectItem", WidgetCategory::Form)
-            .with_alias("select-item");
+        let mut select_item =
+            WidgetSpec::new("SelectItem", WidgetCategory::Form).with_alias("select-item");
         select_item.has_children = true;
         select_item.primary_prop = Some("value".to_string());
         self.register(select_item);
 
         // SelectGroup
-        let mut select_group = WidgetSpec::new("SelectGroup", WidgetCategory::Form)
-            .with_alias("select-group");
+        let mut select_group =
+            WidgetSpec::new("SelectGroup", WidgetCategory::Form).with_alias("select-group");
         select_group.has_children = true;
         self.register(select_group);
 
         // SelectLabel
-        let mut select_label = WidgetSpec::new("SelectLabel", WidgetCategory::Form)
-            .with_alias("select-label");
+        let mut select_label =
+            WidgetSpec::new("SelectLabel", WidgetCategory::Form).with_alias("select-label");
         select_label.has_children = true;
         self.register(select_label);
 
         // Slider
-        let mut slider = WidgetSpec::new("Slider", WidgetCategory::Form)
-            .with_alias("slider");
-        slider.backends.insert("ark".to_string(), BackendMapping {
-            component: "Slider".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        slider.backends.insert("jet".to_string(), BackendMapping {
-            component: "Slider".to_string(),
-            import: Some("androidx.compose.material3.Slider".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        let mut slider = WidgetSpec::new("Slider", WidgetCategory::Form).with_alias("slider");
+        slider.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Slider".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        slider.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "Slider".to_string(),
+                import: Some("androidx.compose.material3.Slider".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(slider);
 
         // RadioGroup
-        let mut radio_group = WidgetSpec::new("RadioGroup", WidgetCategory::Form)
-            .with_alias("radio-group");
+        let mut radio_group =
+            WidgetSpec::new("RadioGroup", WidgetCategory::Form).with_alias("radio-group");
         radio_group.has_children = true;
-        radio_group.backends.insert("ark".to_string(), BackendMapping {
-            component: "RadioGroup".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        radio_group.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "RadioGroup".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(radio_group);
 
         // RadioItem
-        let mut radio_item = WidgetSpec::new("RadioItem", WidgetCategory::Form)
-            .with_alias("radio-item");
+        let mut radio_item =
+            WidgetSpec::new("RadioItem", WidgetCategory::Form).with_alias("radio-item");
         radio_item.has_children = true;
         self.register(radio_item);
 
         // Textarea
-        let mut textarea = WidgetSpec::new("Textarea", WidgetCategory::Form)
-            .with_alias("textarea");
-        textarea.backends.insert("ark".to_string(), BackendMapping {
-            component: "TextArea".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        textarea.backends.insert("jet".to_string(), BackendMapping {
-            component: "OutlinedTextField".to_string(),
-            import: Some("androidx.compose.material3.OutlinedTextField".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        let mut textarea = WidgetSpec::new("Textarea", WidgetCategory::Form).with_alias("textarea");
+        textarea.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "TextArea".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        textarea.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "OutlinedTextField".to_string(),
+                import: Some("androidx.compose.material3.OutlinedTextField".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(textarea);
 
         // Plan 413: CodeEditor — vue target is CodeMirror 6 (spec-level only;
         // the component shell ships with the front template, deep vue support
         // is a separate plan). ark/jet degrade to plain text fields.
-        let mut code_editor = WidgetSpec::new("CodeEditor", WidgetCategory::Form)
-            .with_alias("code_editor");
+        let mut code_editor =
+            WidgetSpec::new("CodeEditor", WidgetCategory::Form).with_alias("code_editor");
         code_editor.primary_prop = Some("content".to_string());
-        code_editor.backends.insert("ark".to_string(), BackendMapping {
-            component: "TextArea".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        code_editor.backends.insert("jet".to_string(), BackendMapping {
-            component: "OutlinedTextField".to_string(),
-            import: Some("androidx.compose.material3.OutlinedTextField".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        code_editor.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "TextArea".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        code_editor.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "OutlinedTextField".to_string(),
+                import: Some("androidx.compose.material3.OutlinedTextField".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(code_editor);
 
         // Form
-        let mut form = WidgetSpec::new("Form", WidgetCategory::Form)
-            .with_alias("form");
+        let mut form = WidgetSpec::new("Form", WidgetCategory::Form).with_alias("form");
         form.has_children = true;
         self.register(form);
 
         // FormField
-        let mut form_field = WidgetSpec::new("FormField", WidgetCategory::Form)
-            .with_alias("form-field");
+        let mut form_field =
+            WidgetSpec::new("FormField", WidgetCategory::Form).with_alias("form-field");
         form_field.has_children = true;
         self.register(form_field);
 
         // FormLabel
-        let mut form_label = WidgetSpec::new("FormLabel", WidgetCategory::Form)
-            .with_alias("form-label");
+        let mut form_label =
+            WidgetSpec::new("FormLabel", WidgetCategory::Form).with_alias("form-label");
         form_label.has_children = true;
         self.register(form_label);
 
         // Label (Plan 337: register so LIBRARY_WIDGETS drift guard passes)
-        let mut label = WidgetSpec::new("Label", WidgetCategory::Form)
-            .with_alias("label");
+        let mut label = WidgetSpec::new("Label", WidgetCategory::Form).with_alias("label");
         label.has_children = true;
         self.register(label);
 
         // FormControl
-        let mut form_control = WidgetSpec::new("FormControl", WidgetCategory::Form)
-            .with_alias("form-control");
+        let mut form_control =
+            WidgetSpec::new("FormControl", WidgetCategory::Form).with_alias("form-control");
         form_control.has_children = true;
         self.register(form_control);
 
         // FormDescription
-        let mut form_description = WidgetSpec::new("FormDescription", WidgetCategory::Form)
-            .with_alias("form-description");
+        let mut form_description =
+            WidgetSpec::new("FormDescription", WidgetCategory::Form).with_alias("form-description");
         form_description.has_children = true;
         self.register(form_description);
 
         // FormMessage
-        let mut form_message = WidgetSpec::new("FormMessage", WidgetCategory::Form)
-            .with_alias("form-message");
+        let mut form_message =
+            WidgetSpec::new("FormMessage", WidgetCategory::Form).with_alias("form-message");
         form_message.has_children = true;
         self.register(form_message);
     }
 
     fn register_display_widgets(&mut self) {
         // Text
-        let mut text = WidgetSpec::new("Text", WidgetCategory::Display)
-            .with_alias("text");
+        let mut text = WidgetSpec::new("Text", WidgetCategory::Display).with_alias("text");
         text.primary_prop = Some("text".to_string());
-        text.backends.insert("ark".to_string(), BackendMapping {
-            component: "Text".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        text.backends.insert("jet".to_string(), BackendMapping {
-            component: "Text".to_string(),
-            import: Some("androidx.compose.material3.Text".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        text.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Text".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        text.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "Text".to_string(),
+                import: Some("androidx.compose.material3.Text".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(text);
 
         // Image
-        let mut image = WidgetSpec::new("Image", WidgetCategory::Display)
-            .with_alias("image");
+        let mut image = WidgetSpec::new("Image", WidgetCategory::Display).with_alias("image");
         image.primary_prop = Some("src".to_string());
-        image.backends.insert("ark".to_string(), BackendMapping {
-            component: "Image".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        image.backends.insert("jet".to_string(), BackendMapping {
-            component: "Image".to_string(),
-            import: Some("androidx.compose.foundation.Image".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        image.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Image".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        image.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "Image".to_string(),
+                import: Some("androidx.compose.foundation.Image".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(image);
 
         // ImageSurface — asynchronous shared media-pipeline viewer.
-        let mut image_surface = WidgetSpec::new("ImageSurface", WidgetCategory::Display)
-            .with_alias("image-surface");
+        let mut image_surface =
+            WidgetSpec::new("ImageSurface", WidgetCategory::Display).with_alias("image-surface");
         image_surface.primary_prop = Some("src".to_string());
         for backend in ["ark", "iced", "vue"] {
             image_surface.backends.insert(
@@ -845,36 +942,40 @@ impl WidgetRegistry {
         self.register(icon);
 
         // Badge
-        let mut badge = WidgetSpec::new("Badge", WidgetCategory::Display)
-            .with_alias("badge");
+        let mut badge = WidgetSpec::new("Badge", WidgetCategory::Display).with_alias("badge");
         badge.has_children = true;
-        badge.backends.insert("ark".to_string(), BackendMapping {
-            component: "Badge".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        badge.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Badge".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(badge);
 
         // Avatar
-        let mut avatar = WidgetSpec::new("Avatar", WidgetCategory::Display)
-            .with_alias("avatar");
+        let mut avatar = WidgetSpec::new("Avatar", WidgetCategory::Display).with_alias("avatar");
         avatar.has_children = true;
-        avatar.backends.insert("ark".to_string(), BackendMapping {
-            component: "Avatar".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        avatar.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Avatar".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(avatar);
 
         // AvatarImage
-        let mut avatar_image = WidgetSpec::new("AvatarImage", WidgetCategory::Display)
-            .with_alias("avatar-image");
+        let mut avatar_image =
+            WidgetSpec::new("AvatarImage", WidgetCategory::Display).with_alias("avatar-image");
         avatar_image.primary_prop = Some("src".to_string());
         self.register(avatar_image);
 
@@ -885,37 +986,46 @@ impl WidgetRegistry {
         self.register(avatar_fallback);
 
         // Separator
-        let mut separator = WidgetSpec::new("Separator", WidgetCategory::Display)
-            .with_alias("separator");
-        separator.backends.insert("ark".to_string(), BackendMapping {
-            component: "Divider".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        separator.backends.insert("jet".to_string(), BackendMapping {
-            component: "HorizontalDivider".to_string(),
-            import: Some("androidx.compose.material3.HorizontalDivider".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        let mut separator =
+            WidgetSpec::new("Separator", WidgetCategory::Display).with_alias("separator");
+        separator.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Divider".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        separator.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "HorizontalDivider".to_string(),
+                import: Some("androidx.compose.material3.HorizontalDivider".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(separator);
 
         // Skeleton
-        let mut skeleton = WidgetSpec::new("Skeleton", WidgetCategory::Display)
-            .with_alias("skeleton");
-        skeleton.backends.insert("ark".to_string(), BackendMapping {
-            component: "Skeleton".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        let mut skeleton =
+            WidgetSpec::new("Skeleton", WidgetCategory::Display).with_alias("skeleton");
+        skeleton.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Skeleton".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(skeleton);
 
         // AutoDownEditor — WYSIWYG editor bound to an AutoDown document body.
@@ -932,22 +1042,28 @@ impl WidgetRegistry {
         let mut autodown_editor = WidgetSpec::new("AutoDownEditor", WidgetCategory::Display)
             .with_alias("autodown_editor");
         autodown_editor.primary_prop = Some("content".to_string());
-        autodown_editor.backends.insert("ark".to_string(), BackendMapping {
-            component: "TextArea".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        autodown_editor.backends.insert("jet".to_string(), BackendMapping {
-            component: "OutlinedTextField".to_string(),
-            import: Some("androidx.compose.material3.OutlinedTextField".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        autodown_editor.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "TextArea".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        autodown_editor.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "OutlinedTextField".to_string(),
+                import: Some("androidx.compose.material3.OutlinedTextField".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(autodown_editor);
     }
 
@@ -977,8 +1093,7 @@ impl WidgetRegistry {
 
         // Mermaid — mermaid diagram renderer. Renders mermaid diagram source
         // (e.g. `graph TD; A-->B`) into SVG. Primary prop `source`.
-        let mut mermaid = WidgetSpec::new("Mermaid", WidgetCategory::Display)
-            .with_alias("mermaid");
+        let mut mermaid = WidgetSpec::new("Mermaid", WidgetCategory::Display).with_alias("mermaid");
         mermaid.primary_prop = Some("source".to_string());
         mermaid.has_children = false;
         self.register(mermaid);
@@ -992,23 +1107,21 @@ impl WidgetRegistry {
     fn register_document_panel_widgets(&mut self) {
         // Heading — palette H1..H6 map here via the `level` prop
         // (primary_prop level: 1..6; serializer emits "#"*level).
-        let mut heading = WidgetSpec::new("Heading", WidgetCategory::Display)
-            .with_alias("heading");
+        let mut heading = WidgetSpec::new("Heading", WidgetCategory::Display).with_alias("heading");
         heading.primary_prop = Some("level".to_string());
         heading.has_children = false;
         self.register(heading);
 
         // Codeblock — fenced code panel; pre[data-language] contract on the
         // vue side, Rich span keyword highlighting on iced (plan 413).
-        let mut codeblock = WidgetSpec::new("Codeblock", WidgetCategory::Display)
-            .with_alias("codeblock");
+        let mut codeblock =
+            WidgetSpec::new("Codeblock", WidgetCategory::Display).with_alias("codeblock");
         codeblock.primary_prop = Some("language".to_string());
         codeblock.has_children = false;
         self.register(codeblock);
 
         // Quote — blockquote container panel.
-        let mut quote = WidgetSpec::new("Quote", WidgetCategory::Display)
-            .with_alias("quote");
+        let mut quote = WidgetSpec::new("Quote", WidgetCategory::Display).with_alias("quote");
         quote.has_children = true;
         self.register(quote);
 
@@ -1016,36 +1129,32 @@ impl WidgetRegistry {
         // widget below — bullet/ordered/task semantics ride its children)
 
         // Callout — `:::kind title` admonition container.
-        let mut callout = WidgetSpec::new("Callout", WidgetCategory::Display)
-            .with_alias("callout");
+        let mut callout = WidgetSpec::new("Callout", WidgetCategory::Display).with_alias("callout");
         callout.primary_prop = Some("kind".to_string());
         callout.has_children = true;
         self.register(callout);
 
         // Details — `:::details Summary` collapsible container.
-        let mut details = WidgetSpec::new("Details", WidgetCategory::Display)
-            .with_alias("details");
+        let mut details = WidgetSpec::new("Details", WidgetCategory::Display).with_alias("details");
         details.primary_prop = Some("summary".to_string());
         details.has_children = true;
         self.register(details);
 
         // MathBlock — `$$...$$` KaTeX display math panel.
-        let mut math_block = WidgetSpec::new("MathBlock", WidgetCategory::Display)
-            .with_alias("math_block");
+        let mut math_block =
+            WidgetSpec::new("MathBlock", WidgetCategory::Display).with_alias("math_block");
         math_block.primary_prop = Some("source".to_string());
         math_block.has_children = false;
         self.register(math_block);
 
         // Query — `{{query ...}}` macro panel (consumer-implemented).
-        let mut query = WidgetSpec::new("Query", WidgetCategory::Display)
-            .with_alias("query_block");
+        let mut query = WidgetSpec::new("Query", WidgetCategory::Display).with_alias("query_block");
         query.primary_prop = Some("query".to_string());
         query.has_children = false;
         self.register(query);
 
         // Embed — block reference embed panel.
-        let mut embed = WidgetSpec::new("Embed", WidgetCategory::Display)
-            .with_alias("embed_block");
+        let mut embed = WidgetSpec::new("Embed", WidgetCategory::Display).with_alias("embed_block");
         embed.primary_prop = Some("target".to_string());
         embed.has_children = false;
         self.register(embed);
@@ -1058,8 +1167,8 @@ impl WidgetRegistry {
         // Maps to a library Vue component (like markdown → MarkdownRender).
         // Props: role ("user"/"assistant"), content (text/markdown), timestamp,
         //         thinking (reasoning chain), profession_id (agent name).
-        let mut chat_message = WidgetSpec::new("ChatMessage", WidgetCategory::Display)
-            .with_alias("chat_message");
+        let mut chat_message =
+            WidgetSpec::new("ChatMessage", WidgetCategory::Display).with_alias("chat_message");
         chat_message.primary_prop = Some("content".to_string());
         chat_message.has_children = false;
         self.register(chat_message);
@@ -1070,13 +1179,13 @@ impl WidgetRegistry {
         // Registration source = schema/aura.at (vue: mapping to @/wm/* gets
         // overlaid from there; iced implementation = ui/iced/virtual_window.rs
         // + renderer shell, 462/463).
-        let mut virtual_window = WidgetSpec::new("VirtualWindow", WidgetCategory::Layout)
-            .with_alias("virtual_window");
+        let mut virtual_window =
+            WidgetSpec::new("VirtualWindow", WidgetCategory::Layout).with_alias("virtual_window");
         virtual_window.has_children = true;
         self.register(virtual_window);
 
-        let mut taskbar = WidgetSpec::new("Taskbar", WidgetCategory::Navigation)
-            .with_alias("taskbar");
+        let mut taskbar =
+            WidgetSpec::new("Taskbar", WidgetCategory::Navigation).with_alias("taskbar");
         taskbar.has_children = true;
         self.register(taskbar);
 
@@ -1091,109 +1200,128 @@ impl WidgetRegistry {
         self.register(window_thumbnail);
 
         // Swiper
-        let mut swiper = WidgetSpec::new("Swiper", WidgetCategory::Navigation)
-            .with_alias("swiper");
+        let mut swiper = WidgetSpec::new("Swiper", WidgetCategory::Navigation).with_alias("swiper");
         swiper.has_children = true;
-        swiper.backends.insert("ark".to_string(), BackendMapping {
-            component: "Swiper".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        swiper.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Swiper".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(swiper);
 
         // Tabs
-        let mut tabs = WidgetSpec::new("Tabs", WidgetCategory::Navigation)
-            .with_alias("tabs");
+        let mut tabs = WidgetSpec::new("Tabs", WidgetCategory::Navigation).with_alias("tabs");
         tabs.has_children = true;
-        tabs.backends.insert("ark".to_string(), BackendMapping {
-            component: "Tabs".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        tabs.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Tabs".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(tabs);
 
         // TabsList
-        let mut tabs_list = WidgetSpec::new("TabsList", WidgetCategory::Navigation)
-            .with_alias("tabs-list");
+        let mut tabs_list =
+            WidgetSpec::new("TabsList", WidgetCategory::Navigation).with_alias("tabs-list");
         tabs_list.has_children = true;
-        tabs_list.backends.insert("ark".to_string(), BackendMapping {
-            component: "Row".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        tabs_list.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Row".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(tabs_list);
 
         // TabsTrigger
-        let mut tabs_trigger = WidgetSpec::new("TabsTrigger", WidgetCategory::Navigation)
-            .with_alias("tabs-trigger");
+        let mut tabs_trigger =
+            WidgetSpec::new("TabsTrigger", WidgetCategory::Navigation).with_alias("tabs-trigger");
         tabs_trigger.has_children = true;
         tabs_trigger.primary_prop = Some("id".to_string());
-        tabs_trigger.backends.insert("ark".to_string(), BackendMapping {
-            component: "Text".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        tabs_trigger.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Text".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(tabs_trigger);
 
         // TabsContent
-        let mut tabs_content = WidgetSpec::new("TabsContent", WidgetCategory::Navigation)
-            .with_alias("tabs-content");
+        let mut tabs_content =
+            WidgetSpec::new("TabsContent", WidgetCategory::Navigation).with_alias("tabs-content");
         tabs_content.has_children = true;
         tabs_content.primary_prop = Some("id".to_string());
-        tabs_content.backends.insert("ark".to_string(), BackendMapping {
-            component: "TabContent".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        tabs_content.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "TabContent".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(tabs_content);
 
         // Navigation - root navigation container for HarmonyOS
-        let mut navigation = WidgetSpec::new("Navigation", WidgetCategory::Navigation)
-            .with_alias("navigation");
+        let mut navigation =
+            WidgetSpec::new("Navigation", WidgetCategory::Navigation).with_alias("navigation");
         navigation.has_children = true;
         navigation.primary_prop = Some("pathStack".to_string());
-        navigation.backends.insert("ark".to_string(), BackendMapping {
-            component: "Navigation".to_string(),
-            import: None, // Built-in
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        navigation.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Navigation".to_string(),
+                import: None, // Built-in
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(navigation);
 
         // NavDestination - for detail pages in navigation stack
         let mut nav_destination = WidgetSpec::new("NavDestination", WidgetCategory::Navigation)
             .with_alias("nav-destination");
         nav_destination.has_children = true;
-        nav_destination.backends.insert("ark".to_string(), BackendMapping {
-            component: "NavDestination".to_string(),
-            import: None, // Built-in
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        nav_destination.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "NavDestination".to_string(),
+                import: None, // Built-in
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(nav_destination);
 
         // Breadcrumb
-        let mut breadcrumb = WidgetSpec::new("Breadcrumb", WidgetCategory::Navigation)
-            .with_alias("breadcrumb");
+        let mut breadcrumb =
+            WidgetSpec::new("Breadcrumb", WidgetCategory::Navigation).with_alias("breadcrumb");
         breadcrumb.has_children = true;
         self.register(breadcrumb);
 
@@ -1248,16 +1376,18 @@ impl WidgetRegistry {
         self.register(nav_menu_item);
 
         // NavigationMenuTrigger
-        let mut nav_menu_trigger = WidgetSpec::new("NavigationMenuTrigger", WidgetCategory::Navigation)
-            .with_alias("navigation-menu-trigger")
-            .with_alias("nav-menu-trigger");
+        let mut nav_menu_trigger =
+            WidgetSpec::new("NavigationMenuTrigger", WidgetCategory::Navigation)
+                .with_alias("navigation-menu-trigger")
+                .with_alias("nav-menu-trigger");
         nav_menu_trigger.has_children = true;
         self.register(nav_menu_trigger);
 
         // NavigationMenuContent
-        let mut nav_menu_content = WidgetSpec::new("NavigationMenuContent", WidgetCategory::Navigation)
-            .with_alias("navigation-menu-content")
-            .with_alias("nav-menu-content");
+        let mut nav_menu_content =
+            WidgetSpec::new("NavigationMenuContent", WidgetCategory::Navigation)
+                .with_alias("navigation-menu-content")
+                .with_alias("nav-menu-content");
         nav_menu_content.has_children = true;
         self.register(nav_menu_content);
 
@@ -1269,8 +1399,8 @@ impl WidgetRegistry {
         self.register(nav_menu_link);
 
         // Pagination
-        let mut pagination = WidgetSpec::new("Pagination", WidgetCategory::Navigation)
-            .with_alias("pagination");
+        let mut pagination =
+            WidgetSpec::new("Pagination", WidgetCategory::Navigation).with_alias("pagination");
         pagination.has_children = true;
         self.register(pagination);
 
@@ -1292,8 +1422,9 @@ impl WidgetRegistry {
         self.register(pagination_link);
 
         // PaginationEllipsis
-        let mut pagination_ellipsis = WidgetSpec::new("PaginationEllipsis", WidgetCategory::Navigation)
-            .with_alias("pagination-ellipsis");
+        let mut pagination_ellipsis =
+            WidgetSpec::new("PaginationEllipsis", WidgetCategory::Navigation)
+                .with_alias("pagination-ellipsis");
         self.register(pagination_ellipsis);
 
         // PaginationNext
@@ -1307,8 +1438,8 @@ impl WidgetRegistry {
         self.register(pagination_prev);
 
         // Sidebar
-        let mut sidebar = WidgetSpec::new("Sidebar", WidgetCategory::Navigation)
-            .with_alias("sidebar");
+        let mut sidebar =
+            WidgetSpec::new("Sidebar", WidgetCategory::Navigation).with_alias("sidebar");
         sidebar.has_children = true;
         self.register(sidebar);
 
@@ -1382,23 +1513,26 @@ impl WidgetRegistry {
         self.register(sidebar_group);
 
         // SidebarGroupAction
-        let mut sidebar_group_action = WidgetSpec::new("SidebarGroupAction", WidgetCategory::Navigation)
-            .with_alias("sidebar-group-action")
-            .with_alias("sidebar_group_action");
+        let mut sidebar_group_action =
+            WidgetSpec::new("SidebarGroupAction", WidgetCategory::Navigation)
+                .with_alias("sidebar-group-action")
+                .with_alias("sidebar_group_action");
         sidebar_group_action.has_children = true;
         self.register(sidebar_group_action);
 
         // SidebarGroupContent
-        let mut sidebar_group_content = WidgetSpec::new("SidebarGroupContent", WidgetCategory::Navigation)
-            .with_alias("sidebar-group-content")
-            .with_alias("sidebar_group_content");
+        let mut sidebar_group_content =
+            WidgetSpec::new("SidebarGroupContent", WidgetCategory::Navigation)
+                .with_alias("sidebar-group-content")
+                .with_alias("sidebar_group_content");
         sidebar_group_content.has_children = true;
         self.register(sidebar_group_content);
 
         // SidebarGroupLabel
-        let mut sidebar_group_label = WidgetSpec::new("SidebarGroupLabel", WidgetCategory::Navigation)
-            .with_alias("sidebar-group-label")
-            .with_alias("sidebar_group_label");
+        let mut sidebar_group_label =
+            WidgetSpec::new("SidebarGroupLabel", WidgetCategory::Navigation)
+                .with_alias("sidebar-group-label")
+                .with_alias("sidebar_group_label");
         sidebar_group_label.has_children = true;
         self.register(sidebar_group_label);
 
@@ -1416,23 +1550,26 @@ impl WidgetRegistry {
         self.register(sidebar_inset);
 
         // SidebarMenuAction
-        let mut sidebar_menu_action = WidgetSpec::new("SidebarMenuAction", WidgetCategory::Navigation)
-            .with_alias("sidebar-menu-action")
-            .with_alias("sidebar_menu_action");
+        let mut sidebar_menu_action =
+            WidgetSpec::new("SidebarMenuAction", WidgetCategory::Navigation)
+                .with_alias("sidebar-menu-action")
+                .with_alias("sidebar_menu_action");
         sidebar_menu_action.has_children = true;
         self.register(sidebar_menu_action);
 
         // SidebarMenuBadge
-        let mut sidebar_menu_badge = WidgetSpec::new("SidebarMenuBadge", WidgetCategory::Navigation)
-            .with_alias("sidebar-menu-badge")
-            .with_alias("sidebar_menu_badge");
+        let mut sidebar_menu_badge =
+            WidgetSpec::new("SidebarMenuBadge", WidgetCategory::Navigation)
+                .with_alias("sidebar-menu-badge")
+                .with_alias("sidebar_menu_badge");
         sidebar_menu_badge.has_children = true;
         self.register(sidebar_menu_badge);
 
         // SidebarMenuSkeleton
-        let sidebar_menu_skeleton = WidgetSpec::new("SidebarMenuSkeleton", WidgetCategory::Navigation)
-            .with_alias("sidebar-menu-skeleton")
-            .with_alias("sidebar_menu_skeleton");
+        let sidebar_menu_skeleton =
+            WidgetSpec::new("SidebarMenuSkeleton", WidgetCategory::Navigation)
+                .with_alias("sidebar-menu-skeleton")
+                .with_alias("sidebar_menu_skeleton");
         self.register(sidebar_menu_skeleton);
 
         // SidebarMenuSub
@@ -1443,16 +1580,18 @@ impl WidgetRegistry {
         self.register(sidebar_menu_sub);
 
         // SidebarMenuSubButton
-        let mut sidebar_menu_sub_btn = WidgetSpec::new("SidebarMenuSubButton", WidgetCategory::Navigation)
-            .with_alias("sidebar-menu-sub-button")
-            .with_alias("sidebar_menu_sub_button");
+        let mut sidebar_menu_sub_btn =
+            WidgetSpec::new("SidebarMenuSubButton", WidgetCategory::Navigation)
+                .with_alias("sidebar-menu-sub-button")
+                .with_alias("sidebar_menu_sub_button");
         sidebar_menu_sub_btn.has_children = true;
         self.register(sidebar_menu_sub_btn);
 
         // SidebarMenuSubItem
-        let mut sidebar_menu_sub_item = WidgetSpec::new("SidebarMenuSubItem", WidgetCategory::Navigation)
-            .with_alias("sidebar-menu-sub-item")
-            .with_alias("sidebar_menu_sub_item");
+        let mut sidebar_menu_sub_item =
+            WidgetSpec::new("SidebarMenuSubItem", WidgetCategory::Navigation)
+                .with_alias("sidebar-menu-sub-item")
+                .with_alias("sidebar_menu_sub_item");
         sidebar_menu_sub_item.has_children = true;
         self.register(sidebar_menu_sub_item);
 
@@ -1469,8 +1608,8 @@ impl WidgetRegistry {
         self.register(sidebar_separator);
 
         // MenuBar
-        let mut menu_bar = WidgetSpec::new("MenuBar", WidgetCategory::Navigation)
-            .with_alias("menu-bar");
+        let mut menu_bar =
+            WidgetSpec::new("MenuBar", WidgetCategory::Navigation).with_alias("menu-bar");
         menu_bar.has_children = true;
         self.register(menu_bar);
 
@@ -1593,20 +1732,22 @@ impl WidgetRegistry {
         self.register(menu_bar_group);
 
         // DropdownMenu
-        let mut dropdown_menu = WidgetSpec::new("DropdownMenu", WidgetCategory::Navigation)
-            .with_alias("dropdown-menu");
+        let mut dropdown_menu =
+            WidgetSpec::new("DropdownMenu", WidgetCategory::Navigation).with_alias("dropdown-menu");
         dropdown_menu.has_children = true;
         self.register(dropdown_menu);
 
         // DropdownMenuTrigger
-        let mut dropdown_trigger = WidgetSpec::new("DropdownMenuTrigger", WidgetCategory::Navigation)
-            .with_alias("dropdown-menu-trigger");
+        let mut dropdown_trigger =
+            WidgetSpec::new("DropdownMenuTrigger", WidgetCategory::Navigation)
+                .with_alias("dropdown-menu-trigger");
         dropdown_trigger.has_children = true;
         self.register(dropdown_trigger);
 
         // DropdownMenuContent
-        let mut dropdown_content = WidgetSpec::new("DropdownMenuContent", WidgetCategory::Navigation)
-            .with_alias("dropdown-menu-content");
+        let mut dropdown_content =
+            WidgetSpec::new("DropdownMenuContent", WidgetCategory::Navigation)
+                .with_alias("dropdown-menu-content");
         dropdown_content.has_children = true;
         self.register(dropdown_content);
 
@@ -1617,8 +1758,8 @@ impl WidgetRegistry {
         self.register(dropdown_item);
 
         // NavLink
-        let mut nav_link = WidgetSpec::new("NavLink", WidgetCategory::Navigation)
-            .with_alias("nav-link");
+        let mut nav_link =
+            WidgetSpec::new("NavLink", WidgetCategory::Navigation).with_alias("nav-link");
         nav_link.has_children = true;
         self.register(nav_link);
 
@@ -1646,103 +1787,124 @@ impl WidgetRegistry {
             .with_alias("dialog")
             .with_alias("modal");
         dialog.has_children = true;
-        dialog.backends.insert("ark".to_string(), BackendMapping {
-            component: "AlertDialog".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        dialog.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "AlertDialog".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(dialog);
 
         // DialogTrigger
-        let mut dialog_trigger = WidgetSpec::new("DialogTrigger", WidgetCategory::Overlay)
-            .with_alias("dialog-trigger");
+        let mut dialog_trigger =
+            WidgetSpec::new("DialogTrigger", WidgetCategory::Overlay).with_alias("dialog-trigger");
         dialog_trigger.has_children = true;
-        dialog_trigger.backends.insert("ark".to_string(), BackendMapping {
-            component: "Button".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        dialog_trigger.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Button".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(dialog_trigger);
 
         // DialogContent
-        let mut dialog_content = WidgetSpec::new("DialogContent", WidgetCategory::Overlay)
-            .with_alias("dialog-content");
+        let mut dialog_content =
+            WidgetSpec::new("DialogContent", WidgetCategory::Overlay).with_alias("dialog-content");
         dialog_content.has_children = true;
-        dialog_content.backends.insert("ark".to_string(), BackendMapping {
-            component: "Column".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        dialog_content.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Column".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(dialog_content);
 
         // DialogHeader
-        let mut dialog_header = WidgetSpec::new("DialogHeader", WidgetCategory::Overlay)
-            .with_alias("dialog-header");
+        let mut dialog_header =
+            WidgetSpec::new("DialogHeader", WidgetCategory::Overlay).with_alias("dialog-header");
         dialog_header.has_children = true;
-        dialog_header.backends.insert("ark".to_string(), BackendMapping {
-            component: "Column".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        dialog_header.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Column".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(dialog_header);
 
         // DialogFooter
-        let mut dialog_footer = WidgetSpec::new("DialogFooter", WidgetCategory::Overlay)
-            .with_alias("dialog-footer");
+        let mut dialog_footer =
+            WidgetSpec::new("DialogFooter", WidgetCategory::Overlay).with_alias("dialog-footer");
         dialog_footer.has_children = true;
-        dialog_footer.backends.insert("ark".to_string(), BackendMapping {
-            component: "Row".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        dialog_footer.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Row".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(dialog_footer);
 
         // DialogTitle
-        let mut dialog_title = WidgetSpec::new("DialogTitle", WidgetCategory::Overlay)
-            .with_alias("dialog-title");
+        let mut dialog_title =
+            WidgetSpec::new("DialogTitle", WidgetCategory::Overlay).with_alias("dialog-title");
         dialog_title.has_children = true;
-        dialog_title.backends.insert("ark".to_string(), BackendMapping {
-            component: "Text".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        dialog_title.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Text".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(dialog_title);
 
         // DialogDescription
         let mut dialog_desc = WidgetSpec::new("DialogDescription", WidgetCategory::Overlay)
             .with_alias("dialog-description");
         dialog_desc.has_children = true;
-        dialog_desc.backends.insert("ark".to_string(), BackendMapping {
-            component: "Text".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        dialog_desc.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Text".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(dialog_desc);
 
         // DialogClose
-        let mut dialog_close = WidgetSpec::new("DialogClose", WidgetCategory::Overlay)
-            .with_alias("dialog-close");
+        let mut dialog_close =
+            WidgetSpec::new("DialogClose", WidgetCategory::Overlay).with_alias("dialog-close");
         dialog_close.has_children = true;
         self.register(dialog_close);
 
@@ -1751,27 +1913,32 @@ impl WidgetRegistry {
             .with_alias("alert-dialog")
             .with_alias("alert_dialog");
         alert_dialog.has_children = true;
-        alert_dialog.backends.insert("ark".to_string(), BackendMapping {
-            component: "AlertDialog".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        alert_dialog.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "AlertDialog".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(alert_dialog);
 
         // AlertDialogTrigger
-        let mut alert_dialog_trigger = WidgetSpec::new("AlertDialogTrigger", WidgetCategory::Overlay)
-            .with_alias("alert-dialog-trigger")
-            .with_alias("alert_dialog_trigger");
+        let mut alert_dialog_trigger =
+            WidgetSpec::new("AlertDialogTrigger", WidgetCategory::Overlay)
+                .with_alias("alert-dialog-trigger")
+                .with_alias("alert_dialog_trigger");
         alert_dialog_trigger.has_children = true;
         self.register(alert_dialog_trigger);
 
         // AlertDialogContent
-        let mut alert_dialog_content = WidgetSpec::new("AlertDialogContent", WidgetCategory::Overlay)
-            .with_alias("alert-dialog-content")
-            .with_alias("alert_dialog_content");
+        let mut alert_dialog_content =
+            WidgetSpec::new("AlertDialogContent", WidgetCategory::Overlay)
+                .with_alias("alert-dialog-content")
+                .with_alias("alert_dialog_content");
         alert_dialog_content.has_children = true;
         self.register(alert_dialog_content);
 
@@ -1797,9 +1964,10 @@ impl WidgetRegistry {
         self.register(alert_dialog_title);
 
         // AlertDialogDescription
-        let mut alert_dialog_desc = WidgetSpec::new("AlertDialogDescription", WidgetCategory::Overlay)
-            .with_alias("alert-dialog-description")
-            .with_alias("alert_dialog_description");
+        let mut alert_dialog_desc =
+            WidgetSpec::new("AlertDialogDescription", WidgetCategory::Overlay)
+                .with_alias("alert-dialog-description")
+                .with_alias("alert_dialog_description");
         alert_dialog_desc.has_children = true;
         self.register(alert_dialog_desc);
 
@@ -1818,8 +1986,7 @@ impl WidgetRegistry {
         self.register(alert_dialog_cancel);
 
         // Sheet
-        let mut sheet = WidgetSpec::new("Sheet", WidgetCategory::Overlay)
-            .with_alias("sheet");
+        let mut sheet = WidgetSpec::new("Sheet", WidgetCategory::Overlay).with_alias("sheet");
         sheet.has_children = true;
         self.register(sheet);
 
@@ -1866,38 +2033,37 @@ impl WidgetRegistry {
         self.register(sheet_desc);
 
         // Drawer
-        let mut drawer = WidgetSpec::new("Drawer", WidgetCategory::Overlay)
-            .with_alias("drawer");
+        let mut drawer = WidgetSpec::new("Drawer", WidgetCategory::Overlay).with_alias("drawer");
         drawer.has_children = true;
         self.register(drawer);
 
         // DrawerTrigger
-        let mut drawer_trigger = WidgetSpec::new("DrawerTrigger", WidgetCategory::Overlay)
-            .with_alias("drawer-trigger");
+        let mut drawer_trigger =
+            WidgetSpec::new("DrawerTrigger", WidgetCategory::Overlay).with_alias("drawer-trigger");
         drawer_trigger.has_children = true;
         self.register(drawer_trigger);
 
         // DrawerContent
-        let mut drawer_content = WidgetSpec::new("DrawerContent", WidgetCategory::Overlay)
-            .with_alias("drawer-content");
+        let mut drawer_content =
+            WidgetSpec::new("DrawerContent", WidgetCategory::Overlay).with_alias("drawer-content");
         drawer_content.has_children = true;
         self.register(drawer_content);
 
         // DrawerHeader
-        let mut drawer_header = WidgetSpec::new("DrawerHeader", WidgetCategory::Overlay)
-            .with_alias("drawer-header");
+        let mut drawer_header =
+            WidgetSpec::new("DrawerHeader", WidgetCategory::Overlay).with_alias("drawer-header");
         drawer_header.has_children = true;
         self.register(drawer_header);
 
         // DrawerFooter
-        let mut drawer_footer = WidgetSpec::new("DrawerFooter", WidgetCategory::Overlay)
-            .with_alias("drawer-footer");
+        let mut drawer_footer =
+            WidgetSpec::new("DrawerFooter", WidgetCategory::Overlay).with_alias("drawer-footer");
         drawer_footer.has_children = true;
         self.register(drawer_footer);
 
         // DrawerTitle
-        let mut drawer_title = WidgetSpec::new("DrawerTitle", WidgetCategory::Overlay)
-            .with_alias("drawer-title");
+        let mut drawer_title =
+            WidgetSpec::new("DrawerTitle", WidgetCategory::Overlay).with_alias("drawer-title");
         drawer_title.has_children = true;
         self.register(drawer_title);
 
@@ -1908,8 +2074,7 @@ impl WidgetRegistry {
         self.register(drawer_desc);
 
         // Popover
-        let mut popover = WidgetSpec::new("Popover", WidgetCategory::Overlay)
-            .with_alias("popover");
+        let mut popover = WidgetSpec::new("Popover", WidgetCategory::Overlay).with_alias("popover");
         popover.has_children = true;
         self.register(popover);
 
@@ -1926,8 +2091,7 @@ impl WidgetRegistry {
         self.register(popover_content);
 
         // Tooltip
-        let mut tooltip = WidgetSpec::new("Tooltip", WidgetCategory::Overlay)
-            .with_alias("tooltip");
+        let mut tooltip = WidgetSpec::new("Tooltip", WidgetCategory::Overlay).with_alias("tooltip");
         tooltip.has_children = true;
         self.register(tooltip);
 
@@ -1979,20 +2143,22 @@ impl WidgetRegistry {
         self.register(hover_card_content);
 
         // ContextMenu
-        let mut context_menu = WidgetSpec::new("ContextMenu", WidgetCategory::Overlay)
-            .with_alias("context-menu");
+        let mut context_menu =
+            WidgetSpec::new("ContextMenu", WidgetCategory::Overlay).with_alias("context-menu");
         context_menu.has_children = true;
         self.register(context_menu);
 
         // ContextMenuTrigger
-        let mut context_menu_trigger = WidgetSpec::new("ContextMenuTrigger", WidgetCategory::Overlay)
-            .with_alias("context-menu-trigger");
+        let mut context_menu_trigger =
+            WidgetSpec::new("ContextMenuTrigger", WidgetCategory::Overlay)
+                .with_alias("context-menu-trigger");
         context_menu_trigger.has_children = true;
         self.register(context_menu_trigger);
 
         // ContextMenuContent
-        let mut context_menu_content = WidgetSpec::new("ContextMenuContent", WidgetCategory::Overlay)
-            .with_alias("context-menu-content");
+        let mut context_menu_content =
+            WidgetSpec::new("ContextMenuContent", WidgetCategory::Overlay)
+                .with_alias("context-menu-content");
         context_menu_content.has_children = true;
         self.register(context_menu_content);
 
@@ -2005,22 +2171,24 @@ impl WidgetRegistry {
 
     fn register_feedback_widgets(&mut self) {
         // Alert
-        let mut alert = WidgetSpec::new("Alert", WidgetCategory::Feedback)
-            .with_alias("alert");
+        let mut alert = WidgetSpec::new("Alert", WidgetCategory::Feedback).with_alias("alert");
         alert.has_children = true;
-        alert.backends.insert("ark".to_string(), BackendMapping {
-            component: "Alert".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        alert.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Alert".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(alert);
 
         // AlertTitle
-        let mut alert_title = WidgetSpec::new("AlertTitle", WidgetCategory::Feedback)
-            .with_alias("alert-title");
+        let mut alert_title =
+            WidgetSpec::new("AlertTitle", WidgetCategory::Feedback).with_alias("alert-title");
         alert_title.has_children = true;
         self.register(alert_title);
 
@@ -2031,44 +2199,46 @@ impl WidgetRegistry {
         self.register(alert_desc);
 
         // Toast
-        let mut toast = WidgetSpec::new("Toast", WidgetCategory::Feedback)
-            .with_alias("toast");
+        let mut toast = WidgetSpec::new("Toast", WidgetCategory::Feedback).with_alias("toast");
         toast.has_children = true;
-        toast.backends.insert("ark".to_string(), BackendMapping {
-            component: "Toast".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        toast.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Toast".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(toast);
 
         // ToastProvider
-        let mut toast_provider = WidgetSpec::new("ToastProvider", WidgetCategory::Feedback)
-            .with_alias("toast-provider");
+        let mut toast_provider =
+            WidgetSpec::new("ToastProvider", WidgetCategory::Feedback).with_alias("toast-provider");
         toast_provider.has_children = true;
         self.register(toast_provider);
 
         // ToastViewport
-        let mut toast_viewport = WidgetSpec::new("ToastViewport", WidgetCategory::Feedback)
-            .with_alias("toast-viewport");
+        let mut toast_viewport =
+            WidgetSpec::new("ToastViewport", WidgetCategory::Feedback).with_alias("toast-viewport");
         self.register(toast_viewport);
 
         // ToastAction
-        let mut toast_action = WidgetSpec::new("ToastAction", WidgetCategory::Feedback)
-            .with_alias("toast-action");
+        let mut toast_action =
+            WidgetSpec::new("ToastAction", WidgetCategory::Feedback).with_alias("toast-action");
         toast_action.has_children = true;
         self.register(toast_action);
 
         // ToastClose
-        let mut toast_close = WidgetSpec::new("ToastClose", WidgetCategory::Feedback)
-            .with_alias("toast-close");
+        let mut toast_close =
+            WidgetSpec::new("ToastClose", WidgetCategory::Feedback).with_alias("toast-close");
         self.register(toast_close);
 
         // ToastTitle
-        let mut toast_title = WidgetSpec::new("ToastTitle", WidgetCategory::Feedback)
-            .with_alias("toast-title");
+        let mut toast_title =
+            WidgetSpec::new("ToastTitle", WidgetCategory::Feedback).with_alias("toast-title");
         toast_title.has_children = true;
         self.register(toast_title);
 
@@ -2079,288 +2249,343 @@ impl WidgetRegistry {
         self.register(toast_desc);
 
         // Progress
-        let mut progress = WidgetSpec::new("Progress", WidgetCategory::Feedback)
-            .with_alias("progress");
-        progress.backends.insert("ark".to_string(), BackendMapping {
-            component: "Progress".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        progress.backends.insert("jet".to_string(), BackendMapping {
-            component: "LinearProgressIndicator".to_string(),
-            import: Some("androidx.compose.material3.LinearProgressIndicator".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        let mut progress =
+            WidgetSpec::new("Progress", WidgetCategory::Feedback).with_alias("progress");
+        progress.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Progress".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        progress.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "LinearProgressIndicator".to_string(),
+                import: Some("androidx.compose.material3.LinearProgressIndicator".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(progress);
 
         // Sonner
-        let mut sonner = WidgetSpec::new("Sonner", WidgetCategory::Feedback)
-            .with_alias("sonner");
+        let mut sonner = WidgetSpec::new("Sonner", WidgetCategory::Feedback).with_alias("sonner");
         self.register(sonner);
     }
 
     fn register_data_widgets(&mut self) {
         // Table
-        let mut table = WidgetSpec::new("Table", WidgetCategory::Data)
-            .with_alias("table");
+        let mut table = WidgetSpec::new("Table", WidgetCategory::Data).with_alias("table");
         table.has_children = true;
-        table.backends.insert("ark".to_string(), BackendMapping {
-            component: "Table".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        table.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Table".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(table);
 
         // TableHeader
-        let mut table_header = WidgetSpec::new("TableHeader", WidgetCategory::Data)
-            .with_alias("table-header");
+        let mut table_header =
+            WidgetSpec::new("TableHeader", WidgetCategory::Data).with_alias("table-header");
         table_header.has_children = true;
-        table_header.backends.insert("ark".to_string(), BackendMapping {
-            component: "Column".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        table_header.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Column".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(table_header);
 
         // TableBody
-        let mut table_body = WidgetSpec::new("TableBody", WidgetCategory::Data)
-            .with_alias("table-body");
+        let mut table_body =
+            WidgetSpec::new("TableBody", WidgetCategory::Data).with_alias("table-body");
         table_body.has_children = true;
-        table_body.backends.insert("ark".to_string(), BackendMapping {
-            component: "Column".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        table_body.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Column".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(table_body);
 
         // TableFooter
-        let mut table_footer = WidgetSpec::new("TableFooter", WidgetCategory::Data)
-            .with_alias("table-footer");
+        let mut table_footer =
+            WidgetSpec::new("TableFooter", WidgetCategory::Data).with_alias("table-footer");
         table_footer.has_children = true;
-        table_footer.backends.insert("ark".to_string(), BackendMapping {
-            component: "Column".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        table_footer.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Column".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(table_footer);
 
         // TableRow
-        let mut table_row = WidgetSpec::new("TableRow", WidgetCategory::Data)
-            .with_alias("table-row");
+        let mut table_row =
+            WidgetSpec::new("TableRow", WidgetCategory::Data).with_alias("table-row");
         table_row.has_children = true;
-        table_row.backends.insert("ark".to_string(), BackendMapping {
-            component: "Row".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        table_row.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Row".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(table_row);
 
         // TableHead
-        let mut table_head = WidgetSpec::new("TableHead", WidgetCategory::Data)
-            .with_alias("table-head");
+        let mut table_head =
+            WidgetSpec::new("TableHead", WidgetCategory::Data).with_alias("table-head");
         table_head.has_children = true;
-        table_head.backends.insert("ark".to_string(), BackendMapping {
-            component: "Text".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        table_head.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Text".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(table_head);
 
         // TableCell
-        let mut table_cell = WidgetSpec::new("TableCell", WidgetCategory::Data)
-            .with_alias("table-cell");
+        let mut table_cell =
+            WidgetSpec::new("TableCell", WidgetCategory::Data).with_alias("table-cell");
         table_cell.has_children = true;
-        table_cell.backends.insert("ark".to_string(), BackendMapping {
-            component: "Text".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        table_cell.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Text".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(table_cell);
 
         // TableCaption
-        let mut table_caption = WidgetSpec::new("TableCaption", WidgetCategory::Data)
-            .with_alias("table-caption");
+        let mut table_caption =
+            WidgetSpec::new("TableCaption", WidgetCategory::Data).with_alias("table-caption");
         table_caption.has_children = true;
-        table_caption.backends.insert("ark".to_string(), BackendMapping {
-            component: "Text".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        table_caption.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Text".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(table_caption);
 
         // DataTable
-        let mut data_table = WidgetSpec::new("DataTable", WidgetCategory::Data)
-            .with_alias("data-table");
+        let mut data_table =
+            WidgetSpec::new("DataTable", WidgetCategory::Data).with_alias("data-table");
         data_table.has_children = true;
         self.register(data_table);
 
         // Calendar
-        let mut calendar = WidgetSpec::new("Calendar", WidgetCategory::Data)
-            .with_alias("calendar");
+        let mut calendar = WidgetSpec::new("Calendar", WidgetCategory::Data).with_alias("calendar");
         calendar.has_children = true;
-        calendar.backends.insert("ark".to_string(), BackendMapping {
-            component: "Calendar".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        calendar.backends.insert("jet".to_string(), BackendMapping {
-            component: "DatePicker".to_string(),
-            import: Some("androidx.compose.material3.DatePicker".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        calendar.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "Calendar".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        calendar.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "DatePicker".to_string(),
+                import: Some("androidx.compose.material3.DatePicker".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(calendar);
 
         // CalendarGrid
-        let mut calendar_grid = WidgetSpec::new("CalendarGrid", WidgetCategory::Data)
-            .with_alias("calendar-grid");
+        let mut calendar_grid =
+            WidgetSpec::new("CalendarGrid", WidgetCategory::Data).with_alias("calendar-grid");
         calendar_grid.has_children = true;
         self.register(calendar_grid);
 
         // CalendarHeader
-        let mut calendar_header = WidgetSpec::new("CalendarHeader", WidgetCategory::Data)
-            .with_alias("calendar-header");
+        let mut calendar_header =
+            WidgetSpec::new("CalendarHeader", WidgetCategory::Data).with_alias("calendar-header");
         calendar_header.has_children = true;
         self.register(calendar_header);
 
         // CalendarHeading
-        let mut calendar_heading = WidgetSpec::new("CalendarHeading", WidgetCategory::Data)
-            .with_alias("calendar-heading");
+        let mut calendar_heading =
+            WidgetSpec::new("CalendarHeading", WidgetCategory::Data).with_alias("calendar-heading");
         calendar_heading.has_children = true;
         self.register(calendar_heading);
 
         // CalendarCell
-        let mut calendar_cell = WidgetSpec::new("CalendarCell", WidgetCategory::Data)
-            .with_alias("calendar-cell");
+        let mut calendar_cell =
+            WidgetSpec::new("CalendarCell", WidgetCategory::Data).with_alias("calendar-cell");
         calendar_cell.has_children = true;
         self.register(calendar_cell);
 
         // CalendarDay
-        let mut calendar_day = WidgetSpec::new("CalendarDay", WidgetCategory::Data)
-            .with_alias("calendar-day");
+        let mut calendar_day =
+            WidgetSpec::new("CalendarDay", WidgetCategory::Data).with_alias("calendar-day");
         self.register(calendar_day);
 
         // Grid (maps to GridRow for responsive layout in ArkTS)
-        let mut grid = WidgetSpec::new("Grid", WidgetCategory::Data)
-            .with_alias("grid");
+        let mut grid = WidgetSpec::new("Grid", WidgetCategory::Data).with_alias("grid");
         grid.has_children = true;
-        grid.backends.insert("ark".to_string(), BackendMapping {
-            component: "GridRow".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        grid.backends.insert("jet".to_string(), BackendMapping {
-            component: "LazyVerticalGrid".to_string(),
-            import: Some("androidx.compose.foundation.lazy.grid.LazyVerticalGrid".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        grid.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "GridRow".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        grid.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "LazyVerticalGrid".to_string(),
+                import: Some("androidx.compose.foundation.lazy.grid.LazyVerticalGrid".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(grid);
 
         // GridItem (maps to GridCol for responsive layout in ArkTS)
-        let mut grid_item = WidgetSpec::new("GridItem", WidgetCategory::Data)
-            .with_alias("grid-item");
+        let mut grid_item =
+            WidgetSpec::new("GridItem", WidgetCategory::Data).with_alias("grid-item");
         grid_item.has_children = true;
-        grid_item.backends.insert("ark".to_string(), BackendMapping {
-            component: "GridCol".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        grid_item.backends.insert("jet".to_string(), BackendMapping {
-            component: "item".to_string(),
-            import: Some("androidx.compose.foundation.lazy.grid.GridItem".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        grid_item.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "GridCol".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        grid_item.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "item".to_string(),
+                import: Some("androidx.compose.foundation.lazy.grid.GridItem".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(grid_item);
 
         // List
-        let mut list = WidgetSpec::new("List", WidgetCategory::Data)
-            .with_alias("list");
+        let mut list = WidgetSpec::new("List", WidgetCategory::Data).with_alias("list");
         list.has_children = true;
-        list.backends.insert("ark".to_string(), BackendMapping {
-            component: "List".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        list.backends.insert("jet".to_string(), BackendMapping {
-            component: "LazyColumn".to_string(),
-            import: Some("androidx.compose.foundation.lazy.LazyColumn".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        list.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "List".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        list.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "LazyColumn".to_string(),
+                import: Some("androidx.compose.foundation.lazy.LazyColumn".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(list);
 
         // ListItem
-        let mut list_item = WidgetSpec::new("ListItem", WidgetCategory::Data)
-            .with_alias("list-item");
+        let mut list_item =
+            WidgetSpec::new("ListItem", WidgetCategory::Data).with_alias("list-item");
         list_item.has_children = true;
-        list_item.backends.insert("ark".to_string(), BackendMapping {
-            component: "ListItem".to_string(),
-            import: None,
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
-        list_item.backends.insert("jet".to_string(), BackendMapping {
-            component: "item".to_string(),
-            import: Some("androidx.compose.foundation.lazy.LazyListScope.item".to_string()),
-            props: HashMap::new(),
-            events: HashMap::new(),
-            extra_components: Vec::new(),
-            npm_package: None,
-        });
+        list_item.backends.insert(
+            "ark".to_string(),
+            BackendMapping {
+                component: "ListItem".to_string(),
+                import: None,
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
+        list_item.backends.insert(
+            "jet".to_string(),
+            BackendMapping {
+                component: "item".to_string(),
+                import: Some("androidx.compose.foundation.lazy.LazyListScope.item".to_string()),
+                props: HashMap::new(),
+                events: HashMap::new(),
+                extra_components: Vec::new(),
+                npm_package: None,
+            },
+        );
         self.register(list_item);
 
         // Plan 484: shadcn-vue chart 族注册退役(AreaChart/BarChart/LineChart/
@@ -2370,17 +2595,22 @@ impl WidgetRegistry {
 
     fn register_semantic_widgets(&mut self) {
         // Semantic HTML elements map to Column in Ark
-        for tag in ["header", "footer", "nav", "main", "aside", "article", "section"] {
+        for tag in [
+            "header", "footer", "nav", "main", "aside", "article", "section",
+        ] {
             let mut widget = WidgetSpec::new(tag, WidgetCategory::Semantic);
             widget.has_children = true;
-            widget.backends.insert("ark".to_string(), BackendMapping {
-                component: "Column".to_string(),
-                import: None,
-                props: HashMap::new(),
-                events: HashMap::new(),
-                extra_components: Vec::new(),
-                npm_package: None,
-            });
+            widget.backends.insert(
+                "ark".to_string(),
+                BackendMapping {
+                    component: "Column".to_string(),
+                    import: None,
+                    props: HashMap::new(),
+                    events: HashMap::new(),
+                    extra_components: Vec::new(),
+                    npm_package: None,
+                },
+            );
             self.register(widget);
         }
 
@@ -2388,14 +2618,17 @@ impl WidgetRegistry {
         for tag in ["h1", "h2", "h3", "h4", "h5", "h6"] {
             let mut widget = WidgetSpec::new(tag, WidgetCategory::Display);
             widget.primary_prop = Some("text".to_string());
-            widget.backends.insert("ark".to_string(), BackendMapping {
-                component: "Text".to_string(),
-                import: None,
-                props: HashMap::new(),
-                events: HashMap::new(),
-                extra_components: Vec::new(),
-                npm_package: None,
-            });
+            widget.backends.insert(
+                "ark".to_string(),
+                BackendMapping {
+                    component: "Text".to_string(),
+                    import: None,
+                    props: HashMap::new(),
+                    events: HashMap::new(),
+                    extra_components: Vec::new(),
+                    npm_package: None,
+                },
+            );
             self.register(widget);
         }
     }
@@ -2453,7 +2686,13 @@ impl WidgetRegistry {
     pub fn get_backend_components(&self, backend: &str, tag: &str) -> Vec<String> {
         self.get(tag)
             .and_then(|spec| spec.backend(backend))
-            .map(|mapping| mapping.all_components().iter().map(|s| s.to_string()).collect())
+            .map(|mapping| {
+                mapping
+                    .all_components()
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -2473,7 +2712,11 @@ impl WidgetRegistry {
 
     /// Get all unique imports needed for a set of tags in a specific backend
     /// Returns a map of import_path -> component_names
-    pub fn collect_backend_imports(&self, backend: &str, tags: &[&str]) -> HashMap<String, Vec<String>> {
+    pub fn collect_backend_imports(
+        &self,
+        backend: &str,
+        tags: &[&str],
+    ) -> HashMap<String, Vec<String>> {
         let mut imports: HashMap<String, Vec<String>> = HashMap::new();
 
         for tag in tags {
@@ -2575,16 +2818,23 @@ mod tests {
             ("Query", "query_block", Some("query")),
             ("Embed", "embed_block", Some("target")),
         ] {
-            let spec = registry.get(alias).unwrap_or_else(|| panic!("{name} not found by alias"));
+            let spec = registry
+                .get(alias)
+                .unwrap_or_else(|| panic!("{name} not found by alias"));
             assert_eq!(spec.name, name, "alias {alias} resolved to wrong spec");
             assert_eq!(spec.category, WidgetCategory::Display);
             assert_eq!(spec.primary_prop.as_deref(), primary, "{name} primary_prop");
-            let by_name = registry.get(name).unwrap_or_else(|| panic!("{name} not found by name"));
+            let by_name = registry
+                .get(name)
+                .unwrap_or_else(|| panic!("{name} not found by name"));
             assert_eq!(by_name.name, name);
         }
         // pre-existing palette counterparts stay intact
         for existing in ["Text", "Separator", "Mermaid"] {
-            assert!(registry.get(&existing.to_lowercase()).is_some(), "{existing} still registered");
+            assert!(
+                registry.get(&existing.to_lowercase()).is_some(),
+                "{existing} still registered"
+            );
         }
     }
 
@@ -2595,13 +2845,18 @@ mod tests {
     #[test]
     fn test_autodown_editor_mobile_backends_stable() {
         let registry = WidgetRegistry::with_defaults();
-        let spec = registry.get("autodown_editor").expect("AutoDownEditor registered");
+        let spec = registry
+            .get("autodown_editor")
+            .expect("AutoDownEditor registered");
         assert_eq!(spec.name, "AutoDownEditor");
         let ark = spec.backends.get("ark").expect("ark backend");
         assert_eq!(ark.component, "TextArea");
         let jet = spec.backends.get("jet").expect("jet backend");
         assert_eq!(jet.component, "OutlinedTextField");
-        assert_eq!(jet.import.as_deref(), Some("androidx.compose.material3.OutlinedTextField"));
+        assert_eq!(
+            jet.import.as_deref(),
+            Some("androidx.compose.material3.OutlinedTextField")
+        );
     }
 
     /// Plan 040 T5: autodown 条目（主名翻转 + StreamingRenderer 换绑）。
@@ -2611,21 +2866,34 @@ mod tests {
     #[test]
     fn test_autodown_entry_streaming_rebind() {
         let registry = WidgetRegistry::with_defaults();
-        let spec = registry.get("autodown").expect("autodown registered under flipped primary name");
+        let spec = registry
+            .get("autodown")
+            .expect("autodown registered under flipped primary name");
         assert_eq!(spec.name, "Autodown");
         assert_eq!(spec.primary_prop.as_deref(), Some("content"));
         // legacy 别名同折叠解析到同一 spec。
-        assert!(registry.get("markdown").is_some(), "legacy alias markdown resolves");
-        assert!(registry.get("markdown_editor").is_some(), "legacy alias markdown_editor resolves");
+        assert!(
+            registry.get("markdown").is_some(),
+            "legacy alias markdown resolves"
+        );
+        assert!(
+            registry.get("markdown_editor").is_some(),
+            "legacy alias markdown_editor resolves"
+        );
         // vue 臂经 schema overlay 换绑 StreamingRenderer（超集组件）。
-        let vue = spec.backends.get("vue").expect("vue backend via schema overlay");
+        let vue = spec
+            .backends
+            .get("vue")
+            .expect("vue backend via schema overlay");
         assert_eq!(vue.component, "StreamingRenderer");
         assert_eq!(vue.import.as_deref(), Some("@autodown/engine"));
         // npm 从 aura.at vue 行 carried——loader 按首个 @ 切分（scope 包
         // 先天切在 scope 杠上，("","autodown/engine@^0.4.0")，既有怪癖非
         // 本计划引入，此处锁现状防回退）。
         assert_eq!(
-            vue.npm_package.as_ref().map(|(p, v)| (p.as_str(), v.as_str())),
+            vue.npm_package
+                .as_ref()
+                .map(|(p, v)| (p.as_str(), v.as_str())),
             Some(("", "autodown/engine@^0.4.0")),
             "npm package carried from aura.at vue line (first-@ split quirk)"
         );
@@ -2697,9 +2965,18 @@ mod tests {
         assert!(center.has_children);
 
         // Check default props
-        assert_eq!(center.default_props.get("style"), Some(&"w-full h-full".to_string()));
-        assert_eq!(center.default_props.get("align"), Some(&"center".to_string()));
-        assert_eq!(center.default_props.get("arrange"), Some(&"center".to_string()));
+        assert_eq!(
+            center.default_props.get("style"),
+            Some(&"w-full h-full".to_string())
+        );
+        assert_eq!(
+            center.default_props.get("align"),
+            Some(&"center".to_string())
+        );
+        assert_eq!(
+            center.default_props.get("arrange"),
+            Some(&"center".to_string())
+        );
 
         // Check backends
         let ark = center.backend("ark").unwrap();
@@ -2762,7 +3039,9 @@ mod tests {
             Some("CommandInput".to_string())
         );
         assert_eq!(
-            registry.get_backend_import("vue", "command_item").as_deref(),
+            registry
+                .get_backend_import("vue", "command_item")
+                .as_deref(),
             Some("@/components/ui/command")
         );
         // 既有家族不被补建逻辑干扰（overlay 路径保持）。
@@ -2831,7 +3110,9 @@ mod tests {
             Some("MenubarLabel".to_string())
         );
         assert_eq!(
-            registry.get_backend_import("vue", "menubar_sub_content").as_deref(),
+            registry
+                .get_backend_import("vue", "menubar_sub_content")
+                .as_deref(),
             Some("@/components/ui/menubar")
         );
     }
@@ -2851,7 +3132,12 @@ mod tests {
             );
         }
         // 隔离性：对实例 a 的突变不得泄漏进缓存原型 b。
-        let key = a.widgets.keys().next().cloned().expect("non-empty defaults");
+        let key = a
+            .widgets
+            .keys()
+            .next()
+            .cloned()
+            .expect("non-empty defaults");
         //（clone 隔离由类型面保证：HashMap 深拷贝；此处固定解析面不回归。）
     }
 }

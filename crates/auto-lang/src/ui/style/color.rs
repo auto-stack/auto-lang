@@ -40,36 +40,45 @@ pub enum Color {
     Border,
 
     // Tailwind palette colors (basic set for L1)
-    Slate(u16),    // slate-50 to slate-900
-    Gray(u16),     // gray-50 to gray-900
-    Zinc(u16),     // zinc-50 to zinc-900
-    Neutral(u16),  // neutral-50 to neutral-900
-    Red(u16),      // red-50 to red-900
-    Blue(u16),     // blue-50 to blue-900
-    Green(u16),    // green-50 to green-900
-    Yellow(u16),   // yellow-50 to yellow-900
-    Purple(u16),   // purple-50 to purple-900
-    Pink(u16),     // pink-50 to pink-900
-    Indigo(u16),   // indigo-50 to indigo-900
-    Orange(u16),   // orange-50 to orange-900
-    Cyan(u16),     // cyan-50 to cyan-900
-    Teal(u16),     // teal-50 to teal-900
+    Slate(u16),   // slate-50 to slate-900
+    Gray(u16),    // gray-50 to gray-900
+    Zinc(u16),    // zinc-50 to zinc-900
+    Neutral(u16), // neutral-50 to neutral-900
+    Red(u16),     // red-50 to red-900
+    Blue(u16),    // blue-50 to blue-900
+    Green(u16),   // green-50 to green-900
+    Yellow(u16),  // yellow-50 to yellow-900
+    Purple(u16),  // purple-50 to purple-900
+    Pink(u16),    // pink-50 to pink-900
+    Indigo(u16),  // indigo-50 to indigo-900
+    Orange(u16),  // orange-50 to orange-900
+    Cyan(u16),    // cyan-50 to cyan-900
+    Teal(u16),    // teal-50 to teal-900
     // Plan 370: extended families used by 015-notes theme swatches
-    Rose(u16),     // rose-50 to rose-900
-    Emerald(u16),  // emerald-50 to emerald-900
-    Amber(u16),    // amber-50 to amber-900
-    Sky(u16),      // sky-50 to sky-900 (Plan 047:ash-gui text-sky-300 等)
+    Rose(u16),    // rose-50 to rose-900
+    Emerald(u16), // emerald-50 to emerald-900
+    Amber(u16),   // amber-50 to amber-900
+    Sky(u16),     // sky-50 to sky-900 (Plan 047:ash-gui text-sky-300 等)
     // Plan 527 T4: 缺失色板补全(Tailwind v3.4 默认主题全 22 家族)
-    Lime(u16),     // lime-50 to lime-950
-    Violet(u16),   // violet-50 to violet-950
-    Fuchsia(u16),  // fuchsia-50 to fuchsia-950
-    Stone(u16),    // stone-50 to stone-950
+    Lime(u16),    // lime-50 to lime-950
+    Violet(u16),  // violet-50 to violet-950
+    Fuchsia(u16), // fuchsia-50 to fuchsia-950
+    Stone(u16),   // stone-50 to stone-950
     White,
     Black,
 
     // Custom colors
-    Rgb { r: u8, g: u8, b: u8 },
-    Rgba { r: u8, g: u8, b: u8, a: u8 },
+    Rgb {
+        r: u8,
+        g: u8,
+        b: u8,
+    },
+    Rgba {
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+    },
     Hex(u32), // 0xRRGGBB or 0xRRGGBBAA
 }
 
@@ -127,7 +136,11 @@ impl Color {
                     .trim_end_matches('%')
                     .parse::<f64>()
                     .map_err(|e| format!("Invalid CSS color component '{piece}': {e}"))?;
-                let num = if piece.ends_with('%') { num / 100.0 * 255.0 } else { num };
+                let num = if piece.ends_with('%') {
+                    num / 100.0 * 255.0
+                } else {
+                    num
+                };
                 parts.push(num);
             }
             if parts.len() != 3 && parts.len() != 4 {
@@ -151,7 +164,10 @@ impl Color {
         if let Some(body) = value.strip_prefix("rgb(").and_then(|v| v.strip_suffix(')')) {
             return rgba_from(body);
         }
-        if let Some(body) = value.strip_prefix("rgba(").and_then(|v| v.strip_suffix(')')) {
+        if let Some(body) = value
+            .strip_prefix("rgba(")
+            .and_then(|v| v.strip_suffix(')'))
+        {
             return rgba_from(body);
         }
         Err(format!("Unsupported CSS color literal: {value}"))
@@ -163,7 +179,12 @@ impl Color {
         match name {
             "white" => Ok(Color::White),
             "black" => Ok(Color::Black),
-            "transparent" => Ok(Color::Rgba { r: 0, g: 0, b: 0, a: 0 }),
+            "transparent" => Ok(Color::Rgba {
+                r: 0,
+                g: 0,
+                b: 0,
+                a: 0,
+            }),
             // Plan 370 D-GAP-1: semantic token names (shadcn-style)
             "primary" => Ok(Color::Primary),
             "secondary" => Ok(Color::Secondary),
@@ -206,13 +227,18 @@ impl Color {
             "sidebar-primary" => Ok(Color::Primary),
             "sidebar-primary-foreground" => Ok(Color::OnPrimary),
             // Conduit/RealWorld brand green (#5cb85c) — used by 023-realworld.
-            "brand-green" | "brand" => Ok(Color::Rgb { r: 0x5c, g: 0xb8, b: 0x5c }),
+            "brand-green" | "brand" => Ok(Color::Rgb {
+                r: 0x5c,
+                g: 0xb8,
+                b: 0x5c,
+            }),
             _ => {
                 // Try to parse "color-shade" format
                 if let Some(pos) = name.find('-') {
                     let color_name = &name[..pos];
                     let shade_str = &name[pos + 1..];
-                    let shade: u16 = shade_str.parse()
+                    let shade: u16 = shade_str
+                        .parse()
                         .map_err(|_| format!("Invalid shade value: {}", shade_str))?;
 
                     match color_name {
@@ -291,26 +317,26 @@ impl Color {
             Color::Violet(s) => tailwind_violet(*s),
             Color::Fuchsia(s) => tailwind_fuchsia(*s),
             Color::Stone(s) => tailwind_stone(*s),
-        // Plan 370 D-GAP-1: semantic colors with hardcoded light-mode RGB.
-        // (Plan 518 注:此表仅为 resolve_semantic_rgb 未覆盖路径的 light 回退,
-        // 主题真源在 theme.rs;light 值随 stella 暖纸系同步。)
-        Color::Primary => (99, 102, 241),       // indigo-500
-        Color::Secondary => (139, 92, 246),      // violet-500
-        Color::Background => (245, 241, 232),    // 暖纸 #f5f1e8(Plan 518)
-        Color::Surface => (251, 248, 242),       // #fbf8f2(Plan 518)
-        Color::Popover => (255, 255, 255),       // zinc light popover 纯白(PLAN-695)
-        Color::PopoverForeground => (42, 39, 35), // 墨色暖黑 #2a2723(PLAN-695 回退)
-        Color::Muted => (240, 235, 226),         // 暖 muted #f0ebe2(Plan 518)
-        Color::Error => (239, 68, 68),           // red-500
-        Color::Warning => (234, 179, 8),         // yellow-500
-        Color::Success => (34, 197, 94),         // green-500
-        Color::Info => (59, 130, 246),           // blue-500
-        Color::OnPrimary => (248, 250, 252),   // light primary foreground in light mode
-        Color::OnSecondary => (42, 39, 35),    // 墨色暖黑 #2a2723(Plan 518)
-        Color::OnDestructive => (248, 250, 252), // white text on destructive red
-        Color::OnBackground => (42, 39, 35),     // 墨色 #2a2723(Plan 518)
-        Color::Border => (227, 221, 209),        // 暖灰 #e3ddd1(Plan 518)
-        Color::OnSurface => (125, 119, 109),     // 暖次级 #7d776d(Plan 518)
+            // Plan 370 D-GAP-1: semantic colors with hardcoded light-mode RGB.
+            // (Plan 518 注:此表仅为 resolve_semantic_rgb 未覆盖路径的 light 回退,
+            // 主题真源在 theme.rs;light 值随 stella 暖纸系同步。)
+            Color::Primary => (99, 102, 241),         // indigo-500
+            Color::Secondary => (139, 92, 246),       // violet-500
+            Color::Background => (245, 241, 232),     // 暖纸 #f5f1e8(Plan 518)
+            Color::Surface => (251, 248, 242),        // #fbf8f2(Plan 518)
+            Color::Popover => (255, 255, 255),        // zinc light popover 纯白(PLAN-695)
+            Color::PopoverForeground => (42, 39, 35), // 墨色暖黑 #2a2723(PLAN-695 回退)
+            Color::Muted => (240, 235, 226),          // 暖 muted #f0ebe2(Plan 518)
+            Color::Error => (239, 68, 68),            // red-500
+            Color::Warning => (234, 179, 8),          // yellow-500
+            Color::Success => (34, 197, 94),          // green-500
+            Color::Info => (59, 130, 246),            // blue-500
+            Color::OnPrimary => (248, 250, 252),      // light primary foreground in light mode
+            Color::OnSecondary => (42, 39, 35),       // 墨色暖黑 #2a2723(Plan 518)
+            Color::OnDestructive => (248, 250, 252),  // white text on destructive red
+            Color::OnBackground => (42, 39, 35),      // 墨色 #2a2723(Plan 518)
+            Color::Border => (227, 221, 209),         // 暖灰 #e3ddd1(Plan 518)
+            Color::OnSurface => (125, 119, 109),      // 暖次级 #7d776d(Plan 518)
             _ => (128, 128, 128),
         }
     }
@@ -343,7 +369,14 @@ mod tests {
         // Conduit/RealWorld brand green #5cb85c — must parse as a whole
         // (not "brand" + "-green" shade split).
         let color = Color::from_tailwind("brand-green").unwrap();
-        assert_eq!(color, Color::Rgb { r: 0x5c, g: 0xb8, b: 0x5c });
+        assert_eq!(
+            color,
+            Color::Rgb {
+                r: 0x5c,
+                g: 0xb8,
+                b: 0x5c
+            }
+        );
         let (r, g, b) = color.to_rgb8();
         assert_eq!((r, g, b), (0x5c, 0xb8, 0x5c));
     }
@@ -702,4 +735,3 @@ palette!(tailwind_stone, [
     900 => (28, 25, 23),
     950 => (12, 10, 9),
 ]);
-

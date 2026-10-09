@@ -2,9 +2,31 @@ use crate::ast::{Closure, Expr, Iter, ParamMode, Stmt, Type, TypeDecl};
 use crate::error::SyntaxError;
 use crate::error::{AutoError, AutoResult};
 // use crate::val::Value; // Removed if not directly used or fix path
-use crate::vm::loader::{Module, RelocEntry, RelocType};
 use crate::vm::ffi::stdlib::NATIVE_RUST_STDLIB_DISPATCH;
-use crate::vm::native::{NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_AUTODOWN_EDITOR_TEXT, NATIVE_DND_START, NATIVE_AUTODOWN_FIND_BLOCK, NATIVE_AUTODOWN_INSERT_TEMPLATE, NATIVE_AUTODOWN_INSERT_TEXT, NATIVE_AUTODOWN_PARSE, NATIVE_AUTODOWN_SERIALIZE, NATIVE_AUTODOWN_TEXT, NATIVE_CLIPBOARD_FILES_GET, NATIVE_CLIPBOARD_FILES_SET, NATIVE_CLIPBOARD_IMAGE_GET, NATIVE_CLIPBOARD_IMAGE_SET, NATIVE_CLIPBOARD_SET_TEXT, NATIVE_CLIPBOARD_TEXT, NATIVE_CODE_EDITOR_COPY, NATIVE_CODE_EDITOR_CUT, NATIVE_CODE_EDITOR_CURSOR_COL, NATIVE_CODE_EDITOR_CURSOR_LINE, NATIVE_CODE_EDITOR_DELTA, NATIVE_CODE_EDITOR_EDIT, NATIVE_CODE_EDITOR_LOAD_FILE, NATIVE_CODE_EDITOR_SAVE, NATIVE_CODE_EDITOR_SET_CURSOR, NATIVE_CODE_EDITOR_SCROLL_OFFSET_X, NATIVE_CODE_EDITOR_SCROLL_OFFSET_Y, NATIVE_CODE_EDITOR_SCROLL_TO, NATIVE_SHELL_ADD_RECENT, NATIVE_DIFF_FILES, NATIVE_DIFF_FILES_WINDOW, NATIVE_DIFF_SNAPSHOTS, NATIVE_DIFF_DIRS, NATIVE_CODE_EDITOR_FIND, NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT, NATIVE_CODE_EDITOR_FOLD_TOGGLE, NATIVE_CODE_EDITOR_PASTE, NATIVE_CODE_EDITOR_REDO, NATIVE_CODE_EDITOR_SELECT_ALL, NATIVE_CODE_EDITOR_UNDO, NATIVE_CONSOLE_CLEAR, NATIVE_CONSOLE_LINES, NATIVE_CONSOLE_LOG, NATIVE_CODE_EDITOR_SELECTION_LEN, NATIVE_CODE_EDITOR_SET_TEXT, NATIVE_CODE_EDITOR_TEXT, NATIVE_DIALOG_OPEN, NATIVE_DIALOG_SAVE, NATIVE_FILE_BASENAME, NATIVE_PRINT_F32, NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED, NATIVE_WRITE_STR, NATIVE_RUNTIME_PANIC, NATIVE_SCROLL_BY, NATIVE_SCROLL_CONTROLLER, NATIVE_SCROLL_STATE, NATIVE_SCROLL_TO, NATIVE_SCROLL_TO_END, NATIVE_SCROLL_TO_START, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS, NATIVE_SHELL_EXPORT, NATIVE_SHELL_EXIT};
+use crate::vm::loader::{Module, RelocEntry, RelocType};
+use crate::vm::native::{
+    NATIVE_ASSERT, NATIVE_ASSERT_EQ, NATIVE_ASSERT_NE, NATIVE_AUTODOWN_EDITOR_TEXT,
+    NATIVE_AUTODOWN_FIND_BLOCK, NATIVE_AUTODOWN_INSERT_TEMPLATE, NATIVE_AUTODOWN_INSERT_TEXT,
+    NATIVE_AUTODOWN_PARSE, NATIVE_AUTODOWN_SERIALIZE, NATIVE_AUTODOWN_TEXT,
+    NATIVE_CLIPBOARD_FILES_GET, NATIVE_CLIPBOARD_FILES_SET, NATIVE_CLIPBOARD_IMAGE_GET,
+    NATIVE_CLIPBOARD_IMAGE_SET, NATIVE_CLIPBOARD_SET_TEXT, NATIVE_CLIPBOARD_TEXT,
+    NATIVE_CODE_EDITOR_COPY, NATIVE_CODE_EDITOR_CURSOR_COL, NATIVE_CODE_EDITOR_CURSOR_LINE,
+    NATIVE_CODE_EDITOR_CUT, NATIVE_CODE_EDITOR_DELTA, NATIVE_CODE_EDITOR_EDIT,
+    NATIVE_CODE_EDITOR_FIND, NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT, NATIVE_CODE_EDITOR_FOLD_TOGGLE,
+    NATIVE_CODE_EDITOR_LOAD_FILE, NATIVE_CODE_EDITOR_PASTE, NATIVE_CODE_EDITOR_REDO,
+    NATIVE_CODE_EDITOR_SAVE, NATIVE_CODE_EDITOR_SCROLL_OFFSET_X,
+    NATIVE_CODE_EDITOR_SCROLL_OFFSET_Y, NATIVE_CODE_EDITOR_SCROLL_TO,
+    NATIVE_CODE_EDITOR_SELECTION_LEN, NATIVE_CODE_EDITOR_SELECT_ALL, NATIVE_CODE_EDITOR_SET_CURSOR,
+    NATIVE_CODE_EDITOR_SET_TEXT, NATIVE_CODE_EDITOR_TEXT, NATIVE_CODE_EDITOR_UNDO,
+    NATIVE_CONSOLE_CLEAR, NATIVE_CONSOLE_LINES, NATIVE_CONSOLE_LOG, NATIVE_DIALOG_OPEN,
+    NATIVE_DIALOG_SAVE, NATIVE_DIFF_DIRS, NATIVE_DIFF_FILES, NATIVE_DIFF_FILES_WINDOW,
+    NATIVE_DIFF_SNAPSHOTS, NATIVE_DND_START, NATIVE_FILE_BASENAME, NATIVE_PRINT_F32,
+    NATIVE_PRINT_F64, NATIVE_PRINT_I32, NATIVE_PRINT_STR, NATIVE_PRINT_U64, NATIVE_PRINT_UNIFIED,
+    NATIVE_RUNTIME_PANIC, NATIVE_SCROLL_BY, NATIVE_SCROLL_CONTROLLER, NATIVE_SCROLL_STATE,
+    NATIVE_SCROLL_TO, NATIVE_SCROLL_TO_END, NATIVE_SCROLL_TO_START, NATIVE_SHELL_ADD_RECENT,
+    NATIVE_SHELL_EXIT, NATIVE_SHELL_EXPORT, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS,
+    NATIVE_WRITE_STR,
+};
 use crate::vm::native_registry::BIGVM_NATIVES;
 use crate::vm::opcode::OpCode;
 
@@ -100,10 +122,10 @@ pub struct ParamInfo {
 /// to an HTTP request in VM+VM split mode.
 #[derive(Clone)]
 pub struct ApiCallInfo {
-    pub fn_name: String,  // 契约函数名(Plan 060 M3:宿主桥按此名注册)
-    pub method: String,   // "GET" | "POST" | "PUT" | "DELETE"
-    pub path: String,     // "/api/notes", "/api/notes/:id"
-    pub params: Vec<String>, // parameter names in declaration order
+    pub fn_name: String,            // 契约函数名(Plan 060 M3:宿主桥按此名注册)
+    pub method: String,             // "GET" | "POST" | "PUT" | "DELETE"
+    pub path: String,               // "/api/notes", "/api/notes/:id"
+    pub params: Vec<String>,        // parameter names in declaration order
     pub ret_type: crate::ast::Type, // return type (for last_expr_type)
 }
 
@@ -136,8 +158,14 @@ fn type_to_native_suffix(ty: &Type) -> &'static str {
 fn default_expr_for_type(ty: &Type) -> crate::ast::Expr {
     use crate::ast::Expr;
     match ty {
-        Type::Int | Type::I64 | Type::Uint | Type::U64 | Type::USize | Type::Byte
-        | Type::StrFixed(_) | Type::Char => Expr::Int(0),
+        Type::Int
+        | Type::I64
+        | Type::Uint
+        | Type::U64
+        | Type::USize
+        | Type::Byte
+        | Type::StrFixed(_)
+        | Type::Char => Expr::Int(0),
         Type::Float | Type::Double => Expr::Float(0.0, "0.0".into()),
         Type::Bool => Expr::Bool(false),
         Type::StrSlice | Type::StrOwned | Type::CStrLit => Expr::Str("".into()),
@@ -528,7 +556,10 @@ fn build_bare_native_intrinsics() -> HashMap<String, u16> {
     intrinsics.insert("panic".to_string(), NATIVE_RUNTIME_PANIC);
     // Plan 442 B-support: JS web-compat alias — musk sources call the
     // browser global; route to the VM's percent-encoding native.
-    intrinsics.insert("encodeURIComponent".to_string(), crate::vm::native::NATIVE_URL_ENCODE);
+    intrinsics.insert(
+        "encodeURIComponent".to_string(),
+        crate::vm::native::NATIVE_URL_ENCODE,
+    );
     // Plan 442 C2: bare `read_text(path)` — musk backend's comptime
     // `#{ read_text("../workflows/...") }` (workflow.at) compiles the
     // inner expr as a runtime call on the VM path; route to the fs
@@ -548,26 +579,56 @@ fn build_bare_native_intrinsics() -> HashMap<String, u16> {
     intrinsics.insert("exit".to_string(), NATIVE_SHELL_EXIT);
     // PLAN-082: structured shell interop (records via shell_query,
     // print-executing commands via shell_run).
-    intrinsics.insert("shell_query".to_string(), crate::vm::native::NATIVE_SHELL_QUERY);
+    intrinsics.insert(
+        "shell_query".to_string(),
+        crate::vm::native::NATIVE_SHELL_QUERY,
+    );
     intrinsics.insert("shell_run".to_string(), crate::vm::native::NATIVE_SHELL_RUN);
     // Plan 413: code editor payload accessors (UI bridge).
     intrinsics.insert("code_editor_text".to_string(), NATIVE_CODE_EDITOR_TEXT);
-    intrinsics.insert("code_editor_cursor_line".to_string(), NATIVE_CODE_EDITOR_CURSOR_LINE);
-    intrinsics.insert("code_editor_cursor_col".to_string(), NATIVE_CODE_EDITOR_CURSOR_COL);
-    intrinsics.insert("code_editor_selection_len".to_string(), NATIVE_CODE_EDITOR_SELECTION_LEN);
+    intrinsics.insert(
+        "code_editor_cursor_line".to_string(),
+        NATIVE_CODE_EDITOR_CURSOR_LINE,
+    );
+    intrinsics.insert(
+        "code_editor_cursor_col".to_string(),
+        NATIVE_CODE_EDITOR_CURSOR_COL,
+    );
+    intrinsics.insert(
+        "code_editor_selection_len".to_string(),
+        NATIVE_CODE_EDITOR_SELECTION_LEN,
+    );
     intrinsics.insert("code_editor_find".to_string(), NATIVE_CODE_EDITOR_FIND);
-    intrinsics.insert("code_editor_set_text".to_string(), NATIVE_CODE_EDITOR_SET_TEXT);
+    intrinsics.insert(
+        "code_editor_set_text".to_string(),
+        NATIVE_CODE_EDITOR_SET_TEXT,
+    );
     // Plan 673 T-01: unified delta queue read side.
     intrinsics.insert("code_editor_delta".to_string(), NATIVE_CODE_EDITOR_DELTA);
     // Plan 673 T-02: structured write — write side.
     intrinsics.insert("code_editor_edit".to_string(), NATIVE_CODE_EDITOR_EDIT);
-    intrinsics.insert("code_editor_load_file".to_string(), NATIVE_CODE_EDITOR_LOAD_FILE);
+    intrinsics.insert(
+        "code_editor_load_file".to_string(),
+        NATIVE_CODE_EDITOR_LOAD_FILE,
+    );
     // PLAN-701 供①/供②: save 直写 + 光标/滚动端点（9909-9913）。
     intrinsics.insert("code_editor_save".to_string(), NATIVE_CODE_EDITOR_SAVE);
-    intrinsics.insert("code_editor_set_cursor".to_string(), NATIVE_CODE_EDITOR_SET_CURSOR);
-    intrinsics.insert("code_editor_scroll_offset_x".to_string(), NATIVE_CODE_EDITOR_SCROLL_OFFSET_X);
-    intrinsics.insert("code_editor_scroll_offset_y".to_string(), NATIVE_CODE_EDITOR_SCROLL_OFFSET_Y);
-    intrinsics.insert("code_editor_scroll_to".to_string(), NATIVE_CODE_EDITOR_SCROLL_TO);
+    intrinsics.insert(
+        "code_editor_set_cursor".to_string(),
+        NATIVE_CODE_EDITOR_SET_CURSOR,
+    );
+    intrinsics.insert(
+        "code_editor_scroll_offset_x".to_string(),
+        NATIVE_CODE_EDITOR_SCROLL_OFFSET_X,
+    );
+    intrinsics.insert(
+        "code_editor_scroll_offset_y".to_string(),
+        NATIVE_CODE_EDITOR_SCROLL_OFFSET_Y,
+    );
+    intrinsics.insert(
+        "code_editor_scroll_to".to_string(),
+        NATIVE_CODE_EDITOR_SCROLL_TO,
+    );
     // PLAN-701 供⑥: shell 跳转列表 Recent shim（9914）。
     intrinsics.insert("shell_add_recent".to_string(), NATIVE_SHELL_ADD_RECENT);
     // PLAN-703 供⑤: diff envelope endpoints.
@@ -585,11 +646,23 @@ fn build_bare_native_intrinsics() -> HashMap<String, u16> {
     intrinsics.insert("autodown_parse".to_string(), NATIVE_AUTODOWN_PARSE);
     intrinsics.insert("autodown_serialize".to_string(), NATIVE_AUTODOWN_SERIALIZE);
     intrinsics.insert("autodown_text".to_string(), NATIVE_AUTODOWN_TEXT);
-    intrinsics.insert("autodown_find_block".to_string(), NATIVE_AUTODOWN_FIND_BLOCK);
-    intrinsics.insert("autodown_insert_text".to_string(), NATIVE_AUTODOWN_INSERT_TEXT);
-    intrinsics.insert("autodown_insert_template".to_string(), NATIVE_AUTODOWN_INSERT_TEMPLATE);
+    intrinsics.insert(
+        "autodown_find_block".to_string(),
+        NATIVE_AUTODOWN_FIND_BLOCK,
+    );
+    intrinsics.insert(
+        "autodown_insert_text".to_string(),
+        NATIVE_AUTODOWN_INSERT_TEXT,
+    );
+    intrinsics.insert(
+        "autodown_insert_template".to_string(),
+        NATIVE_AUTODOWN_INSERT_TEMPLATE,
+    );
     // Plan 019 批次九: 编辑壳全文回读。
-    intrinsics.insert("autodown_editor_text".to_string(), NATIVE_AUTODOWN_EDITOR_TEXT);
+    intrinsics.insert(
+        "autodown_editor_text".to_string(),
+        NATIVE_AUTODOWN_EDITOR_TEXT,
+    );
     // Plan 413 follow-up: console natives (in-app Console panel).
     intrinsics.insert("console_log".to_string(), NATIVE_CONSOLE_LOG);
     intrinsics.insert("console_lines".to_string(), NATIVE_CONSOLE_LINES);
@@ -597,20 +670,41 @@ fn build_bare_native_intrinsics() -> HashMap<String, u16> {
     // Plan 418: editor actions + clipboard + dialogs (menu/toolbar handlers).
     intrinsics.insert("code_editor_undo".to_string(), NATIVE_CODE_EDITOR_UNDO);
     intrinsics.insert("code_editor_redo".to_string(), NATIVE_CODE_EDITOR_REDO);
-    intrinsics.insert("code_editor_select_all".to_string(), NATIVE_CODE_EDITOR_SELECT_ALL);
+    intrinsics.insert(
+        "code_editor_select_all".to_string(),
+        NATIVE_CODE_EDITOR_SELECT_ALL,
+    );
     intrinsics.insert("code_editor_cut".to_string(), NATIVE_CODE_EDITOR_CUT);
     intrinsics.insert("code_editor_copy".to_string(), NATIVE_CODE_EDITOR_COPY);
     intrinsics.insert("code_editor_paste".to_string(), NATIVE_CODE_EDITOR_PASTE);
     // Plan 428 P1: code folding natives (view state).
-    intrinsics.insert("code_editor_fold_toggle".to_string(), NATIVE_CODE_EDITOR_FOLD_TOGGLE);
-    intrinsics.insert("code_editor_fold_hidden_count".to_string(), NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT);
+    intrinsics.insert(
+        "code_editor_fold_toggle".to_string(),
+        NATIVE_CODE_EDITOR_FOLD_TOGGLE,
+    );
+    intrinsics.insert(
+        "code_editor_fold_hidden_count".to_string(),
+        NATIVE_CODE_EDITOR_FOLD_HIDDEN_COUNT,
+    );
     intrinsics.insert("clipboard_text".to_string(), NATIVE_CLIPBOARD_TEXT);
     intrinsics.insert("clipboard_set_text".to_string(), NATIVE_CLIPBOARD_SET_TEXT);
     // Plan 485: native clipboard files/images bare-name intrinsics.
-    intrinsics.insert("clipboard_files_get".to_string(), NATIVE_CLIPBOARD_FILES_GET);
-    intrinsics.insert("clipboard_files_set".to_string(), NATIVE_CLIPBOARD_FILES_SET);
-    intrinsics.insert("clipboard_image_get".to_string(), NATIVE_CLIPBOARD_IMAGE_GET);
-    intrinsics.insert("clipboard_image_set".to_string(), NATIVE_CLIPBOARD_IMAGE_SET);
+    intrinsics.insert(
+        "clipboard_files_get".to_string(),
+        NATIVE_CLIPBOARD_FILES_GET,
+    );
+    intrinsics.insert(
+        "clipboard_files_set".to_string(),
+        NATIVE_CLIPBOARD_FILES_SET,
+    );
+    intrinsics.insert(
+        "clipboard_image_get".to_string(),
+        NATIVE_CLIPBOARD_IMAGE_GET,
+    );
+    intrinsics.insert(
+        "clipboard_image_set".to_string(),
+        NATIVE_CLIPBOARD_IMAGE_SET,
+    );
     // Plan 488: OLE 拖出（DoDragDrop 调用线程内联阻塞；效果经
     // on_dnd_finished 事件回注）。
     intrinsics.insert("dnd_start".to_string(), NATIVE_DND_START);
@@ -668,10 +762,10 @@ impl Codegen {
             scope_stack,
             current_task_state_fields: HashMap::new(), // Plan 317: actor state fields
             global_vars: std::collections::HashSet::new(), // Plan 317: module-level vars
-            global_inits: Vec::new(), // Plan 317: global var initializers
-            force_global_store: false, // Plan 333: set true inside __module_init
+            global_inits: Vec::new(),                  // Plan 317: global var initializers
+            force_global_store: false,                 // Plan 333: set true inside __module_init
             current_module: String::new(), // Plan 345: module name for global qualification
-            var_types: HashMap::new(), // Plan 080: variable type tracking
+            var_types: HashMap::new(),     // Plan 080: variable type tracking
             var_mutability: HashMap::new(), // Plan 080+: variable mutability tracking
             captured_vars_stack: Vec::new(),
             byref_captured_slots: std::collections::HashSet::new(),
@@ -683,14 +777,14 @@ impl Codegen {
             generic_registry: crate::vm::generic_registry::GenericRegistry::new(), // Plan 087 Phase 1
             fn_params: HashMap::new(), // Plan 088 Phase 4: function parameter information
             fn_return_types, // Plan 087 Phase 3: function return types for .type (Plan 378: populated)
-            current_fn_n_args: 0,      // Plan 087 Phase 3: Initialize to 0
+            current_fn_n_args: 0, // Plan 087 Phase 3: Initialize to 0
             current_fn_ret_type: Type::Void,
-            current_fn_type_params: Vec::new(), // Plan 417-E3
-            current_fn_module: None, // PLAN-019 T-06: own-module bare-call binding
-            store_scope_module: None, // PLAN-733: store 域合成 own-module 绑定
+            current_fn_type_params: Vec::new(),   // Plan 417-E3
+            current_fn_module: None,              // PLAN-019 T-06: own-module bare-call binding
+            store_scope_module: None,             // PLAN-733: store 域合成 own-module 绑定
             fn_type_param_bounds: HashMap::new(), // Plan 417-E3-P4
-            fn_scope_start: 0,         // Plan 087 Phase 3: Initialize to 0
-            infer_ctx: InferenceContext::new(), // Plan 087 Phase 3: Type inference context
+            fn_scope_start: 0,                    // Plan 087 Phase 3: Initialize to 0
+            infer_ctx: InferenceContext::new(),   // Plan 087 Phase 3: Type inference context
             type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084 Phase 3: Unified TypeStore
             jump_placeholders: Vec::new(), // Plan 088 Phase 4: Initialize empty jump placeholder tracking
             jump_targets: Vec::new(),      // Plan 118 Phase 5: Initialize jump target tracking
@@ -701,31 +795,31 @@ impl Codegen {
             config_accum_depth: 0, // Plan 375
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             last_was_native_void: false,
-            last_expr_may_py: false, // Plan 569 D2: py-类型侧表粘性位
+            last_expr_may_py: false,       // Plan 569 D2: py-类型侧表粘性位
             py_typed_vars: HashSet::new(), // Plan 569 D2
-            stream_vars: HashSet::new(), // PLAN-707 D-5
+            stream_vars: HashSet::new(),   // PLAN-707 D-5
             fn_may_py_returns: HashSet::new(), // Plan 569 D2
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
             task_variants: HashMap::new(), // Plan 390 §14 L3
-            current_type_members: None, // Plan 087 Phase 3: No type context initially
+            current_type_members: None,    // Plan 087 Phase 3: No type context initially
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
             import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
-            api_over_http: false, // Plan 340: VM+VM split mode HTTP rewriting
-            api_funcs: HashMap::new(), // Plan 340: API fn metadata
+            api_over_http: false,         // Plan 340: VM+VM split mode HTTP rewriting
+            api_funcs: HashMap::new(),    // Plan 340: API fn metadata
             known_module_prefixes: HashSet::new(),
             rust_native_map: HashMap::new(),
             declared_dep_crates: Default::default(), // Plan 212b Task 3: Rust FFI function mappings
-            c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
-            py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
-            py_return_types: HashMap::new(), // Plan 222: Python FFI return types
+            c_ffi_functions: HashMap::new(),         // Plan 216 Phase 2: C FFI function mappings
+            py_native_map: HashMap::new(),           // Plan 214: Python FFI function mappings
+            py_return_types: HashMap::new(),         // Plan 222: Python FFI return types
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
             auto_modules: std::collections::HashSet::new(), // Plan 317: Auto modules
             vm_fn_names: std::collections::HashSet::new(), // PLAN-013 T1: #[vm] decl names
             file_modules: std::collections::HashSet::new(), // PLAN-013 T1: file-module qualifiers
-            opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
-            current_source_line: 0, // Plan 199: Source line tracking
-            source_text: None, // PLAN-057 T7
+            opaque_var_crates: HashMap::new(),       // Plan 212 Phase 2.2: opaque var tracking
+            current_source_line: 0,                  // Plan 199: Source line tracking
+            source_text: None,                       // PLAN-057 T7
         };
 
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
@@ -880,19 +974,26 @@ impl Codegen {
         let _ = self.generic_registry.register_template(some_template);
 
         // Option.None has 0 fields
-        let none_template = ClassTemplate::new(
-            "Option.None",
-            vec![],
-            vec![],
-            vec![],
-        );
+        let none_template = ClassTemplate::new("Option.None", vec![], vec![], vec![]);
         let _ = self.generic_registry.register_template(none_template);
     }
 
     /// Register enum variants from pre-collected TypeStore data into codegen's
     /// enum_values and generic_registry. This allows cross-module enum construction
     /// (e.g. `ApiError.Http("msg")` when `ApiError` is defined in a `use errors` module).
-    fn register_enums_from_data(&mut self, enums: &[(String, Vec<(String, i32, Option<Type>, Vec<Type>, Vec<crate::ast::EnumField>)>)]) {
+    fn register_enums_from_data(
+        &mut self,
+        enums: &[(
+            String,
+            Vec<(
+                String,
+                i32,
+                Option<Type>,
+                Vec<Type>,
+                Vec<crate::ast::EnumField>,
+            )>,
+        )],
+    ) {
         use crate::vm::generic_registry::{ClassTemplate, FieldDef};
 
         for (enum_name, variants) in enums {
@@ -902,14 +1003,17 @@ impl Codegen {
 
                 let variant_mono = key.clone();
                 if !fields.is_empty() {
-                    let fdefs: Vec<FieldDef> = fields.iter()
+                    let fdefs: Vec<FieldDef> = fields
+                        .iter()
                         .map(|f| FieldDef::new(f.name.as_str(), f.field_type.clone()))
                         .collect();
                     let template = ClassTemplate::new(&variant_mono, vec![], fdefs, vec![]);
                     let _ = self.generic_registry.register_template(template);
                 } else if !payload_types.is_empty() {
                     // Multi-field anonymous variant: ToolUse str str str -> fields _0, _1, _2
-                    let fdefs: Vec<FieldDef> = payload_types.iter().enumerate()
+                    let fdefs: Vec<FieldDef> = payload_types
+                        .iter()
+                        .enumerate()
                         .map(|(i, t)| FieldDef::new(&format!("_{}", i), t.clone()))
                         .collect();
                     let template = ClassTemplate::new(&variant_mono, vec![], fdefs, vec![]);
@@ -987,9 +1091,9 @@ impl Codegen {
             scope_stack,
             current_task_state_fields: HashMap::new(), // Plan 317
             global_vars: std::collections::HashSet::new(), // Plan 317
-            global_inits: Vec::new(), // Plan 317
-            force_global_store: false, // Plan 333
-            current_module: String::new(), // Plan 345
+            global_inits: Vec::new(),                  // Plan 317
+            force_global_store: false,                 // Plan 333
+            current_module: String::new(),             // Plan 345
             var_types: HashMap::new(),
             var_mutability: HashMap::new(),
             captured_vars_stack: Vec::new(),
@@ -1004,15 +1108,15 @@ impl Codegen {
             fn_return_types,
             current_fn_n_args: 0,
             current_fn_ret_type: Type::Void,
-            current_fn_type_params: Vec::new(), // Plan 417-E3
-            current_fn_module: None, // PLAN-019 T-06: own-module bare-call binding
-            store_scope_module: None, // PLAN-733: store 域合成 own-module 绑定
+            current_fn_type_params: Vec::new(),   // Plan 417-E3
+            current_fn_module: None,              // PLAN-019 T-06: own-module bare-call binding
+            store_scope_module: None,             // PLAN-733: store 域合成 own-module 绑定
             fn_type_param_bounds: HashMap::new(), // Plan 417-E3-P4
             fn_scope_start: 0,
             infer_ctx: InferenceContext::new(),
             type_store, // Plan 084 Phase 3: Use provided TypeStore
             jump_placeholders: Vec::new(),
-            jump_targets: Vec::new(),      // Plan 118 Phase 5: Initialize jump target tracking
+            jump_targets: Vec::new(), // Plan 118 Phase 5: Initialize jump target tracking
             max_locals: 0,
             should_pop_expr_result: false,
             config_mode: false, // Plan 364 Step 5: Script mode by default
@@ -1020,46 +1124,68 @@ impl Codegen {
             config_accum_depth: 0, // Plan 375
             last_expr_type: ObjectType::Int, // Plan 118: Default to Int
             last_was_native_void: false,
-            last_expr_may_py: false, // Plan 569 D2: py-类型侧表粘性位
+            last_expr_may_py: false,       // Plan 569 D2: py-类型侧表粘性位
             py_typed_vars: HashSet::new(), // Plan 569 D2
-            stream_vars: HashSet::new(), // PLAN-707 D-5
+            stream_vars: HashSet::new(),   // PLAN-707 D-5
             fn_may_py_returns: HashSet::new(), // Plan 569 D2
             task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(), // Plan 127
             task_variants: HashMap::new(), // Plan 390 §14 L3
-            current_type_members: None, // Plan 087 Phase 3: No type context initially
+            current_type_members: None,    // Plan 087 Phase 3: No type context initially
             enum_values: HashMap::new(),
             last_enum_variant_mono: None, // Plan 197 Task 13
             import_scope: HashMap::new(), // Plan 203 Phase 2: Import scope for name resolution
-            api_over_http: false, // Plan 340: VM+VM split mode HTTP rewriting
-            api_funcs: HashMap::new(), // Plan 340: API fn metadata
+            api_over_http: false,         // Plan 340: VM+VM split mode HTTP rewriting
+            api_funcs: HashMap::new(),    // Plan 340: API fn metadata
             known_module_prefixes: HashSet::new(),
             rust_native_map: HashMap::new(),
             declared_dep_crates: Default::default(), // Plan 212b Task 3: Rust FFI function mappings
-            c_ffi_functions: HashMap::new(), // Plan 216 Phase 2: C FFI function mappings
-            py_native_map: HashMap::new(), // Plan 214: Python FFI function mappings
-            py_return_types: HashMap::new(), // Plan 222: Python FFI return types
+            c_ffi_functions: HashMap::new(),         // Plan 216 Phase 2: C FFI function mappings
+            py_native_map: HashMap::new(),           // Plan 214: Python FFI function mappings
+            py_return_types: HashMap::new(),         // Plan 222: Python FFI return types
             py_modules: std::collections::HashSet::new(), // Plan 300: bare py modules
             auto_modules: std::collections::HashSet::new(), // Plan 317: Auto modules
             vm_fn_names: std::collections::HashSet::new(), // PLAN-013 T1: #[vm] decl names
             file_modules: std::collections::HashSet::new(), // PLAN-013 T1: file-module qualifiers
-            opaque_var_crates: HashMap::new(), // Plan 212 Phase 2.2: opaque var tracking
-            current_source_line: 0, // Plan 199: Source line tracking
-            source_text: None, // PLAN-057 T7
+            opaque_var_crates: HashMap::new(),       // Plan 212 Phase 2.2: opaque var tracking
+            current_source_line: 0,                  // Plan 199: Source line tracking
+            source_text: None,                       // PLAN-057 T7
         };
         // Plan 197 Task 16: Register built-in Option.Some and Option.None enum variants
         codegen.register_builtin_option_variants();
         // Register enum variants from TypeStore (populated by use/module resolution)
         {
-            let enum_data: Vec<(String, Vec<(String, i32, Option<Type>, Vec<Type>, Vec<crate::ast::EnumField>)>)> = {
+            let enum_data: Vec<(
+                String,
+                Vec<(
+                    String,
+                    i32,
+                    Option<Type>,
+                    Vec<Type>,
+                    Vec<crate::ast::EnumField>,
+                )>,
+            )> = {
                 let ts = codegen.type_store.read().unwrap();
-                ts.all_enum_decls().map(|(name, decl)| {
-                    let items = decl.items.iter().enumerate().map(|(i, item)| {
-                        let value = item.scalar_value.unwrap_or(i as i32);
-                        let variant_name = item.name.to_string();
-                        (variant_name, value, item.payload_type.clone(), item.payload_types.clone(), item.fields.clone())
-                    }).collect();
-                    (name.to_string(), items)
-                }).collect()
+                ts.all_enum_decls()
+                    .map(|(name, decl)| {
+                        let items = decl
+                            .items
+                            .iter()
+                            .enumerate()
+                            .map(|(i, item)| {
+                                let value = item.scalar_value.unwrap_or(i as i32);
+                                let variant_name = item.name.to_string();
+                                (
+                                    variant_name,
+                                    value,
+                                    item.payload_type.clone(),
+                                    item.payload_types.clone(),
+                                    item.fields.clone(),
+                                )
+                            })
+                            .collect();
+                        (name.to_string(), items)
+                    })
+                    .collect()
             };
             codegen.register_enums_from_data(&enum_data);
         }
@@ -1069,26 +1195,45 @@ impl Codegen {
             let type_decls: Vec<(String, Vec<String>, Vec<crate::ast::Type>)> = {
                 let ts = codegen.type_store.read().unwrap();
                 let decls: Vec<_> = ts.all_type_decls().collect();
-                decls.into_iter().map(|(name, decl)| {
-                    let field_names: Vec<String> = decl.members.iter().map(|m| m.name.to_string()).collect();
-                    let field_types: Vec<crate::ast::Type> = decl.members.iter().map(|m| m.ty.clone()).collect();
-                    (name.to_string(), field_names, field_types)
-                }).collect()
+                decls
+                    .into_iter()
+                    .map(|(name, decl)| {
+                        let field_names: Vec<String> =
+                            decl.members.iter().map(|m| m.name.to_string()).collect();
+                        let field_types: Vec<crate::ast::Type> =
+                            decl.members.iter().map(|m| m.ty.clone()).collect();
+                        (name.to_string(), field_names, field_types)
+                    })
+                    .collect()
             };
             for (type_name, field_names, field_types) in type_decls {
                 if !codegen.generic_registry.has_template(&type_name) {
-                    let fdefs: Vec<crate::vm::generic_registry::FieldDef> = field_names.iter().zip(field_types.iter())
-                        .map(|(n, t): (&String, &crate::ast::Type)| crate::vm::generic_registry::FieldDef::new(n.clone(), t.clone()))
+                    let fdefs: Vec<crate::vm::generic_registry::FieldDef> = field_names
+                        .iter()
+                        .zip(field_types.iter())
+                        .map(|(n, t): (&String, &crate::ast::Type)| {
+                            crate::vm::generic_registry::FieldDef::new(n.clone(), t.clone())
+                        })
                         .collect();
-                    let template = crate::vm::generic_registry::ClassTemplate::new(type_name.clone(), vec![], fdefs, vec![]);
+                    let template = crate::vm::generic_registry::ClassTemplate::new(
+                        type_name.clone(),
+                        vec![],
+                        fdefs,
+                        vec![],
+                    );
                     let _ = codegen.generic_registry.register_template(template);
                 }
                 // Ensure monomorphic instance exists in types map (needed for CONSTRUCT_INSTANCE)
-                let _ = codegen.generic_registry.get_or_create_type(&type_name, vec![]);
-                codegen.types.insert(type_name.clone(), crate::vm::codegen::TypeInfo {
-                    _name: type_name.clone(),
-                    member_names: field_names,
-                });
+                let _ = codegen
+                    .generic_registry
+                    .get_or_create_type(&type_name, vec![]);
+                codegen.types.insert(
+                    type_name.clone(),
+                    crate::vm::codegen::TypeInfo {
+                        _name: type_name.clone(),
+                        member_names: field_names,
+                    },
+                );
             }
         }
         codegen
@@ -1172,7 +1317,9 @@ impl Codegen {
         let result = self.compile_stmt_inner(stmt);
         self.assembly_compile_depth -= 1;
         result?;
-        if self.assembly_compile_depth == 0 { self.verify_assembly_references()?; }
+        if self.assembly_compile_depth == 0 {
+            self.verify_assembly_references()?;
+        }
         Ok(())
     }
 
@@ -1383,9 +1530,8 @@ impl Codegen {
 
                     // Call NATIVE_RUNTIME_PANIC — pops the message string and returns VMError
                     self.emit(OpCode::CALL_NAT);
-                    self.code.extend_from_slice(
-                        &crate::vm::native::NATIVE_RUNTIME_PANIC.to_le_bytes()
-                    );
+                    self.code
+                        .extend_from_slice(&crate::vm::native::NATIVE_RUNTIME_PANIC.to_le_bytes());
 
                     // RET — unreachable but needed for well-formed bytecode
                     let n_args_i16 = n_args as i16;
@@ -1393,7 +1539,8 @@ impl Codegen {
                     self.code.extend_from_slice(&n_args_i16.to_le_bytes());
 
                     // Record return type
-                    self.fn_return_types.insert(fn_name_str.clone(), fn_decl.ret.clone());
+                    self.fn_return_types
+                        .insert(fn_name_str.clone(), fn_decl.ret.clone());
 
                     return Ok(());
                 }
@@ -1405,8 +1552,10 @@ impl Codegen {
                 // 2. Record function entry point (export)
                 // Entry point is HERE (after JMP instruction)
                 let entry_point = self.code.len() as u32;
-                vm_debug!("DEBUG: Exporting function '{}' at address {:#04x}",
-                    fn_decl.name, entry_point
+                vm_debug!(
+                    "DEBUG: Exporting function '{}' at address {:#04x}",
+                    fn_decl.name,
+                    entry_point
                 );
                 self.exports.insert(fn_decl.name.to_string(), entry_point);
 
@@ -1450,16 +1599,11 @@ impl Codegen {
                     // 绑定（不允许同时声明 JSON whole-body 注入）；返回类型
                     // 不得是 UploadRequest/UploadSession（必须是 UploadReceipt）。
                     let sigs = &fn_decl.params;
-                    let upload_param = sigs
-                        .iter()
-                        .find(|p| {
-                            crate::api::contract::is_upload_param(&p.ty.unique_name().to_string())
-                        });
+                    let upload_param = sigs.iter().find(|p| {
+                        crate::api::contract::is_upload_param(&p.ty.unique_name().to_string())
+                    });
                     if let Some(up) = upload_param {
-                        if !matches!(
-                            api.method.to_uppercase().as_str(),
-                            "POST" | "PUT"
-                        ) {
+                        if !matches!(api.method.to_uppercase().as_str(), "POST" | "PUT") {
                             return Err(crate::error::AutoError::Msg(format!(
                                 "api fn '{}' declares an UploadRequest param '{}' but method is {} (uploads are POST/PUT only)",
                                 fn_decl.name, up.name, api.method
@@ -1476,13 +1620,8 @@ impl Codegen {
                                 continue;
                             }
                             // path 参数必须在路径模板中；其余仅 meta 约定名。
-                            let in_path = api
-                                .path
-                                .contains(&format!(":{}", p.name));
-                            let is_meta = matches!(
-                                p.name.as_str(),
-                                "meta" | "metadata"
-                            );
+                            let in_path = api.path.contains(&format!(":{}", p.name));
+                            let is_meta = matches!(p.name.as_str(), "meta" | "metadata");
                             if !in_path && !is_meta {
                                 return Err(crate::error::AutoError::Msg(format!(
                                     "api fn '{}': upload endpoints allow only path params and meta alongside UploadRequest (param '{}' would be JSON-body bound)",
@@ -1534,9 +1673,7 @@ impl Codegen {
                 if matches!(&fn_decl.ret, Type::GenericInstance(inst)
                     if inst.base_name.as_str() == "Future")
                 {
-                    crate::vm::ffi::http_server::record_api_async_return(
-                        &fn_decl.name.to_string(),
-                    );
+                    crate::vm::ffi::http_server::record_api_async_return(&fn_decl.name.to_string());
                 }
 
                 // 3. Push new scope for function locals
@@ -1647,7 +1784,8 @@ impl Codegen {
 
                     // Register parameter type for method resolution (e.g., s.upper())
                     if !matches!(param.ty, Type::Unknown) {
-                        self.var_types.insert(param.name.to_string(), param.ty.clone());
+                        self.var_types
+                            .insert(param.name.to_string(), param.ty.clone());
                     }
 
                     // Check if this is a 'self' parameter in a method
@@ -1705,11 +1843,13 @@ impl Codegen {
                     if self.last_expr_type != ObjectType::Void {
                         // Body has implicit return - mark as non-void
                         // Use Unknown to indicate "has value but type unknown"
-                        self.fn_return_types.insert(fn_decl.name.to_string(), Type::Unknown);
+                        self.fn_return_types
+                            .insert(fn_decl.name.to_string(), Type::Unknown);
                     }
                 } else {
                     // Function has explicit return type — record it for callers
-                    self.fn_return_types.insert(fn_decl.name.to_string(), fn_decl.ret.clone());
+                    self.fn_return_types
+                        .insert(fn_decl.name.to_string(), fn_decl.ret.clone());
                 }
                 // Plan 569 D2: fn 尾表达式 may_py 回填——fn 体编译后粘性位
                 // 反映尾表达式；命中记 fn_may_py_returns，调用点查表传导
@@ -1769,8 +1909,12 @@ impl Codegen {
 
                 // Insert FN_PROLOG at entry_point (before function body)
                 // This is 3 bytes: 1 byte opcode + 1 byte n_args + 1 byte n_locals
-                vm_debug!("DEBUG: Emitting FN_PROLOG for '{}' at address {}, n_args={}, n_locals={}",
-                    fn_decl.name, entry_point, n_args, n_locals
+                vm_debug!(
+                    "DEBUG: Emitting FN_PROLOG for '{}' at address {}, n_args={}, n_locals={}",
+                    fn_decl.name,
+                    entry_point,
+                    n_args,
+                    n_locals
                 );
                 self.code
                     .insert(entry_point as usize, OpCode::FN_PROLOG as u8);
@@ -1822,7 +1966,9 @@ impl Codegen {
 
                     // Check if this jump crosses the insertion point
                     // (placeholder before or at entry_point, target after entry_point)
-                    if *old_placeholder <= entry_point as usize && *old_target > entry_point as usize {
+                    if *old_placeholder <= entry_point as usize
+                        && *old_target > entry_point as usize
+                    {
                         // Recalculate offset with shifted target
                         let new_anchor = new_placeholder + 2;
                         let new_offset = (new_target as isize) - (new_anchor as isize);
@@ -1898,8 +2044,10 @@ impl Codegen {
                 // const (e.g. `const MAX int = 42`) is stored in vm.globals and
                 // is visible across module boundaries via `use mod: MAX`. `let`
                 // intentionally stays local (mutable-in-scope semantics differ).
-                if matches!(store.kind, crate::ast::StoreKind::Var | crate::ast::StoreKind::Const)
-                    && self.scope_stack.len() <= 1
+                if matches!(
+                    store.kind,
+                    crate::ast::StoreKind::Var | crate::ast::StoreKind::Const
+                ) && self.scope_stack.len() <= 1
                 {
                     // Plan 348 Task 20: also record the initializer so `fn main`
                     // can run it. execute_autovm spawns main directly (skipping
@@ -1911,7 +2059,8 @@ impl Codegen {
                     // of `fn main` below). Dedup by name so re-declaration or the
                     // API-routes pre-pass doesn't double-emit.
                     if !self.global_vars.contains(&name_str) {
-                        self.global_inits.push((name_str.clone(), store.expr.clone()));
+                        self.global_inits
+                            .push((name_str.clone(), store.expr.clone()));
                     }
                     self.global_vars.insert(name_str.clone());
                 }
@@ -1980,9 +2129,10 @@ impl Codegen {
                     // Reassignment of existing variable — check immutability
                     if let Some(is_mutable) = self.var_mutability.get(&name_str) {
                         if !is_mutable {
-                            return Err(crate::error::AutoError::Msg(
-                                format!("Cannot reassign to immutable variable '{}' (declared with 'let')", name_str)
-                            ));
+                            return Err(crate::error::AutoError::Msg(format!(
+                                "Cannot reassign to immutable variable '{}' (declared with 'let')",
+                                name_str
+                            )));
                         }
                     }
                 }
@@ -1991,7 +2141,9 @@ impl Codegen {
                     // First-time declaration - track mutability based on StoreKind
                     let is_mutable = matches!(
                         store.kind,
-                        crate::ast::StoreKind::Var | crate::ast::StoreKind::CVar | crate::ast::StoreKind::Shared
+                        crate::ast::StoreKind::Var
+                            | crate::ast::StoreKind::CVar
+                            | crate::ast::StoreKind::Shared
                     );
                     self.var_mutability.insert(name_str.clone(), is_mutable);
 
@@ -2030,7 +2182,8 @@ impl Codegen {
                                             });
                                             self.var_types.insert(name_str.clone(), refined);
                                         } else {
-                                            self.var_types.insert(name_str.clone(), store.ty.clone());
+                                            self.var_types
+                                                .insert(name_str.clone(), store.ty.clone());
                                         }
                                     } else {
                                         self.var_types.insert(name_str.clone(), store.ty.clone());
@@ -2076,10 +2229,10 @@ impl Codegen {
                             Expr::CStr(_) => Type::CStrLit,
                             Expr::Char(_) => Type::Char,
                             Expr::Int(_) => Type::Int,
-                            Expr::I8(_) => Type::Int,  // I8 maps to Int
+                            Expr::I8(_) => Type::Int, // I8 maps to Int
                             Expr::I64(_) => Type::I64,
                             Expr::Uint(_) => Type::Uint,
-                            Expr::U8(_) => Type::Int,  // U8 maps to Int (result is plain integer)
+                            Expr::U8(_) => Type::Int, // U8 maps to Int (result is plain integer)
                             Expr::U64(_) => Type::U64,
                             Expr::Byte(_) => Type::Byte,
                             Expr::Float(_, _) => Type::Float,
@@ -2088,7 +2241,9 @@ impl Codegen {
                             // Plan 118 Phase 7: Closure type inference
                             // Infer fn(params) return_type for closure expressions
                             Expr::Closure(closure) => {
-                                let param_types: Vec<Type> = closure.params.iter()
+                                let param_types: Vec<Type> = closure
+                                    .params
+                                    .iter()
                                     .map(|p| p.ty.clone().unwrap_or(Type::Unknown))
                                     .collect();
                                 // Infer return type from body expression
@@ -2096,168 +2251,197 @@ impl Codegen {
                                 Type::Fn(param_types, Box::new(ret_type))
                             }
                             // Plan 158: Infer type from function call
-                                Expr::Call(call) => {
-                                    match call.name.as_ref() {
-                                        Expr::Ident(fn_name) => {
-                                            self.fn_return_types.get(fn_name.as_ref())
-                                                .cloned()
-                                                .unwrap_or(Type::Unknown)
-                                        }
-                                        Expr::Dot(obj, method) => {
-                                            if let Expr::Ident(obj_name) = obj.as_ref() {
-                                                let full_name = format!("{}.{}", obj_name, method);
-                                                // Plan 368 W6-cross-domain: try qualified name,
-                                                // then fall back to bare method name (same as R-W4
-                                                // at the CALL reloc site, line 7894).
-                                                let ret_ty = self.fn_return_types.get(&full_name)
-                                                    .or_else(|| self.fn_return_types.get(method.as_str()));
-                                                if let Some(ty) = ret_ty {
-                                                    ty.clone()
-                                                } else if let Some(type_name) = self.infer_type_from_var(obj_name.as_ref()) {
-                                                    let type_method = format!("{}.{}", type_name, method);
-                                                    if let Some(ty) = self.fn_return_types.get(&type_method) {
-                                                        ty.clone()
-                                                    } else {
-                                                        // Array HOF methods return arrays
-                                                        let hof_methods = ["map", "filter"];
-                                                        if (type_name == "Array" || type_name == "List") && hof_methods.contains(&method.as_str()) {
-                                                            Type::Array(crate::ast::ArrayType {
-                                                                elem: Box::new(Type::Int),
-                                                                len: 0,
-                                                            })
-                                                        } else {
-                                                            Type::Unknown
-                                                        }
-                                                    }
-                                                } else {
-                                                    Type::Unknown
-                                                }
-                                            } else {
-                                                let fn_name = format!("{}.{}", self.expr_to_name(obj.as_ref()), method.as_ref());
-                                                // Plan 368 W6-cross-domain: bare-name fallback
-                                                let ret_ty = self.fn_return_types.get(&fn_name)
-                                                    .or_else(|| self.fn_return_types.get(method.as_ref()));
-                                                if let Some(ty) = ret_ty {
-                                                    ty.clone()
-                                                } else if let Some(type_name) = self.infer_user_type_name(obj.as_ref()) {
-                                                    let type_method = format!("{}.{}", type_name, method.as_ref());
+                            Expr::Call(call) => {
+                                match call.name.as_ref() {
+                                    Expr::Ident(fn_name) => self
+                                        .fn_return_types
+                                        .get(fn_name.as_ref())
+                                        .cloned()
+                                        .unwrap_or(Type::Unknown),
+                                    Expr::Dot(obj, method) => {
+                                        if let Expr::Ident(obj_name) = obj.as_ref() {
+                                            let full_name = format!("{}.{}", obj_name, method);
+                                            // Plan 368 W6-cross-domain: try qualified name,
+                                            // then fall back to bare method name (same as R-W4
+                                            // at the CALL reloc site, line 7894).
+                                            let ret_ty =
+                                                self.fn_return_types.get(&full_name).or_else(
+                                                    || self.fn_return_types.get(method.as_str()),
+                                                );
+                                            if let Some(ty) = ret_ty {
+                                                ty.clone()
+                                            } else if let Some(type_name) =
+                                                self.infer_type_from_var(obj_name.as_ref())
+                                            {
+                                                let type_method =
+                                                    format!("{}.{}", type_name, method);
+                                                if let Some(ty) =
                                                     self.fn_return_types.get(&type_method)
-                                                        .cloned()
-                                                        .unwrap_or(Type::Unknown)
+                                                {
+                                                    ty.clone()
                                                 } else {
-                                                    // Plan 202: Try with receiver's type name (e.g., "str" for string literals)
-                                                    let obj_ot = self.infer_object_type(obj.as_ref());
-                                                    let type_name = match obj_ot {
-                                                        ObjectType::String => Some("str"),
-                                                        ObjectType::Int => Some("int"),
-                                                        ObjectType::Array => Some("List"),
-                                                        ObjectType::Float | ObjectType::Double => Some("float"),
-                                                        ObjectType::Bool => Some("bool"),
-                                                        ObjectType::Char => Some("char"),
-                                                        _ => None,
-                                                    };
-                                                    if let Some(tn) = type_name {
-                                                        let qualified = format!("auto.{}.{}", tn, method);
-                                                        self.fn_return_types.get(&qualified)
-                                                            .cloned()
-                                                            .unwrap_or_else(|| {
-                                                                let short = format!("{}.{}", tn, method);
-                                                                self.fn_return_types.get(&short)
-                                                                    .cloned()
-                                                                    .unwrap_or(Type::Unknown)
-                                                            })
+                                                    // Array HOF methods return arrays
+                                                    let hof_methods = ["map", "filter"];
+                                                    if (type_name == "Array" || type_name == "List")
+                                                        && hof_methods.contains(&method.as_str())
+                                                    {
+                                                        Type::Array(crate::ast::ArrayType {
+                                                            elem: Box::new(Type::Int),
+                                                            len: 0,
+                                                        })
                                                     } else {
                                                         Type::Unknown
                                                     }
                                                 }
+                                            } else {
+                                                Type::Unknown
+                                            }
+                                        } else {
+                                            let fn_name = format!(
+                                                "{}.{}",
+                                                self.expr_to_name(obj.as_ref()),
+                                                method.as_ref()
+                                            );
+                                            // Plan 368 W6-cross-domain: bare-name fallback
+                                            let ret_ty =
+                                                self.fn_return_types.get(&fn_name).or_else(|| {
+                                                    self.fn_return_types.get(method.as_ref())
+                                                });
+                                            if let Some(ty) = ret_ty {
+                                                ty.clone()
+                                            } else if let Some(type_name) =
+                                                self.infer_user_type_name(obj.as_ref())
+                                            {
+                                                let type_method =
+                                                    format!("{}.{}", type_name, method.as_ref());
+                                                self.fn_return_types
+                                                    .get(&type_method)
+                                                    .cloned()
+                                                    .unwrap_or(Type::Unknown)
+                                            } else {
+                                                // Plan 202: Try with receiver's type name (e.g., "str" for string literals)
+                                                let obj_ot = self.infer_object_type(obj.as_ref());
+                                                let type_name = match obj_ot {
+                                                    ObjectType::String => Some("str"),
+                                                    ObjectType::Int => Some("int"),
+                                                    ObjectType::Array => Some("List"),
+                                                    ObjectType::Float | ObjectType::Double => {
+                                                        Some("float")
+                                                    }
+                                                    ObjectType::Bool => Some("bool"),
+                                                    ObjectType::Char => Some("char"),
+                                                    _ => None,
+                                                };
+                                                if let Some(tn) = type_name {
+                                                    let qualified =
+                                                        format!("auto.{}.{}", tn, method);
+                                                    self.fn_return_types
+                                                        .get(&qualified)
+                                                        .cloned()
+                                                        .unwrap_or_else(|| {
+                                                            let short =
+                                                                format!("{}.{}", tn, method);
+                                                            self.fn_return_types
+                                                                .get(&short)
+                                                                .cloned()
+                                                                .unwrap_or(Type::Unknown)
+                                                        })
+                                                } else {
+                                                    Type::Unknown
+                                                }
                                             }
                                         }
-                                        _ => Type::Unknown,
                                     }
+                                    _ => Type::Unknown,
                                 }
-                                // Plan 197 Task 4: Infer type from field access (e.g., let v = r.value)
-                                Expr::Dot(_, _) => {
-                                    self.infer_expr_type(&store.expr)
-                                }
-                                // Plan 197 Task 14: Infer type from array indexing (e.g., let first = list[0])
-                                Expr::Index(container, idx) => {
-                                    // Range slice on a string container produces a string, not char
-                                    if let Expr::Range(_) = idx.as_ref() {
-                                        if self.is_string_expr(container) {
-                                            Type::StrFixed(0)
-                                        } else {
-                                            self.infer_expr_type(&store.expr)
-                                        }
+                            }
+                            // Plan 197 Task 4: Infer type from field access (e.g., let v = r.value)
+                            Expr::Dot(_, _) => self.infer_expr_type(&store.expr),
+                            // Plan 197 Task 14: Infer type from array indexing (e.g., let first = list[0])
+                            Expr::Index(container, idx) => {
+                                // Range slice on a string container produces a string, not char
+                                if let Expr::Range(_) = idx.as_ref() {
+                                    if self.is_string_expr(container) {
+                                        Type::StrFixed(0)
                                     } else {
                                         self.infer_expr_type(&store.expr)
                                     }
+                                } else {
+                                    self.infer_expr_type(&store.expr)
                                 }
-                                // Plan 197 Task 14: Infer type from array literal (e.g., let list = [a, b])
-                                Expr::Array(elems) => {
-                                    if elems.is_empty() {
-                                        // Plan 445 M3：空数组字面量默认**动态 List**——
-                                        // 此前落静态 Array{Int, len:0}，decl 路径（vm_bridge
-                                        // new_from_decls，即 `auto run -r vm` 实机）的
-                                        // `out.push(x)` 按静态数组/字符串方法解析到
-                                        // auto.str.push(178)（应为 auto.list.push=101），
-                                        // push 静默失效 → 滑窗重建列表恒空 → 024-charts
-                                        // 实机 monthly=[] → 重算 510/0 DivisionByZero
-                                        // 中止（ASH_DEBUG_VM_LOG 实锤）。与
-                                        // synthesize_state_type 的 "var days = [] →
-                                        // dynamic array" 语义对齐。
-                                        if matches!(store.ty, Type::Unknown) {
-                                            Type::List(Box::new(Type::Unknown))
-                                        } else {
-                                            store.ty.clone()
-                                        }
-                                    } else {
-                                        let elem_ty = self.infer_expr_type(&elems[0]);
-                                        Type::Array(crate::ast::ArrayType {
-                                            elem: Box::new(elem_ty),
-                                            len: elems.len(),
-                                        })
-                                    }
-                                }
-                                // Plan 202: Propagate type from source variable (e.g., let s = item)
-                                Expr::Ident(src_name) => {
-                                    // Plan 383: 若 src_name 是已定义函数（函数引用赋值，
-                                    // 如 `let f = double`），推断 Type::Fn，使后续 `f()`
-                                    // 能被 is_closure_call（codegen.rs:7255）识别走 CALL_CLOSURE。
-                                    if self.is_defined_function(src_name.as_str()) {
-                                        let params = self.fn_params.get(src_name.as_ref())
-                                            .map(|p| p.iter().map(|pi| pi.ty.clone()).collect())
-                                            .unwrap_or_default();
-                                        let ret = self.fn_return_types.get(src_name.as_ref())
-                                            .cloned()
-                                            .unwrap_or(Type::Unknown);
-                                        Type::Fn(params, Box::new(ret))
-                                    } else {
-                                        self.var_types.get(src_name.as_str())
-                                            .cloned()
-                                            .unwrap_or_else(|| store.ty.clone())
-                                    }
-                                }
-                                // Plan 437: 混合算术的类型记录——任一侧含 float/double
-                                // 字面量或变量即结果为 Float/Double。此前落 store.ty
-                                // （Unknown→按 Int 消费），导致 `var b = a * 1.0` 的
-                                // f-string part tag 错标 Int（f32 位模式打印成
-                                // 1084227584），下游所有 Ident 类型查询随之走错分支。
-                                Expr::Bina(lhs, _, rhs) => {
-                                    if self.contains_double(lhs) || self.contains_double(rhs) {
-                                        Type::Double
-                                    } else if self.contains_float(lhs) || self.contains_float(rhs) {
-                                        Type::Float
+                            }
+                            // Plan 197 Task 14: Infer type from array literal (e.g., let list = [a, b])
+                            Expr::Array(elems) => {
+                                if elems.is_empty() {
+                                    // Plan 445 M3：空数组字面量默认**动态 List**——
+                                    // 此前落静态 Array{Int, len:0}，decl 路径（vm_bridge
+                                    // new_from_decls，即 `auto run -r vm` 实机）的
+                                    // `out.push(x)` 按静态数组/字符串方法解析到
+                                    // auto.str.push(178)（应为 auto.list.push=101），
+                                    // push 静默失效 → 滑窗重建列表恒空 → 024-charts
+                                    // 实机 monthly=[] → 重算 510/0 DivisionByZero
+                                    // 中止（ASH_DEBUG_VM_LOG 实锤）。与
+                                    // synthesize_state_type 的 "var days = [] →
+                                    // dynamic array" 语义对齐。
+                                    if matches!(store.ty, Type::Unknown) {
+                                        Type::List(Box::new(Type::Unknown))
                                     } else {
                                         store.ty.clone()
                                     }
+                                } else {
+                                    let elem_ty = self.infer_expr_type(&elems[0]);
+                                    Type::Array(crate::ast::ArrayType {
+                                        elem: Box::new(elem_ty),
+                                        len: elems.len(),
+                                    })
                                 }
-                                _ => store.ty.clone(),
+                            }
+                            // Plan 202: Propagate type from source variable (e.g., let s = item)
+                            Expr::Ident(src_name) => {
+                                // Plan 383: 若 src_name 是已定义函数（函数引用赋值，
+                                // 如 `let f = double`），推断 Type::Fn，使后续 `f()`
+                                // 能被 is_closure_call（codegen.rs:7255）识别走 CALL_CLOSURE。
+                                if self.is_defined_function(src_name.as_str()) {
+                                    let params = self
+                                        .fn_params
+                                        .get(src_name.as_ref())
+                                        .map(|p| p.iter().map(|pi| pi.ty.clone()).collect())
+                                        .unwrap_or_default();
+                                    let ret = self
+                                        .fn_return_types
+                                        .get(src_name.as_ref())
+                                        .cloned()
+                                        .unwrap_or(Type::Unknown);
+                                    Type::Fn(params, Box::new(ret))
+                                } else {
+                                    self.var_types
+                                        .get(src_name.as_str())
+                                        .cloned()
+                                        .unwrap_or_else(|| store.ty.clone())
+                                }
+                            }
+                            // Plan 437: 混合算术的类型记录——任一侧含 float/double
+                            // 字面量或变量即结果为 Float/Double。此前落 store.ty
+                            // （Unknown→按 Int 消费），导致 `var b = a * 1.0` 的
+                            // f-string part tag 错标 Int（f32 位模式打印成
+                            // 1084227584），下游所有 Ident 类型查询随之走错分支。
+                            Expr::Bina(lhs, _, rhs) => {
+                                if self.contains_double(lhs) || self.contains_double(rhs) {
+                                    Type::Double
+                                } else if self.contains_float(lhs) || self.contains_float(rhs) {
+                                    Type::Float
+                                } else {
+                                    store.ty.clone()
+                                }
+                            }
+                            _ => store.ty.clone(),
                         };
                         self.var_types.insert(name_str.clone(), inferred_type);
                         // Plan 212 Phase 2.2: Track opaque type variables
                         // When `let re = Regex.new(...)` is compiled, record that `re` maps to "regex"
                         if let Some(opaque_crate) = self.infer_opaque_crate_from_expr(&store.expr) {
-                            self.opaque_var_crates.insert(name_str.clone(), opaque_crate);
+                            self.opaque_var_crates
+                                .insert(name_str.clone(), opaque_crate);
                         }
                     }
                 }
@@ -2270,7 +2454,13 @@ impl Codegen {
                         // No initializer - allocate zeroed array
                         self.compile_expr(&rta.size_expr)?;
                         self.emit(OpCode::CALL_NAT);
-                        self.emit_u16(BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.alloc.array").unwrap());
+                        self.emit_u16(
+                            BIGVM_NATIVES
+                                .lock()
+                                .unwrap()
+                                .resolve_qualified("auto.alloc.array")
+                                .unwrap(),
+                        );
                     } else {
                         // Has initializer - compile the expression
                         self.compile_expr(&store.expr)?;
@@ -2281,7 +2471,13 @@ impl Codegen {
                         self.emit(OpCode::CONST_I32);
                         self.emit_i32(arr.len as i32);
                         self.emit(OpCode::CALL_NAT);
-                        self.emit_u16(BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.alloc.array").unwrap());
+                        self.emit_u16(
+                            BIGVM_NATIVES
+                                .lock()
+                                .unwrap()
+                                .resolve_qualified("auto.alloc.array")
+                                .unwrap(),
+                        );
                     } else {
                         // Has initializer (e.g., [1, 2, 3]) - compile the expression
                         self.compile_expr(&store.expr)?;
@@ -2344,7 +2540,10 @@ impl Codegen {
                         // Plan 197 Task 16: Only override if type wasn't already inferred (e.g., from fn_return_types)
                         if let Some(ref variant_mono) = self.last_enum_variant_mono {
                             let existing_type = self.var_types.get(&name_str);
-                            let should_override = matches!(existing_type, Some(Type::Unknown) | Some(Type::Int) | None);
+                            let should_override = matches!(
+                                existing_type,
+                                Some(Type::Unknown) | Some(Type::Int) | None
+                            );
                             if should_override {
                                 let type_decl = crate::ast::TypeDecl {
                                     consts: Vec::new(),
@@ -2363,9 +2562,13 @@ impl Codegen {
                                     doc: None,
                                     is_pub: false,
                                 };
-                                self.var_types.insert(name_str.clone(), Type::User(type_decl));
-                                vm_debug!("DEBUG: Stored enum variant type '{}' for variable '{}'",
-                                    variant_mono, name_str);
+                                self.var_types
+                                    .insert(name_str.clone(), Type::User(type_decl));
+                                vm_debug!(
+                                    "DEBUG: Stored enum variant type '{}' for variable '{}'",
+                                    variant_mono,
+                                    name_str
+                                );
                             }
                             self.last_enum_variant_mono = None;
                         }
@@ -2379,8 +2582,7 @@ impl Codegen {
                 // 持 U64 tag,I64 语义链(下标/串化/数值比较)全不接。
                 if matches!(stored_type, Some(Type::I64)) && !self.contains_u64(&store.expr) {
                     self.emit(OpCode::TYPE_CAST_I64);
-                } else if matches!(stored_type, Some(Type::U64))
-                    && !self.contains_u64(&store.expr)
+                } else if matches!(stored_type, Some(Type::U64)) && !self.contains_u64(&store.expr)
                 {
                     self.emit(OpCode::TYPE_CAST_U64);
                 } else if matches!(stored_type, Some(Type::Double))
@@ -2545,7 +2747,11 @@ impl Codegen {
                 // Method naming: TypeName.method_name (e.g., Counter.increment)
                 // self becomes the first parameter
                 let type_name = type_decl.name.to_string();
-                let member_names: Vec<String> = type_decl.members.iter().map(|m| m.name.to_string()).collect();
+                let member_names: Vec<String> = type_decl
+                    .members
+                    .iter()
+                    .map(|m| m.name.to_string())
+                    .collect();
                 for method in &type_decl.methods {
                     // Create mangled method name: TypeName.method_name
                     let mangled_name = format!("{}.{}", type_name, method.name);
@@ -2563,15 +2769,22 @@ impl Codegen {
 
                     // For instance methods (non-static), inject 'self' as first parameter
                     if !method.is_static {
-                        let has_self = method_fn.params.first().map(|p| p.name.to_string() == "self").unwrap_or(false);
+                        let has_self = method_fn
+                            .params
+                            .first()
+                            .map(|p| p.name.to_string() == "self")
+                            .unwrap_or(false);
                         if !has_self {
-                            method_fn.params.insert(0, crate::ast::Param {
-                                name: crate::ast::Name::from("self"),
-                                ty: Type::User(type_decl.clone()),
-                                default: None,
-                                mode: crate::ast::ParamMode::View,
-                                destructure: None,
-                            });
+                            method_fn.params.insert(
+                                0,
+                                crate::ast::Param {
+                                    name: crate::ast::Name::from("self"),
+                                    ty: Type::User(type_decl.clone()),
+                                    default: None,
+                                    mode: crate::ast::ParamMode::View,
+                                    destructure: None,
+                                },
+                            );
                         }
                     }
 
@@ -2660,12 +2873,15 @@ impl Codegen {
                 let type_name = ext_block.target.to_string();
 
                 // Look up the TypeDecl for self parameter typing
-                let self_type = self.infer_ctx.lookup_type_decl(&ext_block.target)
+                let self_type = self
+                    .infer_ctx
+                    .lookup_type_decl(&ext_block.target)
                     .map(|td| Type::User(td))
                     .unwrap_or(Type::Unknown);
 
                 // Store member names for implicit .field resolution
-                let member_names: Vec<String> = self.get_type(&type_name)
+                let member_names: Vec<String> = self
+                    .get_type(&type_name)
                     .map(|ti| ti.member_names.clone())
                     .unwrap_or_default();
 
@@ -2676,15 +2892,22 @@ impl Codegen {
                     method_fn.parent = Some(crate::ast::Name::from(type_name.as_str()));
 
                     if !method.is_static {
-                        let has_self = method_fn.params.first().map(|p| p.name.to_string() == "self").unwrap_or(false);
+                        let has_self = method_fn
+                            .params
+                            .first()
+                            .map(|p| p.name.to_string() == "self")
+                            .unwrap_or(false);
                         if !has_self {
-                            method_fn.params.insert(0, crate::ast::Param {
-                                name: crate::ast::Name::from("self"),
-                                ty: self_type.clone(),
-                                default: None,
-                                mode: crate::ast::ParamMode::View,
-                                destructure: None,
-                            });
+                            method_fn.params.insert(
+                                0,
+                                crate::ast::Param {
+                                    name: crate::ast::Name::from("self"),
+                                    ty: self_type.clone(),
+                                    default: None,
+                                    mode: crate::ast::ParamMode::View,
+                                    destructure: None,
+                                },
+                            );
                         }
                     }
 
@@ -2718,7 +2941,9 @@ impl Codegen {
 
                 // Determine payload type for each item based on enum kind
                 let homogeneous_payload = match &enum_decl.kind {
-                    crate::ast::EnumKind::Homogeneous { payload_type } => Some(payload_type.clone()),
+                    crate::ast::EnumKind::Homogeneous { payload_type } => {
+                        Some(payload_type.clone())
+                    }
                     _ => None,
                 };
 
@@ -2727,27 +2952,25 @@ impl Codegen {
 
                     // Plan 201 Phase 1C: Multi-field struct-like variant
                     if item.has_fields() {
-                        let fields: Vec<FieldDef> = item.fields.iter()
+                        let fields: Vec<FieldDef> = item
+                            .fields
+                            .iter()
                             .map(|f| FieldDef::new(f.name.as_str(), f.field_type.clone()))
                             .collect();
-                        let template = ClassTemplate::new(
-                            &variant_mono,
-                            vec![],
-                            fields,
-                            vec![],
-                        );
+                        let template = ClassTemplate::new(&variant_mono, vec![], fields, vec![]);
                         self.generic_registry.register_or_update_template(template);
                         continue;
                     }
 
                     // Single-field payload variant (existing code)
-                    let payload = item.payload_type.as_ref()
-                        .or(homogeneous_payload.as_ref());
+                    let payload = item.payload_type.as_ref().or(homogeneous_payload.as_ref());
 
                     if let Some(payload_type) = payload {
                         // Handle tuple payload like Rect(int, int) -> fields _0, _1
                         let fields = if let crate::ast::Type::Tuple(ref types) = payload_type {
-                            types.iter().enumerate()
+                            types
+                                .iter()
+                                .enumerate()
                                 .map(|(i, t)| FieldDef::new(&format!("_{}", i), t.clone()))
                                 .collect()
                         } else {
@@ -2755,22 +2978,20 @@ impl Codegen {
                         };
                         let template = ClassTemplate::new(
                             &variant_mono,
-                            vec![],  // No generic params for enum variants
+                            vec![], // No generic params for enum variants
                             fields,
-                            vec![],  // No methods for enum variants
+                            vec![], // No methods for enum variants
                         );
                         self.generic_registry.register_or_update_template(template);
                     } else if !item.payload_types.is_empty() {
                         // Multi-field anonymous variant: ToolUse str str str -> fields _0, _1, _2
-                        let fields: Vec<FieldDef> = item.payload_types.iter().enumerate()
+                        let fields: Vec<FieldDef> = item
+                            .payload_types
+                            .iter()
+                            .enumerate()
                             .map(|(i, t)| FieldDef::new(&format!("_{}", i), t.clone()))
                             .collect();
-                        let template = ClassTemplate::new(
-                            &variant_mono,
-                            vec![],
-                            fields,
-                            vec![],
-                        );
+                        let template = ClassTemplate::new(&variant_mono, vec![], fields, vec![]);
                         self.generic_registry.register_or_update_template(template);
                     }
                 }
@@ -2790,16 +3011,22 @@ impl Codegen {
                         // （scalar 变体是 i32 discriminant，带 payload 变体是 heap 对象 id）。
                         // 方法体内通过 `is self {...}` 匹配变体（既有 is 机制按值工作）。
                         if !method.is_static {
-                            let has_self = method_fn.params.first()
-                                .map(|p| p.name.to_string() == "self").unwrap_or(false);
+                            let has_self = method_fn
+                                .params
+                                .first()
+                                .map(|p| p.name.to_string() == "self")
+                                .unwrap_or(false);
                             if !has_self {
-                                method_fn.params.insert(0, crate::ast::Param {
-                                    name: crate::ast::Name::from("self"),
-                                    ty: Type::Unknown, // enum 值类型（运行时 i32 或对象 id）
-                                    default: None,
-                                    mode: crate::ast::ParamMode::View,
-                                destructure: None,
-                                });
+                                method_fn.params.insert(
+                                    0,
+                                    crate::ast::Param {
+                                        name: crate::ast::Name::from("self"),
+                                        ty: Type::Unknown, // enum 值类型（运行时 i32 或对象 id）
+                                        default: None,
+                                        mode: crate::ast::ParamMode::View,
+                                        destructure: None,
+                                    },
+                                );
                             }
                         }
                         self.compile_stmt(&Stmt::Fn(method_fn))?;
@@ -2826,12 +3053,16 @@ impl Codegen {
                     Iter::Named(var_name) => {
                         // Check if range is a Range expression (for x in 0..10)
                         if let Expr::Range(range) = &for_stmt.range {
-                            vm_debug!("DEBUG FOR: Range-based loop, start={:?}, end={:?}, eq={}",
-                                range.start, range.end, range.eq
+                            vm_debug!(
+                                "DEBUG FOR: Range-based loop, start={:?}, end={:?}, eq={}",
+                                range.start,
+                                range.end,
+                                range.eq
                             );
                             // Compile start expression and initialize loop variable
                             self.compile_expr(&range.start)?;
-                            vm_debug!("DEBUG FOR: After start expr, code len = {}",
+                            vm_debug!(
+                                "DEBUG FOR: After start expr, code len = {}",
                                 self.code.len()
                             );
 
@@ -3009,8 +3240,7 @@ impl Codegen {
                                 self.emit_store_loc(idx_index);
                                 self.emit(OpCode::JMP);
                                 let cur_pos = self.code.len();
-                                self.emit_i16((loop_start as isize - cur_pos as isize - 2)
-                                    as i16);
+                                self.emit_i16((loop_start as isize - cur_pos as isize - 2) as i16);
 
                                 let _loop_exit = self.code.len();
                                 self.patch_jump(jump_to_end);
@@ -3043,8 +3273,10 @@ impl Codegen {
 
                             // Emit CALL_NAT for Iterator.next
                             // Look up the native function ID
-                            let native_id = if let Some(id) =
-                                BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.iterator.next")
+                            let native_id = if let Some(id) = BIGVM_NATIVES
+                                .lock()
+                                .unwrap()
+                                .resolve_qualified("auto.iterator.next")
                             {
                                 id
                             } else {
@@ -3161,7 +3393,9 @@ impl Codegen {
 
                                 self.emit(OpCode::JMP);
                                 let current_pos = self.code.len();
-                                self.emit_i16((loop_start as isize - current_pos as isize - 2) as i16);
+                                self.emit_i16(
+                                    (loop_start as isize - current_pos as isize - 2) as i16,
+                                );
 
                                 let _loop_exit = self.code.len();
                                 self.patch_jump(jump_to_end);
@@ -3189,10 +3423,13 @@ impl Codegen {
                                     _ => {
                                         // Try var_types for the range variable
                                         if let Expr::Ident(name) = &for_stmt.range {
-                                            self.var_types.get(name.as_str())
+                                            self.var_types
+                                                .get(name.as_str())
                                                 .and_then(|t| match t {
                                                     Type::Array(arr) => Some((*arr.elem).clone()),
-                                                    Type::RuntimeArray(rta) => Some((*rta.elem).clone()),
+                                                    Type::RuntimeArray(rta) => {
+                                                        Some((*rta.elem).clone())
+                                                    }
                                                     Type::List(elem) => Some((**elem).clone()),
                                                     _ => None,
                                                 })
@@ -3546,7 +3783,13 @@ impl Codegen {
 
                         // Emit CALL_NAT for auto.hashmap.keys
                         self.emit(OpCode::CALL_NAT);
-                        self.emit_u16(BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.hashmap.keys").unwrap());
+                        self.emit_u16(
+                            BIGVM_NATIVES
+                                .lock()
+                                .unwrap()
+                                .resolve_qualified("auto.hashmap.keys")
+                                .unwrap(),
+                        );
                         // Stack: [keys_list_id]
 
                         // Get keys list length
@@ -3607,7 +3850,13 @@ impl Codegen {
                         // Simpler: use CALL_NAT with auto.hashmap.get
                         // The shim expects: push map_id, push key_str_idx
                         self.emit(OpCode::CALL_NAT);
-                        self.emit_u16(BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.hashmap.get").unwrap());
+                        self.emit_u16(
+                            BIGVM_NATIVES
+                                .lock()
+                                .unwrap()
+                                .resolve_qualified("auto.hashmap.get")
+                                .unwrap(),
+                        );
                         // Stack: [value (as Option-encoded)]
 
                         // Store value to val variable
@@ -3619,38 +3868,38 @@ impl Codegen {
                         self.compile_stmt(&Stmt::Block(for_stmt.body.clone()))?;
                         self.should_pop_expr_result = old_pop;
 
-                            // Continue: increment counter
-                            let continue_pos = self.code.len();
-                            if let Some(pos) = self.loop_continue_positions.last_mut() {
-                                *pos = continue_pos;
-                            }
-                            self.emit_load_loc(counter_index);
-                            self.emit(OpCode::CONST_I32);
-                            self.emit_i32(1);
-                            self.emit(OpCode::ADD);
-                            self.emit_store_loc(counter_index);
+                        // Continue: increment counter
+                        let continue_pos = self.code.len();
+                        if let Some(pos) = self.loop_continue_positions.last_mut() {
+                            *pos = continue_pos;
+                        }
+                        self.emit_load_loc(counter_index);
+                        self.emit(OpCode::CONST_I32);
+                        self.emit_i32(1);
+                        self.emit(OpCode::ADD);
+                        self.emit_store_loc(counter_index);
 
-                            // JMP back
-                            self.emit(OpCode::JMP);
-                            let current_pos = self.code.len();
-                            self.emit_i16((loop_start as isize - current_pos as isize - 2) as i16);
+                        // JMP back
+                        self.emit(OpCode::JMP);
+                        let current_pos = self.code.len();
+                        self.emit_i16((loop_start as isize - current_pos as isize - 2) as i16);
 
-                            // Patch exit jump
-                            self.patch_jump(jump_to_end);
+                        // Patch exit jump
+                        self.patch_jump(jump_to_end);
 
-                            self.pop_scope();
+                        self.pop_scope();
 
-                            // Patch all break statements
-                            let exits = self.loop_exits.pop().unwrap();
-                            for exit_placeholder in exits {
-                                self.patch_jump(exit_placeholder);
-                            }
-                            self.loop_continue_positions.pop();
-                            // Plan 447 H2 fix: Patch continue statements to increment position
-                            let continues = self.loop_continues.pop().unwrap();
-                            for continue_placeholder in continues {
-                                self.patch_jump_to(continue_placeholder, continue_pos);
-                            }
+                        // Patch all break statements
+                        let exits = self.loop_exits.pop().unwrap();
+                        for exit_placeholder in exits {
+                            self.patch_jump(exit_placeholder);
+                        }
+                        self.loop_continue_positions.pop();
+                        // Plan 447 H2 fix: Patch continue statements to increment position
+                        let continues = self.loop_continues.pop().unwrap();
+                        for continue_placeholder in continues {
+                            self.patch_jump_to(continue_placeholder, continue_pos);
+                        }
                     }
                     Iter::Cond => {
                         // Conditional for loop: for condition { ... } (like while)
@@ -3866,7 +4115,10 @@ impl Codegen {
                     // that pushed loop_continues).
                     self.emit(OpCode::JMP);
                     let continue_placeholder = self.emit_placeholder_i16();
-                    self.loop_continues.last_mut().unwrap().push(continue_placeholder);
+                    self.loop_continues
+                        .last_mut()
+                        .unwrap()
+                        .push(continue_placeholder);
                 } else if let Some(&continue_pos) = self.loop_continue_positions.last() {
                     if continue_pos > 0 {
                         // Legacy path for variants that set loop_continue_positions
@@ -3962,12 +4214,16 @@ impl Codegen {
                                                 self.emit_store_loc(var_idx);
 
                                                 if binding.as_str() != "_" {
-                                                    let inner_type = self.infer_option_inner_type(&is_stmt.target);
-                                                    self.var_types.insert(binding.to_string(), inner_type);
+                                                    let inner_type = self
+                                                        .infer_option_inner_type(&is_stmt.target);
+                                                    self.var_types
+                                                        .insert(binding.to_string(), inner_type);
                                                 }
                                             }
 
-                                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+                                            self.compile_stmt(&crate::ast::Stmt::Block(
+                                                body.clone(),
+                                            ))?;
 
                                             self.emit(OpCode::JMP);
                                             let jump_to_end = self.emit_placeholder_i16();
@@ -4015,7 +4271,9 @@ impl Codegen {
                                             }
 
                                             // Compile branch body
-                                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+                                            self.compile_stmt(&crate::ast::Stmt::Block(
+                                                body.clone(),
+                                            ))?;
 
                                             // Jump to end of is statement
                                             self.emit(OpCode::JMP);
@@ -4049,7 +4307,9 @@ impl Codegen {
                                             }
 
                                             // Compile branch body
-                                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+                                            self.compile_stmt(&crate::ast::Stmt::Block(
+                                                body.clone(),
+                                            ))?;
 
                                             // Jump to end of is statement
                                             self.emit(OpCode::JMP);
@@ -4102,7 +4362,8 @@ impl Codegen {
                                 }
                                 // Plan 197 Task 15: Enum variant destructuring (e.g., Atom.Int(n))
                                 crate::ast::Expr::Cover(crate::ast::Cover::Tag(tag_cover)) => {
-                                    let variant_mono = format!("{}.{}", tag_cover.kind, tag_cover.tag);
+                                    let variant_mono =
+                                        format!("{}.{}", tag_cover.kind, tag_cover.tag);
                                     // Only use IS_VARIANT path for data variants (registered in generic_registry)
                                     // Scalar enums (C-style, no payload) fall through to EQ comparison.
                                     // Plan 442 C2: variants UNKNOWN to the VM (use.rust-imported enums,
@@ -4115,10 +4376,13 @@ impl Codegen {
                                     // Plan 447 H1 fix: For scalar enums with multiple patterns, let them
                                     // fall through to multi-pattern handling below instead of early continue.
                                     let known_scalar = self.enum_values.contains_key(&variant_mono);
-                                    let has_data_payload = self.generic_registry.has_template(&variant_mono)
-                                        || !known_scalar;
+                                    let has_data_payload =
+                                        self.generic_registry.has_template(&variant_mono)
+                                            || !known_scalar;
 
-                                    if has_data_payload && tag_cover.bindings.iter().any(|b| b.as_str() != "_") {
+                                    if has_data_payload
+                                        && tag_cover.bindings.iter().any(|b| b.as_str() != "_")
+                                    {
                                         // Binding destructuring pattern: Atom.Int(n) -> ...
                                         self.emit_load_loc(target_var);
                                         self.emit(OpCode::IS_VARIANT);
@@ -4135,8 +4399,14 @@ impl Codegen {
                                         // Variant matched — extract the payload fields and bind them
 
                                         // Determine field count and types from the generic registry
-                                        let (field_count, field_types) = if let Some(template) = self.generic_registry.get_template(&variant_mono) {
-                                            let types: Vec<crate::ast::Type> = template.fields.iter().map(|f| f.field_type.clone()).collect();
+                                        let (field_count, field_types) = if let Some(template) =
+                                            self.generic_registry.get_template(&variant_mono)
+                                        {
+                                            let types: Vec<crate::ast::Type> = template
+                                                .fields
+                                                .iter()
+                                                .map(|f| f.field_type.clone())
+                                                .collect();
                                             (template.fields.len(), types)
                                         } else {
                                             // Plan 442 C2: unregistered variant (use.rust enum) —
@@ -4145,7 +4415,8 @@ impl Codegen {
                                         };
 
                                         // Extract each field and bind to variables
-                                        let binding_count = tag_cover.bindings.len().min(field_count);
+                                        let binding_count =
+                                            tag_cover.bindings.len().min(field_count);
                                         for i in 0..binding_count {
                                             let binding = &tag_cover.bindings[i];
                                             if binding.as_str() != "_" {
@@ -4153,7 +4424,8 @@ impl Codegen {
                                                 self.emit(OpCode::GET_GENERIC_FIELD);
                                                 self.emit_u32(i as u32);
                                                 if let Some(ref ty) = field_types.get(i) {
-                                                    self.var_types.insert(binding.to_string(), (*ty).clone());
+                                                    self.var_types
+                                                        .insert(binding.to_string(), (*ty).clone());
                                                 }
                                                 let var_idx = self.add_var(binding.as_str());
                                                 self.emit_store_loc(var_idx);
@@ -4191,7 +4463,12 @@ impl Codegen {
                                         // short-circuit OR, same emission as the
                                         // literal multi-pattern path (formerly this
                                         // case emitted nothing and the arm never matched).
-                                        self.emit_is_or_arm(target_var, patterns, body, &mut end_jumps)?;
+                                        self.emit_is_or_arm(
+                                            target_var,
+                                            patterns,
+                                            body,
+                                            &mut end_jumps,
+                                        )?;
                                         continue;
                                     }
                                 }
@@ -4218,7 +4495,12 @@ impl Codegen {
                                     } else {
                                         // Multi-pattern: per-pattern EQ + short-circuit OR
                                         // (Plan 447 H1: via the shared emit_is_or_arm helper)
-                                        self.emit_is_or_arm(target_var, patterns, body, &mut end_jumps)?;
+                                        self.emit_is_or_arm(
+                                            target_var,
+                                            patterns,
+                                            body,
+                                            &mut end_jumps,
+                                        )?;
                                         continue; // Skip the default handling below
                                     }
                                 }
@@ -4294,7 +4576,8 @@ impl Codegen {
                 );
 
                 // Plan 127: Create handler table for this task type
-                let mut handler_table = crate::vm::task_handler::TaskHandlerTable::new(task_name.clone());
+                let mut handler_table =
+                    crate::vm::task_handler::TaskHandlerTable::new(task_name.clone());
 
                 // Plan 390 §14 L3: collect variant definitions (WithBindings +
                 // Simple) so send call-sites can construct Value::Obj messages.
@@ -4302,8 +4585,8 @@ impl Codegen {
                 for (pattern, _guard, _body) in &task_def.on_block.handlers {
                     match pattern {
                         crate::ast::TaskMsgPattern::WithBindings { variant, bindings } => {
-                            let bind_names: Vec<String> = bindings.iter()
-                                .map(|(n, _)| n.to_string()).collect();
+                            let bind_names: Vec<String> =
+                                bindings.iter().map(|(n, _)| n.to_string()).collect();
                             variants.push((variant.to_string(), bind_names));
                         }
                         crate::ast::TaskMsgPattern::Simple(name) => {
@@ -4320,7 +4603,8 @@ impl Codegen {
                 // field gets a stable idx (0, 1, 2, ...).
                 self.current_task_state_fields.clear();
                 for (i, (field_name, _mutable, _init)) in task_def.state.iter().enumerate() {
-                    self.current_task_state_fields.insert(field_name.to_string(), i as u8);
+                    self.current_task_state_fields
+                        .insert(field_name.to_string(), i as u8);
                 }
 
                 // Compile lifecycle hooks if present
@@ -4350,7 +4634,8 @@ impl Codegen {
                     // handler can read them.
                     for (field_name, _mutable, init_expr) in &task_def.state {
                         self.compile_expr(init_expr)?;
-                        if let Some(&idx) = self.current_task_state_fields.get(field_name.as_str()) {
+                        if let Some(&idx) = self.current_task_state_fields.get(field_name.as_str())
+                        {
                             self.emit(OpCode::STORE_STATE_FIELD);
                             self.code.push(idx);
                         }
@@ -4379,7 +4664,8 @@ impl Codegen {
                     }
                     self.emit(OpCode::RET);
                     // Store start hook offset (will be registered with TaskRegistry)
-                    self.exports.insert(format!("{}#start", task_name), start_offset);
+                    self.exports
+                        .insert(format!("{}#start", task_name), start_offset);
                 }
 
                 // Stop hook
@@ -4393,7 +4679,8 @@ impl Codegen {
                     self.pop_scope();
                     self.emit(OpCode::RET);
                     // Store stop hook offset
-                    self.exports.insert(format!("{}#stop", task_name), stop_offset);
+                    self.exports
+                        .insert(format!("{}#stop", task_name), stop_offset);
                 }
 
                 // Plan 127: Compile each message handler in the on block
@@ -4406,7 +4693,8 @@ impl Codegen {
 
                     // Add handler entry to table (pattern will be serialized)
                     #[allow(unused_variables)]
-                    let pattern_idx = handler_table.add_handler(pattern, handler_offset, has_context);
+                    let pattern_idx =
+                        handler_table.add_handler(pattern, handler_offset, has_context);
 
                     // Plan 390 §G2.1: bind the message payload to the handler's pattern
                     // variable. The runtime pushes the message value onto the value
@@ -4426,27 +4714,28 @@ impl Codegen {
                                 self.code.push(slot as u8);
                             }
                         }
-                    } else if let crate::ast::TaskMsgPattern::WithBindings { bindings, .. } = pattern {
+                    } else if let crate::ast::TaskMsgPattern::WithBindings { bindings, .. } =
+                        pattern
+                    {
                         // Plan 390 §14 L3: multi-field variant message. The wake
                         // path pushed a VmRef to the Obj {__variant, <fields>}.
                         // For each binding, DUP the VmRef, GET_FIELD(<name>),
                         // STORE_LOC into the binding's slot. The VmRef is
                         // consumed by a final POP.
-                        let emit_store = |codegen: &mut Self, slot: usize| {
-                            match slot {
-                                0 => codegen.emit(OpCode::STORE_LOC_0),
-                                1 => codegen.emit(OpCode::STORE_LOC_1),
-                                _ => {
-                                    codegen.emit(OpCode::STORE_LOCAL);
-                                    codegen.code.push(slot as u8);
-                                }
+                        let emit_store = |codegen: &mut Self, slot: usize| match slot {
+                            0 => codegen.emit(OpCode::STORE_LOC_0),
+                            1 => codegen.emit(OpCode::STORE_LOC_1),
+                            _ => {
+                                codegen.emit(OpCode::STORE_LOCAL);
+                                codegen.code.push(slot as u8);
                             }
                         };
                         for (bind_name, _) in bindings {
                             self.emit(OpCode::DUP);
                             let field_str_idx = {
                                 let idx = self.strings.len();
-                                self.strings.push(bind_name.as_str().to_string().into_bytes());
+                                self.strings
+                                    .push(bind_name.as_str().to_string().into_bytes());
                                 idx as u32
                             };
                             self.emit(OpCode::GET_FIELD);
@@ -4475,8 +4764,10 @@ impl Codegen {
                     self.code.push(0); // n_args = 0
 
                     if crate::is_vm_debug() {
-                        eprintln!("[TaskDef] Compiled handler {} for task {} at offset {}",
-                            pattern_idx, task_name, handler_offset);
+                        eprintln!(
+                            "[TaskDef] Compiled handler {} for task {} at offset {}",
+                            pattern_idx, task_name, handler_offset
+                        );
                     }
                 }
 
@@ -4492,7 +4783,8 @@ impl Codegen {
                     // RET 需跟 n_args=0 字节（见上方 handler RET 注释）。
                     self.emit(OpCode::RET);
                     self.code.push(0); // n_args = 0
-                    self.exports.insert(format!("{}#else", task_name), else_offset);
+                    self.exports
+                        .insert(format!("{}#else", task_name), else_offset);
                 }
 
                 // Register handler table
@@ -4576,10 +4868,8 @@ impl Codegen {
                 let crate_name = dep.name.to_string();
                 self.declared_dep_crates.insert(crate_name.clone());
                 if !self.rust_native_map.contains_key(&crate_name) {
-                    self.rust_native_map.insert(
-                        crate_name.clone(),
-                        (crate_name.clone(), crate_name.clone()),
-                    );
+                    self.rust_native_map
+                        .insert(crate_name.clone(), (crate_name.clone(), crate_name.clone()));
                 }
             }
             _ => {
@@ -4712,11 +5002,15 @@ impl Codegen {
             node.id.to_string()
         } else {
             // First positional arg as string literal → use as id.
-            node.args.args.first().and_then(|a| match a {
-                crate::ast::Arg::Pos(crate::ast::Expr::Str(s)) => Some(s.to_string()),
-                crate::ast::Arg::Name(n) => Some(n.to_string()),
-                _ => None,
-            }).unwrap_or_default()
+            node.args
+                .args
+                .first()
+                .and_then(|a| match a {
+                    crate::ast::Arg::Pos(crate::ast::Expr::Str(s)) => Some(s.to_string()),
+                    crate::ast::Arg::Name(n) => Some(n.to_string()),
+                    _ => None,
+                })
+                .unwrap_or_default()
         };
         let id_idx = if !id_str.is_empty() {
             self.add_string(&id_str)
@@ -4736,9 +5030,10 @@ impl Codegen {
             let (key_opt, value_expr) = match arg {
                 crate::ast::Arg::Pos(expr) => (Some(format!("_arg{}", arg_n)), expr.clone()),
                 crate::ast::Arg::Pair(key, expr) => (Some(key.to_string()), expr.clone()),
-                crate::ast::Arg::Name(name) => {
-                    (Some(format!("_arg{}", arg_n)), crate::ast::Expr::Str(name.clone()))
-                }
+                crate::ast::Arg::Name(name) => (
+                    Some(format!("_arg{}", arg_n)),
+                    crate::ast::Expr::Str(name.clone()),
+                ),
             };
             if let Some(key) = key_opt {
                 self.compile_expr(&value_expr)?;
@@ -4839,9 +5134,10 @@ impl Codegen {
         }
         // 3. unique bare-name → module-qualified fallback.
         if !name.contains('.') {
-            let mut hits = self.exports.keys().filter(|k| {
-                k.split('.').last() == Some(name)
-            });
+            let mut hits = self
+                .exports
+                .keys()
+                .filter(|k| k.split('.').last() == Some(name));
             if let Some(first) = hits.next() {
                 if hits.next().is_none() {
                     return first.clone();
@@ -4882,7 +5178,12 @@ impl Codegen {
 
         // 1. 桥函数名(= api.at 契约函数裸名;ash-runner 按端点名注册。
         //    ApiCallInfo.fn_name 可能带模块限定前缀,取最后一段)。
-        let bare = api.fn_name.rsplit('.').next().unwrap_or(&api.fn_name).to_string();
+        let bare = api
+            .fn_name
+            .rsplit('.')
+            .next()
+            .unwrap_or(&api.fn_name)
+            .to_string();
         self.emit_str_const_push(&bare);
 
         // 2. 参数 JSON 对象:{"p1":<v1>,...}(json.from_value 逐个序列化)。
@@ -4897,7 +5198,11 @@ impl Codegen {
                     self.emit_str_const_push(",");
                     self.emit(OpCode::STR_CAT);
                 }
-                let pname = api.params.get(i).cloned().unwrap_or_else(|| format!("arg{}", i));
+                let pname = api
+                    .params
+                    .get(i)
+                    .cloned()
+                    .unwrap_or_else(|| format!("arg{}", i));
                 self.emit_str_const_push(&format!("\"{}\":", pname));
                 self.emit(OpCode::STR_CAT);
                 self.compile_expr(expr)?;
@@ -4916,10 +5221,14 @@ impl Codegen {
         // 5. 返回类型映射(与 HTTP 版同表)。
         self.last_expr_type = match &api.ret_type {
             crate::ast::Type::Array(_) | crate::ast::Type::List(_) => ObjectType::NestedObject,
-            crate::ast::Type::StrFixed(_) | crate::ast::Type::StrOwned
-            | crate::ast::Type::CStrLit | crate::ast::Type::StrSlice => ObjectType::String,
+            crate::ast::Type::StrFixed(_)
+            | crate::ast::Type::StrOwned
+            | crate::ast::Type::CStrLit
+            | crate::ast::Type::StrSlice => ObjectType::String,
             crate::ast::Type::Int | crate::ast::Type::I64 => ObjectType::Int,
-            crate::ast::Type::Uint | crate::ast::Type::U64 | crate::ast::Type::USize => ObjectType::Int,
+            crate::ast::Type::Uint | crate::ast::Type::U64 | crate::ast::Type::USize => {
+                ObjectType::Int
+            }
             crate::ast::Type::Bool => ObjectType::Bool,
             crate::ast::Type::Float => ObjectType::Float,
             crate::ast::Type::Double => ObjectType::Double,
@@ -5021,7 +5330,8 @@ impl Codegen {
                 return Err(format!(
                     "emit_api_http_call: unsupported method '{}' for {}",
                     other, api.path
-                ).into());
+                )
+                .into());
             }
         };
 
@@ -5033,7 +5343,15 @@ impl Codegen {
             self.emit_str_const_push("{");
             let body_params: Vec<(String, &Expr)> = body_arg_indices
                 .iter()
-                .map(|&i| (api.params.get(i).cloned().unwrap_or_else(|| format!("arg{}", i)), &arg_exprs[i]))
+                .map(|&i| {
+                    (
+                        api.params
+                            .get(i)
+                            .cloned()
+                            .unwrap_or_else(|| format!("arg{}", i)),
+                        &arg_exprs[i],
+                    )
+                })
                 .collect();
             for (i, (pname, expr)) in body_params.iter().enumerate() {
                 if i > 0 {
@@ -5073,10 +5391,14 @@ impl Codegen {
         // Double stays Double because json_to_vm_value pushes a 2-slot f64.
         self.last_expr_type = match &api.ret_type {
             crate::ast::Type::Array(_) | crate::ast::Type::List(_) => ObjectType::NestedObject,
-            crate::ast::Type::StrFixed(_) | crate::ast::Type::StrOwned
-            | crate::ast::Type::CStrLit | crate::ast::Type::StrSlice => ObjectType::String,
+            crate::ast::Type::StrFixed(_)
+            | crate::ast::Type::StrOwned
+            | crate::ast::Type::CStrLit
+            | crate::ast::Type::StrSlice => ObjectType::String,
             crate::ast::Type::Int | crate::ast::Type::I64 => ObjectType::Int,
-            crate::ast::Type::Uint | crate::ast::Type::U64 | crate::ast::Type::USize => ObjectType::Int,
+            crate::ast::Type::Uint | crate::ast::Type::U64 | crate::ast::Type::USize => {
+                ObjectType::Int
+            }
             crate::ast::Type::Bool => ObjectType::Bool,
             crate::ast::Type::Float => ObjectType::Float,
             crate::ast::Type::Double => ObjectType::Double,
@@ -5097,7 +5419,9 @@ impl Codegen {
 
     /// Emit a CALL_NAT by resolved native name with the given arg count.
     fn emit_call_nat_by_name(&mut self, name: &str, _arg_count: u16) -> AutoResult<()> {
-        let native_id = BIGVM_NATIVES.lock().unwrap()
+        let native_id = BIGVM_NATIVES
+            .lock()
+            .unwrap()
             .resolve_qualified(name)
             .ok_or_else(|| format!("emit_call_nat_by_name: native '{}' not registered", name))?;
         self.emit(OpCode::CALL_NAT);
@@ -5123,8 +5447,7 @@ impl Codegen {
         encode_native: Option<&str>,
     ) -> AutoResult<()> {
         // Split path at the placeholder.
-        let (before, after) = path.split_once(placeholder)
-            .unwrap_or((path, ""));
+        let (before, after) = path.split_once(placeholder).unwrap_or((path, ""));
         self.emit_str_const_push(before);
         // Stringify the arg: compile it, then to_string via str conversion.
         // For int args, use I32_TO_STR; for others, assume string-compatible.
@@ -5197,9 +5520,8 @@ impl Codegen {
         // Without this, `use auto.base64: decode` resolves `decode` to the
         // built-in `auto.base64.decode` native instead of the user's library.
         if !use_stmt.paths.is_empty() {
-            self.auto_modules.insert(
-                use_stmt.paths.last().unwrap().to_string()
-            );
+            self.auto_modules
+                .insert(use_stmt.paths.last().unwrap().to_string());
         }
 
         // Get the module path string
@@ -5216,9 +5538,17 @@ impl Codegen {
             // Plan 339 Phase 5: use file_stem as module qualifier (matching
             // collect_module_imports). E.g. `use back.api: create_note`
             // → import_scope["create_note"] = "api.create_note"
-            let module_qualifier = use_stmt.paths.last()
+            let module_qualifier = use_stmt
+                .paths
+                .last()
                 .map(|p| p.as_str().to_string())
-                .unwrap_or_else(|| module_path.split('.').last().unwrap_or(&module_path).to_string());
+                .unwrap_or_else(|| {
+                    module_path
+                        .split('.')
+                        .last()
+                        .unwrap_or(&module_path)
+                        .to_string()
+                });
             for item in &use_stmt.items {
                 let local_name = item.as_str();
                 let qualified = format!("{}.{}", module_qualifier, local_name);
@@ -5238,10 +5568,8 @@ impl Codegen {
                 if let Ok(ts) = self.type_store.read() {
                     if let Some(loaded) = ts.lookup_module(module_name) {
                         for fn_name in &loaded.export_fns {
-                            self.import_scope.insert(
-                                fn_name.clone(),
-                                format!("{}.{}", module_name, fn_name),
-                            );
+                            self.import_scope
+                                .insert(fn_name.clone(), format!("{}.{}", module_name, fn_name));
                         }
                     }
                 }
@@ -5265,16 +5593,18 @@ impl Codegen {
         };
 
         // Extract crate name (first segment of :: path)
-        let crate_name = module_path.split("::").next().unwrap_or(&module_path).to_string();
+        let crate_name = module_path
+            .split("::")
+            .next()
+            .unwrap_or(&module_path)
+            .to_string();
 
         // Also register the crate name itself as a module prefix
         // so that e.g. `log.set_boxed_logger(...)` resolves instead of
         // erroring with "Undefined variable: log"
         if !self.rust_native_map.contains_key(&crate_name) {
-            self.rust_native_map.insert(
-                crate_name.clone(),
-                (crate_name.clone(), crate_name.clone()),
-            );
+            self.rust_native_map
+                .insert(crate_name.clone(), (crate_name.clone(), crate_name.clone()));
         }
 
         // Collect items to register: explicit items list, or last path segment if items is empty
@@ -5292,10 +5622,8 @@ impl Codegen {
 
         for local_name in &items_to_register {
             let full_path = format!("{}::{}", module_path, local_name);
-            self.rust_native_map.insert(
-                local_name.to_string(),
-                (crate_name.clone(), full_path),
-            );
+            self.rust_native_map
+                .insert(local_name.to_string(), (crate_name.clone(), full_path));
             // Phase 2.1: Infer return type from known signature
             // Opaque constructors (parse, new, now, etc.) return heap object handles (Int),
             // not strings. Default to Int for functions without known signatures.
@@ -5312,13 +5640,31 @@ impl Codegen {
                 .unwrap_or_else(|| {
                     // Opaque constructor detection: methods that return heap handles
                     let name = *local_name;
-                    let is_opaque_ctor = matches!(name, "parse" | "new" | "now"
-                        | "from_str" | "from_reader" | "from_writer" | "open"
-                        | "connect" | "bind" | "listen" | "build"
-                        | "from_path" | "from_secs" | "from_millis");
-                    if is_opaque_ctor { Type::Int } else { Type::StrFixed(0) }
+                    let is_opaque_ctor = matches!(
+                        name,
+                        "parse"
+                            | "new"
+                            | "now"
+                            | "from_str"
+                            | "from_reader"
+                            | "from_writer"
+                            | "open"
+                            | "connect"
+                            | "bind"
+                            | "listen"
+                            | "build"
+                            | "from_path"
+                            | "from_secs"
+                            | "from_millis"
+                    );
+                    if is_opaque_ctor {
+                        Type::Int
+                    } else {
+                        Type::StrFixed(0)
+                    }
                 });
-            self.fn_return_types.insert(local_name.to_string(), ret_type);
+            self.fn_return_types
+                .insert(local_name.to_string(), ret_type);
         }
     }
 
@@ -5397,10 +5743,7 @@ impl Codegen {
                         Some(crate::py_ffi_types::PyType::Nullable(_))
                     )
                 {
-                    crate::py_ffi_types::record_nullable_lint(format!(
-                        "var = {}(...)",
-                        name
-                    ));
+                    crate::py_ffi_types::record_nullable_lint(format!("var = {}(...)", name));
                 }
             }
         }
@@ -5419,18 +5762,18 @@ impl Codegen {
             for item in &use_stmt.items {
                 let local_name = item.as_str();
                 let full_path = format!("{}.{}", module_path, local_name);
-                self.py_native_map.insert(
-                    local_name.to_string(),
-                    (module_path.to_string(), full_path),
-                );
+                self.py_native_map
+                    .insert(local_name.to_string(), (module_path.to_string(), full_path));
                 // Plan 300: Auto return type for dynamic marshalling
-                self.fn_return_types.insert(local_name.to_string(), Type::StrFixed(0));
+                self.fn_return_types
+                    .insert(local_name.to_string(), Type::StrFixed(0));
                 // Plan 567 T17（W3 注解预言机）: 有返回注解知识则灌注
                 //（Float/Int → shim 出口 D4 强制；Nullable → T19 lint 消费）；
                 // 无知识 = Auto 零变化。
                 let anno_type = crate::py_ffi_types::lookup_return_annotation(local_name)
                     .unwrap_or(crate::py_ffi_types::PyType::Auto);
-                self.py_return_types.insert(local_name.to_string(), anno_type);
+                self.py_return_types
+                    .insert(local_name.to_string(), anno_type);
             }
         } else {
             // Plan 300: Bare module import (`use.py math`) — record for dot-call resolution
@@ -5841,8 +6184,13 @@ impl Codegen {
                 crate::ast::Arg::Pos(e) => {
                     any = true;
                     match e {
-                        Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_)
-                        | Expr::I64(_) | Expr::U64(_) | Expr::Byte(_) => all_str = false,
+                        Expr::Int(_)
+                        | Expr::Uint(_)
+                        | Expr::I8(_)
+                        | Expr::U8(_)
+                        | Expr::I64(_)
+                        | Expr::U64(_)
+                        | Expr::Byte(_) => all_str = false,
                         Expr::Str(_) | Expr::CStr(_) => all_int = false,
                         _ => return None,
                     }
@@ -5875,7 +6223,9 @@ impl Codegen {
         let result = self.compile_expr_inner(expr);
         self.assembly_compile_depth -= 1;
         result?;
-        if self.assembly_compile_depth == 0 { self.verify_assembly_references()?; }
+        if self.assembly_compile_depth == 0 {
+            self.verify_assembly_references()?;
+        }
         Ok(())
     }
 
@@ -6036,15 +6386,17 @@ impl Codegen {
             // Plan 073: F-string support (f"hello $name")
             Expr::FStr(fstr) => {
                 // Determine type tag for each part: 0=i32, 1=string, 2=f64, 3=f32
-                let type_tags: Vec<u8> = fstr.parts.iter().map(|part| {
-                    match self.expr_type_hint(part) {
+                let type_tags: Vec<u8> = fstr
+                    .parts
+                    .iter()
+                    .map(|part| match self.expr_type_hint(part) {
                         FStrPartType::Int => 0,
                         FStrPartType::String => 1,
                         FStrPartType::Float64 => 2,
                         FStrPartType::Float32 => 3,
                         FStrPartType::Uint64 => 4,
-                    }
-                }).collect();
+                    })
+                    .collect();
 
                 // Compile each part expression (pushes values onto stack)
                 for part in &fstr.parts {
@@ -6091,7 +6443,8 @@ impl Codegen {
                     {
                         let field_count = class_type.template.fields.len();
                         let mono_name = class_type.mono_name.clone();
-                        vm_debug!("DEBUG: mono_name = '{}' ({} bytes)",
+                        vm_debug!(
+                            "DEBUG: mono_name = '{}' ({} bytes)",
                             mono_name,
                             mono_name.len()
                         );
@@ -6151,7 +6504,8 @@ impl Codegen {
                         // 不足 field_count,CONSTRUCT_INSTANCE 会从栈上 pop 垃圾值 →
                         // 字段是无效 heap id(Invalid instance ID: 0)。补类型默认值。
                         while field_values.len() < field_count {
-                            let default_expr = field_defs.get(field_values.len())
+                            let default_expr = field_defs
+                                .get(field_values.len())
                                 .map(|fd| default_expr_for_type(&fd.field_type))
                                 .unwrap_or(crate::ast::Expr::Nil);
                             field_values.push(default_expr);
@@ -6161,12 +6515,14 @@ impl Codegen {
                             self.compile_expr(value_expr)?;
                             // Plan 230: promote f32 -> f64 when field type is Double
                             if let Some(field_def) = field_defs.get(i) {
-                                if matches!(field_def.field_type, Type::Double) &&
-                                   self.last_expr_type == ObjectType::Float {
+                                if matches!(field_def.field_type, Type::Double)
+                                    && self.last_expr_type == ObjectType::Float
+                                {
                                     self.emit(OpCode::PROMOTE_F64);
                                 }
                             }
-                            vm_debug!("DEBUG codegen: code.len() = 0x{:04x} after field value {}",
+                            vm_debug!(
+                                "DEBUG codegen: code.len() = 0x{:04x} after field value {}",
                                 self.code.len(),
                                 i
                             );
@@ -6194,7 +6550,8 @@ impl Codegen {
                         // 6. Emit CONSTRUCT_INSTANCE
                         // Stack layout: [..., value1, value2, ..., valueN, instance_id, field_count]
                         self.emit(OpCode::CONSTRUCT_INSTANCE);
-                        vm_debug!("DEBUG codegen: code.len() = 0x{:04x} after CONSTRUCT_INSTANCE",
+                        vm_debug!(
+                            "DEBUG codegen: code.len() = 0x{:04x} after CONSTRUCT_INSTANCE",
                             self.code.len()
                         );
                     } else {
@@ -6336,7 +6693,7 @@ impl Codegen {
                                     _ => format!("_prop{}", prop_count),
                                 };
                                 keys.push(auto_val::ValueKey::Str(key_str.into()));
-                                
+
                                 self.compile_expr(&pair.value)?;
                                 types.push(self.infer_object_type(&pair.value));
                                 prop_count += 1;
@@ -6344,7 +6701,7 @@ impl Codegen {
                         } else if let crate::ast::Stmt::Store(store) = stmt {
                             let key_str = store.name.to_string();
                             keys.push(auto_val::ValueKey::Str(key_str.into()));
-                            
+
                             self.compile_expr(&store.expr)?;
                             types.push(self.infer_object_type(&store.expr));
                             prop_count += 1;
@@ -6445,11 +6802,18 @@ impl Codegen {
                     self.emit_global_load_qualified(&qualified);
                 } else {
                     // Plan 127: Check if this is an enum variant (e.g., Red from enum Color)
-                    let enum_variant_value = self.type_store.read().unwrap()
+                    let enum_variant_value = self
+                        .type_store
+                        .read()
+                        .unwrap()
                         .find_enum_variant_by_name(&name_str)
                         .map(|(_, v)| v);
                     if let Some(value) = enum_variant_value {
-                        vm_debug!("DEBUG: Variable {} resolved as enum variant with value {}", name_str, value);
+                        vm_debug!(
+                            "DEBUG: Variable {} resolved as enum variant with value {}",
+                            name_str,
+                            value
+                        );
                         self.emit(OpCode::CONST_I32);
                         self.emit_i32(value);
                         self.last_expr_type = ObjectType::Int;
@@ -6459,17 +6823,32 @@ impl Codegen {
                         if let Some(ref members) = self.current_type_members {
                             if members.contains(&name_str) {
                                 if let Some(self_index) = self.lookup_var("self") {
-                                    vm_debug!("DEBUG: Variable {} resolved as implicit self.{} access", name_str, name_str);
+                                    vm_debug!(
+                                        "DEBUG: Variable {} resolved as implicit self.{} access",
+                                        name_str,
+                                        name_str
+                                    );
                                     self.emit_load_loc(self_index);
                                     // Determine type name from var_types["self"]
-                                    let type_name = self.var_types.get("self")
-                                        .and_then(|t| if let Type::User(td) = t { Some(td.name.to_string()) } else { None });
+                                    let type_name = self.var_types.get("self").and_then(|t| {
+                                        if let Type::User(td) = t {
+                                            Some(td.name.to_string())
+                                        } else {
+                                            None
+                                        }
+                                    });
                                     if let Some(ref tn) = type_name {
                                         if self.generic_registry.has_template(tn) {
-                                            if let Ok(class_type) = self.generic_registry.get_or_create_type(tn, vec![]) {
-                                                if let Some(field_idx) = class_type.template.field_index(&name_str) {
+                                            if let Ok(class_type) =
+                                                self.generic_registry.get_or_create_type(tn, vec![])
+                                            {
+                                                if let Some(field_idx) =
+                                                    class_type.template.field_index(&name_str)
+                                                {
                                                     self.emit(OpCode::GET_GENERIC_FIELD);
-                                                    self.code.extend_from_slice(&(field_idx as u32).to_le_bytes());
+                                                    self.code.extend_from_slice(
+                                                        &(field_idx as u32).to_le_bytes(),
+                                                    );
                                                     self.last_expr_type = ObjectType::Int;
                                                     return Ok(());
                                                 }
@@ -6498,14 +6877,105 @@ impl Codegen {
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
-                        } else if self.exports.keys().any(|k| k.starts_with(&format!("{}.", name_str))) {
+                        } else if self
+                            .exports
+                            .keys()
+                            .any(|k| k.starts_with(&format!("{}.", name_str)))
+                        {
                             // Module prefix from a `mod` block (e.g., `network.connect`)
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(0);
                             self.last_expr_type = ObjectType::NestedObject;
                         } else if self.known_module_prefixes.contains(&name_str)
-                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "sys" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location" | "image" | "bus" | "frame" | "ui")
-                            || matches!(name_str.as_ref(), "str" | "json" | "fs" | "time" | "math" | "sys" | "env" | "http" | "net" | "os" | "log" | "db" | "rand" | "fmt" | "io" | "path" | "process" | "tcp" | "udp" | "thread" | "channel" | "regex" | "hash" | "crypto" | "base64" | "hex" | "csv" | "xml" | "yaml" | "toml" | "session" | "template" | "openapi" | "storage" | "sched" | "localStorage" | "dom" | "location" | "image" | "bus" | "ui")
+                            || matches!(
+                                name_str.as_ref(),
+                                "str"
+                                    | "json"
+                                    | "fs"
+                                    | "time"
+                                    | "math"
+                                    | "sys"
+                                    | "env"
+                                    | "http"
+                                    | "net"
+                                    | "os"
+                                    | "log"
+                                    | "db"
+                                    | "rand"
+                                    | "fmt"
+                                    | "io"
+                                    | "path"
+                                    | "process"
+                                    | "tcp"
+                                    | "udp"
+                                    | "thread"
+                                    | "channel"
+                                    | "regex"
+                                    | "hash"
+                                    | "crypto"
+                                    | "base64"
+                                    | "hex"
+                                    | "csv"
+                                    | "xml"
+                                    | "yaml"
+                                    | "toml"
+                                    | "session"
+                                    | "template"
+                                    | "openapi"
+                                    | "storage"
+                                    | "sched"
+                                    | "localStorage"
+                                    | "dom"
+                                    | "location"
+                                    | "image"
+                                    | "bus"
+                                    | "frame"
+                                    | "ui"
+                            )
+                            || matches!(
+                                name_str.as_ref(),
+                                "str"
+                                    | "json"
+                                    | "fs"
+                                    | "time"
+                                    | "math"
+                                    | "sys"
+                                    | "env"
+                                    | "http"
+                                    | "net"
+                                    | "os"
+                                    | "log"
+                                    | "db"
+                                    | "rand"
+                                    | "fmt"
+                                    | "io"
+                                    | "path"
+                                    | "process"
+                                    | "tcp"
+                                    | "udp"
+                                    | "thread"
+                                    | "channel"
+                                    | "regex"
+                                    | "hash"
+                                    | "crypto"
+                                    | "base64"
+                                    | "hex"
+                                    | "csv"
+                                    | "xml"
+                                    | "yaml"
+                                    | "toml"
+                                    | "session"
+                                    | "template"
+                                    | "openapi"
+                                    | "storage"
+                                    | "sched"
+                                    | "localStorage"
+                                    | "dom"
+                                    | "location"
+                                    | "image"
+                                    | "bus"
+                                    | "ui"
+                            )
                         {
                             // Module prefix from module-level import or built-in stdlib module
                             self.emit(OpCode::CONST_I32);
@@ -6527,7 +6997,7 @@ impl Codegen {
                             self.emit(OpCode::CALL_NAT_COUNTED);
                             self.emit_u16(native_id);
                             self.code.push(0); // arg_count = 0
-                            // py-FFI auto return marshals to string pool by default
+                                               // py-FFI auto return marshals to string pool by default
                             self.last_expr_type = ObjectType::String;
                         } else if self.is_defined_function(&name_str) {
                             // Plan 383: 命名函数引用 —— 裸函数名在值位置（非调用
@@ -6549,7 +7019,10 @@ impl Codegen {
                             });
                             self.last_expr_type = ObjectType::NestedObject;
                         } else {
-                            return Err(AutoError::Msg(format!("Undefined variable: {}", name_str)));
+                            return Err(AutoError::Msg(format!(
+                                "Undefined variable: {}",
+                                name_str
+                            )));
                         }
                     }
                 }
@@ -6567,7 +7040,10 @@ impl Codegen {
                         return Ok(());
                     }
                     // Also check type_store (populated during type resolution)
-                    let variant_value = self.type_store.read().unwrap()
+                    let variant_value = self
+                        .type_store
+                        .read()
+                        .unwrap()
                         .get_enum_variant_value(type_name.as_ref(), field.as_ref());
                     if let Some(value) = variant_value {
                         self.emit(OpCode::CONST_I32);
@@ -6586,7 +7062,10 @@ impl Codegen {
                             self.emit_i32(value);
                             return Ok(());
                         }
-                        let variant_value = self.type_store.read().unwrap()
+                        let variant_value = self
+                            .type_store
+                            .read()
+                            .unwrap()
                             .get_enum_variant_value(type_field.as_ref(), field.as_ref());
                         if let Some(value) = variant_value {
                             self.emit(OpCode::CONST_I32);
@@ -6601,7 +7080,8 @@ impl Codegen {
                 // otherwise numeric fields like a.3 should be object field access
                 let is_tuple_field = field.as_str().parse::<usize>().is_ok()
                     && if let Expr::Ident(var_name) = obj.as_ref() {
-                        self.var_types.get(var_name.as_ref())
+                        self.var_types
+                            .get(var_name.as_ref())
                             .map(|ty| matches!(ty, Type::Tuple(_)))
                             .unwrap_or(false)
                     } else {
@@ -6681,8 +7161,10 @@ impl Codegen {
                         self.emit(OpCode::LOAD_STR);
                         self.code.extend_from_slice(&str_idx.to_le_bytes());
                         self.last_expr_type = ObjectType::String;
-                        vm_debug!("DEBUG: .type property: obj={:?}, type_name={}",
-                            obj, type_name
+                        vm_debug!(
+                            "DEBUG: .type property: obj={:?}, type_name={}",
+                            obj,
+                            type_name
                         );
                         return Ok(());
                     }
@@ -6714,8 +7196,10 @@ impl Codegen {
                 };
 
                 if is_user_type_instance || is_generic_instance {
-                    vm_debug!("DEBUG: Compiling field access: obj={:?}, field={}",
-                        obj, field
+                    vm_debug!(
+                        "DEBUG: Compiling field access: obj={:?}, field={}",
+                        obj,
+                        field
                     );
                     // Plan 087 Phase 2/3: Generic instance or user-defined type field access
                     // Compile object expression (pushes instance_id onto stack)
@@ -6736,38 +7220,54 @@ impl Codegen {
                                 _ => var_name.to_string(),
                             };
 
-                            vm_debug!("DEBUG: Looking up type '{}' for field '{}'",
-                                type_name, field
+                            vm_debug!(
+                                "DEBUG: Looking up type '{}' for field '{}'",
+                                type_name,
+                                field
                             );
                             // Get ClassType to find field index
                             // For non-generic user types (only registered for field lookup),
                             // use GET_FIELD because instances are created with CREATE_OBJ
-                            let is_generic = self.generic_registry.get_template(&type_name)
+                            let is_generic = self
+                                .generic_registry
+                                .get_template(&type_name)
                                 .map(|t| !t.generic_params.is_empty())
                                 .unwrap_or(false);
                             if is_generic {
-                                if let Some(class_type) = self.generic_registry.get_type(&type_name) {
+                                if let Some(class_type) = self.generic_registry.get_type(&type_name)
+                                {
                                     let field_str = field.to_string();
                                     if let Some(field_index) = class_type.field_index(&field_str) {
-                                        vm_debug!("DEBUG: Field '{}' index = {}", field, field_index);
+                                        vm_debug!(
+                                            "DEBUG: Field '{}' index = {}",
+                                            field,
+                                            field_index
+                                        );
                                         // Emit GET_GENERIC_FIELD with field index
                                         self.emit(OpCode::GET_GENERIC_FIELD);
                                         self.emit_u32(field_index as u32);
 
                                         // Plan 118 Phase 7: Set last_expr_type based on field type
-                                        if let Some(field_type) = class_type.field_type(&field_str) {
-                                            self.last_expr_type = self.type_to_object_type(&field_type);
+                                        if let Some(field_type) = class_type.field_type(&field_str)
+                                        {
+                                            self.last_expr_type =
+                                                self.type_to_object_type(&field_type);
                                             vm_debug!("DEBUG: Field '{}' type = {:?}, last_expr_type = {:?}",
                                                 field, field_type, self.last_expr_type);
                                         }
                                     } else {
-                                        eprintln!("Warning: Field '{}' not found in type '{}'",
-                                            field, type_name);
+                                        eprintln!(
+                                            "Warning: Field '{}' not found in type '{}'",
+                                            field, type_name
+                                        );
                                         self.emit(OpCode::GET_GENERIC_FIELD);
                                         self.emit_u32(0);
                                     }
                                 } else {
-                                    eprintln!("Warning: Type '{}' not found in registry", type_name);
+                                    eprintln!(
+                                        "Warning: Type '{}' not found in registry",
+                                        type_name
+                                    );
                                     self.emit(OpCode::GET_FIELD);
                                     let field_str = field.to_string();
                                     let field_bytes = field_str.as_bytes().to_vec();
@@ -6790,11 +7290,16 @@ impl Codegen {
                                 // types are also registered in generic_registry (see
                                 // register_type), so we can reuse the same lookup as the
                                 // generic branch above.
-                                if let Some(class_type) = self.generic_registry.get_type(&type_name) {
+                                if let Some(class_type) = self.generic_registry.get_type(&type_name)
+                                {
                                     if let Some(field_type) = class_type.field_type(&field_str) {
                                         self.last_expr_type = self.type_to_object_type(&field_type);
-                                        vm_debug!("DEBUG: Field '{}' type = {:?}, last_expr_type = {:?}",
-                                            field, field_type, self.last_expr_type);
+                                        vm_debug!(
+                                            "DEBUG: Field '{}' type = {:?}, last_expr_type = {:?}",
+                                            field,
+                                            field_type,
+                                            self.last_expr_type
+                                        );
                                     }
                                 }
                             }
@@ -6814,7 +7319,10 @@ impl Codegen {
                     let builtin_native_id = if let Expr::Ident(var_name) = obj.as_ref() {
                         if let Some(type_name) = self.infer_type_from_var(var_name.as_ref()) {
                             let native_name = format!("{}.{}", type_name, field);
-                            BIGVM_NATIVES.lock().unwrap().resolve_qualified(&native_name)
+                            BIGVM_NATIVES
+                                .lock()
+                                .unwrap()
+                                .resolve_qualified(&native_name)
                         } else {
                             None
                         }
@@ -6833,7 +7341,10 @@ impl Codegen {
                             None
                         } else {
                             let native_name = format!("{}.{}", type_name, field);
-                            BIGVM_NATIVES.lock().unwrap().resolve_qualified(&native_name)
+                            BIGVM_NATIVES
+                                .lock()
+                                .unwrap()
+                                .resolve_qualified(&native_name)
                         }
                     };
 
@@ -6875,12 +7386,11 @@ impl Codegen {
                         let obj_expr_type = self.infer_expr_type(obj);
                         let type_name = match &obj_expr_type {
                             Type::User(type_decl) => type_decl.name.to_string(),
-                            Type::GenericInstance(inst) => {
-                                self.generic_registry
-                                    .get_template(&inst.base_name.to_string())
-                                    .map(|t| t.mono_name_from_args(&inst.args))
-                                    .unwrap_or_else(|| format!("{}_unknown", inst.base_name))
-                            }
+                            Type::GenericInstance(inst) => self
+                                .generic_registry
+                                .get_template(&inst.base_name.to_string())
+                                .map(|t| t.mono_name_from_args(&inst.args))
+                                .unwrap_or_else(|| format!("{}_unknown", inst.base_name)),
                             _ => "Unknown".to_string(),
                         };
 
@@ -6895,8 +7405,10 @@ impl Codegen {
                                     self.last_expr_type = self.type_to_object_type(&field_type);
                                 }
                             } else {
-                                eprintln!("Warning: Field '{}' not found in type '{}' (nested access)",
-                                    field, type_name);
+                                eprintln!(
+                                    "Warning: Field '{}' not found in type '{}' (nested access)",
+                                    field, type_name
+                                );
                                 self.emit(OpCode::GET_GENERIC_FIELD);
                                 self.emit_u32(0);
                             }
@@ -6974,7 +7486,10 @@ impl Codegen {
                                 Type::GenericInstance(_) => {
                                     self.last_expr_type = ObjectType::NestedObject;
                                 }
-                                Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => {
+                                Type::StrFixed(_)
+                                | Type::StrOwned
+                                | Type::CStrLit
+                                | Type::StrSlice => {
                                     self.last_expr_type = ObjectType::String;
                                 }
                                 Type::Char => {
@@ -7031,11 +7546,51 @@ impl Codegen {
                             let is_d = self.is_double_operation(lhs, rhs);
                             let is_f = !is_d && self.is_float_operation(lhs, rhs);
                             self.emit(match op {
-                                Op::AddEq => if is_d { OpCode::ADD_D } else if is_f { OpCode::ADD_F } else { OpCode::ADD },
-                                Op::SubEq => if is_d { OpCode::SUB_D } else if is_f { OpCode::SUB_F } else { OpCode::SUB },
-                                Op::MulEq => if is_d { OpCode::MUL_D } else if is_f { OpCode::MUL_F } else { OpCode::MUL },
-                                Op::DivEq => if is_d { OpCode::DIV_D } else if is_f { OpCode::DIV_F } else { OpCode::DIV },
-                                Op::ModEq => if is_d { OpCode::MOD_D } else if is_f { OpCode::MOD_F } else { OpCode::MOD },
+                                Op::AddEq => {
+                                    if is_d {
+                                        OpCode::ADD_D
+                                    } else if is_f {
+                                        OpCode::ADD_F
+                                    } else {
+                                        OpCode::ADD
+                                    }
+                                }
+                                Op::SubEq => {
+                                    if is_d {
+                                        OpCode::SUB_D
+                                    } else if is_f {
+                                        OpCode::SUB_F
+                                    } else {
+                                        OpCode::SUB
+                                    }
+                                }
+                                Op::MulEq => {
+                                    if is_d {
+                                        OpCode::MUL_D
+                                    } else if is_f {
+                                        OpCode::MUL_F
+                                    } else {
+                                        OpCode::MUL
+                                    }
+                                }
+                                Op::DivEq => {
+                                    if is_d {
+                                        OpCode::DIV_D
+                                    } else if is_f {
+                                        OpCode::DIV_F
+                                    } else {
+                                        OpCode::DIV
+                                    }
+                                }
+                                Op::ModEq => {
+                                    if is_d {
+                                        OpCode::MOD_D
+                                    } else if is_f {
+                                        OpCode::MOD_F
+                                    } else {
+                                        OpCode::MOD
+                                    }
+                                }
                                 _ => OpCode::NOP,
                             });
                             self.emit(OpCode::DUP);
@@ -7068,11 +7623,51 @@ impl Codegen {
                             let is_d = self.is_double_operation(lhs, rhs);
                             let is_f = !is_d && self.is_float_operation(lhs, rhs);
                             self.emit(match op {
-                                Op::AddEq => if is_d { OpCode::ADD_D } else if is_f { OpCode::ADD_F } else { OpCode::ADD },
-                                Op::SubEq => if is_d { OpCode::SUB_D } else if is_f { OpCode::SUB_F } else { OpCode::SUB },
-                                Op::MulEq => if is_d { OpCode::MUL_D } else if is_f { OpCode::MUL_F } else { OpCode::MUL },
-                                Op::DivEq => if is_d { OpCode::DIV_D } else if is_f { OpCode::DIV_F } else { OpCode::DIV },
-                                Op::ModEq => if is_d { OpCode::MOD_D } else if is_f { OpCode::MOD_F } else { OpCode::MOD },
+                                Op::AddEq => {
+                                    if is_d {
+                                        OpCode::ADD_D
+                                    } else if is_f {
+                                        OpCode::ADD_F
+                                    } else {
+                                        OpCode::ADD
+                                    }
+                                }
+                                Op::SubEq => {
+                                    if is_d {
+                                        OpCode::SUB_D
+                                    } else if is_f {
+                                        OpCode::SUB_F
+                                    } else {
+                                        OpCode::SUB
+                                    }
+                                }
+                                Op::MulEq => {
+                                    if is_d {
+                                        OpCode::MUL_D
+                                    } else if is_f {
+                                        OpCode::MUL_F
+                                    } else {
+                                        OpCode::MUL
+                                    }
+                                }
+                                Op::DivEq => {
+                                    if is_d {
+                                        OpCode::DIV_D
+                                    } else if is_f {
+                                        OpCode::DIV_F
+                                    } else {
+                                        OpCode::DIV
+                                    }
+                                }
+                                Op::ModEq => {
+                                    if is_d {
+                                        OpCode::MOD_D
+                                    } else if is_f {
+                                        OpCode::MOD_F
+                                    } else {
+                                        OpCode::MOD
+                                    }
+                                }
                                 _ => OpCode::NOP,
                             });
 
@@ -7105,7 +7700,9 @@ impl Codegen {
                         // Coerce RHS to match LHS type if needed
                         let asn_stored_type = self.var_types.get(&name_str).cloned();
                         // PLAN-026 T-03 配套: 同声明位分流(I64 sign-extend)。
-                        if matches!(asn_stored_type, Some(Type::I64)) && !self.contains_u64(rhs.as_ref()) {
+                        if matches!(asn_stored_type, Some(Type::I64))
+                            && !self.contains_u64(rhs.as_ref())
+                        {
                             self.emit(OpCode::TYPE_CAST_I64);
                         } else if matches!(asn_stored_type, Some(Type::U64))
                             && !self.contains_u64(rhs.as_ref())
@@ -7240,8 +7837,8 @@ impl Codegen {
 
                         // Quick fix: Accept the current order and change SET_ELEM to expect [value, array, index]
                         self.emit(OpCode::SET_ELEM); // Expects: value, array_id, index
-                        // SET_ELEM doesn't push a return value - mark as void to prevent
-                        // Stmt::Expr from emitting a POP that would corrupt the stack
+                                                     // SET_ELEM doesn't push a return value - mark as void to prevent
+                                                     // Stmt::Expr from emitting a POP that would corrupt the stack
                         self.last_expr_type = ObjectType::Void;
                         self.last_was_native_void = true;
                     } else if let Expr::Dot(obj, field) = lhs.as_ref() {
@@ -7336,9 +7933,16 @@ impl Codegen {
 
                             // Check if the result is a heap object (nested user type)
                             let obj_expr_type = self.infer_expr_type(obj);
-                            vm_debug!("DEBUG ASSIGN: obj={:?}, field={}, obj_expr_type={:?}", obj, field, obj_expr_type);
-                            let is_user_type = matches!(obj_expr_type, Type::User(_) | Type::GenericInstance(_));
-                            let is_heap_object = is_user_type || self.last_expr_type == ObjectType::NestedObject;
+                            vm_debug!(
+                                "DEBUG ASSIGN: obj={:?}, field={}, obj_expr_type={:?}",
+                                obj,
+                                field,
+                                obj_expr_type
+                            );
+                            let is_user_type =
+                                matches!(obj_expr_type, Type::User(_) | Type::GenericInstance(_));
+                            let is_heap_object =
+                                is_user_type || self.last_expr_type == ObjectType::NestedObject;
                             vm_debug!("DEBUG ASSIGN: is_user_type={}, is_heap_object={}, last_expr_type={:?}",
                                 is_user_type, is_heap_object, self.last_expr_type);
 
@@ -7346,24 +7950,28 @@ impl Codegen {
                                 // Get type name from inferred type
                                 let type_name = match &obj_expr_type {
                                     Type::User(type_decl) => type_decl.name.to_string(),
-                                    Type::GenericInstance(inst) => {
-                                        self.generic_registry
-                                            .get_template(&inst.base_name.to_string())
-                                            .map(|t| t.mono_name_from_args(&inst.args))
-                                            .unwrap_or_else(|| format!("{}_unknown", inst.base_name))
-                                    }
+                                    Type::GenericInstance(inst) => self
+                                        .generic_registry
+                                        .get_template(&inst.base_name.to_string())
+                                        .map(|t| t.mono_name_from_args(&inst.args))
+                                        .unwrap_or_else(|| format!("{}_unknown", inst.base_name)),
                                     _ => {
                                         // Fallback: try var_types for Ident
                                         if let Expr::Ident(var_name) = obj.as_ref() {
-                                            if let Some(var_type) = self.var_types.get(var_name.as_ref()) {
+                                            if let Some(var_type) =
+                                                self.var_types.get(var_name.as_ref())
+                                            {
                                                 match var_type {
-                                                    Type::User(type_decl) => type_decl.name.to_string(),
-                                                    Type::GenericInstance(inst) => {
-                                                        self.generic_registry
-                                                            .get_template(&inst.base_name.to_string())
-                                                            .map(|t| t.mono_name_from_args(&inst.args))
-                                                            .unwrap_or_else(|| format!("{}_unknown", inst.base_name))
+                                                    Type::User(type_decl) => {
+                                                        type_decl.name.to_string()
                                                     }
+                                                    Type::GenericInstance(inst) => self
+                                                        .generic_registry
+                                                        .get_template(&inst.base_name.to_string())
+                                                        .map(|t| t.mono_name_from_args(&inst.args))
+                                                        .unwrap_or_else(|| {
+                                                            format!("{}_unknown", inst.base_name)
+                                                        }),
                                                     _ => "Unknown".to_string(),
                                                 }
                                             } else {
@@ -7378,20 +7986,29 @@ impl Codegen {
                                 // Check if this is truly a generic instance (needs SET_GENERIC_FIELD)
                                 // Non-generic user types registered in generic_registry for field lookup
                                 // should use SET_FIELD because they're created with CREATE_OBJ, not NEW_INSTANCE
-                                let is_generic_instance = self.generic_registry.get_template(&type_name)
+                                let is_generic_instance = self
+                                    .generic_registry
+                                    .get_template(&type_name)
                                     .map(|t| !t.generic_params.is_empty())
                                     .unwrap_or(false);
                                 if is_generic_instance {
-                                    if let Some(class_type) = self.generic_registry.get_type(&type_name) {
+                                    if let Some(class_type) =
+                                        self.generic_registry.get_type(&type_name)
+                                    {
                                         let field_str = field.to_string();
-                                        if let Some(field_index) = class_type.field_index(&field_str) {
+                                        if let Some(field_index) =
+                                            class_type.field_index(&field_str)
+                                        {
                                             // Stack: [value, instance_id]
                                             // SET_GENERIC_FIELD code layout: [opcode, field_index:u32]
                                             vm_debug!("DEBUG: Emitting SET_GENERIC_FIELD for field '{}' with index {} at code position {}",
                                                 field_str, field_index, self.code.len());
                                             self.emit(OpCode::SET_GENERIC_FIELD);
                                             self.emit_u32(field_index as u32);
-                                            vm_debug!("DEBUG: After emit, code position = {}", self.code.len());
+                                            vm_debug!(
+                                                "DEBUG: After emit, code position = {}",
+                                                self.code.len()
+                                            );
                                         } else {
                                             eprintln!("Warning: Field '{}' not found in generic type '{}' (nested assignment)",
                                                 field, type_name);
@@ -7471,7 +8088,11 @@ impl Codegen {
                         //   a || b:  [a] DUP JMP_IF_NZ Lshort  POP [b] JMP Lend
                         self.compile_expr(lhs)?;
                         self.emit(OpCode::DUP);
-                        self.emit(if matches!(op, Op::And) { OpCode::JMP_IF_Z } else { OpCode::JMP_IF_NZ });
+                        self.emit(if matches!(op, Op::And) {
+                            OpCode::JMP_IF_Z
+                        } else {
+                            OpCode::JMP_IF_NZ
+                        });
                         let short_jump = self.emit_placeholder_i16();
                         // 真值路径：弃 LHS 本体（POP 的 stake/串释放对齐旧
                         // AND/OR 末端对该槽的结算），再编译 RHS
@@ -7593,40 +8214,70 @@ impl Codegen {
                             }
                         }
                         Op::Eq => {
-                            if is_double { self.emit(OpCode::EQ_D); }
-                            else if is_float { self.emit(OpCode::EQ_F); }
-                            else if is_u64 { self.emit(OpCode::EQ_U64); }
-                            else { self.emit(OpCode::EQ); }
+                            if is_double {
+                                self.emit(OpCode::EQ_D);
+                            } else if is_float {
+                                self.emit(OpCode::EQ_F);
+                            } else if is_u64 {
+                                self.emit(OpCode::EQ_U64);
+                            } else {
+                                self.emit(OpCode::EQ);
+                            }
                         }
                         Op::Neq => {
-                            if is_double { self.emit(OpCode::NE_D); }
-                            else if is_float { self.emit(OpCode::NE_F); }
-                            else if is_u64 { self.emit(OpCode::NE_U64); }
-                            else { self.emit(OpCode::NE); }
+                            if is_double {
+                                self.emit(OpCode::NE_D);
+                            } else if is_float {
+                                self.emit(OpCode::NE_F);
+                            } else if is_u64 {
+                                self.emit(OpCode::NE_U64);
+                            } else {
+                                self.emit(OpCode::NE);
+                            }
                         }
                         Op::Lt => {
-                            if is_double { self.emit(OpCode::LT_D); }
-                            else if is_float { self.emit(OpCode::LT_F); }
-                            else if is_u64 { self.emit(OpCode::LT_U64); }
-                            else { self.emit(OpCode::LT); }
+                            if is_double {
+                                self.emit(OpCode::LT_D);
+                            } else if is_float {
+                                self.emit(OpCode::LT_F);
+                            } else if is_u64 {
+                                self.emit(OpCode::LT_U64);
+                            } else {
+                                self.emit(OpCode::LT);
+                            }
                         }
                         Op::Le => {
-                            if is_double { self.emit(OpCode::LE_D); }
-                            else if is_float { self.emit(OpCode::LE_F); }
-                            else if is_u64 { self.emit(OpCode::LE_U64); }
-                            else { self.emit(OpCode::LE); }
+                            if is_double {
+                                self.emit(OpCode::LE_D);
+                            } else if is_float {
+                                self.emit(OpCode::LE_F);
+                            } else if is_u64 {
+                                self.emit(OpCode::LE_U64);
+                            } else {
+                                self.emit(OpCode::LE);
+                            }
                         }
                         Op::Gt => {
-                            if is_double { self.emit(OpCode::GT_D); }
-                            else if is_float { self.emit(OpCode::GT_F); }
-                            else if is_u64 { self.emit(OpCode::GT_U64); }
-                            else { self.emit(OpCode::GT); }
+                            if is_double {
+                                self.emit(OpCode::GT_D);
+                            } else if is_float {
+                                self.emit(OpCode::GT_F);
+                            } else if is_u64 {
+                                self.emit(OpCode::GT_U64);
+                            } else {
+                                self.emit(OpCode::GT);
+                            }
                         }
                         Op::Ge => {
-                            if is_double { self.emit(OpCode::GE_D); }
-                            else if is_float { self.emit(OpCode::GE_F); }
-                            else if is_u64 { self.emit(OpCode::GE_U64); }
-                            else { self.emit(OpCode::GE); }
+                            if is_double {
+                                self.emit(OpCode::GE_D);
+                            } else if is_float {
+                                self.emit(OpCode::GE_F);
+                            } else if is_u64 {
+                                self.emit(OpCode::GE_U64);
+                            } else {
+                                self.emit(OpCode::GE);
+                            }
                         }
                         Op::And => self.emit(OpCode::AND),
                         Op::Or => self.emit(OpCode::OR),
@@ -7639,7 +8290,8 @@ impl Codegen {
                     // Plan 118 Phase 4: Track result type for binary operations
                     // For arithmetic ops, result type matches operand type
                     // For comparison ops, result is always bool (Int)
-                    let is_comparison = matches!(op, Op::Eq | Op::Neq | Op::Lt | Op::Le | Op::Gt | Op::Ge);
+                    let is_comparison =
+                        matches!(op, Op::Eq | Op::Neq | Op::Lt | Op::Le | Op::Gt | Op::Ge);
                     if !is_comparison {
                         // Check operand types to determine result type
                         if is_string {
@@ -7707,7 +8359,9 @@ impl Codegen {
                     // Search all tasks for a variant with this name. Clone the
                     // binding names out to release the immutable borrow of self
                     // before we start emitting code (mutable borrows).
-                    let matched: Option<Vec<String>> = self.task_variants.values()
+                    let matched: Option<Vec<String>> = self
+                        .task_variants
+                        .values()
                         .find_map(|vs| vs.iter().find(|(vn, _)| *vn == vname))
                         .map(|(_, bn)| bn.clone());
                     if let Some(bind_names) = matched {
@@ -7730,11 +8384,14 @@ impl Codegen {
                         }
 
                         // Build object_keys: ["__variant", bind_names[0], ...]
-                        let keys: Vec<auto_val::ValueKey> = std::iter::once(
-                            auto_val::ValueKey::Str(auto_val::AutoStr::from("__variant"))
-                        ).chain(bind_names[..n_args].iter().map(|n| {
-                            auto_val::ValueKey::Str(auto_val::AutoStr::from(n.as_str()))
-                        })).collect();
+                        let keys: Vec<auto_val::ValueKey> =
+                            std::iter::once(auto_val::ValueKey::Str(auto_val::AutoStr::from(
+                                "__variant",
+                            )))
+                            .chain(bind_names[..n_args].iter().map(|n| {
+                                auto_val::ValueKey::Str(auto_val::AutoStr::from(n.as_str()))
+                            }))
+                            .collect();
                         let key_index = self.object_keys.len() as u32;
                         // Types: __variant is String; args inferred.
                         let mut types = vec![ObjectType::String];
@@ -7798,8 +8455,7 @@ impl Codegen {
                 };
                 // DEBUG: trace generic constructor decision for List.new
                 if let Expr::Dot(_obj, method) = call.name.as_ref() {
-                    if method == "new" {
-                    }
+                    if method == "new" {}
                 }
 
                 if is_generic_constructor {
@@ -7817,22 +8473,31 @@ impl Codegen {
                                 let field_count = class_type.template.fields.len();
 
                                 // Plan 207 Task 4: Compile arguments, reordering named args by field index
-                                let has_named_args = call.args.args.iter().any(|a| matches!(a, crate::ast::Arg::Pair(_, _)));
-                                let args_to_compile: Vec<&crate::ast::Arg> = if has_named_args && !class_type.template.fields.is_empty() {
-                                    let mut indexed: Vec<(usize, &crate::ast::Arg)> = call.args.args.iter().enumerate().collect();
-                                    indexed.sort_by_key(|(_, arg)| {
-                                        if let crate::ast::Arg::Pair(name, _) = arg {
-                                            class_type.template.fields.iter()
-                                                .position(|f| f.name == name.as_ref())
-                                                .unwrap_or(0)
-                                        } else {
-                                            0
-                                        }
-                                    });
-                                    indexed.into_iter().map(|(_, a)| a).collect()
-                                } else {
-                                    call.args.args.iter().collect()
-                                };
+                                let has_named_args = call
+                                    .args
+                                    .args
+                                    .iter()
+                                    .any(|a| matches!(a, crate::ast::Arg::Pair(_, _)));
+                                let args_to_compile: Vec<&crate::ast::Arg> =
+                                    if has_named_args && !class_type.template.fields.is_empty() {
+                                        let mut indexed: Vec<(usize, &crate::ast::Arg)> =
+                                            call.args.args.iter().enumerate().collect();
+                                        indexed.sort_by_key(|(_, arg)| {
+                                            if let crate::ast::Arg::Pair(name, _) = arg {
+                                                class_type
+                                                    .template
+                                                    .fields
+                                                    .iter()
+                                                    .position(|f| f.name == name.as_ref())
+                                                    .unwrap_or(0)
+                                            } else {
+                                                0
+                                            }
+                                        });
+                                        indexed.into_iter().map(|(_, a)| a).collect()
+                                    } else {
+                                        call.args.args.iter().collect()
+                                    };
 
                                 // Compile arguments (push values onto stack)
                                 // Stack: ..., arg1, arg2, ..., argN
@@ -7857,8 +8522,9 @@ impl Codegen {
                                     }
                                     // Plan 230: promote f32 -> f64 when field type is Double
                                     if let Some(field_def) = field_defs.get(i) {
-                                        if matches!(field_def.field_type, Type::Double) &&
-                                           self.last_expr_type == ObjectType::Float {
+                                        if matches!(field_def.field_type, Type::Double)
+                                            && self.last_expr_type == ObjectType::Float
+                                        {
                                             self.emit(OpCode::PROMOTE_F64);
                                         }
                                     }
@@ -7917,7 +8583,8 @@ impl Codegen {
                     // Generate: NEW_INSTANCE + CONSTRUCT_INSTANCE (same pattern as generic constructor)
                     if let Expr::Dot(obj, method) = call.name.as_ref() {
                         if let Expr::Ident(type_name) = obj.as_ref() {
-                            let variant_mono = format!("{}.{}", type_name.as_ref(), method.as_ref());
+                            let variant_mono =
+                                format!("{}.{}", type_name.as_ref(), method.as_ref());
 
                             // Get the ClassType to determine field count
                             let type_args = Vec::new();
@@ -7928,22 +8595,31 @@ impl Codegen {
                                 let field_count = class_type.template.fields.len();
 
                                 // Plan 207 Task 4: Compile arguments, reordering named args by field index
-                                let has_named_args = call.args.args.iter().any(|a| matches!(a, crate::ast::Arg::Pair(_, _)));
-                                let args_to_compile: Vec<&crate::ast::Arg> = if has_named_args && !class_type.template.fields.is_empty() {
-                                    let mut indexed: Vec<(usize, &crate::ast::Arg)> = call.args.args.iter().enumerate().collect();
-                                    indexed.sort_by_key(|(_, arg)| {
-                                        if let crate::ast::Arg::Pair(name, _) = arg {
-                                            class_type.template.fields.iter()
-                                                .position(|f| f.name == name.as_ref())
-                                                .unwrap_or(0)
-                                        } else {
-                                            0
-                                        }
-                                    });
-                                    indexed.into_iter().map(|(_, a)| a).collect()
-                                } else {
-                                    call.args.args.iter().collect()
-                                };
+                                let has_named_args = call
+                                    .args
+                                    .args
+                                    .iter()
+                                    .any(|a| matches!(a, crate::ast::Arg::Pair(_, _)));
+                                let args_to_compile: Vec<&crate::ast::Arg> =
+                                    if has_named_args && !class_type.template.fields.is_empty() {
+                                        let mut indexed: Vec<(usize, &crate::ast::Arg)> =
+                                            call.args.args.iter().enumerate().collect();
+                                        indexed.sort_by_key(|(_, arg)| {
+                                            if let crate::ast::Arg::Pair(name, _) = arg {
+                                                class_type
+                                                    .template
+                                                    .fields
+                                                    .iter()
+                                                    .position(|f| f.name == name.as_ref())
+                                                    .unwrap_or(0)
+                                            } else {
+                                                0
+                                            }
+                                        });
+                                        indexed.into_iter().map(|(_, a)| a).collect()
+                                    } else {
+                                        call.args.args.iter().collect()
+                                    };
 
                                 // Compile arguments (push values onto stack)
                                 let field_defs = class_type.fields();
@@ -7965,8 +8641,9 @@ impl Codegen {
                                     }
                                     // Plan 230: promote f32 -> f64 when field type is Double
                                     if let Some(field_def) = field_defs.get(i) {
-                                        if matches!(field_def.field_type, Type::Double) &&
-                                           self.last_expr_type == ObjectType::Float {
+                                        if matches!(field_def.field_type, Type::Double)
+                                            && self.last_expr_type == ObjectType::Float
+                                        {
                                             self.emit(OpCode::PROMOTE_F64);
                                         }
                                     }
@@ -8025,13 +8702,24 @@ impl Codegen {
                             || self.get_type(&type_name_str).is_some())
                     {
                         // This is a type constructor call - compile as type instance
-                        vm_debug!("DEBUG: Compiling type constructor call for '{}'", type_name_str);
+                        vm_debug!(
+                            "DEBUG: Compiling type constructor call for '{}'",
+                            type_name_str
+                        );
 
                         // Get type info
                         let member_names = if self.generic_registry.has_template(&type_name_str) {
                             let type_args = Vec::new();
-                            if let Ok(class_type) = self.generic_registry.get_or_create_type(&type_name_str, type_args) {
-                                class_type.template.fields.iter().map(|f| f.name.clone()).collect()
+                            if let Ok(class_type) = self
+                                .generic_registry
+                                .get_or_create_type(&type_name_str, type_args)
+                            {
+                                class_type
+                                    .template
+                                    .fields
+                                    .iter()
+                                    .map(|f| f.name.clone())
+                                    .collect()
                             } else {
                                 Vec::new()
                             }
@@ -8044,14 +8732,17 @@ impl Codegen {
                         // Compile arguments (push values onto stack)
                         let arg_count = call.args.args.len() as u8;
                         // Plan 230: Get field types for f32→f64 promotion
-                        let constructor_field_types: Option<Vec<Type>> =
-                            if self.generic_registry.has_template(&type_name_str) {
-                                self.generic_registry.get_or_create_type(&type_name_str, Vec::new())
-                                    .ok()
-                                    .map(|ct| ct.fields().into_iter().map(|f| f.field_type).collect())
-                            } else {
-                                None
-                            };
+                        let constructor_field_types: Option<Vec<Type>> = if self
+                            .generic_registry
+                            .has_template(&type_name_str)
+                        {
+                            self.generic_registry
+                                .get_or_create_type(&type_name_str, Vec::new())
+                                .ok()
+                                .map(|ct| ct.fields().into_iter().map(|f| f.field_type).collect())
+                        } else {
+                            None
+                        };
                         for (i, arg) in call.args.args.iter().enumerate() {
                             match arg {
                                 crate::ast::Arg::Pos(expr) => {
@@ -8067,8 +8758,9 @@ impl Codegen {
                             // Plan 230: promote f32 -> f64 when field type is Double
                             if let Some(ref field_types) = constructor_field_types {
                                 if let Some(field_type) = field_types.get(i) {
-                                    if matches!(field_type, Type::Double) &&
-                                       self.last_expr_type == ObjectType::Float {
+                                    if matches!(field_type, Type::Double)
+                                        && self.last_expr_type == ObjectType::Float
+                                    {
                                         self.emit(OpCode::PROMOTE_F64);
                                     }
                                 }
@@ -8086,7 +8778,9 @@ impl Codegen {
                         self.object_keys.push(keys);
 
                         // Infer field types from args
-                        let types: Vec<ObjectType> = call.args.args
+                        let types: Vec<ObjectType> = call
+                            .args
+                            .args
                             .iter()
                             .take(arg_count as usize)
                             .map(|arg| match arg {
@@ -8154,7 +8848,8 @@ impl Codegen {
                                 self.compile_expr(obj)?;
                                 self.emit(OpCode::CALL_NAT_COUNTED);
                                 self.code.extend_from_slice(
-                                    &crate::vm::interop::NATIVE_INTEROP_OBJ_LEN.to_le_bytes());
+                                    &crate::vm::interop::NATIVE_INTEROP_OBJ_LEN.to_le_bytes(),
+                                );
                                 self.code.push(1u8);
                                 self.last_expr_type = ObjectType::Int;
                                 self.last_expr_may_py = false; // len 结果为 Int
@@ -8174,7 +8869,8 @@ impl Codegen {
                             let n_args = 2 + call.args.args.len() as u8; // recv + method + args
                             self.emit(OpCode::CALL_NAT_COUNTED);
                             self.code.extend_from_slice(
-                                &crate::vm::interop::NATIVE_INTEROP_OBJ_CALL.to_le_bytes());
+                                &crate::vm::interop::NATIVE_INTEROP_OBJ_CALL.to_le_bytes(),
+                            );
                             self.code.push(n_args);
                             // py 结果沿用既有谎言口径（Auto|String → String），
                             // 顶层格式化照常；may_py 续传供链式 Store 落盘。
@@ -8185,7 +8881,12 @@ impl Codegen {
                         // Plan 087 Phase 3: Support generic instance method calls
                         match obj.as_ref() {
                             Expr::Ident(obj_name) => {
-                                vm_debug!("DEBUG: Dot Ident: obj_name={}, method={}, var_type={:?}", obj_name, method, self.var_types.get(obj_name.as_str()));
+                                vm_debug!(
+                                    "DEBUG: Dot Ident: obj_name={}, method={}, var_type={:?}",
+                                    obj_name,
+                                    method,
+                                    self.var_types.get(obj_name.as_str())
+                                );
                                 // Check if it's a static method call (Type.method with capital T)
                                 // Also treat stdlib singleton module names (env, fs) as static
                                 // BUT: if the name is a known local variable (e.g. `json str` parameter)
@@ -8209,16 +8910,40 @@ impl Codegen {
                                     // an instance (load the global) rather than a
                                     // static type reference.
                                     || self.import_scope.contains_key(obj_name.as_ref()));
-                                let is_stdlib_module = !is_local_var && matches!(obj_name.as_ref(), "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "session" | "template" | "openapi" | "storage" | "host" | "i18n");
+                                let is_stdlib_module = !is_local_var
+                                    && matches!(
+                                        obj_name.as_ref(),
+                                        "env"
+                                            | "fs"
+                                            | "json"
+                                            | "http"
+                                            | "url"
+                                            | "shell"
+                                            | "regex"
+                                            | "session"
+                                            | "template"
+                                            | "openapi"
+                                            | "storage"
+                                            | "host"
+                                            | "i18n"
+                                    );
                                 vm_debug!("DEBUG: Dot Ident static-check: obj={}, is_local_var={}, is_stdlib_module={}", obj_name, is_local_var, is_stdlib_module);
-                                if !is_local_var && (is_stdlib_module || self.is_type_name_heuristic(obj_name) || self.is_type(obj_name)) {
+                                if !is_local_var
+                                    && (is_stdlib_module
+                                        || self.is_type_name_heuristic(obj_name)
+                                        || self.is_type(obj_name))
+                                {
                                     // Plan 127: Special handling for TaskType.spawn() and TaskType.send()
                                     // These should use the generic Task.spawn/Task.send native functions
-                                    if method.as_str() == "spawn" && self.types.contains_key(obj_name.as_ref()) {
+                                    if method.as_str() == "spawn"
+                                        && self.types.contains_key(obj_name.as_ref())
+                                    {
                                         // Check if this is a task type
                                         let type_info = self.types.get(obj_name.as_ref());
                                         if let Some(info) = type_info {
-                                            if info._name.contains("#single") || info._name == obj_name.as_ref() {
+                                            if info._name.contains("#single")
+                                                || info._name == obj_name.as_ref()
+                                            {
                                                 // This is a task type - use Task.spawn
                                                 vm_debug!("DEBUG: Task spawn detected: {}.spawn() -> auto.task.spawn", obj_name);
                                                 Some("auto.task.spawn".to_string())
@@ -8228,7 +8953,9 @@ impl Codegen {
                                         } else {
                                             Some(format!("{}.{}", obj_name, method))
                                         }
-                                    } else if method.as_str() == "send" && self.types.contains_key(obj_name.as_ref()) {
+                                    } else if method.as_str() == "send"
+                                        && self.types.contains_key(obj_name.as_ref())
+                                    {
                                         // Singleton task send: TaskType.send(msg)
                                         let type_info = self.types.get(obj_name.as_ref());
                                         if let Some(info) = type_info {
@@ -8248,9 +8975,7 @@ impl Codegen {
                                         // auto.i18n.t 原生查表（i18n_lookup，
                                         // PLAN-050 C7）。此 inner func_name
                                         // 走静态 native 发射通道。
-                                        if obj_name.as_str() == "i18n"
-                                            && method.as_str() == "t"
-                                        {
+                                        if obj_name.as_str() == "i18n" && method.as_str() == "t" {
                                             Some("auto.i18n.t".to_string())
                                         } else {
                                             Some(format!("{}.{}", obj_name, method))
@@ -8271,15 +8996,14 @@ impl Codegen {
                                                 .get_template(&inst.base_name.to_string())
                                             {
                                                 // User-defined generic type
-                                                let mono_name = tmpl.mono_name_from_args(&inst.args);
+                                                let mono_name =
+                                                    tmpl.mono_name_from_args(&inst.args);
                                                 format!("{}.{}", mono_name, method)
-                                            } else if let Some(mono) = self
-                                                .try_mono_dispatch(
-                                                    &inst.base_name.to_string(),
-                                                    method.as_ref(),
-                                                    &inst.args,
-                                                )
-                                            {
+                                            } else if let Some(mono) = self.try_mono_dispatch(
+                                                &inst.base_name.to_string(),
+                                                method.as_ref(),
+                                                &inst.args,
+                                            ) {
                                                 // Plan 194 Task 3: Built-in collection type
                                                 // (HashMap, HashSet, etc.) with generic params
                                                 // try_mono_dispatch returns a fully qualified name
@@ -8295,11 +9019,19 @@ impl Codegen {
                                             // Plan 194 Task 1: Try monomorphic dispatch first
                                             // Extract base type name and generic params for typed natives
                                             let (base_name, type_args) = match ty {
-                                                Type::Map(k, v) => ("Map".to_string(), vec![*k.clone(), *v.clone()]),
-                                                Type::List(elem) => ("List".to_string(), vec![*elem.clone()]),
+                                                Type::Map(k, v) => (
+                                                    "Map".to_string(),
+                                                    vec![*k.clone(), *v.clone()],
+                                                ),
+                                                Type::List(elem) => {
+                                                    ("List".to_string(), vec![*elem.clone()])
+                                                }
                                                 Type::Array(_) => {
                                                     // Array HOF methods (map, filter, etc.) are dispatched as List.* natives
-                                                    let hof_methods = ["map", "filter", "for_each", "find", "any", "all", "reduce"];
+                                                    let hof_methods = [
+                                                        "map", "filter", "for_each", "find", "any",
+                                                        "all", "reduce",
+                                                    ];
                                                     if hof_methods.contains(&method.as_str()) {
                                                         ("List".to_string(), vec![])
                                                     } else {
@@ -8309,16 +9041,27 @@ impl Codegen {
                                                 Type::User(td) => {
                                                     let name = td.name.to_string();
                                                     // Strip module prefix (e.g., "types.ToolRegistry" → "ToolRegistry")
-                                                    let short = name.rsplit('.').next().unwrap_or(&name).to_string();
+                                                    let short = name
+                                                        .rsplit('.')
+                                                        .next()
+                                                        .unwrap_or(&name)
+                                                        .to_string();
                                                     // Plan 325: enum 变体类型的实例方法分发。enum 变体值
                                                     // （如 MyResult.Ok(42)）的 var_type 是 User("MyResult.Ok")，
                                                     // rsplit 取到 "Ok" → func_name "Ok.is_ok" 找不到。若 td.name
                                                     // 含 "." 且去掉最后段后的 enum 名有已编译方法（在 exports），
                                                     // 用 enum 名作 base_name，使 MyResult.is_ok 被解析到。
-                                                    let enum_base = name.rsplit_once('.').map(|(en, _)| en);
+                                                    let enum_base =
+                                                        name.rsplit_once('.').map(|(en, _)| en);
                                                     let base = if let Some(enum_name) = enum_base {
-                                                        let enum_method = format!("{}.{}", enum_name, method.as_ref());
-                                                        let is_enum_variant = self.generic_registry.has_template(&name)
+                                                        let enum_method = format!(
+                                                            "{}.{}",
+                                                            enum_name,
+                                                            method.as_ref()
+                                                        );
+                                                        let is_enum_variant = self
+                                                            .generic_registry
+                                                            .has_template(&name)
                                                             || self.enum_values.contains_key(&name);
                                                         // Plan 325: enum 变体类型的方法分发。本模块时
                                                         // exports 含 enum_method；跨模块时方法在被 use 模块
@@ -8339,11 +9082,19 @@ impl Codegen {
                                                     // Extract name via infer_type_from_var logic for other types
                                                     let name = match other {
                                                         Type::Int | Type::I64 => "int".to_string(),
-                                                        Type::Uint | Type::U64 | Type::Byte | Type::USize => "uint".to_string(),
-                                                        Type::Float | Type::Double => "float".to_string(),
+                                                        Type::Uint
+                                                        | Type::U64
+                                                        | Type::Byte
+                                                        | Type::USize => "uint".to_string(),
+                                                        Type::Float | Type::Double => {
+                                                            "float".to_string()
+                                                        }
                                                         Type::Bool => "bool".to_string(),
                                                         Type::Char => "char".to_string(),
-                                                        Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => "str".to_string(),
+                                                        Type::StrFixed(_)
+                                                        | Type::StrOwned
+                                                        | Type::StrSlice
+                                                        | Type::CStrLit => "str".to_string(),
                                                         Type::Array(_) => "Array".to_string(),
                                                         _ => String::new(),
                                                     };
@@ -8353,7 +9104,11 @@ impl Codegen {
 
                                             // Try monomorphic dispatch for collections with type params
                                             if !type_args.is_empty() {
-                                                if let Some(mono_name) = self.try_mono_dispatch(&base_name, method.as_ref(), &type_args) {
+                                                if let Some(mono_name) = self.try_mono_dispatch(
+                                                    &base_name,
+                                                    method.as_ref(),
+                                                    &type_args,
+                                                ) {
                                                     Some(mono_name)
                                                 } else {
                                                     // Mono dispatch didn't resolve -- fall back to regular native name
@@ -8361,7 +9116,8 @@ impl Codegen {
                                                     if let Some(type_name) =
                                                         self.infer_type_from_var(obj_name.as_ref())
                                                     {
-                                                        vm_debug!("DEBUG: Inferred type name: {}",
+                                                        vm_debug!(
+                                                            "DEBUG: Inferred type name: {}",
                                                             type_name
                                                         );
                                                         Some(format!("{}.{}", type_name, method))
@@ -8382,19 +9138,28 @@ impl Codegen {
                                                 // Special case: base_name was overridden to "List" for Array HOF methods
                                                 if base_name == "List" {
                                                     Some(format!("List.{}", method))
-                                                } else if self.exports.contains_key(&format!("{}.{}", base_name, method.as_ref()))
-                                                    || self.is_enum_name(&base_name) {
+                                                } else if self.exports.contains_key(&format!(
+                                                    "{}.{}",
+                                                    base_name,
+                                                    method.as_ref()
+                                                )) || self.is_enum_name(&base_name)
+                                                {
                                                     // Plan 325: base_name 已是有效 enum 方法前缀（Type::User
                                                     // 分支从 "MyResult.Ok" 提取出 "MyResult"）。本模块时 exports
                                                     // 含方法；跨模块时方法在被 use 模块的 exports，本地查不到，
                                                     // 但 base_name 是已知 enum 名即应构造 func_name，交 linker
                                                     // fallback 解析。is_enum_name 避免对普通类型误判。
-                                                    Some(format!("{}.{}", base_name, method.as_ref()))
+                                                    Some(format!(
+                                                        "{}.{}",
+                                                        base_name,
+                                                        method.as_ref()
+                                                    ))
                                                 } else {
                                                     if let Some(type_name) =
                                                         self.infer_type_from_var(obj_name.as_ref())
                                                     {
-                                                        vm_debug!("DEBUG: Inferred type name: {}",
+                                                        vm_debug!(
+                                                            "DEBUG: Inferred type name: {}",
                                                             type_name
                                                         );
                                                         Some(format!("{}.{}", type_name, method))
@@ -8414,7 +9179,8 @@ impl Codegen {
                                         }
                                     } else {
                                         // No type info, use regular inference
-                                        vm_debug!("DEBUG: No type info for obj={}, var_types empty",
+                                        vm_debug!(
+                                            "DEBUG: No type info for obj={}, var_types empty",
                                             obj_name
                                         );
                                         if let Some(type_name) =
@@ -8430,7 +9196,8 @@ impl Codegen {
                                                 vm_debug!("DEBUG: Assuming TaskHandle.send for unknown type variable {}", obj_name);
                                                 Some("auto.task.send".to_string())
                                             } else {
-                                                vm_debug!("DEBUG: Failed to infer type for {}",
+                                                vm_debug!(
+                                                    "DEBUG: Failed to infer type for {}",
                                                     obj_name
                                                 );
                                                 Some(format!("{}.{}", obj_name, method))
@@ -8468,14 +9235,20 @@ impl Codegen {
                                         Expr::Dot(enum_obj, _) => {
                                             if let Expr::Ident(enum_name) = enum_obj.as_ref() {
                                                 Some(enum_name.to_string())
-                                            } else { None }
+                                            } else {
+                                                None
+                                            }
                                         }
                                         Expr::Call(inner) => {
                                             if let Expr::Dot(enum_obj, _) = inner.name.as_ref() {
                                                 if let Expr::Ident(enum_name) = enum_obj.as_ref() {
                                                     Some(enum_name.to_string())
-                                                } else { None }
-                                            } else { None }
+                                                } else {
+                                                    None
+                                                }
+                                            } else {
+                                                None
+                                            }
                                         }
                                         _ => None,
                                     };
@@ -8483,15 +9256,23 @@ impl Codegen {
                                         // enum 存在性：scalar 变体在 enum_values，enum 类型在 type_store，
                                         // 带 payload 变体在 generic_registry。三者任一命中即可。
                                         let prefix = format!("{}.", enum_name_str);
-                                        let has_enum = self.enum_values.keys()
+                                        let has_enum = self
+                                            .enum_values
+                                            .keys()
                                             .any(|k| k.starts_with(&prefix))
                                             || self.types.contains_key(&enum_name_str)
                                             || self.generic_registry.has_template(&enum_name_str);
-                                        let has_method = self.exports.contains_key(
-                                            &format!("{}.{}", enum_name_str, method.as_ref())
-                                        );
+                                        let has_method = self.exports.contains_key(&format!(
+                                            "{}.{}",
+                                            enum_name_str,
+                                            method.as_ref()
+                                        ));
                                         if has_enum && has_method {
-                                            return Some(format!("{}.{}", enum_name_str, method.as_ref()));
+                                            return Some(format!(
+                                                "{}.{}",
+                                                enum_name_str,
+                                                method.as_ref()
+                                            ));
                                         }
                                     }
                                     None
@@ -8501,63 +9282,80 @@ impl Codegen {
                                 } else {
                                     let inferred_type = self.infer_object_type(obj.as_ref());
 
-                                // Plan 197 Task 14: Array.len() emits ARRAY_LEN opcode directly
-                                if inferred_type == ObjectType::Array && method.as_str() == "len" && call.args.args.is_empty() {
-                                    // Compile receiver (array/list id) then emit ARRAY_LEN
-                                    self.compile_expr(obj)?;
-                                    self.emit(OpCode::ARRAY_LEN);
-                                    self.last_expr_type = ObjectType::Int;
-                                    return Ok(());
-                                }
+                                    // Plan 197 Task 14: Array.len() emits ARRAY_LEN opcode directly
+                                    if inferred_type == ObjectType::Array
+                                        && method.as_str() == "len"
+                                        && call.args.args.is_empty()
+                                    {
+                                        // Compile receiver (array/list id) then emit ARRAY_LEN
+                                        self.compile_expr(obj)?;
+                                        self.emit(OpCode::ARRAY_LEN);
+                                        self.last_expr_type = ObjectType::Int;
+                                        return Ok(());
+                                    }
 
-                                let type_name: String = match inferred_type {
-                                    ObjectType::Int | ObjectType::Byte => "int".to_string(),
-                                    ObjectType::Uint => "uint".to_string(),
-                                    ObjectType::Float | ObjectType::Double => "float".to_string(),
-                                    ObjectType::String => "str".to_string(),
-                                    ObjectType::Char => "char".to_string(),
-                                    ObjectType::Bool => "bool".to_string(),
-                                    ObjectType::Array => "List".to_string(),
-                                    _ => {
-                                        // Plan 202 Step 3: Fallback to infer_expr_type when infer_object_type
-                                        // returns a non-specific type (NestedObject or default)
-                                        let fallback_type = self.infer_expr_type(obj.as_ref());
-                                        let fallback_ot = self.type_to_object_type(&fallback_type);
-                                        match fallback_ot {
-                                            ObjectType::String => "str".to_string(),
-                                            ObjectType::Array => "List".to_string(),
-                                            ObjectType::Int => "int".to_string(),
-                                            ObjectType::Uint => "uint".to_string(),
-                                            ObjectType::Float | ObjectType::Double => "float".to_string(),
-                                            ObjectType::Bool => "bool".to_string(),
-                                            ObjectType::Char => "char".to_string(),
-                                            _ => {
-                                                // Plan 197 Task 3: Try to resolve user-defined type name
-                                                self.infer_user_type_name(obj.as_ref())
-                                                    .unwrap_or_else(|| "Unknown".to_string())
+                                    let type_name: String = match inferred_type {
+                                        ObjectType::Int | ObjectType::Byte => "int".to_string(),
+                                        ObjectType::Uint => "uint".to_string(),
+                                        ObjectType::Float | ObjectType::Double => {
+                                            "float".to_string()
+                                        }
+                                        ObjectType::String => "str".to_string(),
+                                        ObjectType::Char => "char".to_string(),
+                                        ObjectType::Bool => "bool".to_string(),
+                                        ObjectType::Array => "List".to_string(),
+                                        _ => {
+                                            // Plan 202 Step 3: Fallback to infer_expr_type when infer_object_type
+                                            // returns a non-specific type (NestedObject or default)
+                                            let fallback_type = self.infer_expr_type(obj.as_ref());
+                                            let fallback_ot =
+                                                self.type_to_object_type(&fallback_type);
+                                            match fallback_ot {
+                                                ObjectType::String => "str".to_string(),
+                                                ObjectType::Array => "List".to_string(),
+                                                ObjectType::Int => "int".to_string(),
+                                                ObjectType::Uint => "uint".to_string(),
+                                                ObjectType::Float | ObjectType::Double => {
+                                                    "float".to_string()
+                                                }
+                                                ObjectType::Bool => "bool".to_string(),
+                                                ObjectType::Char => "char".to_string(),
+                                                _ => {
+                                                    // Plan 197 Task 3: Try to resolve user-defined type name
+                                                    self.infer_user_type_name(obj.as_ref())
+                                                        .unwrap_or_else(|| "Unknown".to_string())
+                                                }
                                             }
                                         }
-                                    }
-                                };
-                                let native_name = format!("{}.{}", type_name, method);
+                                    };
+                                    let native_name = format!("{}.{}", type_name, method);
 
-                                // Check if this native exists(peek:决策点不得注册)
-                                if BIGVM_NATIVES.lock().unwrap().peek_qualified(&native_name).is_some() {
-                                    Some(native_name)
-                                } else if self.exports.contains_key(&format!("{}.{}", type_name, method.as_ref())) {
-                                    // Plan 197 Task 3: User-defined method on chained result
-                                    Some(format!("{}.{}", type_name, method.as_ref()))
-                                } else if method.as_str() == "len" {
-                                    // Fallback for len() — emit ARRAY_LEN which handles
-                                    // List/Array heap objects at runtime without requiring
-                                    // a typed String argument (avoids Str.len FFI crash).
-                                    self.compile_expr(obj)?;
-                                    self.emit(OpCode::ARRAY_LEN);
-                                    self.last_expr_type = ObjectType::Int;
-                                    return Ok(());
-                                } else {
-                                    Some(format!("Unknown_{}", method))
-                                }
+                                    // Check if this native exists(peek:决策点不得注册)
+                                    if BIGVM_NATIVES
+                                        .lock()
+                                        .unwrap()
+                                        .peek_qualified(&native_name)
+                                        .is_some()
+                                    {
+                                        Some(native_name)
+                                    } else if self.exports.contains_key(&format!(
+                                        "{}.{}",
+                                        type_name,
+                                        method.as_ref()
+                                    )) {
+                                        // Plan 197 Task 3: User-defined method on chained result
+                                        Some(format!("{}.{}", type_name, method.as_ref()))
+                                    } else if method.as_str() == "len" {
+                                        // Fallback for len() — emit ARRAY_LEN which handles
+                                        // List/Array heap objects at runtime without requiring
+                                        // a typed String argument (avoids Str.len FFI crash).
+                                        self.compile_expr(obj)?;
+                                        self.emit(OpCode::ARRAY_LEN);
+                                        self.last_expr_type = ObjectType::Int;
+                                        return Ok(());
+                                    } else {
+                                        Some(format!("Unknown_{}", method))
+                                    }
                                 } // 闭合 Plan 325 enum_method_name 的 else
                             }
                         }
@@ -8677,14 +9475,37 @@ impl Codegen {
                     let method = fname.rsplit('.').next().unwrap_or("");
                     let is_py_ffi = self.py_native_map.contains_key(fname)
                         || self.py_native_map.contains_key(method)
-                        || self.py_modules.contains(fname.split('.').next().unwrap_or(""));
+                        || self
+                            .py_modules
+                            .contains(fname.split('.').next().unwrap_or(""));
                     const MATH_METHODS: &[&str] = &[
-                        "sin", "cos", "tan", "sqrt", "abs", "floor", "ceil", "round",
-                        "pow", "powf", "powi", "exp", "ln", "log2", "log10",
-                        "signum", "asin", "acos", "atan", "atan2",
-                        "to_radians", "to_degrees",
+                        "sin",
+                        "cos",
+                        "tan",
+                        "sqrt",
+                        "abs",
+                        "floor",
+                        "ceil",
+                        "round",
+                        "pow",
+                        "powf",
+                        "powi",
+                        "exp",
+                        "ln",
+                        "log2",
+                        "log10",
+                        "signum",
+                        "asin",
+                        "acos",
+                        "atan",
+                        "atan2",
+                        "to_radians",
+                        "to_degrees",
                     ];
-                    if !is_py_ffi && MATH_METHODS.contains(&method) && !fname.starts_with("auto.math.") {
+                    if !is_py_ffi
+                        && MATH_METHODS.contains(&method)
+                        && !fname.starts_with("auto.math.")
+                    {
                         let new_name = format!("auto.math.{}", method);
                         let reg = BIGVM_NATIVES.lock().unwrap();
                         if reg.peek_qualified(&new_name).is_some() {
@@ -8701,7 +9522,8 @@ impl Codegen {
                         // Only route .or() to bitwise int.or for known integer types
                         let prefix = fname.split('.').next().unwrap_or("");
                         const INT_TYPE_PREFIXES: &[&str] = &[
-                            "int", "uint", "i32", "i64", "u32", "u64", "u8", "byte", "usize", "isize",
+                            "int", "uint", "i32", "i64", "u32", "u64", "u8", "byte", "usize",
+                            "isize",
                         ];
                         if INT_TYPE_PREFIXES.contains(&prefix) && !fname.starts_with("auto.int.") {
                             let new_name = "auto.int.or".to_string();
@@ -8745,7 +9567,11 @@ impl Codegen {
                 // Plan 212 Phase 2: Route log/tracing macros to built-in Log shims
                 if let Some(ref fname) = func_name {
                     let method = fname.rsplit('.').next().unwrap_or("").to_string();
-                    let bare = fname.rsplit("::").next().unwrap_or(fname.as_str()).to_string();
+                    let bare = fname
+                        .rsplit("::")
+                        .next()
+                        .unwrap_or(fname.as_str())
+                        .to_string();
                     match bare.as_str() {
                         "debug" => func_name = Some("Log.debug".to_string()),
                         "info" => func_name = Some("Log.info".to_string()),
@@ -8770,7 +9596,9 @@ impl Codegen {
                             ("env", "get_or") => Some("auto.env.get_or".to_string()),
                             ("env", "set") => Some("auto.env.set".to_string()),
                             ("env", "remove") => Some("auto.env.remove".to_string()),
-                            ("env", "local_data_dir") => Some("auto.env.local_data_dir".to_string()),
+                            ("env", "local_data_dir") => {
+                                Some("auto.env.local_data_dir".to_string())
+                            }
                             ("env", "home_dir") => Some("auto.env.home_dir".to_string()),
                             // Plan 442 C2: rust-form env::var bridge (Option-
                             // shaped at the producer; caller's .ok() is the
@@ -8795,14 +9623,22 @@ impl Codegen {
                             // (set_timeout/clear_timeout; callback = closure or
                             // event-name string, fires on the render tick).
                             ("sched", "set_timeout") => Some("auto.sched.set_timeout".to_string()),
-                            ("sched", "clear_timeout") => Some("auto.sched.clear_timeout".to_string()),
+                            ("sched", "clear_timeout") => {
+                                Some("auto.sched.clear_timeout".to_string())
+                            }
                             // Plan 442 B-support: JS-shaped localStorage over the
                             // Plan 401 session KV store (getItem -> None when
                             // missing, mirroring the browser semantics musk
                             // sources test against).
-                            ("localStorage", "getItem") => Some("auto.localstorage.get_item".to_string()),
-                            ("localStorage", "setItem") => Some("auto.localstorage.set_item".to_string()),
-                            ("localStorage", "removeItem") => Some("auto.localstorage.remove_item".to_string()),
+                            ("localStorage", "getItem") => {
+                                Some("auto.localstorage.get_item".to_string())
+                            }
+                            ("localStorage", "setItem") => {
+                                Some("auto.localstorage.set_item".to_string())
+                            }
+                            ("localStorage", "removeItem") => {
+                                Some("auto.localstorage.remove_item".to_string())
+                            }
                             // Plan 442 Phase B: `dom.*` / `location.reload()` web
                             // globals (musk visual_store/settings/app). Desktop
                             // semantics: prefers_dark -> true (iced renderer is
@@ -8822,14 +9658,26 @@ impl Codegen {
                             ("io", "say") => Some("auto.print_str".to_string()),
                             ("process", "args") => Some("auto.process.args".to_string()),
                             ("process", "exit") => Some("auto.process.exit".to_string()),
-                            ("process", "current_dir") => Some("auto.process.current_dir".to_string()),
-                            ("fs", "read_to_string") | ("fs", "read_text") => Some("auto.fs.read_text".to_string()),
-                            ("fs", "write") | ("fs", "write_all") | ("fs", "write_text") => Some("auto.fs.write_text".to_string()),
-                            ("fs", "create_dir") | ("fs", "create_dir_all") => Some("auto.fs.create_dir".to_string()),
-                            ("fs", "read") | ("fs", "read_bytes") => Some("auto.fs.read_bytes".to_string()),
+                            ("process", "current_dir") => {
+                                Some("auto.process.current_dir".to_string())
+                            }
+                            ("fs", "read_to_string") | ("fs", "read_text") => {
+                                Some("auto.fs.read_text".to_string())
+                            }
+                            ("fs", "write") | ("fs", "write_all") | ("fs", "write_text") => {
+                                Some("auto.fs.write_text".to_string())
+                            }
+                            ("fs", "create_dir") | ("fs", "create_dir_all") => {
+                                Some("auto.fs.create_dir".to_string())
+                            }
+                            ("fs", "read") | ("fs", "read_bytes") => {
+                                Some("auto.fs.read_bytes".to_string())
+                            }
                             ("fs", "copy") => Some("auto.fs.copy".to_string()),
                             ("fs", "exists") => Some("auto.fs.exists".to_string()),
-                            ("fs", "remove_file") | ("fs", "delete") => Some("auto.fs.delete".to_string()),
+                            ("fs", "remove_file") | ("fs", "delete") => {
+                                Some("auto.fs.delete".to_string())
+                            }
                             ("fs", "remove_dir") => Some("auto.fs.remove_dir".to_string()),
                             ("fs", "remove_dir_all") => Some("auto.fs.remove_dir_all".to_string()),
                             ("fs", "metadata") => Some("auto.fs.size".to_string()),
@@ -8848,7 +9696,9 @@ impl Codegen {
                             ("json", "get") => Some("auto.json.get".to_string()),
                             ("json", "get_str") => Some("auto.json.as_string".to_string()),
                             ("json", "as_string") => Some("auto.json.as_string".to_string()),
-                            ("json", "encode") | ("json", "to_string") => Some("auto.json.encode".to_string()),
+                            ("json", "encode") | ("json", "to_string") => {
+                                Some("auto.json.encode".to_string())
+                            }
                             ("json", "decode") => Some("auto.json.decode".to_string()),
                             ("json", "is_valid") => Some("auto.json.is_valid".to_string()),
                             ("json", "has_key") => Some("auto.json.has_key".to_string()),
@@ -8881,7 +9731,12 @@ impl Codegen {
                             ("url", "join_path") => Some("auto.url.join_path".to_string()),
                             ("sys", method) => {
                                 let cand = format!("auto.sys.{}", method);
-                                if BIGVM_NATIVES.lock().unwrap().peek_qualified(&cand).is_some() {
+                                if BIGVM_NATIVES
+                                    .lock()
+                                    .unwrap()
+                                    .peek_qualified(&cand)
+                                    .is_some()
+                                {
                                     Some(cand)
                                 } else {
                                     None
@@ -8909,8 +9764,12 @@ impl Codegen {
                         // Use opaque_var_crates to route to the correct native.
                         if let Expr::Dot(obj_expr, method_name) = call.name.as_ref() {
                             if let Expr::Ident(receiver_name) = obj_expr.as_ref() {
-                                if let Some(crate_name) = self.opaque_var_crates.get(receiver_name.as_str()) {
-                                    if let Some(native) = lookup_opaque_dispatch(crate_name, method_name.as_str()) {
+                                if let Some(crate_name) =
+                                    self.opaque_var_crates.get(receiver_name.as_str())
+                                {
+                                    if let Some(native) =
+                                        lookup_opaque_dispatch(crate_name, method_name.as_str())
+                                    {
                                         func_name = Some(native.to_string());
                                     }
                                 }
@@ -8921,16 +9780,31 @@ impl Codegen {
                         // Module-level calls (Url.scheme, Regex.new, Version.parse) use native
                         // dispatch via TYPE_CANONICAL_MAP. Only route to opaque when receiver
                         // is a variable name (lowercase start) or an opaque-tracked var.
-                        let is_module_call = receiver == "Url" || receiver == "Regex" || receiver == "Version" || receiver == "VersionReq";
-                        let has_regex = !is_module_call && (fname.contains("Regex") || fname.contains("regex"));
-                        let has_url = !is_module_call && (fname.contains("Url") || fname.contains("url"));
-                        let has_version = !is_module_call && fname.contains("Version") && !fname.contains("VersionReq");
+                        let is_module_call = receiver == "Url"
+                            || receiver == "Regex"
+                            || receiver == "Version"
+                            || receiver == "VersionReq";
+                        let has_regex =
+                            !is_module_call && (fname.contains("Regex") || fname.contains("regex"));
+                        let has_url =
+                            !is_module_call && (fname.contains("Url") || fname.contains("url"));
+                        let has_version = !is_module_call
+                            && fname.contains("Version")
+                            && !fname.contains("VersionReq");
                         // Route VersionReq module calls to dedicated opaque natives
                         let mut versionreq_routed = false;
                         if receiver == "VersionReq" {
                             match method.as_str() {
-                                "parse" => { func_name = Some("auto.semver_opaque_versionreq.parse".to_string()); versionreq_routed = true; }
-                                "matches" => { func_name = Some("auto.semver_opaque_versionreq.matches".to_string()); versionreq_routed = true; }
+                                "parse" => {
+                                    func_name =
+                                        Some("auto.semver_opaque_versionreq.parse".to_string());
+                                    versionreq_routed = true;
+                                }
+                                "matches" => {
+                                    func_name =
+                                        Some("auto.semver_opaque_versionreq.matches".to_string());
+                                    versionreq_routed = true;
+                                }
                                 _ => {}
                             }
                         }
@@ -8946,7 +9820,8 @@ impl Codegen {
                             }
                         }
                         if has_version {
-                            if let Some(native) = lookup_opaque_dispatch("semver", method.as_str()) {
+                            if let Some(native) = lookup_opaque_dispatch("semver", method.as_str())
+                            {
                                 func_name = Some(native.to_string());
                             }
                         }
@@ -8954,21 +9829,30 @@ impl Codegen {
                         // Check rust_native_map and opaque_var_crates for the receiver type
                         if !has_regex && !has_url && !has_version && !versionreq_routed {
                             let obj_part = fname.rsplit('.').nth(1).unwrap_or("");
-                            let crate_name = self.opaque_var_crates.get(obj_part)
+                            let crate_name = self
+                                .opaque_var_crates
+                                .get(obj_part)
                                 .map(|s| s.as_str())
                                 .or_else(|| {
-                                    self.rust_native_map.get(obj_part)
+                                    self.rust_native_map
+                                        .get(obj_part)
                                         .map(|(cn, _)| cn.as_str())
                                 })
                                 .unwrap_or("");
                             // Plan 249 Phase 4: Unified opaque dispatch
                             // Only route instance methods (lowercase receiver) for file/stdio ops;
                             // static calls like File.create() should go through CALL_SPEC dispatch.
-                            let is_static_receiver = obj_part.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                            let is_static_receiver = obj_part
+                                .chars()
+                                .next()
+                                .map(|c| c.is_uppercase())
+                                .unwrap_or(false);
                             if crate_name == "std" && !is_static_receiver {
                                 match method.as_str() {
                                     "now" => func_name = Some("auto.time.instant_now".to_string()),
-                                    "elapsed" => func_name = Some("auto.time.instant_elapsed".to_string()),
+                                    "elapsed" => {
+                                        func_name = Some("auto.time.instant_elapsed".to_string())
+                                    }
                                     "new" => {
                                         if fname.starts_with("OnceCell") {
                                             func_name = Some("auto.cell.once_new".to_string());
@@ -8976,17 +9860,27 @@ impl Codegen {
                                     }
                                     "get" => func_name = Some("auto.cell.once_get".to_string()),
                                     "set" => func_name = Some("auto.cell.once_set".to_string()),
-                                    "create" => func_name = Some("auto.file.create_handle".to_string()),
+                                    "create" => {
+                                        func_name = Some("auto.file.create_handle".to_string())
+                                    }
                                     "open" => func_name = Some("auto.file.open_handle".to_string()),
-                                    "write" => func_name = Some("auto.file.write_handle".to_string()),
-                                    "try_clone" => func_name = Some("auto.file.try_clone".to_string()),
+                                    "write" => {
+                                        func_name = Some("auto.file.write_handle".to_string())
+                                    }
+                                    "try_clone" => {
+                                        func_name = Some("auto.file.try_clone".to_string())
+                                    }
                                     _ => {}
                                 }
-                            } else if let Some(native) = lookup_opaque_dispatch(crate_name, method.as_str()) {
+                            } else if let Some(native) =
+                                lookup_opaque_dispatch(crate_name, method.as_str())
+                            {
                                 func_name = Some(native.to_string());
                             } else {
                                 match method.as_str() {
-                                    "elapsed" => func_name = Some("auto.time.instant_elapsed".to_string()),
+                                    "elapsed" => {
+                                        func_name = Some("auto.time.instant_elapsed".to_string())
+                                    }
                                     _ => {}
                                 }
                             }
@@ -9041,8 +9935,7 @@ impl Codegen {
                                 .map(|t| match t {
                                     crate::ast::Type::User(td) => {
                                         let n = td.name.to_string();
-                                        let short =
-                                            n.rsplit('.').next().unwrap_or(&n).to_string();
+                                        let short = n.rsplit('.').next().unwrap_or(&n).to_string();
                                         short == "obj" || short == "Object"
                                     }
                                     _ => false,
@@ -9071,7 +9964,12 @@ impl Codegen {
                         _ => None,
                     };
                     if let Some(new_name) = redirected {
-                        if BIGVM_NATIVES.lock().unwrap().peek_qualified(&new_name).is_some() {
+                        if BIGVM_NATIVES
+                            .lock()
+                            .unwrap()
+                            .peek_qualified(&new_name)
+                            .is_some()
+                        {
                             func_name = Some(new_name);
                         }
                     }
@@ -9087,9 +9985,9 @@ impl Codegen {
                     // But only route to dispatch 3000 if no existing native is registered.
                     else if self.rust_native_map.contains_key(name)
                         || name.contains('.')
-                            && self.rust_native_map.contains_key(
-                                name.split('.').next().unwrap_or("")
-                            )
+                            && self
+                                .rust_native_map
+                                .contains_key(name.split('.').next().unwrap_or(""))
                     {
                         // Check if there's already a registered native with an actual shim.
                         //
@@ -9149,9 +10047,9 @@ impl Codegen {
                                     .is_some()
                                 || mono_label
                                     .map(|l| {
-                                        reg.resolve_qualified_to_canonical(
-                                            &format!("rust.{name}__{l}"),
-                                        )
+                                        reg.resolve_qualified_to_canonical(&format!(
+                                            "rust.{name}__{l}"
+                                        ))
                                         .is_some()
                                     })
                                     .unwrap_or(false)
@@ -9230,12 +10128,9 @@ impl Codegen {
                     // (musk 消息时间标签缺失现场,KNOWN-DEBT 051 上游债)。
                     // 尾段统一注入 type/method 串(Plan 192/240 同款),宿主臂
                     // stdlib ("Date","now"/"format") 消费。
-                    else if name.contains('.')
-                        && name.split('.').next() == Some("Date")
-                    {
+                    else if name.contains('.') && name.split('.').next() == Some("Date") {
                         Some(NATIVE_RUST_STDLIB_DISPATCH)
-                    }
-                    else {
+                    } else {
                         let natives_id = {
                             let mut reg = BIGVM_NATIVES.lock().unwrap();
                             reg.resolve_qualified(name)
@@ -9343,8 +10238,7 @@ impl Codegen {
                 };
                 // DEBUG
                 if let Expr::Dot(_, m) = call.name.as_ref() {
-                    if m == "push" || m == "len" {
-                    }
+                    if m == "push" || m == "len" {}
                 }
 
                 // Plan 118 Phase 7: Check if calling a closure variable
@@ -9406,8 +10300,10 @@ impl Codegen {
                     // Native function call
                     // For instance methods, compile receiver (self) FIRST, then arguments
                     // This ensures stack order: [self, arg1, arg2, ...]
-                    vm_debug!("DEBUG: Native function call: func_name={:?}, native_id={}",
-                        func_name, id
+                    vm_debug!(
+                        "DEBUG: Native function call: func_name={:?}, native_id={}",
+                        func_name,
+                        id
                     );
                     if let Expr::Dot(obj, _method) = call.name.as_ref() {
                         // Check if it's a static method call (Type.method with capital T)
@@ -9455,9 +10351,26 @@ impl Codegen {
                                     // MentionInput 标签×2 实证）。i18n 在合成
                                     // 作用域无绑定（composable facade，063），
                                     // 永远不该编译 receiver。
-                                    matches!(lower, "env" | "fs" | "json" | "http" | "url" | "shell" | "regex" | "host" | "math" | "sys" | "file" | "i18n"
-                                        | "Array" | "Object" | "JSON" | "Math" | "Date")
-                                        || self.is_type_name_heuristic(obj_name)
+                                    matches!(
+                                        lower,
+                                        "env"
+                                            | "fs"
+                                            | "json"
+                                            | "http"
+                                            | "url"
+                                            | "shell"
+                                            | "regex"
+                                            | "host"
+                                            | "math"
+                                            | "sys"
+                                            | "file"
+                                            | "i18n"
+                                            | "Array"
+                                            | "Object"
+                                            | "JSON"
+                                            | "Math"
+                                            | "Date"
+                                    ) || self.is_type_name_heuristic(obj_name)
                                         || self.is_type(obj_name)
                                 }
                             }
@@ -9470,7 +10383,8 @@ impl Codegen {
                             vm_debug!("DEBUG: Compiling receiver for instance method");
                             // Check if this method needs 'id' field extraction
                             if let Some(ref method_name) = func_name {
-                                vm_debug!("DEBUG: method_name={}, needs_id_extraction={}",
+                                vm_debug!(
+                                    "DEBUG: method_name={}, needs_id_extraction={}",
                                     method_name,
                                     self.needs_id_extraction(method_name)
                                 );
@@ -9512,7 +10426,9 @@ impl Codegen {
                     let mut skip_task_spawn_user_args = false;
                     if func_name.as_deref() == Some("Task.spawn") {
                         // task type name = call.args[0] as a string literal.
-                        if let Some(crate::ast::Arg::Pos(Expr::Str(task_type))) = call.args.args.first().cloned() {
+                        if let Some(crate::ast::Arg::Pos(Expr::Str(task_type))) =
+                            call.args.args.first().cloned()
+                        {
                             // Push task_type string (bottom of stack).
                             let task_type_str = task_type.to_string();
                             let task_type_bytes = task_type_str.as_bytes().to_vec();
@@ -9533,7 +10449,10 @@ impl Codegen {
                             self.emit(OpCode::CONST_I32);
                             self.emit_i32(capacity_val);
                             // Push init args right-to-left (so field 0 ends on top).
-                            let init_args: Vec<&crate::ast::Arg> = call.args.args.iter()
+                            let init_args: Vec<&crate::ast::Arg> = call
+                                .args
+                                .args
+                                .iter()
                                 .enumerate()
                                 .filter(|(i, _)| *i >= 2)
                                 .map(|(_, a)| a)
@@ -9548,7 +10467,12 @@ impl Codegen {
                             self.emit_i32(init_args.len() as i32);
 
                             skip_task_spawn_user_args = true;
-                            vm_debug!("DEBUG: Task.spawn '{}' capacity={} init_args={}", task_type_str, capacity_val, init_args.len());
+                            vm_debug!(
+                                "DEBUG: Task.spawn '{}' capacity={} init_args={}",
+                                task_type_str,
+                                capacity_val,
+                                init_args.len()
+                            );
                         }
                     }
 
@@ -9564,7 +10488,10 @@ impl Codegen {
                                 self.strings.push(task_type_bytes);
                                 self.emit(OpCode::LOAD_STR);
                                 self.code.extend_from_slice(&str_idx.to_le_bytes());
-                                vm_debug!("DEBUG: Injected task_type='{}' for Task.send", task_type_str);
+                                vm_debug!(
+                                    "DEBUG: Injected task_type='{}' for Task.send",
+                                    task_type_str
+                                );
                             }
                         }
                     }
@@ -9657,8 +10584,7 @@ impl Codegen {
                                         }
                                         crate::ast::Arg::Pair(_, expr) => {
                                             if !func_name_for_params.is_empty()
-                                                && self.fn_params
-                                                    .contains_key(func_name_for_params)
+                                                && self.fn_params.contains_key(func_name_for_params)
                                             {
                                                 self.compile_call_arg(
                                                     expr,
@@ -9684,7 +10610,13 @@ impl Codegen {
                             self.compile_expr(obj)?;
                             // Call str.len to get the string length as the end index
                             self.emit(OpCode::CALL_NAT);
-                            self.emit_u16(BIGVM_NATIVES.lock().unwrap().resolve_qualified("auto.str.len").unwrap());
+                            self.emit_u16(
+                                BIGVM_NATIVES
+                                    .lock()
+                                    .unwrap()
+                                    .resolve_qualified("auto.str.len")
+                                    .unwrap(),
+                            );
                         }
                     }
 
@@ -9712,9 +10644,7 @@ impl Codegen {
                     // shim 固定弹 3 参 [flags, pattern, text]（JS match 双形态
                     // 统一：无 'g' = 非 global 组提取语义）。沿 057 T6
                     // JSON.stringify 补参先例。
-                    if func_name.as_deref() == Some("Regex.match")
-                        && call.args.args.len() == 2
-                    {
+                    if func_name.as_deref() == Some("Regex.match") && call.args.args.len() == 2 {
                         self.emit_str_const_push("");
                     }
 
@@ -9722,25 +10652,32 @@ impl Codegen {
                     // Push AFTER user args so type_name/method are on top of stack.
                     // Handler pops method first (top), then type_name (next).
                     if id == NATIVE_RUST_STDLIB_DISPATCH {
-                        let (type_str, method_str) = if let Expr::Dot(obj, method_name) = call.name.as_ref() {
-                            // Use resolved type name from func_name (e.g., "Command" from "Command.arg")
-                            // instead of raw source identifier (e.g., "cmd" from cmd.arg)
-                            let resolved_type = func_name.as_ref()
-                                .and_then(|fn_name| fn_name.split('.').next().map(String::from))
-                                .unwrap_or_default();
-                            let t = if resolved_type.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
-                                resolved_type
-                            } else if let Expr::Ident(type_name_ident) = obj.as_ref() {
-                                type_name_ident.to_string()
+                        let (type_str, method_str) =
+                            if let Expr::Dot(obj, method_name) = call.name.as_ref() {
+                                // Use resolved type name from func_name (e.g., "Command" from "Command.arg")
+                                // instead of raw source identifier (e.g., "cmd" from cmd.arg)
+                                let resolved_type = func_name
+                                    .as_ref()
+                                    .and_then(|fn_name| fn_name.split('.').next().map(String::from))
+                                    .unwrap_or_default();
+                                let t = if resolved_type
+                                    .chars()
+                                    .next()
+                                    .map(|c| c.is_uppercase())
+                                    .unwrap_or(false)
+                                {
+                                    resolved_type
+                                } else if let Expr::Ident(type_name_ident) = obj.as_ref() {
+                                    type_name_ident.to_string()
+                                } else {
+                                    String::new()
+                                };
+                                (t, method_name.to_string())
+                            } else if let Expr::Ident(name) = call.name.as_ref() {
+                                (String::new(), name.to_string())
                             } else {
-                                String::new()
+                                (String::new(), String::new())
                             };
-                            (t, method_name.to_string())
-                        } else if let Expr::Ident(name) = call.name.as_ref() {
-                            (String::new(), name.to_string())
-                        } else {
-                            (String::new(), String::new())
-                        };
 
                         // PLAN-596 T4:dep 侧方法 + 齐整字面量实参 → method 带
                         // mono 实例后缀("__i64"/"__String",方法包按实例条目注册);
@@ -9797,7 +10734,11 @@ impl Codegen {
                         // Plan 569 D2: 重置纪律——原生调用结果的 may_py 默认 false
                         // （实参编译的粘性位不得泄漏到调用结果），py 臂下方对照置 true。
                         self.last_expr_may_py = false;
-                        if name.starts_with("print") || name == "write" || name == "say" || name.starts_with("assert") {
+                        if name.starts_with("print")
+                            || name == "write"
+                            || name == "say"
+                            || name.starts_with("assert")
+                        {
                             self.last_expr_type = ObjectType::Void;
                             self.last_was_native_void = true;
                         } else if name == "system" {
@@ -9849,15 +10790,18 @@ impl Codegen {
                             // Plan 011: void
                             self.last_expr_type = ObjectType::Void;
                             self.last_was_native_void = true;
-                        } else if name.ends_with(".to_hex") || name.ends_with(".to_str")
-                            || name.ends_with(".str") || name == "int_str"
+                        } else if name.ends_with(".to_hex")
+                            || name.ends_with(".to_str")
+                            || name.ends_with(".str")
+                            || name == "int_str"
                             || name.starts_with("auto.url_opaque.scheme")
                             || name.starts_with("auto.url_opaque.host_str")
                             || name.starts_with("auto.url_opaque.path")
                             || name.starts_with("auto.url_opaque.query")
                             || name.starts_with("auto.url_opaque.fragment")
                             || name.starts_with("auto.url_opaque.origin")
-                            || name.starts_with("auto.url_opaque.to_string") {
+                            || name.starts_with("auto.url_opaque.to_string")
+                        {
                             self.last_expr_type = ObjectType::String;
                         } else if name.starts_with("auto.obj.") || name.starts_with("obj.") {
                             // Plan 454 E(§M 缺口③·型别半):优先于 fn_return_types
@@ -9868,7 +10812,10 @@ impl Codegen {
                                 Type::Void => ObjectType::Void,
                                 Type::Float => ObjectType::Float,
                                 Type::Double => ObjectType::Double,
-                                Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => ObjectType::String,
+                                Type::StrFixed(_)
+                                | Type::StrOwned
+                                | Type::CStrLit
+                                | Type::StrSlice => ObjectType::String,
                                 Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
                                 Type::Byte => ObjectType::Byte,
                                 Type::Bool => ObjectType::Bool,
@@ -9883,7 +10830,8 @@ impl Codegen {
                             // Fallback: infer return type from native name suffix
                             // to avoid stale last_expr_type from argument compilation
                             self.last_expr_type = self.infer_native_return_type(name);
-                            self.last_was_native_void = matches!(self.last_expr_type, ObjectType::Void);
+                            self.last_was_native_void =
+                                matches!(self.last_expr_type, ObjectType::Void);
                         }
                         // List HOF methods return arrays (tracked for type-aware dispatch)
                         if name == "List.map" || name == "List.filter" {
@@ -9908,7 +10856,11 @@ impl Codegen {
                         // Plan 214/222: Python FFI functions — type-aware return tracking
                         if self.py_native_map.contains_key(name) {
                             use crate::py_ffi_types::PyType;
-                            let py_ret = self.py_return_types.get(name).cloned().unwrap_or(PyType::Auto);
+                            let py_ret = self
+                                .py_return_types
+                                .get(name)
+                                .cloned()
+                                .unwrap_or(PyType::Auto);
                             self.last_expr_type = match py_ret {
                                 PyType::Int => ObjectType::Int,
                                 PyType::Float => ObjectType::Double,
@@ -9925,7 +10877,11 @@ impl Codegen {
                             // 结果按运行期 tag 分派，不进 str.* 静态路由。
                             self.last_expr_may_py = true;
                         } else if name.contains('.')
-                            && name.split('.').next().map(|p| self.py_modules.contains(p)).unwrap_or(false)
+                            && name
+                                .split('.')
+                                .next()
+                                .map(|p| self.py_modules.contains(p))
+                                .unwrap_or(false)
                         {
                             // Plan 569 D2: py 模块点调（`use.py math` 后 math.sqrt）
                             // 结果同置 may_py——py_modules 臂不经 py_native_map。
@@ -9962,15 +10918,17 @@ impl Codegen {
                                 false
                             } else {
                                 let lower = obj_name.as_ref();
-                                matches!(lower, "env" | "fs" | "process" | "path" | "time" | "math" | "sys" | "log" | "rand" | "json" | "url" | "regex" | "base64" | "hex" | "http" | "shell"
+                                matches!(
+                                    lower,
+                                    "env" | "fs" | "process" | "path" | "time" | "math" | "sys" | "log" | "rand" | "json" | "url" | "regex" | "base64" | "hex" | "http" | "shell"
                                     | "env_logger" | "chrono" | "serde_json" | "csv" | "walkdir" | "clap" | "simplelog"
                                     | "crossbeam" | "rayon" | "num" | "percent_encoding" | "urlencoding"
                                     | "sha2" | "hmac" | "flate2" | "tar" | "semver" | "once_cell"
                                     | "rand_distr"
                                     // PLAN-057 T6：JS web 内建全局（防未解析静态
                                     // 兜底推类型名 receiver 占位栈）
-                                    | "Array" | "Object" | "JSON" | "Math" | "Date")
-                                    || self.is_type_name_heuristic(obj_name)
+                                    | "Array" | "Object" | "JSON" | "Math" | "Date"
+                                ) || self.is_type_name_heuristic(obj_name)
                                     || self.is_type(obj_name)
                             }
                         }
@@ -10008,7 +10966,8 @@ impl Codegen {
 
                         // Plan 088 Phase 4: Compile receiver as first argument (index 0)
                         if let Some(ref method_name) = func_name {
-                            vm_debug!("DEBUG: Compiling instance method call: receiver is arg 0 for '{}'",
+                            vm_debug!(
+                                "DEBUG: Compiling instance method call: receiver is arg 0 for '{}'",
                                 method_name
                             );
 
@@ -10035,27 +10994,75 @@ impl Codegen {
                                 // Exception: crate_module.Type.method calls (e.g., walkdir.WalkDir.new)
                                 // need the type name pushed as string receiver for CALL_SPEC dispatch
                                 let is_crate_static = if let Expr::Call(inner_call) = obj.as_ref() {
-                                    if let Expr::Dot(inner_obj, _inner_method) = inner_call.name.as_ref() {
-                                        if let Expr::Dot(module_obj, type_field) = inner_obj.as_ref() {
+                                    if let Expr::Dot(inner_obj, _inner_method) =
+                                        inner_call.name.as_ref()
+                                    {
+                                        if let Expr::Dot(module_obj, type_field) =
+                                            inner_obj.as_ref()
+                                        {
                                             if let Expr::Ident(mn) = module_obj.as_ref() {
                                                 const CM: &[&str] = &[
-                                                    "env","fs","json","http","url","shell","regex","chrono",
-                                                    "serde_json","csv","walkdir","clap","simplelog","crossbeam",
-                                                    "rayon","num","percent_encoding","urlencoding","sha2","hmac",
-                                                    "flate2","tar","semver","once_cell","rand_distr","log",
-                                                    "time","math","sys","rand","base64","hex","env_logger","process","path",
+                                                    "env",
+                                                    "fs",
+                                                    "json",
+                                                    "http",
+                                                    "url",
+                                                    "shell",
+                                                    "regex",
+                                                    "chrono",
+                                                    "serde_json",
+                                                    "csv",
+                                                    "walkdir",
+                                                    "clap",
+                                                    "simplelog",
+                                                    "crossbeam",
+                                                    "rayon",
+                                                    "num",
+                                                    "percent_encoding",
+                                                    "urlencoding",
+                                                    "sha2",
+                                                    "hmac",
+                                                    "flate2",
+                                                    "tar",
+                                                    "semver",
+                                                    "once_cell",
+                                                    "rand_distr",
+                                                    "log",
+                                                    "time",
+                                                    "math",
+                                                    "sys",
+                                                    "rand",
+                                                    "base64",
+                                                    "hex",
+                                                    "env_logger",
+                                                    "process",
+                                                    "path",
                                                 ];
                                                 CM.contains(&mn.as_ref())
-                                                    && type_field.as_ref().chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-                                            } else { false }
-                                        } else { false }
-                                    } else { false }
-                                } else { false };
+                                                    && type_field
+                                                        .as_ref()
+                                                        .chars()
+                                                        .next()
+                                                        .map(|c| c.is_uppercase())
+                                                        .unwrap_or(false)
+                                            } else {
+                                                false
+                                            }
+                                        } else {
+                                            false
+                                        }
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    false
+                                };
 
                                 if is_crate_static {
                                     if let Expr::Call(inner_call) = obj.as_ref() {
                                         if let Expr::Dot(_, type_field) = inner_call.name.as_ref() {
-                                            let type_bytes = type_field.as_ref().as_bytes().to_vec();
+                                            let type_bytes =
+                                                type_field.as_ref().as_bytes().to_vec();
                                             let type_idx = self.strings.len() as u32;
                                             self.strings.push(type_bytes);
                                             self.emit(OpCode::LOAD_STR);
@@ -10085,14 +11092,20 @@ impl Codegen {
 
                 // Check is_unresolved_static early (needed before arg compilation for stack layout)
                 const KNOWN_STATIC_TYPES: &[&str] = &["HashMap", "Option", "Result"];
-                let is_unresolved_static = !is_instance_method_call && func_name.as_ref()
-                    .map(|name| {
-                        let type_part = name.split('.').next().unwrap_or("");
-                        type_part.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-                            && !KNOWN_STATIC_TYPES.contains(&type_part)
-                            && !self.exports.contains_key(name)
-                    })
-                    .unwrap_or(false);
+                let is_unresolved_static = !is_instance_method_call
+                    && func_name
+                        .as_ref()
+                        .map(|name| {
+                            let type_part = name.split('.').next().unwrap_or("");
+                            type_part
+                                .chars()
+                                .next()
+                                .map(|c| c.is_uppercase())
+                                .unwrap_or(false)
+                                && !KNOWN_STATIC_TYPES.contains(&type_part)
+                                && !self.exports.contains_key(name)
+                        })
+                        .unwrap_or(false);
 
                 // For unresolved static calls (e.g., Normal.new(2.0, 3.0)),
                 // push type name as receiver BEFORE args so stack layout is [receiver, arg0, ...]
@@ -10104,7 +11117,8 @@ impl Codegen {
                 // 平移帧窗口（musk 现场：函数体内 Regex.replace 后续局部/字段
                 // 读取落 "0"，消息 blocks text 全灭）。
                 let unresolved_static_native_id = if is_unresolved_static {
-                    func_name.as_ref()
+                    func_name
+                        .as_ref()
                         .and_then(|name| BIGVM_NATIVES.lock().unwrap().peek_qualified(name))
                 } else {
                     None
@@ -10133,9 +11147,12 @@ impl Codegen {
                 if !call.args.is_empty() {
                     let func_name_for_params = func_name.as_ref().map(|s| s.as_str()).unwrap_or("");
                     // Plan 230: Get field types for f32→f64 promotion
-                    let constructor_field_types: Option<Vec<Type>> = if let Expr::Ident(name) = call.name.as_ref() {
+                    let constructor_field_types: Option<Vec<Type>> = if let Expr::Ident(name) =
+                        call.name.as_ref()
+                    {
                         if self.generic_registry.has_template(name.as_ref()) {
-                            self.generic_registry.get_or_create_type(name.as_ref(), Vec::new())
+                            self.generic_registry
+                                .get_or_create_type(name.as_ref(), Vec::new())
                                 .ok()
                                 .map(|ct| ct.fields().into_iter().map(|f| f.field_type).collect())
                         } else {
@@ -10151,8 +11168,10 @@ impl Codegen {
                                 if !func_name_for_params.is_empty()
                                     && self.fn_params.contains_key(func_name_for_params)
                                 {
-                                    vm_debug!("DEBUG:   Arg {}: smart param passing for '{}'",
-                                        param_index, func_name_for_params
+                                    vm_debug!(
+                                        "DEBUG:   Arg {}: smart param passing for '{}'",
+                                        param_index,
+                                        func_name_for_params
                                     );
                                     self.compile_call_arg(expr, func_name_for_params, param_index)?;
                                 } else {
@@ -10162,8 +11181,9 @@ impl Codegen {
                                 // Plan 230: promote f32 -> f64 for type constructor args
                                 if let Some(ref field_types) = constructor_field_types {
                                     if let Some(field_type) = field_types.get(i) {
-                                        if matches!(field_type, Type::Double) &&
-                                           self.last_expr_type == ObjectType::Float {
+                                        if matches!(field_type, Type::Double)
+                                            && self.last_expr_type == ObjectType::Float
+                                        {
                                             self.emit(OpCode::PROMOTE_F64);
                                         }
                                     }
@@ -10176,8 +11196,10 @@ impl Codegen {
                                 if !func_name_for_params.is_empty()
                                     && self.fn_params.contains_key(func_name_for_params)
                                 {
-                                    vm_debug!("DEBUG:   Named arg {}: smart param passing for '{}'",
-                                        param_index, func_name_for_params
+                                    vm_debug!(
+                                        "DEBUG:   Named arg {}: smart param passing for '{}'",
+                                        param_index,
+                                        func_name_for_params
                                     );
                                     self.compile_call_arg(expr, func_name_for_params, param_index)?;
                                 } else {
@@ -10187,8 +11209,9 @@ impl Codegen {
                                 // Plan 230: promote f32 -> f64 for type constructor args
                                 if let Some(ref field_types) = constructor_field_types {
                                     if let Some(field_type) = field_types.get(i) {
-                                        if matches!(field_type, Type::Double) &&
-                                           self.last_expr_type == ObjectType::Float {
+                                        if matches!(field_type, Type::Double)
+                                            && self.last_expr_type == ObjectType::Float
+                                        {
                                             self.emit(OpCode::PROMOTE_F64);
                                         }
                                     }
@@ -10201,8 +11224,10 @@ impl Codegen {
                                 if !func_name_for_params.is_empty()
                                     && self.fn_params.contains_key(func_name_for_params)
                                 {
-                                    vm_debug!("DEBUG:   Named arg {}: smart param passing for '{}'",
-                                        param_index, func_name_for_params
+                                    vm_debug!(
+                                        "DEBUG:   Named arg {}: smart param passing for '{}'",
+                                        param_index,
+                                        func_name_for_params
                                     );
                                     self.compile_call_arg(
                                         &Expr::Ident(name.clone()),
@@ -10216,8 +11241,9 @@ impl Codegen {
                                 // Plan 230: promote f32 -> f64 for type constructor args
                                 if let Some(ref field_types) = constructor_field_types {
                                     if let Some(field_type) = field_types.get(i) {
-                                        if matches!(field_type, Type::Double) &&
-                                           self.last_expr_type == ObjectType::Float {
+                                        if matches!(field_type, Type::Double)
+                                            && self.last_expr_type == ObjectType::Float
+                                        {
                                             self.emit(OpCode::PROMOTE_F64);
                                         }
                                     }
@@ -10261,10 +11287,8 @@ impl Codegen {
                     // step 2.5; see current_fn_module field doc.
                     if !name.contains('.') {
                         if let Some(mod_name) = &self.current_fn_module {
-                            if let Some(addr) = self
-                                .exports
-                                .get(&format!("{}.{}", mod_name, name))
-                                .copied()
+                            if let Some(addr) =
+                                self.exports.get(&format!("{}.{}", mod_name, name)).copied()
                             {
                                 return Some(addr);
                             }
@@ -10277,9 +11301,10 @@ impl Codegen {
                     // that name. Ambiguous names (two modules define it) stay
                     // unresolved so the explicit `use` alias remains authoritative.
                     if !name.contains('.') {
-                        let mut hits = self.exports.keys().filter(|k| {
-                            k.split('.').last() == Some(name.as_str())
-                        });
+                        let mut hits = self
+                            .exports
+                            .keys()
+                            .filter(|k| k.split('.').last() == Some(name.as_str()));
                         let first = hits.next();
                         if let Some(k) = first {
                             if hits.next().is_none() {
@@ -10291,14 +11316,16 @@ impl Codegen {
                     }
                     None
                 });
-                let is_native = func_name.as_ref()
+                let is_native = func_name
+                    .as_ref()
                     .map(|name| BIGVM_NATIVES.lock().unwrap().peek_qualified(name).is_some())
                     .unwrap_or(false);
                 // Check if receiver is a known user-defined type (not spec, not unknown)
                 // If so, use direct CALL with relocation — the method export may just not be compiled yet
                 let is_user_type_method = if let Expr::Dot(obj, _) = call.name.as_ref() {
                     if let Expr::Ident(receiver_name) = obj.as_ref() {
-                        self.var_types.get(receiver_name.as_ref())
+                        self.var_types
+                            .get(receiver_name.as_ref())
                             .map(|ty| {
                                 if let Type::User(td) = ty {
                                     // Option.Some/Option.None are synthetic types from enum destructuring,
@@ -10308,23 +11335,31 @@ impl Codegen {
                                     // 此前 Result. 前缀被一刀切排除，导致 stdlib result.at 的方法走
                                     // CALL_SPEC 运行时分发失败。
                                     let is_enum_variant = td.name.contains('.')
-                                        && self.is_enum_name(td.name.split('.').next().unwrap_or(&td.name));
-                                    is_enum_variant || (
-                                        !td.name.starts_with("Option.") && !td.name.starts_with("Result.")
-                                    )
+                                        && self.is_enum_name(
+                                            td.name.split('.').next().unwrap_or(&td.name),
+                                        );
+                                    is_enum_variant
+                                        || (!td.name.starts_with("Option.")
+                                            && !td.name.starts_with("Result."))
                                 } else {
                                     matches!(ty, Type::User(_))
                                 }
                             })
                             .unwrap_or(false)
-                    } else { false }
-                } else { false };
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
                 // Plan 317: If this is an Auto module call (db.func()), generate
                 // a CALL with reloc so the linker resolves it to the module's
                 // exported function. Don't fall through to CALL_SPEC.
-                let is_auto_module_call = func_name.as_ref()
+                let is_auto_module_call = func_name
+                    .as_ref()
                     .map(|name| {
-                        name.split('.').next()
+                        name.split('.')
+                            .next()
                             .map(|mod_name| self.auto_modules.contains(mod_name))
                             .unwrap_or(false)
                     })
@@ -10342,10 +11377,15 @@ impl Codegen {
                     // Plan 339 Phase 4: apply import_scope alias to the reloc
                     // symbol so bare calls (e.g. "delete_note") resolve to the
                     // module-qualified export (e.g. "api.delete_note").
-                    let reloc_symbol = func_name.as_ref().and_then(|name| {
-                        self.import_scope.get(name).cloned()
-                            .or_else(|| Some(name.clone()))
-                    }).unwrap_or_default();
+                    let reloc_symbol = func_name
+                        .as_ref()
+                        .and_then(|name| {
+                            self.import_scope
+                                .get(name)
+                                .cloned()
+                                .or_else(|| Some(name.clone()))
+                        })
+                        .unwrap_or_default();
                     self.relocs.push(RelocEntry {
                         offset: placeholder_idx as u32,
                         symbol_name: reloc_symbol,
@@ -10366,7 +11406,7 @@ impl Codegen {
                     // by reference (documented C2-probe semantics — musk backend
                     // corpus's User/AgentMode/Profession/SpecsDocument.clone).
                     return Ok(());
-                                } else if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static))
+                } else if is_spec_dispatch || (func_name.is_some() && resolved_func.is_none() && !is_native && !is_user_type_method && (is_instance_method_call || is_unresolved_static))
                     // PLAN-066 T-06（055-4⑥ 现代真身）：未注册的 str.* 方法
                     // （includes/startsWith/trim…）走 CALL_SPEC 运行时按堆标签
                     // 分发——引擎 str 臂已实现该族。此前解析失败落 extern
@@ -10377,49 +11417,64 @@ impl Codegen {
                     // Plan 249: Transparent unwrap for opaque handle values.
                     // If this is .unwrap()/.expect() on an opaque Rust crate value,
                     // skip CALL_SPEC — the receiver (inner call result) is already a valid handle.
-                    let callee_method = if let Expr::Dot(_, m) = call.name.as_ref() { m.as_str() } else { "" };
+                    let callee_method = if let Expr::Dot(_, m) = call.name.as_ref() {
+                        m.as_str()
+                    } else {
+                        ""
+                    };
                     let is_opaque_unwrap = (callee_method == "unwrap" || callee_method == "expect")
                         && if let Expr::Dot(obj, _) = call.name.as_ref() {
                             match obj.as_ref() {
-                                Expr::Ident(recv) => self.opaque_var_crates.contains_key(recv.as_str()),
+                                Expr::Ident(recv) => {
+                                    self.opaque_var_crates.contains_key(recv.as_str())
+                                }
                                 Expr::Call(inner_call) => {
                                     if let Expr::Dot(inner_obj, _) = inner_call.name.as_ref() {
                                         if let Expr::Ident(type_name) = inner_obj.as_ref() {
                                             self.opaque_var_crates.contains_key(type_name.as_str())
-                                                || self.rust_native_map.contains_key(type_name.as_str())
-                                        } else { false }
-                                    } else { false }
+                                                || self
+                                                    .rust_native_map
+                                                    .contains_key(type_name.as_str())
+                                        } else {
+                                            false
+                                        }
+                                    } else {
+                                        false
+                                    }
                                 }
-                                _ => false
+                                _ => false,
                             }
-                        } else { false };
+                        } else {
+                            false
+                        };
 
                     if is_opaque_unwrap {
                         // Receiver already on stack from inner call, just leave it
                     } else {
-                    // Dynamic dispatch: emit CALL_SPEC with method name string index and arg count
-                    let method_str = if let Expr::Dot(_, method) = call.name.as_ref() {
-                        method.to_string()
-                    } else {
-                        func_name.clone().unwrap_or_default()
-                    };
-                    // Arg count (excluding receiver) so engine knows stack layout
-                    // Note: for is_unresolved_static, receiver was already pushed before args
-                    let arg_count = call.args.args.len() as u8;
-                    self.emit(OpCode::CALL_SPEC);
-                    let method_bytes = method_str.as_bytes().to_vec();
-                    let method_idx = self.strings.len() as u32;
-                    self.strings.push(method_bytes);
-                    self.code.extend_from_slice(&method_idx.to_le_bytes());
-                    self.code.push(arg_count);
+                        // Dynamic dispatch: emit CALL_SPEC with method name string index and arg count
+                        let method_str = if let Expr::Dot(_, method) = call.name.as_ref() {
+                            method.to_string()
+                        } else {
+                            func_name.clone().unwrap_or_default()
+                        };
+                        // Arg count (excluding receiver) so engine knows stack layout
+                        // Note: for is_unresolved_static, receiver was already pushed before args
+                        let arg_count = call.args.args.len() as u8;
+                        self.emit(OpCode::CALL_SPEC);
+                        let method_bytes = method_str.as_bytes().to_vec();
+                        let method_idx = self.strings.len() as u32;
+                        self.strings.push(method_bytes);
+                        self.code.extend_from_slice(&method_idx.to_le_bytes());
+                        self.code.push(arg_count);
 
-                    // Infer return type for CALL_SPEC based on method name suffix
-                    self.last_expr_type = self.infer_call_spec_return_type(&method_str);
+                        // Infer return type for CALL_SPEC based on method name suffix
+                        self.last_expr_type = self.infer_call_spec_return_type(&method_str);
                     } // close opaque_unwrap else
                 } else {
                     // Plan 321: Check if this is a generator function call.
                     // If so, emit CREATE_GENERATOR instead of CALL.
-                    let is_generator = func_name.as_ref()
+                    let is_generator = func_name
+                        .as_ref()
                         .map(|n| self.generator_fns.contains(n))
                         .unwrap_or(false);
 
@@ -10429,13 +11484,16 @@ impl Codegen {
                         self.emit(OpCode::CREATE_GENERATOR);
                         let placeholder_idx = self.code.len();
                         self.code.extend_from_slice(&0u32.to_le_bytes()); // func_addr placeholder
-                        self.code.push(call.args.args.len() as u8);       // n_args
+                        self.code.push(call.args.args.len() as u8); // n_args
 
                         // Create relocation for the func_addr placeholder
-                        let reloc_name = func_name.clone().unwrap_or_else(|| match call.name.as_ref() {
-                            Expr::Ident(name) => name.to_string(),
-                            _ => "unknown".to_string(),
-                        });
+                        let reloc_name =
+                            func_name
+                                .clone()
+                                .unwrap_or_else(|| match call.name.as_ref() {
+                                    Expr::Ident(name) => name.to_string(),
+                                    _ => "unknown".to_string(),
+                                });
                         self.relocs.push(RelocEntry {
                             offset: placeholder_idx as u32,
                             symbol_name: reloc_name,
@@ -10445,88 +11503,103 @@ impl Codegen {
 
                         self.last_expr_type = ObjectType::Int; // iterator_id
                     } else {
-                    self.emit(OpCode::CALL);
+                        self.emit(OpCode::CALL);
 
-                    // Emit Placeholder for Address (u32)
-                    let placeholder_idx = self.code.len();
-                    self.code.extend_from_slice(&0u32.to_le_bytes());
+                        // Emit Placeholder for Address (u32)
+                        let placeholder_idx = self.code.len();
+                        self.code.extend_from_slice(&0u32.to_le_bytes());
 
-                    // Create Relocation Entry
-                    // Plan 339: resolve the bare call name to its module-qualified
-                    // export name so the linker binds the right target. Checks
-                    // import_scope alias first, then a unique bare-name →
-                    // qualified fallback (see resolved_func above).
-                    let raw_name = func_name.clone().unwrap_or_else(|| match call.name.as_ref() {
-                        Expr::Ident(name) => name.to_string(),
-                        _ => unimplemented!("Dynamic call not supported: name expr = {:?}", call.name),
-                    });
-                    let reloc_name = self.resolve_call_symbol(&raw_name);
-                    self.debug_resolve_call_symbol(&raw_name, &reloc_name);
+                        // Create Relocation Entry
+                        // Plan 339: resolve the bare call name to its module-qualified
+                        // export name so the linker binds the right target. Checks
+                        // import_scope alias first, then a unique bare-name →
+                        // qualified fallback (see resolved_func above).
+                        let raw_name =
+                            func_name
+                                .clone()
+                                .unwrap_or_else(|| match call.name.as_ref() {
+                                    Expr::Ident(name) => name.to_string(),
+                                    _ => unimplemented!(
+                                        "Dynamic call not supported: name expr = {:?}",
+                                        call.name
+                                    ),
+                                });
+                        let reloc_name = self.resolve_call_symbol(&raw_name);
+                        self.debug_resolve_call_symbol(&raw_name, &reloc_name);
 
-                    vm_debug!("DEBUG: Creating reloc for function '{}' at offset 0x{:04x}",
-                        reloc_name, placeholder_idx
-                    );
-                    vm_debug!("DEBUG: Available exports: {:?}",
-                        self.exports.keys().collect::<Vec<_>>()
-                    );
+                        vm_debug!(
+                            "DEBUG: Creating reloc for function '{}' at offset 0x{:04x}",
+                            reloc_name,
+                            placeholder_idx
+                        );
+                        vm_debug!(
+                            "DEBUG: Available exports: {:?}",
+                            self.exports.keys().collect::<Vec<_>>()
+                        );
 
-                    self.relocs.push(RelocEntry {
-                        offset: placeholder_idx as u32,
-                        symbol_name: reloc_name.clone(),
-                        reloc_type: RelocType::FuncCall,
-                        source_pos: call.pos,
-                    });
+                        self.relocs.push(RelocEntry {
+                            offset: placeholder_idx as u32,
+                            symbol_name: reloc_name.clone(),
+                            reloc_type: RelocType::FuncCall,
+                            source_pos: call.pos,
+                        });
 
-                    // Plan 118 Phase 4: Function return type inference.
-                    // Plan 368 R-W4: try the reloc name first (intra-module calls,
-                    // native names, method relocs). For `use auto.<lib>: fn` imports
-                    // the reloc name is module-qualified ("c_process_app.parse_nth")
-                    // but the user fn's return type is registered under its BARE name
-                    // ("parse_nth") by enrich_fn_return_types_from_type_store (which
-                    // reads the shared type_store), so fall back to the last path
-                    // segment. Without this, cross-module user-fn calls mis-tag
-                    // last_expr_type with the stale value left by arg compilation,
-                    // dropping/mis-dispatching the returned value (W4 residual; same
-                    // family as the W8 native-method fix below).
-                    let ret_ty = self.fn_return_types.get(&reloc_name)
-                        .or_else(|| {
-                            reloc_name.rsplit('.').next()
+                        // Plan 118 Phase 4: Function return type inference.
+                        // Plan 368 R-W4: try the reloc name first (intra-module calls,
+                        // native names, method relocs). For `use auto.<lib>: fn` imports
+                        // the reloc name is module-qualified ("c_process_app.parse_nth")
+                        // but the user fn's return type is registered under its BARE name
+                        // ("parse_nth") by enrich_fn_return_types_from_type_store (which
+                        // reads the shared type_store), so fall back to the last path
+                        // segment. Without this, cross-module user-fn calls mis-tag
+                        // last_expr_type with the stale value left by arg compilation,
+                        // dropping/mis-dispatching the returned value (W4 residual; same
+                        // family as the W8 native-method fix below).
+                        let ret_ty = self.fn_return_types.get(&reloc_name).or_else(|| {
+                            reloc_name
+                                .rsplit('.')
+                                .next()
                                 .filter(|bare| !bare.is_empty() && *bare != reloc_name.as_str())
                                 .and_then(|bare| self.fn_return_types.get(bare))
                         });
-                    if let Some(ret_ty) = ret_ty {
-                        self.last_expr_type = match ret_ty {
-                            Type::Void => ObjectType::Void,
-                            Type::Float => ObjectType::Float,
-                            Type::Double => ObjectType::Double,
-                            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => ObjectType::String,
-                            Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
-                            Type::Byte => ObjectType::Byte,
-                            Type::Bool => ObjectType::Bool,
-                            Type::Int | Type::I64 => ObjectType::Int,
-                            _ => ObjectType::NestedObject,
-                        };
-                    } else {
-                        // Plan 368 W8: native instance methods (e.g. s.upper(),
-                        // s.replace(...), s.split(...)) reach here as a CALL with
-                        // a reloc name like "str.upper" that is NOT in
-                        // fn_return_types (native shims aren't registered there).
-                        // Without this fallback, last_expr_type keeps the stale
-                        // value left by compiling the receiver+args (often Void),
-                        // so `return s.method()` / `f(s.method())` drop the result.
-                        // infer_native_return_type knows the str/char method types.
-                        self.last_expr_type = self.infer_native_return_type(&reloc_name);
-                        self.last_was_native_void = matches!(self.last_expr_type, ObjectType::Void);
-                    }
-                    // Plan 569 D2: 用户 fn 返回 py 桥值传导——调用点查
-                    // fn_may_py_returns（限定名/裸名双查，镜像上方 ret_ty 回退序）。
-                    self.last_expr_may_py = self.fn_may_py_returns.contains(reloc_name.as_str())
-                        || reloc_name
-                            .rsplit('.')
-                            .next()
-                            .filter(|bare| !bare.is_empty() && *bare != reloc_name.as_str())
-                            .map(|bare| self.fn_may_py_returns.contains(bare))
-                            .unwrap_or(false);
+                        if let Some(ret_ty) = ret_ty {
+                            self.last_expr_type = match ret_ty {
+                                Type::Void => ObjectType::Void,
+                                Type::Float => ObjectType::Float,
+                                Type::Double => ObjectType::Double,
+                                Type::StrFixed(_)
+                                | Type::StrOwned
+                                | Type::CStrLit
+                                | Type::StrSlice => ObjectType::String,
+                                Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
+                                Type::Byte => ObjectType::Byte,
+                                Type::Bool => ObjectType::Bool,
+                                Type::Int | Type::I64 => ObjectType::Int,
+                                _ => ObjectType::NestedObject,
+                            };
+                        } else {
+                            // Plan 368 W8: native instance methods (e.g. s.upper(),
+                            // s.replace(...), s.split(...)) reach here as a CALL with
+                            // a reloc name like "str.upper" that is NOT in
+                            // fn_return_types (native shims aren't registered there).
+                            // Without this fallback, last_expr_type keeps the stale
+                            // value left by compiling the receiver+args (often Void),
+                            // so `return s.method()` / `f(s.method())` drop the result.
+                            // infer_native_return_type knows the str/char method types.
+                            self.last_expr_type = self.infer_native_return_type(&reloc_name);
+                            self.last_was_native_void =
+                                matches!(self.last_expr_type, ObjectType::Void);
+                        }
+                        // Plan 569 D2: 用户 fn 返回 py 桥值传导——调用点查
+                        // fn_may_py_returns（限定名/裸名双查，镜像上方 ret_ty 回退序）。
+                        self.last_expr_may_py =
+                            self.fn_may_py_returns.contains(reloc_name.as_str())
+                                || reloc_name
+                                    .rsplit('.')
+                                    .next()
+                                    .filter(|bare| !bare.is_empty() && *bare != reloc_name.as_str())
+                                    .map(|bare| self.fn_may_py_returns.contains(bare))
+                                    .unwrap_or(false);
                     } // close else (non-generator CALL)
                 }
             }
@@ -10605,8 +11678,8 @@ impl Codegen {
                 match expr {
                     Expr::Mut(_) => {
                         self.compile_expr(inner)?;
-                        if let Some(&id) = crate::vm::native_registry::NATIVE_ID_MAP
-                            .get("auto.rc.assert_unique")
+                        if let Some(&id) =
+                            crate::vm::native_registry::NATIVE_ID_MAP.get("auto.rc.assert_unique")
                         {
                             self.emit(OpCode::CALL_NAT);
                             self.emit_u16(id);
@@ -10685,30 +11758,26 @@ impl Codegen {
                 let src_precise_type = self.infer_expr_type_for_conv(expr.as_ref(), src_type);
                 // Emit appropriate conversion opcode based on source + target type
                 let opcode = match target_type {
-                    Type::StrFixed(_) | Type::StrOwned | Type::StrSlice => {
-                        match src_precise_type {
-                            ConvSrcType::F32 => OpCode::TYPE_F32_TO_STR,
-                            ConvSrcType::F64 => OpCode::TYPE_F64_TO_STR,
-                            ConvSrcType::I64 => OpCode::TYPE_I64_TO_STR,
-                            ConvSrcType::U64 => OpCode::TYPE_U64_TO_STR,
-                            ConvSrcType::Bool => OpCode::TYPE_BOOL_TO_STR,
-                            ConvSrcType::Str | ConvSrcType::I32 | ConvSrcType::Other => OpCode::TYPE_TO_STR,
+                    Type::StrFixed(_) | Type::StrOwned | Type::StrSlice => match src_precise_type {
+                        ConvSrcType::F32 => OpCode::TYPE_F32_TO_STR,
+                        ConvSrcType::F64 => OpCode::TYPE_F64_TO_STR,
+                        ConvSrcType::I64 => OpCode::TYPE_I64_TO_STR,
+                        ConvSrcType::U64 => OpCode::TYPE_U64_TO_STR,
+                        ConvSrcType::Bool => OpCode::TYPE_BOOL_TO_STR,
+                        ConvSrcType::Str | ConvSrcType::I32 | ConvSrcType::Other => {
+                            OpCode::TYPE_TO_STR
                         }
-                    }
-                    Type::Int => {
-                        match src_precise_type {
-                            ConvSrcType::F32 => OpCode::TYPE_F32_TO_I32,
-                            ConvSrcType::F64 => OpCode::TYPE_F64_TO_I32,
-                            ConvSrcType::Str => OpCode::TYPE_TO_I32,
-                            _ => OpCode::TYPE_TO_I32,
-                        }
-                    }
-                    Type::I64 => {
-                        match src_precise_type {
-                            ConvSrcType::Str => OpCode::TYPE_STR_TO_I64,
-                            _ => OpCode::TYPE_CAST_I64,
-                        }
-                    }
+                    },
+                    Type::Int => match src_precise_type {
+                        ConvSrcType::F32 => OpCode::TYPE_F32_TO_I32,
+                        ConvSrcType::F64 => OpCode::TYPE_F64_TO_I32,
+                        ConvSrcType::Str => OpCode::TYPE_TO_I32,
+                        _ => OpCode::TYPE_TO_I32,
+                    },
+                    Type::I64 => match src_precise_type {
+                        ConvSrcType::Str => OpCode::TYPE_STR_TO_I64,
+                        _ => OpCode::TYPE_CAST_I64,
+                    },
                     Type::Float | Type::Double => OpCode::TYPE_TO_F64,
                     // For numeric-to-numeric, reuse cast opcodes (no allocation needed)
                     Type::Uint => OpCode::TYPE_CAST_U32,
@@ -10773,7 +11842,10 @@ impl Codegen {
             // lets .await run the body on demand. Captured free variables are
             // passed through the future's env so the spawned task can read/write
             // them via LOAD_CAPTURED / STORE_CAPTURED (same mechanism as closures).
-            Expr::AsyncBlock { body, return_type: _ } => {
+            Expr::AsyncBlock {
+                body,
+                return_type: _,
+            } => {
                 // Step 1: Find free variables referenced by the body (captures).
                 // Reuse the closure free-var analysis by wrapping the Body in an
                 // Expr::Block; collect_free_vars understands that variant.
@@ -10906,7 +11978,8 @@ impl Codegen {
                     Expr::Dot(obj, method) => {
                         if let Expr::Ident(obj_name) = obj.as_ref() {
                             if obj_name.as_str() == "http"
-                                && (method.as_str() == "post_sync" || method.as_str() == "post_bearer")
+                                && (method.as_str() == "post_sync"
+                                    || method.as_str() == "post_bearer")
                             {
                                 skip_await = true;
                             }
@@ -10916,7 +11989,8 @@ impl Codegen {
                         if let Expr::Dot(obj, method) = call_expr.name.as_ref() {
                             if let Expr::Ident(obj_name) = obj.as_ref() {
                                 if obj_name.as_str() == "http"
-                                    && (method.as_str() == "post_sync" || method.as_str() == "post_bearer")
+                                    && (method.as_str() == "post_sync"
+                                        || method.as_str() == "post_bearer")
                                 {
                                     skip_await = true;
                                 }
@@ -10940,7 +12014,10 @@ impl Codegen {
                     if inst.base_name.as_ref() == "Future" {
                         if let Some(inner) = inst.args.first() {
                             self.last_expr_type = match inner {
-                                Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => ObjectType::String,
+                                Type::StrFixed(_)
+                                | Type::StrOwned
+                                | Type::CStrLit
+                                | Type::StrSlice => ObjectType::String,
                                 Type::Float => ObjectType::Float,
                                 Type::Double => ObjectType::Double,
                                 Type::Int | Type::I64 => ObjectType::Int,
@@ -10973,10 +12050,10 @@ impl Codegen {
             }
             // Plan 321: yield expression — compile inner expr, then emit YIELD_VAL
             Expr::Yield(expr) => {
-                self.compile_expr(expr)?;  // Push yielded value onto stack
+                self.compile_expr(expr)?; // Push yielded value onto stack
                 self.emit(OpCode::YIELD_VAL); // Pop value, suspend generator
-                // After resume, generator continues from next statement.
-                // No return value pushed (yield's value is void in MVP).
+                                              // After resume, generator continues from next statement.
+                                              // No return value pushed (yield's value is void in MVP).
             }
             Expr::Pair(pair) => {
                 // Handle Pair as a single-element object for config syntax like: name: "value"
@@ -11048,7 +12125,9 @@ impl Codegen {
 
                     if has_bindings {
                         // Get ClassType for field info
-                        if let Ok(class_type) = self.generic_registry.get_or_create_type(&key, Vec::new()) {
+                        if let Ok(class_type) =
+                            self.generic_registry.get_or_create_type(&key, Vec::new())
+                        {
                             let field_count = class_type.template.fields.len();
                             let mono_name = class_type.mono_name.clone();
                             let name_bytes = mono_name.as_bytes();
@@ -11073,12 +12152,17 @@ impl Codegen {
                             self.emit_u32(field_count as u32);
                             self.emit(OpCode::CONSTRUCT_INSTANCE);
                         } else {
-                            return Err(AutoError::Msg(format!("Failed to create type for variant: {}", key)));
+                            return Err(AutoError::Msg(format!(
+                                "Failed to create type for variant: {}",
+                                key
+                            )));
                         }
                     } else {
                         // Unit variant with no payload but registered as data type
                         // Just create an instance with 0 fields
-                        if let Ok(class_type) = self.generic_registry.get_or_create_type(&key, Vec::new()) {
+                        if let Ok(class_type) =
+                            self.generic_registry.get_or_create_type(&key, Vec::new())
+                        {
                             let mono_name = class_type.mono_name.clone();
                             let name_bytes = mono_name.as_bytes();
                             let name_len = name_bytes.len();
@@ -11094,7 +12178,10 @@ impl Codegen {
                             self.emit_u32(0u32);
                             self.emit(OpCode::CONSTRUCT_INSTANCE);
                         } else {
-                            return Err(AutoError::Msg(format!("Failed to create type for variant: {}", key)));
+                            return Err(AutoError::Msg(format!(
+                                "Failed to create type for variant: {}",
+                                key
+                            )));
                         }
                     }
                 } else {
@@ -11169,13 +12256,17 @@ impl Codegen {
                                                 let var_idx = self.add_var(binding.as_str());
                                                 self.emit_store_loc(var_idx);
                                                 if binding.as_str() != "_" {
-                                                    let inner_type = self.infer_option_inner_type(&is_expr.target);
-                                                    self.var_types.insert(binding.to_string(), inner_type);
+                                                    let inner_type = self
+                                                        .infer_option_inner_type(&is_expr.target);
+                                                    self.var_types
+                                                        .insert(binding.to_string(), inner_type);
                                                 }
                                             }
 
                                             // Compile body — last expr value stays on stack
-                                            self.compile_stmt(&crate::ast::Stmt::Block(body.clone()))?;
+                                            self.compile_stmt(&crate::ast::Stmt::Block(
+                                                body.clone(),
+                                            ))?;
 
                                             self.emit(OpCode::JMP);
                                             let jump_to_end = self.emit_placeholder_i16();
@@ -11224,15 +12315,19 @@ impl Codegen {
                                 }
                                 // Cover::Tag destructuring for data-carrying enum variants
                                 crate::ast::Expr::Cover(crate::ast::Cover::Tag(tag_cover)) => {
-                                    let variant_mono = format!("{}.{}", tag_cover.kind, tag_cover.tag);
+                                    let variant_mono =
+                                        format!("{}.{}", tag_cover.kind, tag_cover.tag);
                                     // Plan 442 C2: unknown variants (use.rust enums) — same IS_VARIANT
                                     // routing as the Stmt::Is arm above.
                                     // Plan 447 H1 fix: Same multi-pattern handling fix as Stmt::Is.
                                     let known_scalar = self.enum_values.contains_key(&variant_mono);
-                                    let has_data_payload = self.generic_registry.has_template(&variant_mono)
-                                        || !known_scalar;
+                                    let has_data_payload =
+                                        self.generic_registry.has_template(&variant_mono)
+                                            || !known_scalar;
 
-                                    if has_data_payload && tag_cover.bindings.iter().any(|b| b.as_str() != "_") {
+                                    if has_data_payload
+                                        && tag_cover.bindings.iter().any(|b| b.as_str() != "_")
+                                    {
                                         self.emit_load_loc(target_var);
                                         self.emit(OpCode::IS_VARIANT);
                                         let name_bytes = variant_mono.as_bytes();
@@ -11244,14 +12339,21 @@ impl Codegen {
                                         self.emit(OpCode::JMP_IF_Z);
                                         let jump_to_next = self.emit_placeholder_i16();
 
-                                        let (field_count, field_types) = if let Some(template) = self.generic_registry.get_template(&variant_mono) {
-                                            let types: Vec<crate::ast::Type> = template.fields.iter().map(|f| f.field_type.clone()).collect();
+                                        let (field_count, field_types) = if let Some(template) =
+                                            self.generic_registry.get_template(&variant_mono)
+                                        {
+                                            let types: Vec<crate::ast::Type> = template
+                                                .fields
+                                                .iter()
+                                                .map(|f| f.field_type.clone())
+                                                .collect();
                                             (template.fields.len(), types)
                                         } else {
                                             (1, vec![])
                                         };
 
-                                        let binding_count = tag_cover.bindings.len().min(field_count);
+                                        let binding_count =
+                                            tag_cover.bindings.len().min(field_count);
                                         for i in 0..binding_count {
                                             let binding = &tag_cover.bindings[i];
                                             if binding.as_str() != "_" {
@@ -11259,7 +12361,8 @@ impl Codegen {
                                                 self.emit(OpCode::GET_GENERIC_FIELD);
                                                 self.emit_u32(i as u32);
                                                 if let Some(ref ty) = field_types.get(i) {
-                                                    self.var_types.insert(binding.to_string(), (*ty).clone());
+                                                    self.var_types
+                                                        .insert(binding.to_string(), (*ty).clone());
                                                 }
                                                 let var_idx = self.add_var(binding.as_str());
                                                 self.emit_store_loc(var_idx);
@@ -11294,7 +12397,12 @@ impl Codegen {
                                         // per-pattern EQ + short-circuit OR via the shared
                                         // emit_is_or_arm helper (keeps Expr::Is in lockstep
                                         // with Stmt::Is; formerly emitted nothing here).
-                                        self.emit_is_or_arm(target_var, patterns, body, &mut end_jumps)?;
+                                        self.emit_is_or_arm(
+                                            target_var,
+                                            patterns,
+                                            body,
+                                            &mut end_jumps,
+                                        )?;
                                         continue;
                                     }
                                 }
@@ -11317,7 +12425,12 @@ impl Codegen {
                                     } else {
                                         // Multi-pattern: per-pattern EQ + short-circuit OR
                                         // (Plan 447 H1: via the shared emit_is_or_arm helper)
-                                        self.emit_is_or_arm(target_var, patterns, body, &mut end_jumps)?;
+                                        self.emit_is_or_arm(
+                                            target_var,
+                                            patterns,
+                                            body,
+                                            &mut end_jumps,
+                                        )?;
                                         continue;
                                     }
                                 }
@@ -11491,7 +12604,9 @@ impl Codegen {
     fn emit_u16(&mut self, val: u16) {
         if self.assembly_pending_native {
             self.assembly_pending_native = false;
-            if !self.assembly_native_ids.contains(&val) { self.assembly_native_ids.push(val); }
+            if !self.assembly_native_ids.contains(&val) {
+                self.assembly_native_ids.push(val);
+            }
         }
         self.code.extend_from_slice(&val.to_le_bytes());
     }
@@ -11503,20 +12618,49 @@ impl Codegen {
         for id in ids {
             let is_core = {
                 let registry = BIGVM_NATIVES.lock().unwrap();
-                crate::vm::native_catalog::NATIVE_ID_ENTRIES.iter()
-                    .filter(|(_, native)| *native == id).map(|(name, _)| name.to_string())
-                    .chain(registry.get_function_names().into_iter().filter(|name| registry.get_id(name) == Some(id)))
-                    .any(|name| name.strip_prefix("auto.").is_some_and(|rest|
-                        crate::stdlib_assembly::validate::CORE_MODULES.contains(&rest.split('.').next().unwrap_or(""))
-                        || rest.starts_with("http_stream.")))
+                crate::vm::native_catalog::NATIVE_ID_ENTRIES
+                    .iter()
+                    .filter(|(_, native)| *native == id)
+                    .map(|(name, _)| name.to_string())
+                    .chain(
+                        registry
+                            .get_function_names()
+                            .into_iter()
+                            .filter(|name| registry.get_id(name) == Some(id)),
+                    )
+                    .any(|name| {
+                        name.strip_prefix("auto.").is_some_and(|rest| {
+                            crate::stdlib_assembly::validate::CORE_MODULES
+                                .contains(&rest.split('.').next().unwrap_or(""))
+                                || rest.starts_with("http_stream.")
+                        })
+                    })
             };
-            if !is_core { continue; }
-            let interface = self.assembly_interface.get_or_insert_with(crate::vm::native::NativeInterface::production);
-            if let Some(proof) = interface.verify_core_reference(id).map_err(crate::error::AutoError::Msg)? {
-                if self.assembly_context.environment == crate::stdlib_assembly::model::Environment::Browser {
-                    return Err(crate::error::AutoError::Msg(format!("STDASSEMBLY.PROVIDER_UNSUPPORTED: {}.{} has no browser adapter", proof.module, proof.symbol)));
+            if !is_core {
+                continue;
+            }
+            let interface = self
+                .assembly_interface
+                .get_or_insert_with(crate::vm::native::NativeInterface::production);
+            if let Some(proof) = interface
+                .verify_core_reference(id)
+                .map_err(crate::error::AutoError::Msg)?
+            {
+                if self.assembly_context.environment
+                    == crate::stdlib_assembly::model::Environment::Browser
+                {
+                    return Err(crate::error::AutoError::Msg(format!(
+                        "STDASSEMBLY.PROVIDER_UNSUPPORTED: {}.{} has no browser adapter",
+                        proof.module, proof.symbol
+                    )));
                 }
-                if !self.assembly_references.iter().any(|p| p.native_id == Some(id)) { self.assembly_references.push(proof); }
+                if !self
+                    .assembly_references
+                    .iter()
+                    .any(|p| p.native_id == Some(id))
+                {
+                    self.assembly_references.push(proof);
+                }
             }
         }
         Ok(())
@@ -11683,25 +12827,21 @@ impl Codegen {
     fn contains_float(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Float(_, _) | Expr::Double(_, _) => true,
-            Expr::Ident(name) => {
-                self.var_types
-                    .get(name.as_ref())
-                    .map(|t| matches!(t, Type::Float | Type::Double))
-                    .unwrap_or(false)
-            }
-            Expr::Bina(lhs, _, rhs) => {
-                self.contains_float(lhs) || self.contains_float(rhs)
-            }
+            Expr::Ident(name) => self
+                .var_types
+                .get(name.as_ref())
+                .map(|t| matches!(t, Type::Float | Type::Double))
+                .unwrap_or(false),
+            Expr::Bina(lhs, _, rhs) => self.contains_float(lhs) || self.contains_float(rhs),
             Expr::Unary(_, inner) => self.contains_float(inner),
-            Expr::Block(body) => {
-                body.stmts.iter().any(|s| self.stmt_contains_float(s))
-            }
-            Expr::Dot(obj, field) => {
-                self.contains_float(obj) || self.field_is_float(obj, field)
-            }
-            Expr::Call(call) => {
-                call.args.args.iter().map(|a| a.get_expr()).any(|e| self.contains_float(&e))
-            }
+            Expr::Block(body) => body.stmts.iter().any(|s| self.stmt_contains_float(s)),
+            Expr::Dot(obj, field) => self.contains_float(obj) || self.field_is_float(obj, field),
+            Expr::Call(call) => call
+                .args
+                .args
+                .iter()
+                .map(|a| a.get_expr())
+                .any(|e| self.contains_float(&e)),
             _ => false,
         }
     }
@@ -11724,25 +12864,21 @@ impl Codegen {
     fn contains_double(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Double(_, _) => true,
-            Expr::Ident(name) => {
-                self.var_types
-                    .get(name.as_ref())
-                    .map(|t| matches!(t, Type::Double))
-                    .unwrap_or(false)
-            }
-            Expr::Bina(lhs, _, rhs) => {
-                self.contains_double(lhs) || self.contains_double(rhs)
-            }
+            Expr::Ident(name) => self
+                .var_types
+                .get(name.as_ref())
+                .map(|t| matches!(t, Type::Double))
+                .unwrap_or(false),
+            Expr::Bina(lhs, _, rhs) => self.contains_double(lhs) || self.contains_double(rhs),
             Expr::Unary(_, inner) => self.contains_double(inner),
-            Expr::Block(body) => {
-                body.stmts.iter().any(|s| self.stmt_contains_double(s))
-            }
-            Expr::Dot(obj, field) => {
-                self.contains_double(obj) || self.field_is_double(obj, field)
-            }
-            Expr::Call(call) => {
-                call.args.args.iter().map(|a| a.get_expr()).any(|e| self.contains_double(&e))
-            }
+            Expr::Block(body) => body.stmts.iter().any(|s| self.stmt_contains_double(s)),
+            Expr::Dot(obj, field) => self.contains_double(obj) || self.field_is_double(obj, field),
+            Expr::Call(call) => call
+                .args
+                .args
+                .iter()
+                .map(|a| a.get_expr())
+                .any(|e| self.contains_double(&e)),
             _ => false,
         }
     }
@@ -11814,30 +12950,57 @@ impl Codegen {
     // Plan 117: Check if expression is an i64/u64 type that needs coercion to f64
     fn needs_double_coercion(&self, expr: &Expr) -> bool {
         match expr {
-            Expr::I64(_) | Expr::U64(_) | Expr::Int(_) | Expr::I8(_) | Expr::U8(_) | Expr::Byte(_) | Expr::Uint(_) => true,
+            Expr::I64(_)
+            | Expr::U64(_)
+            | Expr::Int(_)
+            | Expr::I8(_)
+            | Expr::U8(_)
+            | Expr::Byte(_)
+            | Expr::Uint(_) => true,
             Expr::Float(_, _) => true, // f32 needs promotion to f64
-            Expr::Ident(name) => {
-                self.var_types
-                    .get(name.as_ref())
-                    .map(|t| matches!(t, Type::I64 | Type::U64 | Type::Int | Type::Float | Type::Uint | Type::USize))
-                    .unwrap_or(false)
-            }
+            Expr::Ident(name) => self
+                .var_types
+                .get(name.as_ref())
+                .map(|t| {
+                    matches!(
+                        t,
+                        Type::I64 | Type::U64 | Type::Int | Type::Float | Type::Uint | Type::USize
+                    )
+                })
+                .unwrap_or(false),
             // Plan 378: method call `recv.method()` returning an integer or
             // float must be promoted to f64 before double arithmetic
             // (e.g. `s.to_uint() + 1.5` needs U64_TO_F64 / I64_TO_F64).
-            Expr::Dot(receiver, method) => {
-                self.lookup_dot_method_type(receiver.as_ref(), method.as_ref())
-                    .map(|t| matches!(t,
-                        Type::I64 | Type::U64 | Type::Int | Type::Byte
-                        | Type::Uint | Type::USize | Type::Float))
-                    .unwrap_or(false)
-            }
+            Expr::Dot(receiver, method) => self
+                .lookup_dot_method_type(receiver.as_ref(), method.as_ref())
+                .map(|t| {
+                    matches!(
+                        t,
+                        Type::I64
+                            | Type::U64
+                            | Type::Int
+                            | Type::Byte
+                            | Type::Uint
+                            | Type::USize
+                            | Type::Float
+                    )
+                })
+                .unwrap_or(false),
             Expr::Call(call) => {
                 if let Expr::Dot(receiver, method) = call.name.as_ref() {
                     self.lookup_dot_method_type(receiver.as_ref(), method.as_ref())
-                        .map(|t| matches!(t,
-                            Type::I64 | Type::U64 | Type::Int | Type::Byte
-                            | Type::Uint | Type::USize | Type::Float))
+                        .map(|t| {
+                            matches!(
+                                t,
+                                Type::I64
+                                    | Type::U64
+                                    | Type::Int
+                                    | Type::Byte
+                                    | Type::Uint
+                                    | Type::USize
+                                    | Type::Float
+                            )
+                        })
                         .unwrap_or(false)
                 } else {
                     false
@@ -11941,11 +13104,10 @@ impl Codegen {
             // Plan 378: method call `recv.method()` returning a 64-bit value.
             // is_u64_expr is stricter than contains_u64 — it only treats the
             // value as U64 (for emitting U64_TO_F64 vs I64_TO_F64).
-            Expr::Dot(receiver, method) => {
-                self.lookup_dot_method_type(receiver.as_ref(), method.as_ref())
-                    .map(|t| matches!(t, Type::U64))
-                    .unwrap_or(false)
-            }
+            Expr::Dot(receiver, method) => self
+                .lookup_dot_method_type(receiver.as_ref(), method.as_ref())
+                .map(|t| matches!(t, Type::U64))
+                .unwrap_or(false),
             Expr::Call(call) => {
                 // Method-call form: Expr::Call { name: Expr::Dot(recv, method), .. }
                 if let Expr::Dot(receiver, method) = call.name.as_ref() {
@@ -11965,9 +13127,25 @@ impl Codegen {
     // Excludes cases where one operand is an integer literal (not string concat)
     fn is_string_operation(&self, lhs: &Expr, rhs: &Expr) -> bool {
         // If either operand is a numeric literal, this cannot be string concatenation
-        if matches!(lhs, Expr::Int(_) | Expr::Float(_, _) | Expr::Double(_, _) | Expr::U64(_) | Expr::I64(_) | Expr::U8(_) | Expr::Byte(_))
-            || matches!(rhs, Expr::Int(_) | Expr::Float(_, _) | Expr::Double(_, _) | Expr::U64(_) | Expr::I64(_) | Expr::U8(_) | Expr::Byte(_))
-        {
+        if matches!(
+            lhs,
+            Expr::Int(_)
+                | Expr::Float(_, _)
+                | Expr::Double(_, _)
+                | Expr::U64(_)
+                | Expr::I64(_)
+                | Expr::U8(_)
+                | Expr::Byte(_)
+        ) || matches!(
+            rhs,
+            Expr::Int(_)
+                | Expr::Float(_, _)
+                | Expr::Double(_, _)
+                | Expr::U64(_)
+                | Expr::I64(_)
+                | Expr::U8(_)
+                | Expr::Byte(_)
+        ) {
             return false;
         }
         self.is_string_expr(lhs) || self.is_string_expr(rhs)
@@ -11980,10 +13158,15 @@ impl Codegen {
     fn contains_u64(&self, expr: &Expr) -> bool {
         match expr {
             Expr::U64(_) | Expr::I64(_) => true,
-            Expr::Cast { target_type, .. } => matches!(target_type,
-                Type::U64 | Type::I64 | Type::USize | Type::Uint),
-            Expr::Ident(name) => self.var_types.get(name.as_ref())
-                .map(|t| matches!(t, Type::U64 | Type::I64)).unwrap_or(false),
+            Expr::Cast { target_type, .. } => matches!(
+                target_type,
+                Type::U64 | Type::I64 | Type::USize | Type::Uint
+            ),
+            Expr::Ident(name) => self
+                .var_types
+                .get(name.as_ref())
+                .map(|t| matches!(t, Type::U64 | Type::I64))
+                .unwrap_or(false),
             // Plan 378: bare field access (recv.field) where the field itself
             // is 64-bit, or a method name without parens. For method calls we
             // rely on the Expr::Call{Dot} arm below; here we recurse into the
@@ -11996,7 +13179,8 @@ impl Codegen {
             }
             Expr::Call(call) => {
                 if let Expr::Ident(fn_name) = call.name.as_ref() {
-                    self.fn_return_types.get(fn_name.as_ref())
+                    self.fn_return_types
+                        .get(fn_name.as_ref())
                         .map(|t| matches!(t, Type::U64 | Type::I64 | Type::USize | Type::Uint))
                         .unwrap_or(false)
                 } else if let Expr::Dot(receiver, method) = call.name.as_ref() {
@@ -12028,7 +13212,9 @@ impl Codegen {
                 let name_str = name.to_string();
                 if let Some(ty) = self.var_types.get(&name_str) {
                     match ty {
-                        Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => FStrPartType::String,
+                        Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => {
+                            FStrPartType::String
+                        }
                         Type::Float => FStrPartType::Float32,
                         Type::Double => FStrPartType::Float64,
                         Type::U64 | Type::I64 | Type::Uint | Type::USize => FStrPartType::Uint64,
@@ -12054,10 +13240,15 @@ impl Codegen {
                             if let Some(ct) = self.generic_registry.get_type(&tn) {
                                 if let Some(ft) = ct.field_type(field.as_ref()) {
                                     return match ft {
-                                        Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => FStrPartType::String,
+                                        Type::StrFixed(_)
+                                        | Type::StrOwned
+                                        | Type::CStrLit
+                                        | Type::StrSlice => FStrPartType::String,
                                         Type::Float => FStrPartType::Float32,
                                         Type::Double => FStrPartType::Float64,
-                                        Type::U64 | Type::I64 | Type::Uint | Type::USize => FStrPartType::Uint64,
+                                        Type::U64 | Type::I64 | Type::Uint | Type::USize => {
+                                            FStrPartType::Uint64
+                                        }
                                         _ => FStrPartType::Int,
                                     };
                                 }
@@ -12085,7 +13276,9 @@ impl Codegen {
                     if let Some(ret_ty) = self.fn_return_types.get(fn_name.as_ref()) {
                         match ret_ty {
                             Type::Double => FStrPartType::Float64,
-                            Type::U64 | Type::I64 | Type::USize | Type::Uint => FStrPartType::Uint64,
+                            Type::U64 | Type::I64 | Type::USize | Type::Uint => {
+                                FStrPartType::Uint64
+                            }
                             Type::Float => FStrPartType::Float32,
                             Type::StrFixed(_) | Type::StrOwned => FStrPartType::String,
                             _ => FStrPartType::Int,
@@ -12103,27 +13296,42 @@ impl Codegen {
                     // f64(1.0) 位模式按 int 格式化得 0）。目录键为 canonical
                     // "auto.math.cos"，短名按 to_canonical 规则双查。
                     let qualified = format!("{}.{}", self.expr_to_name(receiver), method);
-                    let canonical = if qualified.starts_with("auto.") || qualified.starts_with("rust.") || qualified.starts_with("py.") {
+                    let canonical = if qualified.starts_with("auto.")
+                        || qualified.starts_with("rust.")
+                        || qualified.starts_with("py.")
+                    {
                         None
                     } else {
-                        qualified.split_once('.').map(|(p, r)| format!("auto.{}.{}", p.to_lowercase(), r))
+                        qualified
+                            .split_once('.')
+                            .map(|(p, r)| format!("auto.{}.{}", p.to_lowercase(), r))
                     };
-                    let ret_ty = self.fn_return_types.get(&qualified)
+                    let ret_ty = self
+                        .fn_return_types
+                        .get(&qualified)
                         .or_else(|| canonical.as_ref().and_then(|c| self.fn_return_types.get(c)));
                     if let Some(ret_ty) = ret_ty {
                         return match ret_ty {
                             Type::Double => FStrPartType::Float64,
-                            Type::U64 | Type::I64 | Type::USize | Type::Uint => FStrPartType::Uint64,
+                            Type::U64 | Type::I64 | Type::USize | Type::Uint => {
+                                FStrPartType::Uint64
+                            }
                             Type::Float => FStrPartType::Float32,
-                            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => FStrPartType::String,
+                            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => {
+                                FStrPartType::String
+                            }
                             _ => FStrPartType::Int,
                         };
                     }
                     match self.lookup_dot_method_type(receiver.as_ref(), method.as_ref()) {
                         Some(Type::Double) => FStrPartType::Float64,
-                        Some(Type::U64 | Type::I64 | Type::USize | Type::Uint) => FStrPartType::Uint64,
+                        Some(Type::U64 | Type::I64 | Type::USize | Type::Uint) => {
+                            FStrPartType::Uint64
+                        }
                         Some(Type::Float) => FStrPartType::Float32,
-                        Some(Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice) => FStrPartType::String,
+                        Some(
+                            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice,
+                        ) => FStrPartType::String,
                         _ => FStrPartType::Int,
                     }
                 } else {
@@ -12151,9 +13359,12 @@ impl Codegen {
                             "url" => return Some("url".to_string()),
                             _ => {}
                         }
-                        if let Some((crate_name, _)) = self.rust_native_map.get(type_name.as_str()) {
+                        if let Some((crate_name, _)) = self.rust_native_map.get(type_name.as_str())
+                        {
                             match crate_name.as_str() {
-                                "regex" | "url" | "semver" | "chrono" | "sha2" => return Some(crate_name.clone()),
+                                "regex" | "url" | "semver" | "chrono" | "sha2" => {
+                                    return Some(crate_name.clone())
+                                }
                                 _ => {}
                             }
                         }
@@ -12176,8 +13387,10 @@ impl Codegen {
         // Plan 454 E(§M 缺口③):obj 族返回型别标注——keys/values 产 List,
         // find 产元素(Option 载荷,TAG_NULL=None)。无此标注时下游 .length/
         // for-in/.field 全部按 Int 接收者退化(GET_FIELD 错址 → 静默 0)。
-        if name.starts_with("auto.obj.") || name.starts_with("obj.")
-            || name.starts_with("Object.keys") || name.starts_with("Object.values")
+        if name.starts_with("auto.obj.")
+            || name.starts_with("obj.")
+            || name.starts_with("Object.keys")
+            || name.starts_with("Object.values")
         {
             return match name.rsplit('.').next().unwrap_or(name) {
                 "keys" | "values" => ObjectType::Array,
@@ -12188,13 +13401,20 @@ impl Codegen {
         // Known int-returning natives (without fn_return_types entry)
         // Match both "auto.str.len" and "str.len" forms since the compiler
         // may use either depending on how the method was resolved.
-        if name == "auto.hashmap.get_int" || name == "hashmap.get_int"
-            || name == "auto.list.len" || name == "list.len"
-            || name == "auto.str.len" || name == "str.len"
-            || name == "auto.hashmap.size" || name == "hashmap.size"
-            || name == "auto.list.find" || name == "list.find"
-            || name == "str.char_at" || name == "auto.str.char_at"
-            || name == "str.index_of" || name == "auto.str.index_of"
+        if name == "auto.hashmap.get_int"
+            || name == "hashmap.get_int"
+            || name == "auto.list.len"
+            || name == "list.len"
+            || name == "auto.str.len"
+            || name == "str.len"
+            || name == "auto.hashmap.size"
+            || name == "hashmap.size"
+            || name == "auto.list.find"
+            || name == "list.find"
+            || name == "str.char_at"
+            || name == "auto.str.char_at"
+            || name == "str.index_of"
+            || name == "auto.str.index_of"
         {
             return ObjectType::Int;
         }
@@ -12211,8 +13431,10 @@ impl Codegen {
         }
         // Log/tracing functions return void
         if name == "auto.log.noop"
-            || name == "Log.debug" || name == "Log.info"
-            || name == "Log.warn" || name == "Log.error"
+            || name == "Log.debug"
+            || name == "Log.info"
+            || name == "Log.warn"
+            || name == "Log.error"
         {
             return ObjectType::Void;
         }
@@ -12244,8 +13466,10 @@ impl Codegen {
             if name == "auto.semver_opaque.parse" {
                 return ObjectType::NestedObject; // opaque handle
             }
-            if name == "auto.semver_opaque.major" || name == "auto.semver_opaque.minor"
-                || name == "auto.semver_opaque.patch" || name == "auto.semver_opaque.cmp_gt"
+            if name == "auto.semver_opaque.major"
+                || name == "auto.semver_opaque.minor"
+                || name == "auto.semver_opaque.patch"
+                || name == "auto.semver_opaque.cmp_gt"
             {
                 return ObjectType::Int;
             }
@@ -12273,9 +13497,9 @@ impl Codegen {
             .or_else(|| name.strip_prefix("Str."));
         if let Some(m) = str_method {
             match m {
-                "trim" | "replace" | "replace_first" | "to_upper" | "to_lower"
-                | "upper" | "lower" | "to_uppercase" | "to_lowercase"
-                | "substr" | "sub" | "slice" | "repeat" | "reverse" => return ObjectType::String,
+                "trim" | "replace" | "replace_first" | "to_upper" | "to_lower" | "upper"
+                | "lower" | "to_uppercase" | "to_lowercase" | "substr" | "sub" | "slice"
+                | "repeat" | "reverse" => return ObjectType::String,
                 "split" | "lines" | "split_once" => return ObjectType::Array,
                 "len" | "find" | "char_at" | "parse_int" | "match_count" => return ObjectType::Int,
                 "contains" | "starts_with" | "ends_with" | "is_empty" => return ObjectType::Bool,
@@ -12300,30 +13524,28 @@ impl Codegen {
     fn infer_call_spec_return_type(&self, method: &str) -> ObjectType {
         match method {
             // Methods returning int
-            "get_int" | "len" | "char_at" | "parse_int" | "to_int" | "find" | "rfind"
-            | "count" | "cmp" | "hash" | "abs" | "size" => ObjectType::Int,
+            "get_int" | "len" | "char_at" | "parse_int" | "to_int" | "find" | "rfind" | "count"
+            | "cmp" | "hash" | "abs" | "size" => ObjectType::Int,
             // Methods returning string (get_str is explicitly string-typed; plain "get" returns unknown)
-            "get_str" | "substr" | "trim" | "to_str" | "to_string"
-            | "join" | "format" | "lower" | "upper" | "replace" | "slice"
-            | "scheme" | "host" | "host_str" | "path" | "query" | "fragment"
-            | "origin" | "username" | "password"
-            | "from_utf8" | "from_utf8_lossy" | "from_str" => ObjectType::String,
+            "get_str" | "substr" | "trim" | "to_str" | "to_string" | "join" | "format"
+            | "lower" | "upper" | "replace" | "slice" | "scheme" | "host" | "host_str" | "path"
+            | "query" | "fragment" | "origin" | "username" | "password" | "from_utf8"
+            | "from_utf8_lossy" | "from_str" => ObjectType::String,
             // Methods returning float/double
-            "to_float" | "to_double" | "sqrt" | "sin" | "cos" | "tan" | "pow"
-            | "log" | "exp" | "floor" | "ceil" | "round" => ObjectType::Double,
+            "to_float" | "to_double" | "sqrt" | "sin" | "cos" | "tan" | "pow" | "log" | "exp"
+            | "floor" | "ceil" | "round" => ObjectType::Double,
             // Methods returning bool
-            "contains" | "starts_with" | "ends_with" | "is_empty"
-            | "has_key" | "has_prefix" => ObjectType::Bool,
+            "contains" | "starts_with" | "ends_with" | "is_empty" | "has_key" | "has_prefix" => {
+                ObjectType::Bool
+            }
             // Methods returning a collection or opaque handle (nested object)
-            "keys" | "values" | "entries" | "split" | "lines" | "chars"
-            | "graphemes" | "as_bytes" | "bytes" | "par_iter" | "par_iter_mut"
-            | "into_iter" | "iter" | "iter_mut"
-            | "sample" | "gen" | "gen_range"
-            | "into_inner" | "captures_iter" | "find_iter"
-            | "matches" => ObjectType::NestedObject,
+            "keys" | "values" | "entries" | "split" | "lines" | "chars" | "graphemes"
+            | "as_bytes" | "bytes" | "par_iter" | "par_iter_mut" | "into_iter" | "iter"
+            | "iter_mut" | "sample" | "gen" | "gen_range" | "into_inner" | "captures_iter"
+            | "find_iter" | "matches" => ObjectType::NestedObject,
             // Methods returning void
-            "push" | "insert" | "insert_int" | "insert_str" | "remove" | "clear"
-            | "sort" | "reverse" | "print" | "println" | "write" => ObjectType::Void,
+            "push" | "insert" | "insert_int" | "insert_str" | "remove" | "clear" | "sort"
+            | "reverse" | "print" | "println" | "write" => ObjectType::Void,
             // Default: unknown method — preserve current last_expr_type
             // (changed from self.last_expr_type to NestedObject for opaque handle
             // safety, but that caused regressions in str.trim etc.)
@@ -12338,7 +13560,12 @@ impl Codegen {
                 // Check inferred type for the variable
                 let ty = self.infer_ctx.type_env.get(name);
                 matches!(ty, Some(Type::StrFixed(_)) | Some(Type::StrOwned))
-                    || matches!(self.var_types.get(name.as_ref()), Some(Type::StrFixed(_)) | Some(Type::StrOwned) | Some(Type::CStrLit | Type::StrSlice))
+                    || matches!(
+                        self.var_types.get(name.as_ref()),
+                        Some(Type::StrFixed(_))
+                            | Some(Type::StrOwned)
+                            | Some(Type::CStrLit | Type::StrSlice)
+                    )
             }
             Expr::Index(container, _index) => {
                 // String slicing: "hello"[0..2] produces a string
@@ -12355,7 +13582,13 @@ impl Codegen {
                         };
                         if let Some(ct) = self.generic_registry.get_type(&type_name) {
                             if let Some(ft) = ct.field_type(field.as_ref()) {
-                                return matches!(ft, Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice);
+                                return matches!(
+                                    ft,
+                                    Type::StrFixed(_)
+                                        | Type::StrOwned
+                                        | Type::CStrLit
+                                        | Type::StrSlice
+                                );
                             }
                         }
                     }
@@ -12366,7 +13599,10 @@ impl Codegen {
             Expr::Call(call) => {
                 if let Expr::Ident(fn_name) = call.name.as_ref() {
                     if let Some(ret_ty) = self.fn_return_types.get(fn_name.as_ref()) {
-                        return matches!(ret_ty, Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit);
+                        return matches!(
+                            ret_ty,
+                            Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
+                        );
                     }
                 }
                 // Also check method calls that return string
@@ -12392,18 +13628,28 @@ impl Codegen {
     fn stdlib_method_return_type(&self, receiver_type: ObjectType, method: &str) -> ObjectType {
         match (receiver_type, method) {
             // String methods returning String
-            (ObjectType::String, "trim" | "slice" | "sub" | "repeat" | "to_upper" | "to_lower"
-                | "to_uppercase" | "to_lowercase" | "replace") => ObjectType::String,
+            (
+                ObjectType::String,
+                "trim" | "slice" | "sub" | "repeat" | "to_upper" | "to_lower" | "to_uppercase"
+                | "to_lowercase" | "replace",
+            ) => ObjectType::String,
             // String methods returning Int
-            (ObjectType::String, "len" | "length" | "find" | "char_at" | "parse_int") => ObjectType::Int,
+            (ObjectType::String, "len" | "length" | "find" | "char_at" | "parse_int") => {
+                ObjectType::Int
+            }
             // String methods returning Bool
-            (ObjectType::String, "starts_with" | "ends_with" | "contains" | "is_empty") => ObjectType::Bool,
+            (ObjectType::String, "starts_with" | "ends_with" | "contains" | "is_empty") => {
+                ObjectType::Bool
+            }
             // Int/Uint methods returning String
             (ObjectType::Int | ObjectType::Uint, "to_string" | "to_hex") => ObjectType::String,
             // Int bitwise methods returning Int (enables chaining: x.and(3).shl(4))
-            (ObjectType::Int | ObjectType::Uint, "and" | "or" | "xor" | "not" | "shl" | "shr"
-                | "sar" | "rol" | "ror" | "count_ones" | "leading_zeros" | "trailing_zeros"
-                | "flip" | "bitrev" | "bit_read" | "bit_on" | "bit_off" | "bit_flip") => ObjectType::Int,
+            (
+                ObjectType::Int | ObjectType::Uint,
+                "and" | "or" | "xor" | "not" | "shl" | "shr" | "sar" | "rol" | "ror" | "count_ones"
+                | "leading_zeros" | "trailing_zeros" | "flip" | "bitrev" | "bit_read" | "bit_on"
+                | "bit_off" | "bit_flip",
+            ) => ObjectType::Int,
             // Int bit_test returns Bool
             (ObjectType::Int | ObjectType::Uint, "bit_test") => ObjectType::Bool,
             // Array methods returning Int
@@ -12448,7 +13694,7 @@ impl Codegen {
             Expr::Double(_, _) => ObjectType::Double,
             Expr::Int(_) | Expr::I8(_) | Expr::I64(_) => ObjectType::Int,
             Expr::Uint(_) | Expr::U64(_) => ObjectType::Uint,
-            Expr::U8(_) => ObjectType::Int,  // U8 arithmetic returns plain int
+            Expr::U8(_) => ObjectType::Int, // U8 arithmetic returns plain int
             Expr::Byte(_) => ObjectType::Byte, // Plan 118: Byte has its own type for hex formatting
             Expr::Str(_) | Expr::CStr(_) => ObjectType::String,
             Expr::Char(_) => ObjectType::Char,
@@ -12457,7 +13703,8 @@ impl Codegen {
             Expr::Call(call) => {
                 // Try to resolve return type from fn_return_types
                 if let Expr::Dot(obj, method) = call.name.as_ref() {
-                    let fn_name = format!("{}.{}", self.expr_to_name(obj.as_ref()), method.as_ref());
+                    let fn_name =
+                        format!("{}.{}", self.expr_to_name(obj.as_ref()), method.as_ref());
                     if let Some(ret_ty) = self.fn_return_types.get(&fn_name) {
                         self.type_to_object_type(ret_ty)
                     } else {
@@ -12467,9 +13714,16 @@ impl Codegen {
                             ObjectType::NestedObject => {
                                 // Try to get the actual type name from fn_return_types
                                 if let Expr::Call(inner_call) = obj.as_ref() {
-                                    if let Expr::Dot(inner_obj, inner_method) = inner_call.name.as_ref() {
-                                        let inner_fn = format!("{}.{}", self.expr_to_name(inner_obj.as_ref()), inner_method.as_ref());
-                                        if let Some(inner_ret) = self.fn_return_types.get(&inner_fn) {
+                                    if let Expr::Dot(inner_obj, inner_method) =
+                                        inner_call.name.as_ref()
+                                    {
+                                        let inner_fn = format!(
+                                            "{}.{}",
+                                            self.expr_to_name(inner_obj.as_ref()),
+                                            inner_method.as_ref()
+                                        );
+                                        if let Some(inner_ret) = self.fn_return_types.get(&inner_fn)
+                                        {
                                             self.type_name_from_type(inner_ret)
                                         } else {
                                             return ObjectType::NestedObject;
@@ -12507,7 +13761,13 @@ impl Codegen {
                 }
             }
             // Plan 073: Nested object, node, pair and array types
-            Expr::Object(_) | Expr::Node(_) | Expr::Bina(_, _, _) | Expr::If(_) | Expr::Lambda(_) | Expr::Closure(_) | Expr::Pair(_) => ObjectType::NestedObject,
+            Expr::Object(_)
+            | Expr::Node(_)
+            | Expr::Bina(_, _, _)
+            | Expr::If(_)
+            | Expr::Lambda(_)
+            | Expr::Closure(_)
+            | Expr::Pair(_) => ObjectType::NestedObject,
             Expr::Array(_) => ObjectType::Array,
             // Plan 118 Phase 4: Check variable types for identifier expressions
             Expr::Ident(name) => {
@@ -12546,19 +13806,17 @@ impl Codegen {
                 }
             }
             // For other expressions, default to Int
-            Expr::Cast { target_type, .. } => {
-                match target_type {
-                    Type::Int | Type::I64 => ObjectType::Int,
-                    Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
-                    Type::Float => ObjectType::Float,
-                    Type::Double => ObjectType::Double,
-                    Type::Byte => ObjectType::Byte,
-                    Type::Bool => ObjectType::Bool,
-                    Type::StrFixed(_) | Type::StrOwned => ObjectType::String,
-                    Type::Char => ObjectType::Char,
-                    _ => ObjectType::Int,
-                }
-            }
+            Expr::Cast { target_type, .. } => match target_type {
+                Type::Int | Type::I64 => ObjectType::Int,
+                Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
+                Type::Float => ObjectType::Float,
+                Type::Double => ObjectType::Double,
+                Type::Byte => ObjectType::Byte,
+                Type::Bool => ObjectType::Bool,
+                Type::StrFixed(_) | Type::StrOwned => ObjectType::String,
+                Type::Char => ObjectType::Char,
+                _ => ObjectType::Int,
+            },
             Expr::Index(arr, _) => {
                 let arr_type = self.infer_object_type(arr.as_ref());
                 match arr_type {
@@ -12567,30 +13825,32 @@ impl Codegen {
                 }
             }
             Expr::Unary(_, inner) => self.infer_object_type(inner.as_ref()),
-            Expr::View(inner) | Expr::Mut(inner) | Expr::Move(inner) | Expr::Take(inner) => self.infer_object_type(inner.as_ref()),
+            Expr::View(inner) | Expr::Mut(inner) | Expr::Move(inner) | Expr::Take(inner) => {
+                self.infer_object_type(inner.as_ref())
+            }
             Expr::To { target_type, .. } => self.type_to_object_type(target_type),
             Expr::FStr(_) => ObjectType::String,
-            Expr::GenName(name) => {
-                self.var_types.get(name.as_str())
-                    .map(|t| self.type_to_object_type(t))
-                    .unwrap_or(ObjectType::Int)
-            }
-            Expr::Ref(name) => {
-                self.var_types.get(name.as_str())
-                    .map(|t| self.type_to_object_type(t))
-                    .unwrap_or(ObjectType::Int)
-            }
-            Expr::Block(body) => {
-                body.stmts.last()
-                    .and_then(|stmt| {
-                        if let crate::ast::Stmt::Expr(expr) = stmt {
-                            Some(self.infer_object_type(expr))
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(ObjectType::Int)
-            }
+            Expr::GenName(name) => self
+                .var_types
+                .get(name.as_str())
+                .map(|t| self.type_to_object_type(t))
+                .unwrap_or(ObjectType::Int),
+            Expr::Ref(name) => self
+                .var_types
+                .get(name.as_str())
+                .map(|t| self.type_to_object_type(t))
+                .unwrap_or(ObjectType::Int),
+            Expr::Block(body) => body
+                .stmts
+                .last()
+                .and_then(|stmt| {
+                    if let crate::ast::Stmt::Expr(expr) = stmt {
+                        Some(self.infer_object_type(expr))
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(ObjectType::Int),
             Expr::Some(inner) | Expr::Ok(inner) => self.infer_object_type(inner.as_ref()),
             Expr::None | Expr::Nil | Expr::Null => ObjectType::Int,
             _ => ObjectType::Int,
@@ -12601,12 +13861,39 @@ impl Codegen {
     /// Check if a name matches a known Rust crate name.
     /// Used as fallback when dep/use.rust statements are dropped by parser error recovery.
     fn is_known_rust_crate(name: &str) -> bool {
-        matches!(name,
-            "std" | "log" | "env_logger" | "regex" | "serde" | "serde_json" | "chrono" |
-            "csv" | "walkdir" | "url" | "sha2" | "semver" | "anyhow" | "rand" |
-            "rayon" | "crossbeam" | "tokio" | "clap" | "base64" | "percent_encoding" |
-            "heapless" | "simplelog" | "tracing" | "flate2" | "tar" | "toml" |
-            "reqwest" | "once_cell" | "parking_lot" | "dashmap" | "indexmap"
+        matches!(
+            name,
+            "std"
+                | "log"
+                | "env_logger"
+                | "regex"
+                | "serde"
+                | "serde_json"
+                | "chrono"
+                | "csv"
+                | "walkdir"
+                | "url"
+                | "sha2"
+                | "semver"
+                | "anyhow"
+                | "rand"
+                | "rayon"
+                | "crossbeam"
+                | "tokio"
+                | "clap"
+                | "base64"
+                | "percent_encoding"
+                | "heapless"
+                | "simplelog"
+                | "tracing"
+                | "flate2"
+                | "tar"
+                | "toml"
+                | "reqwest"
+                | "once_cell"
+                | "parking_lot"
+                | "dashmap"
+                | "indexmap"
         )
     }
 
@@ -12697,7 +13984,9 @@ impl Codegen {
                 Type::Unknown
             }
             Type::GenericInstance(inst) => {
-                if let Some(class_type) = self.generic_registry.get_type(&inst.base_name.to_string()) {
+                if let Some(class_type) =
+                    self.generic_registry.get_type(&inst.base_name.to_string())
+                {
                     if let Some(field_type) = class_type.field_type(field_name) {
                         return field_type;
                     }
@@ -12711,7 +14000,9 @@ impl Codegen {
     /// Plan 197 Task 3: Map a Type to ObjectType for object field tracking
     fn type_to_object_type(&self, ty: &Type) -> ObjectType {
         match ty {
-            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => ObjectType::String,
+            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => {
+                ObjectType::String
+            }
             Type::Char => ObjectType::Char,
             Type::Int | Type::I64 => ObjectType::Int,
             Type::Uint | Type::U64 | Type::USize => ObjectType::Uint,
@@ -12728,7 +14019,9 @@ impl Codegen {
     /// Extract a type name string from a Type for fn_return_types qualified name lookup
     fn type_name_from_type(&self, ty: &Type) -> String {
         match ty {
-            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => "str".to_string(),
+            Type::StrFixed(_) | Type::StrOwned | Type::CStrLit | Type::StrSlice => {
+                "str".to_string()
+            }
             Type::Char => "char".to_string(),
             Type::Int | Type::I64 => "int".to_string(),
             Type::Uint | Type::U64 | Type::USize => "uint".to_string(),
@@ -12774,8 +14067,12 @@ impl Codegen {
         let anchor = placeholder_idx + 2;
         let offset = (target as isize) - (anchor as isize);
 
-        vm_debug!("DEBUG patch_jump: placeholder_idx={}, target={}, anchor={}, offset={}",
-            placeholder_idx, target, anchor, offset
+        vm_debug!(
+            "DEBUG patch_jump: placeholder_idx={}, target={}, anchor={}, offset={}",
+            placeholder_idx,
+            target,
+            anchor,
+            offset
         );
 
         // Plan 118 Phase 5: Track (placeholder, target) for offset recalculation after FN_PROLOG insertion
@@ -12999,8 +14296,11 @@ impl Codegen {
     }
 
     fn emit_load_loc(&mut self, index: usize) {
-        vm_debug!("DEBUG: emit_load_loc called with index={}, n_args={}, fn_scope_start={}",
-            index, self.current_fn_n_args, self.fn_scope_start
+        vm_debug!(
+            "DEBUG: emit_load_loc called with index={}, n_args={}, fn_scope_start={}",
+            index,
+            self.current_fn_n_args,
+            self.fn_scope_start
         );
 
         let n_args = self.current_fn_n_args;
@@ -13016,8 +14316,11 @@ impl Codegen {
             //                        ^- BP-n_args     ^- BP-1    ^- BP
             // Parameter i is at BP - n_args + i
             let offset = (n_args - param_index) as i32; // Positive offset going backwards from BP
-            vm_debug!("DEBUG: Loading parameter {} (absolute index {}) at BP-{}",
-                param_index, index, offset
+            vm_debug!(
+                "DEBUG: Loading parameter {} (absolute index {}) at BP-{}",
+                param_index,
+                index,
+                offset
             );
 
             // Load parameter using LOAD_LOCAL with negative offset logic
@@ -13026,15 +14329,19 @@ impl Codegen {
             // Encode as negative offset (0x80..0xFF means parameter)
             let encoded_index = 0x80 + param_index as u8; // 0x80 means param 0, 0x81 means param 1, etc.
             self.code.push(encoded_index);
-            vm_debug!("DEBUG: Emitting LOAD_LOCAL with encoded parameter index 0x{:02x}",
+            vm_debug!(
+                "DEBUG: Emitting LOAD_LOCAL with encoded parameter index 0x{:02x}",
                 encoded_index
             );
         } else {
             // This is a local variable, stored after BP
             // Local index is relative to the position after all parameters
             let local_index = index.saturating_sub(fn_scope_start).saturating_sub(n_args);
-            vm_debug!("DEBUG: Loading local variable {} (absolute index {}) at BP+1+{}",
-                local_index, index, local_index
+            vm_debug!(
+                "DEBUG: Loading local variable {} (absolute index {}) at BP+1+{}",
+                local_index,
+                index,
+                local_index
             );
 
             match local_index {
@@ -13053,7 +14360,8 @@ impl Codegen {
                 _ => {
                     self.emit(OpCode::LOAD_LOCAL);
                     self.code.push(local_index as u8);
-                    vm_debug!("DEBUG: Emitting LOAD_LOCAL with local index {}",
+                    vm_debug!(
+                        "DEBUG: Emitting LOAD_LOCAL with local index {}",
                         local_index
                     );
                 }
@@ -13081,8 +14389,12 @@ impl Codegen {
         vm_debug!("DEBUG: emit_load_mut_ref called with index={}", index);
         self.emit(OpCode::LOAD_MUT_REF);
         let bytes = (index as u32).to_le_bytes();
-        vm_debug!("DEBUG: emit_load_mut_ref bytes: {:02x} {:02x} {:02x} {:02x}",
-            bytes[0], bytes[1], bytes[2], bytes[3]
+        vm_debug!(
+            "DEBUG: emit_load_mut_ref bytes: {:02x} {:02x} {:02x} {:02x}",
+            bytes[0],
+            bytes[1],
+            bytes[2],
+            bytes[3]
         );
         self.code.extend_from_slice(&bytes);
     }
@@ -13391,11 +14703,7 @@ impl Codegen {
     /// - the bound names a spec known to the TypeStore;
     /// - the argument's TypeDecl is resolvable and lists neither the spec
     ///   (`type X as Spec`) nor a generic spec impl for it.
-    fn check_generic_call_bounds(
-        &self,
-        callee: &str,
-        args: &[crate::ast::Arg],
-    ) -> AutoResult<()> {
+    fn check_generic_call_bounds(&self, callee: &str, args: &[crate::ast::Arg]) -> AutoResult<()> {
         let Some(bounds) = self.fn_type_param_bounds.get(callee) else {
             return Ok(());
         };
@@ -13414,9 +14722,8 @@ impl Codegen {
             let Type::User(ptd) = &param.ty else {
                 continue;
             };
-            let Some((_, constraints)) = bounds
-                .iter()
-                .find(|(n, _)| n.as_str() == ptd.name.as_str())
+            let Some((_, constraints)) =
+                bounds.iter().find(|(n, _)| n.as_str() == ptd.name.as_str())
             else {
                 continue;
             };
@@ -13726,7 +15033,8 @@ impl Codegen {
             // 偏移)直接当槽位,widget handler(fn_scope_start=1)里捕获的局部
             // 变量差一位:by-ref 读到相邻槽的垃圾,还遮蔽了正确的 env 值,
             // 闭包比较恒不命中。fss=0 的旧语料两者恰好相等,故 385/454 未爆。
-            let slot_offset = self.lookup_var(var_name)
+            let slot_offset = self
+                .lookup_var(var_name)
                 .map(|idx| {
                     let fss = self.fn_scope_start;
                     let n_args = self.current_fn_n_args;
@@ -13738,9 +15046,9 @@ impl Codegen {
                     }
                 })
                 .unwrap_or(0xFFFF); // 0xFFFF = no slot (fallback to env)
-            // Plan 419/454 E5a: 记录 by-ref 捕获槽,块尾释放跳过。
-            // 0x8000 旗标 = 函数参数域(运行期负向寻址),既不进释放组,
-            // 由引擎在 CLOSURE 执行期解析为创建帧绝对槽位。
+                                    // Plan 419/454 E5a: 记录 by-ref 捕获槽,块尾释放跳过。
+                                    // 0x8000 旗标 = 函数参数域(运行期负向寻址),既不进释放组,
+                                    // 由引擎在 CLOSURE 执行期解析为创建帧绝对槽位。
             if slot_offset != 0xFFFF && slot_offset & 0x8000 == 0 {
                 self.byref_captured_slots.insert(slot_offset as usize);
             }
@@ -13824,7 +15132,8 @@ impl Codegen {
                 self.exports.insert(name, addr);
             }
             self.code.insert(func_addr as usize, n_locals as u8);
-            self.code.insert(func_addr as usize, OpCode::RESERVE_STACK as u8);
+            self.code
+                .insert(func_addr as usize, OpCode::RESERVE_STACK as u8);
         }
         self.max_locals = old_max_locals;
 
@@ -13938,26 +15247,22 @@ impl Codegen {
                     }
                 }
             }
-            Expr::Dot(_, _) => {
-                match runtime_type {
-                    ObjectType::Float => ConvSrcType::F32,
-                    ObjectType::Double => ConvSrcType::F64,
-                    ObjectType::Uint => ConvSrcType::U64,
-                    ObjectType::Bool => ConvSrcType::Bool,
-                    ObjectType::String => ConvSrcType::Str,
-                    _ => ConvSrcType::I32,
-                }
-            }
-            _ => {
-                match runtime_type {
-                    ObjectType::Float => ConvSrcType::F32,
-                    ObjectType::Double => ConvSrcType::F64,
-                    ObjectType::Uint => ConvSrcType::U64,
-                    ObjectType::Bool => ConvSrcType::Bool,
-                    ObjectType::String => ConvSrcType::Str,
-                    _ => ConvSrcType::I32,
-                }
-            }
+            Expr::Dot(_, _) => match runtime_type {
+                ObjectType::Float => ConvSrcType::F32,
+                ObjectType::Double => ConvSrcType::F64,
+                ObjectType::Uint => ConvSrcType::U64,
+                ObjectType::Bool => ConvSrcType::Bool,
+                ObjectType::String => ConvSrcType::Str,
+                _ => ConvSrcType::I32,
+            },
+            _ => match runtime_type {
+                ObjectType::Float => ConvSrcType::F32,
+                ObjectType::Double => ConvSrcType::F64,
+                ObjectType::Uint => ConvSrcType::U64,
+                ObjectType::Bool => ConvSrcType::Bool,
+                ObjectType::String => ConvSrcType::Str,
+                _ => ConvSrcType::I32,
+            },
         }
     }
 
@@ -14032,8 +15337,14 @@ impl Codegen {
         map.insert("uint.to_hex".to_string(), Type::StrOwned);
         map.insert("List.join".to_string(), Type::StrOwned);
         // str.split returns List<str>
-        map.insert("str.split".to_string(), Type::List(Box::new(Type::StrOwned)));
-        map.insert("auto.str.split".to_string(), Type::List(Box::new(Type::StrOwned)));
+        map.insert(
+            "str.split".to_string(),
+            Type::List(Box::new(Type::StrOwned)),
+        );
+        map.insert(
+            "auto.str.split".to_string(),
+            Type::List(Box::new(Type::StrOwned)),
+        );
         // Map.new → auto.hashmap.new (alias for Auto syntax)
         map.insert("Map.new".to_string(), Type::Unknown);
         map.insert("HashMap.new".to_string(), Type::Unknown);
@@ -14069,8 +15380,7 @@ impl Codegen {
                 // TitleCase: "Str.char_at"
                 let mut chars = parent_str.chars();
                 if let Some(first) = chars.next() {
-                    let titled: String =
-                        first.to_uppercase().collect::<String>() + chars.as_str();
+                    let titled: String = first.to_uppercase().collect::<String>() + chars.as_str();
                     let title_key = format!("{}.{}", titled, fn_name);
                     map.insert(title_key, ret_type.clone());
                 }
@@ -14123,12 +15433,14 @@ impl Codegen {
                 Type::CStrLit => Some("str".to_string()),
                 Type::Array(_) | Type::RuntimeArray(_) => Some("Array".to_string()),
                 Type::List(_) => Some("List".to_string()),
-                Type::Map(_, _) => Some("Map".to_string()),  // Plan 160
+                Type::Map(_, _) => Some("Map".to_string()), // Plan 160
                 Type::Option(inner) => {
                     // Unwrap Option<T> → use inner type for method dispatch
                     // e.g., ?str calling .len() should dispatch as "str.len", not "Option.len"
                     match inner.as_ref() {
-                        Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => Some("str".to_string()),
+                        Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit => {
+                            Some("str".to_string())
+                        }
                         Type::List(_) => Some("List".to_string()),
                         Type::Map(_, _) => Some("Map".to_string()),
                         Type::Array(_) => Some("Array".to_string()),
@@ -14180,7 +15492,12 @@ impl Codegen {
     /// - The method does not have a typed variant
     /// - The type parameter index is out of bounds
     /// - The resolved native name does not exist in the registry
-    fn try_mono_dispatch(&self, base_type: &str, method: &str, type_args: &[Type]) -> Option<String> {
+    fn try_mono_dispatch(
+        &self,
+        base_type: &str,
+        method: &str,
+        type_args: &[Type],
+    ) -> Option<String> {
         // Map Auto base type names to their native registry module path
         let native_module = match base_type {
             "Map" | "HashMap" => "auto.hashmap",
@@ -14188,8 +15505,18 @@ impl Codegen {
             other => {
                 let lower = other.to_lowercase();
                 let canonical = format!("auto.{}.{}", lower, method);
-                if BIGVM_NATIVES.lock().unwrap().peek_qualified(&canonical).is_some() {
-                    vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, canonical);
+                if BIGVM_NATIVES
+                    .lock()
+                    .unwrap()
+                    .peek_qualified(&canonical)
+                    .is_some()
+                {
+                    vm_debug!(
+                        "DEBUG: Mono dispatch resolved {}.{} -> {}",
+                        base_type,
+                        method,
+                        canonical
+                    );
                     return Some(canonical);
                 }
                 vm_debug!("DEBUG: Mono dispatch failed for {}.{}", base_type, method);
@@ -14206,8 +15533,18 @@ impl Codegen {
                 let suffix = type_to_native_suffix(&type_args[type_args.len().saturating_sub(1)]);
                 if !suffix.is_empty() {
                     let typed = format!("{}.{}{}", native_module, dispatch_method, suffix);
-                    if BIGVM_NATIVES.lock().unwrap().peek_qualified(&typed).is_some() {
-                        vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, typed);
+                    if BIGVM_NATIVES
+                        .lock()
+                        .unwrap()
+                        .peek_qualified(&typed)
+                        .is_some()
+                    {
+                        vm_debug!(
+                            "DEBUG: Mono dispatch resolved {}.{} -> {}",
+                            base_type,
+                            method,
+                            typed
+                        );
                         return Some(typed);
                     }
                 }
@@ -14216,8 +15553,18 @@ impl Codegen {
 
         // Fallback: generic canonical name
         let canonical = format!("{}.{}", native_module, method);
-        if BIGVM_NATIVES.lock().unwrap().peek_qualified(&canonical).is_some() {
-            vm_debug!("DEBUG: Mono dispatch resolved {}.{} -> {}", base_type, method, canonical);
+        if BIGVM_NATIVES
+            .lock()
+            .unwrap()
+            .peek_qualified(&canonical)
+            .is_some()
+        {
+            vm_debug!(
+                "DEBUG: Mono dispatch resolved {}.{} -> {}",
+                base_type,
+                method,
+                canonical
+            );
             Some(canonical)
         } else {
             vm_debug!("DEBUG: Mono dispatch failed for {}.{}", base_type, method);
@@ -14309,7 +15656,8 @@ impl Codegen {
                 .generic_registry
                 .get_or_create_type(&type_decl.name.to_string(), type_args)
             {
-                vm_debug!("DEBUG: Registered non-generic type '{}' in generic_registry",
+                vm_debug!(
+                    "DEBUG: Registered non-generic type '{}' in generic_registry",
                     type_decl.name
                 );
             } else {
@@ -14355,7 +15703,10 @@ impl Codegen {
         // TypeDecls; the registry already has them, so this is expected, not an error.
         if let Err(e) = self.generic_registry.register_template(template) {
             if !e.contains("already registered") {
-                eprintln!("Warning: Failed to register generic template '{}': {}", type_decl.name, e);
+                eprintln!(
+                    "Warning: Failed to register generic template '{}': {}",
+                    type_decl.name, e
+                );
             }
         }
     }
@@ -14427,7 +15778,10 @@ impl Codegen {
             // Plan 118 Phase 4: Track type instances from type constructor calls
             // Example: var duck = Duck(), var wing = Wing()
             else if let Expr::Ident(type_name) = call.name.as_ref() {
-                if self.is_type(type_name) && !self.rust_native_map.contains_key(type_name.as_str()) && !self.py_native_map.contains_key(type_name.as_str()) {
+                if self.is_type(type_name)
+                    && !self.rust_native_map.contains_key(type_name.as_str())
+                    && !self.py_native_map.contains_key(type_name.as_str())
+                {
                     // Create a TypeDecl with proper members from generic_registry
                     let type_decl = if self.generic_registry.has_template(type_name) {
                         // Create a TypeDecl from the template
@@ -14441,12 +15795,16 @@ impl Codegen {
                             specs: vec![],
                             spec_impls: vec![],
                             generic_params: vec![],
-                            members: template.fields.iter().map(|f| crate::ast::Member {
-                                name: crate::ast::Name::from(f.name.as_str()),
-                                ty: f.field_type.clone(),
-                                value: None,
-                                attrs: Vec::new(),
-                            }).collect(),
+                            members: template
+                                .fields
+                                .iter()
+                                .map(|f| crate::ast::Member {
+                                    name: crate::ast::Name::from(f.name.as_str()),
+                                    ty: f.field_type.clone(),
+                                    value: None,
+                                    attrs: Vec::new(),
+                                })
+                                .collect(),
                             delegations: vec![],
                             methods: vec![],
                             attrs: vec![],
@@ -14465,12 +15823,16 @@ impl Codegen {
                             specs: vec![],
                             spec_impls: vec![],
                             generic_params: vec![],
-                            members: type_info.member_names.iter().map(|name| crate::ast::Member {
-                                name: crate::ast::Name::from(name),
-                                ty: Type::Unknown,
-                                value: None,
-                                attrs: Vec::new(),
-                            }).collect(),
+                            members: type_info
+                                .member_names
+                                .iter()
+                                .map(|name| crate::ast::Member {
+                                    name: crate::ast::Name::from(name),
+                                    ty: Type::Unknown,
+                                    value: None,
+                                    attrs: Vec::new(),
+                                })
+                                .collect(),
                             delegations: vec![],
                             methods: vec![],
                             attrs: vec![],
@@ -14500,8 +15862,10 @@ impl Codegen {
                     };
                     self.var_types
                         .insert(name_str.clone(), Type::User(type_decl));
-                    vm_debug!("DEBUG: Stored type constructor type for '{}' -> '{}' in var_types",
-                        store.name, type_name
+                    vm_debug!(
+                        "DEBUG: Stored type constructor type for '{}' -> '{}' in var_types",
+                        store.name,
+                        type_name
                     );
                 }
             }
@@ -14526,11 +15890,10 @@ impl Codegen {
                         args: vec![],
                         source: None,
                     };
-                    self.var_types.insert(
-                        name_str.clone(),
-                        Type::GenericInstance(generic_inst),
-                    );
-                    vm_debug!("DEBUG: Stored generic type for '{}' in var_types",
+                    self.var_types
+                        .insert(name_str.clone(), Type::GenericInstance(generic_inst));
+                    vm_debug!(
+                        "DEBUG: Stored generic type for '{}' in var_types",
                         store.name
                     );
                 }
@@ -14567,8 +15930,10 @@ impl Codegen {
             let ty = self.infer_expr_type(&store.expr);
             // Only store if we could infer a non-Unknown type
             if !matches!(ty, crate::ast::Type::Unknown) {
-                vm_debug!("DEBUG: Inferred type for '{}' from expression: {:?}",
-                    name_str, ty
+                vm_debug!(
+                    "DEBUG: Inferred type for '{}' from expression: {:?}",
+                    name_str,
+                    ty
                 );
                 self.var_types.insert(name_str.clone(), ty.clone());
                 // Sync with infer_ctx
@@ -14587,15 +15952,16 @@ impl Codegen {
     fn resolve_constructor_type(&self, type_name: &str) -> Option<Type> {
         // Generic collections with default type params
         const GENERIC_DEFAULTS: &[(&str, &str, &[Type])] = &[
-            ("List",         "List",     &[Type::Int] as &[Type]),
-            ("HashMap",      "HashMap",  &[Type::StrFixed(0), Type::Int]),
-            ("HashSet",      "HashSet",  &[Type::StrFixed(0)]),
-            ("Map",          "HashMap",  &[Type::StrFixed(0), Type::Int]),
-            ("VecDeque",     "VecDeque", &[Type::Int]),
-            ("BTreeMap",     "BTreeMap", &[Type::StrFixed(0), Type::Int]),
+            ("List", "List", &[Type::Int] as &[Type]),
+            ("HashMap", "HashMap", &[Type::StrFixed(0), Type::Int]),
+            ("HashSet", "HashSet", &[Type::StrFixed(0)]),
+            ("Map", "HashMap", &[Type::StrFixed(0), Type::Int]),
+            ("VecDeque", "VecDeque", &[Type::Int]),
+            ("BTreeMap", "BTreeMap", &[Type::StrFixed(0), Type::Int]),
         ];
 
-        if let Some((_, base, defaults)) = GENERIC_DEFAULTS.iter().find(|(n, _, _)| *n == type_name) {
+        if let Some((_, base, defaults)) = GENERIC_DEFAULTS.iter().find(|(n, _, _)| *n == type_name)
+        {
             let inst = crate::ast::GenericInstance {
                 base_name: crate::ast::Name::from(*base),
                 args: defaults.to_vec(),
@@ -15152,7 +16518,12 @@ mod tests {
         let mut codegen = Codegen::new();
 
         // Create a basic task definition: task CounterTask { on { } }
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let task_def = TaskDef::new("CounterTask".into(), vec![], pos);
 
         let stmt = Stmt::TaskDef(task_def);
@@ -15176,7 +16547,12 @@ mod tests {
         let mut codegen = Codegen::new();
 
         // Create a singleton task: #[single] task SingletonTask { on { } }
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let task_def = TaskDef::new("SingletonTask".into(), vec![TaskAttr::Single], pos);
 
         let stmt = Stmt::TaskDef(task_def);
@@ -15199,7 +16575,12 @@ mod tests {
         let mut codegen = Codegen::new();
 
         // Create a task with state: task CounterTask { count mut = 0 }
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let mut task_def = TaskDef::new("CounterTask".into(), vec![], pos);
         task_def.add_state("count".into(), true, Expr::Int(0));
 
@@ -15289,7 +16670,6 @@ mod tests {
     }
 }
 
-
 /// Plan 423 P5 加固:导出对齐校验 —— 函数导出地址必须落在 FN_PROLOG 字节
 /// 上。返回应丢弃的毒化导出名(Stmt::Fn 编译中途失败的半成品)。任务标记
 /// 导出(`<task>#start/#stop/#else`)指向非函数代码,按 `#` 豁免。
@@ -15303,9 +16683,8 @@ pub fn poisoned_fn_exports(
             // 非"函数入口"语义的导出族豁免:任务标记(#start/#stop/#else)、
             // async 块带外体(SPAWN_GO/.await 专用入口)与闭包体
             // (CALL_CLOSURE 协议入口)—— 三者均无 FN_PROLOG。
-            let special = n.contains('#')
-                || n.starts_with("async_block_body")
-                || n.starts_with("closure_");
+            let special =
+                n.contains('#') || n.starts_with("async_block_body") || n.starts_with("closure_");
             !special
                 && (addr as usize >= code.len() || code[addr as usize] != OpCode::FN_PROLOG as u8)
         })

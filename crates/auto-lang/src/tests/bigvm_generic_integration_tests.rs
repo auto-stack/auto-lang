@@ -1,11 +1,11 @@
 // Plan 076 Phase 5: AutoVM Generic Type Integration Tests
 // Comprehensive integration tests for generic type support in AutoVM
 
-use crate::vm::codegen::Codegen;
-use crate::vm::generic::{GenericInstance, GenericTable, extract_generic_instance};
-use crate::vm::monomorphize::{Monomorphizer, is_monomorphizable, collect_monomorphizable_types};
-use crate::vm::opcode::OpCode;
 use crate::ast::Type;
+use crate::vm::codegen::Codegen;
+use crate::vm::generic::{extract_generic_instance, GenericInstance, GenericTable};
+use crate::vm::monomorphize::{collect_monomorphizable_types, is_monomorphizable, Monomorphizer};
+use crate::vm::opcode::OpCode;
 
 // ============================================================================
 // Generic Type Tracking Integration Tests
@@ -79,7 +79,10 @@ fn test_monomorphize_multiple_instantiations() {
     let mut mono = Monomorphizer::new();
 
     mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::Int]));
-    mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
+    mono.register_generic(GenericInstance::new(
+        "List".to_string(),
+        vec![Type::StrFixed(0)],
+    ));
     mono.register_generic(GenericInstance::new("List".to_string(), vec![Type::Bool]));
 
     let modules = mono.monomorphize();
@@ -250,10 +253,7 @@ fn test_generic_instance_display_list_int() {
 
 #[test]
 fn test_generic_instance_display_multiple_params() {
-    let instance = GenericInstance::new(
-        "MyType".to_string(),
-        vec![Type::Int, Type::Bool]
-    );
+    let instance = GenericInstance::new("MyType".to_string(), vec![Type::Int, Type::Bool]);
     assert_eq!(format!("{}", instance), "MyType<int, bool>");
 }
 
@@ -319,7 +319,10 @@ fn test_generic_table_multiple_registrations() {
     let mut table = GenericTable::new();
 
     table.register(GenericInstance::new("List".to_string(), vec![Type::Int]));
-    table.register(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
+    table.register(GenericInstance::new(
+        "List".to_string(),
+        vec![Type::StrFixed(0)],
+    ));
     table.register(GenericInstance::new("List".to_string(), vec![Type::Bool]));
 
     assert_eq!(table.len(), 3);
@@ -333,7 +336,10 @@ fn test_generic_table_list_instantiations() {
     let mut table = GenericTable::new();
 
     table.register(GenericInstance::new("List".to_string(), vec![Type::Int]));
-    table.register(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
+    table.register(GenericInstance::new(
+        "List".to_string(),
+        vec![Type::StrFixed(0)],
+    ));
 
     let lists = table.list_instantiations();
     assert_eq!(lists.len(), 2);
@@ -344,7 +350,10 @@ fn test_generic_table_clear() {
     let mut table = GenericTable::new();
 
     table.register(GenericInstance::new("List".to_string(), vec![Type::Int]));
-    table.register(GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]));
+    table.register(GenericInstance::new(
+        "List".to_string(),
+        vec![Type::StrFixed(0)],
+    ));
 
     assert_eq!(table.len(), 2);
 

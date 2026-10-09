@@ -157,7 +157,9 @@ mod pipe {
     use std::thread::JoinHandle;
 
     use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-    use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions};
+    use tokio::net::windows::named_pipe::{
+        ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions,
+    };
     use tokio::sync::oneshot;
 
     use crate::ui::desktop_protocol::codec::CodecError;
@@ -190,7 +192,11 @@ mod pipe {
         let server = rt
             .block_on(async { ServerOptions::new().create(addr_of(name)) })
             .map_err(|e| TransportError::Io(e.to_string()))?;
-        Ok(PendingServer { server, rt, addr: addr_of(name) })
+        Ok(PendingServer {
+            server,
+            rt,
+            addr: addr_of(name),
+        })
     }
 
     /// PLAN-031 D2：单实例声明——`FILE_FLAG_FIRST_PIPE_INSTANCE` 创建：
@@ -216,7 +222,10 @@ mod pipe {
                     TransportError::Io(e.to_string())
                 }
             })?;
-        Ok(PipeClaim { _server: server, _rt: rt })
+        Ok(PipeClaim {
+            _server: server,
+            _rt: rt,
+        })
     }
 
     /// [`try_claim_pipe`] 的守卫：持有命名管道服务端实例（名字占位即
@@ -336,7 +345,6 @@ mod pipe {
                 rt,
             }
         }
-
     }
 
     impl<T: AsyncRead + AsyncWrite + Unpin + Send + 'static> Transport for PipeEnd<T> {
@@ -384,7 +392,9 @@ mod pipe {
 }
 
 #[cfg(windows)]
-pub use pipe::{connect, listen, try_claim_pipe, PendingServer, PipeClaim, PipeEnd, CLAIM_DENIED_MARKER};
+pub use pipe::{
+    connect, listen, try_claim_pipe, PendingServer, PipeClaim, PipeEnd, CLAIM_DENIED_MARKER,
+};
 
 /// 非 Windows 占位（Plan 509 Linux 编译缺口修补）：接口形状与 pipe 模
 /// 块一致，调用即返回错误——真 Linux 传输（UDS）随 Smithay 宿主线生长
@@ -506,7 +516,10 @@ pub mod ws {
         /// 类型擦除构造（与 pipe 端统一为 `Box<dyn Transport + Send>`）。
         fn spawn_boxed(rt: Arc<tokio::runtime::Runtime>, stream: S) -> Box<dyn Transport + Send> {
             let (sink, stream) = stream.split();
-            let inbox = Arc::new(Mutex::new(Inbox { envelopes: VecDeque::new(), eof: false }));
+            let inbox = Arc::new(Mutex::new(Inbox {
+                envelopes: VecDeque::new(),
+                eof: false,
+            }));
             let inbox_reader = Arc::clone(&inbox);
             let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
             let writer = Arc::new(Mutex::new(sink));
@@ -681,7 +694,11 @@ pub mod ws {
                     }
                 })
                 .map_err(|e| TransportError::Io(e.to_string()))?;
-            Ok(Self { accepted, stop, port })
+            Ok(Self {
+                accepted,
+                stop,
+                port,
+            })
         }
 
         /// 实际监听端口（bind(0) 时为系统分配值）。
@@ -720,7 +737,10 @@ pub mod ws {
     }
 
     /// 客户端连入（Rust 侧消费者 + 测试；token 经 URL query 携带）。
-    pub fn connect(url: &str, timeout_ms: u32) -> Result<Box<dyn Transport + Send>, TransportError> {
+    pub fn connect(
+        url: &str,
+        timeout_ms: u32,
+    ) -> Result<Box<dyn Transport + Send>, TransportError> {
         let rt = Arc::new(make_rt());
         let deadline =
             std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64);
@@ -769,7 +789,8 @@ mod tests {
 
     fn fifo_check<A: Transport, B: Transport>(a: &mut A, b: &mut B) {
         for wid in 1..=3u64 {
-            a.send(&ProtocolMsg::Control(ControlMsg::Close { wid })).unwrap();
+            a.send(&ProtocolMsg::Control(ControlMsg::Close { wid }))
+                .unwrap();
         }
         for wid in 1..=3u64 {
             assert_eq!(
@@ -803,7 +824,9 @@ mod tests {
         // app → host：FIFO + 完整信封解码。
         fifo_check(&mut client, &mut server);
         // host → app。
-        server.send(&ProtocolMsg::Handshake(HandshakeMsg::Ready)).unwrap();
+        server
+            .send(&ProtocolMsg::Handshake(HandshakeMsg::Ready))
+            .unwrap();
         assert_eq!(
             client.recv_wait(2000).unwrap().unwrap(),
             ProtocolMsg::Handshake(HandshakeMsg::Ready)
@@ -825,10 +848,7 @@ mod tests {
         client.write_raw(head).unwrap();
         assert!(server.recv_wait(100).is_none(), "残帧不交付");
         client.write_raw(tail).unwrap();
-        let msg = server
-            .recv_wait(2000)
-            .expect("补全后应可达")
-            .unwrap();
+        let msg = server.recv_wait(2000).expect("补全后应可达").unwrap();
         assert_eq!(msg, ProtocolMsg::Control(ControlMsg::Close { wid: 9 }));
     }
 
@@ -893,14 +913,15 @@ mod tests {
         #[test]
         fn ws_pair_round_trip() {
             let mut listener = ws::WsListener::bind(0, "t1-token").expect("bind");
-            let mut client =
-                ws::connect(&listener.url("t1-token"), 3000).expect("client connect");
+            let mut client = ws::connect(&listener.url("t1-token"), 3000).expect("client connect");
             let mut server = accept_once(&mut listener);
 
             // client → server：FIFO + 完整信封解码。
             fifo_check(&mut client, &mut server);
             // server → client。
-            server.send(&ProtocolMsg::Handshake(HandshakeMsg::Ready)).unwrap();
+            server
+                .send(&ProtocolMsg::Handshake(HandshakeMsg::Ready))
+                .unwrap();
             assert_eq!(
                 client.recv_wait(2000).unwrap().unwrap(),
                 ProtocolMsg::Handshake(HandshakeMsg::Ready)
@@ -914,8 +935,7 @@ mod tests {
         #[test]
         fn ws_binary_message_is_envelope() {
             let mut listener = ws::WsListener::bind(0, "t1-golden").expect("bind");
-            let mut client =
-                ws::connect(&listener.url("t1-golden"), 3000).expect("client connect");
+            let mut client = ws::connect(&listener.url("t1-golden"), 3000).expect("client connect");
             let mut server = accept_once(&mut listener);
 
             let msg = ProtocolMsg::Control(ControlMsg::Close { wid: 7 });
@@ -947,7 +967,9 @@ mod tests {
         #[test]
         fn ws_token_rejected() {
             let mut listener = ws::WsListener::bind(0, "t1-right").expect("bind");
-            let err = ws::connect(&listener.url("t1-wrong"), 3000).err().expect("拒收");
+            let err = ws::connect(&listener.url("t1-wrong"), 3000)
+                .err()
+                .expect("拒收");
             match err {
                 crate::ui::desktop_protocol::transport::TransportError::Io(msg) => {
                     assert!(msg.contains("rejected"), "升级拒绝终态错误: {msg}");

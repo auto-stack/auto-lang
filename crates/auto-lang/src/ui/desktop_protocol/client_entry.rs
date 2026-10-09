@@ -39,13 +39,18 @@ pub struct ClientOpts {
 /// ③ rqhost 采纳（PLAN-031——rendezvous 内建 + exit-on-EOF 策略档）。
 pub enum ClientTarget {
     Direct(String),
-    Broker { broker_pipe: String },
+    Broker {
+        broker_pipe: String,
+    },
     /// PLAN-031 D5：`auto run -q` 形态。connect = rendezvous 采纳
     /// （连 well-known → `adopt␟<app_name>` → 转连 per-app 管道——
     /// 采纳与使用同点，不预连不烧一次性管道实例）；差异在**宿主亡
     /// 策略**——reconnect=None（`ClientExit::HostLost` 即退 + 观测行），
     /// 区别于桌面档 30s 重连（原生 app 心智：宿主没了就干净退出）。
-    Rqhost { wellknown: String, app_name: String },
+    Rqhost {
+        wellknown: String,
+        app_name: String,
+    },
     /// PLAN-693：虚拟桌面合成器端点——连接语义与 [`ClientTarget::Rqhost`]
     /// 完全同构（adopt rendezvous 协议零变化），差异仅端点来源（CLI
     /// `--desktop-endpoint` 参数指定，非 well-known 常量）与**不孵化
@@ -53,12 +58,18 @@ pub enum ClientTarget {
     /// 不代孵——孵化分支结构性不存在，[`super::rqhost::adopt`] 本就只
     /// 连不孵）；宿主亡策略同 rqhost（exit-on-EOF——桌面宿主没了，app
     /// 跟随退出）。
-    Desktop { endpoint: String, app_name: String },
+    Desktop {
+        endpoint: String,
+        app_name: String,
+    },
 }
 
 /// 宿主亡策略选择（PLAN-031 T-05）：Rqhost/桌面端点档 = exit-on-EOF
 ///（None）；桌面档（Direct/Broker）= 既有 30s/50ms 重连不变（I2）。
-pub(crate) fn reconnect_for(target: &ClientTarget, per_app_pipe: String) -> Option<ReconnectPolicy> {
+pub(crate) fn reconnect_for(
+    target: &ClientTarget,
+    per_app_pipe: String,
+) -> Option<ReconnectPolicy> {
     match target {
         ClientTarget::Rqhost { .. } | ClientTarget::Desktop { .. } => None,
         ClientTarget::Direct(_) | ClientTarget::Broker { .. } => Some(ReconnectPolicy {
@@ -82,10 +93,11 @@ pub fn connect(
             let end = transport::connect(p, 5000).map_err(|e| format!("连 {p}: {e:?}"))?;
             Ok((p.clone(), end))
         }
-        ClientTarget::Rqhost { wellknown, app_name } => {
-            super::rqhost::adopt(wellknown, app_name, 5000)
-                .map_err(|e| format!("rqhost 采纳失败: {e:?}"))
-        }
+        ClientTarget::Rqhost {
+            wellknown,
+            app_name,
+        } => super::rqhost::adopt(wellknown, app_name, 5000)
+            .map_err(|e| format!("rqhost 采纳失败: {e:?}")),
         ClientTarget::Desktop { endpoint, app_name } => {
             // 不孵化语义（PLAN-693）：adopt 本就只连不孵——端点缺席在此
             // 干净报错，提示先启动虚拟桌面（rq 模式的 ensure 孵化分支
@@ -112,11 +124,15 @@ pub fn run_dynamic_client(
     opts: ClientOpts,
     target: ClientTarget,
 ) -> Result<(), String> {
-    let render =
-        RequestedRender { mode: opts.frame_mode, auto_downgraded: opts.auto_downgraded };
+    let render = RequestedRender {
+        mode: opts.frame_mode,
+        auto_downgraded: opts.auto_downgraded,
+    };
     // exit-on-EOF 策略档观测（rqhost/桌面端点两 adopt 形同款）。
-    let reconnect_pipe_target =
-        matches!(target, ClientTarget::Rqhost { .. } | ClientTarget::Desktop { .. });
+    let reconnect_pipe_target = matches!(
+        target,
+        ClientTarget::Rqhost { .. } | ClientTarget::Desktop { .. }
+    );
     match opts.frame_mode {
         FrameMode::Pixels => Err(
             "[render] 解释轨 pixels 臂已退役（PLAN-033）——VM 轨两合法形态 = inproc 直挂 / -q 经 native 臂".to_string(),
@@ -219,7 +235,10 @@ mod tests {
     }
 
     fn ce_render() -> broker::RequestedRender {
-        broker::RequestedRender { mode: FrameMode::Commands, auto_downgraded: false }
+        broker::RequestedRender {
+            mode: FrameMode::Commands,
+            auto_downgraded: false,
+        }
     }
 
     /// AC-03（不孵化语义·缺度态）：desktop 端点缺席 = 干净报错提示先启动
@@ -254,17 +273,21 @@ mod tests {
     #[test]
     fn desktop_connect_adopts_live_serve() {
         let endpoint = ce_pipe("live");
-        let (serve, _claim) =
-            crate::ui::desktop_protocol::rqhost::RqServe::start(&endpoint)
-                .unwrap_or_else(|e| panic!("serve 替身启动失败: {e:?}"));
-        let target =
-            ClientTarget::Desktop { endpoint: endpoint.clone(), app_name: "t".to_string() };
+        let (serve, _claim) = crate::ui::desktop_protocol::rqhost::RqServe::start(&endpoint)
+            .unwrap_or_else(|e| panic!("serve 替身启动失败: {e:?}"));
+        let target = ClientTarget::Desktop {
+            endpoint: endpoint.clone(),
+            app_name: "t".to_string(),
+        };
         let (per_app, _app_end) = match connect(&target, "t", ce_render()) {
             Ok(v) => v,
             Err(e) => panic!("adopt 失败: {e}"),
         };
         assert!(!per_app.is_empty(), "per-app 管道名回传");
-        assert!(per_app != endpoint, "转连 per-app 管道（非 well-known 本名）");
+        assert!(
+            per_app != endpoint,
+            "转连 per-app 管道（非 well-known 本名）"
+        );
         serve.stop(&endpoint);
     }
 }
@@ -296,7 +319,8 @@ pub fn resolve_native_frame_mode<M: Clone + std::fmt::Debug>(
         RenderMode::Remote => (FrameMode::Commands, false, None),
         RenderMode::Auto => {
             let scan = crate::ui::desktop_protocol::coverage::scan_native_view(view);
-            match crate::ui::desktop_protocol::coverage::judge(&scan, &Coverage::native_queue_set()) {
+            match crate::ui::desktop_protocol::coverage::judge(&scan, &Coverage::native_queue_set())
+            {
                 Verdict::Covered => (
                     // PLAN-032 T-06 翻转执行（ramp v3 数据门达标——judged
                     // 22/22 = 100%；翻转前本臂返 Pixels：026/029 两复测
@@ -338,11 +362,15 @@ where
     C: Component + 'static,
     C::Msg: Clone + std::fmt::Debug + Send + 'static,
 {
-    let render =
-        RequestedRender { mode: opts.frame_mode, auto_downgraded: opts.auto_downgraded };
+    let render = RequestedRender {
+        mode: opts.frame_mode,
+        auto_downgraded: opts.auto_downgraded,
+    };
     // exit-on-EOF 策略档观测（rqhost/桌面端点两 adopt 形同款）。
-    let rqhost_target =
-        matches!(target, ClientTarget::Rqhost { .. } | ClientTarget::Desktop { .. });
+    let rqhost_target = matches!(
+        target,
+        ClientTarget::Rqhost { .. } | ClientTarget::Desktop { .. }
+    );
     let (per_app_pipe, app_end) = connect(&target, &opts.app_name, render)?;
     match opts.frame_mode {
         FrameMode::Pixels => pixels::run_independent_native_child(
@@ -356,11 +384,8 @@ where
         FrameMode::Commands if opts.remote => {
             // PLAN-683（remote 模式）：native 轨同享 headless 宿主
             //（HeadlessFrameSource 泛型于 Component——a2r 编译组件同臂）。
-            let source = super::headless::HeadlessFrameSource::new(
-                component,
-                opts.width,
-                opts.height,
-            );
+            let source =
+                super::headless::HeadlessFrameSource::new(component, opts.width, opts.height);
             let config = ClientConfig {
                 app_name: opts.app_name.clone(),
                 title: opts.title,
@@ -373,7 +398,10 @@ where
             if rqhost_target && matches!(exit, client_runtime::ClientExit::HostLost) {
                 eprintln!("[rqhost-client] host lost → exit（exit-on-EOF 策略档）");
             }
-            println!("[autodesk-client] exit={exit:?} revision={}", source.revision());
+            println!(
+                "[autodesk-client] exit={exit:?} revision={}",
+                source.revision()
+            );
             Ok(())
         }
         FrameMode::Commands => {
@@ -389,16 +417,15 @@ where
                 height: opts.height,
             };
             let reconnect = reconnect_for(&target, per_app_pipe);
-            let (exit, projector) = client_runtime::run_client_session(
-                app_end,
-                projector,
-                config,
-                reconnect,
-            );
+            let (exit, projector) =
+                client_runtime::run_client_session(app_end, projector, config, reconnect);
             if rqhost_target && matches!(exit, client_runtime::ClientExit::HostLost) {
                 eprintln!("[rqhost-client] host lost → exit（exit-on-EOF 策略档）");
             }
-            println!("[autodesk-client] exit={exit:?} revision={}", projector.revision());
+            println!(
+                "[autodesk-client] exit={exit:?} revision={}",
+                projector.revision()
+            );
             Ok(())
         }
     }

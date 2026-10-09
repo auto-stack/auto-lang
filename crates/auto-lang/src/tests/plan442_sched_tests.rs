@@ -60,7 +60,10 @@ mod plan442_sched_tests {
             }
         };
         // .Init scheduled "Fired" at +20ms. Before the deadline: nothing.
-        assert!(dc.has_pending_timers(), "timer should be pending after Init");
+        assert!(
+            dc.has_pending_timers(),
+            "timer should be pending after Init"
+        );
         let early = dc.poll_timers();
         assert_eq!(early, 0, "timer must not fire before its deadline");
         assert_eq!(state_str(&dc, "ticks"), "0");
@@ -111,10 +114,18 @@ mod plan442_sched_tests {
         };
         // .Init scheduled "Fired" at +20ms; cancel it before it fires.
         dc.on_with_input("Cancel", None);
-        assert_eq!(state_str(&dc, "cancelled"), "true", "clear_timeout should report removal");
+        assert_eq!(
+            state_str(&dc, "cancelled"),
+            "true",
+            "clear_timeout should report removal"
+        );
         assert!(!dc.has_pending_timers());
         std::thread::sleep(std::time::Duration::from_millis(40));
         assert_eq!(dc.poll_timers(), 0);
-        assert_eq!(state_str(&dc, "ticks"), "0", "cancelled timer must never fire");
+        assert_eq!(
+            state_str(&dc, "ticks"),
+            "0",
+            "cancelled timer must never fire"
+        );
     }
 }

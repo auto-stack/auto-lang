@@ -15,8 +15,8 @@
 //! introduce, and replaces the bespoke mini-compiler + AST tree-walker that
 //! stalled mid-Plan-205-migration.
 
-use std::collections::{HashSet, HashMap};
 use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 
 use crate::ast::{
     Arg, Body, Branch, Expr, Fn, FnKind, If, Member, Name, Param, Stmt, Try, Type, TypeDecl,
@@ -159,9 +159,8 @@ fn computed_call_expr(fn_name: &str) -> Expr {
 /// 期（同线程、同一组件）。set_store_context 同步落一份别名→真名快照
 /// （仅收 is-store 条目；clear 不清快照），view_store_alias_real_name 据此
 /// 判定。进程=单 app，last-synthesis-wins 语义与渲染一一对应。
-static VIEW_STORE_ALIAS_SNAPSHOT: std::sync::LazyLock<
-    std::sync::Mutex<HashMap<String, String>>,
-> = std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+static VIEW_STORE_ALIAS_SNAPSHOT: std::sync::LazyLock<std::sync::Mutex<HashMap<String, String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
 
 /// Set the store context for the current synthesis pass.
 pub fn set_store_context(fields: HashMap<String, Vec<String>>, names: HashMap<String, String>) {
@@ -401,13 +400,27 @@ fn rewrite_stmt_with_locals(
             if let Expr::Dot(obj, method) = call.name.as_ref() {
                 if let Expr::Ident(name) = obj.as_ref() {
                     if name.as_str() == "router" && method.as_str() == "push" {
-                        Some(call.args.args.first().and_then(|a| match a {
-                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
-                            crate::ast::Arg::Name(_) => None,
-                        }).unwrap_or(Expr::Str(auto_val::AutoStr::from(""))))
-                    } else { None }
-                } else { None }
-            } else { None }
+                        Some(
+                            call.args
+                                .args
+                                .first()
+                                .and_then(|a| match a {
+                                    crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => {
+                                        Some(e.clone())
+                                    }
+                                    crate::ast::Arg::Name(_) => None,
+                                })
+                                .unwrap_or(Expr::Str(auto_val::AutoStr::from(""))),
+                        )
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
         }
         Stmt::Expr(Expr::NavCall { path, .. }) => Some((**path).clone()),
         _ => None,
@@ -435,11 +448,19 @@ fn rewrite_stmt_with_locals(
             for Branch { cond, body } in branches.iter_mut() {
                 rewrite_expr_with_locals(cond, state_fields, locals);
                 let mut branch_locals = locals.clone();
-                rewrite_state_refs_stmts_with_locals(&mut body.stmts, state_fields, &mut branch_locals);
+                rewrite_state_refs_stmts_with_locals(
+                    &mut body.stmts,
+                    state_fields,
+                    &mut branch_locals,
+                );
             }
             if let Some(else_body) = else_ {
                 let mut else_locals = locals.clone();
-                rewrite_state_refs_stmts_with_locals(&mut else_body.stmts, state_fields, &mut else_locals);
+                rewrite_state_refs_stmts_with_locals(
+                    &mut else_body.stmts,
+                    state_fields,
+                    &mut else_locals,
+                );
             }
         }
         Stmt::For(f) => {
@@ -461,7 +482,11 @@ fn rewrite_stmt_with_locals(
             for p in &fn_decl.params {
                 fn_locals.insert(p.name.to_string());
             }
-            rewrite_state_refs_stmts_with_locals(&mut fn_decl.body.stmts, state_fields, &mut fn_locals);
+            rewrite_state_refs_stmts_with_locals(
+                &mut fn_decl.body.stmts,
+                state_fields,
+                &mut fn_locals,
+            );
         }
         // Plan 446 批一(auto-musk 045 现场):try/catch/finally 体同样走查。
         // 此前缺臂,体内 `.state` 读写漏成裸 self → VM 合成 handler 报
@@ -471,10 +496,18 @@ fn rewrite_stmt_with_locals(
             let mut try_locals = locals.clone();
             rewrite_state_refs_stmts_with_locals(&mut t.body.stmts, state_fields, &mut try_locals);
             let mut catch_locals = locals.clone();
-            rewrite_state_refs_stmts_with_locals(&mut t.catch_body.stmts, state_fields, &mut catch_locals);
+            rewrite_state_refs_stmts_with_locals(
+                &mut t.catch_body.stmts,
+                state_fields,
+                &mut catch_locals,
+            );
             if let Some(fb) = t.finally_body.as_mut() {
                 let mut finally_locals = locals.clone();
-                rewrite_state_refs_stmts_with_locals(&mut fb.stmts, state_fields, &mut finally_locals);
+                rewrite_state_refs_stmts_with_locals(
+                    &mut fb.stmts,
+                    state_fields,
+                    &mut finally_locals,
+                );
             }
         }
         _ => {}
@@ -516,9 +549,7 @@ fn rewrite_expr_with_locals(
                 _ => false,
             };
             match (compound_op, lhs_is_field) {
-                (Some(plain), true) => {
-                    Some(((**lhs).clone(), (**rhs).clone(), plain))
-                }
+                (Some(plain), true) => Some(((**lhs).clone(), (**rhs).clone(), plain)),
                 _ => None,
             }
         }
@@ -568,10 +599,12 @@ fn rewrite_expr_with_locals(
                 }
             }
             let payload = format!("{}\u{1f}{}\u{1f}{}\u{1f}{}", kind, msg, position, duration);
-            let toast_field = || Box::new(Expr::Dot(
-                Box::new(Expr::Ident(Name::from(STATE_PARAM))),
-                Name::from("__toast"),
-            ));
+            let toast_field = || {
+                Box::new(Expr::Dot(
+                    Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                    Name::from("__toast"),
+                ))
+            };
             *e = Expr::Bina(
                 toast_field(),
                 auto_val::Op::Asn,
@@ -599,10 +632,15 @@ fn rewrite_expr_with_locals(
             if let Expr::Ident(name) = obj.as_ref() {
                 if name.as_str() == "router" && method.as_str() == "param" {
                     // The param name is the first positional arg (a str literal).
-                    let param_field = call.args.args.iter().find_map(|a| match a {
-                        crate::ast::Arg::Pos(Expr::Str(s)) => Some(s.clone()),
-                        _ => None,
-                    }).unwrap_or_default();
+                    let param_field = call
+                        .args
+                        .args
+                        .iter()
+                        .find_map(|a| match a {
+                            crate::ast::Arg::Pos(Expr::Str(s)) => Some(s.clone()),
+                            _ => None,
+                        })
+                        .unwrap_or_default();
                     *e = Expr::Dot(
                         Box::new(Expr::Dot(
                             Box::new(Expr::Ident(Name::from(STATE_PARAM))),
@@ -629,7 +667,8 @@ fn rewrite_expr_with_locals(
     if let Expr::Call(call) = e {
         if let Expr::Dot(obj, method) = call.name.as_ref() {
             if let Expr::Ident(alias) = obj.as_ref() {
-                let legacy_target = STORE_WIDGET_NAMES.with(|s| s.borrow().get(alias.as_str()).cloned());
+                let legacy_target =
+                    STORE_WIDGET_NAMES.with(|s| s.borrow().get(alias.as_str()).cloned());
                 if let Some(legacy_target) = legacy_target {
                     let multi_store = STORE_MSG_MAP.with(|s| s.borrow().len() > 1);
                     let qualified_call = multi_store && alias.as_str() != "store";
@@ -672,7 +711,8 @@ fn rewrite_expr_with_locals(
                     };
                     let store_name = store_name.unwrap_or_default();
                     let handler_fn = format!("handler_{}_{}", store_name, method);
-                    let mut new_args = vec![crate::ast::Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
+                    let mut new_args =
+                        vec![crate::ast::Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
                     // Clone and rewrite each original arg before adding
                     for arg in &call.args.args {
                         let mut cloned = arg.clone();
@@ -715,10 +755,8 @@ fn rewrite_expr_with_locals(
             );
             if self_receiver {
                 let fname = field.as_str();
-                let is_variant =
-                    CURRENT_MSG_VARIANTS.with(|s| s.borrow().contains(fname));
-                let is_handler =
-                    CURRENT_HANDLER_NAMES.with(|s| s.borrow().contains(fname));
+                let is_variant = CURRENT_MSG_VARIANTS.with(|s| s.borrow().contains(fname));
+                let is_handler = CURRENT_HANDLER_NAMES.with(|s| s.borrow().contains(fname));
                 if is_variant && !is_handler {
                     let widget_name = CURRENT_WIDGET_NAME.with(|s| s.borrow().clone());
                     if !widget_name.is_empty() {
@@ -730,10 +768,10 @@ fn rewrite_expr_with_locals(
                             .count();
                         let emit_fn = emit_bridge_fn_name(&widget_name, fname);
                         PENDING_EMIT_SYNTH.with(|p| {
-                            p.borrow_mut().push((widget_name.clone(), fname.to_string(), argc))
+                            p.borrow_mut()
+                                .push((widget_name.clone(), fname.to_string(), argc))
                         });
-                        let mut new_args =
-                            vec![Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
+                        let mut new_args = vec![Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
                         for arg in &call.args.args {
                             let mut cloned = arg.clone();
                             match &mut cloned {
@@ -783,12 +821,14 @@ fn rewrite_expr_with_locals(
             _ => None,
         };
         if let Some(method) = method_opt {
-            let is_msg_variant = CURRENT_MSG_VARIANTS.with(|s| s.borrow().contains(method.as_str()));
+            let is_msg_variant =
+                CURRENT_MSG_VARIANTS.with(|s| s.borrow().contains(method.as_str()));
             if is_msg_variant {
                 let widget_name = CURRENT_WIDGET_NAME.with(|s| s.borrow().clone());
                 if !widget_name.is_empty() {
                     let handler_fn = format!("handler_{}_{}", widget_name, method);
-                    let mut new_args = vec![crate::ast::Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
+                    let mut new_args =
+                        vec![crate::ast::Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
                     for arg in &call.args.args {
                         let mut cloned = arg.clone();
                         match &mut cloned {
@@ -835,7 +875,8 @@ fn rewrite_expr_with_locals(
     if let Expr::Dot(inner, field) = e {
         if let Expr::Dot(obj, store_alias) = inner.as_ref() {
             if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") {
-                let real = STORE_WIDGET_NAMES.with(|s| s.borrow().get(store_alias.as_str()).cloned());
+                let real =
+                    STORE_WIDGET_NAMES.with(|s| s.borrow().get(store_alias.as_str()).cloned());
                 let target = real.as_deref().unwrap_or(store_alias.as_str());
                 let is_store = STORE_FIELDS.with(|s| s.borrow().contains_key(target));
                 if is_store {
@@ -853,10 +894,14 @@ fn rewrite_expr_with_locals(
     // Compute the replacement without holding a mutable borrow into `e`, so the
     // reassignment below type-checks.
     let replacement: Option<Expr> = match e {
-        Expr::Ident(name) if state_fields.contains(name.as_str()) && !locals.contains(name.as_str()) => Some(Expr::Dot(
-            Box::new(Expr::Ident(Name::from(STATE_PARAM))),
-            name.clone(),
-        )),
+        Expr::Ident(name)
+            if state_fields.contains(name.as_str()) && !locals.contains(name.as_str()) =>
+        {
+            Some(Expr::Dot(
+                Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                name.clone(),
+            ))
+        }
         // Plan 576 (D2): computed 裸名 → 隐藏函数调用（state 字段优先于
         // computed 同名；局部形参遮蔽同规则）。
         Expr::Ident(name)
@@ -954,13 +999,23 @@ fn rewrite_expr_with_locals(
             rewrite_expr_with_locals(r, state_fields, locals);
         }
         Expr::Unary(_, o) => rewrite_expr_with_locals(o, state_fields, locals),
-        Expr::View(o) | Expr::Mut(o) | Expr::Move(o) | Expr::Take(o)
-        | Expr::ErrorPropagate(o) | Expr::Some(o) | Expr::Ok(o) | Expr::Err(o)
-        | Expr::BoxExpr(o) | Expr::ArcExpr(o) | Expr::Yield(o) => {
-            rewrite_expr_with_locals(o, state_fields, locals)
+        Expr::View(o)
+        | Expr::Mut(o)
+        | Expr::Move(o)
+        | Expr::Take(o)
+        | Expr::ErrorPropagate(o)
+        | Expr::Some(o)
+        | Expr::Ok(o)
+        | Expr::Err(o)
+        | Expr::BoxExpr(o)
+        | Expr::ArcExpr(o)
+        | Expr::Yield(o) => rewrite_expr_with_locals(o, state_fields, locals),
+        Expr::Cast { expr, .. } | Expr::To { expr, .. } => {
+            rewrite_expr_with_locals(expr, state_fields, locals)
         }
-        Expr::Cast { expr, .. } | Expr::To { expr, .. } => rewrite_expr_with_locals(expr, state_fields, locals),
-        Expr::Await { expr } | Expr::Go { expr } => rewrite_expr_with_locals(expr, state_fields, locals),
+        Expr::Await { expr } | Expr::Go { expr } => {
+            rewrite_expr_with_locals(expr, state_fields, locals)
+        }
         Expr::TupleDestruct { expr, .. } => rewrite_expr_with_locals(expr, state_fields, locals),
         Expr::Index(a, i) => {
             rewrite_expr_with_locals(a, state_fields, locals);
@@ -999,7 +1054,9 @@ fn rewrite_expr_with_locals(
             }
             for arg in &mut c.args.args {
                 match arg {
-                    Arg::Pos(ex) | Arg::Pair(_, ex) => rewrite_expr_with_locals(ex, state_fields, locals),
+                    Arg::Pos(ex) | Arg::Pair(_, ex) => {
+                        rewrite_expr_with_locals(ex, state_fields, locals)
+                    }
                     Arg::Name(_) => {}
                 }
             }
@@ -1020,7 +1077,11 @@ fn rewrite_expr_with_locals(
             for Branch { cond, body } in branches {
                 rewrite_expr_with_locals(cond, state_fields, locals);
                 let mut branch_locals = locals.clone();
-                rewrite_state_refs_stmts_with_locals(&mut body.stmts, state_fields, &mut branch_locals);
+                rewrite_state_refs_stmts_with_locals(
+                    &mut body.stmts,
+                    state_fields,
+                    &mut branch_locals,
+                );
             }
             if let Some(eb) = else_ {
                 let mut else_locals = locals.clone();
@@ -1032,7 +1093,11 @@ fn rewrite_expr_with_locals(
             for p in &fn_decl.params {
                 lambda_locals.insert(p.name.to_string());
             }
-            rewrite_state_refs_stmts_with_locals(&mut fn_decl.body.stmts, state_fields, &mut lambda_locals);
+            rewrite_state_refs_stmts_with_locals(
+                &mut fn_decl.body.stmts,
+                state_fields,
+                &mut lambda_locals,
+            );
         }
         _ => {}
     }
@@ -1080,7 +1145,13 @@ pub fn computed_fn_name(widget_name: &str, computed_name: &str) -> String {
 fn emit_bridge_fn_name(widget_name: &str, msg: &str) -> String {
     let safe: String = msg
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     format!("__emit_{}_{}", widget_name, safe)
 }
@@ -1113,18 +1184,18 @@ fn synthesize_emit_bridge_fn(
     };
     let mut stmts = vec![Stmt::Expr(Expr::Bina(
         Box::new(Expr::Dot(
-                Box::new(Expr::Ident(Name::from(STATE_PARAM))),
-                Name::from("__emit_msg"),
-            )),
+            Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+            Name::from("__emit_msg"),
+        )),
         auto_val::Op::Asn,
         Box::new(Expr::Str(auto_val::AutoStr::from(msg))),
     ))];
     if argc >= 1 {
         stmts.push(Stmt::Expr(Expr::Bina(
             Box::new(Expr::Dot(
-                    Box::new(Expr::Ident(Name::from(STATE_PARAM))),
-                    Name::from("__emit_payload"),
-                )),
+                Box::new(Expr::Ident(Name::from(STATE_PARAM))),
+                Name::from("__emit_payload"),
+            )),
             auto_val::Op::Asn,
             Box::new(Expr::Ident(Name::from("v0"))),
         )));
@@ -1310,7 +1381,10 @@ fn synthesize_handler_fn(
     // Move → update:scrollTop → SetScrollTop 链死（拖拽失效最后一环，
     // T-02 f64 修复暴露）。
     if stmts.is_empty() && (event_pattern.contains(':') || event_pattern.contains('"')) {
-        let msg = event_pattern.replace('"', "").trim_start_matches('.').to_string();
+        let msg = event_pattern
+            .replace('"', "")
+            .trim_start_matches('.')
+            .to_string();
         stmts.push(Stmt::Expr(Expr::Bina(
             Box::new(Expr::Dot(
                 Box::new(Expr::Ident(Name::from(STATE_PARAM))),
@@ -1403,10 +1477,12 @@ pub fn synthesize_widget_module(
             if let Stmt::Fn(f) = stmt {
                 if let Some(api) = &f.api_attrs {
                     let qualified = f.name.to_string();
-                    let bare = qualified.split('.').last()
-                        .unwrap_or(&qualified).to_string();
-                    let params: Vec<String> = f.params.iter()
-                        .map(|p| p.name.to_string()).collect();
+                    let bare = qualified
+                        .split('.')
+                        .last()
+                        .unwrap_or(&qualified)
+                        .to_string();
+                    let params: Vec<String> = f.params.iter().map(|p| p.name.to_string()).collect();
                     let info = crate::vm::codegen::ApiCallInfo {
                         fn_name: qualified.clone(),
                         method: api.method.clone(),
@@ -1519,7 +1595,10 @@ pub fn synthesize_widget_module(
     for stmt in &import_stmts {
         if matches!(stmt, Stmt::TypeDecl(_) | Stmt::EnumDecl(_)) {
             if let Err(e) = codegen.compile_stmt(stmt) {
-                log::warn!("handler_codegen: import type/enum decl failed to compile: {}", e);
+                log::warn!(
+                    "handler_codegen: import type/enum decl failed to compile: {}",
+                    e
+                );
             }
         }
     }
@@ -1543,7 +1622,8 @@ pub fn synthesize_widget_module(
     // top-level statements — so bare init code would fall through into the next
     // handler's bytecode. An exported __module_init fn is callable explicitly
     // (VmBridge runs it once before .Init), giving the globals defined values.
-    let store_inits: Vec<Stmt> = import_stmts.iter()
+    let store_inits: Vec<Stmt> = import_stmts
+        .iter()
         .filter_map(|s| {
             if let crate::ast::Stmt::Store(st) = s {
                 // Keep only `var`/reassignment stores (declarations with an
@@ -1563,7 +1643,11 @@ pub fn synthesize_widget_module(
             Name::from(MODULE_INIT_FN),
             None,
             Vec::new(),
-            Body { stmts: store_inits, has_new_line: false, source_lines: Vec::new() },
+            Body {
+                stmts: store_inits,
+                has_new_line: false,
+                source_lines: Vec::new(),
+            },
             Type::Void,
         ));
         if let Err(e) = codegen.compile_stmt(&init_fn) {
@@ -1572,7 +1656,10 @@ pub fn synthesize_widget_module(
         codegen.force_global_store = false;
     }
     for stmt in &import_stmts {
-        if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {
+        if matches!(
+            stmt,
+            Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)
+        ) {
             // PLAN-066 T-12: web 全局降级（document → None）——import fn
             // 体（如 mention_helpers.mention_detect）引用 document 曾毒化
             // 导出致 App link failed。
@@ -1603,11 +1690,7 @@ pub fn synthesize_widget_module(
         .collect();
 
     for w in &all_widgets {
-        let w_state_fields: HashSet<String> = w
-            .state_vars
-            .iter()
-            .map(|v| v.name.clone())
-            .collect();
+        let w_state_fields: HashSet<String> = w.state_vars.iter().map(|v| v.name.clone()).collect();
         let w_state_type = synthesize_state_type(w);
 
         // Plan 056 blocker A (AuraWidget path): set the current-widget context
@@ -1661,11 +1744,8 @@ pub fn synthesize_widget_module(
         }
 
         // Handlers + lifecycle (sorted for deterministic layout).
-        let mut w_handlers: Vec<(String, &LogicPayload)> = w
-            .handlers
-            .iter()
-            .map(|(p, pl)| (p.clone(), pl))
-            .collect();
+        let mut w_handlers: Vec<(String, &LogicPayload)> =
+            w.handlers.iter().map(|(p, pl)| (p.clone(), pl)).collect();
         for lc in &w.lifecycle {
             w_handlers.push((lc.name.clone(), &lc.payload));
         }
@@ -1832,7 +1912,11 @@ fn synthesize_state_type_from_decl(
 /// behavior as the AuraWidget `handler_param_type`).
 fn handler_param_type_from_decl(decl: &crate::ast::WidgetDecl, handler_bare: &str) -> Type {
     for msg in &decl.messages {
-        if let Some(v) = msg.variants.iter().find(|v| v.name.as_str() == handler_bare) {
+        if let Some(v) = msg
+            .variants
+            .iter()
+            .find(|v| v.name.as_str() == handler_bare)
+        {
             if let Some(ty) = v.payload.first() {
                 return ty.clone();
             }
@@ -1854,8 +1938,15 @@ fn synthesize_handler_fn_from_decl(
     body_stmts: &[Stmt],
 ) -> Stmt {
     synthesize_handler_fn_from_decl_with_store(
-        decl, widget_name, "", state_type, state_fields, event_pattern, body_stmts,
-        &HashMap::new(), &HashMap::new(),
+        decl,
+        widget_name,
+        "",
+        state_type,
+        state_fields,
+        event_pattern,
+        body_stmts,
+        &HashMap::new(),
+        &HashMap::new(),
     )
 }
 
@@ -2024,7 +2115,10 @@ fn synthesize_handler_fn_from_decl_with_store(
     // Move → update:scrollTop → SetScrollTop 链死（拖拽失效最后一环，
     // T-02 f64 修复暴露）。
     if stmts.is_empty() && (event_pattern.contains(':') || event_pattern.contains('"')) {
-        let msg = event_pattern.replace('"', "").trim_start_matches('.').to_string();
+        let msg = event_pattern
+            .replace('"', "")
+            .trim_start_matches('.')
+            .to_string();
         stmts.push(Stmt::Expr(Expr::Bina(
             Box::new(Expr::Dot(
                 Box::new(Expr::Ident(Name::from(STATE_PARAM))),
@@ -2053,7 +2147,10 @@ fn synthesize_handler_fn_from_decl_with_store(
     if widget_name != root_widget_name {
         let stripped_calls = strip_callback_calls(&mut stmts);
         let full = handler_fn_name(event_pattern);
-        let bare_event = full.strip_prefix("handler_").unwrap_or(full.as_str()).to_string();
+        let bare_event = full
+            .strip_prefix("handler_")
+            .unwrap_or(full.as_str())
+            .to_string();
         crate::ui::child_emit::record_stripped(widget_name, &bare_event, stripped_calls);
     } else {
         // PLAN-668 A-04：根形态的回调 prop 调用（on_*）同样剥离——蓝图
@@ -2123,10 +2220,12 @@ pub fn synthesize_from_decl(
             if let Stmt::Fn(f) = stmt {
                 if let Some(api) = &f.api_attrs {
                     let qualified = f.name.to_string();
-                    let bare = qualified.split('.').last()
-                        .unwrap_or(&qualified).to_string();
-                    let params: Vec<String> = f.params.iter()
-                        .map(|p| p.name.to_string()).collect();
+                    let bare = qualified
+                        .split('.')
+                        .last()
+                        .unwrap_or(&qualified)
+                        .to_string();
+                    let params: Vec<String> = f.params.iter().map(|p| p.name.to_string()).collect();
                     let info = crate::vm::codegen::ApiCallInfo {
                         fn_name: qualified.clone(),
                         method: api.method.clone(),
@@ -2205,7 +2304,10 @@ pub fn synthesize_from_decl(
     for stmt in &import_stmts {
         if matches!(stmt, Stmt::TypeDecl(_) | Stmt::EnumDecl(_)) {
             if let Err(e) = codegen.compile_stmt(stmt) {
-                log::warn!("handler_codegen: import type/enum decl failed to compile: {}", e);
+                log::warn!(
+                    "handler_codegen: import type/enum decl failed to compile: {}",
+                    e
+                );
             }
         }
     }
@@ -2216,7 +2318,8 @@ pub fn synthesize_from_decl(
             }
         }
     }
-    let store_inits: Vec<Stmt> = import_stmts.iter()
+    let store_inits: Vec<Stmt> = import_stmts
+        .iter()
         .filter_map(|s| {
             if let crate::ast::Stmt::Store(st) = s {
                 Some(Stmt::Store(st.clone()))
@@ -2232,7 +2335,11 @@ pub fn synthesize_from_decl(
             Name::from(MODULE_INIT_FN),
             None,
             Vec::new(),
-            Body { stmts: store_inits, has_new_line: false, source_lines: Vec::new() },
+            Body {
+                stmts: store_inits,
+                has_new_line: false,
+                source_lines: Vec::new(),
+            },
             Type::Void,
         ));
         if let Err(e) = codegen.compile_stmt(&init_fn) {
@@ -2241,7 +2348,10 @@ pub fn synthesize_from_decl(
         codegen.force_global_store = false;
     }
     for stmt in &import_stmts {
-        if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {
+        if matches!(
+            stmt,
+            Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)
+        ) {
             // PLAN-066 T-12: web 全局降级（document → None）——import fn
             // 体（如 mention_helpers.mention_detect）引用 document 曾毒化
             // 导出致 App link failed。
@@ -2262,9 +2372,8 @@ pub fn synthesize_from_decl(
 
     // 2. Compile state types + handlers for ALL widgets (root + children),
     //    reading directly from WidgetDecl.
-    let all_decls: Vec<&crate::ast::WidgetDecl> = std::iter::once(decl)
-        .chain(child_decls.iter())
-        .collect();
+    let all_decls: Vec<&crate::ast::WidgetDecl> =
+        std::iter::once(decl).chain(child_decls.iter()).collect();
 
     // Plan 370 D-GAP-4 + VM multi-store fix: collect ALL stores by their real
     // name (not a hardcoded "store" key), plus each store's msg variants so
@@ -2276,7 +2385,8 @@ pub fn synthesize_from_decl(
     let mut all_store_names: Vec<String> = Vec::new();
     for d in &all_decls {
         if d.view.is_none() {
-            let fields: Vec<String> = d.model
+            let fields: Vec<String> = d
+                .model
                 .as_ref()
                 .map(|m| m.fields.iter().map(|f| f.name.to_string()).collect())
                 .unwrap_or_default();
@@ -2284,7 +2394,8 @@ pub fn synthesize_from_decl(
             // Plan 446 批二 A1: 消歧集合 = Msg 变体 ∪ on-block 处理器 ∪ 生命周期名。
             // 此前只收 Msg 变体——"handler 已定义但漏列 Msg 声明"（vue 容忍、
             // os-config SetSidecar 现场）会查不到，静默回退到错误 store。
-            let mut msgs: HashSet<String> = d.messages
+            let mut msgs: HashSet<String> = d
+                .messages
                 .iter()
                 .flat_map(|m| m.variants.iter().map(|v| v.name.to_string()))
                 .collect();
@@ -2389,7 +2500,12 @@ pub fn synthesize_from_decl(
                 .map(|(n, _)| (n.clone(), computed_fn_name(&d.name.to_string(), n)))
                 .collect(),
         );
-        for cfn in synthesize_computed_fns(&d.name.to_string(), &d_state_type, &d_state_fields, &d_computeds) {
+        for cfn in synthesize_computed_fns(
+            &d.name.to_string(),
+            &d_state_type,
+            &d_state_fields,
+            &d_computeds,
+        ) {
             if let Err(e) = codegen.compile_stmt(&cfn) {
                 record_synth_failure(format!("{}.computed: {}", d.name, e));
             }
@@ -2446,7 +2562,8 @@ pub fn synthesize_from_decl(
             if ew != d.name.to_string() || !seen_emits.insert((emsg.clone(), eargc)) {
                 continue;
             }
-            let bridge = synthesize_emit_bridge_fn(&d.name.to_string(), &d_state_type, &emsg, eargc);
+            let bridge =
+                synthesize_emit_bridge_fn(&d.name.to_string(), &d_state_type, &emsg, eargc);
             if let Err(e) = codegen.compile_stmt(&bridge) {
                 record_synth_failure(format!("{}.emit {}: {}", d.name, emsg, e));
             }
@@ -2533,7 +2650,10 @@ mod tests {
     #[test]
     fn rewrites_self_dot_state_in_assignment() {
         // self.count = self.count + 1  →  __state.count = __state.count + 1
-        let lhs = Expr::Dot(Box::new(Expr::Ident(Name::from("self"))), Name::from("count"));
+        let lhs = Expr::Dot(
+            Box::new(Expr::Ident(Name::from("self"))),
+            Name::from("count"),
+        );
         let rhs = Expr::Bina(
             Box::new(Expr::Dot(
                 Box::new(Expr::Ident(Name::from("."))),
@@ -2592,7 +2712,10 @@ mod tests {
                 let bodies = [
                     format!("{}", t.body),
                     format!("{}", t.catch_body),
-                    t.finally_body.as_ref().map(|f| format!("{}", f)).unwrap_or_default(),
+                    t.finally_body
+                        .as_ref()
+                        .map(|f| format!("{}", f))
+                        .unwrap_or_default(),
                 ];
                 for (i, rendered) in bodies.iter().enumerate() {
                     assert!(rendered.contains("(name __state)"), "body[{i}]: {rendered}");
@@ -2620,7 +2743,9 @@ mod tests {
                 Box::new(Expr::Ident(Name::from("notes"))),
                 Name::from("remove"),
             )),
-            args: Args { args: vec![Arg::Pos(Expr::Int(1))] },
+            args: Args {
+                args: vec![Arg::Pos(Expr::Int(1))],
+            },
             ret: Type::Unknown,
             type_args: Vec::new(),
             generic_args: Vec::new(),
@@ -2762,7 +2887,10 @@ mod tests {
         // `.notAVariant()` — method not a msg variant of the current widget
         // and not a state field → must NOT become a handler_ call.
         let mut stmt = sibling_call("notAVariant", vec![]);
-        set_current_widget("PromptBar", ["Exit"].iter().map(|s| s.to_string()).collect());
+        set_current_widget(
+            "PromptBar",
+            ["Exit"].iter().map(|s| s.to_string()).collect(),
+        );
         rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &HashSet::new());
         clear_current_widget();
         match &stmt {
@@ -2872,7 +3000,10 @@ mod tests {
         // silently picked Modules. Now records an explicit error listing both.
         two_store_context();
         STORE_MSG_MAP.with(|s| {
-            s.borrow_mut().get_mut("Collection").unwrap().insert("Init".to_string());
+            s.borrow_mut()
+                .get_mut("Collection")
+                .unwrap()
+                .insert("Init".to_string());
         });
         take_store_disambig_errors(); // drain pre-existing
         let mut stmt = store_call("store", "Init");
@@ -2881,9 +3012,16 @@ mod tests {
         clear_store_context();
         assert!(!errs.is_empty(), "ambiguity must be recorded, not silent");
         let joined = errs.join("; ");
-        assert!(joined.contains("Init"), "error must name the method: {}", joined);
-        assert!(joined.contains("Modules") && joined.contains("Collection"),
-            "error must list candidates: {}", joined);
+        assert!(
+            joined.contains("Init"),
+            "error must name the method: {}",
+            joined
+        );
+        assert!(
+            joined.contains("Modules") && joined.contains("Collection"),
+            "error must list candidates: {}",
+            joined
+        );
         // AST stays coherent (legacy target) so synthesis reports all sites at once.
         assert!(rewritten_target(&stmt).contains("handler_Modules_Init"));
     }
@@ -2898,10 +3036,17 @@ mod tests {
         rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &HashSet::new());
         let errs = take_store_disambig_errors();
         clear_store_context();
-        assert!(!errs.is_empty(), "undeclared method in multi-store project must be flagged");
+        assert!(
+            !errs.is_empty(),
+            "undeclared method in multi-store project must be flagged"
+        );
         let joined = errs.join("; ");
         assert!(joined.contains("SetSidecar"), "{}", joined);
-        assert!(joined.contains("Collection"), "must hint candidate stores: {}", joined);
+        assert!(
+            joined.contains("Collection"),
+            "must hint candidate stores: {}",
+            joined
+        );
     }
 
     #[test]
@@ -2909,7 +3054,9 @@ mod tests {
         // Single-store compat (vue parity): no msg data required, legacy fallback
         // resolves to the only store without diagnostics.
         set_store_context(
-            [("Notes".to_string(), Vec::<String>::new())].into_iter().collect(),
+            [("Notes".to_string(), Vec::<String>::new())]
+                .into_iter()
+                .collect(),
             [
                 ("store".to_string(), "Notes".to_string()),
                 ("Notes".to_string(), "Notes".to_string()),
@@ -2917,13 +3064,21 @@ mod tests {
             .into_iter()
             .collect(),
         );
-        set_store_msg_map([("Notes".to_string(), HashSet::new())].into_iter().collect());
+        set_store_msg_map(
+            [("Notes".to_string(), HashSet::new())]
+                .into_iter()
+                .collect(),
+        );
         take_store_disambig_errors();
         let mut stmt = store_call("store", "Remove");
         rewrite_state_refs_stmts(std::slice::from_mut(&mut stmt), &HashSet::new());
         let errs = take_store_disambig_errors();
         clear_store_context();
-        assert!(errs.is_empty(), "single-store fallback must stay silent, got: {:?}", errs);
+        assert!(
+            errs.is_empty(),
+            "single-store fallback must stay silent, got: {:?}",
+            errs
+        );
         assert!(rewritten_target(&stmt).contains("handler_Notes_Remove"));
     }
 }

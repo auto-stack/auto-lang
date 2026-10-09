@@ -8,11 +8,11 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 
 /// Opaque identifier used in public media URIs.  It deliberately has no path
 /// representation: callers can only address an asset ticket issued by the
@@ -85,7 +85,10 @@ impl MediaAssetState {
 
     /// Ready, error, and expired states require no worker progress.
     pub const fn is_terminal(self) -> bool {
-        matches!(self, Self::Ready | Self::Error | Self::Stale | Self::Expired)
+        matches!(
+            self,
+            Self::Ready | Self::Error | Self::Stale | Self::Expired
+        )
     }
 }
 
@@ -264,7 +267,11 @@ impl MediaAssetRegistry {
     }
 
     pub fn queue(&self, key: MediaAssetKey, metadata: MediaMetadata) -> MediaAssetTicket {
-        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
         if let Some(existing_id) = state.by_key.get(&key).copied() {
             if let Some(existing) = state.entries.get_mut(&existing_id) {
                 if existing.state != MediaAssetState::Expired {
@@ -296,9 +303,8 @@ impl MediaAssetRegistry {
         }
 
         let id = loop {
-            let candidate = MediaAssetId(
-                ((fastrand::u64(..) as u128) << 64) | fastrand::u64(..) as u128,
-            );
+            let candidate =
+                MediaAssetId(((fastrand::u64(..) as u128) << 64) | fastrand::u64(..) as u128);
             if !state.entries.contains_key(&candidate) {
                 break candidate;
             }
@@ -328,13 +334,16 @@ impl MediaAssetRegistry {
         id: MediaAssetId,
         next: MediaAssetState,
     ) -> Result<(), MediaAssetError> {
-        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
-        let entry = state
-            .entries
-            .get_mut(&id)
-            .ok_or(MediaAssetError::Expired)?;
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
+        let entry = state.entries.get_mut(&id).ok_or(MediaAssetError::Expired)?;
         if !entry.state.can_transition_to(next) {
-            return Err(MediaAssetError::Rejected("invalid media state transition".into()));
+            return Err(MediaAssetError::Rejected(
+                "invalid media state transition".into(),
+            ));
         }
         entry.state = next;
         if next == MediaAssetState::Error && entry.error.is_none() {
@@ -351,16 +360,19 @@ impl MediaAssetRegistry {
         revision: u64,
         bytes: Arc<[u8]>,
     ) -> Result<(), MediaAssetError> {
-        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
-        let entry = state
-            .entries
-            .get_mut(&id)
-            .ok_or(MediaAssetError::Expired)?;
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
+        let entry = state.entries.get_mut(&id).ok_or(MediaAssetError::Expired)?;
         if entry.key.revision != revision {
             return Err(MediaAssetError::Stale);
         }
         if entry.state != MediaAssetState::Transforming {
-            return Err(MediaAssetError::Rejected("asset is not ready to publish".into()));
+            return Err(MediaAssetError::Rejected(
+                "asset is not ready to publish".into(),
+            ));
         }
         entry.encoded = Some(bytes);
         entry.state = MediaAssetState::Ready;
@@ -370,13 +382,16 @@ impl MediaAssetRegistry {
     }
 
     pub fn fail(&self, id: MediaAssetId, error: MediaAssetError) -> Result<(), MediaAssetError> {
-        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
-        let entry = state
-            .entries
-            .get_mut(&id)
-            .ok_or(MediaAssetError::Expired)?;
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
+        let entry = state.entries.get_mut(&id).ok_or(MediaAssetError::Expired)?;
         if !entry.state.can_transition_to(MediaAssetState::Error) {
-            return Err(MediaAssetError::Rejected("asset cannot fail from its current state".into()));
+            return Err(MediaAssetError::Rejected(
+                "asset cannot fail from its current state".into(),
+            ));
         }
         entry.state = MediaAssetState::Error;
         entry.error = Some(error);
@@ -386,7 +401,11 @@ impl MediaAssetRegistry {
     }
 
     pub fn lookup(&self, id: MediaAssetId, revision: u64) -> MediaLookup {
-        let state = self.inner.state.lock().expect("media registry lock poisoned");
+        let state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
         let Some(entry) = state.entries.get(&id) else {
             return MediaLookup::Missing;
         };
@@ -400,9 +419,9 @@ impl MediaAssetRegistry {
                 .cloned()
                 .map(MediaLookup::Ready)
                 .unwrap_or(MediaLookup::Pending),
-            MediaAssetState::Error => MediaLookup::Failed(
-                entry.error.clone().unwrap_or(MediaAssetError::Corrupt),
-            ),
+            MediaAssetState::Error => {
+                MediaLookup::Failed(entry.error.clone().unwrap_or(MediaAssetError::Corrupt))
+            }
             MediaAssetState::Expired | MediaAssetState::Stale => MediaLookup::Expired,
             _ => MediaLookup::Pending,
         }
@@ -413,7 +432,11 @@ impl MediaAssetRegistry {
     /// worker lanes drive every ticket to Ready/Error/Stale/Expired — so it
     /// is safe as a liveness-pump gate (ticks stop when it reaches zero).
     pub fn pending_count(&self) -> usize {
-        let state = self.inner.state.lock().expect("media registry lock poisoned");
+        let state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
         state
             .entries
             .values()
@@ -434,15 +457,25 @@ impl MediaAssetRegistry {
     /// Updates metadata discovered by a background reader. The source path is
     /// never stored in the metadata returned to HTTP/control-plane callers.
     pub fn update_metadata(&self, id: MediaAssetId, metadata: MediaMetadata) -> bool {
-        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
-        let Some(entry) = state.entries.get_mut(&id) else { return false; };
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
+        let Some(entry) = state.entries.get_mut(&id) else {
+            return false;
+        };
         entry.metadata = metadata;
         self.inner.changed.notify_all();
         true
     }
 
     pub fn stats(&self) -> MediaPipelineStats {
-        let state = self.inner.state.lock().expect("media registry lock poisoned");
+        let state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
         let mut stats = MediaPipelineStats::default();
         for entry in state.entries.values() {
             match entry.state {
@@ -461,7 +494,11 @@ impl MediaAssetRegistry {
     }
 
     pub fn retain(&self, id: MediaAssetId) -> bool {
-        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
         let Some(entry) = state.entries.get_mut(&id) else {
             return false;
         };
@@ -474,7 +511,11 @@ impl MediaAssetRegistry {
     }
 
     pub fn release(&self, id: MediaAssetId) {
-        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
         if let Some(entry) = state.entries.get_mut(&id) {
             entry.references = entry.references.saturating_sub(1);
             if entry.references == 0 {
@@ -486,7 +527,11 @@ impl MediaAssetRegistry {
     /// Converts unreferenced, elapsed tickets to 410-visible expired entries.
     pub fn collect_expired(&self) {
         let now = Instant::now();
-        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
         for entry in state.entries.values_mut() {
             if entry.references == 0
                 && entry.expires_at.is_some_and(|expiry| expiry <= now)
@@ -499,9 +544,17 @@ impl MediaAssetRegistry {
         self.inner.changed.notify_all();
     }
 
-    pub fn wait_for_terminal(&self, id: MediaAssetId, timeout: Duration) -> Option<MediaAssetState> {
+    pub fn wait_for_terminal(
+        &self,
+        id: MediaAssetId,
+        timeout: Duration,
+    ) -> Option<MediaAssetState> {
         let deadline = Instant::now() + timeout;
-        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
         loop {
             let entry = state.entries.get(&id)?;
             if entry.state.is_terminal() {
@@ -522,7 +575,11 @@ impl MediaAssetRegistry {
 
     pub fn shutdown(&self) {
         let now = Instant::now();
-        let mut state = self.inner.state.lock().expect("media registry lock poisoned");
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .expect("media registry lock poisoned");
         state.shutting_down = true;
         for entry in state.entries.values_mut() {
             entry.references = 0;
@@ -646,7 +703,12 @@ impl Default for EncodedByteLru {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum MediaPin { #[default] None, Soft, Hard }
+pub enum MediaPin {
+    #[default]
+    None,
+    Soft,
+    Hard,
+}
 #[derive(Clone, Debug)]
 struct DecodedEntry {
     width: u32,
@@ -659,23 +721,59 @@ struct DecodedEntry {
 /// all non-hard entries are reclaimed as soon as a publish changes the set.
 #[derive(Clone, Debug)]
 pub struct DecodedPixelCache {
-    budget_bytes: usize, used_bytes: usize, clock: u64,
-    entries: HashMap<MediaAssetId, DecodedEntry>, stats: MediaPipelineStats,
+    budget_bytes: usize,
+    used_bytes: usize,
+    clock: u64,
+    entries: HashMap<MediaAssetId, DecodedEntry>,
+    stats: MediaPipelineStats,
 }
 impl DecodedPixelCache {
     pub const DEFAULT_BUDGET_BYTES: usize = 256 * 1024 * 1024;
-    pub fn new(budget_bytes: usize) -> Self { Self { budget_bytes, used_bytes: 0, clock: 0, entries: HashMap::new(), stats: MediaPipelineStats::default() } }
+    pub fn new(budget_bytes: usize) -> Self {
+        Self {
+            budget_bytes,
+            used_bytes: 0,
+            clock: 0,
+            entries: HashMap::new(),
+            stats: MediaPipelineStats::default(),
+        }
+    }
     pub fn insert(&mut self, id: MediaAssetId, bytes: Arc<[u8]>, pin: MediaPin) {
         self.insert_rendered(id, 0, 0, bytes, pin);
     }
-    pub fn insert_rendered(&mut self, id: MediaAssetId, width: u32, height: u32, bytes: Arc<[u8]>, pin: MediaPin) {
+    pub fn insert_rendered(
+        &mut self,
+        id: MediaAssetId,
+        width: u32,
+        height: u32,
+        bytes: Arc<[u8]>,
+        pin: MediaPin,
+    ) {
         self.clock = self.clock.wrapping_add(1);
-        if let Some(old) = self.entries.remove(&id) { self.used_bytes = self.used_bytes.saturating_sub(old.bytes.len()); }
+        if let Some(old) = self.entries.remove(&id) {
+            self.used_bytes = self.used_bytes.saturating_sub(old.bytes.len());
+        }
         self.used_bytes = self.used_bytes.saturating_add(bytes.len());
-        self.entries.insert(id, DecodedEntry { width, height, bytes, pin, last_access: self.clock }); self.collect();
+        self.entries.insert(
+            id,
+            DecodedEntry {
+                width,
+                height,
+                bytes,
+                pin,
+                last_access: self.clock,
+            },
+        );
+        self.collect();
     }
-    pub fn set_pin(&mut self, id: MediaAssetId, pin: MediaPin) { if let Some(entry) = self.entries.get_mut(&id) { entry.pin = pin; } }
-    pub fn contains(&self, id: MediaAssetId) -> bool { self.entries.contains_key(&id) }
+    pub fn set_pin(&mut self, id: MediaAssetId, pin: MediaPin) {
+        if let Some(entry) = self.entries.get_mut(&id) {
+            entry.pin = pin;
+        }
+    }
+    pub fn contains(&self, id: MediaAssetId) -> bool {
+        self.entries.contains_key(&id)
+    }
     pub fn get_rendered(&mut self, id: MediaAssetId) -> Option<(u32, u32, Arc<[u8]>)> {
         self.clock = self.clock.wrapping_add(1);
         let entry = self.entries.get_mut(&id)?;
@@ -683,63 +781,161 @@ impl DecodedPixelCache {
         self.stats.cache_hits = self.stats.cache_hits.saturating_add(1);
         Some((entry.width, entry.height, entry.bytes.clone()))
     }
-    pub const fn used_bytes(&self) -> usize { self.used_bytes }
-    pub fn stats(&self) -> &MediaPipelineStats { &self.stats }
+    pub const fn used_bytes(&self) -> usize {
+        self.used_bytes
+    }
+    pub fn stats(&self) -> &MediaPipelineStats {
+        &self.stats
+    }
     pub fn collect(&mut self) {
         while self.used_bytes > self.budget_bytes {
-            let candidate = self.entries.iter().filter(|(_, e)| e.pin != MediaPin::Hard).min_by_key(|(_, e)| (e.pin != MediaPin::None, e.last_access)).map(|(&id, _)| id);
-            let Some(id) = candidate else { break; };
-            let entry = self.entries.remove(&id).expect("decoded cache entry exists"); self.used_bytes = self.used_bytes.saturating_sub(entry.bytes.len()); self.stats.evictions = self.stats.evictions.saturating_add(1);
+            let candidate = self
+                .entries
+                .iter()
+                .filter(|(_, e)| e.pin != MediaPin::Hard)
+                .min_by_key(|(_, e)| (e.pin != MediaPin::None, e.last_access))
+                .map(|(&id, _)| id);
+            let Some(id) = candidate else {
+                break;
+            };
+            let entry = self
+                .entries
+                .remove(&id)
+                .expect("decoded cache entry exists");
+            self.used_bytes = self.used_bytes.saturating_sub(entry.bytes.len());
+            self.stats.evictions = self.stats.evictions.saturating_add(1);
         }
         self.stats.decoded_bytes = self.used_bytes;
     }
 }
-impl Default for DecodedPixelCache { fn default() -> Self { Self::new(Self::DEFAULT_BUDGET_BYTES) } }
+impl Default for DecodedPixelCache {
+    fn default() -> Self {
+        Self::new(Self::DEFAULT_BUDGET_BYTES)
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum MediaPriority { Thumbnail = 5, Neighbor = 10, SettledCurrent = 90, Current = 100 }
+pub enum MediaPriority {
+    Thumbnail = 5,
+    Neighbor = 10,
+    SettledCurrent = 90,
+    Current = 100,
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MediaWork { pub id: u64, pub priority: MediaPriority, sequence: u64 }
-impl MediaWork { pub const fn new(id: u64, priority: MediaPriority) -> Self { Self { id, priority, sequence: 0 } } }
+pub struct MediaWork {
+    pub id: u64,
+    pub priority: MediaPriority,
+    sequence: u64,
+}
+impl MediaWork {
+    pub const fn new(id: u64, priority: MediaPriority) -> Self {
+        Self {
+            id,
+            priority,
+            sequence: 0,
+        }
+    }
+}
 /// Scheduler ingress queue; the worker pool consumes `pop` in priority then
 /// FIFO order.  Duplicate renditions are coalesced before consuming capacity.
 #[derive(Default)]
-pub struct MediaPriorityQueue { items: Vec<MediaWork>, next_sequence: u64 }
+pub struct MediaPriorityQueue {
+    items: Vec<MediaWork>,
+    next_sequence: u64,
+}
 impl MediaPriorityQueue {
     pub const CAPACITY: usize = 8;
-    pub fn new() -> Self { Self::default() }
-    pub fn len(&self) -> usize { self.items.len() }
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
     pub fn push(&mut self, mut work: MediaWork) -> bool {
-        if self.items.iter().any(|item| item.id == work.id) { return false; }
-        if work.priority == MediaPriority::Neighbor && self.items.iter().filter(|item| item.priority == MediaPriority::Neighbor).count() >= 2 { return false; }
+        if self.items.iter().any(|item| item.id == work.id) {
+            return false;
+        }
+        if work.priority == MediaPriority::Neighbor
+            && self
+                .items
+                .iter()
+                .filter(|item| item.priority == MediaPriority::Neighbor)
+                .count()
+                >= 2
+        {
+            return false;
+        }
         if self.items.len() >= Self::CAPACITY {
-            let lowest = self.items.last().map(|item| item.priority).unwrap_or(MediaPriority::Thumbnail);
-            if work.priority <= lowest { return false; }
+            let lowest = self
+                .items
+                .last()
+                .map(|item| item.priority)
+                .unwrap_or(MediaPriority::Thumbnail);
+            if work.priority <= lowest {
+                return false;
+            }
         }
         let work_id = work.id;
-        work.sequence = self.next_sequence; self.next_sequence = self.next_sequence.wrapping_add(1); self.items.push(work);
-        self.items.sort_by_key(|item| (std::cmp::Reverse(item.priority), item.sequence));
-        if self.items.len() > Self::CAPACITY { self.items.pop(); }
+        work.sequence = self.next_sequence;
+        self.next_sequence = self.next_sequence.wrapping_add(1);
+        self.items.push(work);
+        self.items
+            .sort_by_key(|item| (std::cmp::Reverse(item.priority), item.sequence));
+        if self.items.len() > Self::CAPACITY {
+            self.items.pop();
+        }
         self.items.iter().any(|item| item.id == work_id)
     }
-    pub fn pop(&mut self) -> Option<MediaWork> { (!self.items.is_empty()).then(|| self.items.remove(0)) }
+    pub fn pop(&mut self) -> Option<MediaWork> {
+        (!self.items.is_empty()).then(|| self.items.remove(0))
+    }
 }
 
 /// Per-session generation/revision gate shared by each asynchronous phase.
 #[derive(Clone, Debug)]
-pub struct MediaLatestWins { generation: u64, view_revision: u64, dropped: u64 }
+pub struct MediaLatestWins {
+    generation: u64,
+    view_revision: u64,
+    dropped: u64,
+}
 impl MediaLatestWins {
-    pub const fn new(generation: u64, view_revision: u64) -> Self { Self { generation, view_revision, dropped: 0 } }
-    pub fn advance(&mut self, generation: u64, view_revision: u64) { self.generation = generation; self.view_revision = view_revision; }
-    fn accept(&mut self, generation: u64, view_revision: u64) -> bool { let ok = (generation, view_revision) == (self.generation, self.view_revision); if !ok { self.dropped = self.dropped.saturating_add(1); } ok }
-    pub fn accept_enqueue(&mut self, generation: u64, view_revision: u64) -> bool { self.accept(generation, view_revision) }
-    pub fn accept_decode_complete(&mut self, generation: u64, view_revision: u64) -> bool { self.accept(generation, view_revision) }
-    pub fn accept_publish(&mut self, generation: u64, view_revision: u64) -> bool { self.accept(generation, view_revision) }
-    pub const fn dropped(&self) -> u64 { self.dropped }
+    pub const fn new(generation: u64, view_revision: u64) -> Self {
+        Self {
+            generation,
+            view_revision,
+            dropped: 0,
+        }
+    }
+    pub fn advance(&mut self, generation: u64, view_revision: u64) {
+        self.generation = generation;
+        self.view_revision = view_revision;
+    }
+    fn accept(&mut self, generation: u64, view_revision: u64) -> bool {
+        let ok = (generation, view_revision) == (self.generation, self.view_revision);
+        if !ok {
+            self.dropped = self.dropped.saturating_add(1);
+        }
+        ok
+    }
+    pub fn accept_enqueue(&mut self, generation: u64, view_revision: u64) -> bool {
+        self.accept(generation, view_revision)
+    }
+    pub fn accept_decode_complete(&mut self, generation: u64, view_revision: u64) -> bool {
+        self.accept(generation, view_revision)
+    }
+    pub fn accept_publish(&mut self, generation: u64, view_revision: u64) -> bool {
+        self.accept(generation, view_revision)
+    }
+    pub const fn dropped(&self) -> u64 {
+        self.dropped
+    }
 }
 
 #[derive(Clone, Debug)]
-enum MediaSource { Path(PathBuf), Bytes(Arc<[u8]>) }
+enum MediaSource {
+    Path(PathBuf),
+    Bytes(Arc<[u8]>),
+}
 
 #[derive(Clone, Debug)]
 struct MediaWorkItem {
@@ -760,7 +956,10 @@ struct DecodedWork {
     image: image::DynamicImage,
 }
 
-enum ResizeMessage { Work(DecodedWork), Stop }
+enum ResizeMessage {
+    Work(DecodedWork),
+    Stop,
+}
 
 struct PipelineCaches {
     encoded: EncodedByteLru,
@@ -787,43 +986,97 @@ static NEXT_MEDIA_WORK_ID: AtomicU64 = AtomicU64::new(1);
 /// Bounded media executor: two decode/read workers feed one resize/publish
 /// lane. Workers sleep on condition variables or channel receives while idle;
 /// no UI call performs filesystem I/O or image decoding.
-pub struct MediaWorkerPool { inner: Arc<WorkerInner>, workers: Vec<JoinHandle<()>> }
+pub struct MediaWorkerPool {
+    inner: Arc<WorkerInner>,
+    workers: Vec<JoinHandle<()>>,
+}
 
 impl MediaWorkerPool {
-    pub fn new() -> Self { Self::with_registry(MediaAssetRegistry::default()) }
+    pub fn new() -> Self {
+        Self::with_registry(MediaAssetRegistry::default())
+    }
 
     pub fn with_registry(registry: MediaAssetRegistry) -> Self {
         let (resize_tx, resize_rx) = sync_channel(8);
         let inner = Arc::new(WorkerInner {
-            state: Mutex::new(WorkerState { stopping: false, queue: MediaPriorityQueue::new(), jobs: HashMap::new() }),
+            state: Mutex::new(WorkerState {
+                stopping: false,
+                queue: MediaPriorityQueue::new(),
+                jobs: HashMap::new(),
+            }),
             wake: Condvar::new(),
             registry,
             resize_tx,
-            caches: Mutex::new(PipelineCaches { encoded: EncodedByteLru::default(), decoded: DecodedPixelCache::default() }),
+            caches: Mutex::new(PipelineCaches {
+                encoded: EncodedByteLru::default(),
+                decoded: DecodedPixelCache::default(),
+            }),
             latest: Mutex::new(HashMap::new()),
         });
         let resize_inner = inner.clone();
-        let resize_thread = thread::Builder::new().name("media-resize".into()).spawn(move || {
-            run_resize_worker(resize_inner, resize_rx);
-        }).expect("spawn media resize worker");
+        let resize_thread = thread::Builder::new()
+            .name("media-resize".into())
+            .spawn(move || {
+                run_resize_worker(resize_inner, resize_rx);
+            })
+            .expect("spawn media resize worker");
         let mut workers = vec![resize_thread];
         for name in ["media-decode-1", "media-decode-2"] {
             let worker_inner = inner.clone();
-            workers.push(thread::Builder::new().name(name.into()).spawn(move || {
-                run_decode_worker(worker_inner);
-            }).expect("spawn media decode worker"));
+            workers.push(
+                thread::Builder::new()
+                    .name(name.into())
+                    .spawn(move || {
+                        run_decode_worker(worker_inner);
+                    })
+                    .expect("spawn media decode worker"),
+            );
         }
         Self { inner, workers }
     }
 
-    pub fn worker_count(&self) -> usize { self.workers.len() }
-
-    pub fn submit_path(&self, ticket: MediaAssetTicket, path: PathBuf, spec: RenditionSpec, priority: MediaPriority, generation: u64, view_revision: u64) -> bool {
-        self.submit(MediaWorkItem { id: NEXT_MEDIA_WORK_ID.fetch_add(1, Ordering::Relaxed), ticket, source: MediaSource::Path(path), spec, priority, generation, view_revision })
+    pub fn worker_count(&self) -> usize {
+        self.workers.len()
     }
 
-    pub fn submit_bytes(&self, ticket: MediaAssetTicket, bytes: Arc<[u8]>, spec: RenditionSpec, priority: MediaPriority, generation: u64, view_revision: u64) -> bool {
-        self.submit(MediaWorkItem { id: NEXT_MEDIA_WORK_ID.fetch_add(1, Ordering::Relaxed), ticket, source: MediaSource::Bytes(bytes), spec, priority, generation, view_revision })
+    pub fn submit_path(
+        &self,
+        ticket: MediaAssetTicket,
+        path: PathBuf,
+        spec: RenditionSpec,
+        priority: MediaPriority,
+        generation: u64,
+        view_revision: u64,
+    ) -> bool {
+        self.submit(MediaWorkItem {
+            id: NEXT_MEDIA_WORK_ID.fetch_add(1, Ordering::Relaxed),
+            ticket,
+            source: MediaSource::Path(path),
+            spec,
+            priority,
+            generation,
+            view_revision,
+        })
+    }
+
+    pub fn submit_bytes(
+        &self,
+        ticket: MediaAssetTicket,
+        bytes: Arc<[u8]>,
+        spec: RenditionSpec,
+        priority: MediaPriority,
+        generation: u64,
+        view_revision: u64,
+    ) -> bool {
+        self.submit(MediaWorkItem {
+            id: NEXT_MEDIA_WORK_ID.fetch_add(1, Ordering::Relaxed),
+            ticket,
+            source: MediaSource::Bytes(bytes),
+            spec,
+            priority,
+            generation,
+            view_revision,
+        })
     }
 
     fn submit(&self, item: MediaWorkItem) -> bool {
@@ -831,11 +1084,16 @@ impl MediaWorkerPool {
             if let Some(gate) = latest.get_mut(&item.ticket.id) {
                 gate.advance(item.generation, item.view_revision);
             } else {
-                latest.insert(item.ticket.id, MediaLatestWins::new(item.generation, item.view_revision));
+                latest.insert(
+                    item.ticket.id,
+                    MediaLatestWins::new(item.generation, item.view_revision),
+                );
             }
         }
         let mut state = self.inner.state.lock().expect("media worker lock poisoned");
-        if state.stopping || !state.queue.push(MediaWork::new(item.id, item.priority)) { return false; }
+        if state.stopping || !state.queue.push(MediaWork::new(item.id, item.priority)) {
+            return false;
+        }
         state.jobs.insert(item.id, item);
         self.inner.wake.notify_one();
         true
@@ -854,15 +1112,21 @@ impl MediaWorkerPool {
             self.inner.wake.notify_all();
         }
         let _ = self.inner.resize_tx.send(ResizeMessage::Stop);
-        for worker in self.workers.drain(..) { let _ = worker.join(); }
+        for worker in self.workers.drain(..) {
+            let _ = worker.join();
+        }
     }
 }
 
 fn take_media_work(inner: &Arc<WorkerInner>) -> Option<MediaWorkItem> {
     let mut state = inner.state.lock().expect("media worker lock poisoned");
     loop {
-        if state.stopping { return None; }
-        if let Some(work) = state.queue.pop() { return state.jobs.remove(&work.id); }
+        if state.stopping {
+            return None;
+        }
+        if let Some(work) = state.queue.pop() {
+            return state.jobs.remove(&work.id);
+        }
         state = inner.wake.wait(state).expect("media worker lock poisoned");
     }
 }
@@ -871,75 +1135,170 @@ fn run_decode_worker(inner: Arc<WorkerInner>) {
     while let Some(item) = take_media_work(&inner) {
         let item_id = item.ticket.id;
         if let Ok(mut latest) = inner.latest.lock() {
-            if !latest.get_mut(&item.ticket.id).is_some_and(|gate| gate.accept_decode_complete(item.generation, item.view_revision)) {
-                let _ = inner.registry.transition(item.ticket.id, MediaAssetState::Stale);
+            if !latest.get_mut(&item.ticket.id).is_some_and(|gate| {
+                gate.accept_decode_complete(item.generation, item.view_revision)
+            }) {
+                let _ = inner
+                    .registry
+                    .transition(item.ticket.id, MediaAssetState::Stale);
                 continue;
             }
         }
         let result = (|| {
-            inner.registry.transition(item.ticket.id, MediaAssetState::Reading)?;
+            inner
+                .registry
+                .transition(item.ticket.id, MediaAssetState::Reading)?;
             let encoded: Arc<[u8]> = match &item.source {
-                MediaSource::Path(path) => Arc::from(std::fs::read(path).map_err(|_| MediaAssetError::Rejected("image read failed".into()))?),
+                MediaSource::Path(path) => Arc::from(
+                    std::fs::read(path)
+                        .map_err(|_| MediaAssetError::Rejected("image read failed".into()))?,
+                ),
                 MediaSource::Bytes(bytes) => bytes.clone(),
             };
             let metadata = inspect_image_metadata(&encoded)?;
-            inner.registry.update_metadata(item.ticket.id, metadata.clone());
-            inner.registry.transition(item.ticket.id, MediaAssetState::Decoding)?;
+            inner
+                .registry
+                .update_metadata(item.ticket.id, metadata.clone());
+            inner
+                .registry
+                .transition(item.ticket.id, MediaAssetState::Decoding)?;
             let image = image::load_from_memory(&encoded).map_err(|_| MediaAssetError::Corrupt)?;
-            Ok::<_, MediaAssetError>(DecodedWork { item, encoded, metadata, image })
+            Ok::<_, MediaAssetError>(DecodedWork {
+                item,
+                encoded,
+                metadata,
+                image,
+            })
         })();
         match result {
             Ok(decoded) => {
-                if inner.resize_tx.send(ResizeMessage::Work(decoded)).is_err() { return; }
+                if inner.resize_tx.send(ResizeMessage::Work(decoded)).is_err() {
+                    return;
+                }
             }
-            Err(error) => { let _ = inner.registry.fail(item_id, error); }
+            Err(error) => {
+                let _ = inner.registry.fail(item_id, error);
+            }
         }
     }
 }
 
-fn oriented_image(image: image::DynamicImage, orientation: MediaOrientation) -> image::DynamicImage {
-    match orientation { MediaOrientation::Normal => image, MediaOrientation::FlipHorizontal => image.fliph(), MediaOrientation::Rotate180 => image.rotate180(), MediaOrientation::FlipVertical => image.flipv(), MediaOrientation::Transpose => image.rotate90().fliph(), MediaOrientation::Rotate90 => image.rotate90(), MediaOrientation::Transverse => image.rotate270().fliph(), MediaOrientation::Rotate270 => image.rotate270() }
+fn oriented_image(
+    image: image::DynamicImage,
+    orientation: MediaOrientation,
+) -> image::DynamicImage {
+    match orientation {
+        MediaOrientation::Normal => image,
+        MediaOrientation::FlipHorizontal => image.fliph(),
+        MediaOrientation::Rotate180 => image.rotate180(),
+        MediaOrientation::FlipVertical => image.flipv(),
+        MediaOrientation::Transpose => image.rotate90().fliph(),
+        MediaOrientation::Rotate90 => image.rotate90(),
+        MediaOrientation::Transverse => image.rotate270().fliph(),
+        MediaOrientation::Rotate270 => image.rotate270(),
+    }
 }
 
-fn render_decoded(image: image::DynamicImage, orientation: MediaOrientation, spec: &RenditionSpec) -> RenderedImage {
+fn render_decoded(
+    image: image::DynamicImage,
+    orientation: MediaOrientation,
+    spec: &RenditionSpec,
+) -> RenderedImage {
     let oriented = oriented_image(image, orientation);
-    let rendered = if spec.original_pixels || spec.width == 0 || spec.height == 0 { oriented } else { oriented.resize(spec.width, spec.height, image::imageops::FilterType::Lanczos3) };
+    let rendered = if spec.original_pixels || spec.width == 0 || spec.height == 0 {
+        oriented
+    } else {
+        oriented.resize(
+            spec.width,
+            spec.height,
+            image::imageops::FilterType::Lanczos3,
+        )
+    };
     let rgba = rendered.to_rgba8();
     let (width, height) = rgba.dimensions();
-    RenderedImage { width, height, rgba: Arc::from(rgba.into_raw()) }
+    RenderedImage {
+        width,
+        height,
+        rgba: Arc::from(rgba.into_raw()),
+    }
 }
 
 fn run_resize_worker(inner: Arc<WorkerInner>, resize_rx: Receiver<ResizeMessage>) {
     while let Ok(message) = resize_rx.recv() {
-        let ResizeMessage::Work(work) = message else { break; };
+        let ResizeMessage::Work(work) = message else {
+            break;
+        };
         if let Ok(mut latest) = inner.latest.lock() {
-            if !latest.get_mut(&work.item.ticket.id).is_some_and(|gate| gate.accept_publish(work.item.generation, work.item.view_revision)) {
-                let _ = inner.registry.transition(work.item.ticket.id, MediaAssetState::Stale);
+            if !latest.get_mut(&work.item.ticket.id).is_some_and(|gate| {
+                gate.accept_publish(work.item.generation, work.item.view_revision)
+            }) {
+                let _ = inner
+                    .registry
+                    .transition(work.item.ticket.id, MediaAssetState::Stale);
                 continue;
             }
         }
-        if inner.registry.transition(work.item.ticket.id, MediaAssetState::Transforming).is_err() { continue; }
-        let rendered = render_decoded(work.image, work.metadata.orientation, &work.item.spec);
-        let pin = match work.item.priority { MediaPriority::Current | MediaPriority::SettledCurrent => MediaPin::Hard, MediaPriority::Neighbor => MediaPin::Soft, MediaPriority::Thumbnail => MediaPin::None };
-        if let Ok(mut caches) = inner.caches.lock() {
-            caches.encoded.insert(work.item.ticket.id, work.encoded.clone());
-            caches.decoded.insert_rendered(work.item.ticket.id, rendered.width, rendered.height, rendered.rgba, pin);
+        if inner
+            .registry
+            .transition(work.item.ticket.id, MediaAssetState::Transforming)
+            .is_err()
+        {
+            continue;
         }
-        let _ = inner.registry.publish_ready(work.item.ticket.id, work.item.ticket.revision, work.encoded);
+        let rendered = render_decoded(work.image, work.metadata.orientation, &work.item.spec);
+        let pin = match work.item.priority {
+            MediaPriority::Current | MediaPriority::SettledCurrent => MediaPin::Hard,
+            MediaPriority::Neighbor => MediaPin::Soft,
+            MediaPriority::Thumbnail => MediaPin::None,
+        };
+        if let Ok(mut caches) = inner.caches.lock() {
+            caches
+                .encoded
+                .insert(work.item.ticket.id, work.encoded.clone());
+            caches.decoded.insert_rendered(
+                work.item.ticket.id,
+                rendered.width,
+                rendered.height,
+                rendered.rgba,
+                pin,
+            );
+        }
+        let _ = inner.registry.publish_ready(
+            work.item.ticket.id,
+            work.item.ticket.revision,
+            work.encoded,
+        );
     }
 }
 
 pub fn global_media_worker_pool() -> &'static MediaWorkerPool {
-    static POOL: std::sync::LazyLock<MediaWorkerPool> = std::sync::LazyLock::new(|| MediaWorkerPool::with_registry(global_media_registry().clone()));
+    static POOL: std::sync::LazyLock<MediaWorkerPool> = std::sync::LazyLock::new(|| {
+        MediaWorkerPool::with_registry(global_media_registry().clone())
+    });
     &POOL
 }
 
 pub fn queue_media_path(path: impl Into<PathBuf>, priority: MediaPriority) -> MediaAssetTicket {
     let path = path.into();
-    let key = MediaAssetKey { source_fingerprint: path.to_string_lossy().into_owned(), orientation: MediaOrientation::Normal, rendition: RenditionSpec::original(), revision: 1 };
+    let key = MediaAssetKey {
+        source_fingerprint: path.to_string_lossy().into_owned(),
+        orientation: MediaOrientation::Normal,
+        rendition: RenditionSpec::original(),
+        revision: 1,
+    };
     let ticket = global_media_registry().queue(key, MediaMetadata::default());
-    if !global_media_worker_pool().submit_path(ticket, path, RenditionSpec::original(), priority, 0, 1) {
-        let _ = global_media_registry().fail(ticket.id, MediaAssetError::Rejected("media queue is full".into()));
+    if !global_media_worker_pool().submit_path(
+        ticket,
+        path,
+        RenditionSpec::original(),
+        priority,
+        0,
+        1,
+    ) {
+        let _ = global_media_registry().fail(
+            ticket.id,
+            MediaAssetError::Rejected("media queue is full".into()),
+        );
     }
     ticket
 }
@@ -949,15 +1308,20 @@ pub fn queue_media_path(path: impl Into<PathBuf>, priority: MediaPriority) -> Me
 /// returns immediately and never exposes source paths to the control plane.
 pub fn scan_media_directory(path: impl Into<PathBuf>) {
     let root = path.into();
-    thread::Builder::new().name("media-directory-scan".into()).spawn(move || {
-        let Ok(entries) = std::fs::read_dir(root) else { return; };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
-                let _ = queue_media_path(path, MediaPriority::Thumbnail);
+    thread::Builder::new()
+        .name("media-directory-scan".into())
+        .spawn(move || {
+            let Ok(entries) = std::fs::read_dir(root) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    let _ = queue_media_path(path, MediaPriority::Thumbnail);
+                }
             }
-        }
-    }).ok();
+        })
+        .ok();
 }
 
 // ---------------------------------------------------------------------------
@@ -1029,7 +1393,9 @@ fn append_session_entry(session_id: &str, path: PathBuf) {
         global_media_registry().release(ticket.id);
         return;
     }
-    session.entries.push(MediaSessionEntry { path, ticket, name });
+    session
+        .entries
+        .push(MediaSessionEntry { path, ticket, name });
 }
 
 fn populate_media_session(session_id: String, root: PathBuf) {
@@ -1040,7 +1406,12 @@ fn populate_media_session(session_id: String, root: PathBuf) {
         paths.push(root);
     } else if root.is_dir() {
         if let Ok(entries) = std::fs::read_dir(&root) {
-            paths.extend(entries.flatten().map(|entry| entry.path()).filter(|path| path.is_file()));
+            paths.extend(
+                entries
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_file()),
+            );
             paths.sort();
         }
     }
@@ -1053,7 +1424,10 @@ fn populate_media_session(session_id: String, root: PathBuf) {
 /// The returned id is safe to keep in Auto model state.
 pub fn open_media_session(root: impl Into<PathBuf>) -> String {
     let root = root.into();
-    let id = format!("image-session-{}", MEDIA_SESSION_COUNTER.fetch_add(1, Ordering::Relaxed));
+    let id = format!(
+        "image-session-{}",
+        MEDIA_SESSION_COUNTER.fetch_add(1, Ordering::Relaxed)
+    );
     if let Ok(mut sessions) = MEDIA_SESSIONS.lock() {
         if sessions.len() >= MAX_MEDIA_SESSIONS {
             if let Some(evicted) = sessions.pop_front() {
@@ -1062,7 +1436,13 @@ pub fn open_media_session(root: impl Into<PathBuf>) -> String {
                 }
             }
         }
-        sessions.push_back(MediaSession { id: id.clone(), root: root.clone(), entries: Vec::new(), selected: 0, generation: 1 });
+        sessions.push_back(MediaSession {
+            id: id.clone(),
+            root: root.clone(),
+            entries: Vec::new(),
+            selected: 0,
+            generation: 1,
+        });
     }
     let worker_id = id.clone();
     thread::Builder::new()
@@ -1097,7 +1477,12 @@ pub fn media_session_snapshot(session_id: &str) -> String {
     MEDIA_SESSIONS
         .lock()
         .ok()
-        .and_then(|sessions| sessions.iter().find(|session| session.id == session_id).map(session_snapshot_locked))
+        .and_then(|sessions| {
+            sessions
+                .iter()
+                .find(|session| session.id == session_id)
+                .map(session_snapshot_locked)
+        })
         .unwrap_or_else(|| "{\"error\":\"unknown_session\"}".into())
 }
 
@@ -1107,7 +1492,17 @@ pub fn media_session_uri(session_id: &str) -> String {
     MEDIA_SESSIONS
         .lock()
         .ok()
-        .and_then(|sessions| sessions.iter().find(|session| session.id == session_id).and_then(|session| session.entries.get(session.selected).map(|entry| media_uri(entry.ticket))))
+        .and_then(|sessions| {
+            sessions
+                .iter()
+                .find(|session| session.id == session_id)
+                .and_then(|session| {
+                    session
+                        .entries
+                        .get(session.selected)
+                        .map(|entry| media_uri(entry.ticket))
+                })
+        })
         .unwrap_or_default()
 }
 
@@ -1117,7 +1512,18 @@ pub fn media_session_names(session_id: &str) -> Vec<String> {
     MEDIA_SESSIONS
         .lock()
         .ok()
-        .and_then(|sessions| sessions.iter().find(|session| session.id == session_id).map(|session| session.entries.iter().map(|entry| entry.name.clone()).collect()))
+        .and_then(|sessions| {
+            sessions
+                .iter()
+                .find(|session| session.id == session_id)
+                .map(|session| {
+                    session
+                        .entries
+                        .iter()
+                        .map(|entry| entry.name.clone())
+                        .collect()
+                })
+        })
         .unwrap_or_default()
 }
 
@@ -1140,7 +1546,13 @@ pub fn navigate_media_session(session_id: &str, delta: i32) -> String {
 /// Queue a viewport rendition for the selected asset.  The original ticket is
 /// retained until the replacement is published, so a stale request cannot
 /// invalidate the currently displayed media.
-pub fn request_media_view(session_id: &str, index: i32, width: i32, height: i32, quality: i32) -> String {
+pub fn request_media_view(
+    session_id: &str,
+    index: i32,
+    width: i32,
+    height: i32,
+    quality: i32,
+) -> String {
     let (path, generation) = {
         let Ok(mut sessions) = MEDIA_SESSIONS.lock() else {
             return "{\"error\":\"session_lock\"}".into();
@@ -1153,9 +1565,18 @@ pub fn request_media_view(session_id: &str, index: i32, width: i32, height: i32,
         }
         session.selected = index.clamp(0, session.entries.len() as i32 - 1) as usize;
         session.generation = session.generation.saturating_add(1);
-        (session.entries[session.selected].path.clone(), session.generation)
+        (
+            session.entries[session.selected].path.clone(),
+            session.generation,
+        )
     };
-    let spec = RenditionSpec { width: width.max(0) as u32, height: height.max(0) as u32, rotation_degrees: 0, quality: quality.clamp(1, 100) as u8, original_pixels: false };
+    let spec = RenditionSpec {
+        width: width.max(0) as u32,
+        height: height.max(0) as u32,
+        rotation_degrees: 0,
+        quality: quality.clamp(1, 100) as u8,
+        original_pixels: false,
+    };
     let ticket = queue_media_rendition(path, spec, MediaPriority::SettledCurrent, generation);
     if let Ok(mut sessions) = MEDIA_SESSIONS.lock() {
         if let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) {
@@ -1177,7 +1598,12 @@ pub fn request_media_view(session_id: &str, index: i32, width: i32, height: i32,
 /// Release all tickets held by a session.  Returns false for an already closed
 /// or unknown id, allowing generated APIs to report deterministic close state.
 pub fn close_media_session(session_id: &str) -> bool {
-    let Some(session) = MEDIA_SESSIONS.lock().ok().and_then(|mut sessions| sessions.iter().position(|session| session.id == session_id).and_then(|index| sessions.remove(index))) else {
+    let Some(session) = MEDIA_SESSIONS.lock().ok().and_then(|mut sessions| {
+        sessions
+            .iter()
+            .position(|session| session.id == session_id)
+            .and_then(|index| sessions.remove(index))
+    }) else {
         return false;
     };
     for entry in session.entries {
@@ -1194,11 +1620,24 @@ pub fn media_session_stats(_session_id: &str) -> String {
     )
 }
 
-fn queue_media_rendition(path: PathBuf, spec: RenditionSpec, priority: MediaPriority, revision: u64) -> MediaAssetTicket {
-    let key = MediaAssetKey { source_fingerprint: path.to_string_lossy().into_owned(), orientation: MediaOrientation::Normal, rendition: spec.clone(), revision };
+fn queue_media_rendition(
+    path: PathBuf,
+    spec: RenditionSpec,
+    priority: MediaPriority,
+    revision: u64,
+) -> MediaAssetTicket {
+    let key = MediaAssetKey {
+        source_fingerprint: path.to_string_lossy().into_owned(),
+        orientation: MediaOrientation::Normal,
+        rendition: spec.clone(),
+        revision,
+    };
     let ticket = global_media_registry().queue(key, MediaMetadata::default());
     if !global_media_worker_pool().submit_path(ticket, path, spec, priority, revision, revision) {
-        let _ = global_media_registry().fail(ticket.id, MediaAssetError::Rejected("media queue is full".into()));
+        let _ = global_media_registry().fail(
+            ticket.id,
+            MediaAssetError::Rejected("media queue is full".into()),
+        );
     }
     ticket
 }
@@ -1222,28 +1661,80 @@ pub fn queue_media_thumbnail(path: impl Into<PathBuf>, size: i32) -> String {
         return String::new();
     }
     let edge = size.clamp(16, 1024) as u32;
-    let spec = RenditionSpec { width: edge, height: edge, rotation_degrees: 0, quality: 85, original_pixels: false };
+    let spec = RenditionSpec {
+        width: edge,
+        height: edge,
+        rotation_degrees: 0,
+        quality: 85,
+        original_pixels: false,
+    };
     let ticket = queue_media_rendition(path, spec, MediaPriority::Thumbnail, 1);
     global_media_registry().release(ticket.id);
     media_uri(ticket)
 }
 
-impl Drop for MediaWorkerPool { fn drop(&mut self) { self.shutdown(); } }
+impl Drop for MediaWorkerPool {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
 
 pub const MAX_IMAGE_FILE_BYTES: u64 = 1024 * 1024 * 1024;
 pub const MAX_IMAGE_PIXELS: u64 = 400_000_000;
-pub fn validate_image_limits(width: u32, height: u32, byte_len: u64) -> Result<(), MediaAssetError> {
-    if byte_len > MAX_IMAGE_FILE_BYTES { return Err(MediaAssetError::FileTooLarge); }
-    match (width as u64).checked_mul(height as u64) { Some(pixels) if pixels <= MAX_IMAGE_PIXELS => Ok(()), Some(_) => Err(MediaAssetError::PixelLimitExceeded), None => Err(MediaAssetError::SizeOverflow) }
+pub fn validate_image_limits(
+    width: u32,
+    height: u32,
+    byte_len: u64,
+) -> Result<(), MediaAssetError> {
+    if byte_len > MAX_IMAGE_FILE_BYTES {
+        return Err(MediaAssetError::FileTooLarge);
+    }
+    match (width as u64).checked_mul(height as u64) {
+        Some(pixels) if pixels <= MAX_IMAGE_PIXELS => Ok(()),
+        Some(_) => Err(MediaAssetError::PixelLimitExceeded),
+        None => Err(MediaAssetError::SizeOverflow),
+    }
 }
 pub fn inspect_image_metadata(bytes: &[u8]) -> Result<MediaMetadata, MediaAssetError> {
-    let reader = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().map_err(|_| MediaAssetError::UnsupportedFormat)?;
+    let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|_| MediaAssetError::UnsupportedFormat)?;
     let format = reader.format().ok_or(MediaAssetError::UnsupportedFormat)?;
-    let mime_type = match format { image::ImageFormat::Jpeg => "image/jpeg", image::ImageFormat::Png => "image/png", image::ImageFormat::WebP => "image/webp", _ => return Err(MediaAssetError::UnsupportedFormat) };
-    let (width, height) = reader.into_dimensions().map_err(|_| MediaAssetError::Corrupt)?;
+    let mime_type = match format {
+        image::ImageFormat::Jpeg => "image/jpeg",
+        image::ImageFormat::Png => "image/png",
+        image::ImageFormat::WebP => "image/webp",
+        _ => return Err(MediaAssetError::UnsupportedFormat),
+    };
+    let (width, height) = reader
+        .into_dimensions()
+        .map_err(|_| MediaAssetError::Corrupt)?;
     validate_image_limits(width, height, bytes.len() as u64)?;
-    let orientation = exif::Reader::new().read_from_container(&mut std::io::Cursor::new(bytes)).ok().and_then(|exif| exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY).and_then(|field| field.value.get_uint(0))).map(|value| match value { 2 => MediaOrientation::FlipHorizontal, 3 => MediaOrientation::Rotate180, 4 => MediaOrientation::FlipVertical, 5 => MediaOrientation::Transpose, 6 => MediaOrientation::Rotate90, 7 => MediaOrientation::Transverse, 8 => MediaOrientation::Rotate270, _ => MediaOrientation::Normal }).unwrap_or_default();
-    Ok(MediaMetadata { width, height, orientation, mime_type: mime_type.into(), byte_len: bytes.len() as u64 })
+    let orientation = exif::Reader::new()
+        .read_from_container(&mut std::io::Cursor::new(bytes))
+        .ok()
+        .and_then(|exif| {
+            exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY)
+                .and_then(|field| field.value.get_uint(0))
+        })
+        .map(|value| match value {
+            2 => MediaOrientation::FlipHorizontal,
+            3 => MediaOrientation::Rotate180,
+            4 => MediaOrientation::FlipVertical,
+            5 => MediaOrientation::Transpose,
+            6 => MediaOrientation::Rotate90,
+            7 => MediaOrientation::Transverse,
+            8 => MediaOrientation::Rotate270,
+            _ => MediaOrientation::Normal,
+        })
+        .unwrap_or_default();
+    Ok(MediaMetadata {
+        width,
+        height,
+        orientation,
+        mime_type: mime_type.into(),
+        byte_len: bytes.len() as u64,
+    })
 }
 
 /// Transport-neutral result for the media endpoint.  The generated Axum and
@@ -1292,7 +1783,10 @@ pub fn media_http_response(
             let mut headers = BTreeMap::new();
             headers.insert("content-type".into(), metadata.mime_type);
             headers.insert("content-length".into(), bytes.len().to_string());
-            headers.insert("cache-control".into(), "public, max-age=31536000, immutable".into());
+            headers.insert(
+                "cache-control".into(),
+                "public, max-age=31536000, immutable".into(),
+            );
             headers.insert("etag".into(), etag);
             MediaHttpResponse {
                 status: 200,
@@ -1319,7 +1813,9 @@ pub fn resolve_media_uri(uri: &str) -> Option<Vec<u8>> {
 /// opens a file or decodes encoded bytes; only the resize lane populates this
 /// bounded cache.
 pub fn resolve_media_pixels(uri: &str) -> Option<(u32, u32, Arc<[u8]>)> {
-    if !uri.starts_with("/api/__auto/media/") { return None; }
+    if !uri.starts_with("/api/__auto/media/") {
+        return None;
+    }
     let (id, _) = parse_media_path(uri)?;
     global_media_worker_pool().decoded_pixels(id)
 }
@@ -1327,9 +1823,13 @@ pub fn resolve_media_pixels(uri: &str) -> Option<(u32, u32, Arc<[u8]>)> {
 /// Resolve a media URI for rendering, also returning the asset id (the
 /// renderer keys its texture-Handle cache on it — see renderer.rs).
 pub fn resolve_media_render(uri: &str) -> Option<(MediaAssetId, u32, u32, Arc<[u8]>)> {
-    if !uri.starts_with("/api/__auto/media/") { return None; }
+    if !uri.starts_with("/api/__auto/media/") {
+        return None;
+    }
     let (id, _) = parse_media_path(uri)?;
-    global_media_worker_pool().decoded_pixels(id).map(|(w, h, px)| (id, w, h, px))
+    global_media_worker_pool()
+        .decoded_pixels(id)
+        .map(|(w, h, px)| (id, w, h, px))
 }
 
 /// PLAN-095 T-02: renderer-facing terminal status of one media URI, consumed
@@ -1374,17 +1874,50 @@ fn parse_media_path(path: &str) -> Option<(MediaAssetId, u64)> {
     if revision.contains('/') || id.len() != 32 {
         return None;
     }
-    Some((MediaAssetId(u128::from_str_radix(id, 16).ok()?), revision.parse().ok()?))
+    Some((
+        MediaAssetId(u128::from_str_radix(id, 16).ok()?),
+        revision.parse().ok()?,
+    ))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RenderedImage { pub width: u32, pub height: u32, pub rgba: Arc<[u8]> }
-pub fn decode_rendition(bytes: &[u8], orientation: MediaOrientation, spec: &RenditionSpec) -> Result<RenderedImage, MediaAssetError> {
+pub struct RenderedImage {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: Arc<[u8]>,
+}
+pub fn decode_rendition(
+    bytes: &[u8],
+    orientation: MediaOrientation,
+    spec: &RenditionSpec,
+) -> Result<RenderedImage, MediaAssetError> {
     let image = image::load_from_memory(bytes).map_err(|_| MediaAssetError::Corrupt)?;
-    let oriented = match orientation { MediaOrientation::Normal => image, MediaOrientation::FlipHorizontal => image.fliph(), MediaOrientation::Rotate180 => image.rotate180(), MediaOrientation::FlipVertical => image.flipv(), MediaOrientation::Transpose => image.rotate90().fliph(), MediaOrientation::Rotate90 => image.rotate90(), MediaOrientation::Transverse => image.rotate270().fliph(), MediaOrientation::Rotate270 => image.rotate270() };
-    let rendered = if spec.original_pixels || spec.width == 0 || spec.height == 0 { oriented } else { oriented.resize(spec.width, spec.height, image::imageops::FilterType::Lanczos3) };
-    let rgba = rendered.to_rgba8(); let (width, height) = rgba.dimensions();
-    Ok(RenderedImage { width, height, rgba: Arc::from(rgba.into_raw()) })
+    let oriented = match orientation {
+        MediaOrientation::Normal => image,
+        MediaOrientation::FlipHorizontal => image.fliph(),
+        MediaOrientation::Rotate180 => image.rotate180(),
+        MediaOrientation::FlipVertical => image.flipv(),
+        MediaOrientation::Transpose => image.rotate90().fliph(),
+        MediaOrientation::Rotate90 => image.rotate90(),
+        MediaOrientation::Transverse => image.rotate270().fliph(),
+        MediaOrientation::Rotate270 => image.rotate270(),
+    };
+    let rendered = if spec.original_pixels || spec.width == 0 || spec.height == 0 {
+        oriented
+    } else {
+        oriented.resize(
+            spec.width,
+            spec.height,
+            image::imageops::FilterType::Lanczos3,
+        )
+    };
+    let rgba = rendered.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    Ok(RenderedImage {
+        width,
+        height,
+        rgba: Arc::from(rgba.into_raw()),
+    })
 }
 
 /// Computes an RGBA8 allocation length without allowing image dimensions to
@@ -1433,11 +1966,20 @@ mod tests {
             },
             MediaMetadata::default(),
         );
-        assert_eq!(registry.lookup(ticket.id, ticket.revision), MediaLookup::Pending);
+        assert_eq!(
+            registry.lookup(ticket.id, ticket.revision),
+            MediaLookup::Pending
+        );
 
-        registry.transition(ticket.id, MediaAssetState::Reading).unwrap();
-        registry.transition(ticket.id, MediaAssetState::Decoding).unwrap();
-        registry.transition(ticket.id, MediaAssetState::Transforming).unwrap();
+        registry
+            .transition(ticket.id, MediaAssetState::Reading)
+            .unwrap();
+        registry
+            .transition(ticket.id, MediaAssetState::Decoding)
+            .unwrap();
+        registry
+            .transition(ticket.id, MediaAssetState::Transforming)
+            .unwrap();
         registry
             .publish_ready(ticket.id, ticket.revision, Arc::<[u8]>::from([1, 2, 3]))
             .unwrap();
@@ -1452,8 +1994,14 @@ mod tests {
 
         registry.release(ticket.id);
         registry.collect_expired();
-        assert_eq!(registry.lookup(ticket.id, ticket.revision), MediaLookup::Expired);
-        assert_eq!(registry.lookup(ticket.id, ticket.revision + 1), MediaLookup::Missing);
+        assert_eq!(
+            registry.lookup(ticket.id, ticket.revision),
+            MediaLookup::Expired
+        );
+        assert_eq!(
+            registry.lookup(ticket.id, ticket.revision + 1),
+            MediaLookup::Missing
+        );
     }
 
     #[test]
@@ -1468,7 +2016,10 @@ mod tests {
         assert_eq!(cache.get(first).unwrap().as_ref(), &[1, 2]);
         cache.insert(third, Arc::<[u8]>::from([5, 6]));
 
-        assert!(cache.get(first).is_some(), "recently accessed entry is retained");
+        assert!(
+            cache.get(first).is_some(),
+            "recently accessed entry is retained"
+        );
         assert!(cache.get(second).is_none(), "least-recent entry is evicted");
         assert!(cache.get(third).is_some());
         assert_eq!(cache.stats().evictions, 1);
@@ -1480,13 +2031,32 @@ mod tests {
         let current = super::MediaAssetId(1);
         let neighbor = super::MediaAssetId(2);
         let replacement = super::MediaAssetId(3);
-        cache.insert(neighbor, Arc::<[u8]>::from([1, 2, 3, 4]), super::MediaPin::Soft);
-        cache.insert(current, Arc::<[u8]>::from([5, 6, 7, 8, 9, 10]), super::MediaPin::Hard);
+        cache.insert(
+            neighbor,
+            Arc::<[u8]>::from([1, 2, 3, 4]),
+            super::MediaPin::Soft,
+        );
+        cache.insert(
+            current,
+            Arc::<[u8]>::from([5, 6, 7, 8, 9, 10]),
+            super::MediaPin::Hard,
+        );
         assert!(cache.contains(current));
-        assert_eq!(cache.used_bytes(), 6, "hard-pinned current can temporarily exceed budget");
-        assert!(!cache.contains(neighbor), "publish reclaims non-current content");
+        assert_eq!(
+            cache.used_bytes(),
+            6,
+            "hard-pinned current can temporarily exceed budget"
+        );
+        assert!(
+            !cache.contains(neighbor),
+            "publish reclaims non-current content"
+        );
 
-        cache.insert(replacement, Arc::<[u8]>::from([11, 12]), super::MediaPin::None);
+        cache.insert(
+            replacement,
+            Arc::<[u8]>::from([11, 12]),
+            super::MediaPin::None,
+        );
         assert!(cache.contains(current));
         cache.set_pin(current, super::MediaPin::None);
         cache.collect();
@@ -1542,9 +2112,22 @@ mod tests {
         };
         let ticket = registry.queue(key, MediaMetadata::default());
         let mut workers = super::MediaWorkerPool::with_registry(registry.clone());
-        assert!(workers.submit_bytes(ticket, Arc::from(bytes.into_inner()), RenditionSpec::viewport(1, 1), MediaPriority::Current, 1, 1));
-        assert_eq!(registry.wait_for_terminal(ticket.id, Duration::from_secs(2)), Some(MediaAssetState::Ready));
-        assert!(matches!(registry.lookup(ticket.id, ticket.revision), MediaLookup::Ready(_)));
+        assert!(workers.submit_bytes(
+            ticket,
+            Arc::from(bytes.into_inner()),
+            RenditionSpec::viewport(1, 1),
+            MediaPriority::Current,
+            1,
+            1
+        ));
+        assert_eq!(
+            registry.wait_for_terminal(ticket.id, Duration::from_secs(2)),
+            Some(MediaAssetState::Ready)
+        );
+        assert!(matches!(
+            registry.lookup(ticket.id, ticket.revision),
+            MediaLookup::Ready(_)
+        ));
         workers.shutdown();
     }
 
@@ -1554,14 +2137,19 @@ mod tests {
             .join("../../examples/ui/031-image-viewer/tests/fixtures");
         let session = super::open_media_session(root);
         let deadline = std::time::Instant::now() + Duration::from_secs(2);
-        while super::media_session_names(&session).is_empty() && std::time::Instant::now() < deadline {
+        while super::media_session_names(&session).is_empty()
+            && std::time::Instant::now() < deadline
+        {
             std::thread::sleep(Duration::from_millis(10));
         }
         let names = super::media_session_names(&session);
         assert!(names.iter().any(|name| name == "rgb-1x1.png"));
         let snapshot = super::media_session_snapshot(&session);
         assert!(snapshot.contains("\"count\":"));
-        assert!(!snapshot.contains("fixtures"), "snapshot must not leak source paths");
+        assert!(
+            !snapshot.contains("fixtures"),
+            "snapshot must not leak source paths"
+        );
         let _ = super::request_media_view(&session, 0, 32, 32, 90);
         let uri = super::media_session_uri(&session);
         assert!(uri.is_empty() || uri.starts_with("/api/__auto/media/"));
@@ -1577,7 +2165,10 @@ mod tests {
         use super::{media_surface_status, MediaSurfaceStatus};
         // Non-media URIs stay outside the notify contract (placeholder
         // display semantics unchanged for legacy components).
-        assert_eq!(media_surface_status("https://example.com/x.png"), MediaSurfaceStatus::NotMedia);
+        assert_eq!(
+            media_surface_status("https://example.com/x.png"),
+            MediaSurfaceStatus::NotMedia
+        );
         assert_eq!(media_surface_status(""), MediaSurfaceStatus::NotMedia);
         // Media-prefixed but malformed ticket path = terminal failure with a
         // locatable reason (缺票族——占位图不会自行变好).
@@ -1599,12 +2190,19 @@ mod tests {
         let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png");
         let ticket = queue_media_path(&fixture, MediaPriority::Current);
-        assert_ne!(media_change_generation(), before, "queue must bump generation");
+        assert_ne!(
+            media_change_generation(),
+            before,
+            "queue must bump generation"
+        );
         let mid = media_change_generation();
         let _ = super::global_media_registry().fail(ticket.id, super::MediaAssetError::Corrupt);
-        assert_ne!(media_change_generation(), mid, "terminal failure must bump generation");
+        assert_ne!(
+            media_change_generation(),
+            mid,
+            "terminal failure must bump generation"
+        );
     }
-
 
     #[test]
     fn thumbnail_queue_rejects_unsupported_and_queues_supported_paths() {
@@ -1633,9 +2231,18 @@ mod tests {
             .write_to(&mut bytes, image::ImageFormat::Png)
             .unwrap();
         let metadata = super::inspect_image_metadata(bytes.get_ref()).unwrap();
-        assert_eq!((metadata.width, metadata.height, metadata.mime_type.as_str()), (2, 3, "image/png"));
-        assert_eq!(super::inspect_image_metadata(b"not an image"), Err(super::MediaAssetError::UnsupportedFormat));
-        assert_eq!(super::validate_image_limits(2, 3, super::MAX_IMAGE_FILE_BYTES + 1), Err(super::MediaAssetError::FileTooLarge));
+        assert_eq!(
+            (metadata.width, metadata.height, metadata.mime_type.as_str()),
+            (2, 3, "image/png")
+        );
+        assert_eq!(
+            super::inspect_image_metadata(b"not an image"),
+            Err(super::MediaAssetError::UnsupportedFormat)
+        );
+        assert_eq!(
+            super::validate_image_limits(2, 3, super::MAX_IMAGE_FILE_BYTES + 1),
+            Err(super::MediaAssetError::FileTooLarge)
+        );
     }
 
     #[test]
@@ -1646,10 +2253,18 @@ mod tests {
         image::DynamicImage::ImageRgba8(source)
             .write_to(&mut bytes, image::ImageFormat::Png)
             .unwrap();
-        let rendered = super::decode_rendition(bytes.get_ref(), super::MediaOrientation::Rotate90, &RenditionSpec::original()).unwrap();
+        let rendered = super::decode_rendition(
+            bytes.get_ref(),
+            super::MediaOrientation::Rotate90,
+            &RenditionSpec::original(),
+        )
+        .unwrap();
         assert_eq!((rendered.width, rendered.height), (3, 2));
         assert_eq!(rendered.rgba.len(), 3 * 2 * 4);
-        assert!(rendered.rgba.chunks_exact(4).any(|pixel| pixel == [4, 5, 6, 7]));
+        assert!(rendered
+            .rgba
+            .chunks_exact(4)
+            .any(|pixel| pixel == [4, 5, 6, 7]));
 
         let viewport = super::decode_rendition(
             bytes.get_ref(),
@@ -1676,33 +2291,73 @@ mod tests {
             },
         );
         let path = format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision);
-        assert_eq!(super::media_http_response(&registry, "GET", &path, None).status, 503);
+        assert_eq!(
+            super::media_http_response(&registry, "GET", &path, None).status,
+            503
+        );
 
-        registry.transition(ticket.id, MediaAssetState::Reading).unwrap();
-        registry.transition(ticket.id, MediaAssetState::Decoding).unwrap();
-        registry.transition(ticket.id, MediaAssetState::Transforming).unwrap();
+        registry
+            .transition(ticket.id, MediaAssetState::Reading)
+            .unwrap();
+        registry
+            .transition(ticket.id, MediaAssetState::Decoding)
+            .unwrap();
+        registry
+            .transition(ticket.id, MediaAssetState::Transforming)
+            .unwrap();
         registry
             .publish_ready(ticket.id, ticket.revision, Arc::<[u8]>::from([1, 2, 3]))
             .unwrap();
         let response = super::media_http_response(&registry, "GET", &path, None);
         assert_eq!(response.status, 200);
         assert_eq!(response.body.as_deref(), Some(&[1, 2, 3][..]));
-        assert_eq!(response.headers.get("content-type"), Some(&"image/png".into()));
-        assert_eq!(super::media_http_response(&registry, "HEAD", &path, None).body, None);
-        assert_eq!(super::media_http_response(&registry, "GET", &path, Some(response.headers["etag"].as_str())).status, 304);
-        assert_eq!(super::media_http_response(&registry, "GET", "/api/__auto/media/nope/9", None).status, 404);
+        assert_eq!(
+            response.headers.get("content-type"),
+            Some(&"image/png".into())
+        );
+        assert_eq!(
+            super::media_http_response(&registry, "HEAD", &path, None).body,
+            None
+        );
+        assert_eq!(
+            super::media_http_response(
+                &registry,
+                "GET",
+                &path,
+                Some(response.headers["etag"].as_str())
+            )
+            .status,
+            304
+        );
+        assert_eq!(
+            super::media_http_response(&registry, "GET", "/api/__auto/media/nope/9", None).status,
+            404
+        );
         assert!(!format!("{:?}", response).contains("private/source"));
 
         let failed = registry.queue(
-            MediaAssetKey { source_fingerprint: "fixture-b".into(), orientation: Default::default(), rendition: RenditionSpec::original(), revision: 10 },
+            MediaAssetKey {
+                source_fingerprint: "fixture-b".into(),
+                orientation: Default::default(),
+                rendition: RenditionSpec::original(),
+                revision: 10,
+            },
             MediaMetadata::default(),
         );
-        registry.fail(failed.id, super::MediaAssetError::UnsupportedFormat).unwrap();
+        registry
+            .fail(failed.id, super::MediaAssetError::UnsupportedFormat)
+            .unwrap();
         let failed_path = format!("/api/__auto/media/{}/{}", failed.id, failed.revision);
-        assert_eq!(super::media_http_response(&registry, "GET", &failed_path, None).status, 422);
+        assert_eq!(
+            super::media_http_response(&registry, "GET", &failed_path, None).status,
+            422
+        );
         registry.release(ticket.id);
         registry.collect_expired();
-        assert_eq!(super::media_http_response(&registry, "GET", &path, None).status, 410);
+        assert_eq!(
+            super::media_http_response(&registry, "GET", &path, None).status,
+            410
+        );
     }
 
     #[test]
@@ -1719,9 +2374,15 @@ mod tests {
         );
         let uri = format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision);
         assert_eq!(super::resolve_media_uri(&uri), None);
-        registry.transition(ticket.id, MediaAssetState::Reading).unwrap();
-        registry.transition(ticket.id, MediaAssetState::Decoding).unwrap();
-        registry.transition(ticket.id, MediaAssetState::Transforming).unwrap();
+        registry
+            .transition(ticket.id, MediaAssetState::Reading)
+            .unwrap();
+        registry
+            .transition(ticket.id, MediaAssetState::Decoding)
+            .unwrap();
+        registry
+            .transition(ticket.id, MediaAssetState::Transforming)
+            .unwrap();
         registry
             .publish_ready(ticket.id, ticket.revision, Arc::<[u8]>::from([0, 255, 2]))
             .unwrap();
@@ -1747,7 +2408,10 @@ mod tests {
             match fixture["kind"].as_str().unwrap() {
                 "jpeg" => assert!(bytes.starts_with(&[0xff, 0xd8, 0xff]), "{name} is not JPEG"),
                 "png" => assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"), "{name} is not PNG"),
-                "webp" => assert!(bytes.starts_with(b"RIFF") && bytes[8..].starts_with(b"WEBP"), "{name} is not WebP"),
+                "webp" => assert!(
+                    bytes.starts_with(b"RIFF") && bytes[8..].starts_with(b"WEBP"),
+                    "{name} is not WebP"
+                ),
                 "corrupt" => assert!(super::inspect_image_metadata(&bytes).is_err()),
                 other => panic!("unknown fixture kind {other}"),
             }

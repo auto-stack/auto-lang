@@ -264,8 +264,8 @@ pub struct Scope {
     pub cur_block: usize,
     pub symbols: HashMap<AutoStr, Rc<Meta>>,
     pub types: HashMap<AutoStr, Rc<Meta>>,
-    pub vals: HashMap<AutoStr, ValueID>,  // CHANGED: Now stores ValueID instead of Value
-    pub moved_vars: HashSet<AutoStr>,     // Track moved variables for ownership semantics
+    pub vals: HashMap<AutoStr, ValueID>, // CHANGED: Now stores ValueID instead of Value
+    pub moved_vars: HashSet<AutoStr>,    // Track moved variables for ownership semantics
 }
 
 impl Scope {
@@ -458,7 +458,6 @@ impl StackedScope {
 
 #[cfg(test)]
 mod tests {
-    
 
     use super::*;
 
@@ -469,8 +468,6 @@ mod tests {
 
         assert_eq!(sid.name(), "math");
     }
-
-
 
     #[test]
     fn test_symbol_table_name() {

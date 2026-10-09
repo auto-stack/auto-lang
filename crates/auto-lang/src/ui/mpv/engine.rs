@@ -41,10 +41,8 @@ use std::sync::Arc;
 use std::thread::ThreadId;
 
 use super::frame::SwTarget;
+use super::loader::{cstring, event_id, render_param, MpvApi, MpvLoadError, MpvSymbols, ParamList};
 use super::locale;
-use super::loader::{
-    cstring, event_id, render_param, MpvApi, MpvLoadError, MpvSymbols, ParamList,
-};
 
 /// 一个事件里我们实际要用的字段——`mpv_event` 的**值拷贝**。
 ///
@@ -293,10 +291,7 @@ impl MpvEngine {
         let mut no_block: c_int = 0;
         let params = ParamList::new()
             .push(render_param::SW_SIZE, size.as_ptr() as *mut c_void)
-            .push(
-                render_param::SW_FORMAT,
-                b"rgb0\0".as_ptr() as *mut c_void,
-            )
+            .push(render_param::SW_FORMAT, b"rgb0\0".as_ptr() as *mut c_void)
             .push(
                 render_param::SW_STRIDE,
                 &stride as *const usize as *mut c_void,
@@ -325,20 +320,15 @@ impl MpvEngine {
         if argv.is_empty() {
             return Err("命令参数为空".into());
         }
-        let owned: Vec<std::ffi::CString> = argv
-            .iter()
-            .map(|s| cstring(s))
-            .collect::<Result<_, _>>()?;
+        let owned: Vec<std::ffi::CString> =
+            argv.iter().map(|s| cstring(s)).collect::<Result<_, _>>()?;
         let mut ptrs: Vec<*const c_char> = owned.iter().map(|c| c.as_ptr()).collect();
         ptrs.push(std::ptr::null());
         // SAFETY: handle 非空；argv 以 NULL 结尾，且每个指针指向的 CString 在
         // 本次调用期间由 `owned` 持有。
         let rc = unsafe { (self.api.symbols.command)(self.handle, ptrs.as_ptr()) };
         if rc < 0 {
-            return Err(format!(
-                "mpv_command 失败：{}",
-                self.api.error_text(rc)
-            ));
+            return Err(format!("mpv_command 失败：{}", self.api.error_text(rc)));
         }
         Ok(())
     }

@@ -40,26 +40,14 @@ impl ArkProjectGenerator {
             self.generate_build_profile(),
         );
 
-        files.insert(
-            "oh-package.json5".to_string(),
-            self.generate_oh_package(),
-        );
+        files.insert("oh-package.json5".to_string(), self.generate_oh_package());
 
-        files.insert(
-            "hvigorfile.ts".to_string(),
-            self.generate_hvigorfile(),
-        );
+        files.insert("hvigorfile.ts".to_string(), self.generate_hvigorfile());
 
-        files.insert(
-            "code-linter.json5".to_string(),
-            self.generate_code_linter(),
-        );
+        files.insert("code-linter.json5".to_string(), self.generate_code_linter());
 
         // AppScope directory
-        files.insert(
-            "AppScope/app.json5".to_string(),
-            self.generate_app_json5(),
-        );
+        files.insert("AppScope/app.json5".to_string(), self.generate_app_json5());
 
         files.insert(
             "AppScope/resources/base/element/string.json".to_string(),
@@ -165,7 +153,6 @@ impl ArkProjectGenerator {
         // Note: Main page (App.ets) is generated from AURA source
         // No static Index.ets needed - App.ets is the entry point
 
-
         files
     }
 
@@ -241,7 +228,8 @@ export default {
   system: appTasks, /* Built-in plugin of Hvigor. It cannot be modified. */
   plugins: []       /* Custom plugin to extend the functionality of Hvigor. */
 }
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate code-linter.json5
@@ -260,7 +248,8 @@ export default {
   "rules": {
   }
 }
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate AppScope/app.json5
@@ -310,7 +299,8 @@ export default {
   "nodeOptions": {
   }
 }
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate entry/build-profile.json5
@@ -337,7 +327,8 @@ export default {
     }
   ]
 }
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate entry/hvigorfile.ts
@@ -348,7 +339,8 @@ export default {
   system: hapTasks,  /* Built-in plugin of Hvigor. It cannot be modified. */
   plugins: []        /* Custom plugin to extend the functionality of Hvigor. */
 }
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate entry/oh-package.json5
@@ -362,7 +354,8 @@ export default {
   "license": "MIT",
   "dependencies": {}
 }
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate obfuscation-rules.txt
@@ -370,7 +363,8 @@ export default {
         r#"# Define obfuscation rules for your project.
 # For more details, see:
 #   https://developer.huawei.com/consumer/cn/doc/harmonyos-guides-V5/ide-obfuscation-V5
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate module.json5
@@ -425,7 +419,8 @@ export default {
     }
   ]
 }
-"##.to_string()
+"##
+        .to_string()
     }
 
     /// Generate entry strings
@@ -461,7 +456,8 @@ export default {
     }
   ]
 }
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate layered_image.json for adaptive icon
@@ -473,7 +469,8 @@ export default {
     "foreground" : "$media:foreground"
   }
 }
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate a placeholder PNG icon (base64 encoded 48x48 purple square)
@@ -494,7 +491,8 @@ export default {
         UoIkZUhSgiRlSFKCJGVIUoIkZUhSgiRlSFKCJGVIUoIkZUhSgiRlSFKCJGVIUoIkZUhSgiRlSFKC\
         JGVIUoIkZUhSgiRlSFKCJGVIUoIkZUhSgiRlSFKCJGVIUoIkZUhSgiRlSFKCJGVIUoIkZUhSgiRl\
         SFKCJGVIUoIkZUhSgiRlSFKCJGVIUoIkZUhSgiRlSFKCJGVIUoIkZUhSgiRlSFKCJGVIUoIkZUhS\
-        giRlSFKCJGVIUoIkZUhSgiT1AeLcB9YB4gMAAAAASUVORK5CYII=".to_string()
+        giRlSFKCJGVIUoIkZUhSgiT1AeLcB9YB4gMAAAAASUVORK5CYII="
+            .to_string()
     }
 
     /// Generate main_pages.json
@@ -504,7 +502,8 @@ export default {
     "pages/App"
   ]
 }
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate EntryAbility.ets
@@ -555,7 +554,6 @@ export default class EntryAbility extends UIAbility {
 }
 "#.to_string()
     }
-
 }
 
 #[cfg(test)]
@@ -599,9 +597,14 @@ mod tests {
     fn test_main_pages_points_to_app() {
         let gen = ArkProjectGenerator::new("TestApp");
         let files = gen.generate();
-        let main_pages = files.get("entry/src/main/resources/base/profile/main_pages.json").unwrap();
+        let main_pages = files
+            .get("entry/src/main/resources/base/profile/main_pages.json")
+            .unwrap();
 
-        assert!(main_pages.contains("pages/App"), "main_pages.json should point to App.ets as entry");
+        assert!(
+            main_pages.contains("pages/App"),
+            "main_pages.json should point to App.ets as entry"
+        );
     }
 
     #[test]

@@ -92,7 +92,8 @@ impl EscapeAnalyzer {
             let current = self.map.lookup(id.scope_depth, &id.name);
             match current {
                 Some(OwnershipTier::Owned) => {
-                    self.map.record(id, intended_tier, "lowered: borrow use, non-escaping");
+                    self.map
+                        .record(id, intended_tier, "lowered: borrow use, non-escaping");
                 }
                 _ => {
                     // Already escalated (Clone/RcRefCell) or untracked — leave as is.
@@ -120,7 +121,10 @@ impl EscapeAnalyzer {
         for depth in (0..self.scope_stack.len()).rev() {
             for n in &self.scope_stack[depth] {
                 if *n == *name {
-                    return Some(BindingId { scope_depth: depth, name: name.clone() });
+                    return Some(BindingId {
+                        scope_depth: depth,
+                        name: name.clone(),
+                    });
                 }
             }
         }
@@ -147,7 +151,10 @@ impl EscapeAnalyzer {
     fn introduce(&mut self, name: Name) -> BindingId {
         let depth = self.current_depth();
         self.scope_stack.last_mut().unwrap().push(name.clone());
-        BindingId { scope_depth: depth, name }
+        BindingId {
+            scope_depth: depth,
+            name,
+        }
     }
 
     /// Record the analyzer's decision for a binding.
@@ -279,12 +286,7 @@ impl EscapeAnalyzer {
             // 升级（不允许"未调查即安全"）。旧实现静默忽略，漏报的逃逸
             // 会让 BorrowView 层发射不健全的 `&`。
             _ => {
-                let visible: Vec<Name> = self
-                    .scope_stack
-                    .iter()
-                    .flatten()
-                    .cloned()
-                    .collect();
+                let visible: Vec<Name> = self.scope_stack.iter().flatten().cloned().collect();
                 for name in visible {
                     self.escalate_visible(
                         &name,
@@ -297,7 +299,9 @@ impl EscapeAnalyzer {
 
     fn visit_if(&mut self, if_stmt: &If) {
         // Condition is evaluated in the current scope.
-        let escapes = self.collect_escapes_collecting(&if_stmt.branches.iter().map(|b| &b.cond).collect::<Vec<_>>());
+        let escapes = self.collect_escapes_collecting(
+            &if_stmt.branches.iter().map(|b| &b.cond).collect::<Vec<_>>(),
+        );
         for (name, reason) in escapes {
             self.escalate_visible(&name, reason);
         }
@@ -398,7 +402,11 @@ impl EscapeAnalyzer {
                 let mut captured = Vec::new();
                 self.gather_var_refs(inner, &mut captured);
                 for name in captured {
-                    self.escalate_to(&name, OwnershipTier::ArcMutex, "captured across Send boundary (.go/tokio::spawn)");
+                    self.escalate_to(
+                        &name,
+                        OwnershipTier::ArcMutex,
+                        "captured across Send boundary (.go/tokio::spawn)",
+                    );
                 }
                 // Also recurse into inner for nested Go or escape patterns.
                 self.find_send_boundaries(inner);
@@ -500,7 +508,10 @@ impl EscapeAnalyzer {
             _ => return None,
         };
         let depth = self.scope_depth_of(name)?;
-        Some(BindingId { scope_depth: depth, name: name.clone() })
+        Some(BindingId {
+            scope_depth: depth,
+            name: name.clone(),
+        })
     }
 
     /// Recursively scan an expression for escape patterns and push (name,
@@ -653,8 +664,13 @@ impl EscapeAnalyzer {
                 self.find_escapes(l, out);
                 self.find_escapes(r, out);
             }
-            Expr::ErrorPropagate(e) | Expr::Some(e) | Expr::Ok(e) | Expr::Err(e)
-            | Expr::BoxExpr(e) | Expr::ArcExpr(e) | Expr::Yield(e) => {
+            Expr::ErrorPropagate(e)
+            | Expr::Some(e)
+            | Expr::Ok(e)
+            | Expr::Err(e)
+            | Expr::BoxExpr(e)
+            | Expr::ArcExpr(e)
+            | Expr::Yield(e) => {
                 self.find_escapes(e, out);
             }
             Expr::Cast { expr, .. } | Expr::To { expr, .. } => {
@@ -672,10 +688,21 @@ impl EscapeAnalyzer {
             }
 
             // Literals / simple forms with no sub-expressions.
-            Expr::Int(_) | Expr::Uint(_) | Expr::Byte(_) | Expr::Float(_, _)
-            | Expr::Double(_, _) | Expr::Bool(_) | Expr::Char(_) | Expr::Str(_)
-            | Expr::CStr(_) | Expr::Ident(_) | Expr::GenName(_) | Expr::Ref(_)
-            | Expr::Nil | Expr::Null | Expr::None => {}
+            Expr::Int(_)
+            | Expr::Uint(_)
+            | Expr::Byte(_)
+            | Expr::Float(_, _)
+            | Expr::Double(_, _)
+            | Expr::Bool(_)
+            | Expr::Char(_)
+            | Expr::Str(_)
+            | Expr::CStr(_)
+            | Expr::Ident(_)
+            | Expr::GenName(_)
+            | Expr::Ref(_)
+            | Expr::Nil
+            | Expr::Null
+            | Expr::None => {}
 
             // PLAN-667 (F-04): unhandled compound forms are fail-closed —
             // every visible binding escalates. An untraversed form can hide
@@ -756,8 +783,13 @@ impl EscapeAnalyzer {
                 self.gather_var_refs(l, out);
                 self.gather_var_refs(r, out);
             }
-            Expr::ErrorPropagate(e) | Expr::Some(e) | Expr::Ok(e) | Expr::Err(e)
-            | Expr::BoxExpr(e) | Expr::ArcExpr(e) | Expr::Yield(e) => {
+            Expr::ErrorPropagate(e)
+            | Expr::Some(e)
+            | Expr::Ok(e)
+            | Expr::Err(e)
+            | Expr::BoxExpr(e)
+            | Expr::ArcExpr(e)
+            | Expr::Yield(e) => {
                 self.gather_var_refs(e, out);
             }
             Expr::Cast { expr, .. } | Expr::To { expr, .. } => {
@@ -773,9 +805,19 @@ impl EscapeAnalyzer {
                     }
                 }
             }
-            Expr::Int(_) | Expr::Uint(_) | Expr::Byte(_) | Expr::Float(_, _)
-            | Expr::Double(_, _) | Expr::Bool(_) | Expr::Char(_) | Expr::Str(_)
-            | Expr::CStr(_) | Expr::GenName(_) | Expr::Nil | Expr::Null | Expr::None => {}
+            Expr::Int(_)
+            | Expr::Uint(_)
+            | Expr::Byte(_)
+            | Expr::Float(_, _)
+            | Expr::Double(_, _)
+            | Expr::Bool(_)
+            | Expr::Char(_)
+            | Expr::Str(_)
+            | Expr::CStr(_)
+            | Expr::GenName(_)
+            | Expr::Nil
+            | Expr::Null
+            | Expr::None => {}
             // PLAN-667 (F-04): unknown forms fail closed — collect every
             // visible binding (callers escalate what is collected).
             _ => {
@@ -802,7 +844,10 @@ impl EscapeAnalyzer {
         // Find the binding's scope depth (nearest enclosing).
         let depth = self.scope_depth_of(name);
         if let Some(depth) = depth {
-            let id = BindingId { scope_depth: depth, name: name.clone() };
+            let id = BindingId {
+                scope_depth: depth,
+                name: name.clone(),
+            };
             // Default fallback tier for escape: Clone. Phase 2 will refine
             // (Copy types stay Clone; others become RcRefCell). For Phase 1 we
             // record Clone as the conservative escape tier.
@@ -818,7 +863,10 @@ impl EscapeAnalyzer {
     fn escalate_to(&mut self, name: &Name, tier: OwnershipTier, reason: impl Into<String>) {
         let depth = self.scope_depth_of(name);
         if let Some(depth) = depth {
-            let id = BindingId { scope_depth: depth, name: name.clone() };
+            let id = BindingId {
+                scope_depth: depth,
+                name: name.clone(),
+            };
             self.decide(id, tier, reason);
         }
     }
@@ -926,7 +974,11 @@ mod tests {
         // 查询）。同名绑定合并为单根条目；无逃逸时 tier=Owned。同名任一
         // 绑定逃逸即以最高序 tier 反映到根（见 plan667 探针
         // nested_scope_merges_to_root_identity）。
-        assert_eq!(map.len(), 1, "same-name bindings fold to a single root entry");
+        assert_eq!(
+            map.len(),
+            1,
+            "same-name bindings fold to a single root entry"
+        );
         assert_eq!(map.lookup(0, &"x".into()), Some(OwnershipTier::Owned));
     }
 
@@ -950,7 +1002,7 @@ mod tests {
             span: None,
             api_attrs: None,
             attrs: Vec::new(),
-            export_abi: None
+            export_abi: None,
         };
         let map = EscapeAnalyzer::analyze_fn(&func);
         assert!(map.is_empty());
@@ -1102,7 +1154,9 @@ mod tests {
         let body = Body {
             stmts: vec![
                 make_store("x", Expr::Int(1)),
-                Stmt::Expr(Expr::Go { expr: Box::new(Expr::Ident(Name::from("x"))) }),
+                Stmt::Expr(Expr::Go {
+                    expr: Box::new(Expr::Ident(Name::from("x"))),
+                }),
             ],
             has_new_line: false,
             source_lines: vec![],
@@ -1152,7 +1206,6 @@ mod tests {
     }
 }
 
-
 // ============================================================================
 // PLAN-667 (F-03): 闭包自由变量收集器
 // ============================================================================
@@ -1183,9 +1236,7 @@ fn collect_free_vars_in_stmt(
             shadowed.insert(s.name.clone());
         }
         Stmt::Expr(e) => collect_free_vars_in_expr(e, shadowed, visible, out),
-        Stmt::Return(e) | Stmt::Reply(e) => {
-            collect_free_vars_in_expr(e, shadowed, visible, out)
-        }
+        Stmt::Return(e) | Stmt::Reply(e) => collect_free_vars_in_expr(e, shadowed, visible, out),
         Stmt::If(i) => {
             for b in &i.branches {
                 collect_free_vars_in_expr(&b.cond, shadowed, visible, out);
@@ -1308,8 +1359,13 @@ fn collect_free_vars_in_expr(
             collect_free_vars_in_expr(l, shadowed, visible, out);
             collect_free_vars_in_expr(r, shadowed, visible, out);
         }
-        E::ErrorPropagate(e) | E::Some(e) | E::Ok(e) | E::Err(e)
-        | E::BoxExpr(e) | E::ArcExpr(e) | E::Yield(e) => {
+        E::ErrorPropagate(e)
+        | E::Some(e)
+        | E::Ok(e)
+        | E::Err(e)
+        | E::BoxExpr(e)
+        | E::ArcExpr(e)
+        | E::Yield(e) => {
             collect_free_vars_in_expr(e, shadowed, visible, out);
         }
         E::Cast { expr, .. } | E::To { expr, .. } => {
@@ -1329,9 +1385,19 @@ fn collect_free_vars_in_expr(
             }
         }
         // 字面量/空形式无引用。
-        E::Int(_) | E::Uint(_) | E::Byte(_) | E::Float(_, _) | E::Double(_, _)
-        | E::Bool(_) | E::Char(_) | E::Str(_) | E::CStr(_) | E::GenName(_)
-        | E::Nil | E::Null | E::None => {}
+        E::Int(_)
+        | E::Uint(_)
+        | E::Byte(_)
+        | E::Float(_, _)
+        | E::Double(_, _)
+        | E::Bool(_)
+        | E::Char(_)
+        | E::Str(_)
+        | E::CStr(_)
+        | E::GenName(_)
+        | E::Nil
+        | E::Null
+        | E::None => {}
         // PLAN-667 (F-04): 未覆盖复合形式 fail-closed——全部可见名算捕获。
         _ => {
             for v in visible {

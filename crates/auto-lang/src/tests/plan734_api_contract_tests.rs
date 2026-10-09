@@ -24,14 +24,21 @@ fn main() {
 }
 "#;
         let (_, out) = crate::run_with_capture(code).expect("run");
-        let lines: Vec<&str> = out.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+        let lines: Vec<&str> = out
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
         assert_eq!(lines[0], "5000000000", "{out}");
         assert_eq!(lines[1], "5000000001", "{out}");
         // json.encode 大整数输出（E2）：编组层已修（arg 以十进制到达 shim——
         // convert.rs u64 臂），但返回通路仍有位型损坏（4294967295=0xFFFFFFFF
         // 的另一处解码点）。泛型 stdlib json.encode 语义超出 734 API 契约
         // 范围——登记 P734-D4 债（伴随 str(x)/int.parse 通路同族），不断言。
-        eprintln!("[plan734] json.encode(5000000001) = {:?} (P734-D4)", lines[2]);
+        eprintln!(
+            "[plan734] json.encode(5000000001) = {:?} (P734-D4)",
+            lines[2]
+        );
     }
 
     /// 字符串拼接边界（i64 → str 转换路径）。
@@ -85,7 +92,11 @@ fn main() {
 }
 "#;
         let (_, out) = crate::run_with_capture(code).expect("run");
-        let lines: Vec<&str> = out.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+        let lines: Vec<&str> = out
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
         assert_eq!(lines[0], "sum", "{out}");
         assert_eq!(lines[1], "42", "{out}");
     }
@@ -130,8 +141,7 @@ mod http_e2e {
     const PORT: u16 = 18990;
 
     fn temp_root(tag: &str) -> std::path::PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("plan734-e2e-{}-{}", tag, std::process::id()));
+        let dir = std::env::temp_dir().join(format!("plan734-e2e-{}-{}", tag, std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -287,7 +297,12 @@ fn plain() int {
             &[("Content-Type", "application/json")],
             br#"{"n":"forty-two","tag":"hi"}"#,
         );
-        assert_eq!(s2, 400, "str-for-int must 400: {}", String::from_utf8_lossy(&b2));
+        assert_eq!(
+            s2,
+            400,
+            "str-for-int must 400: {}",
+            String::from_utf8_lossy(&b2)
+        );
 
         let (s3, _h3, _b3) = raw_request_with_body(
             port,
@@ -323,7 +338,8 @@ fn plain() int {
             String::from_utf8_lossy(&b)
         );
 
-        let (s2, _h2, b2) = raw_request_with_body(port, "GET", "/api/bigparam/5000000000", &[], b"");
+        let (s2, _h2, b2) =
+            raw_request_with_body(port, "GET", "/api/bigparam/5000000000", &[], b"");
         assert_eq!(s2, 200, "{}", String::from_utf8_lossy(&b2));
         assert_eq!(
             b2,

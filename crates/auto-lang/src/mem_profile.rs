@@ -129,7 +129,9 @@ unsafe impl GlobalAlloc for CountingAlloc {
             // Account as free(old) + alloc(new) — identical invariants to a
             // dealloc+alloc pair.
             STATS.free_count.fetch_add(1, Ordering::Relaxed);
-            STATS.current_live.fetch_sub(layout.size() as u64, Ordering::Relaxed);
+            STATS
+                .current_live
+                .fetch_sub(layout.size() as u64, Ordering::Relaxed);
             record_alloc(new_size as u64);
         }
         new_ptr
@@ -200,7 +202,10 @@ fn mib(bytes: u64) -> String {
 
 fn signed_mib(delta: i64) -> String {
     let sign = if delta < 0 { "-" } else { "+" };
-    format!("{sign}{:.1}MiB", delta.unsigned_abs() as f64 / (1024.0 * 1024.0))
+    format!(
+        "{sign}{:.1}MiB",
+        delta.unsigned_abs() as f64 / (1024.0 * 1024.0)
+    )
 }
 
 /// 一条阶段归因报告行（D1 格式：MEMPROFILE 前缀，可 grep）。

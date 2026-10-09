@@ -192,7 +192,11 @@ widget ChildGeo (data: List, field: str = "v") {
             dc.drive_scheduler_to_quiescence(10_000);
             let (view, _, _) = dc.view_with_debug_gated(true);
             let _ = format!("{view:?}");
-            let s = dc.bridge().read_state("s").map(|v| v.to_string()).unwrap_or_else(|e| format!("<err {e}>"));
+            let s = dc
+                .bridge()
+                .read_state("s")
+                .map(|v| v.to_string())
+                .unwrap_or_else(|e| format!("<err {e}>"));
             println!("dollar-brace .s = {s:?}");
             assert_eq!(
                 s.replace(".0", ""),
@@ -210,7 +214,11 @@ widget ChildGeo (data: List, field: str = "v") {
             dc.drive_scheduler_to_quiescence(10_000);
             let (view, _, _) = dc.view_with_debug_gated(true);
             let _ = format!("{view:?}");
-            let s = dc.bridge().read_state("s").map(|v| v.to_string()).unwrap_or_else(|e| format!("<err {e}>"));
+            let s = dc
+                .bridge()
+                .read_state("s")
+                .map(|v| v.to_string())
+                .unwrap_or_else(|e| format!("<err {e}>"));
             println!("no-bracket .s = {s:?}");
             assert_eq!(
                 s.replace(".0", ""),
@@ -228,7 +236,11 @@ widget ChildGeo (data: List, field: str = "v") {
             dc.drive_scheduler_to_quiescence(10_000);
             let (view, _, _) = dc.view_with_debug_gated(true);
             let _ = format!("{view:?}");
-            let s = dc.bridge().read_state("s").map(|v| v.to_string()).unwrap_or_else(|e| format!("<err {e}>"));
+            let s = dc
+                .bridge()
+                .read_state("s")
+                .map(|v| v.to_string())
+                .unwrap_or_else(|e| format!("<err {e}>"));
             // 语义锚: {} 花括号形式在 f-string 中是纯字面量,不插值。
             assert_eq!(s, "\"w-[{slot}px] h-full\"");
         }
@@ -280,7 +292,8 @@ pub(crate) mod pkg_harness {
         copy_tree(&front, &tmp).expect("copy gallery front tree");
         for (file, from, to) in patches {
             let p = tmp.join("components").join(file);
-            let code = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
+            let code =
+                std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()));
             let patched = code.replace(from, to);
             assert!(
                 patched != code || code == *to,
@@ -291,7 +304,10 @@ pub(crate) mod pkg_harness {
             std::fs::write(&p, patched).expect("write patched");
             // 回读验证补丁确实落盘(隔离缓存层嫌疑)。
             let back = std::fs::read_to_string(&p).unwrap();
-            assert!(back.contains(to) || to == from, "patch not on disk for {file}");
+            assert!(
+                back.contains(to) || to == from,
+                "patch not on disk for {file}"
+            );
         }
         let app = tmp.join("app.at");
         let code = std::fs::read_to_string(&app).unwrap();
@@ -313,7 +329,6 @@ pub(crate) mod pkg_harness {
     }
 }
 
-
 /// M1 族 A2 vue 侧验证: 打补丁后的 bar_chart 经 vue SFC 生成。
 #[cfg(all(test, feature = "ui-iced"))]
 mod m1_vue_fstr {
@@ -333,23 +348,33 @@ mod m1_vue_fstr {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(patched.as_str()).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract");
         let mut gen = crate::ui_gen::VueGenerator::new_shadcn();
         use crate::ui_gen::BackendGenerator;
         let sfc = gen.generate(&widget).expect("generate SFC");
         // Init handler 里 band 样式字符串必须以插值模板形态出现。
-        let has_tpl = sfc.contains("w-[${") || sfc.contains("w-[${slot}px]") || sfc.contains("w-[` +") || sfc.contains("w-[${");
+        let has_tpl = sfc.contains("w-[${")
+            || sfc.contains("w-[${slot}px]")
+            || sfc.contains("w-[` +")
+            || sfc.contains("w-[${");
         println!("=== bar SFC (Init 段) ===");
         for line in sfc.lines() {
             if line.contains("w-[") || line.contains("bands") {
                 println!("{line}");
             }
         }
-        assert!(has_tpl, "vue SFC must carry the interpolated band style; see printed lines");
+        assert!(
+            has_tpl,
+            "vue SFC must carry the interpolated band style; see printed lines"
+        );
     }
 }
 
@@ -396,6 +421,9 @@ mod m1_pkg_fstr {
             mouse < healthy,
             "canary: undefined var in f-string must kill bar bands (canary={mouse} healthy={healthy})"
         );
-        assert!(mouse >= 12, "canary floor: sibling charts' hit areas stay alive (got {mouse})");
+        assert!(
+            mouse >= 12,
+            "canary floor: sibling charts' hit areas stay alive (got {mouse})"
+        );
     }
 }

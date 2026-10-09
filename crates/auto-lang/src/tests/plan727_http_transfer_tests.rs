@@ -17,7 +17,14 @@ const SYNC_CASE_DIR: &str = "test/a2r/31_plan727/001_http_transfer_sync";
 const ASYNC_CASE_DIR: &str = "test/a2r/31_plan727/002_http_transfer_async";
 
 fn case_name(case_dir: &str) -> String {
-    case_dir.rsplit('/').next().unwrap_or(case_dir).split_once('_').unwrap().1.to_string()
+    case_dir
+        .rsplit('/')
+        .next()
+        .unwrap_or(case_dir)
+        .split_once('_')
+        .unwrap()
+        .1
+        .to_string()
 }
 
 fn transpile_case(case_dir: &str) -> Vec<u8> {
@@ -25,16 +32,15 @@ fn transpile_case(case_dir: &str) -> Vec<u8> {
     let full = d.join(case_dir);
     let name = case_name(case_dir);
     let src = read_to_string(full.join(format!("{name}.at"))).expect("case .at");
-    let mut rcode =
-        transpile_rust_with_source_dir(&full, &name, &src).expect("transpile");
+    let mut rcode = transpile_rust_with_source_dir(&full, &name, &src).expect("transpile");
     rcode.done().expect("finalize").clone()
 }
 
 fn assert_golden(case_dir: &str) {
     let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let name = case_name(case_dir);
-    let expected = read_to_string(d.join(case_dir).join(format!("{name}.expected.rs")))
-        .unwrap_or_default();
+    let expected =
+        read_to_string(d.join(case_dir).join(format!("{name}.expected.rs"))).unwrap_or_default();
     let rs = transpile_case(case_dir);
     if rs != expected.as_bytes() {
         let wrong = d.join(case_dir).join(format!("{name}.wrong.rs"));
@@ -71,16 +77,21 @@ fn main() {
     print(u)
 }
 "#;
-    let mut rcode = crate::trans::rust::transpile_rust("plan727_legacy", src)
-        .expect("transpile");
+    let mut rcode = crate::trans::rust::transpile_rust("plan727_legacy", src).expect("transpile");
     let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
-    assert!(rs.contains("a2r_std::http::download(\"http://x/f\""), "{rs}");
+    assert!(
+        rs.contains("a2r_std::http::download(\"http://x/f\""),
+        "{rs}"
+    );
     assert!(
         rs.contains("a2r_std::http::download_resume(\"http://x/g\", \"/tmp/g.bin\", 1024)"),
         "{rs}"
     );
     assert!(rs.contains("a2r_std::http::upload(\"http://x/up\""), "{rs}");
-    assert!(!rs.contains("transfer_download"), "legacy 面不得重定为新面: {rs}");
+    assert!(
+        !rs.contains("transfer_download"),
+        "legacy 面不得重定为新面: {rs}"
+    );
 }
 
 /// 64 位字面量：legacy 第三参/新面 options 内大 offset 不截断（u64 面发射）。
@@ -92,8 +103,8 @@ fn main() {
     print(r)
 }
 "#;
-    let mut rcode = crate::trans::rust::transpile_rust("plan727_legacy_u64", src)
-        .expect("transpile");
+    let mut rcode =
+        crate::trans::rust::transpile_rust("plan727_legacy_u64", src).expect("transpile");
     let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
     assert!(rs.contains("4294967296"), "64 位字面量丢失: {rs}");
 }
@@ -220,7 +231,6 @@ print(e)
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
-
 }
 
 // ===========================================================================
@@ -300,11 +310,17 @@ mod e2e {
                 }
                 let head_str = String::from_utf8_lossy(&head).to_string();
                 // multipart 体按 Content-Length 继续读。
-                let body_start = head_str.find("\r\n\r\n").map(|i| i + 4).unwrap_or(head.len());
+                let body_start = head_str
+                    .find("\r\n\r\n")
+                    .map(|i| i + 4)
+                    .unwrap_or(head.len());
                 let cl = head_str
                     .to_ascii_lowercase()
                     .lines()
-                    .find_map(|l| l.strip_prefix("content-length:").and_then(|v| v.trim().parse::<usize>().ok()))
+                    .find_map(|l| {
+                        l.strip_prefix("content-length:")
+                            .and_then(|v| v.trim().parse::<usize>().ok())
+                    })
                     .unwrap_or(0);
                 let mut body = head.len() - body_start;
                 while body < cl {
@@ -356,7 +372,9 @@ mod e2e {
         // 2) 上传：multipart wire（字段/file/文本字段）在 wire 断言。
         let uploads = captured.lock().unwrap();
         assert!(
-            uploads.iter().any(|h| h.contains("POST ") && h.contains("multipart/form-data") && h.contains("name=\"note\"")),
+            uploads.iter().any(|h| h.contains("POST ")
+                && h.contains("multipart/form-data")
+                && h.contains("name=\"note\"")),
             "multipart wire 缺失: {uploads:?}"
         );
         std::fs::remove_dir_all(&dir).ok();
@@ -427,7 +445,10 @@ fn main() {{
         let out = build_and_run("mp", &product);
         assert!(out.contains("201"), "{out}");
         let uploads = captured.lock().unwrap();
-        let head = uploads.iter().find(|h| h.contains("POST /upload")).expect("upload captured");
+        let head = uploads
+            .iter()
+            .find(|h| h.contains("POST /upload"))
+            .expect("upload captured");
         assert!(head.contains("multipart/form-data"), "{head}");
         assert!(head.contains("name=\"note\""), "{head}");
         assert!(head.contains("filename=\"report.bin\""), "{head}");

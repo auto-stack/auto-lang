@@ -79,13 +79,12 @@ impl ListGenerator {
             .or_else(|| Self::extract_string(props, "data"))
             .unwrap_or_else(|| "items".to_string());
 
-        let key_expr = Self::extract_string(props, "key")
-            .or_else(|| Self::extract_string(props, "keyExpr"));
+        let key_expr =
+            Self::extract_string(props, "key").or_else(|| Self::extract_string(props, "keyExpr"));
 
         let content_type = Self::extract_string(props, "contentType");
 
-        let item_var = Self::extract_string(props, "itemVar")
-            .unwrap_or_else(|| "item".to_string());
+        let item_var = Self::extract_string(props, "itemVar").unwrap_or_else(|| "item".to_string());
 
         ListItemConfig {
             items_source,
@@ -114,7 +113,10 @@ impl ListGenerator {
 
         // Modifier
         if let Some(class_str) = class {
-            params.push(format!("modifier = Modifier.{}", self.class_to_modifier(&class_str)));
+            params.push(format!(
+                "modifier = Modifier.{}",
+                self.class_to_modifier(&class_str)
+            ));
         } else {
             params.push("modifier = Modifier.fillMaxSize()".to_string());
         }
@@ -122,7 +124,10 @@ impl ListGenerator {
         // Vertical arrangement (gap)
         if let Some(gap_val) = gap {
             let dp = gap_val * 4;
-            params.push(format!("verticalArrangement = Arrangement.spacedBy({}.dp)", dp));
+            params.push(format!(
+                "verticalArrangement = Arrangement.spacedBy({}.dp)",
+                dp
+            ));
         }
 
         // Generate items block
@@ -154,7 +159,10 @@ impl ListGenerator {
 
         // Modifier
         if let Some(class_str) = class {
-            params.push(format!("modifier = Modifier.{}", self.class_to_modifier(&class_str)));
+            params.push(format!(
+                "modifier = Modifier.{}",
+                self.class_to_modifier(&class_str)
+            ));
         } else {
             params.push("modifier = Modifier".to_string());
         }
@@ -162,7 +170,10 @@ impl ListGenerator {
         // Horizontal arrangement (gap)
         if let Some(gap_val) = gap {
             let dp = gap_val * 4;
-            params.push(format!("horizontalArrangement = Arrangement.spacedBy({}.dp)", dp));
+            params.push(format!(
+                "horizontalArrangement = Arrangement.spacedBy({}.dp)",
+                dp
+            ));
         }
 
         // Generate items block
@@ -201,7 +212,10 @@ impl ListGenerator {
 
         // Modifier
         if let Some(class_str) = class {
-            params.push(format!("modifier = Modifier.{}", self.class_to_modifier(&class_str)));
+            params.push(format!(
+                "modifier = Modifier.{}",
+                self.class_to_modifier(&class_str)
+            ));
         } else {
             params.push("modifier = Modifier.fillMaxSize()".to_string());
         }
@@ -209,8 +223,14 @@ impl ListGenerator {
         // Arrangement (gap)
         if let Some(gap_val) = gap {
             let dp = gap_val * 4;
-            params.push(format!("verticalArrangement = Arrangement.spacedBy({}.dp)", dp));
-            params.push(format!("horizontalArrangement = Arrangement.spacedBy({}.dp)", dp));
+            params.push(format!(
+                "verticalArrangement = Arrangement.spacedBy({}.dp)",
+                dp
+            ));
+            params.push(format!(
+                "horizontalArrangement = Arrangement.spacedBy({}.dp)",
+                dp
+            ));
         }
 
         // Generate items block for grid
@@ -301,8 +321,14 @@ impl ListGenerator {
         // Horizontal arrangement (gap)
         if let Some(gap_val) = gap {
             let dp = gap_val * 4;
-            params.push(format!("horizontalArrangement = Arrangement.spacedBy({}.dp)", dp));
-            params.push(format!("verticalArrangement = Arrangement.spacedBy({}.dp)", dp));
+            params.push(format!(
+                "horizontalArrangement = Arrangement.spacedBy({}.dp)",
+                dp
+            ));
+            params.push(format!(
+                "verticalArrangement = Arrangement.spacedBy({}.dp)",
+                dp
+            ));
         }
 
         Ok(format!(
@@ -596,7 +622,10 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("items".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("users".into())));
+        props.insert(
+            "items".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("users".into())),
+        );
 
         let result = gen.generate_lazy_column(&props, "UserItem(user = item)");
         assert!(result.is_ok());
@@ -609,8 +638,14 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("items".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("todos".into())));
-        props.insert("key".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("item.id".into())));
+        props.insert(
+            "items".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("todos".into())),
+        );
+        props.insert(
+            "key".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("item.id".into())),
+        );
 
         let result = gen.generate_lazy_column(&props, "TodoItem(todo = item)");
         assert!(result.is_ok());
@@ -623,7 +658,10 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("gap".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(4)));
+        props.insert(
+            "gap".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(4)),
+        );
 
         let result = gen.generate_lazy_column(&props, "Text(\"Item\")");
         assert!(result.is_ok());
@@ -647,7 +685,10 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("gap".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(2)));
+        props.insert(
+            "gap".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(2)),
+        );
 
         let result = gen.generate_lazy_row(&props, "Chip(text = item)");
         assert!(result.is_ok());
@@ -661,7 +702,10 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("columns".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(3)));
+        props.insert(
+            "columns".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(3)),
+        );
 
         let result = gen.generate_lazy_grid(&props, "PhotoItem(photo = item)");
         assert!(result.is_ok());
@@ -675,8 +719,14 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("columns".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(2)));
-        props.insert("gap".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(4)));
+        props.insert(
+            "columns".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(2)),
+        );
+        props.insert(
+            "gap".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(4)),
+        );
 
         let result = gen.generate_lazy_grid(&props, "Card { item }");
         assert!(result.is_ok());
@@ -713,7 +763,10 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("itemVar".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("user".into())));
+        props.insert(
+            "itemVar".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("user".into())),
+        );
 
         let result = gen.generate_lazy_column(&props, "UserItem(u = user)");
         assert!(result.is_ok());
@@ -726,7 +779,10 @@ mod tests {
         let mut gen = ListGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("contentType".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("todo-item".into())));
+        props.insert(
+            "contentType".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("todo-item".into())),
+        );
 
         let result = gen.generate_lazy_column(&props, "Text(item.title)");
         assert!(result.is_ok());
@@ -760,9 +816,18 @@ mod tests {
     fn test_tailwind_color_to_hex() {
         let gen = ListGenerator::new();
 
-        assert_eq!(gen.tailwind_color_to_hex("white"), Some("0xFFFFFFFF".to_string()));
-        assert_eq!(gen.tailwind_color_to_hex("blue-500"), Some("0xFF3B82F6".to_string()));
-        assert_eq!(gen.tailwind_color_to_hex("#FF5733"), Some("0xFFFF5733".to_string()));
+        assert_eq!(
+            gen.tailwind_color_to_hex("white"),
+            Some("0xFFFFFFFF".to_string())
+        );
+        assert_eq!(
+            gen.tailwind_color_to_hex("blue-500"),
+            Some("0xFF3B82F6".to_string())
+        );
+        assert_eq!(
+            gen.tailwind_color_to_hex("#FF5733"),
+            Some("0xFFFF5733".to_string())
+        );
     }
 
     #[test]

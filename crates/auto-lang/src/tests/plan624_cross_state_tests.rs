@@ -58,14 +58,21 @@ mod plan624_cross_state_tests {
         dc.on_with_input("OpenPage", Some("Hello World.ad".to_string()));
         // PLAN-702 段驱动适配：OpenPage 内含 api 调用即 park——驱动恢复泵
         // 至落账（生产 = __parked_resume_tick 泵）。
-        crate::plan370_test_support::drive_parked_segments(dc, |dc| {
-            let t = state_raw(dc, "view_title");
-            let s = state_raw(dc, "status");
-            t.contains("Hello World") && s.contains("opened")
-        }, "plan624 P1 cross-state read");
+        crate::plan370_test_support::drive_parked_segments(
+            dc,
+            |dc| {
+                let t = state_raw(dc, "view_title");
+                let s = state_raw(dc, "status");
+                t.contains("Hello World") && s.contains("opened")
+            },
+            "plan624 P1 cross-state read",
+        );
         let title = state_raw(dc, "view_title");
         let status = state_raw(dc, "status");
-        eprintln!("plan624(P1/{}) view_title={} status={}", mode_name, title, status);
+        eprintln!(
+            "plan624(P1/{}) view_title={} status={}",
+            mode_name, title, status
+        );
         assert!(
             title.contains("Hello World") && status.contains("opened"),
             "(P1/{}) widget handler must read store state after dispatch: \
@@ -171,8 +178,7 @@ mod plan624_cross_state_tests {
             eprintln!("plan624: SKIPPED — corpus p2_app.at not found");
             return;
         };
-        let mut dc = build_component_from_app(&manifest)
-            .expect("(P2) corpus p2_app.at must build");
+        let mut dc = build_component_from_app(&manifest).expect("(P2) corpus p2_app.at must build");
 
         // F-01: None-state ?str cross-state read — dispatched BEFORE any
         // Open, so .active_path is still None. The read must not crash and
@@ -180,7 +186,10 @@ mod plan624_cross_state_tests {
         dc.on_with_input("ProbeNone", None);
         let probe_none = state_raw(&dc, "probe_none");
         let status_none = state_raw(&dc, "status");
-        eprintln!("plan624(P2/F-01) probe_none={} status={}", probe_none, status_none);
+        eprintln!(
+            "plan624(P2/F-01) probe_none={} status={}",
+            probe_none, status_none
+        );
         assert!(
             status_none.contains("probed-none")
                 && probe_none.contains("Nil")
@@ -225,8 +234,8 @@ mod plan624_cross_state_tests {
             eprintln!("plan624: SKIPPED — corpus p3_chain_app.at not found");
             return;
         };
-        let mut dc = build_component_from_app(&manifest)
-            .expect("(P3) corpus p3_chain_app.at must build");
+        let mut dc =
+            build_component_from_app(&manifest).expect("(P3) corpus p3_chain_app.at must build");
         dc.on_with_input("Probe", None);
         let status = state_raw(&dc, "status");
         for f in ["hop_a", "hop_b", "hop_c"] {
@@ -251,13 +260,15 @@ mod plan624_cross_state_tests {
             eprintln!("plan624: SKIPPED — corpus p4_app.at not found");
             return;
         };
-        let mut dc = build_component_from_app(&manifest)
-            .expect("(P4) corpus p4_app.at must build");
+        let mut dc = build_component_from_app(&manifest).expect("(P4) corpus p4_app.at must build");
         dc.on_with_input("Probe", None);
         let idx = state_raw(&dc, "idx");
         let idx_miss = state_raw(&dc, "idx_miss");
         let status = state_raw(&dc, "status");
-        eprintln!("plan624(P4) idx={} idx_miss={} status={}", idx, idx_miss, status);
+        eprintln!(
+            "plan624(P4) idx={} idx_miss={} status={}",
+            idx, idx_miss, status
+        );
         assert!(
             idx.contains("1") && status.contains("probed"),
             "(P4) find_index(n => n == 8) on [7, 8, 9] must return 1; \

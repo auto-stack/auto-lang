@@ -36,7 +36,9 @@ use crate::ui::code_editor::theme;
 /// stack). Idempotent.
 fn install_font_system_source() {
     crate::ui::code_editor::core::set_font_system_call(|with| {
-        let mut guard = iced::advanced::graphics::text::font_system().write().unwrap();
+        let mut guard = iced::advanced::graphics::text::font_system()
+            .write()
+            .unwrap();
         with(guard.raw());
     });
 }
@@ -193,7 +195,10 @@ impl<'a, M: Clone> CodeEditor<'a, M> {
         if !self.core.is_focused() {
             return input_method::InputMethod::Disabled;
         }
-        let caret = self.core.caret_rect().unwrap_or(draw::Rect::new(0.0, 0.0, 1.0, 20.0));
+        let caret = self
+            .core
+            .caret_rect()
+            .unwrap_or(draw::Rect::new(0.0, 0.0, 1.0, 20.0));
         input_method::InputMethod::Enabled {
             cursor: Rectangle::new(
                 Point::new(bounds.x + caret.x, bounds.y + caret.y),
@@ -230,7 +235,10 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         if self.hosted {
             // Content height drives the scroller's scroll range + thumb
             // ratio (高度上报).
-            Size::new(self.width, Length::Fixed(self.core.content_height().max(1.0)))
+            Size::new(
+                self.width,
+                Length::Fixed(self.core.content_height().max(1.0)),
+            )
         } else {
             Size::new(self.width, self.height)
         }
@@ -277,9 +285,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         } else {
             0.0
         };
-        if self.hosted
-            && matches!(event, Event::Mouse(mouse::Event::WheelScrolled { .. }))
-        {
+        if self.hosted && matches!(event, Event::Mouse(mouse::Event::WheelScrolled { .. })) {
             // 滚轮让渡：the common scroller owns wheel scrolling; never
             // double-handle (its own update captures the event before the
             // child sees it — this guard keeps that contract explicit).
@@ -358,18 +364,23 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
                 };
                 // Wheel events carry no modifiers; the core tracks the
                 // latest window modifiers.
-                Some(EditorInput::WheelScrolled { dx, dy, shift: false })
+                Some(EditorInput::WheelScrolled {
+                    dx,
+                    dy,
+                    shift: false,
+                })
             }
             Event::Keyboard(keyboard::Event::KeyPressed {
-                key, modifiers, text, ..
+                key,
+                modifiers,
+                text,
+                ..
             }) => Some(EditorInput::KeyPressed {
                 key: Self::map_key(key),
                 text: text.as_ref().map(|t| t.to_string()),
                 modifiers: Self::map_modifiers(modifiers),
             }),
-            Event::Keyboard(keyboard::Event::KeyReleased { .. }) => {
-                Some(EditorInput::KeyReleased)
-            }
+            Event::Keyboard(keyboard::Event::KeyReleased { .. }) => Some(EditorInput::KeyReleased),
             Event::Keyboard(keyboard::Event::ModifiersChanged(m)) => {
                 Some(EditorInput::ModifiersChanged(Self::map_modifiers(m)))
             }
@@ -392,8 +403,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         };
 
         let Some(input) = input else { return };
-        let keyboard_origin =
-            matches!(event, Event::Keyboard(_) | Event::InputMethod(_));
+        let keyboard_origin = matches!(event, Event::Keyboard(_) | Event::InputMethod(_));
 
         let out = crate::ui::code_editor::core::with_font_system(|fs| {
             let mut clipboard_adapter = IcedClipboard { inner: clipboard };
@@ -482,8 +492,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
         // system guard — single short critical section.
         // PLAN-731 T-00：编辑器 draw 关键段臂钻取（[P725-ARMS] 累积表——
         // 含 sync/整形/几何/gutter 光栅全链）。
-        let p731_block_t =
-            crate::ui::frame_bench::segments_gate().then(std::time::Instant::now);
+        let p731_block_t = crate::ui::frame_bench::segments_gate().then(std::time::Instant::now);
         let list = crate::ui::code_editor::core::with_font_system(|fs| {
             if self.hosted {
                 // Double-guard the offset sync (the scroller's on_scroll is
@@ -526,10 +535,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
             crate::ui::frame_segments::arm_acc("ce_draw_block", t0.elapsed());
             // 段计数（fill_text 件数——flush 侧整形量代理；R1 F-3 实计
             // list.text_runs.len()，非 draw 调用数）。
-            crate::ui::frame_segments::arm_count_n(
-                "ce_text_runs",
-                list.text_runs.len() as u32,
-            );
+            crate::ui::frame_segments::arm_count_n("ce_text_runs", list.text_runs.len() as u32);
         }
 
         let to_color = |c: theme::Rgba| {
@@ -605,7 +611,11 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for CodeEditor<'_, M> {
                 to_color(preedit.color),
                 bounds,
             );
-            fill_quad(renderer, to_rect(bounds, preedit.underline), to_color(preedit.color));
+            fill_quad(
+                renderer,
+                to_rect(bounds, preedit.underline),
+                to_color(preedit.color),
+            );
         }
 
         // PLAN-626 rev2 T-10: official-scrollbar look — 3px rounded thumb
@@ -666,12 +676,7 @@ fn fill_quad(renderer: &mut iced::Renderer, rect: Rectangle, color: Color) {
     );
 }
 
-fn fill_quad_rounded(
-    renderer: &mut iced::Renderer,
-    rect: Rectangle,
-    color: Color,
-    radius: f32,
-) {
+fn fill_quad_rounded(renderer: &mut iced::Renderer, rect: Rectangle, color: Color, radius: f32) {
     renderer.fill_quad(
         renderer::Quad {
             bounds: rect,

@@ -202,7 +202,6 @@ pub async fn execute_handler_fully(
             // OpCode::AWAIT_EXT => {
             //     handle_async_ffi(meta, task).await;
             // }
-
             _ => {
                 // For now, skip unknown opcodes
                 // In full implementation, this would call execute_single_op()
@@ -235,7 +234,10 @@ pub async fn execute_handler_with_vm(
                 }
                 tokio::task::yield_now().await;
             }
-            FrameResult::AwaitFuture { future_id, body_offset } => {
+            FrameResult::AwaitFuture {
+                future_id,
+                body_offset,
+            } => {
                 vm.handle_await_future(task, future_id, body_offset)?;
             }
             FrameResult::BudgetExhausted => {
@@ -593,14 +595,7 @@ mod tests {
         let (sys_tx, _sys_rx) = mpsc::channel::<SystemCommand>(16);
 
         let task = AutoTask::new(1, 1024, 0);
-        let mut ctx = TaskContext::new(
-            meta,
-            "TestTask".to_string(),
-            1,
-            rx,
-            sys_tx,
-            task,
-        );
+        let mut ctx = TaskContext::new(meta, "TestTask".to_string(), 1, rx, sys_tx, task);
 
         // Send a message
         tx.send(auto_val::Value::Int(42)).await.unwrap();
@@ -623,13 +618,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel::<auto_val::Value>(16);
         let handle = TaskHandle::new("TestTask".to_string(), 1, tx);
 
-        let ctx = spawn_task(
-            Arc::clone(&meta),
-            "TestTask".to_string(),
-            1,
-            handle,
-            sys_tx,
-        );
+        let ctx = spawn_task(Arc::clone(&meta), "TestTask".to_string(), 1, handle, sys_tx);
 
         assert_eq!(ctx.task_type, "TestTask");
         assert_eq!(ctx.instance_id, 1);

@@ -39,12 +39,42 @@ mod plan442_musk_backend_probe {
     fn corpus_dep_lines(src_dir: &std::path::Path) -> Vec<String> {
         use std::collections::BTreeSet;
         let builtin: BTreeSet<&str> = [
-            "regex", "url", "semver", "log", "env_logger", "tracing", "rand",
-            "rand_distr", "chrono", "csv", "walkdir", "toml", "serde_json",
-            "percent_encoding", "urlencoding", "base64", "hex", "sha2",
-            "mime_guess", "same_file", "heapless", "clap", "ansi_term",
-            "simplelog", "tar", "flate2", "crossbeam", "anyhow", "serde",
-            "tokio", "num", "ndarray", "std", "core", "alloc", "proc_macro",
+            "regex",
+            "url",
+            "semver",
+            "log",
+            "env_logger",
+            "tracing",
+            "rand",
+            "rand_distr",
+            "chrono",
+            "csv",
+            "walkdir",
+            "toml",
+            "serde_json",
+            "percent_encoding",
+            "urlencoding",
+            "base64",
+            "hex",
+            "sha2",
+            "mime_guess",
+            "same_file",
+            "heapless",
+            "clap",
+            "ansi_term",
+            "simplelog",
+            "tar",
+            "flate2",
+            "crossbeam",
+            "anyhow",
+            "serde",
+            "tokio",
+            "num",
+            "ndarray",
+            "std",
+            "core",
+            "alloc",
+            "proc_macro",
         ]
         .into_iter()
         .collect();
@@ -255,13 +285,16 @@ mod plan442_musk_backend_probe {
         };
         let deps = corpus_dep_lines(&src_dir);
         let driver = src_dir.join("__plan442_driver_router.at");
-        let mut src = String::from("// Plan 442 C2 serve-adapter probe (generated; delete freely)\n");
+        let mut src =
+            String::from("// Plan 442 C2 serve-adapter probe (generated; delete freely)\n");
         for d in &deps {
             src.push_str(d);
             src.push('\n');
         }
-        src.push_str("use extern_sigs\nuse relay_api\n\n\
-             fn main() {\n    let app = relay_routes()\n    print(\"router-built\")\n}\n");
+        src.push_str(
+            "use extern_sigs\nuse relay_api\n\n\
+             fn main() {\n    let app = relay_routes()\n    print(\"router-built\")\n}\n",
+        );
         std::fs::write(&driver, src).expect("write driver");
 
         let port = ephemeral_port();
@@ -270,11 +303,9 @@ mod plan442_musk_backend_probe {
         let driver_path = driver.to_string_lossy().to_string();
         let _server = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
-            .spawn(move || {
-                match crate::run_file(&driver_path) {
-                    Ok(_) => eprintln!("plan442-c2-serve: run_file returned Ok"),
-                    Err(e) => eprintln!("plan442-c2-serve: run_file error: {e}"),
-                }
+            .spawn(move || match crate::run_file(&driver_path) {
+                Ok(_) => eprintln!("plan442-c2-serve: run_file returned Ok"),
+                Err(e) => eprintln!("plan442-c2-serve: run_file error: {e}"),
             })
             .expect("spawn server thread");
 
@@ -306,8 +337,8 @@ mod plan442_musk_backend_probe {
                 .find(|r| r.method == method && r.path == path)
                 .cloned()
         };
-        let get_runs = find("GET", "/api/forge/relay/runs")
-            .expect("GET /api/forge/relay/runs registered");
+        let get_runs =
+            find("GET", "/api/forge/relay/runs").expect("GET /api/forge/relay/runs registered");
         assert_eq!(
             get_runs.params,
             vec![ExtractorKind::State, ExtractorKind::Query],
@@ -317,7 +348,11 @@ mod plan442_musk_backend_probe {
             .expect("POST /api/forge/relay/runs registered (chained .post)");
         assert_eq!(
             post_runs.params,
-            vec![ExtractorKind::State, ExtractorKind::Query, ExtractorKind::Json],
+            vec![
+                ExtractorKind::State,
+                ExtractorKind::Query,
+                ExtractorKind::Json
+            ],
             "start_run(s State, q Query, body Json) extractor shapes"
         );
         assert!(
@@ -329,7 +364,10 @@ mod plan442_musk_backend_probe {
             routes.len()
         );
         for r in routes.iter().take(3) {
-            eprintln!("  {} {} (closure #{}, {:?})", r.method, r.path, r.closure_id, r.params);
+            eprintln!(
+                "  {} {} (closure #{}, {:?})",
+                r.method, r.path, r.closure_id, r.params
+            );
         }
 
         // Phase 3: wait for the listener, then GET through the whole dispatch
@@ -354,7 +392,10 @@ mod plan442_musk_backend_probe {
         .unwrap();
         let mut resp = String::new();
         stream.read_to_string(&mut resp).ok();
-        eprintln!("plan442-c2-serve: GET /api/forge/relay/runs → {}", resp.lines().next().unwrap_or(""));
+        eprintln!(
+            "plan442-c2-serve: GET /api/forge/relay/runs → {}",
+            resp.lines().next().unwrap_or("")
+        );
         assert!(
             resp.starts_with("HTTP/1.1 200"),
             "axum-route dispatch must answer 200, got: {}",
@@ -398,7 +439,11 @@ mod plan442_musk_backend_probe {
                 Err(e) => blocked.push((module.to_string(), e)),
             }
         }
-        eprintln!("════ plan442 C2 worklist: {}/{} modules VM-clean ════", pass, entries.len());
+        eprintln!(
+            "════ plan442 C2 worklist: {}/{} modules VM-clean ════",
+            pass,
+            entries.len()
+        );
         for (m, e) in &blocked {
             // Show up to 3 error lines — "aborting due to N" hides the real
             // compile errors listed before it.
@@ -430,8 +475,12 @@ mod plan442_musk_backend_probe {
             Ok((_, _, lines)) => {
                 for l in &lines {
                     let s = l.to_string();
-                    if s.contains("CALL_NAT") || s.contains("CALL_SPEC") || s.contains("CLOSURE")
-                        || s.contains("LOAD_STR") || s.contains("FN_") {
+                    if s.contains("CALL_NAT")
+                        || s.contains("CALL_SPEC")
+                        || s.contains("CLOSURE")
+                        || s.contains("LOAD_STR")
+                        || s.contains("FN_")
+                    {
                         eprintln!("DISASM | {s}");
                     }
                 }

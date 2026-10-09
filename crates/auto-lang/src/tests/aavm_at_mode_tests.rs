@@ -13,14 +13,18 @@
 use std::path::PathBuf;
 
 fn aavm_at_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("auto")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("auto")
 }
 
 /// 剥除 use 行的临时目录(stripped lib + aavm.at)——merge 输入。
 /// 镜像 vm_file_tests::build_aavm_rust_bin 的剥离规则。
 fn stripped_merge_dir() -> PathBuf {
     let root = aavm_at_dir().parent().unwrap().to_path_buf();
-    let stripped = std::env::temp_dir().join(format!("p531-aavm-at-stripped-p{}", std::process::id()));
+    let stripped =
+        std::env::temp_dir().join(format!("p531-aavm-at-stripped-p{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&stripped);
     std::fs::create_dir_all(&stripped).expect("mkdir p531 stripped");
     for file in crate::AUTO_LIB_FILES_V2 {
@@ -33,7 +37,12 @@ fn stripped_merge_dir() -> PathBuf {
             out.push_str(line);
             out.push('\n');
         }
-        let name = std::path::Path::new(file).file_name().unwrap().to_str().unwrap().to_string();
+        let name = std::path::Path::new(file)
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
         std::fs::write(stripped.join(name), out).expect("write stripped lib");
     }
     let aavm = std::fs::read_to_string(aavm_at_dir().join("aavm.at")).expect("read aavm.at");
@@ -92,10 +101,9 @@ fn build_aavm_at_main(argv_patch: Option<&str>) -> String {
     let stripped = stripped_merge_dir();
     // 目录入口:merge 装入全部 .at(lib 引擎件+aavm.at 入口);文件入口
     // 只经 use 发现——use 行已剥,单装 aavm.at(lib 符号全缺)。
-    let merged = crate::trans::rust::transpile_rust_project_merged(
-        stripped.to_str().expect("utf8"),
-    )
-    .expect("a2r merge transpile aavm.at");
+    let merged =
+        crate::trans::rust::transpile_rust_project_merged(stripped.to_str().expect("utf8"))
+            .expect("a2r merge transpile aavm.at");
     let mut full = String::from_utf8_lossy(&merged).to_string();
     full.push_str(NATIVE_SHIMS);
     if let Some(patch) = argv_patch {
@@ -121,11 +129,18 @@ fn cargo_build(main_rs: &str) -> (bool, String, PathBuf) {
         .output()
         .expect("cargo spawn");
     let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-    (out.status.success(), stderr, proj.join("target/release/aavm_at.exe"))
+    (
+        out.status.success(),
+        stderr,
+        proj.join("target/release/aavm_at.exe"),
+    )
 }
 
 fn run_bin(exe: &std::path::Path, arg: &std::path::Path) -> String {
-    let out = std::process::Command::new(exe).arg(arg).output().expect("run aavm_at");
+    let out = std::process::Command::new(exe)
+        .arg(arg)
+        .output()
+        .expect("run aavm_at");
     String::from_utf8_lossy(&out.stdout).to_string()
 }
 
@@ -160,11 +175,13 @@ fn aavm_at_mode_b34_struct() {
     let main_rs = build_aavm_at_main(None);
     let (ok, stderr, mut exe) = cargo_build(&main_rs);
     if !ok {
-        eprintln!("[p531 red evidence: P523-2① unpatched build fail]\n{}", stderr);
+        eprintln!(
+            "[p531 red evidence: P523-2① unpatched build fail]\n{}",
+            stderr
+        );
         // 523 产品位文本垫片形态:Option 形态 → 索引形(argv: Vec<String>)
-        let patched = build_aavm_at_main(Some(
-            "ev_run_files(argv.get(1)) => ev_run_files(&argv[1])",
-        ));
+        let patched =
+            build_aavm_at_main(Some("ev_run_files(argv.get(1)) => ev_run_files(&argv[1])"));
         let (ok2, stderr2, exe2) = cargo_build(&patched);
         assert!(
             ok2,
@@ -174,5 +191,9 @@ fn aavm_at_mode_b34_struct() {
         exe = exe2;
     }
     let out = run_bin(&exe, &corpus("b34_struct_basic.at"));
-    assert_eq!(out.trim_end(), "10\n20", "b34 struct run diverged (P523-2②?)");
+    assert_eq!(
+        out.trim_end(),
+        "10\n20",
+        "b34 struct run diverged (P523-2②?)"
+    );
 }

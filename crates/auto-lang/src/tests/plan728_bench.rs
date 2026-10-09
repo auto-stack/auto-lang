@@ -78,7 +78,11 @@ fn report(line: String) {
     p.push("../../docs/reports");
     let _ = std::fs::create_dir_all(&p);
     p.push("p728-bench.jsonl");
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&p)
+    {
         let _ = writeln!(f, "{line}");
     }
 }
@@ -131,12 +135,15 @@ fn p728_bench_ladder() {
         let edit_ms = now_ms(t_all);
 
         // ── resident line (结构计量；RSS 实测=进程峰值轮询另补) ──
-        let structural =
-            rope.structural_resident_estimate() + store.structural_resident_bytes();
+        let structural = rope.structural_resident_estimate() + store.structural_resident_bytes();
 
         // ── save line (合并写：未改区段照抄+增量写回+原子改名) ──
         let mut dst: PathBuf = std::env::temp_dir().into();
-        dst.push(format!("p728-bench-out-{}-{}.txt", tier, std::process::id()));
+        dst.push(format!(
+            "p728-bench-out-{}-{}.txt",
+            tier,
+            std::process::id()
+        ));
         let _dst_tmp = TempFile(dst.clone());
         let t = Instant::now();
         let saved = rope.write_backed(&dst).expect("save");
@@ -161,7 +168,12 @@ fn p728_bench_ladder() {
 #[ignore = "bench 谱（显式跑）: AUTO_LANG_P728_BENCH=1g cargo test -p auto-lang --lib plan728_bench -- --ignored --nocapture"]
 fn p728_bench_typing_band() {
     let tiers = std::env::var("AUTO_LANG_P728_BENCH").unwrap_or_else(|_| "1g".into());
-    let big = tiers.split(',').map(parse_tier).filter(|&n| n > 0).max().unwrap_or(0);
+    let big = tiers
+        .split(',')
+        .map(parse_tier)
+        .filter(|&n| n > 0)
+        .max()
+        .unwrap_or(0);
 
     // (a) small in-memory arm.
     let text = {

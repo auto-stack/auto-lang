@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use crate::aura::AuraNodeId;
 use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::interpreter::DynamicMessage;
-use crate::ui::mcp_types::{UiAction, UiNode, UiSnapshot, format_value, type_hint};
+use crate::ui::mcp_types::{format_value, type_hint, UiAction, UiNode, UiSnapshot};
 use crate::ui::view::View;
 
 /// Builder that traverses a View tree and produces a UiSnapshot.
@@ -61,11 +61,7 @@ impl SnapshotBuilder {
     /// Recursively traverse a View node and build a UiNode tree.
     ///
     /// Uses the DebugIdMap to find the AuraNodeId for each node by its path.
-    fn traverse_view(
-        view: &View<DynamicMessage>,
-        id_map: &DebugIdMap,
-        path: &[usize],
-    ) -> UiNode {
+    fn traverse_view(view: &View<DynamicMessage>, id_map: &DebugIdMap, path: &[usize]) -> UiNode {
         // Look up AuraNodeId from the path
         let id = id_map.get(path).unwrap_or(AuraNodeId(u32::MAX));
 
@@ -83,7 +79,10 @@ impl SnapshotBuilder {
                 kind: "Text".to_string(),
                 props: vec![(
                     "text".to_string(),
-                    spans.iter().map(|sp| sp.content.clone()).collect::<String>(),
+                    spans
+                        .iter()
+                        .map(|sp| sp.content.clone())
+                        .collect::<String>(),
                 )],
                 actions: vec![],
                 children: vec![],
@@ -101,7 +100,15 @@ impl SnapshotBuilder {
             },
             // PLAN-617 T-19: video 节点如实上报源与显示名（不谎报「在播」——
             // 真实播放状态由渲染面/引擎掌握，这里只说「这个节点指向什么」）。
-            View::Video { src, label, paused, volume, muted, rate, .. } => UiNode {
+            View::Video {
+                src,
+                label,
+                paused,
+                volume,
+                muted,
+                rate,
+                ..
+            } => UiNode {
                 id,
                 kind: "Video".to_string(),
                 props: vec![
@@ -138,7 +145,12 @@ impl SnapshotBuilder {
             // 纯函数渲染,无子树;带笔画数 props 供 MCP 检视定位)。
             // PLAN-656 T-06: managed content 快照（logical extent 可见；
             // 无 action 面）。
-            View::ManagedScrollContent { key, logical_w, logical_h, .. } => UiNode {
+            View::ManagedScrollContent {
+                key,
+                logical_w,
+                logical_h,
+                ..
+            } => UiNode {
                 id,
                 kind: "ManagedScrollContent".to_string(),
                 props: vec![
@@ -165,25 +177,45 @@ impl SnapshotBuilder {
                 let actions = on_hit
                     .as_ref()
                     .and_then(|h| h.label())
-                    .map(|name| vec![UiAction {
-                        name: "press".to_string(),
-                        handler: format!(".{}", name),
-                    }])
+                    .map(|name| {
+                        vec![UiAction {
+                            name: "press".to_string(),
+                            handler: format!(".{}", name),
+                        }]
+                    })
                     .unwrap_or_default();
-                UiNode { id, kind: "Canvas".to_string(), props, actions, children: vec![] }
-            },
+                UiNode {
+                    id,
+                    kind: "Canvas".to_string(),
+                    props,
+                    actions,
+                    children: vec![],
+                }
+            }
 
             // Plan 422: 弹层完整展开 —— MCP 需要看见面板项才能点击。
             // 子序与 render_dynamic_view / BuildProbe 对齐:anchor = 0,
             // content = 1(面板项路径 [.., popover, 1, item])。
-            View::Popover { anchor, content, placement, open, on_dismiss } => {
+            View::Popover {
+                anchor,
+                content,
+                placement,
+                open,
+                on_dismiss,
+            } => {
                 use crate::ui::view::PopoverAnchor;
                 let mut props = vec![
-                    ("placement".to_string(), format!("{:?}", placement).to_lowercase()),
+                    (
+                        "placement".to_string(),
+                        format!("{:?}", placement).to_lowercase(),
+                    ),
                     ("open".to_string(), open.to_string()),
                 ];
                 if let Some(msg) = on_dismiss {
-                    props.push(("_ondismiss".to_string(), Self::extract_action("dismiss", msg).handler));
+                    props.push((
+                        "_ondismiss".to_string(),
+                        Self::extract_action("dismiss", msg).handler,
+                    ));
                 }
                 let mut children = Vec::new();
                 match anchor {
@@ -214,7 +246,12 @@ impl SnapshotBuilder {
                 children: vec![],
             },
 
-            View::Button { label, onclick, disabled, .. } => {
+            View::Button {
+                label,
+                onclick,
+                disabled,
+                ..
+            } => {
                 // Plan 423 P3: disabled 进快照 —— MCP 断言面(禁用项点击无消息)。
                 // PLAN-053 批4: EE03 尾段(PLAN-053 起普通 button 的 title→tooltip
                 // 载体,同 toolbar 合成按钮)剥离为独立 title prop——快照 label 保持
@@ -242,7 +279,13 @@ impl SnapshotBuilder {
                 }
             }
 
-            View::Input { placeholder, value, on_change, password, .. } => {
+            View::Input {
+                placeholder,
+                value,
+                on_change,
+                password,
+                ..
+            } => {
                 let mut props = vec![
                     ("placeholder".to_string(), placeholder.clone()),
                     ("value".to_string(), value.clone()),
@@ -250,24 +293,50 @@ impl SnapshotBuilder {
                 if *password {
                     props.push(("password".to_string(), "true".to_string()));
                 }
-                let actions = on_change.as_ref()
+                let actions = on_change
+                    .as_ref()
                     .map(|msg| vec![Self::extract_action("type", msg)])
                     .unwrap_or_default();
-                UiNode { id, kind: "Input".to_string(), props, actions, children: vec![] }
+                UiNode {
+                    id,
+                    kind: "Input".to_string(),
+                    props,
+                    actions,
+                    children: vec![],
+                }
             }
 
-            View::Textarea { placeholder, value, on_change, .. } => {
+            View::Textarea {
+                placeholder,
+                value,
+                on_change,
+                ..
+            } => {
                 let props = vec![
                     ("placeholder".to_string(), placeholder.clone()),
                     ("value".to_string(), value.clone()),
                 ];
-                let actions = on_change.as_ref()
+                let actions = on_change
+                    .as_ref()
                     .map(|msg| vec![Self::extract_action("type", msg)])
                     .unwrap_or_default();
-                UiNode { id, kind: "Textarea".to_string(), props, actions, children: vec![] }
-            },
+                UiNode {
+                    id,
+                    kind: "Textarea".to_string(),
+                    props,
+                    actions,
+                    children: vec![],
+                }
+            }
             // Plan 413: code editor snapshot — lang metadata + value.
-            View::CodeEditor { key, value, lang, on_change, on_cursor, .. } => {
+            View::CodeEditor {
+                key,
+                value,
+                lang,
+                on_change,
+                on_cursor,
+                ..
+            } => {
                 let mut props = vec![
                     ("key".to_string(), key.clone()),
                     ("value".to_string(), value.clone()),
@@ -279,29 +348,56 @@ impl SnapshotBuilder {
                 ) {
                     props.push(("internal_text".to_string(), text));
                 }
-                let mut actions = on_change.as_ref()
+                let mut actions = on_change
+                    .as_ref()
                     .map(|msg| vec![Self::extract_action("type", msg)])
                     .unwrap_or_default();
-                actions.extend(on_cursor.as_ref()
-                    .map(|msg| vec![Self::extract_action("cursor", msg)])
-                    .unwrap_or_default());
-                UiNode { id, kind: "CodeEditor".to_string(), props, actions, children: vec![] }
-            },
+                actions.extend(
+                    on_cursor
+                        .as_ref()
+                        .map(|msg| vec![Self::extract_action("cursor", msg)])
+                        .unwrap_or_default(),
+                );
+                UiNode {
+                    id,
+                    kind: "CodeEditor".to_string(),
+                    props,
+                    actions,
+                    children: vec![],
+                }
+            }
 
             // PLAN-009 P1: terminal snapshot — 几何 + 喂入行数(MCP 检视面)。
-            View::Terminal { key, cols, rows, lines, .. } => {
+            View::Terminal {
+                key,
+                cols,
+                rows,
+                lines,
+                ..
+            } => {
                 let props = vec![
                     ("key".to_string(), key.clone()),
                     ("cols".to_string(), cols.to_string()),
                     ("rows".to_string(), rows.to_string()),
                     ("lines".to_string(), lines.len().to_string()),
                 ];
-                UiNode { id, kind: "Terminal".to_string(), props, actions: vec![], children: vec![] }
-            },
+                UiNode {
+                    id,
+                    kind: "Terminal".to_string(),
+                    props,
+                    actions: vec![],
+                    children: vec![],
+                }
+            }
 
             // Plan 019 Phase 3: autodown 文档编辑器 snapshot — key/value +
             // live 全文（编辑态对 MCP 探针可见）。
-            View::AutodownEditor { key, value, on_change, .. } => {
+            View::AutodownEditor {
+                key,
+                value,
+                on_change,
+                ..
+            } => {
                 let mut props = vec![
                     ("key".to_string(), key.clone()),
                     ("value".to_string(), value.clone()),
@@ -329,59 +425,121 @@ impl SnapshotBuilder {
                         }
                     }
                 }
-                let actions = on_change.as_ref()
+                let actions = on_change
+                    .as_ref()
                     .map(|msg| vec![Self::extract_action("edit", msg)])
                     .unwrap_or_default();
-                UiNode { id, kind: "AutodownEditor".to_string(), props, actions, children: vec![] }
-            },
+                UiNode {
+                    id,
+                    kind: "AutodownEditor".to_string(),
+                    props,
+                    actions,
+                    children: vec![],
+                }
+            }
 
             // PLAN-066: 原生外部组件快照——kind=注册名，props 明文透传，事件
             // 逐条 extract_action（action 名=事件名）。MCP 断言面对外部件可见
             // 是本变体的存在理由（不引入 Box<dyn> 的原因）。
-            View::Custom { name, props, events, .. } => {
+            View::Custom {
+                name,
+                props,
+                events,
+                ..
+            } => {
                 let props: Vec<(String, String)> = props.clone();
                 let actions: Vec<_> = events
                     .iter()
                     .map(|(ev_name, msg)| Self::extract_action(ev_name, msg))
                     .collect();
-                UiNode { id, kind: name.clone(), props, actions, children: vec![] }
-            },
+                UiNode {
+                    id,
+                    kind: name.clone(),
+                    props,
+                    actions,
+                    children: vec![],
+                }
+            }
 
-            View::Checkbox { is_checked, label, on_toggle, .. } => {
+            View::Checkbox {
+                is_checked,
+                label,
+                on_toggle,
+                ..
+            } => {
                 let props = vec![
                     ("checked".to_string(), is_checked.to_string()),
                     ("label".to_string(), label.clone()),
                 ];
-                let actions = on_toggle.as_ref()
+                let actions = on_toggle
+                    .as_ref()
                     .map(|msg| vec![Self::extract_action("toggle", msg)])
                     .unwrap_or_default();
-                UiNode { id, kind: "Checkbox".to_string(), props, actions, children: vec![] }
-            },
+                UiNode {
+                    id,
+                    kind: "Checkbox".to_string(),
+                    props,
+                    actions,
+                    children: vec![],
+                }
+            }
 
-            View::Radio { label, is_selected, on_select, .. } => {
+            View::Radio {
+                label,
+                is_selected,
+                on_select,
+                ..
+            } => {
                 let props = vec![
                     ("label".to_string(), label.clone()),
                     ("selected".to_string(), is_selected.to_string()),
                 ];
-                let actions = on_select.as_ref()
+                let actions = on_select
+                    .as_ref()
                     .map(|msg| vec![Self::extract_action("select", msg)])
                     .unwrap_or_default();
-                UiNode { id, kind: "Radio".to_string(), props, actions, children: vec![] }
-            },
+                UiNode {
+                    id,
+                    kind: "Radio".to_string(),
+                    props,
+                    actions,
+                    children: vec![],
+                }
+            }
 
-            View::Select { options, selected_index, .. } => {
+            View::Select {
+                options,
+                selected_index,
+                ..
+            } => {
                 let props = vec![
                     ("options".to_string(), format!("{:?}", options)),
-                    ("selected".to_string(), selected_index
-                        .map(|i| i.to_string())
-                        .unwrap_or_else(|| "none".to_string())),
+                    (
+                        "selected".to_string(),
+                        selected_index
+                            .map(|i| i.to_string())
+                            .unwrap_or_else(|| "none".to_string()),
+                    ),
                 ];
                 // SelectCallback doesn't implement handler extraction easily,
                 // so we just mark it as having a select action
-                UiNode { id, kind: "Select".to_string(), props, actions: vec![], children: vec![] }
-            },
+                UiNode {
+                    id,
+                    kind: "Select".to_string(),
+                    props,
+                    actions: vec![],
+                    children: vec![],
+                }
+            }
 
-            View::Slider { min, max, value, step, on_change, .. } => {
+            View::Slider {
+                min,
+                max,
+                value,
+                step,
+                on_change,
+                ..
+            } => {
                 let mut props = vec![
                     ("min".to_string(), min.to_string()),
                     ("max".to_string(), max.to_string()),
@@ -393,15 +551,24 @@ impl SnapshotBuilder {
                 // PLAN-661 T-03: actions 挂 set_value——handler 名取 onchange
                 // 事件名（SliderChangeHandler 标签旁路供给；MCP SetValue 经
                 // decode_payload "f" 载荷把 f32 实参送达 `.SetVol(v float)`）。
-                let actions = on_change.as_ref()
+                let actions = on_change
+                    .as_ref()
                     .and_then(|h| h.label())
-                    .map(|name| vec![UiAction {
-                        name: "set_value".to_string(),
-                        handler: format!(".{}", name),
-                    }])
+                    .map(|name| {
+                        vec![UiAction {
+                            name: "set_value".to_string(),
+                            handler: format!(".{}", name),
+                        }]
+                    })
                     .unwrap_or_default();
-                UiNode { id, kind: "Slider".to_string(), props, actions, children: vec![] }
-            },
+                UiNode {
+                    id,
+                    kind: "Slider".to_string(),
+                    props,
+                    actions,
+                    children: vec![],
+                }
+            }
 
             View::ProgressBar { progress, .. } => UiNode {
                 id,
@@ -453,7 +620,9 @@ impl SnapshotBuilder {
 
             // Plan 497: 窗口缩略(宿主快照缓存资产;检视面披露 wid 与
             // fallback)。
-            View::WindowThumbnail { wid, fallback_icon, .. } => UiNode {
+            View::WindowThumbnail {
+                wid, fallback_icon, ..
+            } => UiNode {
                 id,
                 kind: "WindowThumbnail".to_string(),
                 props: vec![
@@ -465,7 +634,9 @@ impl SnapshotBuilder {
             },
 
             // PLAN-012 W3: 整桌面预览(宿主合成资产;检视面披露 ws 与 fallback)。
-            View::WorkspacePreview { ws, fallback_icon, .. } => UiNode {
+            View::WorkspacePreview {
+                ws, fallback_icon, ..
+            } => UiNode {
                 id,
                 kind: "WorkspacePreview".to_string(),
                 props: vec![
@@ -476,7 +647,12 @@ impl SnapshotBuilder {
                 children: vec![],
             },
 
-            View::Row { children, spacing, padding, .. } => {
+            View::Row {
+                children,
+                spacing,
+                padding,
+                ..
+            } => {
                 let child_nodes = Self::traverse_children(children, id_map, path);
                 UiNode {
                     id,
@@ -488,9 +664,14 @@ impl SnapshotBuilder {
                     actions: vec![],
                     children: child_nodes,
                 }
-            },
+            }
 
-            View::Column { children, spacing, padding, .. } => {
+            View::Column {
+                children,
+                spacing,
+                padding,
+                ..
+            } => {
                 let child_nodes = Self::traverse_children(children, id_map, path);
                 UiNode {
                     id,
@@ -502,10 +683,12 @@ impl SnapshotBuilder {
                     actions: vec![],
                     children: child_nodes,
                 }
-            },
+            }
 
             // Grid (Plan 319): cells are the snapshot children.
-            View::Grid { cols, gap, cells, .. } => {
+            View::Grid {
+                cols, gap, cells, ..
+            } => {
                 let child_nodes = Self::traverse_children(cells, id_map, path);
                 UiNode {
                     id,
@@ -517,9 +700,17 @@ impl SnapshotBuilder {
                     actions: vec![],
                     children: child_nodes,
                 }
-            },
+            }
 
-            View::Container { padding, width, height, center_x, center_y, child, .. } => {
+            View::Container {
+                padding,
+                width,
+                height,
+                center_x,
+                center_y,
+                child,
+                ..
+            } => {
                 let mut props = vec![("padding".to_string(), padding.to_string())];
                 if let Some(w) = width {
                     props.push(("width".to_string(), w.to_string()));
@@ -535,10 +726,22 @@ impl SnapshotBuilder {
                 }
                 let child_path = [path, &[0]].concat();
                 let child_node = Self::traverse_view(child, id_map, &child_path);
-                UiNode { id, kind: "Container".to_string(), props, actions: vec![], children: vec![child_node] }
-            },
+                UiNode {
+                    id,
+                    kind: "Container".to_string(),
+                    props,
+                    actions: vec![],
+                    children: vec![child_node],
+                }
+            }
 
-            View::Scrollable { width, height, child, offset, .. } => {
+            View::Scrollable {
+                width,
+                height,
+                child,
+                offset,
+                ..
+            } => {
                 let mut props = vec![];
                 if let Some(w) = width {
                     props.push(("width".to_string(), w.to_string()));
@@ -553,8 +756,14 @@ impl SnapshotBuilder {
                 }
                 let child_path = [path, &[0]].concat();
                 let child_node = Self::traverse_view(child, id_map, &child_path);
-                UiNode { id, kind: "Scrollable".to_string(), props, actions: vec![], children: vec![child_node] }
-            },
+                UiNode {
+                    id,
+                    kind: "Scrollable".to_string(),
+                    props,
+                    actions: vec![],
+                    children: vec![child_node],
+                }
+            }
 
             View::List { items, spacing, .. } => {
                 let child_nodes = Self::traverse_children(items, id_map, path);
@@ -565,9 +774,17 @@ impl SnapshotBuilder {
                     actions: vec![],
                     children: child_nodes,
                 }
-            },
+            }
 
-            View::Table { headers, rows, spacing, col_spacing, table_key, col_widths, .. } => {
+            View::Table {
+                headers,
+                rows,
+                spacing,
+                col_spacing,
+                table_key,
+                col_widths,
+                ..
+            } => {
                 let mut all_children = Vec::new();
                 // Headers
                 for (i, h) in headers.iter().enumerate() {
@@ -603,15 +820,21 @@ impl SnapshotBuilder {
                     actions: vec![],
                     children: all_children,
                 }
-            },
+            }
 
-            View::Accordion { items, allow_multiple, .. } => {
+            View::Accordion {
+                items,
+                allow_multiple,
+                ..
+            } => {
                 let child_nodes: Vec<UiNode> = items
                     .iter()
                     .enumerate()
                     .flat_map(|(i, item)| {
                         let mut nodes = vec![UiNode {
-                            id: id_map.get(&[path, &[i]].concat()).unwrap_or(AuraNodeId(u32::MAX)),
+                            id: id_map
+                                .get(&[path, &[i]].concat())
+                                .unwrap_or(AuraNodeId(u32::MAX)),
                             kind: "AccordionHeader".to_string(),
                             props: vec![
                                 ("title".to_string(), item.title.clone()),
@@ -634,9 +857,14 @@ impl SnapshotBuilder {
                     actions: vec![],
                     children: child_nodes,
                 }
-            },
+            }
 
-            View::Tabs { labels, selected, position, .. } => {
+            View::Tabs {
+                labels,
+                selected,
+                position,
+                ..
+            } => {
                 let labels_str = format!("{:?}", labels);
                 UiNode {
                     id,
@@ -644,28 +872,44 @@ impl SnapshotBuilder {
                     props: vec![
                         ("labels".to_string(), labels_str),
                         ("selected".to_string(), selected.to_string()),
-                        ("position".to_string(), format!("{:?}", position).to_lowercase()),
+                        (
+                            "position".to_string(),
+                            format!("{:?}", position).to_lowercase(),
+                        ),
                     ],
                     actions: vec![],
                     children: vec![], // Tab contents are complex, skip for now
                 }
-            },
+            }
 
-            View::Sidebar { width, collapsible, position, .. } => {
+            View::Sidebar {
+                width,
+                collapsible,
+                position,
+                ..
+            } => {
                 UiNode {
                     id,
                     kind: "Sidebar".to_string(),
                     props: vec![
                         ("width".to_string(), width.to_string()),
                         ("collapsible".to_string(), collapsible.to_string()),
-                        ("position".to_string(), format!("{:?}", position).to_lowercase()),
+                        (
+                            "position".to_string(),
+                            format!("{:?}", position).to_lowercase(),
+                        ),
                     ],
                     actions: vec![],
                     children: vec![], // Sidebar content is a Box<View>, skip deep traversal
                 }
-            },
+            }
 
-            View::NavigationRail { items, selected, show_labels, .. } => {
+            View::NavigationRail {
+                items,
+                selected,
+                show_labels,
+                ..
+            } => {
                 let labels: Vec<String> = items.iter().map(|i| i.label.clone()).collect();
                 UiNode {
                     id,
@@ -678,7 +922,7 @@ impl SnapshotBuilder {
                     actions: vec![],
                     children: vec![],
                 }
-            },
+            }
         }
     }
 

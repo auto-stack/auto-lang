@@ -47,9 +47,9 @@
 use crate::ast::{ArrayType, GenericInstance, PtrType, StorageKind, Type};
 use crate::error::{TypeError, Warning};
 use miette::SourceSpan;
+use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
-use std::cell::RefCell;
 
 /// 类型统一错误
 #[derive(Debug, Clone)]
@@ -126,9 +126,17 @@ impl From<UnificationError> for TypeError {
 pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
     match ty {
         // 基础类型不包含类型变量
-        Type::Byte | Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::USize |
-        Type::Float | Type::Double | Type::Bool | Type::Char |
-        Type::Void => false,
+        Type::Byte
+        | Type::Int
+        | Type::Uint
+        | Type::I64
+        | Type::U64
+        | Type::USize
+        | Type::Float
+        | Type::Double
+        | Type::Bool
+        | Type::Char
+        | Type::Void => false,
 
         // 字符串类型
         Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned => false,
@@ -139,7 +147,7 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         // 复合类型：递归检查
         Type::Array(arr) => occurs_in(var_name, &arr.elem),
 
-        Type::RuntimeArray(rta) => occurs_in(var_name, &rta.elem),  // Plan 052
+        Type::RuntimeArray(rta) => occurs_in(var_name, &rta.elem), // Plan 052
 
         Type::List(elem) => occurs_in(var_name, elem),
 
@@ -152,7 +160,7 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
             occurs_in(var_name, &inner_ty)
         }
 
-        Type::Reference(inner) => occurs_in(var_name, inner),  // Plan 052
+        Type::Reference(inner) => occurs_in(var_name, inner), // Plan 052
 
         // Linear 类型：递归检查内部类型
         Type::Linear(inner) => occurs_in(var_name, inner),
@@ -162,8 +170,7 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
 
         // Function 类型：递归检查参数和返回类型
         Type::Fn(params, ret) => {
-            occurs_in(var_name, ret) ||
-            params.iter().any(|p| occurs_in(var_name, p))
+            occurs_in(var_name, ret) || params.iter().any(|p| occurs_in(var_name, p))
         }
 
         // 用户类型：暂时假设不包含类型变量
@@ -173,9 +180,7 @@ pub fn occurs_in(var_name: &str, ty: &Type) -> bool {
         Type::Spec(_) => false,
 
         // GenericInstance：递归检查类型参数
-        Type::GenericInstance(inst) => {
-            inst.args.iter().any(|arg| occurs_in(var_name, arg))
-        }
+        Type::GenericInstance(inst) => inst.args.iter().any(|arg| occurs_in(var_name, arg)),
 
         // 其他类型
         Type::Union(_) | Type::Tag(_) | Type::Enum(_) | Type::Storage(_) => false,
@@ -223,7 +228,9 @@ pub fn unify(ty1: &Type, ty2: &Type, span: SourceSpan) -> Result<Type, Unificati
 
         // 3. 字符串类型
         (Type::StrFixed(_), Type::StrFixed(_)) => Ok(ty1.clone()),
-        (Type::StrFixed(_), Type::StrOwned) | (Type::StrOwned, Type::StrFixed(_)) => Ok(ty1.clone()),
+        (Type::StrFixed(_), Type::StrOwned) | (Type::StrOwned, Type::StrFixed(_)) => {
+            Ok(ty1.clone())
+        }
         (Type::StrOwned, Type::StrOwned) => Ok(ty1.clone()),
         (Type::CStrLit, Type::CStrLit) => Ok(ty1.clone()),
         // Str literal → StrSlice 隐式转换
@@ -418,10 +425,7 @@ mod tests {
     fn test_unify_same_types() {
         let span = SourceSpan::new(0.into(), 10);
 
-        assert!(matches!(
-            unify(&Type::Int, &Type::Int, span),
-            Ok(Type::Int)
-        ));
+        assert!(matches!(unify(&Type::Int, &Type::Int, span), Ok(Type::Int)));
         assert!(matches!(
             unify(&Type::Float, &Type::Float, span),
             Ok(Type::Float)
@@ -476,10 +480,7 @@ mod tests {
             len: 3,
         });
 
-        assert!(matches!(
-            unify(&arr1, &arr2, span),
-            Ok(Type::Array(..))
-        ));
+        assert!(matches!(unify(&arr1, &arr2, span), Ok(Type::Array(..))));
     }
 
     #[test]

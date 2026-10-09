@@ -116,8 +116,11 @@ widget W {{
     fn text_index_int_and_ident_unchanged() {
         let sfc = gen_sfc("for li in .items { text (text: li[0]) { } }");
         let tpl = template_of(&sfc);
-        assert!(tpl.contains("li[0]"), "int index stays bare; got:
-{tpl}");
+        assert!(
+            tpl.contains("li[0]"),
+            "int index stays bare; got:
+{tpl}"
+        );
     }
 
     /// 不支持形式在文本位置必须发 R046 告警(替换静默 dump)。
@@ -150,18 +153,12 @@ sfc:
                 "index-shorthand",
                 "for li in .items { text li[\"name\"] { } }",
             ),
-            (
-                "dot-shorthand",
-                "for li in .items { text li.name { } }",
-            ),
+            ("dot-shorthand", "for li in .items { text li.name { } }"),
             (
                 "binary-paren-prop",
                 "for li in .items { text (text: li[\"name\"] + \"!\") { } }",
             ),
-            (
-                "index-state",
-                "text (text: .items[0][\"name\"]) { }",
-            ),
+            ("index-state", "text (text: .items[0][\"name\"]) { }"),
         ];
         for (name, body) in cases {
             let sfc = gen_sfc(body);

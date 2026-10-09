@@ -117,9 +117,19 @@ impl BrokerClient {
         let rgba = self.shm.get(&surface)?.read_slot(slot).ok()?;
         self.pixels.insert(
             surface,
-            PixelsSurface { rgba, w, h, stride, revision },
+            PixelsSurface {
+                rgba,
+                w,
+                h,
+                stride,
+                revision,
+            },
         );
-        Some(FrameMsg::FrameAck { wid, frame_id, slot })
+        Some(FrameMsg::FrameAck {
+            wid,
+            frame_id,
+            slot,
+        })
     }
 }
 
@@ -175,7 +185,10 @@ mod mem_ffi {
         unsafe {
             let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
             if handle == 0 {
-                return Err(format!("OpenProcess({pid}): {}", std::io::Error::last_os_error()));
+                return Err(format!(
+                    "OpenProcess({pid}): {}",
+                    std::io::Error::last_os_error()
+                ));
             }
             let mut counters = PROCESS_MEMORY_COUNTERS {
                 cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
@@ -190,11 +203,7 @@ mod mem_ffi {
                 PeakPagefileUsage: 0,
                 PrivateUsage: 0,
             };
-            let ok = K32GetProcessMemoryInfo(
-                handle,
-                &mut counters,
-                counters.cb,
-            );
+            let ok = K32GetProcessMemoryInfo(handle, &mut counters, counters.cb);
             let _ = CloseHandle(handle);
             if ok == 0 {
                 return Err(format!(
@@ -230,8 +239,7 @@ pub fn fused_state_snapshot(
     component: &crate::ui::dynamic::DynamicComponent,
     revision: u64,
 ) -> Vec<u8> {
-    let fields: Vec<(String, auto_val::Value)> =
-        component.read_all_state().into_iter().collect();
+    let fields: Vec<(String, auto_val::Value)> = component.read_all_state().into_iter().collect();
     super::client_runtime::encode_state_snapshot(revision, &fields)
 }
 
@@ -243,13 +251,13 @@ pub fn fused_state_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use crate::ui::desktop_protocol::broker;
     use crate::ui::desktop_protocol::client_runtime::{ClientConfig, ReconnectPolicy};
-    use crate::ui::desktop_protocol::native_projector::RqProjector;
     use crate::ui::desktop_protocol::message::{DrawOp, FrameMode, MouseButton};
+    use crate::ui::desktop_protocol::native_projector::RqProjector;
     use crate::ui::desktop_protocol::transport;
     use crate::ui::session::{DesktopSession, LaunchSpec};
+    use std::sync::Arc;
 
     /// 子进程识别 env：broker 管道名 + app 名。
     const CHILD_BROKER_ENV: &str = "AUTO_480_BROKER";
@@ -277,17 +285,22 @@ mod tests {
             width: 480.0,
             height: 320.0,
         };
-        let reconnect =
-            ReconnectPolicy { pipe: per_app_pipe, budget_ms: 30_000, interval_ms: 50 };
+        let reconnect = ReconnectPolicy {
+            pipe: per_app_pipe,
+            budget_ms: 30_000,
+            interval_ms: 50,
+        };
         // PLAN-033 T-04 迁移：压测子进程走 native 投影臂（AppProjector 退役）。
         // PLAN-678：父进程压测/outproc 点击钉预居中坐标——子进程投影臂同关缺省居中。
         let mut projector = RqProjector::new(component, 480.0, 320.0);
         projector.proj_autocenter_off();
         projector.ensure_covered().expect("stress covered");
-        let (exit, proj) =
-            crate::ui::desktop_protocol::client_runtime::run_client_session(
-                end, projector, config, Some(reconnect),
-            );
+        let (exit, proj) = crate::ui::desktop_protocol::client_runtime::run_client_session(
+            end,
+            projector,
+            config,
+            Some(reconnect),
+        );
         println!("{CHILD_MARKER} exit={exit:?} rev={}", proj.revision());
     }
 
@@ -366,11 +379,8 @@ mod tests {
 
     /// PLAN-029 T-03：native 档子进程共用体——孵化 + ensure_covered 门 +
     /// RqProjector + run_client_session（镜像 client_entry 生产分支）。
-    fn run_native_t3_child<C>(
-        broker_pipe: &str,
-        app: &str,
-        component: C,
-    ) where
+    fn run_native_t3_child<C>(broker_pipe: &str, app: &str, component: C)
+    where
         C: crate::ui::Component + 'static,
         C::Msg: Clone + std::fmt::Debug + Send + 'static,
     {
@@ -387,17 +397,23 @@ mod tests {
             width: T3_W,
             height: T3_H,
         };
-        let reconnect = ReconnectPolicy { pipe: _pipe, budget_ms: 30_000, interval_ms: 50 };
+        let reconnect = ReconnectPolicy {
+            pipe: _pipe,
+            budget_ms: 30_000,
+            interval_ms: 50,
+        };
         // PLAN-678：T3 子臂保持缺省居中——与生产会话侧 remote 孪生
         //（remote_twin_hits，autocenter 常开）同态，命中表/点击才对齐。
-        let projector = crate::ui::desktop_protocol::native_projector::RqProjector::new(
-            component, T3_W, T3_H,
-        );
+        let projector =
+            crate::ui::desktop_protocol::native_projector::RqProjector::new(component, T3_W, T3_H);
         if let Err(gate) = projector.ensure_covered() {
             panic!("native child 覆盖门拒绝: {gate}");
         }
         let (exit, proj) = crate::ui::desktop_protocol::client_runtime::run_client_session(
-            end, projector, config, Some(reconnect),
+            end,
+            projector,
+            config,
+            Some(reconnect),
         );
         println!("AUTO029-CHILD exit={exit:?} rev={}", proj.revision());
     }
@@ -444,10 +460,7 @@ mod tests {
                         .on_change(P029Msg::BufChanged)
                         .build(),
                 )
-                .child(View::text_styled(
-                    format!("echo:{}", self.buf),
-                    "text-sm",
-                ))
+                .child(View::text_styled(format!("echo:{}", self.buf), "text-sm"))
                 .child(View::text_styled(
                     format!("scroll:{}", self.scroll_y),
                     "text-sm",
@@ -495,7 +508,9 @@ mod tests {
                 .style("p-2 gap-2")
                 .child(View::Popover {
                     anchor: PopoverAnchor::Widget(Box::new(
-                        View::button("menu").on_click(|_| ShellFaceMsg::ToggleMenu).build(),
+                        View::button("menu")
+                            .on_click(|_| ShellFaceMsg::ToggleMenu)
+                            .build(),
                     )),
                     content: Box::new(
                         View::col()
@@ -534,10 +549,7 @@ mod tests {
                     logical_extent: Some((120.0, 24.0)),
                     style: None,
                 })
-                .child(View::text_styled(
-                    format!("log:{}", self.log),
-                    "text-sm",
-                ))
+                .child(View::text_styled(format!("log:{}", self.log), "text-sm"))
                 .build()
         }
     }
@@ -587,8 +599,7 @@ mod tests {
             // loader 按 path 兄弟文件解析——018 book_store/021 页组件）。
             let base = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/ui/");
             let path = format!("{base}{app}/src/front/app.at");
-            let src = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("read {path}: {e}"));
+            let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
             let component = crate::build_dynamic_component(&src, Some(&path))
                 .unwrap_or_else(|e| panic!("child build (path ctx {app}): {e:?}"));
             if mode == "native-auto-full" {
@@ -602,7 +613,8 @@ mod tests {
                     println!("[p032-auto] {l}");
                 }
                 assert_eq!(
-                    frame_mode, FrameMode::Commands,
+                    frame_mode,
+                    FrameMode::Commands,
                     "auto 档翻转后缺省 queue（flipped@ramp3）"
                 );
                 assert!(
@@ -700,48 +712,49 @@ mod tests {
         let code_c_for = code_c.clone();
         let exe_c_for = exe_c.clone();
         let dir_c_for = dir_c.clone();
-        let code_i_for = std::fs::read_to_string(dir_i.join("src/front/app.at")).expect("read inputs");
+        let code_i_for =
+            std::fs::read_to_string(dir_i.join("src/front/app.at")).expect("read inputs");
         let exe_i_for = exe_i.clone();
-        session.desktop.app_resolver =
-            Some(std::sync::Arc::new(move |name: &str| match name {
-                "003-converter" => Some(LaunchSpec {
-                    media_root: None,
-                    photo_root: None,
-                    back_entry: None,
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| match name {
+            "003-converter" => Some(LaunchSpec {
+                media_root: None,
+                photo_root: None,
+                back_entry: None,
 
-                    code: code_c_for.clone(),
-                    source_path: Some(
-                        dir_c_for.join("src/front/app.at").to_string_lossy().to_string(),
-                    ),
-                    title: Some("Converter".into()),
-                    name: Some("converter".into()),
-                    daemon: None,
-                    back_root: None,
-                    fit: false,
-                    exe: Some(std::path::PathBuf::from(&exe_c_for)),
-                    render_decl: Some("queue".into()),
-                    opens: Vec::new(),
-                }),
-                "025-inputs" => Some(LaunchSpec {
-                    media_root: None,
-                    photo_root: None,
-                    back_entry: None,
+                code: code_c_for.clone(),
+                source_path: Some(
+                    dir_c_for
+                        .join("src/front/app.at")
+                        .to_string_lossy()
+                        .to_string(),
+                ),
+                title: Some("Converter".into()),
+                name: Some("converter".into()),
+                daemon: None,
+                back_root: None,
+                fit: false,
+                exe: Some(std::path::PathBuf::from(&exe_c_for)),
+                render_decl: Some("queue".into()),
+                opens: Vec::new(),
+            }),
+            "025-inputs" => Some(LaunchSpec {
+                media_root: None,
+                photo_root: None,
+                back_entry: None,
 
-                    code: code_i_for.clone(),
-                    source_path: Some(
-                        dir_i.join("src/front/app.at").to_string_lossy().to_string(),
-                    ),
-                    title: Some("Inputs025".into()),
-                    name: Some("inputs025".into()),
-                    daemon: None,
-                    back_root: None,
-                    fit: false,
-                    exe: Some(std::path::PathBuf::from(&exe_i_for)),
-                    render_decl: Some("queue".into()),
-                    opens: Vec::new(),
-                }),
-                _ => None,
-            }));
+                code: code_i_for.clone(),
+                source_path: Some(dir_i.join("src/front/app.at").to_string_lossy().to_string()),
+                title: Some("Inputs025".into()),
+                name: Some("inputs025".into()),
+                daemon: None,
+                back_root: None,
+                fit: false,
+                exe: Some(std::path::PathBuf::from(&exe_i_for)),
+                render_decl: Some("queue".into()),
+                opens: Vec::new(),
+            }),
+            _ => None,
+        }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
@@ -805,17 +818,15 @@ mod tests {
         }
 
         // —— ①003-converter：queue 孵化 + 双 input + broker_char 键入联动。
-        let wid_c = session.launch_app("003-converter").expect("converter launch");
+        let wid_c = session
+            .launch_app("003-converter")
+            .expect("converter launch");
         place_window(&mut session, wid_c, 0);
         // 先泵到首帧（wid 在 ResolveAndAttach 落地期回填 client）。
         wait_frame(
             &mut session,
             "003-converter",
-            |ops| {
-                quads_of(ops)
-                    .iter()
-                    .any(|r| r.2 == 320.0 && r.3 == 32.0)
-            },
+            |ops| quads_of(ops).iter().any(|r| r.2 == 320.0 && r.3 == 32.0),
             "003 input 帧",
         );
         let mode_c = session
@@ -961,7 +972,8 @@ mod tests {
                     .find(|c| c.app_name.as_deref() == Some(app))
                     .and_then(|c| c.composed())
                 {
-                    let out = crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
+                    let out =
+                        crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
                     let _ = std::fs::write(assets.join(file), out);
                 }
             }
@@ -1045,9 +1057,8 @@ mod tests {
         if a.len() != b.len() {
             return false;
         }
-        let is_color = |t: &str| {
-            t.split(",").count() >= 3 && t.split(",").all(|c| c.parse::<i64>().is_ok())
-        };
+        let is_color =
+            |t: &str| t.split(",").count() >= 3 && t.split(",").all(|c| c.parse::<i64>().is_ok());
         a.iter().zip(b.iter()).all(|(x, y)| {
             let xt: Vec<&str> = x.split_whitespace().collect();
             let yt: Vec<&str> = y.split_whitespace().collect();
@@ -1093,8 +1104,11 @@ mod tests {
         let mut session = DesktopSession::__test_session();
         session.open_desktop(iced::window::Id::unique());
         session.desktop.shell_model = ShellModel::Outproc;
-        session.desktop.shell_geometry =
-            Some(ShellGeometry { viewport_w: 1280.0, viewport_h: 800.0, band_h: 48.0 });
+        session.desktop.shell_geometry = Some(ShellGeometry {
+            viewport_w: 1280.0,
+            viewport_h: 800.0,
+            band_h: 48.0,
+        });
         let geometry = session.desktop.shell_geometry.unwrap();
         // launcher 源 + e2e spawner 注入（re-exec 测试体）。
         session.desktop.launcher_entry = Some(launcher_entry.clone());
@@ -1125,7 +1139,11 @@ mod tests {
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
-        fn pump_until<F: Fn(&DesktopSession) -> bool>(session: &mut DesktopSession, pred: F, what: &str) {
+        fn pump_until<F: Fn(&DesktopSession) -> bool>(
+            session: &mut DesktopSession,
+            pred: F,
+            what: &str,
+        ) {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
             while !pred(session) {
                 if session.pending_incubations() > 0 {
@@ -1144,7 +1162,9 @@ mod tests {
             let client = session.broker_clients.get(pipe)?;
             let wid = match face {
                 f if f == shell_face::SHELL => session.desktop.shell_pseudo_wids.get(1)?,
-                f if f == shell_face::DESKTOP_SURFACE => session.desktop.shell_pseudo_wids.first()?,
+                f if f == shell_face::DESKTOP_SURFACE => {
+                    session.desktop.shell_pseudo_wids.first()?
+                }
                 f if f == shell_face::SWITCHER => session.desktop.shell_pseudo_wids.get(2)?,
                 f if f == shell_face::NOTIFICATION_CENTER => {
                     session.desktop.shell_pseudo_wids.get(3)?
@@ -1167,7 +1187,11 @@ mod tests {
 
         // —— 腿0：壳 attach 五伪窗。
         session.launch_shell_outproc().expect("p036 壳 spawn");
-        pump_until(&mut session, |s| s.desktop.shell_pipe.is_some(), "壳 attach");
+        pump_until(
+            &mut session,
+            |s| s.desktop.shell_pipe.is_some(),
+            "壳 attach",
+        );
         assert_eq!(
             session.desktop.shell_pseudo_wids.len(),
             5,
@@ -1200,7 +1224,11 @@ mod tests {
             ("notification", shell_face::NOTIFICATION_CENTER),
             ("dashboard", shell_face::DASHBOARD),
         ] {
-            pump_until(&mut session, |s| face_frame(s, face).is_some(), &format!("{name} 帧在案"));
+            pump_until(
+                &mut session,
+                |s| face_frame(s, face).is_some(),
+                &format!("{name} 帧在案"),
+            );
         }
         println!("AUTO036 leg1 five-faces-frames PASS");
 
@@ -1208,8 +1236,7 @@ mod tests {
         /// 同快照同几何 → DrawList 文本逐行全等）。
         {
             use crate::ui::desktop_protocol::shell_client::ShellFaces;
-            let mut local =
-                ShellFaces::load(geometry).expect("本地解释装配（内嵌 pin 兜底）");
+            let mut local = ShellFaces::load(geometry).expect("本地解释装配（内嵌 pin 兜底）");
             let mut snap = crate::ui::iced::renderer::build_switcher_snapshot(&session);
             snap.visible = true;
             snap.events = vec![crate::ui::shell_projection::ShellEvent::RebuildMru];
@@ -1254,14 +1281,20 @@ mod tests {
             "launcher attach 不影响壳管线"
         );
         assert!(session.desktop.launcher_open, "镜像位在案");
-        pump_until(&mut session, |s| launcher_frame(s).is_some(), "launcher 帧在案");
+        pump_until(
+            &mut session,
+            |s| launcher_frame(s).is_some(),
+            "launcher 帧在案",
+        );
         println!("AUTO036 leg3 launcher-exe-attached-and-framed PASS");
 
         // —— 腿3.5（F-036-R1 前置）：伪注册表条目注入 + 清单重推——
         // ranked 非空前提（launcher Pick 消费 ranked[sel].name；
         // dashboard face 清单同步翻面——逐面 parity 在同拍数据上对拍）。
-        session.desktop.registry_entries.push(
-            crate::ui::app_registry::AppRegistryEntry {
+        session
+            .desktop
+            .registry_entries
+            .push(crate::ui::app_registry::AppRegistryEntry {
                 id: "p036-fake-app".into(),
                 title: "P036 Fake".into(),
                 title_zh: None,
@@ -1282,8 +1315,7 @@ mod tests {
                 media_root: None,
                 photo_root: None,
                 back_entry: None,
-            },
-        );
+            });
         {
             use crate::ui::shell_projection::ShellEvent;
             session.desktop.dashboard_open = true;
@@ -1318,8 +1350,7 @@ mod tests {
                 cases.push(("shell-chrome", shell_face::SHELL, p));
             }
             {
-                let mut snap =
-                    crate::ui::iced::renderer::build_desktop_surface_snapshot(&session);
+                let mut snap = crate::ui::iced::renderer::build_desktop_surface_snapshot(&session);
                 snap.running_csv = String::new();
                 let mut p = Vec::new();
                 snap.wire_encode(&mut p);
@@ -1394,10 +1425,7 @@ mod tests {
         // 写 __desktop_cmd → pump 排水 → DesktopBus 上行 → 宿主
         // desktop_bus_inbox 收件（registry_id=launcher-face 归因）。
         {
-            let lwid = session
-                .desktop
-                .launcher_wid
-                .expect("launcher 伪窗在案");
+            let lwid = session.desktop.launcher_wid.expect("launcher 伪窗在案");
             session.wm_focus(lwid);
             assert!(
                 session.broker_key_event(0x0D, 0),
@@ -1499,8 +1527,11 @@ mod tests {
         let mut session = DesktopSession::__test_session();
         session.open_desktop(iced::window::Id::unique());
         session.desktop.shell_model = ShellModel::Outproc;
-        session.desktop.shell_geometry =
-            Some(ShellGeometry { viewport_w: 1280.0, viewport_h: 800.0, band_h: 48.0 });
+        session.desktop.shell_geometry = Some(ShellGeometry {
+            viewport_w: 1280.0,
+            viewport_h: 800.0,
+            band_h: 48.0,
+        });
         let pipe_for_spawn = broker_pipe.clone();
         session.desktop.shell_spawner = Some(Arc::new(move |geom, _pipe| {
             // 几何经 env 传递（spawn_t3_child 继承父 env）。
@@ -1558,7 +1589,10 @@ mod tests {
                 if bg.is_some() && chrome.is_some() {
                     break;
                 }
-                assert!(std::time::Instant::now() < deadline, "p030 腿1 双表面首帧超时");
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "p030 腿1 双表面首帧超时"
+                );
                 std::thread::yield_now();
             }
         }
@@ -1580,19 +1614,14 @@ mod tests {
             }
         }
         {
-            let comp = crate::build_dynamic_component(
-                r#"widget t { view { text "P030Win" } }"#,
-                None,
-            )
-            .expect("假窗组件");
+            let comp =
+                crate::build_dynamic_component(r#"widget t { view { text "P030Win" } }"#, None)
+                    .expect("假窗组件");
             let app = session.allocate_app(comp);
             let fake_wid = session.wm_add_win(
                 app,
                 "P030Win".into(),
-                iced::Rectangle::new(
-                    iced::Point::new(64.0, 64.0),
-                    iced::Size::new(320.0, 200.0),
-                ),
+                iced::Rectangle::new(iced::Point::new(64.0, 64.0), iced::Size::new(320.0, 200.0)),
             );
             // registry_id 回填：running 集派生入投影（dock/任务栏可变面）。
             if let Some(host) = session.host.as_mut() {
@@ -1622,7 +1651,12 @@ mod tests {
                                 _ => None,
                             })
                             .collect();
-                        println!("AUTO030 leg3 ops {} -> {} texts={:?}", baseline_ops, l.ops.len(), texts);
+                        println!(
+                            "AUTO030 leg3 ops {} -> {} texts={:?}",
+                            baseline_ops,
+                            l.ops.len(),
+                            texts
+                        );
                     }
                     grew
                 });
@@ -1648,7 +1682,10 @@ mod tests {
                 if !session.desktop.desktop_bus_inbox.is_empty() {
                     break;
                 }
-                assert!(std::time::Instant::now() < deadline, "p030 腿2 DesktopBus 上行超时");
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "p030 腿2 DesktopBus 上行超时"
+                );
                 std::thread::yield_now();
             }
             let inbox = std::mem::take(&mut session.desktop.desktop_bus_inbox);
@@ -1678,12 +1715,13 @@ mod tests {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
             loop {
                 session.pump_broker_clients();
-                if session.desktop.shell_pipe.is_none()
-                    && session.desktop.shell_respawn.is_some()
-                {
+                if session.desktop.shell_pipe.is_none() && session.desktop.shell_respawn.is_some() {
                     break;
                 }
-                assert!(std::time::Instant::now() < deadline, "p030 腿4 死亡检出超时");
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "p030 腿4 死亡检出超时"
+                );
                 std::thread::yield_now();
             }
         }
@@ -1693,7 +1731,10 @@ mod tests {
         assert!(session.shell_watchdog_step(), "respawn 发起");
         pump_until_shell_attached(&mut session);
         // attach 即指纹强制失效 → 全量重推可达。
-        assert!(session.desktop.shell_push_fp.is_none(), "respawn 后指纹失效");
+        assert!(
+            session.desktop.shell_push_fp.is_none(),
+            "respawn 后指纹失效"
+        );
         crate::ui::iced::renderer::push_shell_projection_outproc(&mut session);
         assert!(session.desktop.shell_push_fp.is_some(), "重推后指纹回填");
         {
@@ -1757,11 +1798,8 @@ mod tests {
         session.open_desktop(iced::window::Id::unique());
 
         // 虚拟窗 + broker client 装配（真管道对端）。
-        let component = crate::build_dynamic_component(
-            r#"widget t { view { text "x" } }"#,
-            None,
-        )
-        .expect("build");
+        let component = crate::build_dynamic_component(r#"widget t { view { text "x" } }"#, None)
+            .expect("build");
         let app_id = session.allocate_app(component);
         let wid = session.wm_add_win(
             app_id,
@@ -1777,9 +1815,7 @@ mod tests {
         session.broker_clients.insert(pipe.clone(), client);
 
         // 管道投递有传输时延——预算内自旋收帧。
-        fn wait_msg(
-            child_end: &mut Box<dyn transport::Transport + Send>,
-        ) -> Option<ProtocolMsg> {
+        fn wait_msg(child_end: &mut Box<dyn transport::Transport + Send>) -> Option<ProtocolMsg> {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
             loop {
                 if let Some(loaded) = child_end.try_recv() {
@@ -1811,7 +1847,10 @@ mod tests {
         }
 
         // broker_scroll：指针命中窗 → Scroll 落 wire。
-        assert!(session.broker_scroll(100.0, 100.0, 0.0, 15.0), "scroll 路由");
+        assert!(
+            session.broker_scroll(100.0, 100.0, 0.0, 15.0),
+            "scroll 路由"
+        );
         match wait_msg(&mut child_end) {
             Some(ProtocolMsg::Input(InputMsg::Scroll { wid: w, dx, dy })) => {
                 assert_eq!((w, dx, dy), (wid.0, 0.0, 15.0));
@@ -1819,7 +1858,10 @@ mod tests {
             other => panic!("Scroll 未落 wire: {other:?}"),
         }
         // 窗外滚轮不路由。
-        assert!(!session.broker_scroll(5000.0, 5000.0, 0.0, 1.0), "窗外不路由");
+        assert!(
+            !session.broker_scroll(5000.0, 5000.0, 0.0, 1.0),
+            "窗外不路由"
+        );
 
         // 焦点窗回收后键盘不路由（焦点窗语义——区别于 hit_test）。
         let _ = MouseButton::Left; // 触碰导入（button 族断言在 pointer_down 侧）
@@ -1839,9 +1881,7 @@ mod tests {
         use crate::ui::session::DesktopSession;
         // 独立装配第二会话（IME 断言与上一测试的焦点回收段解耦）。
         // 管道投递有传输时延——预算内自旋收帧（025 键盘路由测试同款）。
-        fn wait_msg(
-            child_end: &mut Box<dyn transport::Transport + Send>,
-        ) -> Option<ProtocolMsg> {
+        fn wait_msg(child_end: &mut Box<dyn transport::Transport + Send>) -> Option<ProtocolMsg> {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
             loop {
                 if let Some(loaded) = child_end.try_recv() {
@@ -1857,11 +1897,9 @@ mod tests {
         let listener2 = transport::listen(&pipe2).expect("listen2");
         let mut session2 = DesktopSession::__test_session();
         session2.open_desktop(iced::window::Id::unique());
-        let component2 = crate::build_dynamic_component(
-            r#"widget t2 { view { input "n" } }"#,
-            None,
-        )
-        .expect("build2");
+        let component2 =
+            crate::build_dynamic_component(r#"widget t2 { view { input "n" } }"#, None)
+                .expect("build2");
         let app_id2 = session2.allocate_app(component2);
         let wid2 = session2.wm_add_win(
             app_id2,
@@ -1876,7 +1914,10 @@ mod tests {
         client2.wid = Some(wid2);
         session2.broker_clients.insert(pipe2.clone(), client2);
 
-        assert!(session2.broker_ime_preedit("中文", Some((0, 2))), "preedit 路由");
+        assert!(
+            session2.broker_ime_preedit("中文", Some((0, 2))),
+            "preedit 路由"
+        );
         match wait_msg(&mut child_end2) {
             Some(ProtocolMsg::Input(InputMsg::ImePreedit { wid: w, text, .. })) => {
                 assert_eq!((w, text.as_str()), (wid2.0, "中文"));
@@ -1962,73 +2003,63 @@ mod tests {
         let mut session = DesktopSession::__test_session();
         session.open_desktop(iced::window::Id::unique());
 
-        let code_p =
-            std::fs::read_to_string(dir_p.join("src/front/app.at")).expect("read 004");
-        let code_d =
-            std::fs::read_to_string(dir_d.join("src/front/app.at")).expect("read display");
-        let code_c =
-            std::fs::read_to_string(dir_c.join("src/front/app.at")).expect("read 003");
+        let code_p = std::fs::read_to_string(dir_p.join("src/front/app.at")).expect("read 004");
+        let code_d = std::fs::read_to_string(dir_d.join("src/front/app.at")).expect("read display");
+        let code_c = std::fs::read_to_string(dir_c.join("src/front/app.at")).expect("read 003");
         let (exe_p, dir_p) = (exe_p.clone(), dir_p.clone());
         let (exe_d, dir_d) = (exe_d.clone(), dir_d.clone());
         let (exe_c, dir_c) = (exe_c.clone(), dir_c.clone());
-        session.desktop.app_resolver =
-            Some(std::sync::Arc::new(move |name: &str| match name {
-                "profile-card" => Some(LaunchSpec {
-                    media_root: None,
-                    photo_root: None,
-                    back_entry: None,
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| match name {
+            "profile-card" => Some(LaunchSpec {
+                media_root: None,
+                photo_root: None,
+                back_entry: None,
 
-                    code: code_p.clone(),
-                    source_path: Some(
-                        dir_p.join("src/front/app.at").to_string_lossy().to_string(),
-                    ),
-                    title: Some("Profile Card".into()),
-                    name: Some("profile-card".into()),
-                    daemon: None,
-                    back_root: None,
-                    fit: false,
-                    exe: Some(std::path::PathBuf::from(&exe_p)),
-                    render_decl: Some("queue".into()),
-                    opens: Vec::new(),
-                }),
-                "026-display" => Some(LaunchSpec {
-                    media_root: None,
-                    photo_root: None,
-                    back_entry: None,
+                code: code_p.clone(),
+                source_path: Some(dir_p.join("src/front/app.at").to_string_lossy().to_string()),
+                title: Some("Profile Card".into()),
+                name: Some("profile-card".into()),
+                daemon: None,
+                back_root: None,
+                fit: false,
+                exe: Some(std::path::PathBuf::from(&exe_p)),
+                render_decl: Some("queue".into()),
+                opens: Vec::new(),
+            }),
+            "026-display" => Some(LaunchSpec {
+                media_root: None,
+                photo_root: None,
+                back_entry: None,
 
-                    code: code_d.clone(),
-                    source_path: Some(
-                        dir_d.join("src/front/app.at").to_string_lossy().to_string(),
-                    ),
-                    title: Some("Display026".into()),
-                    name: Some("display026".into()),
-                    daemon: None,
-                    back_root: None,
-                    fit: false,
-                    exe: Some(std::path::PathBuf::from(&exe_d)),
-                    render_decl: Some("queue".into()),
-                    opens: Vec::new(),
-                }),
-                "003-converter" => Some(LaunchSpec {
-                    media_root: None,
-                    photo_root: None,
-                    back_entry: None,
+                code: code_d.clone(),
+                source_path: Some(dir_d.join("src/front/app.at").to_string_lossy().to_string()),
+                title: Some("Display026".into()),
+                name: Some("display026".into()),
+                daemon: None,
+                back_root: None,
+                fit: false,
+                exe: Some(std::path::PathBuf::from(&exe_d)),
+                render_decl: Some("queue".into()),
+                opens: Vec::new(),
+            }),
+            "003-converter" => Some(LaunchSpec {
+                media_root: None,
+                photo_root: None,
+                back_entry: None,
 
-                    code: code_c.clone(),
-                    source_path: Some(
-                        dir_c.join("src/front/app.at").to_string_lossy().to_string(),
-                    ),
-                    title: Some("Converter".into()),
-                    name: Some("converter".into()),
-                    daemon: None,
-                    back_root: None,
-                    fit: false,
-                    exe: Some(std::path::PathBuf::from(&exe_c)),
-                    render_decl: Some("queue".into()),
-                    opens: Vec::new(),
-                }),
-                _ => None,
-            }));
+                code: code_c.clone(),
+                source_path: Some(dir_c.join("src/front/app.at").to_string_lossy().to_string()),
+                title: Some("Converter".into()),
+                name: Some("converter".into()),
+                daemon: None,
+                back_root: None,
+                fit: false,
+                exe: Some(std::path::PathBuf::from(&exe_c)),
+                render_decl: Some("queue".into()),
+                opens: Vec::new(),
+            }),
+            _ => None,
+        }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
@@ -2133,8 +2164,10 @@ mod tests {
             .and_then(|c| c.composed())
         {
             let out = crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
-            eprintln!("[p026-dbg] 004 frame:
-{out}");
+            eprintln!(
+                "[p026-dbg] 004 frame:
+{out}"
+            );
         }
         {
             let texts = session
@@ -2161,8 +2194,7 @@ mod tests {
             &mut session,
             "026-display",
             |ops| {
-                texts_of(ops).iter().any(|t| t == "ga")
-                    && texts_of(ops).iter().any(|t| t == "gd")
+                texts_of(ops).iter().any(|t| t == "ga") && texts_of(ops).iter().any(|t| t == "gd")
             },
             "display grid 帧",
         );
@@ -2182,7 +2214,16 @@ mod tests {
             assert_eq!(mode_d, FrameMode::Commands, "display 显式 queue → Commands");
             let texts = texts_of(&frame.ops);
             let quads = quads_of(&frame.ops);
-            for want in ["Active", "ga", "gb", "gc", "gd", "centered", "JC", "long content"] {
+            for want in [
+                "Active",
+                "ga",
+                "gb",
+                "gc",
+                "gd",
+                "centered",
+                "JC",
+                "long content",
+            ] {
                 assert!(
                     texts.iter().any(|t| t.contains(want)),
                     "display 帧 text {want}: {texts:?}"
@@ -2209,16 +2250,14 @@ mod tests {
         }
 
         // —— ③003-converter IME：协议级 ImeCommit 注入 → 联动帧。
-        let wid_c = session.launch_app("003-converter").expect("converter launch");
+        let wid_c = session
+            .launch_app("003-converter")
+            .expect("converter launch");
         place_window(&mut session, wid_c, 2);
         wait_frame(
             &mut session,
             "003-converter",
-            |ops| {
-                quads_of(ops)
-                    .iter()
-                    .any(|r| r.2 == 320.0 && r.3 == 32.0)
-            },
+            |ops| quads_of(ops).iter().any(|r| r.2 == 320.0 && r.3 == 32.0),
             "003 input 帧",
         );
         let (ox, oy) = origin_of(&session, wid_c);
@@ -2261,7 +2300,8 @@ mod tests {
                     .find(|c| c.app_name.as_deref() == Some(app))
                     .and_then(|c| c.composed())
                 {
-                    let out = crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
+                    let out =
+                        crate::ui::desktop_protocol::client_runtime::tests::drawlist_to_text(list);
                     let _ = std::fs::write(assets.join(file), out);
                 }
             }
@@ -2350,28 +2390,27 @@ mod tests {
             .iter()
             .map(|n| (n.to_string(), example_source(n)))
             .collect();
-        session.desktop.app_resolver =
-            Some(std::sync::Arc::new(move |name: &str| {
-                sources
-                    .iter()
-                    .find(|(n, _)| n == name)
-                    .map(|(n, src)| LaunchSpec {
-                        media_root: None,
-                        photo_root: None,
-                        back_entry: None,
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            sources
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(n, src)| LaunchSpec {
+                    media_root: None,
+                    photo_root: None,
+                    back_entry: None,
 
-                        code: src.clone(),
-                        source_path: None,
-                        title: Some(n.to_string()),
-                        name: None,
-                        fit: false,
-                        daemon: None,
-                        back_root: None,
-                        exe: None,
-                        opens: Vec::new(),
-                        render_decl: Some("queue".into()),
-                    })
-            }));
+                    code: src.clone(),
+                    source_path: None,
+                    title: Some(n.to_string()),
+                    name: None,
+                    fit: false,
+                    daemon: None,
+                    back_root: None,
+                    exe: None,
+                    opens: Vec::new(),
+                    render_decl: Some("queue".into()),
+                })
+        }));
         let broker_for_spawn = broker_pipe.clone();
         session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
             Ok(spawn_t3_child(&broker_for_spawn, child_name, "queue"))
@@ -2380,7 +2419,9 @@ mod tests {
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
         // —— ①004：http 远程 URL src → 80×80 Image op + src 代入。
-        let wid_p = session.launch_app("004-profile-card").expect("profile launch");
+        let wid_p = session
+            .launch_app("004-profile-card")
+            .expect("profile launch");
         place_window(&mut session, wid_p, 0);
         wait_frame(
             &mut session,
@@ -2395,7 +2436,9 @@ mod tests {
 
         // —— ②p028 语料：五 src 形态一帧全数入帧（rect = Tailwind 刻度
         // 40×40 / 64×36 / 128×72 / 48×48 / 32×32——占位同位推导零变化）。
-        let wid_i = session.launch_app("p028-image-channel").expect("corpus launch");
+        let wid_i = session
+            .launch_app("p028-image-channel")
+            .expect("corpus launch");
         place_window(&mut session, wid_i, 1);
         wait_frame(
             &mut session,
@@ -2411,18 +2454,31 @@ mod tests {
                 .and_then(|c| c.composed())
                 .expect("corpus composed");
             let ims = images_of(&frame.ops);
-            for (w, h) in [(40.0, 40.0), (64.0, 36.0), (128.0, 72.0), (48.0, 48.0), (32.0, 32.0)] {
+            for (w, h) in [
+                (40.0, 40.0),
+                (64.0, 36.0),
+                (128.0, 72.0),
+                (48.0, 48.0),
+                (32.0, 32.0),
+            ] {
                 assert!(
                     ims.iter().any(|r| r.2 == w && r.3 == h),
                     "image rect {w}x{h}: {ims:?}"
                 );
             }
             assert!(
-                ims.iter().any(|r| r.4.starts_with("data:image/png;base64,")),
+                ims.iter()
+                    .any(|r| r.4.starts_with("data:image/png;base64,")),
                 "data: 形态: {ims:?}"
             );
-            assert!(ims.iter().any(|r| r.4 == "builtin:ricepaper"), "builtin: 形态");
-            assert!(ims.iter().any(|r| r.4 == "thumbnail://42842"), "thumbnail:// 形态");
+            assert!(
+                ims.iter().any(|r| r.4 == "builtin:ricepaper"),
+                "builtin: 形态"
+            );
+            assert!(
+                ims.iter().any(|r| r.4 == "thumbnail://42842"),
+                "thumbnail:// 形态"
+            );
             assert!(
                 ims.iter().any(|r| r.4.ends_with("thumb_001.jpg")),
                 "本地文件形态: {ims:?}"
@@ -2476,7 +2532,10 @@ mod tests {
             crate::ui::iced::broker_surface::resolve_drawlist_image(thumb_abs, 96, 56).is_some(),
             "二次解析 = 缓存命中"
         );
-        eprintln!("[p028-metric] cached resolve = {} ms", t1.elapsed().as_millis());
+        eprintln!(
+            "[p028-metric] cached resolve = {} ms",
+            t1.elapsed().as_millis()
+        );
         // 离线降级腿：不可达 http → 当帧占位（None）+ 后台负缓存落地。
         assert!(
             crate::ui::iced::broker_surface::resolve_drawlist_image(
@@ -2618,7 +2677,9 @@ mod tests {
         }
 
         // —— p029-typed-inputs：native queue 孵化 → 首帧（placeholder 在场）。
-        let wid_c = session.launch_app("p029-typed-inputs").expect("p029 inputs launch");
+        let wid_c = session
+            .launch_app("p029-typed-inputs")
+            .expect("p029 inputs launch");
         if let Some(host) = session.host.as_mut() {
             if let Some(v) = host.wm.wins.get_mut(&wid_c) {
                 let mut rect = *v.rect.borrow();
@@ -2655,9 +2716,7 @@ mod tests {
             .and_then(|c| c.composed())
             .and_then(|l| {
                 l.ops.iter().find_map(|op| match op {
-                    DrawOp::Text { x, y, text, .. } if text.contains("type here") => {
-                        Some((*x, *y))
-                    }
+                    DrawOp::Text { x, y, text, .. } if text.contains("type here") => Some((*x, *y)),
                     _ => None,
                 })
             })
@@ -2685,7 +2744,10 @@ mod tests {
         println!("AUTO029-LIVE chars leg PASS (live Chars i -> echo:hi)");
 
         // —— live KeyPressed 腿：VK_BACK(8) 退格 → "h"。
-        assert!(session.route_live_input(&LiveInput::KeyPressed { key: 8, modifiers: 0 }));
+        assert!(session.route_live_input(&LiveInput::KeyPressed {
+            key: 8,
+            modifiers: 0
+        }));
         wait_frame(
             &mut session,
             "p029-typed-inputs",
@@ -2707,7 +2769,9 @@ mod tests {
         // —— live Wheel 腿：last_cursor 置窗心 → 命中窗路由（载体无
         //    Scrollable，路由成功 = child 管道投递 ok）。
         if let Some(host) = session.host.as_mut() {
-            host.wm.last_cursor.set(iced::Point::new(ox + 100.0, oy + 100.0));
+            host.wm
+                .last_cursor
+                .set(iced::Point::new(ox + 100.0, oy + 100.0));
         }
         assert!(
             session.route_live_input(&LiveInput::Wheel { dx: 0.0, dy: -40.0 }),
@@ -2843,7 +2907,9 @@ mod tests {
             })
         }
 
-        let wid = session.launch_app("p029-shell-face").expect("shell-face launch");
+        let wid = session
+            .launch_app("p029-shell-face")
+            .expect("shell-face launch");
         if let Some(host) = session.host.as_mut() {
             if let Some(v) = host.wm.wins.get_mut(&wid) {
                 let mut rect = *v.rect.borrow();
@@ -2974,9 +3040,9 @@ mod tests {
                     .iter()
                     .filter_map(|op| match op {
                         crate::ui::desktop_protocol::message::DrawOp::Text { text, .. }
-                        | crate::ui::desktop_protocol::message::DrawOp::TextStyled { text, .. } => {
-                            Some(text.clone())
-                        }
+                        | crate::ui::desktop_protocol::message::DrawOp::TextStyled {
+                            text, ..
+                        } => Some(text.clone()),
                         _ => None,
                     })
                     .collect()
@@ -3028,76 +3094,86 @@ mod tests {
                     fit: false,
                     daemon: None,
                     back_root: None,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
+                    exe: None,
+                    opens: Vec::new(),
+                    render_decl: None,
+                })
         }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
         // 孪生投影器（同源布局 → 命中坐标；PLAN-033 T-04 迁 native——
         // 与子进程同布局引擎）。
-        let twins: Vec<(String, RqProjector<crate::ui::dynamic::DynamicComponent>)> =
-            names
-                .iter()
-                .map(|n| {
-                    let src = example_source(n);
-                    let comp = crate::build_dynamic_component(&src, None).expect("twin build");
-                    // PLAN-678：孪生与 T3 子臂同态（双侧缺省居中）。
-                    let mut p = RqProjector::new(
-                        comp, T3_W, T3_H,
-                    );
-                    {
-                        use crate::ui::desktop_protocol::endpoint::FrameSource;
-                        p.render_frame();
-                    }
-                    (n.clone(), p)
-                })
-                .collect();
+        let twins: Vec<(String, RqProjector<crate::ui::dynamic::DynamicComponent>)> = names
+            .iter()
+            .map(|n| {
+                let src = example_source(n);
+                let comp = crate::build_dynamic_component(&src, None).expect("twin build");
+                // PLAN-678：孪生与 T3 子臂同态（双侧缺省居中）。
+                let mut p = RqProjector::new(comp, T3_W, T3_H);
+                {
+                    use crate::ui::desktop_protocol::endpoint::FrameSource;
+                    p.render_frame();
+                }
+                (n.clone(), p)
+            })
+            .collect();
         let twin_hit = |app: &str, needle: &str| -> Option<(f32, f32)> {
-            twins
-                .iter()
-                .find(|(n, _)| n == app)
-                .and_then(|(_, p)| {
-                    p.hit_regions()
-                        .into_iter()
-                        .find(|(_, k)| k.contains(needle))
-                        .map(|(r, _)| (r.x + r.w / 2.0, r.y + r.h / 2.0))
-                })
+            twins.iter().find(|(n, _)| n == app).and_then(|(_, p)| {
+                p.hit_regions()
+                    .into_iter()
+                    .find(|(_, k)| k.contains(needle))
+                    .map(|(r, _)| (r.x + r.w / 2.0, r.y + r.h / 2.0))
+            })
         };
         /// 命中区序选（row 内第 idx 个匹配；002 的 "+" 是第三个按钮）。
         let twin_hit_nth = |app: &str, needle: &str, idx: usize| -> Option<(f32, f32)> {
-            twins
-                .iter()
-                .find(|(n, _)| n == app)
-                .and_then(|(_, p)| {
-                    p.hit_regions()
-                        .into_iter()
-                        .filter(|(_, k)| k.contains(needle))
-                        .nth(idx)
-                        .map(|(r, _)| (r.x + r.w / 2.0, r.y + r.h / 2.0))
-                })
+            twins.iter().find(|(n, _)| n == app).and_then(|(_, p)| {
+                p.hit_regions()
+                    .into_iter()
+                    .filter(|(_, k)| k.contains(needle))
+                    .nth(idx)
+                    .map(|(r, _)| (r.x + r.w / 2.0, r.y + r.h / 2.0))
+            })
         };
 
-        let mut children: Vec<std::process::Child> =
-            names.iter().map(|n| spawn_t3_child(&broker_pipe, n, "queue")).collect();
+        let mut children: Vec<std::process::Child> = names
+            .iter()
+            .map(|n| spawn_t3_child(&broker_pipe, n, "queue"))
+            .collect();
 
         attach_until(&mut session, names.len());
-        let landed = session.broker_clients.values().filter_map(|c| c.wid).count();
+        let landed = session
+            .broker_clients
+            .values()
+            .filter_map(|c| c.wid)
+            .count();
         assert_eq!(landed, names.len(), "五示例全孵化落地");
-        let wids: Vec<Wid> =
-            session.broker_clients.values().filter_map(|c| c.wid).collect();
+        let wids: Vec<Wid> = session
+            .broker_clients
+            .values()
+            .filter_map(|c| c.wid)
+            .collect();
         for (i, wid) in wids.into_iter().enumerate() {
             place_window(&mut session, wid, i);
         }
 
         // ---- 逐示例交互闭环（坐标 = 孪生命中区中心 + 窗原点）。 ----
         let origin_of = |session: &DesktopSession, app: &str| -> Option<(f32, f32)> {
-            session.broker_clients.values().find(|c| c.app_name.as_deref() == Some(app))
+            session
+                .broker_clients
+                .values()
+                .find(|c| c.app_name.as_deref() == Some(app))
                 .and_then(|c| c.wid)
                 .and_then(|wid| {
-                    session.host.as_ref().and_then(|h| h.wm.wins.get(&wid))
-                        .map(|v| { let r = *v.rect.borrow(); (r.x, r.y) })
+                    session
+                        .host
+                        .as_ref()
+                        .and_then(|h| h.wm.wins.get(&wid))
+                        .map(|v| {
+                            let r = *v.rect.borrow();
+                            (r.x, r.y)
+                        })
                 })
         };
 
@@ -3129,7 +3205,9 @@ mod tests {
                             let mut saw_inner = false;
                             for op in &l.ops {
                                 match op {
-                                    crate::ui::desktop_protocol::message::DrawOp::Scissor { rect } => {
+                                    crate::ui::desktop_protocol::message::DrawOp::Scissor {
+                                        rect,
+                                    } => {
                                         depth += 1;
                                         max_depth = max_depth.max(depth);
                                         if (rect.h - 128.0).abs() < 0.5 {
@@ -3176,8 +3254,8 @@ mod tests {
         // 002：点击 "+" → Counter: 1。
         {
             // 002 行序：- Reset + → "+" 是第 3 个按钮命中区。
-            let (hx, hy) = twin_hit_nth("002-counter", "button:", 2)
-                .expect("002 孪生按钮坐标（+ 为第三个）");
+            let (hx, hy) =
+                twin_hit_nth("002-counter", "button:", 2).expect("002 孪生按钮坐标（+ 为第三个）");
             let (ox, oy) = origin_of(&session, "002-counter").expect("002 窗原点");
             assert!(
                 session.broker_pointer_down(ox + hx, oy + hy, MouseButton::Left),
@@ -3231,10 +3309,7 @@ mod tests {
                 .expect("005 wid");
             for ch in "a@b.c".chars() {
                 let msg = crate::ui::desktop_protocol::message::ProtocolMsg::Input(
-                    crate::ui::desktop_protocol::message::InputMsg::CharTyped {
-                        wid: wid.0,
-                        ch,
-                    },
+                    crate::ui::desktop_protocol::message::InputMsg::CharTyped { wid: wid.0, ch },
                 );
                 if let Some(client) = session
                     .broker_clients
@@ -3261,14 +3336,16 @@ mod tests {
                 wait_frames(&mut session, |s| composed_texts(s, "p507-tier-coverage")
                     .iter()
                     .any(|t| t == "Tier Coverage")
-                    && composed_texts(s, "p507-tier-coverage").iter().any(|t| t == "feat: ON")),
+                    && composed_texts(s, "p507-tier-coverage")
+                        .iter()
+                        .any(|t| t == "feat: ON")),
                 "p507 首帧 Tier1+2 文本到位: {:?}",
                 composed_texts(&session, "p507-tier-coverage")
             );
             // PLAN-033 重录：native 命中表 checkbox = Msg 物化（"checkbox:ok"
             // Toggle 形态退役）——具名 handler .ToggleOk 等位寻址。
-            let (hx, hy) = twin_hit("p507-tier-coverage", "button:ToggleOk")
-                .expect("p507 checkbox 坐标");
+            let (hx, hy) =
+                twin_hit("p507-tier-coverage", "button:ToggleOk").expect("p507 checkbox 坐标");
             let (ox, oy) = origin_of(&session, "p507-tier-coverage").expect("p507 窗原点");
             assert!(
                 session.broker_pointer_down(ox + hx, oy + hy, MouseButton::Left),
@@ -3284,12 +3361,14 @@ mod tests {
         }
 
         // ---- 收尾：Close 全部 → child 退出码 0。 ----
-        let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
-            session
-                .broker_clients
-                .values_mut()
-                .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
-                .collect();
+        let closes: Vec<(
+            String,
+            Option<crate::ui::desktop_protocol::message::ProtocolMsg>,
+        )> = session
+            .broker_clients
+            .values_mut()
+            .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
+            .collect();
         for (pipe, close) in closes {
             if let Some(close) = close {
                 if let Some(c) = session.broker_clients.get_mut(&pipe) {
@@ -3310,7 +3389,10 @@ mod tests {
                 if let Some(s) = child.try_wait().expect("try_wait") {
                     break s;
                 }
-                assert!(start.elapsed() < std::time::Duration::from_secs(30), "child 收尾超时");
+                assert!(
+                    start.elapsed() < std::time::Duration::from_secs(30),
+                    "child 收尾超时"
+                );
                 std::thread::sleep(std::time::Duration::from_millis(50));
             };
             assert!(status.success(), "child 退出码 {status}");
@@ -3358,7 +3440,12 @@ mod tests {
     /// 孵化 attach 至 `want` 个落地（30s 预算）。
     fn attach_until(session: &mut DesktopSession, want: usize) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-        while session.broker_clients.values().filter_map(|c| c.wid).count() < want
+        while session
+            .broker_clients
+            .values()
+            .filter_map(|c| c.wid)
+            .count()
+            < want
             && std::time::Instant::now() < deadline
         {
             session.attach_pending_incubations(2000);
@@ -3369,7 +3456,10 @@ mod tests {
 
     /// child 总内存采样（逐 pid WorkingSet/PrivateUsage 求和）。
     fn sample_children_total(children: &[std::process::Child]) -> Option<ProcessMemorySample> {
-        let mut total = ProcessMemorySample { working_set: 0, private_bytes: 0 };
+        let mut total = ProcessMemorySample {
+            working_set: 0,
+            private_bytes: 0,
+        };
         for child in children {
             let s = sample_process_memory(child.id()).ok()?;
             total.working_set += s.working_set;
@@ -3391,28 +3481,28 @@ mod tests {
         let names: Vec<String> = (0..n).map(|i| format!("stress-{i}")).collect();
         let src = STRESS_SRC.to_string();
         let known = names.clone();
-        session.desktop.app_resolver =
-            Some(std::sync::Arc::new(move |name: &str| {
-                if known.iter().any(|n| n == name) {
-                    Some(LaunchSpec {
-                        media_root: None,
-                        photo_root: None,
-                        back_entry: None,
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            if known.iter().any(|n| n == name) {
+                Some(LaunchSpec {
+                    media_root: None,
+                    photo_root: None,
+                    back_entry: None,
 
-                        code: src.clone(),
-                        source_path: None,
-                        title: Some(name.to_string()),
-                        name: None,
-                        daemon: None,
-                        back_root: None,
-                        fit: false,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
-                } else {
-                    None
-                }
-            }));
+                    code: src.clone(),
+                    source_path: None,
+                    title: Some(name.to_string()),
+                    name: None,
+                    daemon: None,
+                    back_root: None,
+                    fit: false,
+                    exe: None,
+                    opens: Vec::new(),
+                    render_decl: None,
+                })
+            } else {
+                None
+            }
+        }));
         let stop = Arc::new(AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
@@ -3421,7 +3511,11 @@ mod tests {
 
         // ---- 孵化 attach 循环：直到 N 个全落地（30s 预算）。
         attach_until(&mut session, n);
-        let landed: Vec<Wid> = session.broker_clients.values().filter_map(|c| c.wid).collect();
+        let landed: Vec<Wid> = session
+            .broker_clients
+            .values()
+            .filter_map(|c| c.wid)
+            .collect();
         assert_eq!(landed.len(), n, "全部 child 孵化落地（30s 预算）");
         assert_eq!(session.apps.len(), n, "n 条 AppSession");
         for (i, app) in names.iter().enumerate() {
@@ -3460,8 +3554,10 @@ mod tests {
                     .find(|c| c.app_name.as_deref() == Some(app.as_str()))
                     .and_then(|c| c.composed())
                     .is_some_and(|list| {
-                        list.ops.iter().any(|op| matches!(op,
-                            DrawOp::Text { text, .. } if text == "count: 1"))
+                        list.ops.iter().any(|op| {
+                            matches!(op,
+                            DrawOp::Text { text, .. } if text == "count: 1")
+                        })
                     });
                 if hit {
                     seen = true;
@@ -3478,7 +3574,10 @@ mod tests {
         while std::time::Instant::now() < deadline {
             session.pump_broker_clients();
             for child in children.iter_mut() {
-                assert!(child.try_wait().expect("try_wait").is_none(), "child 提前退出");
+                assert!(
+                    child.try_wait().expect("try_wait").is_none(),
+                    "child 提前退出"
+                );
             }
             assert_eq!(session.broker_clients.len(), n, "client 全在册");
             std::thread::sleep(std::time::Duration::from_millis(50));
@@ -3492,12 +3591,14 @@ mod tests {
         }
 
         // ---- 收尾：逐 client Close → ExitRequest → 回收；child 退出码 0。
-        let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
-            session
-                .broker_clients
-                .values_mut()
-                .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
-                .collect();
+        let closes: Vec<(
+            String,
+            Option<crate::ui::desktop_protocol::message::ProtocolMsg>,
+        )> = session
+            .broker_clients
+            .values_mut()
+            .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
+            .collect();
         for (pipe, close) in closes {
             if let Some(close) = close {
                 if let Some(c) = session.broker_clients.get_mut(&pipe) {
@@ -3518,7 +3619,10 @@ mod tests {
                 if let Some(s) = child.try_wait().expect("try_wait") {
                     break s;
                 }
-                assert!(start.elapsed() < std::time::Duration::from_secs(30), "child 收尾超时");
+                assert!(
+                    start.elapsed() < std::time::Duration::from_secs(30),
+                    "child 收尾超时"
+                );
                 std::thread::sleep(std::time::Duration::from_millis(50));
             };
             assert!(status.success(), "child 退出码 {status}");
@@ -3581,7 +3685,11 @@ mod tests {
                 }
             },
             config.clone(),
-            Some(ReconnectPolicy { pipe: pipe.clone(), budget_ms: 10_000, interval_ms: 20 }),
+            Some(ReconnectPolicy {
+                pipe: pipe.clone(),
+                budget_ms: 10_000,
+                interval_ms: 20,
+            }),
         );
         let mut server_end = listener.wait_connect().expect("server A");
 
@@ -3595,7 +3703,10 @@ mod tests {
                 Err(format!("unknown app {name}"))
             }
         });
-        fn pump(server_end: &mut Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>, ph: &mut ProtocolHost<'_>) {
+        fn pump(
+            server_end: &mut Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>,
+            ph: &mut ProtocolHost<'_>,
+        ) {
             while let Some(loaded) = server_end.try_recv() {
                 let msg = loaded.expect("解码");
                 ph.handle(&msg).expect("host 状态机");
@@ -3619,14 +3730,20 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         let wid_a = wid.expect("连接 A 孵化");
-        let injected = ph.pointer_down(60.0, 40.0, MouseButton::Left).expect("窗内命中");
+        let injected = ph
+            .pointer_down(60.0, 40.0, MouseButton::Left)
+            .expect("窗内命中");
         server_end.send(&injected).unwrap();
         let mut count_a = 0;
         for _ in 0..200 {
             pump(&mut server_end, &mut ph);
             let _ = client.step();
-            if ph.composed(wid_a.0).is_some_and(|l| l.ops.iter().any(|op| matches!(op,
-                DrawOp::Text { text, .. } if text == "count: 1"))) {
+            if ph.composed(wid_a.0).is_some_and(|l| {
+                l.ops.iter().any(|op| {
+                    matches!(op,
+                DrawOp::Text { text, .. } if text == "count: 1")
+                })
+            }) {
                 count_a = 1;
                 break;
             }
@@ -3637,7 +3754,9 @@ mod tests {
         // ---- host 断连：server 端 drop → child EOF → 存活等待重连。
         server_end.send(&ph.endpoint.close().unwrap_or(
             crate::ui::desktop_protocol::message::ProtocolMsg::Handshake(
-                crate::ui::desktop_protocol::message::HandshakeMsg::Ready))); // no-op 填充，真实断连靠 drop
+                crate::ui::desktop_protocol::message::HandshakeMsg::Ready,
+            ),
+        )); // no-op 填充，真实断连靠 drop
         drop(ph);
         drop(server_end); // EOF 传播给 child
         for _ in 0..50 {
@@ -3686,14 +3805,20 @@ mod tests {
         let wid_b = wid_b.expect("重连后再次孵化");
 
         // ---- 再点击：count 连续（2 = 断连前 1 + 现 successes），revision 连续。
-        let injected = ph.pointer_down(60.0, 40.0, MouseButton::Left).expect("窗内命中");
+        let injected = ph
+            .pointer_down(60.0, 40.0, MouseButton::Left)
+            .expect("窗内命中");
         server_end.send(&injected).unwrap();
         let mut count_b = 0;
         for _ in 0..300 {
             pump(&mut server_end, &mut ph);
             let _ = client.step();
-            if ph.composed(wid_b.0).is_some_and(|l| l.ops.iter().any(|op| matches!(op,
-                DrawOp::Text { text, .. } if text == "count: 2"))) {
+            if ph.composed(wid_b.0).is_some_and(|l| {
+                l.ops.iter().any(|op| {
+                    matches!(op,
+                DrawOp::Text { text, .. } if text == "count: 2")
+                })
+            }) {
                 count_b = 2;
                 break;
             }
@@ -3711,8 +3836,15 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
         };
-        assert_eq!(exit, crate::ui::desktop_protocol::client_runtime::ClientExit::L2Detached);
-        assert_eq!(projector.component().read_state("count").unwrap(), auto_val::Value::Int(2), "count 连续");
+        assert_eq!(
+            exit,
+            crate::ui::desktop_protocol::client_runtime::ClientExit::L2Detached
+        );
+        assert_eq!(
+            projector.component().read_state("count").unwrap(),
+            auto_val::Value::Int(2),
+            "count 连续"
+        );
         assert_eq!(projector.revision(), 3, "revision 连续（1 + 2 次点击）");
     }
 
@@ -3743,7 +3875,10 @@ mod tests {
         let payload = fused_state_snapshot(&fused, 41);
 
         // 载荷线格式恒等（追加式演进纪律：encode→decode 往返）。
-        let wire = PMsg::Control(ControlMsg::StateSnapshot { wid: 1, payload: payload.clone() });
+        let wire = PMsg::Control(ControlMsg::StateSnapshot {
+            wid: 1,
+            payload: payload.clone(),
+        });
         let encoded = wire.encode();
         let decoded = PMsg::decode(&encoded).expect("decode");
         assert_eq!(decoded, wire, "StateSnapshot 线格式往返恒等");
@@ -3784,7 +3919,10 @@ mod tests {
                 Err(format!("unknown app {name}"))
             }
         });
-        fn pump(server_end: &mut Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>, ph: &mut ProtocolHost<'_>) {
+        fn pump(
+            server_end: &mut Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>,
+            ph: &mut ProtocolHost<'_>,
+        ) {
             while let Some(loaded) = server_end.try_recv() {
                 let msg = loaded.expect("解码");
                 ph.handle(&msg).expect("host 状态机");
@@ -3811,30 +3949,46 @@ mod tests {
 
         // ---- 注入快照：host → StateSnapshot → child 应用 → 产帧同步。
         server_end
-            .send(&PMsg::Control(ControlMsg::StateSnapshot { wid: wid.0, payload }))
+            .send(&PMsg::Control(ControlMsg::StateSnapshot {
+                wid: wid.0,
+                payload,
+            }))
             .unwrap();
         let mut injected = false;
         for _ in 0..1000 {
             pump(&mut server_end, &mut ph);
             let _ = client.step();
-            if ph.composed(wid.0).is_some_and(|l| l.ops.iter().any(|op| matches!(op,
-                DrawOp::Text { text, .. } if text == "count: 42"))) {
+            if ph.composed(wid.0).is_some_and(|l| {
+                l.ops.iter().any(|op| {
+                    matches!(op,
+                DrawOp::Text { text, .. } if text == "count: 42")
+                })
+            }) {
                 injected = true;
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        assert!(injected, "快照注入恢复：composed 帧同步出 count: 42（迁移前后一致）");
+        assert!(
+            injected,
+            "快照注入恢复：composed 帧同步出 count: 42（迁移前后一致）"
+        );
 
         // ---- 迁移后可交互：点击推进 43。
-        let injected_click = ph.pointer_down(60.0, 40.0, MouseButton::Left).expect("窗内命中");
+        let injected_click = ph
+            .pointer_down(60.0, 40.0, MouseButton::Left)
+            .expect("窗内命中");
         server_end.send(&injected_click).unwrap();
         let mut clicked = false;
         for _ in 0..1000 {
             pump(&mut server_end, &mut ph);
             let _ = client.step();
-            if ph.composed(wid.0).is_some_and(|l| l.ops.iter().any(|op| matches!(op,
-                DrawOp::Text { text, .. } if text == "count: 43"))) {
+            if ph.composed(wid.0).is_some_and(|l| {
+                l.ops.iter().any(|op| {
+                    matches!(op,
+                DrawOp::Text { text, .. } if text == "count: 43")
+                })
+            }) {
                 clicked = true;
                 break;
             }
@@ -3852,9 +4006,19 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(5));
         };
-        assert_eq!(exit, crate::ui::desktop_protocol::client_runtime::ClientExit::L2Detached);
-        assert_eq!(projector.component().read_state("count").unwrap(), auto_val::Value::Int(43));
-        assert_eq!(projector.revision(), 42, "revision 延续（快照 41 + 点击 1）");
+        assert_eq!(
+            exit,
+            crate::ui::desktop_protocol::client_runtime::ClientExit::L2Detached
+        );
+        assert_eq!(
+            projector.component().read_state("count").unwrap(),
+            auto_val::Value::Int(43)
+        );
+        assert_eq!(
+            projector.revision(),
+            42,
+            "revision 延续（快照 41 + 点击 1）"
+        );
     }
 
     /// Plan 500 步骤 5：宿主像素臂合成——HostEndpoint 收 FrameReadyPixels
@@ -3881,8 +4045,14 @@ mod tests {
         };
         let actions = host.on_message(hello).expect("host 状态机");
         assert!(matches!(actions[0], HostAction::ResolveAndAttach { .. }));
-        host.activate(1, 9, 77, WRect::new(0.0, 0.0, 32.0, 16.0), FrameMode::Pixels)
-            .expect("activate");
+        host.activate(
+            1,
+            9,
+            77,
+            WRect::new(0.0, 0.0, 32.0, 16.0),
+            FrameMode::Pixels,
+        )
+        .expect("activate");
 
         // child 侧写 shm 槽（32×16 纯色帧，槽尺寸 = 像素上限）。
         let shm_name = format!("autodesk-shm-px5-{}", std::process::id());
@@ -3909,12 +4079,22 @@ mod tests {
             }))
             .expect("Active 收帧");
         let HostAction::ComposeFramePixels {
-            surface, wid, frame_id, slot, revision, w, h, stride,
+            surface,
+            wid,
+            frame_id,
+            slot,
+            revision,
+            w,
+            h,
+            stride,
         } = &actions[0]
         else {
             panic!("期待 ComposeFramePixels: {actions:?}");
         };
-        assert_eq!((*wid, *frame_id, *slot, *revision, *w, *h, *stride), (9, 4, 1, 12, 32, 16, 128));
+        assert_eq!(
+            (*wid, *frame_id, *slot, *revision, *w, *h, *stride),
+            (9, 4, 1, 12, 32, 16, 128)
+        );
 
         // BrokerClient 合成：宿主开同名段 → 前缓冲 + ack。
         let pipe = format!("autodesk-px5-pipe-{}", std::process::id());
@@ -3925,17 +4105,23 @@ mod tests {
         client.shm.insert(*surface, host_shm);
         client.wid = Some(Wid(9));
         client.wid_surface.insert(9, *surface);
-        let ack = client.compose_pixels(
-            *surface, *wid, *frame_id, *slot, *revision, *w, *h, *stride,
-        )
-        .expect("compose");
+        let ack = client
+            .compose_pixels(*surface, *wid, *frame_id, *slot, *revision, *w, *h, *stride)
+            .expect("compose");
         assert_eq!(
             ack,
-            FrameMsg::FrameAck { wid: 9, frame_id: 4, slot: 1 },
+            FrameMsg::FrameAck {
+                wid: 9,
+                frame_id: 4,
+                slot: 1
+            },
             "ack 回带 frame_id/槽"
         );
         let front = client.composed_pixels().expect("前缓冲在册");
-        assert_eq!((front.w, front.h, front.stride, front.revision), (32, 16, 128, 12));
+        assert_eq!(
+            (front.w, front.h, front.stride, front.revision),
+            (32, 16, 128, 12)
+        );
         assert_eq!(front.rgba, rgba, "槽字节 = child 写入帧");
         drop(listener);
     }
@@ -3953,28 +4139,28 @@ mod tests {
         let names: Vec<String> = (0..5).map(|i| format!("mem-{i}")).collect();
         let src = STRESS_SRC.to_string();
         let known = names.clone();
-        session.desktop.app_resolver =
-            Some(std::sync::Arc::new(move |name: &str| {
-                if known.iter().any(|n| n == name) {
-                    Some(LaunchSpec {
-                        media_root: None,
-                        photo_root: None,
-                        back_entry: None,
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            if known.iter().any(|n| n == name) {
+                Some(LaunchSpec {
+                    media_root: None,
+                    photo_root: None,
+                    back_entry: None,
 
-                        code: src.clone(),
-                        source_path: None,
-                        title: Some(name.to_string()),
-                        name: None,
-                        daemon: None,
-                        back_root: None,
-                        fit: false,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
-                } else {
-                    None
-                }
-            }));
+                    code: src.clone(),
+                    source_path: None,
+                    title: Some(name.to_string()),
+                    name: None,
+                    daemon: None,
+                    back_root: None,
+                    fit: false,
+                    exe: None,
+                    opens: Vec::new(),
+                    render_decl: None,
+                })
+            } else {
+                None
+            }
+        }));
         let stop = Arc::new(AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
@@ -3987,7 +4173,11 @@ mod tests {
             let batch = &names[children.len()..want];
             children.extend(spawn_children(&broker_pipe, batch));
             attach_until(&mut session, want);
-            let landed = session.broker_clients.values().filter_map(|c| c.wid).count();
+            let landed = session
+                .broker_clients
+                .values()
+                .filter_map(|c| c.wid)
+                .count();
             assert_eq!(landed, want, "阶段 N={want} 全落地");
             session.pump_broker_clients();
             std::thread::sleep(std::time::Duration::from_millis(1500));
@@ -4005,10 +4195,20 @@ mod tests {
         // 判定：数值 >0；N=5 > N=1（边际增量为正）。
         for (stage, s) in samples.iter().enumerate() {
             assert!(s.working_set > 0, "N={} WorkingSet > 0", [1, 3, 5][stage]);
-            assert!(s.private_bytes > 0, "N={} PrivateUsage > 0", [1, 3, 5][stage]);
+            assert!(
+                s.private_bytes > 0,
+                "N={} PrivateUsage > 0",
+                [1, 3, 5][stage]
+            );
         }
-        assert!(samples[2].working_set > samples[0].working_set, "N=5 WorkingSet > N=1");
-        assert!(samples[2].private_bytes > samples[0].private_bytes, "N=5 PrivateUsage > N=1");
+        assert!(
+            samples[2].working_set > samples[0].working_set,
+            "N=5 WorkingSet > N=1"
+        );
+        assert!(
+            samples[2].private_bytes > samples[0].private_bytes,
+            "N=5 PrivateUsage > N=1"
+        );
 
         // 边际增量（S6 报告口径）：(N=5 − N=1) / 4。
         let ws_marginal = (samples[2].working_set - samples[0].working_set) / 4;
@@ -4020,12 +4220,14 @@ mod tests {
         );
 
         // 收尾：Close 全部 → child 退出。
-        let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
-            session
-                .broker_clients
-                .values_mut()
-                .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
-                .collect();
+        let closes: Vec<(
+            String,
+            Option<crate::ui::desktop_protocol::message::ProtocolMsg>,
+        )> = session
+            .broker_clients
+            .values_mut()
+            .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
+            .collect();
         for (pipe, close) in closes {
             if let Some(close) = close {
                 if let Some(c) = session.broker_clients.get_mut(&pipe) {
@@ -4047,7 +4249,10 @@ mod tests {
                 if let Some(st) = child.try_wait().expect("try_wait") {
                     break st;
                 }
-                assert!(start.elapsed() < std::time::Duration::from_secs(30), "child 收尾超时");
+                assert!(
+                    start.elapsed() < std::time::Duration::from_secs(30),
+                    "child 收尾超时"
+                );
                 std::thread::sleep(std::time::Duration::from_millis(50));
             };
             assert!(status.success(), "child 退出码 {status}");
@@ -4096,10 +4301,17 @@ mod tests {
             .filter(|(_, k)| k.starts_with("button:"))
             .nth(2)
             .expect("002 '+' 命中区");
-        let handler = kind.strip_prefix("button:").expect("button kind").to_string();
+        let handler = kind
+            .strip_prefix("button:")
+            .expect("button kind")
+            .to_string();
         if std::env::var("AUTO_FIT_TRACE").as_deref() == Ok("1") {
-            eprintln!("[p508-dbg] twin + rect = {:?} center=({},{})",
-                (r.x, r.y, r.w, r.h), r.x + r.w / 2.0, r.y + r.h / 2.0);
+            eprintln!(
+                "[p508-dbg] twin + rect = {:?} center=({},{})",
+                (r.x, r.y, r.w, r.h),
+                r.x + r.w / 2.0,
+                r.y + r.h / 2.0
+            );
         }
         ((r.x + r.w / 2.0, r.y + r.h / 2.0), handler)
     }
@@ -4129,21 +4341,25 @@ mod tests {
             })
             .collect();
         session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
-            entries.iter().find(|(n, _, _)| n == name).map(|(n, src, path)| LaunchSpec {
-                media_root: None,
-                photo_root: None,
-                back_entry: None,
+            entries
+                .iter()
+                .find(|(n, _, _)| n == name)
+                .map(|(n, src, path)| LaunchSpec {
+                    media_root: None,
+                    photo_root: None,
+                    back_entry: None,
 
-                code: src.clone(),
-                source_path: Some(path.clone()),
-                title: Some(n.clone()),
-                name: None,
-                daemon: None,
-                back_root: None,
-                fit: false,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
+                    code: src.clone(),
+                    source_path: Some(path.clone()),
+                    title: Some(n.clone()),
+                    name: None,
+                    daemon: None,
+                    back_root: None,
+                    fit: false,
+                    exe: None,
+                    opens: Vec::new(),
+                    render_decl: None,
+                })
         }));
     }
 
@@ -4184,7 +4400,9 @@ mod tests {
         }
         // 009 中型示例探针（N=5 之上 +1）。
         let t0 = std::time::Instant::now();
-        session.launch_app("009-article-feed").expect("inproc launch 009");
+        session
+            .launch_app("009-article-feed")
+            .expect("inproc launch 009");
         println!(
             "AUTO508-INPROC-LAUNCH app=009-article-feed stage=probe ms={:.1}",
             t0.elapsed().as_secs_f64() * 1000.0
@@ -4264,10 +4482,7 @@ mod tests {
         );
 
         let launched_of = |session: &DesktopSession, wid: Wid| {
-            session
-                .broker_clients
-                .values()
-                .any(|c| c.wid == Some(wid))
+            session.broker_clients.values().any(|c| c.wid == Some(wid))
         };
         let mut launched = 0usize;
         for want in [1usize, 3, 5] {
@@ -4298,8 +4513,11 @@ mod tests {
             }
             launched = want;
             // 窗口铺开（交互命中寻址）。
-            let wids: Vec<Wid> =
-                session.broker_clients.values().filter_map(|c| c.wid).collect();
+            let wids: Vec<Wid> = session
+                .broker_clients
+                .values()
+                .filter_map(|c| c.wid)
+                .collect();
             for (i, wid) in wids.into_iter().enumerate() {
                 place_window(&mut session, wid, i);
             }
@@ -4322,7 +4540,9 @@ mod tests {
         // 009 中型示例探针。
         {
             let t0 = std::time::Instant::now();
-            let wid = session.launch_app("009-article-feed").expect("outproc launch 009");
+            let wid = session
+                .launch_app("009-article-feed")
+                .expect("outproc launch 009");
             let attach_ms = t0.elapsed().as_secs_f64() * 1000.0;
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
             loop {
@@ -4370,10 +4590,14 @@ mod tests {
                 .find(|c| c.app_name.as_deref() == Some("002-counter"))
                 .and_then(|c| c.wid)
                 .and_then(|wid| {
-                    session.host.as_ref().and_then(|hh| hh.wm.wins.get(&wid)).map(|v| {
-                        let r = *v.rect.borrow();
-                        (r.x, r.y)
-                    })
+                    session
+                        .host
+                        .as_ref()
+                        .and_then(|hh| hh.wm.wins.get(&wid))
+                        .map(|v| {
+                            let r = *v.rect.borrow();
+                            (r.x, r.y)
+                        })
                 })
                 .expect("002 窗原点");
             let mut samples = Vec::new();
@@ -4391,8 +4615,10 @@ mod tests {
                         .find(|c| c.app_name.as_deref() == Some("002-counter"))
                         .and_then(|c| c.composed())
                         .is_some_and(|list| {
-                            list.ops.iter().any(|op| matches!(op,
-                                DrawOp::Text { text, .. } if *text == want))
+                            list.ops.iter().any(|op| {
+                                matches!(op,
+                                DrawOp::Text { text, .. } if *text == want)
+                            })
                         })
                 };
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
@@ -4403,8 +4629,11 @@ mod tests {
                     }
                     if std::time::Instant::now() > deadline {
                         if std::env::var("AUTO_FIT_TRACE").as_deref() == Ok("1") {
-                            if let Some(c) = session.broker_clients.values()
-                                .find(|c| c.app_name.as_deref() == Some("002-counter")) {
+                            if let Some(c) = session
+                                .broker_clients
+                                .values()
+                                .find(|c| c.app_name.as_deref() == Some("002-counter"))
+                            {
                                 if let Some(list) = c.composed() {
                                     for op in &list.ops {
                                         if let DrawOp::Text { x, y, text, .. } = op {
@@ -4425,12 +4654,14 @@ mod tests {
             g2_stats_line("outproc", samples);
         }
         // 收尾：Close 全部 → child 退出；残留 kill 兜底。
-        let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
-            session
-                .broker_clients
-                .values_mut()
-                .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
-                .collect();
+        let closes: Vec<(
+            String,
+            Option<crate::ui::desktop_protocol::message::ProtocolMsg>,
+        )> = session
+            .broker_clients
+            .values_mut()
+            .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
+            .collect();
         for (pipe, close) in closes {
             if let Some(close) = close {
                 if let Some(c) = session.broker_clients.get_mut(&pipe) {
@@ -4473,16 +4704,27 @@ mod tests {
             return;
         }
         let exe = std::env::var("AUTO_020_NATIVE_EXE").unwrap_or_else(|_| {
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/debug/counter.exe").to_string()
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../target/debug/counter.exe"
+            )
+            .to_string()
         });
         let app_dir = std::path::PathBuf::from(
             std::env::var("AUTO_020_NATIVE_APP_DIR").unwrap_or_else(|_| {
-                concat!(env!("CARGO_MANIFEST_DIR"), "/../../../scratch020/002-counter").to_string()
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../scratch020/002-counter"
+                )
+                .to_string()
             }),
         );
         let source = app_dir.join("src").join("front").join("app.at");
         if !std::path::Path::new(&exe).is_file() || !source.is_file() {
-            eprintln!("[p020] skip: native 载体缺席（exe={exe} app_dir={}）", app_dir.display());
+            eprintln!(
+                "[p020] skip: native 载体缺席（exe={exe} app_dir={}）",
+                app_dir.display()
+            );
             return;
         }
         let code = std::fs::read_to_string(&source).expect("read counter source");
@@ -4494,33 +4736,34 @@ mod tests {
         let exe_for_resolver = exe.clone();
         let source_for_resolver = source.to_string_lossy().to_string();
         let code_for_resolver = code.clone();
-        session.desktop.app_resolver =
-            Some(std::sync::Arc::new(move |name: &str| {
-                (name == "002-counter").then(|| LaunchSpec {
-                    media_root: None,
-                    photo_root: None,
-                    back_entry: None,
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            (name == "002-counter").then(|| LaunchSpec {
+                media_root: None,
+                photo_root: None,
+                back_entry: None,
 
-                    code: code_for_resolver.clone(),
-                    source_path: Some(source_for_resolver.clone()),
-                    title: Some("Counter".to_string()),
-                    name: Some("counter".to_string()),
-                    daemon: None,
-                    back_root: None,
-                    fit: false,
-                    exe: Some(std::path::PathBuf::from(&exe_for_resolver)),
-                    // queue 档显式申明（AC-03 全链）——生产链同参：pac
-                    // `desktop_render: "queue"` → spawn `--autodesk-render=queue`。
-                    render_decl: Some("queue".to_string()),
-                    opens: Vec::new(),
-                })
-            }));
+                code: code_for_resolver.clone(),
+                source_path: Some(source_for_resolver.clone()),
+                title: Some("Counter".to_string()),
+                name: Some("counter".to_string()),
+                daemon: None,
+                back_root: None,
+                fit: false,
+                exe: Some(std::path::PathBuf::from(&exe_for_resolver)),
+                // queue 档显式申明（AC-03 全链）——生产链同参：pac
+                // `desktop_render: "queue"` → spawn `--autodesk-render=queue`。
+                render_decl: Some("queue".to_string()),
+                opens: Vec::new(),
+            })
+        }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
         let launch = |session: &mut DesktopSession| -> (Wid, std::vec::Vec<DrawOp>) {
             let t0 = std::time::Instant::now();
-            let wid = session.launch_app("002-counter").expect("native exe launch");
+            let wid = session
+                .launch_app("002-counter")
+                .expect("native exe launch");
             let attach_ms = t0.elapsed().as_secs_f64() * 1000.0;
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
             loop {
@@ -4532,15 +4775,26 @@ mod tests {
                     .and_then(|c| c.composed())
                     .filter(|l| !l.ops.is_empty());
                 if let Some(list) = frame {
-                    println!("AUTO020-NATIVE attach_ms={attach_ms:.1} ops={}", list.ops.len());
+                    println!(
+                        "AUTO020-NATIVE attach_ms={attach_ms:.1} ops={}",
+                        list.ops.len()
+                    );
                     return (wid, list.ops.clone());
                 }
                 assert!(
                     std::time::Instant::now() < deadline,
                     "首帧超时 clients={} states={:?} modes={:?}",
                     session.broker_clients.len(),
-                    session.broker_clients.values().map(|c| c.endpoint.state).collect::<Vec<_>>(),
-                    session.broker_clients.values().map(|c| c.endpoint.frame_mode).collect::<Vec<_>>(),
+                    session
+                        .broker_clients
+                        .values()
+                        .map(|c| c.endpoint.state)
+                        .collect::<Vec<_>>(),
+                    session
+                        .broker_clients
+                        .values()
+                        .map(|c| c.endpoint.frame_mode)
+                        .collect::<Vec<_>>(),
                 );
                 std::thread::yield_now();
             }
@@ -4552,8 +4806,8 @@ mod tests {
         // 子进程身份（代码流证据）：spawner 未注入 → 分流唯一入口 =
         // `outproc_native_exe` 发现命中 counter.exe → `spawn_exe_child` 臂
         // （auto re-exec 臂仅在发现 MISS 时可达——发现序单测已钉边界）。
-        let resolver_spec = (session.desktop.app_resolver.as_ref().unwrap())("002-counter")
-            .expect("resolver spec");
+        let resolver_spec =
+            (session.desktop.app_resolver.as_ref().unwrap())("002-counter").expect("resolver spec");
         let discovered =
             DesktopSession::outproc_native_exe(&resolver_spec).expect("native exe discovered");
         assert!(
@@ -4561,7 +4815,8 @@ mod tests {
             "发现序应命中编译产物 exe: {discovered:?}"
         );
         assert!(
-            ops0.iter().any(|op| matches!(op, DrawOp::Text { text, .. } if text == "Counter: 0")),
+            ops0.iter()
+                .any(|op| matches!(op, DrawOp::Text { text, .. } if text == "Counter: 0")),
             "native 投影帧已合成: {ops0:?}"
         );
         // 命令帧语义（queue 臂）：Welcome 模式位 = Commands（像素臂才是
@@ -4615,9 +4870,9 @@ mod tests {
                 .find(|c| c.wid == Some(wid0))
                 .and_then(|c| c.composed())
                 .is_some_and(|list| {
-                    list.ops.iter().any(|op| {
-                        matches!(op, DrawOp::Text { text, .. } if *text == "Counter: 1")
-                    })
+                    list.ops
+                        .iter()
+                        .any(|op| matches!(op, DrawOp::Text { text, .. } if *text == "Counter: 1"))
                 });
             if hit {
                 break;
@@ -4678,7 +4933,11 @@ mod tests {
             assert!(std::time::Instant::now() < deadline, "Close 回收超时");
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
-        assert_eq!(exit_code, Some(Some(0)), "Close → 子进程干净退出（退出码 0）");
+        assert_eq!(
+            exit_code,
+            Some(Some(0)),
+            "Close → 子进程干净退出（退出码 0）"
+        );
         println!("AUTO020-NATIVE close-recycle PASS (exit=0)");
 
         // 兜底清理（第二实例 child 已 wait；首实例已退出）。
@@ -4703,7 +4962,7 @@ mod tests {
     ///（serve 双动词受理）→ v2 DisplayList 帧入宿主合成 → 协议点击聚焦 +
     /// 键入联动（Celsius 100 → Fahrenheit 212）→ kill 方向 EOF 回收
     ///（AC-01 协议级半环 + AC-02 观测面 + AC-03 kill 前置）。
-    /// 载体：env `AUTO_694_NATIVE_EXE`（pin exe = 跳过发现链）/ 
+    /// 载体：env `AUTO_694_NATIVE_EXE`（pin exe = 跳过发现链）/
     /// `AUTO_694_NATIVE_APP_DIR`（缺省 = 本仓 examples/ui/003-converter，
     /// exe 缺省经发现链找 `<repo>/target/debug/converter.exe`）。
     #[test]
@@ -4713,7 +4972,11 @@ mod tests {
         }
         let app_dir = std::path::PathBuf::from(
             std::env::var("AUTO_694_NATIVE_APP_DIR").unwrap_or_else(|_| {
-                concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/ui/003-converter").to_string()
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../examples/ui/003-converter"
+                )
+                .to_string()
             }),
         );
         let source = app_dir.join("src").join("front").join("app.at");
@@ -4722,7 +4985,9 @@ mod tests {
             return;
         }
         let code = std::fs::read_to_string(&source).expect("read converter source");
-        let pinned_exe = std::env::var("AUTO_694_NATIVE_EXE").ok().map(std::path::PathBuf::from);
+        let pinned_exe = std::env::var("AUTO_694_NATIVE_EXE")
+            .ok()
+            .map(std::path::PathBuf::from);
 
         let broker_pipe = format!("autodesk-broker-694-{}", std::process::id());
         let mut session = DesktopSession::__test_session();
@@ -4760,8 +5025,13 @@ mod tests {
         // —— launch：生产 spawn 链（双方言）→ Desktop 臂 adopt → attach 落窗。
         let wid = {
             let t0 = std::time::Instant::now();
-            let wid = session.launch_app("003-converter").expect("desktop 方言 launch");
-            println!("AUTO694-RING launch_attach_ms={:.1}", t0.elapsed().as_secs_f64() * 1000.0);
+            let wid = session
+                .launch_app("003-converter")
+                .expect("desktop 方言 launch");
+            println!(
+                "AUTO694-RING launch_attach_ms={:.1}",
+                t0.elapsed().as_secs_f64() * 1000.0
+            );
             wid
         };
         // 认领对称性证据：Hello app_name = 目录名（--app386 覆盖生效）。
@@ -4806,7 +5076,10 @@ mod tests {
             )),
             "v2 帧已合成（标题在册）"
         );
-        println!("AUTO694-RING first-v2-frame PASS (ops={})", first_v2.ops.len());
+        println!(
+            "AUTO694-RING first-v2-frame PASS (ops={})",
+            first_v2.ops.len()
+        );
 
         // —— 交互闭环：点击 Celsius 输入区（标签下 ~28px）→ 键入 100 →
         // Fahrenheit 联动 212（oninput 换算跨输入框生效）。
@@ -4814,8 +5087,9 @@ mod tests {
             .ops
             .iter()
             .find_map(|op| match op {
-                crate::ui::desktop_protocol::message::DisplayOp::TextStyled { x, y, text, .. }
-                    if text.contains("Celsius") => Some((*x, *y)),
+                crate::ui::desktop_protocol::message::DisplayOp::TextStyled {
+                    x, y, text, ..
+                } if text.contains("Celsius") => Some((*x, *y)),
                 _ => None,
             })
             .expect("Celsius 标签定位");
@@ -4847,7 +5121,8 @@ mod tests {
                 .is_some_and(|l| {
                     l.ops.iter().any(|op| match op {
                         crate::ui::desktop_protocol::message::DisplayOp::TextStyled {
-                            text, ..
+                            text,
+                            ..
                         } => text.contains("212"),
                         _ => false,
                     })
@@ -4935,11 +5210,19 @@ mod tests {
             return;
         }
         let exe = std::env::var("AUTO_020_NATIVE_EXE").unwrap_or_else(|_| {
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/debug/counter.exe").to_string()
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../target/debug/counter.exe"
+            )
+            .to_string()
         });
         let app_dir = std::path::PathBuf::from(
             std::env::var("AUTO_020_NATIVE_APP_DIR").unwrap_or_else(|_| {
-                concat!(env!("CARGO_MANIFEST_DIR"), "/../../../scratch020/002-counter").to_string()
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../../scratch020/002-counter"
+                )
+                .to_string()
             }),
         );
         let source = app_dir.join("src").join("front").join("app.at");
@@ -4955,25 +5238,24 @@ mod tests {
         let exe_for_resolver = exe.clone();
         let source_for_resolver = source.to_string_lossy().to_string();
         let code_for_resolver = code.clone();
-        session.desktop.app_resolver =
-            Some(std::sync::Arc::new(move |name: &str| {
-                (name == "002-counter").then(|| LaunchSpec {
-                    media_root: None,
-                    photo_root: None,
-                    back_entry: None,
+        session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
+            (name == "002-counter").then(|| LaunchSpec {
+                media_root: None,
+                photo_root: None,
+                back_entry: None,
 
-                    code: code_for_resolver.clone(),
-                    source_path: Some(source_for_resolver.clone()),
-                    title: Some("Counter".to_string()),
-                    name: Some("counter".to_string()),
-                    daemon: None,
-                    back_root: None,
-                    fit: false,
-                    exe: Some(std::path::PathBuf::from(&exe_for_resolver)),
-                    render_decl: Some("queue".to_string()),
-                    opens: Vec::new(),
-                })
-            }));
+                code: code_for_resolver.clone(),
+                source_path: Some(source_for_resolver.clone()),
+                title: Some("Counter".to_string()),
+                name: Some("counter".to_string()),
+                daemon: None,
+                back_root: None,
+                fit: false,
+                exe: Some(std::path::PathBuf::from(&exe_for_resolver)),
+                render_decl: Some("queue".to_string()),
+                opens: Vec::new(),
+            })
+        }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
 
@@ -5083,8 +5365,10 @@ mod tests {
                         .find(|c| c.wid == Some(wid0))
                         .and_then(|c| c.composed())
                         .is_some_and(|list| {
-                            list.ops.iter().any(|op| matches!(op,
-                                DrawOp::Text { text, .. } if *text == want_text))
+                            list.ops.iter().any(|op| {
+                                matches!(op,
+                                DrawOp::Text { text, .. } if *text == want_text)
+                            })
                         });
                     if hit {
                         break;
@@ -5100,12 +5384,14 @@ mod tests {
             g2_stats_line("native-exe-queue", samples);
         }
         // 收尾：Close 全部 + kill 兜底。
-        let closes: Vec<(String, Option<crate::ui::desktop_protocol::message::ProtocolMsg>)> =
-            session
-                .broker_clients
-                .values_mut()
-                .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
-                .collect();
+        let closes: Vec<(
+            String,
+            Option<crate::ui::desktop_protocol::message::ProtocolMsg>,
+        )> = session
+            .broker_clients
+            .values_mut()
+            .map(|c| (c.pipe.clone(), c.endpoint.close().ok()))
+            .collect();
         for (pipe, close) in closes {
             if let Some(close) = close {
                 if let Some(c) = session.broker_clients.get_mut(&pipe) {
@@ -5166,22 +5452,25 @@ mod tests {
 
         let names: Vec<String> = legs.iter().map(|(n, _, _)| n.to_string()).collect();
         session.desktop.app_resolver = Some(std::sync::Arc::new(move |name: &str| {
-            names.iter().position(|n| n.as_str() == name).map(|_| LaunchSpec {
-                media_root: None,
-                photo_root: None,
-                back_entry: None,
+            names
+                .iter()
+                .position(|n| n.as_str() == name)
+                .map(|_| LaunchSpec {
+                    media_root: None,
+                    photo_root: None,
+                    back_entry: None,
 
-                code: r#"widget t { view { text "x" } }"#.to_string(),
-                source_path: None,
-                title: Some(name.to_string()),
-                name: Some(name.to_string()),
-                fit: false,
-                daemon: None,
-                back_root: None,
-                exe: None,
-                opens: Vec::new(),
-                render_decl: Some("queue".into()),
-            })
+                    code: r#"widget t { view { text "x" } }"#.to_string(),
+                    source_path: None,
+                    title: Some(name.to_string()),
+                    name: Some(name.to_string()),
+                    fit: false,
+                    daemon: None,
+                    back_root: None,
+                    exe: None,
+                    opens: Vec::new(),
+                    render_decl: Some("queue".into()),
+                })
         }));
         let broker_for_spawn = broker_pipe.clone();
         let mode_of = |name: &str| {
@@ -5191,7 +5480,11 @@ mod tests {
                 .unwrap_or_else(|| "native-full".into())
         };
         session.desktop.outproc_spawner = Some(std::sync::Arc::new(move |child_name| {
-            Ok(spawn_t3_child(&broker_for_spawn, child_name, &mode_of(child_name)))
+            Ok(spawn_t3_child(
+                &broker_for_spawn,
+                child_name,
+                &mode_of(child_name),
+            ))
         }));
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         session.enable_broker(&broker_pipe, Arc::clone(&stop));
@@ -5261,8 +5554,9 @@ mod tests {
         //    Commands——缺省 queue 生效面）。
         let mut origins: Vec<(String, (f32, f32))> = Vec::new();
         for (name, _, hook) in legs {
-            let wid =
-                session.launch_app(name).unwrap_or_else(|e| panic!("launch {name}: {e:?}"));
+            let wid = session
+                .launch_app(name)
+                .unwrap_or_else(|e| panic!("launch {name}: {e:?}"));
             let (ox, oy) = {
                 let host = session.host.as_ref().unwrap();
                 let r = *host.wm.wins.get(&wid).unwrap().rect.borrow();
@@ -5299,9 +5593,7 @@ mod tests {
                 let comp = crate::build_dynamic_component(&src, Some(&path))
                     .unwrap_or_else(|e| panic!("build {name}: {e:?}"));
                 let projector = crate::ui::desktop_protocol::native_projector::RqProjector::new(
-                    comp,
-                    480.0,
-                    320.0,
+                    comp, 480.0, 320.0,
                 );
                 let err = projector.ensure_covered().expect_err("queue 门应拒收");
                 assert!(err.contains(want), "{name} 拒收载荷应含 {want}: {err}");
@@ -5334,15 +5626,15 @@ mod tests {
                     _ => None,
                 })
                 .expect("Beta 托盘项坐标");
-            assert!(
-                session.broker_pointer_down(ox + bx + 6.0, oy + by + 6.0, MouseButton::Left)
-            );
+            assert!(session.broker_pointer_down(ox + bx + 6.0, oy + by + 6.0, MouseButton::Left));
             wait_frame(
                 &mut session,
                 "046-tabs-variants",
-                |ops| texts_of(ops)
-                    .iter()
-                    .any(|t| *t == "Beta panel - default tray (status quo)"),
+                |ops| {
+                    texts_of(ops)
+                        .iter()
+                        .any(|t| *t == "Beta panel - default tray (status quo)")
+                },
                 "046 tabs on_select 交互（Beta panel 切入）",
             );
             println!("[p032] 046 tabs on_select 闭环 PASS");
@@ -5420,7 +5712,12 @@ mod tests {
             fn GetWindowTextW(hwnd: isize, lpString: *mut u16, nMaxCount: i32) -> i32;
             fn IsWindowVisible(hwnd: isize) -> i32;
             fn SetWindowPos(
-                hwnd: isize, after: isize, x: i32, y: i32, cx: i32, cy: i32,
+                hwnd: isize,
+                after: isize,
+                x: i32,
+                y: i32,
+                cx: i32,
+                cy: i32,
                 flags: u32,
             ) -> i32;
             fn PostMessageW(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> i32;
@@ -5440,7 +5737,10 @@ mod tests {
                 pid: u32,
                 found: Vec<(isize, String)>,
             }
-            let ctx = RefCell::new(Ctx { pid, found: Vec::new() });
+            let ctx = RefCell::new(Ctx {
+                pid,
+                found: Vec::new(),
+            });
             extern "system" fn on_enum(hwnd: isize, lparam: isize) -> i32 {
                 let ctx = unsafe { &*(lparam as *const RefCell<Ctx>) };
                 let mut owner = 0u32;
@@ -5480,7 +5780,10 @@ mod tests {
                 needle: &'a str,
                 hit: Option<(isize, String)>,
             }
-            let ctx = RefCell::new(Ctx { needle: contains, hit: None });
+            let ctx = RefCell::new(Ctx {
+                needle: contains,
+                hit: None,
+            });
             extern "system" fn on_enum(hwnd: isize, lparam: isize) -> i32 {
                 let ctx = unsafe { &*(lparam as *const RefCell<Ctx>) };
                 if unsafe { IsWindowVisible(hwnd) } == 0 {
@@ -5512,7 +5815,7 @@ mod tests {
 
         /// 客户区 (x, y) → lParam（低 16 位 x / 高 16 位 y）。
         pub fn lparam_of(x: i32, y: i32) -> isize {
-            ((x as u16 as isize)) | ((y as u16 as isize) << 16)
+            (x as u16 as isize) | ((y as u16 as isize) << 16)
         }
     }
 
@@ -5537,8 +5840,7 @@ mod tests {
         }
 
         fn wait_contains(&self, needle: &str, what: &str, timeout_ms: u64) {
-            let deadline =
-                std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
             loop {
                 if self
                     .lines
@@ -5559,19 +5861,25 @@ mod tests {
         }
 
         fn count_of(&self, needle: &str) -> usize {
-            self.lines.lock().unwrap().iter().filter(|l| l.contains(needle)).count()
+            self.lines
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|l| l.contains(needle))
+                .count()
         }
 
         fn wait_count(&self, needle: &str, want: usize, what: &str, timeout_ms: u64) {
-            let deadline =
-                std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
             while self.count_of(needle) < want {
                 assert!(
                     std::time::Instant::now() < deadline,
                     "{what} 超时（等 `{needle}` x{want}）；已见行:
 {}",
-                    self.lines.lock().unwrap().join("
-")
+                    self.lines.lock().unwrap().join(
+                        "
+"
+                    )
                 );
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
@@ -5609,10 +5917,7 @@ mod tests {
                         return status;
                     }
                 }
-                assert!(
-                    std::time::Instant::now() < deadline,
-                    "{what} 10s 未退出"
-                );
+                assert!(std::time::Instant::now() < deadline, "{what} 10s 未退出");
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
         }
@@ -5740,8 +6045,7 @@ mod tests {
         let daemon2_tail = LineTail::spawn(&mut daemon2);
         let daemon2_pid = daemon2.id();
         guard.push(daemon2);
-        let daemon2_status =
-            guard.wait_pid(daemon2_pid, "第二 daemon 未退出（锁管道未仲裁）");
+        let daemon2_status = guard.wait_pid(daemon2_pid, "第二 daemon 未退出（锁管道未仲裁）");
         assert!(daemon2_status.success(), "第二实例码 0");
         daemon2_tail.wait_contains("已有实例在服", "第二实例观测行", 2_000);
 
@@ -5836,11 +6140,7 @@ mod tests {
         guard.kill_pid(app_c_pid);
         let app_c_status = guard.wait_pid(app_c_pid, "关窗后 003 未退出（X→Close 链失效）");
         assert!(app_c_status.success(), "用户关窗 = app 退出码 0");
-        daemon_tail.wait_contains(
-            "断连（EOF）——窗回收",
-            "app 退出 → EOF 窗回收观测",
-            15_000,
-        );
+        daemon_tail.wait_contains("断连（EOF）——窗回收", "app 退出 → EOF 窗回收观测", 15_000);
         // daemon → app：kill daemon → hello app exit-on-EOF（观测行 + 退出）。
         guard.kill_pid(daemon_pid);
         app_h_tail.wait_contains(
@@ -5878,11 +6178,7 @@ mod tests {
         let daemon3_pid = daemon3.id();
         guard.push(daemon3);
         daemon3_tail.wait_contains("serving on", "daemon3 起服", 20_000);
-        let (mut app_i, app_i_tail) = spawn_q(
-            &auto_exe,
-            &app,
-            &format!("{wellknown}-d3"),
-        );
+        let (mut app_i, app_i_tail) = spawn_q(&auto_exe, &app, &format!("{wellknown}-d3"));
         let app_i_pid = app_i.id();
         guard.push(app_i);
         // 手动等待（失败转储含子进程 stderr——首跑 pac.at 缺席即靠此
@@ -5913,17 +6209,13 @@ mod tests {
         // iced::exit 自退（iced 空窗不退的反面，真机证据）。----
         #[cfg(windows)]
         {
-            let win = win_ffi::find_window_by_title("P031Img")
-                .expect("降级 demo 原生窗在场（标题找窗）");
+            let win =
+                win_ffi::find_window_by_title("P031Img").expect("降级 demo 原生窗在场（标题找窗）");
             assert!(win_ffi::request_close(win), "WM_CLOSE 降级窗");
         }
         let daemon3_status = guard.wait_pid(daemon3_pid, "末窗关闭后 daemon3 未自退");
         assert!(daemon3_status.success(), "末窗退出 = daemon 码 0");
-        daemon3_tail.wait_contains(
-            "末窗关闭——daemon 退出",
-            "末窗退出观测行",
-            15_000,
-        );
+        daemon3_tail.wait_contains("末窗关闭——daemon 退出", "末窗退出观测行", 15_000);
         let _ = guard.wait_pid(app_i_pid, "降级 app 关窗后未退出");
         eprintln!("[p031] last-window-exit leg PASS");
 
@@ -5960,8 +6252,7 @@ mod tests {
             // spawn + daemon iced 起服 + 采纳 + 首帧）。
             #[cfg(windows)]
             {
-                let deadline =
-                    std::time::Instant::now() + std::time::Duration::from_secs(60);
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
                 let hwnd = loop {
                     if let Some(h) = win_ffi::find_window_by_title("P031Hatch") {
                         break h;
@@ -5970,8 +6261,10 @@ mod tests {
                         std::time::Instant::now() < deadline,
                         "自动孵化 60s 未开窗（ensure/spawn 链断裂）；child stderr:
 {}",
-                        hatch_tail.snapshot().join("
-")
+                        hatch_tail.snapshot().join(
+                            "
+"
+                        )
                     );
                     std::thread::sleep(std::time::Duration::from_millis(200));
                 };
@@ -6052,8 +6345,7 @@ mod tests {
             let rust_tail = LineTail::spawn(&mut rust_child);
             guard.push(rust_child);
             // cargo 首建分钟级——首窗预算 300s。
-            let deadline_rust =
-                std::time::Instant::now() + std::time::Duration::from_secs(480);
+            let deadline_rust = std::time::Instant::now() + std::time::Duration::from_secs(480);
             while !daemon4_tail
                 .snapshot()
                 .iter()
@@ -6065,10 +6357,14 @@ mod tests {
 {}
 child:
 {}",
-                        daemon4_tail.snapshot().join("
-"),
-                        rust_tail.snapshot().join("
-")
+                        daemon4_tail.snapshot().join(
+                            "
+"
+                        ),
+                        rust_tail.snapshot().join(
+                            "
+"
+                        )
                     );
                 }
                 std::thread::sleep(std::time::Duration::from_millis(200));
@@ -6080,8 +6376,7 @@ child:
             );
             #[cfg(windows)]
             {
-                let win = win_ffi::find_window_by_title("counter")
-                    .expect("counter 原生窗在场");
+                let win = win_ffi::find_window_by_title("counter").expect("counter 原生窗在场");
                 assert!(win_ffi::request_close(win), "WM_CLOSE counter 窗");
             }
             let rust_status = guard.wait_pid(rust_pid, "rust 轨关窗后未退出");
@@ -6102,7 +6397,6 @@ child:
         // 清场。
         guard.release();
     }
-
 
     // -------------------------------------------------------------------
     // PLAN-033 T-07 —— rq-projector-unify e2e（AC-01/03）
@@ -6127,7 +6421,8 @@ child:
         let repo = std::path::Path::new(manifest).join("../../");
         let dir_fm = repo.join("examples/ui/027-file-manager");
         let dir_conv = repo.join("examples/ui/003-converter");
-        if !dir_fm.join("src/front/app.at").is_file() || !dir_conv.join("src/front/app.at").is_file()
+        if !dir_fm.join("src/front/app.at").is_file()
+            || !dir_conv.join("src/front/app.at").is_file()
         {
             eprintln!("[p033] skip: 载体缺席");
             return;
@@ -6296,8 +6591,7 @@ child:
         if std::env::var("AUTO_033_ASSETS").as_deref() == Ok("1") {
             let assets = repo.join("docs/plans/reports/assets/033");
             std::fs::create_dir_all(&assets).expect("mkdir assets/033");
-            std::fs::write(assets.join("memory-comparison.txt"), &inventory)
-                .expect("写内存对照行");
+            std::fs::write(assets.join("memory-comparison.txt"), &inventory).expect("写内存对照行");
             std::fs::write(
                 assets.join("daemon-stderr.log"),
                 daemon_tail.snapshot().join("\n"),
@@ -6314,7 +6608,10 @@ child:
         guard.kill_pid(daemon_pid);
         let app_c_status = guard.wait_pid(app_c_pid, "daemon 死后 003 未退（exit-on-EOF）");
         let app_fm_status = guard.wait_pid(app_fm_pid, "daemon 死后 027 未退（exit-on-EOF）");
-        assert!(app_c_status.success() && app_fm_status.success(), "exit-on-EOF 干净退出");
+        assert!(
+            app_c_status.success() && app_fm_status.success(),
+            "exit-on-EOF 干净退出"
+        );
     }
 
     /// PLAN-034 T-02（D2 归因矩阵）：{debug,release} × {wgpu,tiny-skia} ×
@@ -6378,8 +6675,7 @@ child:
             dir_converter: &std::path::Path,
             pid: u32,
         ) -> (String, Vec<u64>) {
-            let wellknown =
-                format!("autodesk-rqhost-p034-{build}-{backend}-{n}-{pid}");
+            let wellknown = format!("autodesk-rqhost-p034-{build}-{backend}-{n}-{pid}");
             let mut daemon_cmd = std::process::Command::new(exe);
             daemon_cmd
                 .args(["rqhost", "--pipe", &wellknown])
@@ -6477,8 +6773,7 @@ child:
                 .find(|(b, _)| *b == build)
                 .map(|(_, p)| p.clone())
                 .expect("两档产物已确保");
-            let (line, app_privates) =
-                matrix_cell(build, &exe, backend, n, &dir_converter, pid);
+            let (line, app_privates) = matrix_cell(build, &exe, backend, n, &dir_converter, pid);
             let private_kb = line
                 .split("private=")
                 .nth(1)
@@ -6488,9 +6783,7 @@ child:
             daemon_private_kb.push((format!("{build}/{backend}×{n}"), private_kb));
             report.push_str(&line);
             if !app_privates.is_empty() {
-                report.push_str(&format!(
-                    "  apps private KB: {app_privates:?}\n"
-                ));
+                report.push_str(&format!("  apps private KB: {app_privates:?}\n"));
             }
             if build == "release" && backend == "wgpu" && n == 1 {
                 gate_app_private_kb = app_privates.first().copied();
@@ -6531,7 +6824,11 @@ child:
         if let Some(app_kb) = gate_app_private_kb {
             report.push_str(&format!(
                 "app 复核（release×wgpu×1窗 003 -q）：private={app_kb}KB（≤10MB 门 {}\n",
-                if app_kb <= 10_240 { "过）" } else { "超——按 P033-D3 口径另裁说明）" }
+                if app_kb <= 10_240 {
+                    "过）"
+                } else {
+                    "超——按 P033-D3 口径另裁说明）"
+                }
             ));
             assert!(
                 app_kb <= 10_240,
@@ -6542,8 +6839,7 @@ child:
         if std::env::var("AUTO_034_ASSETS").as_deref() == Ok("1") {
             let assets = repo.join("docs/plans/reports/assets/034");
             std::fs::create_dir_all(&assets).expect("mkdir assets/034");
-            std::fs::write(assets.join("memory-matrix.txt"), &report)
-                .expect("写内存矩阵");
+            std::fs::write(assets.join("memory-matrix.txt"), &report).expect("写内存矩阵");
         }
     }
 
@@ -6627,9 +6923,14 @@ child:
 
         // ④ 内存行（缺省档 daemon + 043 app）。
         std::thread::sleep(std::time::Duration::from_millis(1500));
-        let mut report = String::from("[p034] canvas 样板腿内存行（缺省档）
-");
-        for (pid, name) in [(daemon_pid, "rqhost(default)"), (app_pid, "043-canvas(vm -q)")] {
+        let mut report = String::from(
+            "[p034] canvas 样板腿内存行（缺省档）
+",
+        );
+        for (pid, name) in [
+            (daemon_pid, "rqhost(default)"),
+            (app_pid, "043-canvas(vm -q)"),
+        ] {
             if let Ok(s) = crate::ui::desktop_protocol::stage3::sample_process_memory(pid) {
                 report.push_str(&format!(
                     "{name} pid={pid} working_set={}KB private={}KB
@@ -6648,14 +6949,18 @@ child:
             std::fs::write(assets.join("canvas-arm.txt"), &report).expect("写样板腿内存行");
             std::fs::write(
                 assets.join("canvas-child-stderr.log"),
-                app_tail.snapshot().join("
-"),
+                app_tail.snapshot().join(
+                    "
+",
+                ),
             )
             .expect("写 043 stderr");
             std::fs::write(
                 assets.join("daemon-stderr.log"),
-                daemon_tail.snapshot().join("
-"),
+                daemon_tail.snapshot().join(
+                    "
+",
+                ),
             )
             .expect("写 daemon stderr");
         }
@@ -6671,7 +6976,14 @@ child:
 /// 或非仓场景返回空串（e2e 恒在仓内运行，缺省不可达）。
 fn git_status_porcelain(repo: &std::path::Path, scope: &str) -> Vec<String> {
     std::process::Command::new("git")
-        .args(["-C", &repo.to_string_lossy(), "status", "--porcelain", "--", scope])
+        .args([
+            "-C",
+            &repo.to_string_lossy(),
+            "status",
+            "--porcelain",
+            "--",
+            scope,
+        ])
         .output()
         .map(|o| {
             String::from_utf8_lossy(&o.stdout)

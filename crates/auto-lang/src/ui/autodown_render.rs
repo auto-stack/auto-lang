@@ -83,7 +83,8 @@ pub fn render_document_with<M: Clone + std::fmt::Debug + 'static>(
         spacing: 8,
         padding: 0,
         style: None,
-        onclick: None, on_right_click: None,
+        onclick: None,
+        on_right_click: None,
     }
 }
 
@@ -108,14 +109,16 @@ fn wrap_with_ghost<M: Clone + std::fmt::Debug>(
                     center_x: false,
                     center_y: false,
                     style: Style::parse("bg-muted rounded-lg w-full").ok(),
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 },
                 block,
             ],
             spacing: 0,
             padding: 0,
             style: None,
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         },
         _ => block,
     }
@@ -162,7 +165,13 @@ pub struct StreamCache<M: Clone + std::fmt::Debug> {
 
 impl<M: Clone + std::fmt::Debug> Default for StreamCache<M> {
     fn default() -> Self {
-        Self { keys: Vec::new(), blocks: Vec::new(), gens: Vec::new(), last_final: None, theme_epoch: 0 }
+        Self {
+            keys: Vec::new(),
+            blocks: Vec::new(),
+            gens: Vec::new(),
+            last_final: None,
+            theme_epoch: 0,
+        }
     }
 }
 
@@ -272,7 +281,8 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
         spacing: 8,
         padding: 0,
         style: None,
-        onclick: None, on_right_click: None,
+        onclick: None,
+        on_right_click: None,
     }
 }
 
@@ -283,7 +293,13 @@ pub fn render_document_streamed_with<M: Clone + std::fmt::Debug + 'static>(
 fn fence_view_key(lang: &str, code: &str) -> String {
     use crate::ui::autodown_editor::VIEW_FENCE_PREFIX;
     let mut h: u64 = 0xcbf29ce484222325;
-    for byte in lang.as_bytes().iter().copied().chain(std::iter::once(0u8)).chain(code.as_bytes().iter().copied()) {
+    for byte in lang
+        .as_bytes()
+        .iter()
+        .copied()
+        .chain(std::iter::once(0u8))
+        .chain(code.as_bytes().iter().copied())
+    {
         h ^= byte as u64;
         h = h.wrapping_mul(0x100000001b3);
     }
@@ -381,7 +397,8 @@ fn render_inlines<M: Clone + std::fmt::Debug>(inlines: &[InlineSpan]) -> View<M>
         spacing: 2,
         padding: 0,
         style: None,
-        onclick: None, on_right_click: None,
+        onclick: None,
+        on_right_click: None,
     }
 }
 
@@ -446,7 +463,11 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             // lang-<token> 类携带语言到 renderer 的 syntect 着色路径。
             let chrome = family_of(BlockType::Fence).chrome;
             let lang = attrGetStr(b.attrs.clone(), "language", "");
-            let lang_label = if lang.is_empty() { "code".to_string() } else { lang.clone() };
+            let lang_label = if lang.is_empty() {
+                "code".to_string()
+            } else {
+                lang.clone()
+            };
             let header = View::Container {
                 child: Box::new(styled_text(lang_label, chrome.header_label)),
                 padding: 0,
@@ -460,7 +481,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 // （实测带高 +2px/块，两臂 pitch 累积漂移）。
                 center_y: false,
                 style: Style::parse(chrome.header.unwrap_or("")).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             };
             let code = spansText(b.inlines.clone());
             // PLAN-041 T4 fence 三态统一：view/stream 正文 = 共享 buffer 绘制
@@ -506,7 +528,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.body).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             };
             View::Container {
                 child: Box::new(View::Column {
@@ -514,7 +537,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 }),
                 padding: 0,
                 width: None,
@@ -522,11 +546,13 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.outer).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }
         }
         BlockType::Blockquote => {
-            let inner: Vec<View<M>> = block_children(b, is_final, details_onclick, table_widths, on_col_resize);
+            let inner: Vec<View<M>> =
+                block_children(b, is_final, details_onclick, table_widths, on_col_resize);
             let inner = if inner.len() == 1 {
                 inner.into_iter().next().unwrap()
             } else {
@@ -535,7 +561,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     spacing: 4,
                     padding: 0,
                     style: None,
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 }
             };
             View::Container {
@@ -546,7 +573,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(family_of(BlockType::Blockquote).chrome.outer).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }
         }
         BlockType::ListBlock => {
@@ -582,7 +610,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                         "text-[15.2px] leading-[1.6] text-muted-foreground shrink-0",
                     ),
                 };
-                let body = block_children(item, is_final, details_onclick, table_widths, on_col_resize);
+                let body =
+                    block_children(item, is_final, details_onclick, table_widths, on_col_resize);
                 items.push(View::Row {
                     children: vec![
                         styled_text(marker, marker_cls),
@@ -591,13 +620,15 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                             spacing: 2,
                             padding: 0,
                             style: None,
-                            onclick: None, on_right_click: None,
+                            onclick: None,
+                            on_right_click: None,
                         },
                     ],
                     spacing: 2,
                     padding: 0,
                     style: None,
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 });
             }
             View::Column {
@@ -605,7 +636,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 spacing: 2,
                 padding: 0,
                 style: None,
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }
         }
         BlockType::Table => {
@@ -652,7 +684,11 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             let title = attrGetStr(b.attrs.clone(), "title", "");
             let (extra, title_cls) = callout_kind_classes(&kind);
             let label = if title.is_empty() {
-                if kind.is_empty() { "note".to_string() } else { kind.clone() }
+                if kind.is_empty() {
+                    "note".to_string()
+                } else {
+                    kind.clone()
+                }
             } else {
                 title
             };
@@ -660,19 +696,16 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             // 统一——✓(2713)/✕(2715) 细体换 ✔(2714)/✖(2716) 重体（与 ⚠/ℹ
             // 观感粗细一致）；ℹ/⚠ 无重体变体保持。
             let marker = match kind.as_str() {
-                "info" => "\u{2139}",      // ℹ
-                "tip" | "success" => "\u{2714}", // ✔
+                "info" => "\u{2139}",                         // ℹ
+                "tip" | "success" => "\u{2714}",              // ✔
                 "warning" | "warn" | "caution" => "\u{26A0}", // ⚠
-                "danger" | "error" => "\u{2716}", // ✖
-                _ => "\u{270E}",           // ✎ (note/未知)
+                "danger" | "error" => "\u{2716}",             // ✖
+                _ => "\u{270E}",                              // ✎ (note/未知)
             };
             let title_row = View::Row {
                 children: vec![
                     // PLAN-054 复审反馈①：标题行 icon/label 显式正文号。
-                    styled_text(
-                        marker.to_string(),
-                        "text-[15.2px] leading-[1.6] shrink-0",
-                    ),
+                    styled_text(marker.to_string(), "text-[15.2px] leading-[1.6] shrink-0"),
                     styled_text(
                         label.clone(),
                         &format!("text-[15.2px] leading-[1.6]{}", title_cls),
@@ -681,16 +714,24 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 spacing: 2,
                 padding: 0,
                 style: None,
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             };
             let mut parts: Vec<View<M>> = vec![title_row];
             if !b.children.is_empty() {
                 parts.push(View::Column {
-                    children: block_children(b, is_final, details_onclick, table_widths, on_col_resize),
+                    children: block_children(
+                        b,
+                        is_final,
+                        details_onclick,
+                        table_widths,
+                        on_col_resize,
+                    ),
                     spacing: 4,
                     padding: 0,
                     style: Style::parse("pt-1 w-full").ok(),
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 });
             }
             View::Container {
@@ -702,7 +743,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     // 此前在视图臂无消费面——右栏 callout 内容贴边紧凑；
                     // 家族 pad 单源落到内层列，观感与 chrome 声明一致。
                     style: Style::parse(chrome.body).ok(),
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 }),
                 padding: 0,
                 width: None,
@@ -710,7 +752,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(&format!("{}{extra}", chrome.outer)).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }
         }
         BlockType::Details => {
@@ -722,8 +765,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             let summary = attrGetStr(b.attrs.clone(), "summary", "");
             let open = attrGetBool(b.attrs.clone(), "open", false);
             let marker = if open { "\u{25BE}" } else { "\u{25B8}" }; // ▾ / ▸
-            // PLAN-043 T2：ondetailsclick 注入——summary 行携带消息
-            //（键 = block_key 内容哈希，经宿主事件通道回 DSL handler）。
+                                                                     // PLAN-043 T2：ondetailsclick 注入——summary 行携带消息
+                                                                     //（键 = block_key 内容哈希，经宿主事件通道回 DSL handler）。
             let details_msg = details_onclick.map(|f| f(block_key(b)));
             let summary_row = View::Row {
                 children: vec![
@@ -732,10 +775,7 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                         marker.to_string(),
                         "text-[15.2px] leading-[1.6] text-muted-foreground shrink-0",
                     ),
-                    styled_text(
-                        summary.clone(),
-                        "text-[15.2px] leading-[1.6] font-medium",
-                    ),
+                    styled_text(summary.clone(), "text-[15.2px] leading-[1.6] font-medium"),
                 ],
                 spacing: 2,
                 padding: 0,
@@ -746,11 +786,18 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             let mut parts: Vec<View<M>> = vec![summary_row];
             if open && !b.children.is_empty() {
                 parts.push(View::Column {
-                    children: block_children(b, is_final, details_onclick, table_widths, on_col_resize),
+                    children: block_children(
+                        b,
+                        is_final,
+                        details_onclick,
+                        table_widths,
+                        on_col_resize,
+                    ),
                     spacing: 4,
                     padding: 0,
                     style: Style::parse("pt-1 border-t w-full").ok(),
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 });
             }
             View::Container {
@@ -759,7 +806,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     spacing: 4,
                     padding: 0,
                     style: None,
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 }),
                 padding: 0,
                 width: None,
@@ -767,7 +815,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.body).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }
         }
         BlockType::WikilinkBlock => {
@@ -785,17 +834,15 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             let chrome = family_of(BlockType::BlockEmbed).chrome;
             let src = attrGetStr(b.attrs.clone(), "src", "");
             View::Container {
-                child: Box::new(styled_text(
-                    format!("embed: {src}"),
-                    chrome.body_text,
-                )),
+                child: Box::new(styled_text(format!("embed: {src}"), chrome.body_text)),
                 padding: 0,
                 width: None,
                 height: None,
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.outer).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }
         }
         BlockType::Mermaid => {
@@ -813,20 +860,19 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.header.unwrap_or("")).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             };
             let code_area = View::Container {
-                child: Box::new(styled_text(
-                    spansText(b.inlines.clone()),
-                    chrome.body_text,
-                )),
+                child: Box::new(styled_text(spansText(b.inlines.clone()), chrome.body_text)),
                 padding: 0,
                 width: None,
                 height: None,
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.body).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             };
             View::Container {
                 child: Box::new(View::Column {
@@ -834,7 +880,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 }),
                 padding: 0,
                 width: None,
@@ -842,7 +889,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.outer).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }
         }
         BlockType::MathBlock => {
@@ -863,9 +911,13 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.header.unwrap_or("")).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             };
-            let body = format!("$$\n{}\n$$", crate::ui::autodown_math::latex_to_unicode(&spansText(b.inlines.clone())));
+            let body = format!(
+                "$$\n{}\n$$",
+                crate::ui::autodown_math::latex_to_unicode(&spansText(b.inlines.clone()))
+            );
             let code_area = View::Container {
                 child: Box::new(styled_text(body, chrome.body_text)),
                 padding: 0,
@@ -874,7 +926,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.body).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             };
             View::Container {
                 child: Box::new(View::Column {
@@ -882,7 +935,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 }),
                 padding: 0,
                 width: None,
@@ -890,7 +944,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.outer).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }
         }
         BlockType::QueryBlock => {
@@ -910,24 +965,30 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.body).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             };
             View::Container {
                 child: Box::new(View::Column {
-                    children: vec![View::Container {
-                        child: Box::new(tag),
-                        padding: 0,
-                        width: None,
-                        height: None,
-                        center_x: false,
-                        center_y: false,
-                        style: Style::parse("px-4 pt-2").ok(),
-                        onclick: None, on_right_click: None,
-                    }, body],
+                    children: vec![
+                        View::Container {
+                            child: Box::new(tag),
+                            padding: 0,
+                            width: None,
+                            height: None,
+                            center_x: false,
+                            center_y: false,
+                            style: Style::parse("px-4 pt-2").ok(),
+                            onclick: None,
+                            on_right_click: None,
+                        },
+                        body,
+                    ],
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 }),
                 padding: 0,
                 width: None,
@@ -935,7 +996,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
                 center_x: false,
                 center_y: false,
                 style: Style::parse(chrome.outer).ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }
         }
         BlockType::ThematicBreak => View::Container {
@@ -950,7 +1012,8 @@ fn render_block<M: Clone + std::fmt::Debug + 'static>(
             center_x: false,
             center_y: false,
             style: Style::parse(family_of(BlockType::ThematicBreak).chrome.outer).ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         },
         // Paragraph / TableRow / TableCell（顶层不会出现）/ 未知：段落降级
         _ => render_inlines(&b.inlines),
@@ -1018,7 +1081,9 @@ mod tests {
         assert_eq!(spans[1].content, "粗");
         let bold = Style::parse("text-[15.2px] leading-[1.6] font-bold").unwrap();
         assert_eq!(spans[1].style.as_ref().unwrap().classes, bold.classes);
-        let code = Style::parse("text-[15.2px] leading-[1.6] font-mono text-sm bg-muted rounded px-1").unwrap();
+        let code =
+            Style::parse("text-[15.2px] leading-[1.6] font-mono text-sm bg-muted rounded px-1")
+                .unwrap();
         assert_eq!(spans[5].style.as_ref().unwrap().classes, code.classes);
     }
 
@@ -1033,46 +1098,72 @@ mod tests {
         let doc = render_document_with::<()>(src, true, None, Some((0, 96.0)), None, None);
         let children = doc_children(doc);
         assert_eq!(children.len(), 2);
-        let View::Column { children: wrap, spacing, .. } = &children[0] else {
+        let View::Column {
+            children: wrap,
+            spacing,
+            ..
+        } = &children[0]
+        else {
             panic!("expected ghost wrap column at block 0")
         };
         assert_eq!(*spacing, 0);
         assert_eq!(wrap.len(), 2);
         match &wrap[0] {
-            View::Container { height, style, child, .. } => {
+            View::Container {
+                height,
+                style,
+                child,
+                ..
+            } => {
                 assert_eq!(*height, Some(96));
                 let expected = Style::parse("bg-muted rounded-lg w-full").unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, expected.classes);
-                assert!(matches!(child.as_ref(), View::Empty), "ghost box is empty child");
+                assert!(
+                    matches!(child.as_ref(), View::Empty),
+                    "ghost box is empty child"
+                );
             }
             _ => panic!("expected ghost container"),
         }
         assert_eq!(text_of(&wrap[1]), "甲段。", "block inside wrap");
         // 未命中块不包裹。
-        assert!(matches!(&children[1], View::Text { .. } | View::Rich { .. }), "block 1 unwrapped");
+        assert!(
+            matches!(&children[1], View::Text { .. } | View::Rich { .. }),
+            "block 1 unwrapped"
+        );
 
         // 无 props：无任何包裹。
         let plain = render_document_with::<()>(src, true, None, None, None, None);
         let children = doc_children(plain);
         assert!(
-            children.iter().all(|c| matches!(c, View::Text { .. } | View::Rich { .. })),
+            children
+                .iter()
+                .all(|c| matches!(c, View::Text { .. } | View::Rich { .. })),
             "no wrap without placeholder: {children:?}"
         );
 
         // streamed 路径同构（命中块 1）+ 缓存复用不因 ghost 包装抖动。
         let mut cache = StreamCache::<()>::default();
-        let s1 = render_document_streamed_with(&mut cache, src, true, None, Some((1, 48.0)), None, None);
+        let s1 =
+            render_document_streamed_with(&mut cache, src, true, None, Some((1, 48.0)), None, None);
         let children = doc_children(s1);
         let View::Column { children: wrap, .. } = &children[1] else {
             panic!("expected ghost wrap column at block 1 (streamed)")
         };
         match &wrap[0] {
-            View::Container { height: Some(h), .. } => assert_eq!(*h, 48),
+            View::Container {
+                height: Some(h), ..
+            } => assert_eq!(*h, 48),
             _ => panic!("expected ghost container (streamed)"),
         }
         assert_eq!(cache.gens, vec![1, 1]);
-        let _s2 = render_document_streamed_with(&mut cache, src, true, None, Some((1, 48.0)), None, None);
-        assert_eq!(cache.gens, vec![1, 1], "second frame reuses despite ghost wrap");
+        let _s2 =
+            render_document_streamed_with(&mut cache, src, true, None, Some((1, 48.0)), None, None);
+        assert_eq!(
+            cache.gens,
+            vec![1, 1],
+            "second frame reuses despite ghost wrap"
+        );
     }
 
     /// PLAN-053 T12（051-候选修复，转介单①收回自修）：主题代数翻转必须
@@ -1116,7 +1207,9 @@ mod tests {
         // fence：圆角容器 > (header + 代码区)
         match &children[0] {
             View::Container { child, .. } => match child.as_ref() {
-                View::Column { children: parts, .. } => {
+                View::Column {
+                    children: parts, ..
+                } => {
                     assert_eq!(parts.len(), 2);
                     match &parts[0] {
                         View::Container { child: h, .. } => assert_eq!(text_of(h), "rust"),
@@ -1131,17 +1224,19 @@ mod tests {
         // PLAN-054 T1：border-l-3 单侧宽度档——去四边整圈边框）
         match &children[1] {
             View::Container { style, child, .. } => {
-                let expected = Style::parse(
-                    "border-l-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400",
-                )
-                .unwrap();
+                let expected =
+                    Style::parse("border-l-3 pl-4 py-2 w-full text-gray-500 dark:text-zinc-400")
+                        .unwrap();
                 assert_eq!(style.as_ref().unwrap().classes, expected.classes);
                 assert_eq!(text_of(child), "引用");
             }
             _ => panic!("quote"),
         }
         // 有序列表 start=3：标记 3. / 4.
-        let View::Column { children: items, .. } = &children[2] else {
+        let View::Column {
+            children: items, ..
+        } = &children[2]
+        else {
             panic!("list")
         };
         assert_eq!(items.len(), 2);
@@ -1176,11 +1271,22 @@ mod tests {
             }
             _ => false,
         });
-        assert!(light_bg, "light theme outer bg must be light gray, got {classes:?}");
-        let View::Column { children: parts, .. } = child.as_ref() else {
+        assert!(
+            light_bg,
+            "light theme outer bg must be light gray, got {classes:?}"
+        );
+        let View::Column {
+            children: parts, ..
+        } = child.as_ref()
+        else {
             panic!("fence parts column")
         };
-        let View::Container { style: hs, child: h, .. } = &parts[0] else {
+        let View::Container {
+            style: hs,
+            child: h,
+            ..
+        } = &parts[0]
+        else {
             panic!("fence header container")
         };
         let hclasses = &hs.as_ref().expect("header style").classes;
@@ -1196,10 +1302,9 @@ mod tests {
         };
         let lclasses = &ls.as_ref().expect("label style").classes;
         assert!(
-            lclasses.iter().any(|c| matches!(
-                c,
-                crate::ui::style::StyleClass::TextColor(_)
-            )),
+            lclasses
+                .iter()
+                .any(|c| matches!(c, crate::ui::style::StyleClass::TextColor(_))),
             "label must carry explicit color class, got {lclasses:?}"
         );
     }
@@ -1212,14 +1317,26 @@ mod tests {
     fn fence_header_label_vertically_centered() {
         let doc = render_document::<()>("```rust\nfn x() {}\n```\n", true);
         let children = doc_children(doc);
-        let View::Container { center_y, child, .. } = &children[0] else {
+        let View::Container {
+            center_y, child, ..
+        } = &children[0]
+        else {
             panic!("fence outer container")
         };
         assert!(!*center_y, "center_y must stay off (Fill-height override)");
-        let View::Column { children: parts, .. } = child.as_ref() else {
+        let View::Column {
+            children: parts, ..
+        } = child.as_ref()
+        else {
             panic!("fence parts column")
         };
-        let View::Container { center_y: h_cy, style, child: h, .. } = &parts[0] else {
+        let View::Container {
+            center_y: h_cy,
+            style,
+            child: h,
+            ..
+        } = &parts[0]
+        else {
             panic!("fence header container")
         };
         assert!(!*h_cy, "header container center_y stays off");
@@ -1273,20 +1390,33 @@ mod tests {
             Some(&channel),
         );
         let children = doc_children(doc.clone());
-        let View::Table { col_widths, on_col_resize: Some(cb), .. } = &children[0] else {
+        let View::Table {
+            col_widths,
+            on_col_resize: Some(cb),
+            ..
+        } = &children[0]
+        else {
             panic!("table with resize channel")
         };
         assert_eq!(col_widths.as_deref(), Some(&[120.0f32, 200.0][..]));
         // 闭包捕获表键：call 的消息带 (key, col, width)。
         assert_eq!(
-            cb.call(crate::ui::view::ColResizeMetrics { col: 1, width: 133.0 }),
+            cb.call(crate::ui::view::ColResizeMetrics {
+                col: 1,
+                width: 133.0
+            }),
             (key, 1, 133.0)
         );
 
         // 态二：无 map 无通道——col_widths None、on_col_resize None（现状）。
         let doc = render_document_with::<()>(src, true, None, None, None, None);
         let children = doc_children(doc.clone());
-        let View::Table { col_widths, on_col_resize, .. } = &children[0] else {
+        let View::Table {
+            col_widths,
+            on_col_resize,
+            ..
+        } = &children[0]
+        else {
             panic!("table")
         };
         assert!(col_widths.is_none());
@@ -1310,7 +1440,9 @@ mod tests {
         // 帧一：无宽度 → col_widths None，gens=1。
         let f1 = render_document_streamed_with(&mut cache, src, true, None, None, None, None);
         let c1 = doc_children(f1.clone());
-        let View::Table { col_widths: w1, .. } = &c1[0] else { panic!("table") };
+        let View::Table { col_widths: w1, .. } = &c1[0] else {
+            panic!("table")
+        };
         assert!(w1.is_none());
         assert_eq!(cache.gens, vec![1]);
         // 帧二：宽度入 state（内容未变）→ 陈旧即重建，col_widths 进帧。
@@ -1318,7 +1450,9 @@ mod tests {
         m.insert(key, vec![150.0f32]);
         let f2 = render_document_streamed_with(&mut cache, src, true, None, None, Some(&m), None);
         let c2 = doc_children(f2.clone());
-        let View::Table { col_widths: w2, .. } = &c2[0] else { panic!("table") };
+        let View::Table { col_widths: w2, .. } = &c2[0] else {
+            panic!("table")
+        };
         assert_eq!(w2.as_deref(), Some(&[150.0f32][..]));
         assert_eq!(cache.gens, vec![2], "宽度态变化必须重建（gens 增）");
         // 帧三：宽度不变 → 恢复复用。
@@ -1348,8 +1482,8 @@ mod tests {
         // （stripDanglingTail 的模式要求换行符前缀）。
         let stripped = doc_children(render_document::<()>("正文段落\n- ", false));
         assert_eq!(stripped.len(), 1); // 悬挂 "\n- " 剥离，只剩段落
-        // final=true："- " 不剥，但按 setext 语义成为 H2 下划线（与 TS 参考
-        // 一致——crate 金标对拍锁定），同样 1 块（Heading）。
+                                       // final=true："- " 不剥，但按 setext 语义成为 H2 下划线（与 TS 参考
+                                       // 一致——crate 金标对拍锁定），同样 1 块（Heading）。
         let kept = doc_children(render_document::<()>("正文段落\n- ", true));
         assert_eq!(kept.len(), 1);
         assert!(matches!(kept[0], View::Text { .. }));
@@ -1380,17 +1514,43 @@ mod tests {
         let (extra, _) = callout_kind_classes("info");
         let want = format!("{}{extra}", family_of(BlockType::Callout).chrome.outer);
         let expected = Style::parse(&want).unwrap();
-        assert_eq!(style.as_ref().unwrap().classes, expected.classes, "kind=info 配色");
-        let View::Column { children: parts, .. } = child.as_ref() else { panic!("callout col") };
+        assert_eq!(
+            style.as_ref().unwrap().classes,
+            expected.classes,
+            "kind=info 配色"
+        );
+        let View::Column {
+            children: parts, ..
+        } = child.as_ref()
+        else {
+            panic!("callout col")
+        };
         assert_eq!(parts.len(), 2, "title 行 + 正文列");
         // PLAN-054 T4（五截图根因⑦）：chrome.body（px-4 py-3）落到内层列
         // ——此前视图臂无消费面，右栏内容贴边紧凑。
-        let View::Column { style: body_style, .. } = child.as_ref() else { panic!("callout col") };
+        let View::Column {
+            style: body_style, ..
+        } = child.as_ref()
+        else {
+            panic!("callout col")
+        };
         let want_body = Style::parse(family_of(BlockType::Callout).chrome.body).unwrap();
-        assert_eq!(body_style.as_ref().unwrap().classes, want_body.classes, "chrome.body 单源内边距");
-        let View::Row { children: title_row, .. } = &parts[0] else { panic!("title row") };
+        assert_eq!(
+            body_style.as_ref().unwrap().classes,
+            want_body.classes,
+            "chrome.body 单源内边距"
+        );
+        let View::Row {
+            children: title_row,
+            ..
+        } = &parts[0]
+        else {
+            panic!("title row")
+        };
         assert_eq!(text_of(&title_row[1]), "info", "无 title 时回落 kind 名");
-        let View::Column { children: body, .. } = &parts[1] else { panic!("body col") };
+        let View::Column { children: body, .. } = &parts[1] else {
+            panic!("body col")
+        };
         assert_eq!(text_of(&body[0]), "正文一。");
     }
 
@@ -1408,24 +1568,39 @@ mod tests {
         };
         let body_cls = Style::parse("px-4 py-2 w-full").unwrap();
         assert_eq!(style.as_ref().unwrap().classes, body_cls.classes);
-        let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
+        let View::Column {
+            children: parts, ..
+        } = child.as_ref()
+        else {
+            panic!("col")
+        };
         assert_eq!(parts.len(), 1, "收起态只有 summary 行");
-        let View::Row { children: sr, .. } = &parts[0] else { panic!("summary row") };
+        let View::Row { children: sr, .. } = &parts[0] else {
+            panic!("summary row")
+        };
         assert_eq!(text_of(&sr[0]), "\u{25B8}", "收起标记 ▸");
         assert_eq!(text_of(&sr[1]), "折叠说明");
 
         // open 首参形态（多参扫描仅首参可靠，parser 限制）
-        let open = render_document::<()>(
-            "$details(open:true) {\n看得见的正文。\n}\n",
-            true,
-        );
+        let open = render_document::<()>("$details(open:true) {\n看得见的正文。\n}\n", true);
         let oc = doc_children(open);
-        let View::Container { child, .. } = &oc[0] else { panic!("container") };
-        let View::Column { children: oparts, .. } = child.as_ref() else { panic!("col") };
+        let View::Container { child, .. } = &oc[0] else {
+            panic!("container")
+        };
+        let View::Column {
+            children: oparts, ..
+        } = child.as_ref()
+        else {
+            panic!("col")
+        };
         assert_eq!(oparts.len(), 2, "展开态 summary + 正文");
-        let View::Row { children: sr2, .. } = &oparts[0] else { panic!("summary") };
+        let View::Row { children: sr2, .. } = &oparts[0] else {
+            panic!("summary")
+        };
         assert_eq!(text_of(&sr2[0]), "\u{25BE}", "展开标记 ▾");
-        let View::Column { children: body, .. } = &oparts[1] else { panic!("body") };
+        let View::Column { children: body, .. } = &oparts[1] else {
+            panic!("body")
+        };
         assert_eq!(text_of(&body[0]), "看得见的正文。");
     }
 
@@ -1439,13 +1614,28 @@ mod tests {
             true,
         );
         let children = doc_children(doc);
-        let View::Container { child, .. } = &children[0] else { panic!("container") };
-        let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
+        let View::Container { child, .. } = &children[0] else {
+            panic!("container")
+        };
+        let View::Column {
+            children: parts, ..
+        } = child.as_ref()
+        else {
+            panic!("col")
+        };
         assert_eq!(parts.len(), 2, "展开态 summary + 正文");
-        let View::Row { children: sr, .. } = &parts[0] else { panic!("summary row") };
+        let View::Row { children: sr, .. } = &parts[0] else {
+            panic!("summary row")
+        };
         assert_eq!(text_of(&sr[0]), "\u{25BE}", "展开标记 ▾");
-        assert_eq!(text_of(&sr[1]), "Click to expand", "summary 在 open 后置形态下保留");
-        let View::Column { children: body, .. } = &parts[1] else { panic!("body") };
+        assert_eq!(
+            text_of(&sr[1]),
+            "Click to expand",
+            "summary 在 open 后置形态下保留"
+        );
+        let View::Column { children: body, .. } = &parts[1] else {
+            panic!("body")
+        };
         assert_eq!(text_of(&body[0]), "Hidden body.");
     }
 
@@ -1486,13 +1676,27 @@ mod tests {
     fn renders_task_list_checkbox() {
         let doc = render_document::<()>("- [x] 完成\n- [ ] 待办\n- 普通项\n", true);
         let children = doc_children(doc);
-        let View::Column { children: items, .. } = &children[0] else { panic!("list") };
+        let View::Column {
+            children: items, ..
+        } = &children[0]
+        else {
+            panic!("list")
+        };
         assert_eq!(items.len(), 3);
         let marker_of = |item: &View<()>| -> (String, bool) {
-            let View::Row { children: r, .. } = item else { panic!("item row") };
-            let View::Text { content, style, .. } = &r[0] else { panic!("marker text") };
+            let View::Row { children: r, .. } = item else {
+                panic!("item row")
+            };
+            let View::Text { content, style, .. } = &r[0] else {
+                panic!("marker text")
+            };
             let accent = style.as_ref().is_some_and(|s| {
-                s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::TextColor(crate::ui::style::Color::Primary)))
+                s.classes.iter().any(|c| {
+                    matches!(
+                        c,
+                        crate::ui::style::StyleClass::TextColor(crate::ui::style::Color::Primary)
+                    )
+                })
             });
             (content.clone(), accent)
         };
@@ -1531,12 +1735,23 @@ mod tests {
     fn renders_degraded_mermaid() {
         let doc = render_document::<()>("```mermaid\ngraph TD; A-->B;\n```\n", true);
         let children = doc_children(doc);
-        let View::Container { child, .. } = &children[0] else { panic!("mermaid outer") };
-        let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
+        let View::Container { child, .. } = &children[0] else {
+            panic!("mermaid outer")
+        };
+        let View::Column {
+            children: parts, ..
+        } = child.as_ref()
+        else {
+            panic!("col")
+        };
         assert_eq!(parts.len(), 2, "header + code");
-        let View::Container { child: h, .. } = &parts[0] else { panic!("header") };
+        let View::Container { child: h, .. } = &parts[0] else {
+            panic!("header")
+        };
         assert_eq!(text_of(h), "mermaid \u{00b7} web-only");
-        let View::Container { child: body, .. } = &parts[1] else { panic!("body") };
+        let View::Container { child: body, .. } = &parts[1] else {
+            panic!("body")
+        };
         assert_eq!(text_of(body), "graph TD; A-->B;");
     }
 
@@ -1548,18 +1763,32 @@ mod tests {
         crate::ui::style::theme::set_dark_mode(false);
         let doc = render_document::<()>("```mermaid\ngraph TD; A-->B;\n```\n", true);
         let children = doc_children(doc);
-        let View::Container { child, style, .. } = &children[0] else { panic!("mermaid outer") };
+        let View::Container { child, style, .. } = &children[0] else {
+            panic!("mermaid outer")
+        };
         let outer = format!("{:?}", style.as_ref().map(|s| &s.classes));
         assert!(
             outer.contains("BackgroundColor(Gray(50))"),
             "light-mode mermaid outer must use the light fence chrome, got {outer}"
-
         );
-        let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
-        let View::Container { child: h, style: hs, .. } = &parts[0] else { panic!("header") };
+        let View::Column {
+            children: parts, ..
+        } = child.as_ref()
+        else {
+            panic!("col")
+        };
+        let View::Container {
+            child: h,
+            style: hs,
+            ..
+        } = &parts[0]
+        else {
+            panic!("header")
+        };
         let header = format!("{:?}", hs.as_ref().map(|s| &s.classes));
         assert!(
-            header.contains("BackgroundColor(Gray(200))") && header.contains("TextColor(Gray(700))"),
+            header.contains("BackgroundColor(Gray(200))")
+                && header.contains("TextColor(Gray(700))"),
             "light-mode mermaid header must be readable (bg-gray-200 label gray-700), got {header}"
         );
         assert_eq!(text_of(h), "mermaid \u{00b7} web-only");
@@ -1573,12 +1802,23 @@ mod tests {
     fn renders_degraded_math_block() {
         let doc = render_document::<()>("%{\nE=mc^2\n}%\n", true);
         let children = doc_children(doc);
-        let View::Container { child, .. } = &children[0] else { panic!("math outer") };
-        let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
+        let View::Container { child, .. } = &children[0] else {
+            panic!("math outer")
+        };
+        let View::Column {
+            children: parts, ..
+        } = child.as_ref()
+        else {
+            panic!("col")
+        };
         assert_eq!(parts.len(), 2, "header + body");
-        let View::Container { child: h, .. } = &parts[0] else { panic!("header") };
+        let View::Container { child: h, .. } = &parts[0] else {
+            panic!("header")
+        };
         assert_eq!(text_of(h), "math \u{00b7} web-only");
-        let View::Container { child: body, .. } = &parts[1] else { panic!("body") };
+        let View::Container { child: body, .. } = &parts[1] else {
+            panic!("body")
+        };
         // PLAN-084 T-01b: math block 正文 LaTeX→Unicode（^2 → ²）。
         assert_eq!(text_of(body), "$$\nE=mc²\n$$");
     }
@@ -1596,10 +1836,23 @@ mod tests {
             }],
         };
         let cls = span_class(&math);
-        assert!(cls.contains("font-mono"), "math span must be mono, got {cls}");
-        assert!(cls.contains("bg-muted"), "math span must carry muted chip, got {cls}");
-        let plain = InlineSpan { text: "正文".to_string(), marks: vec![], attrs: vec![] };
-        assert!(!span_class(&plain).contains("font-mono"), "普通 span 不得误挂 chip");
+        assert!(
+            cls.contains("font-mono"),
+            "math span must be mono, got {cls}"
+        );
+        assert!(
+            cls.contains("bg-muted"),
+            "math span must carry muted chip, got {cls}"
+        );
+        let plain = InlineSpan {
+            text: "正文".to_string(),
+            marks: vec![],
+            attrs: vec![],
+        };
+        assert!(
+            !span_class(&plain).contains("font-mono"),
+            "普通 span 不得误挂 chip"
+        );
     }
 
     /// PLAN-041 T7 降级臂③：QueryBlock——query 文本面板 + 「query · 未求值」
@@ -1608,12 +1861,23 @@ mod tests {
     fn renders_degraded_query_block() {
         let doc = render_document::<()>("$query(tags:todo)\n", true);
         let children = doc_children(doc);
-        let View::Container { child, .. } = &children[0] else { panic!("query outer") };
-        let View::Column { children: parts, .. } = child.as_ref() else { panic!("col") };
+        let View::Container { child, .. } = &children[0] else {
+            panic!("query outer")
+        };
+        let View::Column {
+            children: parts, ..
+        } = child.as_ref()
+        else {
+            panic!("col")
+        };
         assert_eq!(parts.len(), 2, "标签行 + query 体");
-        let View::Container { child: tag, .. } = &parts[0] else { panic!("tag") };
+        let View::Container { child: tag, .. } = &parts[0] else {
+            panic!("tag")
+        };
         assert_eq!(text_of(tag), "query \u{00b7} \u{672a}\u{6c42}\u{503c}");
-        let View::Container { child: body, .. } = &parts[1] else { panic!("body") };
+        let View::Container { child: body, .. } = &parts[1] else {
+            panic!("body")
+        };
         assert_eq!(text_of(body), "tags:todo");
     }
 
@@ -1644,7 +1908,11 @@ mod tests {
         render_document_streamed(&mut cache, "一\n\n三\n", true);
         assert_eq!(cache.gens, vec![1, 1]);
         render_document_streamed(&mut cache, "一\n\n二\n\n三\n", true);
-        assert_eq!(cache.gens, vec![1, 2, 1], "首块复用，中段重建（新块从 1 起）");
+        assert_eq!(
+            cache.gens,
+            vec![1, 2, 1],
+            "首块复用，中段重建（新块从 1 起）"
+        );
     }
 
     /// PLAN-041 T9 性能护栏（CI 不跑，手跑留档）：
@@ -1681,7 +1949,10 @@ mod tests {
             "autodown stream perf guard: blocks={blocks} chunks=30 total={total:?} max_frame={max_frame:?} final_frame={final_frame:?} reused_gens={:?}",
             cache.gens.iter().filter(|&&g| g == 1).count()
         );
-        assert!(total < std::time::Duration::from_secs(2), "合计 {total:?} 超阈值 2s（复用失效信号）");
+        assert!(
+            total < std::time::Duration::from_secs(2),
+            "合计 {total:?} 超阈值 2s（复用失效信号）"
+        );
         assert!(
             max_frame < std::time::Duration::from_millis(200),
             "单帧 {max_frame:?} 超阈值 200ms"
@@ -1694,31 +1965,63 @@ mod tests {
     #[cfg(feature = "code-editor")]
     #[test]
     fn fence_view_body_uses_shared_buffer_instance() {
-        let doc = render_document::<()>("```rust
+        let doc = render_document::<()>(
+            "```rust
 fn x() {}
 ```
-", true);
+",
+            true,
+        );
         let children = doc_children(doc);
-        let View::Container { child, .. } = &children[0] else { panic!("fence outer") };
-        let View::Column { children: parts, .. } = child.as_ref() else { panic!("fence body") };
+        let View::Container { child, .. } = &children[0] else {
+            panic!("fence outer")
+        };
+        let View::Column {
+            children: parts, ..
+        } = child.as_ref()
+        else {
+            panic!("fence body")
+        };
         assert_eq!(parts.len(), 2);
         match &parts[0] {
             View::Container { child: h, .. } => assert_eq!(text_of(h), "rust"),
             _ => panic!("fence header"),
         }
-        let View::Container { child: body, style, .. } = &parts[1] else {
+        let View::Container {
+            child: body, style, ..
+        } = &parts[1]
+        else {
             panic!("code area")
         };
         let expected = Style::parse("p-4").unwrap();
-        assert_eq!(style.as_ref().unwrap().classes, expected.classes, "正文区家族 p-4");
-        let View::AutodownEditor { key, value, is_final, on_change, .. } = body.as_ref()
+        assert_eq!(
+            style.as_ref().unwrap().classes,
+            expected.classes,
+            "正文区家族 p-4"
+        );
+        let View::AutodownEditor {
+            key,
+            value,
+            is_final,
+            on_change,
+            ..
+        } = body.as_ref()
         else {
-            panic!("fence body 应为共享 buffer 实例（AutodownEditor），got {:?}", body.as_ref())
+            panic!(
+                "fence body 应为共享 buffer 实例（AutodownEditor），got {:?}",
+                body.as_ref()
+            )
         };
-        assert!(key.starts_with(crate::ui::autodown_editor::VIEW_FENCE_PREFIX), "key={key}");
-        assert_eq!(value, "```rust
+        assert!(
+            key.starts_with(crate::ui::autodown_editor::VIEW_FENCE_PREFIX),
+            "key={key}"
+        );
+        assert_eq!(
+            value,
+            "```rust
 fn x() {}
-```");
+```"
+        );
         assert!(*is_final);
         assert!(on_change.is_none(), "只读实例不挂 on_change");
     }
@@ -1731,7 +2034,9 @@ fn x() {}
         let mut doc = String::new();
         let para = "这是性能基线段落，包含 **加粗**、*斜体* 与 `code`，以及 [链接](https://example.com)。\n";
         let fence = "```rust\nfn main() { println!(\"hi\"); }\n```\n";
-        let unit = format!("{para}\n{fence}\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n- 列表甲\n- 列表乙\n\n");
+        let unit = format!(
+            "{para}\n{fence}\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n- 列表甲\n- 列表乙\n\n"
+        );
         while doc.len() < 1024 * 1024 {
             doc.push_str(&unit);
         }

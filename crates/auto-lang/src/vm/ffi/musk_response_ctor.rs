@@ -58,8 +58,7 @@ fn nv_to_json_or_null(vm: &AutoVM, nv: auto_val::NanoValue) -> String {
 /// (codegen `Expr::Null` → `CONST_I32 -1`), while the JSON/`Value` producer
 /// path yields a tagged nanbox null — so a nullish check must accept both.
 fn is_nullish(nv: auto_val::NanoValue) -> bool {
-    auto_val::is_null(nv)
-        || (auto_val::is_i32(nv) && auto_val::decode_i32(nv) == -1)
+    auto_val::is_null(nv) || (auto_val::is_i32(nv) && auto_val::decode_i32(nv) == -1)
 }
 
 /// Pop an i32 argument.
@@ -146,8 +145,11 @@ pub fn shim_error_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 pub fn shim_err_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let status = pop_i32(task) as u16;
     let msg = pop_string(task, vm, "err_response")?;
-    let body = format!(r#"{{"error":{}}}"#, serde_json::to_string(&msg).unwrap_or_default())
-        .into_bytes();
+    let body = format!(
+        r#"{{"error":{}}}"#,
+        serde_json::to_string(&msg).unwrap_or_default()
+    )
+    .into_bytes();
     push_response(
         task,
         vm,
@@ -181,7 +183,10 @@ pub fn shim_text_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         task,
         vm,
         status,
-        vec![("Content-Type".to_string(), "text/plain; charset=utf-8".to_string())],
+        vec![(
+            "Content-Type".to_string(),
+            "text/plain; charset=utf-8".to_string(),
+        )],
         msg.into_bytes(),
     )
 }
@@ -201,8 +206,11 @@ pub fn shim_to_response(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let msg = pop_string(task, vm, "to_response")?;
     let (nv, _stake) = pop_value_staked(task, vm);
     if is_nullish(nv) {
-        let body = format!(r#"{{"error":{}}}"#, serde_json::to_string(&msg).unwrap_or_default())
-            .into_bytes();
+        let body = format!(
+            r#"{{"error":{}}}"#,
+            serde_json::to_string(&msg).unwrap_or_default()
+        )
+        .into_bytes();
         push_response(
             task,
             vm,
@@ -249,7 +257,10 @@ fn gid_field(vm: &AutoVM, heap_id: u64, key: &str) -> Option<auto_val::Value> {
     let obj = vm.get_heap_object(heap_id)?;
     let guard = obj.read().unwrap();
     let inst = guard.as_any().downcast_ref::<GenericInstanceData>()?;
-    inst.field_names.iter().position(|n| n == key).and_then(|i| inst.get_field(i).cloned())
+    inst.field_names
+        .iter()
+        .position(|n| n == key)
+        .and_then(|i| inst.get_field(i).cloned())
 }
 
 /// Is a field Value an object (a VmRef to another GenericInstanceData)?
@@ -257,7 +268,12 @@ fn value_is_object(vm: &AutoVM, val: &auto_val::Value) -> bool {
     use crate::vm::generic_registry::GenericInstanceData;
     if let auto_val::Value::VmRef(r) = val {
         if let Some(obj) = vm.get_heap_object(r.id as u64) {
-            return obj.read().unwrap().as_any().downcast_ref::<GenericInstanceData>().is_some();
+            return obj
+                .read()
+                .unwrap()
+                .as_any()
+                .downcast_ref::<GenericInstanceData>()
+                .is_some();
         }
     }
     false
@@ -357,7 +373,10 @@ pub fn shim_sse_named_event(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         task,
         vm,
         "axum::response::sse::Event",
-        SseEvent { name: Some(name), data },
+        SseEvent {
+            name: Some(name),
+            data,
+        },
     )
 }
 
@@ -371,7 +390,10 @@ pub fn shim_sse_event(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         task,
         vm,
         "axum::response::sse::Event",
-        SseEvent { name: Some(name), data },
+        SseEvent {
+            name: Some(name),
+            data,
+        },
     )
 }
 
@@ -417,12 +439,16 @@ fn pop_rust_handle(task: &mut AutoTask, ctx: &str) -> Result<u64, VMError> {
     } else if auto_val::is_i32(nv) {
         let v = auto_val::decode_i32(nv);
         if v <= 0 {
-            Err(VMError::RuntimeError(format!("{ctx}: expected heap object handle")))
+            Err(VMError::RuntimeError(format!(
+                "{ctx}: expected heap object handle"
+            )))
         } else {
             Ok(v as u64)
         }
     } else {
-        Err(VMError::RuntimeError(format!("{ctx}: expected heap object handle")))
+        Err(VMError::RuntimeError(format!(
+            "{ctx}: expected heap object handle"
+        )))
     }
 }
 
@@ -433,7 +459,10 @@ pub fn shim_sse_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         task,
         vm,
         "axum::response::sse::Sse",
-        Sse { iter_id, keep_alive: false },
+        Sse {
+            iter_id,
+            keep_alive: false,
+        },
     )
 }
 
@@ -572,10 +601,12 @@ pub fn shim_value_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 pub fn shim_value_get_bool(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let k = pop_string(task, vm, "value_get_bool")?;
     let (nv, _stake) = pop_value_staked(task, vm);
-    let out = nv_heap_id(nv).and_then(|id| match gid_field(vm, id, &k)? {
-        auto_val::Value::Bool(b) => Some(b),
-        _ => None,
-    }).unwrap_or(false);
+    let out = nv_heap_id(nv)
+        .and_then(|id| match gid_field(vm, id, &k)? {
+            auto_val::Value::Bool(b) => Some(b),
+            _ => None,
+        })
+        .unwrap_or(false);
     task.ram.push_nv(auto_val::encode_bool(out));
     Ok(())
 }
@@ -756,8 +787,7 @@ fn try_host_forward(
     }
     let out = crate::vm::host_bridge::call_host(name, args_json)
         .map_err(|e| VMError::RuntimeError(format!("host '{name}': {e}")))?;
-    let parsed: serde_json::Value =
-        serde_json::from_str(&out).unwrap_or(serde_json::Value::Null);
+    let parsed: serde_json::Value = serde_json::from_str(&out).unwrap_or(serde_json::Value::Null);
     push_value_from_json(task, vm, &parsed)?;
     Ok(true)
 }
@@ -794,8 +824,8 @@ fn push_value_from_json(
 pub fn shim_musk_extern_dispatch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let (args_nv, _args_stake) = pop_value_staked(task, vm);
     let name = pop_string(task, vm, "musk_extern_dispatch")?;
-    let args_json = crate::vm::ffi::http_server::nv_to_json(vm, args_nv, 0)
-        .unwrap_or_else(|| "[]".to_string());
+    let args_json =
+        crate::vm::ffi::http_server::nv_to_json(vm, args_nv, 0).unwrap_or_else(|| "[]".to_string());
     if std::env::var("MUSK_VM_DEBUG").is_ok() {
         eprintln!("[VMDISP] {name} args={args_json}");
     }

@@ -56,8 +56,8 @@ pub(crate) fn lucide_icon_known(kebab: &str) -> bool {
     lucide_generated::lookup(kebab).is_some()
 }
 // Plan 462 T3/T4: VirtualWindow 组合层（单 OS 窗口多 App，路线 A）。
-pub mod virtual_window;
 pub mod broker_surface;
+pub mod virtual_window;
 // PLAN-012 W3: 整桌面等比预览（workspace_preview 布局件宿主数据面）。
 pub mod workspace_preview;
 // Plan 481: SelectableText 的选区纯逻辑（归一/词界/扩展/清空，全平台单测）。
@@ -86,8 +86,14 @@ mod p022_stack_click_tests;
 mod terminal_input_tests;
 
 pub use layout_collector::{BoundsMap, LayoutCollector};
-pub use renderer::{IntoIcedElement, ComponentIced, IcedMessage, run_app, run_app_with_title, run_app_devtools, run_app_with_task, run_app_with_task_devtools, run_dynamic_iced, run_dynamic_iced_multi, run_dynamic_iced_pixels, run_native_iced_pixels, run_dynamic_desktop, run_dynamic_desktop_with_options, run_dynamic_desktop_fullscreen, DesktopOptions, last_input_text, store_input_text};
 pub(crate) use renderer::encode_payload;
+pub use renderer::{
+    last_input_text, run_app, run_app_devtools, run_app_with_task, run_app_with_task_devtools,
+    run_app_with_title, run_dynamic_desktop, run_dynamic_desktop_fullscreen,
+    run_dynamic_desktop_with_options, run_dynamic_iced, run_dynamic_iced_multi,
+    run_dynamic_iced_pixels, run_native_iced_pixels, store_input_text, ComponentIced,
+    DesktopOptions, IcedMessage, IntoIcedElement,
+};
 // PLAN-077 (auto-musk): `max-w-[N%]` 百分比上限委托 widget——layout 期按
 // 父级 offered 宽度收窄 limits.max_width（iced Container::max_width 只收像素）。
 pub mod max_width;

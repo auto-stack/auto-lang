@@ -14,8 +14,7 @@
 /// (`os_paths` 无 feature 门,本模块不挂 ui-iced);solo 检出 None,
 /// 调用方以旧仓内路径兜底(既有 SKIPPED 容错不变)。
 fn locate_gallery_file(rel: &str) -> Option<std::path::PathBuf> {
-    let sibling_base =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let sibling_base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..");
     crate::os_paths::resolve_os_top_dir(&sibling_base, "widgets-gallery")
         .map(|g| g.join(rel))
         .filter(|p| p.exists())
@@ -155,10 +154,7 @@ fn plan502_m1_vue_svg_text_passthrough() {
         "位置参数文本必须是 text 元素内容(插值形态)"
     );
     // 子树外 text → span 不回归
-    assert!(
-        sfc.contains("<span"),
-        "svg 子树外的 text→span 行为不变"
-    );
+    assert!(sfc.contains("<span"), "svg 子树外的 text→span 行为不变");
     // 轨 B: overlay 动态类串保留(col 容器化,text 直挂 class f-string
     // 在 shadcn 路径退化 :style —— M1 实证注记)
     assert!(
@@ -166,7 +162,6 @@ fn plan502_m1_vue_svg_text_passthrough() {
         "overlay 轨 f-string arbitrary 值必须保留在类串"
     );
 }
-
 
 /// Plan 502 顺带修复的预存债回归:`link "label" {}` 位置参数文本形态。
 /// 此前 parse_view_link 仅认 (props) 形态,kitchen-sink(docs_gen 产物)
@@ -187,9 +182,11 @@ widget W {
     let session = crate::session::CompilerSession::ui();
     let mut parser = crate::parser::Parser::from(code).with_session(session);
     let ast = parser.parse().expect("link positional form must parse");
-    assert!(ast.stmts.iter().any(|s| matches!(s, crate::ast::Stmt::WidgetDecl(_))));
+    assert!(ast
+        .stmts
+        .iter()
+        .any(|s| matches!(s, crate::ast::Stmt::WidgetDecl(_))));
 }
-
 
 /// Plan 502 M3:Sugiyama-lite 布局几何对拍(端到端,真实组件)。
 /// gallery /flow-diagram 页为双卡(td+lr)演示——P320 单态下同名组件
@@ -203,8 +200,7 @@ fn plan502_m3_layout_geometry_e2e() {
     use std::path::PathBuf;
     let comp_src = {
         // PLAN-590:画廊迁 auto-os 顶层——先解析序定位,旧仓内路径兜底。
-        let p = locate_gallery_file("src/front/components/flow_diagram.at")
-        .unwrap_or_else(|| {
+        let p = locate_gallery_file("src/front/components/flow_diagram.at").unwrap_or_else(|| {
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("../../examples/widgets-gallery/src/front/components/flow_diagram.at")
         });
@@ -282,15 +278,33 @@ description: \"e2e fixture\"
     let td = run_dir("td");
     // 属性序为 HashMap 迭代序(不确定),断言按属性独立落值
     assert!(td.contains(r##"x=\"108\""##), "td st/ck 中轴 x=108");
-    assert!(td.contains(r##"y=\"24\""##) && td.contains(r##"y=\"132\""##), "td st(y24)/ck(y132) 分层");
-    assert!(td.contains(r##"x=\"192\""##) && td.contains(r##"x=\"24\""##), "td rt(192)/rn(24) 同层分居");
+    assert!(
+        td.contains(r##"y=\"24\""##) && td.contains(r##"y=\"132\""##),
+        "td st(y24)/ck(y132) 分层"
+    );
+    assert!(
+        td.contains(r##"x=\"192\""##) && td.contains(r##"x=\"24\""##),
+        "td rt(192)/rn(24) 同层分居"
+    );
     assert!(td.contains(r##"y=\"240\""##), "td rn/rt 同层 y=240");
     assert!(td.contains(r##"y=\"348\""##), "td dn 第 3 层 y=348");
-    assert!(td.contains(r##"viewBox=\"0 0 336 416\""##), "td viewBox 包络");
-    assert!(td.contains(r##"M 234.88889 240 L 185.11111 176"##), "td 回环边向上且 bbox 裁剪(DFS 回边)");
-    assert!(td.contains(r##"M 84 284 L 84 348"##), "td rn→dn 垂直且 bbox 裁剪(叶居中于父)");
+    assert!(
+        td.contains(r##"viewBox=\"0 0 336 416\""##),
+        "td viewBox 包络"
+    );
+    assert!(
+        td.contains(r##"M 234.88889 240 L 185.11111 176"##),
+        "td 回环边向上且 bbox 裁剪(DFS 回边)"
+    );
+    assert!(
+        td.contains(r##"M 84 284 L 84 348"##),
+        "td rn→dn 垂直且 bbox 裁剪(叶居中于父)"
+    );
     // M4:边 = bbox 交点段(不再穿节点);箭头字形实心三角
-    assert!(td.contains(r##"M 168 68 L 168 132"##), "M4 st→ck bbox 交点段(st 底边 68 → ck 顶边 132)");
+    assert!(
+        td.contains(r##"M 168 68 L 168 132"##),
+        "M4 st→ck bbox 交点段(st 底边 68 → ck 顶边 132)"
+    );
     assert!(
         td.contains(r##"M 168 132 L 163 122 L 173 122 Z"##),
         "M4 ck 入口箭头字形(tip 168,132;翼 ±5;尾 10)"
@@ -306,11 +320,26 @@ description: \"e2e fixture\"
 
     // ---- lr:转置,层沿 x 展开;st/ck/dn 中轴 y=100,rn/rt 分居 y=46/154 ----
     let lrd = run_dir("lr");
-    assert!(lrd.contains(r##"y=\"78\""##) && lrd.contains(r##"x=\"192\""##), "lr st/ck 水平主干(y=78)");
-    assert!(lrd.contains(r##"x=\"360\""##) && lrd.contains(r##"y=\"24\""##), "lr rn(360,y24)");
-    assert!(lrd.contains(r##"y=\"132\""##) && lrd.contains(r##"x=\"528\""##), "lr rt(y132)/dn(528)");
-    assert!(lrd.contains(r##"viewBox=\"0 0 672 200\""##), "lr viewBox 转置包络");
-    assert!(lrd.contains(r##"M 144 100 L 192 100"##), "lr 主干水平直线(bbox 裁剪)");
+    assert!(
+        lrd.contains(r##"y=\"78\""##) && lrd.contains(r##"x=\"192\""##),
+        "lr st/ck 水平主干(y=78)"
+    );
+    assert!(
+        lrd.contains(r##"x=\"360\""##) && lrd.contains(r##"y=\"24\""##),
+        "lr rn(360,y24)"
+    );
+    assert!(
+        lrd.contains(r##"y=\"132\""##) && lrd.contains(r##"x=\"528\""##),
+        "lr rt(y132)/dn(528)"
+    );
+    assert!(
+        lrd.contains(r##"viewBox=\"0 0 672 200\""##),
+        "lr viewBox 转置包络"
+    );
+    assert!(
+        lrd.contains(r##"M 144 100 L 192 100"##),
+        "lr 主干水平直线(bbox 裁剪)"
+    );
 }
 
 // Plan 502 M3 追加:Sugiyama-lite 布局核几何对拍(镜像管线,script 上下文)。
@@ -613,42 +642,44 @@ f"r:${outR} fb:${outF} c:${outC}"
 
     // ① 链:a→b→c。rank 0,1,2;无回边;td 中心 (84,46)(84,154)(84,262)。
     let chain = run_case("3", "[0, 1]", "[1, 2]", "td");
-    assert_eq!(chain, "r:0,1,2, fb:0,0,0, c:(84,46)(84,154)(84,262)", "链式分层");
+    assert_eq!(
+        chain, "r:0,1,2, fb:0,0,0, c:(84,46)(84,154)(84,262)",
+        "链式分层"
+    );
 
     // ② 菱形:a→{b,c}→d。b/c 同层,父居中 a/d 对齐中轴。
     let diamond = run_case("4", "[0, 0, 1, 2]", "[1, 2, 3, 3]", "td");
     assert_eq!(
-        diamond,
-        "r:0,1,1,2, fb:0,0,0,0, c:(168,46)(84,154)(252,154)(84,262)",
+        diamond, "r:0,1,1,2, fb:0,0,0,0, c:(168,46)(84,154)(252,154)(84,262)",
         "菱形分层 + 父居中"
     );
 
     // ③ 环:a→b→c→a。DFS 剥 c→a;DAG 分层 b=0,c=1,a=2。
     let cycle = run_case("3", "[0, 1, 2]", "[1, 2, 0]", "td");
-    assert_eq!(cycle, "r:0,1,2, fb:0,0,1, c:(84,46)(84,154)(84,262)", "环回边剥离(c→a 回边,主干 a→b→c)");
+    assert_eq!(
+        cycle, "r:0,1,2, fb:0,0,1, c:(84,46)(84,154)(84,262)",
+        "环回边剥离(c→a 回边,主干 a→b→c)"
+    );
 
     // ④ barycenter 降交叉:u1→v2, u2→v1 初始序 1 交叉;下扫后 v2 前置
     //    (v 层重心 = u 位均值)→ 0 交叉。
     let cross = run_case("4", "[0, 1]", "[3, 2]", "td");
     assert_eq!(
-        cross,
-        "r:0,0,1,1, fb:0,0,0,0, c:(84,46)(252,46)(252,154)(84,154)",
+        cross, "r:0,0,1,1, fb:0,0,0,0, c:(84,46)(252,46)(252,154)(84,154)",
         "barycenter 降交叉(v2 pos0 < v1 pos1)"
     );
 
     // ⑤ gallery demo(5 节点回环)td 中心(与 e2e 手算一致)。
     let demo_td = run_case("5", "[0, 1, 2, 1, 3]", "[1, 2, 4, 3, 1]", "td");
     assert_eq!(
-        demo_td,
-        "r:0,1,2,2,3, fb:0,0,0,0,1, c:(168,46)(168,154)(84,262)(252,262)(84,370)",
+        demo_td, "r:0,1,2,2,3, fb:0,0,0,0,1, c:(168,46)(168,154)(84,262)(252,262)(84,370)",
         "demo td 主干中轴 + rn/rt 分居"
     );
 
     // ⑥ 同图 lr 转置:层沿 x 展开。
     let demo_lr = run_case("5", "[0, 1, 2, 1, 3]", "[1, 2, 4, 3, 1]", "lr");
     assert_eq!(
-        demo_lr,
-        "r:0,1,2,2,3, fb:0,0,0,0,1, c:(84,100)(252,100)(420,46)(420,154)(588,46)",
+        demo_lr, "r:0,1,2,2,3, fb:0,0,0,0,1, c:(84,100)(252,100)(420,46)(420,154)(588,46)",
         "demo lr 转置"
     );
 
@@ -700,8 +731,7 @@ fn plan502_m5_hover_and_labels_e2e() {
     std::fs::create_dir_all(&comps).unwrap();
     let comp_src = {
         // PLAN-590:画廊迁 auto-os 顶层——先解析序定位,旧仓内路径兜底。
-        let p = locate_gallery_file("src/front/components/flow_diagram.at")
-        .unwrap_or_else(|| {
+        let p = locate_gallery_file("src/front/components/flow_diagram.at").unwrap_or_else(|| {
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("../../examples/widgets-gallery/src/front/components/flow_diagram.at")
         });
@@ -763,7 +793,10 @@ widget App {
     assert!(dump0.contains(">ok</text>"), "M5 边标签(ok)落 svgdoc");
     assert!(dump0.contains("text-anchor"), "标签居中锚点");
     // 命中层落树(mouse-area 兄弟层)
-    assert!(dump0.contains("MouseArea") || dump0.contains("on_enter"), "M5 命中层 mouse-area 落树");
+    assert!(
+        dump0.contains("MouseArea") || dump0.contains("on_enter"),
+        "M5 命中层 mouse-area 落树"
+    );
     // 无 hover:无 tooltip(锚定 col 不在树)
     assert!(!dump0.contains("id: start"), "无 hover 时 tooltip 不出现");
 
@@ -773,9 +806,18 @@ widget App {
         let (view, _, _) = dc.view_with_debug_gated(true);
         format!("{:?}", view)
     };
-    assert!(dump1.contains("id: start"), "hover 后 tooltip 锚定出现(标题=节点 label)");
-    assert!(dump1.contains("id: done") == false || dump1.contains("id: start"), "tooltip 内容存在");
-    assert!(dump1.contains("fill-opacity"), "M5 emphasis:非 hover 节点降透明");
+    assert!(
+        dump1.contains("id: start"),
+        "hover 后 tooltip 锚定出现(标题=节点 label)"
+    );
+    assert!(
+        dump1.contains("id: done") == false || dump1.contains("id: start"),
+        "tooltip 内容存在"
+    );
+    assert!(
+        dump1.contains("fill-opacity"),
+        "M5 emphasis:非 hover 节点降透明"
+    );
 
     // NodeOut → 复原
     dc.on_with_input_for("FlowDiagram", "NodeOut", None);
@@ -786,7 +828,6 @@ widget App {
     assert!(!dump2.contains("fill-opacity"), "NodeOut 后 emphasis 复原");
     assert!(!dump2.contains("id: start"), "NodeOut 后 tooltip 消失");
 }
-
 
 /// Plan 502 M5:vue 轨发射——节点标签 svg text / mouse-area 命中层 /
 /// tooltip 锚定 / emphasis 分支全部落 SFC。
@@ -802,17 +843,21 @@ fn plan502_m5_vue_emission() {
             )
         });
     let opts = crate::ui_gen::ComponentGenOptions::default();
-    let result = match crate::ui_gen::generate_component_from_file(std::path::Path::new(&path), opts) {
-        Ok(r) => r,
-        Err(_) => {
-            eprintln!("plan502 M5: SKIPPED — component gen not available");
-            return;
-        }
-    };
+    let result =
+        match crate::ui_gen::generate_component_from_file(std::path::Path::new(&path), opts) {
+            Ok(r) => r,
+            Err(_) => {
+                eprintln!("plan502 M5: SKIPPED — component gen not available");
+                return;
+            }
+        };
     let sfc = result.vue_code;
     assert!(sfc.contains("<text"), "vue 轨节点标签 text 元素");
     assert!(sfc.contains("text-anchor"), "标签居中");
-    assert!(sfc.contains("@mouseenter"), "mouse-area enter 命中(vue 事件形)");
+    assert!(
+        sfc.contains("@mouseenter"),
+        "mouse-area enter 命中(vue 事件形)"
+    );
     assert!(sfc.contains("@mouseleave"), "mouse-area leave");
     assert!(sfc.contains("absolute left-"), "tooltip/命中层绝对定位");
 }

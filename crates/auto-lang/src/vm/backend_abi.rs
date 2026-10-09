@@ -53,9 +53,11 @@ pub fn load_backend_cdylib(
     unsafe {
         let lib = libloading::Library::new(path)
             .map_err(|e| format!("failed to load backend library {}: {e}", path.display()))?;
-        let ver: libloading::Symbol<AbiVersionFn> = lib
-            .get(b"auto_backend_abi_version")
-            .map_err(|_| "missing `auto_backend_abi_version` export (not an Auto backend cdylib?)".to_string())?;
+        let ver: libloading::Symbol<AbiVersionFn> =
+            lib.get(b"auto_backend_abi_version").map_err(|_| {
+                "missing `auto_backend_abi_version` export (not an Auto backend cdylib?)"
+                    .to_string()
+            })?;
         let v = ver();
         if v != BACKEND_ABI_VERSION {
             return Err(format!(

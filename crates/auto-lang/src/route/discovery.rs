@@ -117,14 +117,12 @@ impl RouteDiscovery {
 
     /// Recursively scan a directory for route files
     fn scan_directory(&self, dir: &PathBuf, routes: &mut Vec<RouteDef>) -> AutoResult<()> {
-        let entries = std::fs::read_dir(dir).map_err(|e| {
-            RouteDiscoveryError::ReadError(dir.clone(), e.to_string())
-        })?;
+        let entries = std::fs::read_dir(dir)
+            .map_err(|e| RouteDiscoveryError::ReadError(dir.clone(), e.to_string()))?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| {
-                RouteDiscoveryError::ReadError(dir.clone(), e.to_string())
-            })?;
+            let entry =
+                entry.map_err(|e| RouteDiscoveryError::ReadError(dir.clone(), e.to_string()))?;
 
             let path = entry.path();
 
@@ -161,14 +159,15 @@ impl RouteDiscovery {
     /// - `None` if the file should be skipped (e.g., special files)
     fn file_to_route(&self, file: &PathBuf) -> AutoResult<Option<RouteDef>> {
         // Get relative path from routes_dir
-        let relative = file.strip_prefix(&self.routes_dir).map_err(|_| {
-            RouteDiscoveryError::InvalidFileName(file.clone())
-        })?;
+        let relative = file
+            .strip_prefix(&self.routes_dir)
+            .map_err(|_| RouteDiscoveryError::InvalidFileName(file.clone()))?;
 
         // Get the file name without extension
-        let file_stem = file.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
-            RouteDiscoveryError::InvalidFileName(file.clone())
-        })?;
+        let file_stem = file
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| RouteDiscoveryError::InvalidFileName(file.clone()))?;
 
         // Build path segments from directory structure
         let mut path_segments: Vec<String> = Vec::new();
@@ -409,8 +408,8 @@ mod tests {
         // Plan 423 P5:不能用 "/nonexistent" —— Windows 下解析为当前盘符根
         // (D:\nonexistent),若真机存在该目录则误报。改用临时目录下带
         // 随机段的不存在路径,机器无关。
-        let nonexistent = std::env::temp_dir()
-            .join(format!("auto_nonexistent_{}", std::process::id()));
+        let nonexistent =
+            std::env::temp_dir().join(format!("auto_nonexistent_{}", std::process::id()));
         let discovery2 = RouteDiscovery::new(nonexistent);
         assert!(!discovery2.exists());
 

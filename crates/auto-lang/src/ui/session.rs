@@ -26,7 +26,7 @@ use std::sync::{Arc, Mutex};
 use crate::aura::AuraNodeId;
 use crate::ui::dynamic::DynamicComponent;
 use crate::ui::iced::renderer::{
-    DebugElementInfo, DebugTreeNode, DevToolsTab, InspectorSections, InspectorSubTab, IcedMessage,
+    DebugElementInfo, DebugTreeNode, DevToolsTab, IcedMessage, InspectorSections, InspectorSubTab,
     ToastReq, TodoItem,
 };
 use crate::ui::layout::{LayoutMode, ReservedEdges};
@@ -283,7 +283,7 @@ pub(crate) struct NotificationEntry {
 /// `shell.notes.0..9`，见 renderer `persist_notes`/`restore_notifications`）。
 pub(crate) const NOTES_CAP: usize = 50;
 
-    pub struct DesktopState {
+pub struct DesktopState {
     /// PLAN-526 T18：分区切换预览面板 transient 收起时点（热键切换置位；
     /// ServiceTick 到期写 `switcher_open="0"` 收起。None = 无倒计时）。
     pub switcher_until: Cell<Option<std::time::Instant>>,
@@ -452,8 +452,16 @@ pub(crate) const NOTES_CAP: usize = 50;
     /// PLAN-030 T-08：壳 outproc spawner 注入位（None = 生产形态 re-exec
     /// `auto run --autodesk-shell`；e2e 注入 re-exec 测试体——
     /// outproc_spawner 同型先例）。
-    pub shell_spawner:
-        Option<Arc<dyn Fn(&crate::ui::desktop_protocol::shell_client::ShellGeometry, &str) -> std::io::Result<std::process::Child> + Send + Sync>>,
+    pub shell_spawner: Option<
+        Arc<
+            dyn Fn(
+                    &crate::ui::desktop_protocol::shell_client::ShellGeometry,
+                    &str,
+                ) -> std::io::Result<std::process::Child>
+                + Send
+                + Sync,
+        >,
+    >,
     /// PLAN-036 T-07/T-08：launcher exe spawner（e2e 注入 re-exec 测试体
     ///——shell_spawner 同型；None = 生产 re-exec auto 本体）。
     pub launcher_spawner:
@@ -714,9 +722,14 @@ pub enum WmCommand {
     /// 关闭虚拟窗口；App 随窗移除（459 一窗一 App 不变式的 WM 化）。
     Close(Wid),
     /// 标题栏按下：进入拖拽（grab 偏移由 update 侧按 last_cursor 现算）。
-    StartDrag { wid: Wid },
+    StartDrag {
+        wid: Wid,
+    },
     /// 边缘把手按下：进入八向缩放。
-    StartResize { wid: Wid, edge: ResizeEdge },
+    StartResize {
+        wid: Wid,
+        edge: ResizeEdge,
+    },
     /// listen_with 全局左键按下（坐标见 `WmState.last_cursor`，由全局
     /// CursorMoved 持续回写；update 侧做 z 序命中测试 → 聚焦置顶）。
     GlobalPress,
@@ -742,10 +755,15 @@ pub enum WmCommand {
     NativeSlotClose(crate::ui::native_dock::NativeSlotId),
     /// PLAN-709：槽位标题栏按下——WM 侧聚焦置顶（伪 Wid 域，D2）+ 进
     /// 槽位拖拽交互（grab 偏移 update 侧按 last_cursor 现算，StartDrag 同型）。
-    NativeSlotStartDrag { slot_id: crate::ui::native_dock::NativeSlotId },
+    NativeSlotStartDrag {
+        slot_id: crate::ui::native_dock::NativeSlotId,
+    },
     /// PLAN-709：槽位把手按下——进八向缩放（min_size 由 renderer 按
     /// `min_size_est` DPI 折算后传入，见 [`WmInteraction::NativeResize`]）。
-    NativeSlotStartResize { slot_id: crate::ui::native_dock::NativeSlotId, edge: ResizeEdge },
+    NativeSlotStartResize {
+        slot_id: crate::ui::native_dock::NativeSlotId,
+        edge: ResizeEdge,
+    },
     /// PLAN-709：槽位聚焦（chrome 客户区/标题栏点击、486 任务栏条目
     /// `focus_native` 同语义收口）——WM 侧置顶（带内 + chrome 序）+ OS 前台。
     NativeSlotFocus(crate::ui::native_dock::NativeSlotId),
@@ -869,17 +887,16 @@ pub struct WmState {
     pub picker_paths: Vec<String>,
     /// Plan 473：原生窗口槽位注册表（NativeSlot 与 VirtualWindow 同为 WM
     /// 布局单元；布局参与见 T5，宿主装配/几何同步见 T6）。
-    pub native_slots: BTreeMap<crate::ui::native_dock::NativeSlotId, crate::ui::native_dock::NativeSlot>,
+    pub native_slots:
+        BTreeMap<crate::ui::native_dock::NativeSlotId, crate::ui::native_dock::NativeSlot>,
     /// Plan 473：槽位 id 分配器（单调递增，会话生命周期内不复用）。
     pub next_native_slot_id: u64,
     /// Plan 473 T5：槽位本地（iced 逻辑）矩形缓存——布局引擎的输入域
     /// （NativeSlot.slot_rect 为屏幕物理坐标，两域在 T6 宿主排水时换算）。
-    pub native_slot_local_rects:
-        BTreeMap<crate::ui::native_dock::NativeSlotId, iced::Rectangle>,
+    pub native_slot_local_rects: BTreeMap<crate::ui::native_dock::NativeSlotId, iced::Rectangle>,
     /// Plan 473 T5：relayout 产生的待同步槽位几何（本地逻辑矩形）。
     /// T6 宿主装配排水：换算屏幕物理坐标 → win32 set_bounds → slot_rect 回写。
-    pub pending_native_geometry:
-        Vec<(crate::ui::native_dock::NativeSlotId, iced::Rectangle)>,
+    pub pending_native_geometry: Vec<(crate::ui::native_dock::NativeSlotId, iced::Rectangle)>,
     /// PLAN-709：带内 z 序待重申旗标（聚焦槽位置顶时置位；宿主
     /// `sync_native_geometry` 排水拍按统一 z 序全带重申后清除）。
     pub pending_native_restack: bool,
@@ -920,8 +937,14 @@ impl WmState {
             mru: Vec::new(),
             layout: LayoutMode::default(),
             workspaces: vec![
-                Workspace { id: 0, name: "Desktop 1".to_string() },
-                Workspace { id: 1, name: "Desktop 2".to_string() },
+                Workspace {
+                    id: 0,
+                    name: "Desktop 1".to_string(),
+                },
+                Workspace {
+                    id: 1,
+                    name: "Desktop 2".to_string(),
+                },
             ],
             current_workspace: 0,
             showdesk_ws: None,
@@ -997,7 +1020,12 @@ impl WmState {
     /// PLAN-036 T-05（D2-A）：插层伪窗——z 序第 1 位（bg 垫底伪窗之上、
     /// 全部 App 窗之下；dashboard 表面承接——命中带 = 伪窗矩形，宿主随
     /// 面板几何推送动态更新）。不入 MRU/不抢焦点（add_win_bottom 同册）。
-    pub fn add_win_above_bottom(&mut self, app: AppId, title: String, rect: iced::Rectangle) -> Wid {
+    pub fn add_win_above_bottom(
+        &mut self,
+        app: AppId,
+        title: String,
+        rect: iced::Rectangle,
+    ) -> Wid {
         let wid = self.add_win(app, title, rect);
         self.z_order.retain(|w| *w != wid);
         self.z_order.insert(1.min(self.z_order.len()), wid);
@@ -1009,7 +1037,8 @@ impl WmState {
     }
 
     /// 移除虚拟窗口，返回其 App（调用方决定 App 去留）。
-    pub fn remove_win(&mut self, wid: Wid) -> Option<AppId> {        let v = self.wins.remove(&wid)?;
+    pub fn remove_win(&mut self, wid: Wid) -> Option<AppId> {
+        let v = self.wins.remove(&wid)?;
         self.z_order.retain(|w| *w != wid);
         if self.focused == Some(wid) {
             // Plan 472 T2：焦点回退限当前分区（隐分区窗不抢焦点；单分区时
@@ -1069,9 +1098,7 @@ impl WmState {
 
     /// PLAN-709 D2：伪 Wid → 槽位 id（非槽位段返回 None；消费点用
     /// `wins.get` 的既有路径对真实 Wid 行为零变化）。
-    pub fn native_slot_id_of_pseudo(
-        w: Wid,
-    ) -> Option<crate::ui::native_dock::NativeSlotId> {
+    pub fn native_slot_id_of_pseudo(w: Wid) -> Option<crate::ui::native_dock::NativeSlotId> {
         if w.0 & Self::NATIVE_SLOT_WID_FLAG != 0 {
             Some(crate::ui::native_dock::NativeSlotId(
                 w.0 & !Self::NATIVE_SLOT_WID_FLAG,
@@ -1100,14 +1127,7 @@ impl WmState {
         let id = NativeSlotId(self.next_native_slot_id);
         self.native_slots.insert(
             id,
-            NativeSlot::new_candidate(
-                id,
-                NativeHwnd(hwnd),
-                pid,
-                title,
-                pre_dock_bounds,
-                slot_rect,
-            ),
+            NativeSlot::new_candidate(id, NativeHwnd(hwnd), pid, title, pre_dock_bounds, slot_rect),
         );
         // PLAN-709 D2/§5 workspace：dock 时归属当前分区（隐现/投影/send_to
         // 的成员资格事实源；dock 在分区切换后即新分区语义）。
@@ -1225,9 +1245,7 @@ impl WmState {
     /// PLAN-709：带内统一 z 序快照（当前分区 Docked 槽位 bottom→top，
     /// `z_order` 派生——宿主 restack 排水与 chrome 插序共用同一序模型；
     /// 隐分区槽位不入带：HWND 已藏，restack 链只覆盖可见带）。
-    pub fn native_slots_in_z_order(
-        &self,
-    ) -> Vec<crate::ui::native_dock::NativeSlotId> {
+    pub fn native_slots_in_z_order(&self) -> Vec<crate::ui::native_dock::NativeSlotId> {
         self.z_order
             .iter()
             .filter_map(|w| Self::native_slot_id_of_pseudo(*w))
@@ -1265,8 +1283,7 @@ impl WmState {
                 return None;
             }
             let r = v.rect.borrow();
-            (x >= r.x && y >= r.y && x <= r.x + r.width && y <= r.y + r.height)
-                .then_some(*w)
+            (x >= r.x && y >= r.y && x <= r.x + r.width && y <= r.y + r.height).then_some(*w)
         })
     }
 
@@ -1307,7 +1324,10 @@ impl WmState {
     /// Plan 472 T2：新增分区（追加尾部，命名 "Desktop N"），返回分区 id。
     pub fn add_workspace(&mut self) -> usize {
         let id = self.workspaces.len();
-        self.workspaces.push(Workspace { id, name: format!("Desktop {}", id + 1) });
+        self.workspaces.push(Workspace {
+            id,
+            name: format!("Desktop {}", id + 1),
+        });
         id
     }
 
@@ -1418,9 +1438,9 @@ impl WmState {
             }
         }
         self.current_workspace = self.current_workspace.min(self.workspaces.len() - 1);
-        let focused_in_current = self
-            .focused
-            .is_some_and(|w| self.wins.get(&w).map(|v| v.workspace) == Some(self.current_workspace));
+        let focused_in_current = self.focused.is_some_and(|w| {
+            self.wins.get(&w).map(|v| v.workspace) == Some(self.current_workspace)
+        });
         if removed_was_current || !focused_in_current {
             self.focused = self.top_member_in_workspace(self.current_workspace);
         }
@@ -1575,9 +1595,7 @@ impl WmState {
                 .wins_in_workspace(self.current_workspace)
                 .into_iter()
                 .rev()
-                .find(|w| {
-                    *w != wid && self.wins.get(w).is_some_and(|v| !v.minimized.get())
-                })
+                .find(|w| *w != wid && self.wins.get(w).is_some_and(|v| !v.minimized.get()))
                 .or_else(|| self.top_member_in_workspace(self.current_workspace));
         }
     }
@@ -1637,7 +1655,12 @@ impl WmState {
                     r.y = (y - grab.y).clamp(0.0, (host.height - 30.0).max(0.0));
                 }
             }
-            WmInteraction::Resize { wid, edge, start_rect, start_cursor } => {
+            WmInteraction::Resize {
+                wid,
+                edge,
+                start_rect,
+                start_cursor,
+            } => {
                 let dx = x - start_cursor.x;
                 let dy = y - start_cursor.y;
                 const MIN_W: f32 = 160.0;
@@ -1654,26 +1677,34 @@ impl WmState {
                     // 视口右/下缘；West/North 反向增长 left/top 不为负
                     // （462 起只有 MIN 下限，实测可缩放出桌面）。可用区
                     // 紧张时视口约束优先于 MIN 下限（min 下限 1.0 防退化）。
-                    if matches!(edge, ResizeEdge::East | ResizeEdge::NorthEast | ResizeEdge::SouthEast) {
+                    if matches!(
+                        edge,
+                        ResizeEdge::East | ResizeEdge::NorthEast | ResizeEdge::SouthEast
+                    ) {
                         width = (start_rect.width + dx)
                             .max(MIN_W)
                             .min((host.width - start_rect.x).max(1.0));
                     }
-                    if matches!(edge, ResizeEdge::South | ResizeEdge::SouthWest | ResizeEdge::SouthEast) {
+                    if matches!(
+                        edge,
+                        ResizeEdge::South | ResizeEdge::SouthWest | ResizeEdge::SouthEast
+                    ) {
                         height = (start_rect.height + dy)
                             .max(MIN_H)
                             .min((host.height - start_rect.y).max(1.0));
                     }
-                    if matches!(edge, ResizeEdge::West | ResizeEdge::NorthWest | ResizeEdge::SouthWest) {
-                        width = (start_rect.width - dx)
-                            .max(MIN_W)
-                            .min(right.max(1.0));
+                    if matches!(
+                        edge,
+                        ResizeEdge::West | ResizeEdge::NorthWest | ResizeEdge::SouthWest
+                    ) {
+                        width = (start_rect.width - dx).max(MIN_W).min(right.max(1.0));
                         left = right - width;
                     }
-                    if matches!(edge, ResizeEdge::North | ResizeEdge::NorthWest | ResizeEdge::NorthEast) {
-                        height = (start_rect.height - dy)
-                            .max(MIN_H)
-                            .min(bottom.max(1.0));
+                    if matches!(
+                        edge,
+                        ResizeEdge::North | ResizeEdge::NorthWest | ResizeEdge::NorthEast
+                    ) {
+                        height = (start_rect.height - dy).max(MIN_H).min(bottom.max(1.0));
                         top = bottom - height;
                     }
                     r.x = left;
@@ -1722,26 +1753,34 @@ impl WmState {
                     let mut top = start_rect.y;
                     let mut width = start_rect.width;
                     let mut height = start_rect.height;
-                    if matches!(edge, ResizeEdge::East | ResizeEdge::NorthEast | ResizeEdge::SouthEast) {
+                    if matches!(
+                        edge,
+                        ResizeEdge::East | ResizeEdge::NorthEast | ResizeEdge::SouthEast
+                    ) {
                         width = (start_rect.width + dx)
                             .max(min_w)
                             .min((host.width - start_rect.x).max(1.0));
                     }
-                    if matches!(edge, ResizeEdge::South | ResizeEdge::SouthWest | ResizeEdge::SouthEast) {
+                    if matches!(
+                        edge,
+                        ResizeEdge::South | ResizeEdge::SouthWest | ResizeEdge::SouthEast
+                    ) {
                         height = (start_rect.height + dy)
                             .max(min_h)
                             .min((host.height - start_rect.y).max(1.0));
                     }
-                    if matches!(edge, ResizeEdge::West | ResizeEdge::NorthWest | ResizeEdge::SouthWest) {
-                        width = (start_rect.width - dx)
-                            .max(min_w)
-                            .min(right.max(1.0));
+                    if matches!(
+                        edge,
+                        ResizeEdge::West | ResizeEdge::NorthWest | ResizeEdge::SouthWest
+                    ) {
+                        width = (start_rect.width - dx).max(min_w).min(right.max(1.0));
                         left = right - width;
                     }
-                    if matches!(edge, ResizeEdge::North | ResizeEdge::NorthWest | ResizeEdge::NorthEast) {
-                        height = (start_rect.height - dy)
-                            .max(min_h)
-                            .min(bottom.max(1.0));
+                    if matches!(
+                        edge,
+                        ResizeEdge::North | ResizeEdge::NorthWest | ResizeEdge::NorthEast
+                    ) {
+                        height = (start_rect.height - dy).max(min_h).min(bottom.max(1.0));
                         top = bottom - height;
                     }
                     r.x = left;
@@ -2083,7 +2122,13 @@ impl DesktopCommand {
             // PLAN-042 T-04：协议 v1.9 系统日志动词（level/text FIELD_SEP
             // 分段；text 可含空格与 FIELD_SEP——parse 取首分符，尾部保留）。
             DesktopCommand::Syslog(level, text) => {
-                format!("log{}{}{}{}", Self::FIELD_SEP, level.as_str(), Self::FIELD_SEP, text)
+                format!(
+                    "log{}{}{}{}",
+                    Self::FIELD_SEP,
+                    level.as_str(),
+                    Self::FIELD_SEP,
+                    text
+                )
             }
             DesktopCommand::NotesToggle => "notes_toggle".to_string(),
             DesktopCommand::NotesClear => "notes_clear".to_string(),
@@ -2109,7 +2154,11 @@ impl DesktopCommand {
                 )
             }
             DesktopCommand::SetDockEnabled(on) => {
-                format!("set_dock_enabled{}{}", Self::FIELD_SEP, if *on { 1 } else { 0 })
+                format!(
+                    "set_dock_enabled{}{}",
+                    Self::FIELD_SEP,
+                    if *on { 1 } else { 0 }
+                )
             }
             // Plan 518 G1：主题动词（值域 dark/light，窄值跳过同 set_dock_*）。
             DesktopCommand::SetTheme(dark) => {
@@ -2134,7 +2183,11 @@ impl DesktopCommand {
                 format!("set_transparency{}{}", Self::FIELD_SEP, level)
             }
             DesktopCommand::SetNotesEnabled(on) => {
-                format!("set_notes_enabled{}{}", Self::FIELD_SEP, if *on { 1 } else { 0 })
+                format!(
+                    "set_notes_enabled{}{}",
+                    Self::FIELD_SEP,
+                    if *on { 1 } else { 0 }
+                )
             }
             DesktopCommand::SetDockPinned(csv) => {
                 format!("set_dock_pinned{}{}", Self::FIELD_SEP, csv)
@@ -2187,7 +2240,11 @@ impl DesktopCommand {
                 format!("dashboard_unpin{}{app}", Self::FIELD_SEP)
             }
             DesktopCommand::DashboardSpan(app, span) => {
-                format!("dashboard_span{}{app}{}{span}", Self::FIELD_SEP, Self::FIELD_SEP)
+                format!(
+                    "dashboard_span{}{app}{}{span}",
+                    Self::FIELD_SEP,
+                    Self::FIELD_SEP
+                )
             }
             DesktopCommand::DashboardLaunch(app) => {
                 format!("dashboard_launch{}{app}", Self::FIELD_SEP)
@@ -2303,9 +2360,7 @@ impl DesktopCommand {
                 // PLAN-019 v1.7：picker 导航（值域 prev/next 窄值，坏值跳过）。
                 if verb == "wallpaper_nav" {
                     return match arg {
-                        "prev" | "next" => {
-                            Some(DesktopCommand::WallpaperNav(arg.to_string()))
-                        }
+                        "prev" | "next" => Some(DesktopCommand::WallpaperNav(arg.to_string())),
                         _ => None,
                     };
                 }
@@ -2327,27 +2382,20 @@ impl DesktopCommand {
                         let rest = &rec[verb.len() + 1..];
                         // drag_start 单参；drop 双参（第二参缺席 = 空串容忍，
                         // drop_at 由宿主读 surface 光标态）。
-                        let (dragged, second) = match rest
-                            .split_once([Self::FIELD_SEP, '\t'])
-                        {
+                        let (dragged, second) = match rest.split_once([Self::FIELD_SEP, '\t']) {
                             Some((d, s)) => (d.to_string(), s.to_string()),
                             None => (rest.to_string(), String::new()),
                         };
                         if dragged.is_empty()
-                            || (verb != "desktop_icon_drag_start"
-                                && second.is_empty())
+                            || (verb != "desktop_icon_drag_start" && second.is_empty())
                         {
                             return None;
                         }
                         return Some(match verb {
-                            "desktop_icon_drop" => DesktopCommand::DesktopIconDrop(
-                                dragged,
-                                second,
-                            ),
-                            "desktop_icon_drop_at" => DesktopCommand::DesktopIconDropAt(
-                                dragged,
-                                second,
-                            ),
+                            "desktop_icon_drop" => DesktopCommand::DesktopIconDrop(dragged, second),
+                            "desktop_icon_drop_at" => {
+                                DesktopCommand::DesktopIconDropAt(dragged, second)
+                            }
                             _ => DesktopCommand::DesktopIconDragStart(dragged),
                         });
                     }
@@ -2355,13 +2403,19 @@ impl DesktopCommand {
                 let (verb, arg) = rec.split_once([Self::FIELD_SEP, '\t'])?;
                 match verb {
                     "launch" if !arg.is_empty() => Some(DesktopCommand::LaunchApp(arg.to_string())),
-                    "close" => arg.parse::<u64>().ok().map(|w| DesktopCommand::CloseWindow(Wid(w))),
-                    "focus" => arg.parse::<u64>().ok().map(|w| DesktopCommand::FocusWindow(Wid(w))),
+                    "close" => arg
+                        .parse::<u64>()
+                        .ok()
+                        .map(|w| DesktopCommand::CloseWindow(Wid(w))),
+                    "focus" => arg
+                        .parse::<u64>()
+                        .ok()
+                        .map(|w| DesktopCommand::FocusWindow(Wid(w))),
                     "layout" => Some(DesktopCommand::SetLayout(LayoutMode::from_name(arg))),
                     // PLAN-526 T33：预设 icon 切换键（同预设再按 = 回手动快照）。
-                    "layout_toggle" => {
-                        Some(DesktopCommand::TogglePresetLayout(LayoutMode::from_name(arg)))
-                    }
+                    "layout_toggle" => Some(DesktopCommand::TogglePresetLayout(
+                        LayoutMode::from_name(arg),
+                    )),
                     "summon" => Some(DesktopCommand::SummonLauncher),
                     "workspace" => arg.parse::<usize>().ok().map(DesktopCommand::SetWorkspace),
                     "activate" if !arg.is_empty() => {
@@ -2371,15 +2425,11 @@ impl DesktopCommand {
                     // Notify msg 同款——parse 取首分符，尾部完整保留）。
                     "open_with" if !arg.is_empty() => {
                         // 第二参分隔符两套等价（\u{1F} 编码面 / \t 直书面）。
-                        let (app, path) =
-                            arg.split_once([Self::FIELD_SEP, '\t'])?;
+                        let (app, path) = arg.split_once([Self::FIELD_SEP, '\t'])?;
                         if app.is_empty() || path.is_empty() {
                             return None;
                         }
-                        Some(DesktopCommand::OpenWith(
-                            app.to_string(),
-                            path.to_string(),
-                        ))
+                        Some(DesktopCommand::OpenWith(app.to_string(), path.to_string()))
                     }
                     "dock_native" => NativeTarget::parse_arg(arg).map(DesktopCommand::DockNative),
                     "undock_native" => arg.parse::<u64>().ok().map(DesktopCommand::UndockNative),
@@ -2397,17 +2447,17 @@ impl DesktopCommand {
                         .ok()
                         .map(DesktopCommand::CloseNative),
                     // Plan 478 T2：协议 v1.1 增量动词。
-                    "workspace_close" => {
-                        arg.parse::<usize>().ok().map(DesktopCommand::WorkspaceClose)
-                    }
+                    "workspace_close" => arg
+                        .parse::<usize>()
+                        .ok()
+                        .map(DesktopCommand::WorkspaceClose),
                     // PLAN-709（R1，review 发现）：send_to 容收槽位条目
                     // wid "N<slot>"（486 focus_native 前例同款 N 前缀容收
                     // ——shell 直传条目 wid，宿主归一为伪 Wid 进槽位臂）。
                     // 纯数字两态兼容：真实 Wid 直传 / 伪 Wid 数值回放均路由
                     // 正确（wm_move_member_to_workspace 伪 Wid 域分派）。
-                    "send_to" => arg
-                        .split_once([Self::FIELD_SEP, '\t'])
-                        .and_then(|(w, n)| {
+                    "send_to" => {
+                        arg.split_once([Self::FIELD_SEP, '\t']).and_then(|(w, n)| {
                             // N 前缀 = 槽位条目 wid → 伪 Wid；纯数字 =
                             // 真实 Wid 原样（伪 Wid 数值回放天然带段位，
                             // 同样落入槽位臂分派）。
@@ -2415,11 +2465,8 @@ impl DesktopCommand {
                                 Some(d) => (true, d),
                                 None => (false, &w[..]),
                             };
-                            digits
-                                .parse::<u64>()
-                                .ok()
-                                .zip(n.parse::<usize>().ok())
-                                .map(|(num, ws)| {
+                            digits.parse::<u64>().ok().zip(n.parse::<usize>().ok()).map(
+                                |(num, ws)| {
                                     let wid = if slot_form {
                                         WmState::native_slot_pseudo_wid(
                                             crate::ui::native_dock::NativeSlotId(num),
@@ -2428,17 +2475,18 @@ impl DesktopCommand {
                                         Wid(num)
                                     };
                                     DesktopCommand::SendTo(wid, ws)
-                                })
-                        }),
+                                },
+                            )
+                        })
+                    }
                     // PLAN-709 rev2：win_rect 解析（五族数字全 f32 接受；
                     // 坏值/缺参 no-op 弃单——词表白名单容错口径）。
                     "win_rect" => {
-                        arg.split_once([Self::FIELD_SEP, '\t']).and_then(
-                            |(w, rect)| {
+                        arg.split_once([Self::FIELD_SEP, '\t'])
+                            .and_then(|(w, rect)| {
                                 let mut it = rect.split(',');
-                                let f = |t: Option<&str>| {
-                                    t.and_then(|v| v.trim().parse::<f32>().ok())
-                                };
+                                let f =
+                                    |t: Option<&str>| t.and_then(|v| v.trim().parse::<f32>().ok());
                                 let (Some(wid), Some(x), Some(y), Some(w), Some(h)) = (
                                     w.parse::<u64>().ok(),
                                     f(it.next()),
@@ -2459,8 +2507,7 @@ impl DesktopCommand {
                                     w,
                                     h,
                                 })
-                            },
-                        )
+                            })
                     }
                     // Plan 479 T2：协议 v1.2 通知动词。notify 对 arg 二次
                     // split（send_to 先例）——kind ∈ success/error/info 约定，
@@ -2484,9 +2531,7 @@ impl DesktopCommand {
                                 text.to_string(),
                             )
                         })
-                        .filter(|c| {
-                            !matches!(c, DesktopCommand::Syslog(_, t) if t.is_empty())
-                        }),
+                        .filter(|c| !matches!(c, DesktopCommand::Syslog(_, t) if t.is_empty())),
                     "notes_dismiss" => arg
                         .parse::<u64>()
                         .ok()
@@ -2514,9 +2559,10 @@ impl DesktopCommand {
                         _ => None,
                     },
                     // PLAN-526 T8/T14：win_min / set_wallpaper（arg 直传）。
-                    "win_min" => {
-                        arg.parse::<u64>().ok().map(|w| DesktopCommand::MinWindow(Wid(w)))
-                    }
+                    "win_min" => arg
+                        .parse::<u64>()
+                        .ok()
+                        .map(|w| DesktopCommand::MinWindow(Wid(w))),
                     "set_wallpaper" if !arg.is_empty() => {
                         Some(DesktopCommand::SetWallpaper(arg.to_string()))
                     }
@@ -2533,20 +2579,14 @@ impl DesktopCommand {
                         "0" => Some(DesktopCommand::SetNotesEnabled(false)),
                         _ => None,
                     },
-                    "set_dock_pinned" => {
-                        Some(DesktopCommand::SetDockPinned(arg.to_string()))
-                    }
+                    "set_dock_pinned" => Some(DesktopCommand::SetDockPinned(arg.to_string())),
                     // PLAN-012 W4 协议 v1.6：单枚固定/取消固定（空参跳过；
                     // dock_pin/dock_unpin 分隔符前全词匹配，无前缀互吞）。
-                    "dock_pin" if !arg.is_empty() => {
-                        Some(DesktopCommand::DockPin(arg.to_string()))
-                    }
+                    "dock_pin" if !arg.is_empty() => Some(DesktopCommand::DockPin(arg.to_string())),
                     "dock_unpin" if !arg.is_empty() => {
                         Some(DesktopCommand::DockUnpin(arg.to_string()))
                     }
-                    "set_wallpapers_dir" => {
-                        Some(DesktopCommand::SetWallpapersDir(arg.to_string()))
-                    }
+                    "set_wallpapers_dir" => Some(DesktopCommand::SetWallpapersDir(arg.to_string())),
                     _ => None,
                 }
             })
@@ -2588,11 +2628,7 @@ fn load_back_cdylib(
     };
     struct DesktopBackendRegistry;
     impl crate::vm::backend_abi::BackendRegistry for DesktopBackendRegistry {
-        fn host_call(
-            &self,
-            name: &str,
-            f: crate::vm::backend_abi::BackendHostCallFn,
-        ) {
+        fn host_call(&self, name: &str, f: crate::vm::backend_abi::BackendHostCallFn) {
             crate::vm::host_bridge::register_host_call(name, f);
         }
         fn inject_event(&self, _tag: &str, _json: &str) -> bool {
@@ -2792,7 +2828,15 @@ pub struct DesktopSession {
     /// 生产（ProtocolHost 持 `&mut session` 不可跨线程，线程只搬运端点），
     /// `attach_pending_incubations` 在属主线程消费落 462 会话。
     #[cfg(feature = "ui-iced")]
-    pub(crate) broker_pending: Arc<Mutex<Vec<(String, Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>, crate::ui::desktop_protocol::broker::RequestedRender)>>>,
+    pub(crate) broker_pending: Arc<
+        Mutex<
+            Vec<(
+                String,
+                Box<dyn crate::ui::desktop_protocol::transport::Transport + Send>,
+                crate::ui::desktop_protocol::broker::RequestedRender,
+            )>,
+        >,
+    >,
     /// Plan 480 S4：已落地的孵化连接表（per-app 管道名 → 连接状态）——
     /// 多 App 共享 host 的"每 App 一份"端点/表面驻留；ServiceTick 帧泵
     /// 周期 `pump_broker_clients` 驱动帧合成/回收。
@@ -2906,19 +2950,32 @@ pub enum DesktopEvent {
 pub enum LiveInput {
     /// Named 键 → Windows VK（`InputMsg::KeyPressed.key` 语义；投影器现
     /// 消费 8=Backspace/27=Escape）。
-    KeyPressed { key: u32, modifiers: u8 },
+    KeyPressed {
+        key: u32,
+        modifiers: u8,
+    },
     /// 可打印 text（逐字符 `broker_char`——CharTyped 语义；控制字符在
     /// 投影器 char_typed 侧被滤，此处原样透传）。
-    Chars { text: String },
-    ImeCommit { text: String },
+    Chars {
+        text: String,
+    },
+    ImeCommit {
+        text: String,
+    },
     /// PLAN-690 T-03：preedit 组合串 + 组合内光标选区（字节区间——iced
     /// `Preedit(String, Option<Range<usize>>)` 第二参原样透传；None =
     /// 光标隐藏）。
-    ImePreedit { text: String, selection: Option<(usize, usize)> },
+    ImePreedit {
+        text: String,
+        selection: Option<(usize, usize)>,
+    },
     ImeCancelled,
     /// 像素化滚轮增量（Lines×[`WHEEL_LINE_PX`]；投影器 on_scroll 像素
     /// 消费——editor_frame WheelScrolled 直通同号）。
-    Wheel { dx: f32, dy: f32 },
+    Wheel {
+        dx: f32,
+        dy: f32,
+    },
 }
 
 /// Lines→像素换算约定（D1 定案：1 行 = 40px；§1.10 入册）。
@@ -2987,16 +3044,28 @@ pub fn named_key_vk(name: &iced::keyboard::key::Named) -> Option<u32> {
 /// 维护）。
 pub fn live_inputs_from_keyboard(kb: &iced::keyboard::Event) -> Vec<LiveInput> {
     match kb {
-        iced::keyboard::Event::KeyPressed { key, text, modifiers, .. } => match key {
+        iced::keyboard::Event::KeyPressed {
+            key,
+            text,
+            modifiers,
+            ..
+        } => match key {
             iced::keyboard::Key::Named(name) => named_key_vk(name)
                 .map(|key| {
-                    vec![LiveInput::KeyPressed { key, modifiers: wire_modifiers(modifiers) }]
+                    vec![LiveInput::KeyPressed {
+                        key,
+                        modifiers: wire_modifiers(modifiers),
+                    }]
                 })
                 .unwrap_or_default(),
             iced::keyboard::Key::Character(_) => text
                 .as_ref()
                 .filter(|t| !t.is_empty())
-                .map(|t| vec![LiveInput::Chars { text: t.to_string() }])
+                .map(|t| {
+                    vec![LiveInput::Chars {
+                        text: t.to_string(),
+                    }]
+                })
                 .unwrap_or_default(),
             _ => Vec::new(),
         },
@@ -3008,9 +3077,7 @@ pub fn live_inputs_from_keyboard(kb: &iced::keyboard::Event) -> Vec<LiveInput> {
 /// → 三态；Opened 无子侧语义不转发。PLAN-690 T-03：Preedit 的第二参
 /// （字节选区——iced 0.14 `Option<Range<usize>>`）原样保留（此前丢弃，
 /// App 侧组合内光标不可见）。
-pub fn live_input_from_input_method(
-    im: &iced::advanced::input_method::Event,
-) -> Option<LiveInput> {
+pub fn live_input_from_input_method(im: &iced::advanced::input_method::Event) -> Option<LiveInput> {
     use iced::advanced::input_method::Event as Ime;
     Some(match im {
         Ime::Preedit(text, selection) => LiveInput::ImePreedit {
@@ -3072,7 +3139,10 @@ pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
         ) -> iced_futures::BoxStream<Self::Output> {
             use iced_futures::futures::stream::StreamExt;
             iced_futures::futures::stream::unfold(
-                None::<(NativeSlotEventHook, std::sync::mpsc::Receiver<crate::ui::native_dock::NativeSlotEvent>)>,
+                None::<(
+                    NativeSlotEventHook,
+                    std::sync::mpsc::Receiver<crate::ui::native_dock::NativeSlotEvent>,
+                )>,
                 |state| async move {
                     let Some((hook, rx)) = state else {
                         // 惰性启动；槽位被占用时退避后终止流（重订阅自愈）。
@@ -3107,7 +3177,9 @@ pub fn native_dock_event_subscription() -> iced::Subscription<DesktopMessage> {
                         Some((None, next))
                     } else {
                         Some((
-                            Some(DesktopMessage::Desktop(DesktopEvent::NativeSlotEvents(batch))),
+                            Some(DesktopMessage::Desktop(DesktopEvent::NativeSlotEvents(
+                                batch,
+                            ))),
                             next,
                         ))
                     }
@@ -3172,7 +3244,11 @@ pub fn desktop_inject_take() -> Vec<DesktopInject> {
 
 impl AppSession {
     pub fn new(id: AppId, component: DynamicComponent) -> Self {
-        Self { id, component, state: AppState::new() }
+        Self {
+            id,
+            component,
+            state: AppState::new(),
+        }
     }
 }
 
@@ -3235,7 +3311,10 @@ impl DesktopSession {
     /// desktop 模式：登记一个虚拟窗口（App 的可见容器）。返回 Wid。
     /// 窗口级字段职责随 `split_*_at` 的 desktop 分支落到 VWinState。
     pub fn wm_add_win(&mut self, app: AppId, title: String, rect: iced::Rectangle) -> Wid {
-        let host = self.host.as_mut().expect("wm_add_win requires desktop mode");
+        let host = self
+            .host
+            .as_mut()
+            .expect("wm_add_win requires desktop mode");
         host.wm.add_win(app, title, rect)
     }
 
@@ -3268,7 +3347,10 @@ impl DesktopSession {
 
     /// PLAN-030 D1：垫底虚拟窗（壳 background 伪窗）。
     pub fn wm_add_win_bottom(&mut self, app: AppId, title: String, rect: iced::Rectangle) -> Wid {
-        let host = self.host.as_mut().expect("wm_add_win_bottom requires desktop mode");
+        let host = self
+            .host
+            .as_mut()
+            .expect("wm_add_win_bottom requires desktop mode");
         host.wm.add_win_bottom(app, title, rect)
     }
 
@@ -3290,11 +3372,7 @@ impl DesktopSession {
     /// 虚拟窗（不新建组件实例）：face 与窗同会话，状态零分家（点卡片打开
     /// 的窗和桌面卡显示/操作同一份 store）。几何/布局语义与 launch_app
     /// 尾段同构（级联初位 + registry 回填 + 布局应用）。
-    pub fn open_window_for_session(
-        &mut self,
-        name: &str,
-        app_id: AppId,
-    ) -> Result<Wid, String> {
+    pub fn open_window_for_session(&mut self, name: &str, app_id: AppId) -> Result<Wid, String> {
         let title = self
             .apps
             .get(&app_id)
@@ -3362,20 +3440,17 @@ impl DesktopSession {
     /// 与布局引擎同一 `usable_rect` 口径）。
     pub fn wm_toggle_maximize(&mut self, wid: Wid) {
         let viewport = self.host_viewport();
-        let workarea = crate::ui::layout::usable_rect(
-            viewport,
-            crate::ui::layout::ReservedEdges::taskbar(),
-        );
-        let Some(host) = self.host.as_mut() else { return };
+        let workarea =
+            crate::ui::layout::usable_rect(viewport, crate::ui::layout::ReservedEdges::taskbar());
+        let Some(host) = self.host.as_mut() else {
+            return;
+        };
         host.wm.toggle_maximize_win(wid, workarea);
     }
 
     /// PLAN-709：聚焦原生槽位（chrome 点击/任务栏条目/FOREGROUND 跟随
     /// 共用底座；见 [`WmState::focus_native_slot`]）。返回是否生效。
-    pub fn wm_focus_native_slot(
-        &mut self,
-        id: crate::ui::native_dock::NativeSlotId,
-    ) -> bool {
+    pub fn wm_focus_native_slot(&mut self, id: crate::ui::native_dock::NativeSlotId) -> bool {
         self.host
             .as_mut()
             .map(|h| h.wm.focus_native_slot(id))
@@ -3430,7 +3505,9 @@ impl DesktopSession {
     /// 域 = 槽位臂（[`WmState::move_native_slot_to_workspace`]），真实 Wid
     /// = 虚拟窗臂。未知域 no-op。返回是否生效。
     pub fn wm_move_member_to_workspace(&mut self, wid: Wid, n: usize) -> bool {
-        let Some(host) = self.host.as_mut() else { return false };
+        let Some(host) = self.host.as_mut() else {
+            return false;
+        };
         if let Some(id) = crate::ui::session::WmState::native_slot_id_of_pseudo(wid) {
             return host.wm.move_native_slot_to_workspace(id, n);
         }
@@ -3454,7 +3531,12 @@ impl DesktopSession {
             .and_then(|h| self.windows.get(&h.window))
             .map(|e| *e.window_size.borrow())
             .unwrap_or(iced::Size::new(1280.0, 800.0));
-        iced::Rectangle { x: 0.0, y: 0.0, width: size.width, height: size.height }
+        iced::Rectangle {
+            x: 0.0,
+            y: 0.0,
+            width: size.width,
+            height: size.height,
+        }
     }
 
     /// Plan 463 T4：DesktopBus 排空 —— 读+清 shell 与 desktop 两个特权
@@ -3487,14 +3569,15 @@ impl DesktopSession {
         let Some(app) = self.apps.get_mut(&app_id) else {
             return Vec::new();
         };
-        let Ok(auto_val::Value::Str(payload)) = app.component.read_state("__dashboard_cmd")
-        else {
+        let Ok(auto_val::Value::Str(payload)) = app.component.read_state("__dashboard_cmd") else {
             return Vec::new();
         };
         if payload.is_empty() {
             return Vec::new();
         }
-        let _ = app.component.write_state("__dashboard_cmd", auto_val::Value::str(""));
+        let _ = app
+            .component
+            .write_state("__dashboard_cmd", auto_val::Value::str(""));
         DesktopCommand::parse_records(&payload)
     }
 
@@ -3510,166 +3593,180 @@ impl DesktopSession {
         if payload.is_empty() {
             return Vec::new();
         }
-        let _ = app.component.write_state("__desktop_cmd", auto_val::Value::str(""));
+        let _ = app
+            .component
+            .write_state("__desktop_cmd", auto_val::Value::str(""));
         DesktopCommand::parse_records(&payload)
     }
 
-
-/// Plan 508 G1：outproc 子进程寻源身份——source_path（注册表条目
-/// `<root>/<dir>/src/front/app.at`）剥三层得 App 目录名、四层得装载根。
-/// 主根 id==目录名；外部根（os-config/auto）id≠目录名——目录名 +
-/// resolver 目录名兜底（renderer 装配处）保两形态同源。无 source_path
-/// （内联 spec）→ launch 名透传 + None（子进程缺省根 examples/ui）。
-fn outproc_child_identity(
-    spec: &LaunchSpec,
-    launch_name: &str,
-) -> (String, Option<std::path::PathBuf>) {
-    let Some(dir) = spec
-        .source_path
-        .as_deref()
-        .and_then(|p| std::path::Path::new(p).ancestors().nth(3))
-    else {
-        return (launch_name.to_string(), None);
-    };
-    let Some(dir_name) = dir.file_name() else {
-        return (launch_name.to_string(), None);
-    };
-    (
-        dir_name.to_string_lossy().to_string(),
-        dir.parent().map(|root| root.to_path_buf()),
-    )
-}
-
-/// Plan 020 T-06：native exe 发现序（待澄清②定案：pac 声明为主 + 约定
-/// 路径兜底）——①`LaunchSpec.exe`（pac `desktop_exe:`，resolver 装配期已
-/// 相对 App 根解析；声明即信，缺失在 spawn 臂报错——"声明了但未构建"
-/// 走 toast，不静默回退解释臂）→ ②rust-workspace 约定路径扫描（约定
-/// 单源 = [`crate::ui::app_registry::convention_native_exe`]：组内约定
-/// + PLAN-694 共享工作区两落点；exe 名 pac name 蛇形 > 原名 > 目录名）。
-/// 两者皆无 → None = 现行解释态 outproc 臂。
-pub(crate) fn outproc_native_exe(spec: &LaunchSpec) -> Option<std::path::PathBuf> {
-    if spec.exe.is_some() {
-        return spec.exe.clone();
+    /// Plan 508 G1：outproc 子进程寻源身份——source_path（注册表条目
+    /// `<root>/<dir>/src/front/app.at`）剥三层得 App 目录名、四层得装载根。
+    /// 主根 id==目录名；外部根（os-config/auto）id≠目录名——目录名 +
+    /// resolver 目录名兜底（renderer 装配处）保两形态同源。无 source_path
+    /// （内联 spec）→ launch 名透传 + None（子进程缺省根 examples/ui）。
+    fn outproc_child_identity(
+        spec: &LaunchSpec,
+        launch_name: &str,
+    ) -> (String, Option<std::path::PathBuf>) {
+        let Some(dir) = spec
+            .source_path
+            .as_deref()
+            .and_then(|p| std::path::Path::new(p).ancestors().nth(3))
+        else {
+            return (launch_name.to_string(), None);
+        };
+        let Some(dir_name) = dir.file_name() else {
+            return (launch_name.to_string(), None);
+        };
+        (
+            dir_name.to_string_lossy().to_string(),
+            dir.parent().map(|root| root.to_path_buf()),
+        )
     }
-    let dir = spec
-        .source_path
-        .as_deref()
-        .and_then(|p| std::path::Path::new(p).ancestors().nth(3))?;
-    crate::ui::app_registry::convention_native_exe(dir, spec.name.as_deref())
-}
 
-/// Plan 020 T-06：native exe 子进程 spawn——a2r 编译产物自带孵化参数解析
-/// （T-05 生成 main gate）：无 `run` 子命令、不注入 `AUTO_386_APP_ROOT`
-/// 解释根；参数面与解释态同形（`--app386=<dir>` 在 native 侧为 Hello
-/// app_name 覆盖——宿主认领按目录名匹配同源）。NEXTEST_* 剥除同款。
-fn spawn_exe_child(
-    exe: &std::path::Path,
-    child_name: &str,
-    broker_pipe: &str,
-    render: Option<&str>,
-) -> std::io::Result<std::process::Child> {
-    let mut cmd = std::process::Command::new(exe);
-    cmd.args(Self::spawn_exe_child_args(child_name, broker_pipe, render));
-    // AUTO_OUTPROC_STDERR=1 诊断口：继承宿主 stderr（子进程 panic 可见）。
-    let inherit = std::env::var("AUTO_OUTPROC_STDERR").is_ok();
-    cmd.stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(if inherit { std::process::Stdio::inherit() } else { std::process::Stdio::null() });
-    for (key, _) in std::env::vars() {
-        if key.starts_with("NEXTEST_") {
-            cmd.env_remove(&key);
+    /// Plan 020 T-06：native exe 发现序（待澄清②定案：pac 声明为主 + 约定
+    /// 路径兜底）——①`LaunchSpec.exe`（pac `desktop_exe:`，resolver 装配期已
+    /// 相对 App 根解析；声明即信，缺失在 spawn 臂报错——"声明了但未构建"
+    /// 走 toast，不静默回退解释臂）→ ②rust-workspace 约定路径扫描（约定
+    /// 单源 = [`crate::ui::app_registry::convention_native_exe`]：组内约定
+    /// + PLAN-694 共享工作区两落点；exe 名 pac name 蛇形 > 原名 > 目录名）。
+    /// 两者皆无 → None = 现行解释态 outproc 臂。
+    pub(crate) fn outproc_native_exe(spec: &LaunchSpec) -> Option<std::path::PathBuf> {
+        if spec.exe.is_some() {
+            return spec.exe.clone();
         }
+        let dir = spec
+            .source_path
+            .as_deref()
+            .and_then(|p| std::path::Path::new(p).ancestors().nth(3))?;
+        crate::ui::app_registry::convention_native_exe(dir, spec.name.as_deref())
     }
-    cmd.spawn()
-}
 
-/// PLAN-694 T-01 方言对齐（宿主侧单源，a 案裁定——`rqhost_gate_validate`
-/// 只校验 `--render=` 值域/`--rq-host=` 预留旗标，不触及 spawn 参数面，
-/// 无冲突）：孵化参数拼装单源（纯函数面——单测钉住双方言并发）。
-///
-/// - **desktop 方言（增发）**：`--render-mode=desktop --desktop-endpoint=
-///   <broker_pipe>`——693+ 新 exe 以 CLI 顶优先进 Desktop 臂（不孵化，
-///   adopt 直连桌面宿主 broker 管道；宿主 serve 双动词受理，broker.rs），
-///   remote 帧宿主 = DisplayList v2；
-/// - **autodesk 方言（保留）**：`--autodesk-incubate --app386=<name>
-///   --autodesk-broker=<pipe>`——旧二进制（693 前）不识 render-mode 族
-///  （生成 gate 容错透传/解析缺位），落回孵化臂零变化；
-/// - **render 档透传**：`--autodesk-render=<v>`（pac `desktop_render:`
-///   queue 档显式下发）——档位与模式解耦：新 exe desktop 模式下仅存档
-///  （CLI 已裁底座），旧 exe 孵化臂继续消费。
-fn spawn_exe_child_args(
-    child_name: &str,
-    broker_pipe: &str,
-    render: Option<&str>,
-) -> Vec<String> {
-    vec![
-        "--render-mode=desktop".to_string(),
-        format!("--desktop-endpoint={broker_pipe}"),
-        "--autodesk-incubate".to_string(),
-        format!("--app386={child_name}"),
-        format!("--autodesk-broker={broker_pipe}"),
-    ]
-    .into_iter()
-    .chain(render.map(|v| format!("--autodesk-render={v}")))
-    .collect()
-}
-
-/// Plan 508 G1：outproc 子进程本体定位——宿主即 `auto` 二进制
-/// （`auto run --desktop`）时用 current_exe；其他宿主（ui_desktop 验收/
-/// 实机宿主）取同目录的 auto 兄弟二进制（target/{debug,release}/ 共存
-/// 形态）。找不到 → Err（launch 臂转 toast，桌面不炸）。
-fn outproc_auto_binary() -> std::io::Result<std::path::PathBuf> {
-    let exe = std::env::current_exe()?;
-    let is_auto = exe.file_name().is_some_and(|n| n == "auto" || n == "auto.exe");
-    if is_auto {
-        return Ok(exe);
-    }
-    // 同目录向上至多三级探测（target/debug/examples/x.exe → target/debug/
-    // 的 auto；target/debug/auto.exe 自命中在首行短路）。
-    let name = if cfg!(windows) { "auto.exe" } else { "auto" };
-    let mut dir = exe.parent();
-    for _ in 0..3 {
-        let Some(d) = dir else { break };
-        let candidate = d.join(name);
-        if candidate.is_file() {
-            return Ok(candidate);
+    /// Plan 020 T-06：native exe 子进程 spawn——a2r 编译产物自带孵化参数解析
+    /// （T-05 生成 main gate）：无 `run` 子命令、不注入 `AUTO_386_APP_ROOT`
+    /// 解释根；参数面与解释态同形（`--app386=<dir>` 在 native 侧为 Hello
+    /// app_name 覆盖——宿主认领按目录名匹配同源）。NEXTEST_* 剥除同款。
+    fn spawn_exe_child(
+        exe: &std::path::Path,
+        child_name: &str,
+        broker_pipe: &str,
+        render: Option<&str>,
+    ) -> std::io::Result<std::process::Child> {
+        let mut cmd = std::process::Command::new(exe);
+        cmd.args(Self::spawn_exe_child_args(child_name, broker_pipe, render));
+        // AUTO_OUTPROC_STDERR=1 诊断口：继承宿主 stderr（子进程 panic 可见）。
+        let inherit = std::env::var("AUTO_OUTPROC_STDERR").is_ok();
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(if inherit {
+                std::process::Stdio::inherit()
+            } else {
+                std::process::Stdio::null()
+            });
+        for (key, _) in std::env::vars() {
+            if key.starts_with("NEXTEST_") {
+                cmd.env_remove(&key);
+            }
         }
-        dir = d.parent();
+        cmd.spawn()
     }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        format!("outproc child binary `{name}` not found beside host {}", exe.display()),
-    ))
-}
 
-/// PLAN-030 T-03：壳 outproc spawner——re-exec auto 本体
-/// （`run --autodesk-shell --autodesk-broker=<pipe>`）+ 几何 env 注入。
-/// `AUTO_SHELL_GEOM=<W>x<H>x<BAND>`：双表面尺寸（background 全屏 +
-/// chrome 任务栏带——D1 定案）。
-/// PLAN-036 D4：`AUTO_SHELL_PACK` 注入收窄为**仅显式命中**（override/
-/// env——`resolve_shell_pack_explicit`）；兄弟/主检出发现链不再注入
-/// （child 缺省编译轨——auto.exe 链入 shell-pack；027 §5.1 D5 双轨
-/// 开关语义：显式 = 开发态解释 child 同源钉住）。
-fn spawn_shell_outproc(
-    geometry: &crate::ui::desktop_protocol::shell_client::ShellGeometry,
-    broker_pipe: &str,
-) -> std::io::Result<std::process::Child> {
-    let exe = Self::outproc_auto_binary()?;
-    let mut cmd = std::process::Command::new(&exe);
-    cmd.args(["run", "--autodesk-shell", &format!("--autodesk-broker={broker_pipe}")]);
-    cmd.env("AUTO_SHELL_GEOM", geometry.encode());
-    if let Some(dir) = crate::ui::shell::resolve_shell_pack_explicit() {
-        cmd.env("AUTO_SHELL_PACK", dir);
+    /// PLAN-694 T-01 方言对齐（宿主侧单源，a 案裁定——`rqhost_gate_validate`
+    /// 只校验 `--render=` 值域/`--rq-host=` 预留旗标，不触及 spawn 参数面，
+    /// 无冲突）：孵化参数拼装单源（纯函数面——单测钉住双方言并发）。
+    ///
+    /// - **desktop 方言（增发）**：`--render-mode=desktop --desktop-endpoint=
+    ///   <broker_pipe>`——693+ 新 exe 以 CLI 顶优先进 Desktop 臂（不孵化，
+    ///   adopt 直连桌面宿主 broker 管道；宿主 serve 双动词受理，broker.rs），
+    ///   remote 帧宿主 = DisplayList v2；
+    /// - **autodesk 方言（保留）**：`--autodesk-incubate --app386=<name>
+    ///   --autodesk-broker=<pipe>`——旧二进制（693 前）不识 render-mode 族
+    ///  （生成 gate 容错透传/解析缺位），落回孵化臂零变化；
+    /// - **render 档透传**：`--autodesk-render=<v>`（pac `desktop_render:`
+    ///   queue 档显式下发）——档位与模式解耦：新 exe desktop 模式下仅存档
+    ///  （CLI 已裁底座），旧 exe 孵化臂继续消费。
+    fn spawn_exe_child_args(
+        child_name: &str,
+        broker_pipe: &str,
+        render: Option<&str>,
+    ) -> Vec<String> {
+        vec![
+            "--render-mode=desktop".to_string(),
+            format!("--desktop-endpoint={broker_pipe}"),
+            "--autodesk-incubate".to_string(),
+            format!("--app386={child_name}"),
+            format!("--autodesk-broker={broker_pipe}"),
+        ]
+        .into_iter()
+        .chain(render.map(|v| format!("--autodesk-render={v}")))
+        .collect()
     }
-    for (key, _) in std::env::vars() {
-        if key.starts_with("NEXTEST_") {
-            cmd.env_remove(&key);
+
+    /// Plan 508 G1：outproc 子进程本体定位——宿主即 `auto` 二进制
+    /// （`auto run --desktop`）时用 current_exe；其他宿主（ui_desktop 验收/
+    /// 实机宿主）取同目录的 auto 兄弟二进制（target/{debug,release}/ 共存
+    /// 形态）。找不到 → Err（launch 臂转 toast，桌面不炸）。
+    fn outproc_auto_binary() -> std::io::Result<std::path::PathBuf> {
+        let exe = std::env::current_exe()?;
+        let is_auto = exe
+            .file_name()
+            .is_some_and(|n| n == "auto" || n == "auto.exe");
+        if is_auto {
+            return Ok(exe);
         }
+        // 同目录向上至多三级探测（target/debug/examples/x.exe → target/debug/
+        // 的 auto；target/debug/auto.exe 自命中在首行短路）。
+        let name = if cfg!(windows) { "auto.exe" } else { "auto" };
+        let mut dir = exe.parent();
+        for _ in 0..3 {
+            let Some(d) = dir else { break };
+            let candidate = d.join(name);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+            dir = d.parent();
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!(
+                "outproc child binary `{name}` not found beside host {}",
+                exe.display()
+            ),
+        ))
     }
-    cmd.spawn()
-}
 
-/// Plan 463 T4：LaunchApp 执行体（T1 报告 §5）—— 注册表解析 →
+    /// PLAN-030 T-03：壳 outproc spawner——re-exec auto 本体
+    /// （`run --autodesk-shell --autodesk-broker=<pipe>`）+ 几何 env 注入。
+    /// `AUTO_SHELL_GEOM=<W>x<H>x<BAND>`：双表面尺寸（background 全屏 +
+    /// chrome 任务栏带——D1 定案）。
+    /// PLAN-036 D4：`AUTO_SHELL_PACK` 注入收窄为**仅显式命中**（override/
+    /// env——`resolve_shell_pack_explicit`）；兄弟/主检出发现链不再注入
+    /// （child 缺省编译轨——auto.exe 链入 shell-pack；027 §5.1 D5 双轨
+    /// 开关语义：显式 = 开发态解释 child 同源钉住）。
+    fn spawn_shell_outproc(
+        geometry: &crate::ui::desktop_protocol::shell_client::ShellGeometry,
+        broker_pipe: &str,
+    ) -> std::io::Result<std::process::Child> {
+        let exe = Self::outproc_auto_binary()?;
+        let mut cmd = std::process::Command::new(&exe);
+        cmd.args([
+            "run",
+            "--autodesk-shell",
+            &format!("--autodesk-broker={broker_pipe}"),
+        ]);
+        cmd.env("AUTO_SHELL_GEOM", geometry.encode());
+        if let Some(dir) = crate::ui::shell::resolve_shell_pack_explicit() {
+            cmd.env("AUTO_SHELL_PACK", dir);
+        }
+        for (key, _) in std::env::vars() {
+            if key.starts_with("NEXTEST_") {
+                cmd.env_remove(&key);
+            }
+        }
+        cmd.spawn()
+    }
+
+    /// Plan 463 T4：LaunchApp 执行体（T1 报告 §5）—— 注册表解析 →
     /// `build_dynamic_component` 编译装载 → `allocate_app` → 新虚拟窗
     /// （free 模式级联初位；非 free 随即整场重排）→ 聚焦。失败返回
     /// Err（调用方转 toast，不阻断桌面）。
@@ -3696,8 +3793,8 @@ fn spawn_shell_outproc(
         if manifest_launch.as_deref() != Some("native") {
             if let Some(resolver) = self.desktop.app_resolver.clone() {
                 if let Some(spec) = resolver(name) {
-                    let native_ok = manifest_launch.as_deref() == Some("native")
-                        || manifest_launch.is_none();
+                    let native_ok =
+                        manifest_launch.as_deref() == Some("native") || manifest_launch.is_none();
                     if native_ok && Self::outproc_native_exe(&spec).is_some() {
                         eprintln!("[session] launch_app(outproc-native) {name}");
                         return self.launch_app_outproc(name);
@@ -3739,7 +3836,9 @@ fn spawn_shell_outproc(
         // launch 作用域 overlay 变换（back_prefix guard，build 返回即清）。
         let provision_root = self.ensure_backend(&spec, name);
         let provisioned_code = match &provision_root {
-            Some(root) => crate::ui::back_provision::prefix_api_url_literals(&spec.code, root, name),
+            Some(root) => {
+                crate::ui::back_provision::prefix_api_url_literals(&spec.code, root, name)
+            }
             None => spec.code.clone(),
         };
         let _prefix_guard = provision_root.as_ref().and_then(|root| {
@@ -3748,11 +3847,13 @@ fn spawn_shell_outproc(
                 .as_deref()
                 .and_then(|p| std::path::Path::new(p).parent())
                 .map(|d| d.to_path_buf())?;
-            Some(crate::back_prefix::set_guard(crate::back_prefix::PrefixSpec {
-                front_dir,
-                root: root.clone(),
-                app_key: name.to_string(),
-            }))
+            Some(crate::back_prefix::set_guard(
+                crate::back_prefix::PrefixSpec {
+                    front_dir,
+                    root: root.clone(),
+                    app_key: name.to_string(),
+                },
+            ))
         });
         // PLAN-024 T-01 续:级联 rect 提前算——组件构建(Init 在
         // build_dynamic_component 内运行)先于 wm_add_win,Init 期
@@ -3776,16 +3877,16 @@ fn spawn_shell_outproc(
         }
         let comp = crate::build_dynamic_component(&provisioned_code, spec.source_path.as_deref())
             .map_err(|e| {
-                // 编译失败回滚供给计数（app 未诞生无窗可 release——归零即
-                // 卸载，防计数泄漏）。
-                if provision_root.is_some() {
-                    self.release_app_key(name);
-                }
-                // PLAN-043 走查（2026-09-24）：build 失败详情此前只进瞬时
-                // toast（通知槽轮换即失）——落一行 stderr 供实机诊断对账。
-                eprintln!("[session] build `{name}` failed: {e}");
-                format!("build `{name}` failed: {e}")
-            })?;
+            // 编译失败回滚供给计数（app 未诞生无窗可 release——归零即
+            // 卸载，防计数泄漏）。
+            if provision_root.is_some() {
+                self.release_app_key(name);
+            }
+            // PLAN-043 走查（2026-09-24）：build 失败详情此前只进瞬时
+            // toast（通知槽轮换即失）——落一行 stderr 供实机诊断对账。
+            eprintln!("[session] build `{name}` failed: {e}");
+            format!("build `{name}` failed: {e}")
+        })?;
         let title = spec.title.unwrap_or_else(|| comp.widget_name().to_string());
         let app_id = self.allocate_app(comp);
         // PLAN-037 T-04：AppId → app_key 供给归属绑定（关窗站点反查）。
@@ -3869,10 +3970,8 @@ fn spawn_shell_outproc(
         // 解析序内建（resolve_os_manifest_root：AUTO_OS_ROOT env 权威 →
         // 兄弟 ../auto-os → 主检出 D:/autostack/auto-os）——单次 lookup
         // 即覆盖 desktop.sh 注入与开发机两形态，无需 session 侧再分臂。
-        let Some((repo_dir, def)) = crate::ui::app_registry::manifest_daemon_lookup(
-            std::path::Path::new(".."),
-            name,
-        )
+        let Some((repo_dir, def)) =
+            crate::ui::app_registry::manifest_daemon_lookup(std::path::Path::new(".."), name)
         else {
             self.desktop.osconfig_status = crate::ui::osconfig_daemon::DaemonStatus::Offline(
                 format!("daemon `{name}` 未在 apps.manifest 声明（daemon 字段缺席或条目未登记）"),
@@ -3894,7 +3993,10 @@ fn spawn_shell_outproc(
             }),
             env_key: daemon_env_key(name),
             env_port_key: def.env_port.clone().unwrap_or_else(|| {
-                format!("{}_BACK_PORT", daemon_env_key(name).trim_end_matches("_DAEMON"))
+                format!(
+                    "{}_BACK_PORT",
+                    daemon_env_key(name).trim_end_matches("_DAEMON")
+                )
             }),
         };
         let status = ensure_generic_io(
@@ -3948,14 +4050,12 @@ fn spawn_shell_outproc(
                          解释态两合法形态 = inproc 直挂 / `-q` 经 native 臂——PLAN-033）"
                     )
                 })?;
-                eprintln!("[session] launch_app(outproc-native) {name} <- {}", exe.display());
-                Self::spawn_exe_child(
-                    exe,
-                    &child_name,
-                    &broker_pipe,
-                    spec.render_decl.as_deref(),
-                )
-                .map_err(|e| format!("spawn outproc child: {e}"))?
+                eprintln!(
+                    "[session] launch_app(outproc-native) {name} <- {}",
+                    exe.display()
+                );
+                Self::spawn_exe_child(exe, &child_name, &broker_pipe, spec.render_decl.as_deref())
+                    .map_err(|e| format!("spawn outproc child: {e}"))?
             }
         };
         self.desktop.outproc_children.push(child);
@@ -3997,11 +4097,7 @@ fn spawn_shell_outproc(
     /// ProtocolHost 持 `&mut session` 不可跨线程，落会话由属主线程经
     /// [`Self::attach_pending_incubations`] 执行。
     #[cfg(feature = "ui-iced")]
-    pub fn enable_broker(
-        &mut self,
-        pipe_name: &str,
-        stop: Arc<std::sync::atomic::AtomicBool>,
-    ) {
+    pub fn enable_broker(&mut self, pipe_name: &str, stop: Arc<std::sync::atomic::AtomicBool>) {
         use crate::ui::desktop_protocol::broker::Broker;
         use std::sync::atomic::Ordering;
         let mut broker = Broker::on_pipe(pipe_name.to_string());
@@ -4014,7 +4110,10 @@ fn spawn_shell_outproc(
                 while !stop.load(Ordering::Relaxed) {
                     match broker.serve_once() {
                         Ok(Some(inc)) => {
-                            pending.lock().unwrap().push((inc.pipe_name, inc.end, inc.render))
+                            pending
+                                .lock()
+                                .unwrap()
+                                .push((inc.pipe_name, inc.end, inc.render))
                         }
                         Ok(None) => {} // 探测 ping：吞掉重听
                         Err(_) => {
@@ -4087,8 +4186,10 @@ fn spawn_shell_outproc(
                 Some(wid) => {
                     wids.push(wid);
                     if render.auto_downgraded {
-                        let app =
-                            client.app_name.clone().unwrap_or_else(|| "<unknown>".into());
+                        let app = client
+                            .app_name
+                            .clone()
+                            .unwrap_or_else(|| "<unknown>".into());
                         let line =
                             format!("[render] {app}: auto -> independent (coverage downgrade)");
                         crate::vm::ui_console::ui_console_push(&line);
@@ -4151,7 +4252,9 @@ fn spawn_shell_outproc(
         const WINDOW_MS: u64 = 60_000;
         let now = std::time::Instant::now();
         let attempt = match self.desktop.shell_respawn {
-            Some(ref st) if now.duration_since(st.window_start).as_millis() as u64 >= WINDOW_MS => 0,
+            Some(ref st) if now.duration_since(st.window_start).as_millis() as u64 >= WINDOW_MS => {
+                0
+            }
             Some(ref st) => st.attempt + 1,
             None => 0,
         };
@@ -4182,7 +4285,9 @@ fn spawn_shell_outproc(
     /// push 由 attach 侧指纹失效自动达成）。返回 true = 本次发起了 respawn。
     #[cfg(feature = "ui-iced")]
     pub fn shell_watchdog_step(&mut self) -> bool {
-        let Some(st) = self.desktop.shell_respawn else { return false };
+        let Some(st) = self.desktop.shell_respawn else {
+            return false;
+        };
         if std::time::Instant::now() < st.due {
             return false;
         }
@@ -4217,8 +4322,9 @@ fn spawn_shell_outproc(
             .ok_or("broker 未启动（enable_broker 先行）")?;
         let child = match &self.desktop.shell_spawner {
             Some(spawn) => spawn(&geometry, &broker_pipe).map_err(|e| e.to_string())?,
-            None => Self::spawn_shell_outproc(&geometry, &broker_pipe)
-                .map_err(|e| e.to_string())?,
+            None => {
+                Self::spawn_shell_outproc(&geometry, &broker_pipe).map_err(|e| e.to_string())?
+            }
         };
         self.desktop.outproc_children.push(child);
         Ok(())
@@ -4450,11 +4556,18 @@ fn spawn_shell_outproc(
     /// Plan 480 S4：桌面级指针按下路由——WM 命中 → 聚焦 → (Wid, event)
     /// 注入**命中窗所属 client** 的连接。返回是否路由成功。
     #[cfg(feature = "ui-iced")]
-    pub fn broker_pointer_down(&mut self, x: f32, y: f32, button: crate::ui::desktop_protocol::message::MouseButton) -> bool {
+    pub fn broker_pointer_down(
+        &mut self,
+        x: f32,
+        y: f32,
+        button: crate::ui::desktop_protocol::message::MouseButton,
+    ) -> bool {
         use crate::ui::desktop_protocol::message::InputMsg;
         use crate::ui::desktop_protocol::message::ProtocolMsg;
         let wid = {
-            let Some(host) = self.host.as_ref() else { return false };
+            let Some(host) = self.host.as_ref() else {
+                return false;
+            };
             match host.wm.hit_test(x, y) {
                 Some(w) => w,
                 None => return false,
@@ -4462,7 +4575,9 @@ fn spawn_shell_outproc(
         };
         self.wm_focus(wid);
         let rect = {
-            let Some(host) = self.host.as_ref() else { return false };
+            let Some(host) = self.host.as_ref() else {
+                return false;
+            };
             match host.wm.wins.get(&wid) {
                 Some(v) => *v.rect.borrow(),
                 None => return false,
@@ -4496,8 +4611,12 @@ fn spawn_shell_outproc(
         use crate::ui::desktop_protocol::message::InputMsg;
         use crate::ui::desktop_protocol::message::ProtocolMsg;
         let (wid, rect) = {
-            let Some(host) = self.host.as_ref() else { return false };
-            let Some(wid) = host.wm.hit_test(x, y) else { return false };
+            let Some(host) = self.host.as_ref() else {
+                return false;
+            };
+            let Some(wid) = host.wm.hit_test(x, y) else {
+                return false;
+            };
             let Some(rect) = host.wm.wins.get(&wid).map(|v| *v.rect.borrow()) else {
                 return false;
             };
@@ -4527,13 +4646,19 @@ fn spawn_shell_outproc(
     pub fn broker_key_event(&mut self, key: u32, modifiers: u8) -> bool {
         use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
         let wid = {
-            let Some(host) = self.host.as_ref() else { return false };
+            let Some(host) = self.host.as_ref() else {
+                return false;
+            };
             match host.wm.focused {
                 Some(w) => w,
                 None => return false,
             }
         };
-        let input = ProtocolMsg::Input(InputMsg::KeyPressed { wid: wid.0, key, modifiers });
+        let input = ProtocolMsg::Input(InputMsg::KeyPressed {
+            wid: wid.0,
+            key,
+            modifiers,
+        });
         for client in self.broker_clients.values_mut() {
             if client.owns_wid(wid) {
                 return client.end.send(&input).is_ok();
@@ -4547,7 +4672,9 @@ fn spawn_shell_outproc(
     pub fn broker_char(&mut self, ch: char) -> bool {
         use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
         let wid = {
-            let Some(host) = self.host.as_ref() else { return false };
+            let Some(host) = self.host.as_ref() else {
+                return false;
+            };
             match host.wm.focused {
                 Some(w) => w,
                 None => return false,
@@ -4569,13 +4696,18 @@ fn spawn_shell_outproc(
     pub fn broker_ime_commit(&mut self, text: &str) -> bool {
         use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
         let wid = {
-            let Some(host) = self.host.as_ref() else { return false };
+            let Some(host) = self.host.as_ref() else {
+                return false;
+            };
             match host.wm.focused {
                 Some(w) => w,
                 None => return false,
             }
         };
-        let input = ProtocolMsg::Input(InputMsg::ImeCommit { wid: wid.0, text: text.to_string() });
+        let input = ProtocolMsg::Input(InputMsg::ImeCommit {
+            wid: wid.0,
+            text: text.to_string(),
+        });
         for client in self.broker_clients.values_mut() {
             if client.owns_wid(wid) {
                 return client.end.send(&input).is_ok();
@@ -4591,7 +4723,9 @@ fn spawn_shell_outproc(
     pub fn broker_ime_preedit(&mut self, text: &str, selection: Option<(usize, usize)>) -> bool {
         use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
         let wid = {
-            let Some(host) = self.host.as_ref() else { return false };
+            let Some(host) = self.host.as_ref() else {
+                return false;
+            };
             match host.wm.focused {
                 Some(w) => w,
                 None => return false,
@@ -4615,7 +4749,9 @@ fn spawn_shell_outproc(
     pub fn broker_ime_cancelled(&mut self) -> bool {
         use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
         let wid = {
-            let Some(host) = self.host.as_ref() else { return false };
+            let Some(host) = self.host.as_ref() else {
+                return false;
+            };
             match host.wm.focused {
                 Some(w) => w,
                 None => return false,
@@ -4636,7 +4772,9 @@ fn spawn_shell_outproc(
     pub fn broker_scroll(&mut self, x: f32, y: f32, dx: f32, dy: f32) -> bool {
         use crate::ui::desktop_protocol::message::{InputMsg, ProtocolMsg};
         let wid = {
-            let Some(host) = self.host.as_ref() else { return false };
+            let Some(host) = self.host.as_ref() else {
+                return false;
+            };
             match host.wm.hit_test(x, y) {
                 Some(w) => w,
                 None => return false,
@@ -4666,9 +4804,7 @@ fn spawn_shell_outproc(
                 routed
             }
             LiveInput::ImeCommit { text } => self.broker_ime_commit(text),
-            LiveInput::ImePreedit { text, selection } => {
-                self.broker_ime_preedit(text, *selection)
-            }
+            LiveInput::ImePreedit { text, selection } => self.broker_ime_preedit(text, *selection),
             LiveInput::ImeCancelled => self.broker_ime_cancelled(),
             LiveInput::Wheel { dx, dy } => {
                 // 滚轮路由指针命中窗（hover 语义）——listen_with 回调不带
@@ -4692,11 +4828,11 @@ fn spawn_shell_outproc(
         actions: Vec<crate::ui::desktop_protocol::endpoint::HostAction>,
     ) -> Vec<crate::ui::desktop_protocol::message::ProtocolMsg> {
         use crate::ui::desktop_protocol::endpoint::HostAction;
+        use crate::ui::desktop_protocol::host::rect_to_wire;
         use crate::ui::desktop_protocol::message::{
             surface_role, FrameMsg, ProtocolMsg, WelcomeSurface,
         };
         use crate::ui::desktop_protocol::shm::SharedFrameBuffer;
-        use crate::ui::desktop_protocol::host::rect_to_wire;
         let mut to_app = Vec::new();
         for action in actions {
             match action {
@@ -4716,7 +4852,14 @@ fn spawn_shell_outproc(
                         self.desktop.desktop_bus_inbox.push((source.clone(), cmd));
                     }
                 }
-                HostAction::ResolveAndAttach { app_name, title, width, height, surfaces, .. } => {
+                HostAction::ResolveAndAttach {
+                    app_name,
+                    title,
+                    width,
+                    height,
+                    surfaces,
+                    ..
+                } => {
                     if app_name == "shell" && !surfaces.is_empty() {
                         // PLAN-030 T-04（§5.1 D1/D7）：壳分支——不经注册表/
                         // 无宿主侧镜像组件；双伪窗（background 垫底 + chrome
@@ -4727,12 +4870,11 @@ fn spawn_shell_outproc(
                         else {
                             continue;
                         };
-                        let geometry =
-                            crate::ui::desktop_protocol::shell_client::ShellGeometry {
-                                viewport_w: width,
-                                viewport_h: height,
-                                band_h: chrome_decl.height,
-                            };
+                        let geometry = crate::ui::desktop_protocol::shell_client::ShellGeometry {
+                            viewport_w: width,
+                            viewport_h: height,
+                            band_h: chrome_decl.height,
+                        };
                         client.app_name = Some("shell".into());
                         // background 伪窗（领头声明 = 全屏）。
                         let bg_rect = iced::Rectangle::new(
@@ -4749,8 +4891,7 @@ fn spawn_shell_outproc(
                             iced::Size::new(width, chrome_decl.height),
                         );
                         let chrome_wid = self.wm_add_win(AppId(0), "shell".into(), band_rect);
-                        let chrome_surface =
-                            client.surfaces.alloc(width, chrome_decl.height);
+                        let chrome_surface = client.surfaces.alloc(width, chrome_decl.height);
                         client.wid_surface.insert(chrome_wid.0, chrome_surface);
                         // PLAN-036 T-04（B1）：overlay 伪窗（OVERLAY 声明
                         // 依序 = switcher → notification_center；全屏 rect
@@ -4951,8 +5092,7 @@ fn spawn_shell_outproc(
                         }
                     };
                     // 全局唯一：pid 前缀防跨进程同名段（同 host.rs 注记）。
-                    let shm_name =
-                        format!("autodesk-shm-{}-{surface}", std::process::id());
+                    let shm_name = format!("autodesk-shm-{}-{surface}", std::process::id());
                     let Ok(shm) = SharedFrameBuffer::create(&shm_name, 2, slot_size) else {
                         continue;
                     };
@@ -4960,11 +5100,8 @@ fn spawn_shell_outproc(
                     // PLAN-034 D3：位图段双胞胎（专用第二段——槽尺寸
                     // = 表面档 ×4 字节余量（2× 线性），rqhost 同则）。
                     let bm_name = format!("{shm_name}-bm");
-                    let bm_slot_size = width.ceil().max(1.0) as u32
-                        * height.ceil().max(1.0) as u32
-                        * 4
-                        * 4
-                        + 4;
+                    let bm_slot_size =
+                        width.ceil().max(1.0) as u32 * height.ceil().max(1.0) as u32 * 4 * 4 + 4;
                     let bm = match SharedFrameBuffer::create(&bm_name, 2, bm_slot_size) {
                         Ok(seg) => {
                             client.bm_shm.insert(surface, seg);
@@ -4999,7 +5136,14 @@ fn spawn_shell_outproc(
                         Err(_) => continue,
                     }
                 }
-                HostAction::ComposeFrame { surface, wid, frame_id, slot, payload, .. } => {
+                HostAction::ComposeFrame {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    payload,
+                    ..
+                } => {
                     if let Some(freed) = client.surfaces.compose(surface, slot, payload) {
                         to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
                             wid,
@@ -5009,7 +5153,14 @@ fn spawn_shell_outproc(
                     }
                 }
                 // PLAN-683（remote 模式）：v2 内嵌帧 → v2 槽合成。
-                HostAction::ComposeFrameV2 { surface, wid, frame_id, slot, payload, .. } => {
+                HostAction::ComposeFrameV2 {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    payload,
+                    ..
+                } => {
                     if let Some(freed) = client.surfaces.compose_v2(surface, slot, payload) {
                         to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
                             wid,
@@ -5018,7 +5169,13 @@ fn spawn_shell_outproc(
                         }));
                     }
                 }
-                HostAction::ComposeFrameShared { surface, wid, frame_id, slot, .. } => {
+                HostAction::ComposeFrameShared {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    ..
+                } => {
                     // PLAN-683：槽内载荷种类 tag 分派（2 = v2 → v2 槽）。
                     let slot_payload = client
                         .shm
@@ -5028,12 +5185,9 @@ fn spawn_shell_outproc(
                         slot_payload.as_deref().unwrap_or(&[]),
                     ) == 2
                     {
-                        let ready_v2 = slot_payload
-                            .as_deref()
-                            .and_then(|p| {
-                                crate::ui::desktop_protocol::shm::display_list_from_slot_payload(p)
-                                    .ok()
-                            });
+                        let ready_v2 = slot_payload.as_deref().and_then(|p| {
+                            crate::ui::desktop_protocol::shm::display_list_from_slot_payload(p).ok()
+                        });
                         if let Some(payload) = ready_v2 {
                             if let Some(freed) = client.surfaces.compose_v2(surface, slot, payload)
                             {
@@ -5046,12 +5200,9 @@ fn spawn_shell_outproc(
                         }
                         continue;
                     }
-                    let ready = slot_payload
-                        .as_deref()
-                        .and_then(|payload| {
-                            crate::ui::desktop_protocol::shm::draw_list_from_slot_payload(payload)
-                                .ok()
-                        });
+                    let ready = slot_payload.as_deref().and_then(|payload| {
+                        crate::ui::desktop_protocol::shm::draw_list_from_slot_payload(payload).ok()
+                    });
                     if let Some(payload) = ready {
                         if let Some(freed) = client.surfaces.compose(surface, slot, payload) {
                             to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
@@ -5098,9 +5249,9 @@ fn spawn_shell_outproc(
                     h,
                     stride,
                 } => {
-                    if let Some(ack) = client.compose_pixels(
-                        surface, wid, frame_id, slot, revision, w, h, stride,
-                    ) {
+                    if let Some(ack) =
+                        client.compose_pixels(surface, wid, frame_id, slot, revision, w, h, stride)
+                    {
                         to_app.push(ProtocolMsg::Frame(ack));
                     }
                 }
@@ -5145,7 +5296,10 @@ fn spawn_shell_outproc(
 
     /// Plan 480 S4：测试/渲染断言口——wid → 该 client 当前合成面。
     #[cfg(feature = "ui-iced")]
-    pub fn broker_composed(&self, wid: Wid) -> Option<&crate::ui::desktop_protocol::message::DrawList> {
+    pub fn broker_composed(
+        &self,
+        wid: Wid,
+    ) -> Option<&crate::ui::desktop_protocol::message::DrawList> {
         self.broker_clients
             .values()
             .find(|c| c.wid == Some(wid))
@@ -5344,13 +5498,21 @@ fn spawn_shell_outproc(
     /// （!fit_pending）且未被用户锁定的 fit 窗参与动态重测。
     pub fn mark_fit_dirty(&self, app: AppId) {
         for e in self.windows.values() {
-            if e.app == app && e.fit_enabled.get() && !e.fit_pending.get() && !e.fit_user_locked.get() {
+            if e.app == app
+                && e.fit_enabled.get()
+                && !e.fit_pending.get()
+                && !e.fit_user_locked.get()
+            {
                 e.fit_dirty.set(true);
             }
         }
         if let Some(h) = &self.host {
             for v in h.wm.wins.values() {
-                if v.app == app && v.fit_enabled.get() && !v.fit_pending.get() && !v.fit_user_locked.get() {
+                if v.app == app
+                    && v.fit_enabled.get()
+                    && !v.fit_pending.get()
+                    && !v.fit_user_locked.get()
+                {
                     v.fit_dirty.set(true);
                 }
             }
@@ -5416,7 +5578,10 @@ fn spawn_shell_outproc(
         if let Some(host) = &self.host {
             return host.wm.win_of_app(app).map(|_| host.window);
         }
-        self.windows.iter().find(|(_, e)| e.app == app).map(|(k, _)| *k)
+        self.windows
+            .iter()
+            .find(|(_, e)| e.app == app)
+            .map(|(k, _)| *k)
     }
 
     /// Plan 488 T2：拖入落点命中——宿主窗逻辑坐标 → 顶层虚拟窗口的 AppId
@@ -5576,11 +5741,7 @@ fn spawn_shell_outproc(
     /// 459：显式窗口版拆借（DM::Window 事件按发生窗口归位窗口级字段；
     /// DM::App 走 `split_mut` 的反查版）。App 域 + 桌面域 + 窗口域三路
     /// 字段级拆借，借用互不相交。
-    pub fn split_mut_at(
-        &mut self,
-        id: AppId,
-        win: iced::window::Id,
-    ) -> Option<SessionViewMut<'_>> {
+    pub fn split_mut_at(&mut self, id: AppId, win: iced::window::Id) -> Option<SessionViewMut<'_>> {
         let app = self.apps.get_mut(&id)?;
         // Plan 462 desktop 分支：窗口级字段落到该 App 的 VWinState（宿主窗
         // 由 N 个 App 共享；vwin_rect 供 update 尾把模型 window_* 变量落到
@@ -5736,7 +5897,9 @@ fn spawn_shell_outproc(
         if self.desktop.launcher_pipe.is_some() {
             return self.desktop.launcher_open;
         }
-        let Some(la) = self.desktop.launcher_app else { return false };
+        let Some(la) = self.desktop.launcher_app else {
+            return false;
+        };
         matches!(
             self.apps
                 .get(&la)
@@ -5776,7 +5939,9 @@ fn spawn_shell_outproc(
         if self.desktop.shell_pipe.is_some() {
             return self.desktop.switcher_open;
         }
-        let Some(sw) = self.desktop.switcher_app else { return false };
+        let Some(sw) = self.desktop.switcher_app else {
+            return false;
+        };
         matches!(
             self.apps
                 .get(&sw)
@@ -5793,7 +5958,9 @@ fn spawn_shell_outproc(
         if self.desktop.shell_pipe.is_some() {
             return self.desktop.notes_open;
         }
-        let Some(panel) = self.desktop.notification_app else { return false };
+        let Some(panel) = self.desktop.notification_app else {
+            return false;
+        };
         matches!(
             self.apps
                 .get(&panel)
@@ -5930,7 +6097,9 @@ fn spawn_shell_outproc(
         if self.desktop.shell_pipe.is_some() {
             return self.desktop.dashboard_open;
         }
-        let Some(panel) = self.desktop.dashboard_app else { return false };
+        let Some(panel) = self.desktop.dashboard_app else {
+            return false;
+        };
         matches!(
             self.apps
                 .get(&panel)
@@ -6232,7 +6401,12 @@ impl KeySpec {
                 }
             }
         }
-        key.map(|k| KeySpec { ctrl, alt, shift, key: k })
+        key.map(|k| KeySpec {
+            ctrl,
+            alt,
+            shift,
+            key: k,
+        })
     }
 }
 
@@ -6261,24 +6435,109 @@ impl HotkeyTable {
         // 进程，误触面过大）。图形退出入口 = dock 电源键确认面板（T11
         // `shutdown` 动词）；storage `shell.keys.exit_desktop` 仍可自定义
         // 复活（490 覆盖语义不变——load_hotkey_overrides 保留该动作位）。
-        map.insert(HotkeyAction::CycleSwitcher, KeySpec { ctrl: true, alt: false, shift: false, key: KeyName::Tab });
-        map.insert(HotkeyAction::SummonLauncher, KeySpec { ctrl: true, alt: false, shift: false, key: KeyName::Space });
-        map.insert(HotkeyAction::SetLayoutGrid, KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::G });
-        map.insert(HotkeyAction::SetLayoutStack, KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::L });
-        map.insert(HotkeyAction::SetLayoutFree, KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::F });
+        map.insert(
+            HotkeyAction::CycleSwitcher,
+            KeySpec {
+                ctrl: true,
+                alt: false,
+                shift: false,
+                key: KeyName::Tab,
+            },
+        );
+        map.insert(
+            HotkeyAction::SummonLauncher,
+            KeySpec {
+                ctrl: true,
+                alt: false,
+                shift: false,
+                key: KeyName::Space,
+            },
+        );
+        map.insert(
+            HotkeyAction::SetLayoutGrid,
+            KeySpec {
+                ctrl: true,
+                alt: true,
+                shift: false,
+                key: KeyName::G,
+            },
+        );
+        map.insert(
+            HotkeyAction::SetLayoutStack,
+            KeySpec {
+                ctrl: true,
+                alt: true,
+                shift: false,
+                key: KeyName::L,
+            },
+        );
+        map.insert(
+            HotkeyAction::SetLayoutFree,
+            KeySpec {
+                ctrl: true,
+                alt: true,
+                shift: false,
+                key: KeyName::F,
+            },
+        );
         // G2：分区切换默认迁 bracket 族（Ctrl+Alt+←/→ 为 Intel 核显
         // "屏幕旋转"冲突族；方向键可经 shell.keys.workspace_* 覆盖恢复）。
-        map.insert(HotkeyAction::WorkspaceNext, KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::BracketRight });
-        map.insert(HotkeyAction::WorkspacePrev, KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::BracketLeft });
-        map.insert(HotkeyAction::SendToNext, KeySpec { ctrl: true, alt: true, shift: true, key: KeyName::Right });
-        map.insert(HotkeyAction::SendToPrev, KeySpec { ctrl: true, alt: true, shift: true, key: KeyName::Left });
+        map.insert(
+            HotkeyAction::WorkspaceNext,
+            KeySpec {
+                ctrl: true,
+                alt: true,
+                shift: false,
+                key: KeyName::BracketRight,
+            },
+        );
+        map.insert(
+            HotkeyAction::WorkspacePrev,
+            KeySpec {
+                ctrl: true,
+                alt: true,
+                shift: false,
+                key: KeyName::BracketLeft,
+            },
+        );
+        map.insert(
+            HotkeyAction::SendToNext,
+            KeySpec {
+                ctrl: true,
+                alt: true,
+                shift: true,
+                key: KeyName::Right,
+            },
+        );
+        map.insert(
+            HotkeyAction::SendToPrev,
+            KeySpec {
+                ctrl: true,
+                alt: true,
+                shift: true,
+                key: KeyName::Left,
+            },
+        );
         // Plan 488 T7（490 收编）：Ctrl+V 粘贴（仅 ctrl，无 alt/shift——
         // Ctrl+Shift+V 留给 App 层原生语义）。
-        map.insert(HotkeyAction::Paste, KeySpec { ctrl: true, alt: false, shift: false, key: KeyName::V });
+        map.insert(
+            HotkeyAction::Paste,
+            KeySpec {
+                ctrl: true,
+                alt: false,
+                shift: false,
+                key: KeyName::V,
+            },
+        );
         // HotkeyAction::CycleWindow 不入内置表（G1 退役）。
         let aliases = vec![(
             HotkeyAction::SummonLauncher,
-            KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::Space },
+            KeySpec {
+                ctrl: true,
+                alt: true,
+                shift: false,
+                key: KeyName::Space,
+            },
         )];
         Self { map, aliases }
     }
@@ -6287,7 +6546,10 @@ impl HotkeyTable {
     /// "workspace_next"；`value` = KeySpec 串形态）。返回是否生效；
     /// 未知动作/坏串静默忽略（保留现值或缺省——坏配置不炸桌面）。
     pub fn apply_override(&mut self, key: &str, value: &str) -> bool {
-        match (HotkeyAction::from_storage_suffix(key), KeySpec::parse(value)) {
+        match (
+            HotkeyAction::from_storage_suffix(key),
+            KeySpec::parse(value),
+        ) {
             (Some(action), Some(spec)) => {
                 self.map.insert(action, spec);
                 true
@@ -6314,7 +6576,11 @@ impl HotkeyTable {
     }
 }
 
-fn spec_matches(spec: &KeySpec, modifiers: &iced::keyboard::Modifiers, key: &iced::keyboard::Key) -> bool {
+fn spec_matches(
+    spec: &KeySpec,
+    modifiers: &iced::keyboard::Modifiers,
+    key: &iced::keyboard::Key,
+) -> bool {
     modifiers.control() == spec.ctrl
         && modifiers.alt() == spec.alt
         && modifiers.shift() == spec.shift
@@ -6451,10 +6717,16 @@ mod tests {
     fn shell_model_from_storage_defaults_inproc() {
         assert_eq!(ShellModel::from_storage(None), ShellModel::Inproc);
         assert_eq!(ShellModel::from_storage(Some("inproc")), ShellModel::Inproc);
-        assert_eq!(ShellModel::from_storage(Some("outproc")), ShellModel::Outproc);
+        assert_eq!(
+            ShellModel::from_storage(Some("outproc")),
+            ShellModel::Outproc
+        );
         assert_eq!(ShellModel::from_storage(Some(" junk ")), ShellModel::Inproc);
         // 显式 outproc 但带空白容差（trim 后判定）。
-        assert_eq!(ShellModel::from_storage(Some("outproc")), ShellModel::Outproc);
+        assert_eq!(
+            ShellModel::from_storage(Some("outproc")),
+            ShellModel::Outproc
+        );
     }
 
     /// PLAN-024 T-01：vwin 内容区派生式——外沿扣 chrome（标题条 + 边
@@ -6528,8 +6800,7 @@ mod tests {
         let stale = ShellRespawnState {
             due: std::time::Instant::now(),
             attempt: 5,
-            window_start: std::time::Instant::now()
-                - std::time::Duration::from_millis(61_000),
+            window_start: std::time::Instant::now() - std::time::Duration::from_millis(61_000),
         };
         ds.desktop.shell_respawn = Some(stale);
         ds.schedule_shell_respawn();
@@ -6547,9 +6818,21 @@ mod tests {
     fn wm_add_win_bottom_pins_z_and_skips_focus_mru() {
         let mut ds = DesktopSession::__test_session();
         ds.open_desktop(iced::window::Id::unique());
-        let a = ds.wm_add_win(AppId(1), "a".into(), iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)));
-        let b = ds.wm_add_win(AppId(2), "b".into(), iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)));
-        let bottom = ds.wm_add_win_bottom(AppId(9), "desktop-face".into(), iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(1280.0, 800.0)));
+        let a = ds.wm_add_win(
+            AppId(1),
+            "a".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)),
+        );
+        let b = ds.wm_add_win(
+            AppId(2),
+            "b".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)),
+        );
+        let bottom = ds.wm_add_win_bottom(
+            AppId(9),
+            "desktop-face".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(1280.0, 800.0)),
+        );
         let host = ds.host.as_ref().unwrap();
         assert_eq!(host.wm.z_order.first(), Some(&bottom), "垫底 = z_order[0]");
         assert_eq!(host.wm.z_order.last(), Some(&b));
@@ -6561,7 +6844,10 @@ mod tests {
         // 仅伪窗在场（真窗移除后）= 空白点击落伪窗（desktop face 承接）。
         let _ = ds.wm_remove_win(a);
         let _ = ds.wm_remove_win(b);
-        assert_eq!(ds.host.as_ref().unwrap().wm.hit_test(10.0, 10.0), Some(bottom));
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.hit_test(10.0, 10.0),
+            Some(bottom)
+        );
     }
 
     /// PLAN-027 T-06：46+ 动词全量清单 roundtrip 对拍（记录级 ↔ 类型化
@@ -6591,7 +6877,10 @@ mod tests {
             C::WorkspaceClose(1),
             C::SendTo(Wid(5), 2),
             C::Notify("info".into(), "hello world".into()),
-            C::Syslog(crate::ui::syslog::SyslogLevel::Warn, "scan finished 42 entries".into()),
+            C::Syslog(
+                crate::ui::syslog::SyslogLevel::Warn,
+                "scan finished 42 entries".into(),
+            ),
             C::NotesToggle,
             C::NotesClear,
             C::NotesDismiss(42),
@@ -6643,17 +6932,17 @@ mod tests {
         for cmd in samples {
             let rec = cmd.encode();
             let parsed = DesktopCommand::parse_records(&rec);
-            assert_eq!(
-                parsed.len(),
-                1,
-                "{rec:?} 应解析为单记录（词表缺臂？）"
-            );
+            assert_eq!(parsed.len(), 1, "{rec:?} 应解析为单记录（词表缺臂？）");
             assert_eq!(parsed[0], cmd, "roundtrip 失败：{rec:?}");
         }
         // DesktopBusHandle：send_record 与直发同队列语义（SendCmd 锚契约）。
         let mut q = DesktopBusQueue::new();
-        q.send_record(&format!("{}
-{}", C::FocusWindow(Wid(1)).encode(), C::Shutdown.encode()));
+        q.send_record(&format!(
+            "{}
+{}",
+            C::FocusWindow(Wid(1)).encode(),
+            C::Shutdown.encode()
+        ));
         q.send(C::SummonLauncher);
         let drained = q.drain();
         assert_eq!(
@@ -6673,19 +6962,28 @@ mod tests {
         let rec = format!("log{sep}error{sep}scan boom");
         assert_eq!(
             DesktopCommand::parse_records(&rec),
-            vec![DesktopCommand::Syslog(SyslogLevel::Error, "scan boom".into())]
+            vec![DesktopCommand::Syslog(
+                SyslogLevel::Error,
+                "scan boom".into()
+            )]
         );
         // \t 直书面等价。
         let tab = format!("log\twarn\tcold index 3.2s");
         assert_eq!(
             DesktopCommand::parse_records(&tab),
-            vec![DesktopCommand::Syslog(SyslogLevel::Warn, "cold index 3.2s".into())]
+            vec![DesktopCommand::Syslog(
+                SyslogLevel::Warn,
+                "cold index 3.2s".into()
+            )]
         );
         // 未知 level 兜底 info（notify kind 兜底同款）。
         let unk = format!("log{sep}verbose{sep}detail line");
         assert_eq!(
             DesktopCommand::parse_records(&unk),
-            vec![DesktopCommand::Syslog(SyslogLevel::Info, "detail line".into())]
+            vec![DesktopCommand::Syslog(
+                SyslogLevel::Info,
+                "detail line".into()
+            )]
         );
         // 空 text 弃单。
         let empty = format!("log{sep}info{sep}");
@@ -6694,7 +6992,10 @@ mod tests {
         let embedded = format!("log{sep}info{sep}a{sep}b c");
         assert_eq!(
             DesktopCommand::parse_records(&embedded),
-            vec![DesktopCommand::Syslog(SyslogLevel::Info, format!("a{sep}b c"))]
+            vec![DesktopCommand::Syslog(
+                SyslogLevel::Info,
+                format!("a{sep}b c")
+            )]
         );
         // encode 臂词面 = "log␟<level>␟<text>"（v1.9 记录形）。
         assert_eq!(
@@ -6732,7 +7033,9 @@ mod tests {
         ds.desktop.dashboard_app = Some(app_id);
         assert!(!ds.dashboard_visible(), "挂载未召唤仍不可见");
         if let Some(app) = ds.apps.get_mut(&app_id) {
-            let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+            let _ = app
+                .component
+                .write_state("visible", auto_val::Value::str("1"));
         }
         assert!(ds.dashboard_visible());
     }
@@ -6745,7 +7048,13 @@ mod tests {
         ds.register_hatched_mini("clock", app_id);
         assert_eq!(ds.hatched_mini_of("clock"), Some(app_id));
         // face 垫片缺席 = 无窗 face 拆借返回 None（渲染侧安全跳过）。
-        assert!(ds.host.as_ref().unwrap().face_fields.get(&app_id.0).is_none());
+        assert!(ds
+            .host
+            .as_ref()
+            .unwrap()
+            .face_fields
+            .get(&app_id.0)
+            .is_none());
         // 垫片插入后 split_ref_face 提供 view_name 选择器。
         ds.host
             .as_mut()
@@ -6799,8 +7108,14 @@ mod tests {
     #[test]
     fn dashboard_command_verbs_roundtrip() {
         use DesktopCommand as DC;
-        assert_eq!(DC::parse_records("dashboard_toggle"), vec![DC::DashboardToggle]);
-        assert_eq!(DC::parse_records("dashboard_close"), vec![DC::DashboardClose]);
+        assert_eq!(
+            DC::parse_records("dashboard_toggle"),
+            vec![DC::DashboardToggle]
+        );
+        assert_eq!(
+            DC::parse_records("dashboard_close"),
+            vec![DC::DashboardClose]
+        );
         assert_eq!(
             DC::parse_records("dashboard_pin\tclock"),
             vec![DC::DashboardPin("clock".into())]
@@ -6876,10 +7191,16 @@ mod tests {
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         ds.enable_broker("autoui-505-shutdown-test-pipe", Arc::clone(&stop));
         assert!(ds.broker_stop.is_some(), "旗标留存");
-        assert_eq!(ds.broker_pipe.as_deref(), Some("autoui-505-shutdown-test-pipe"));
+        assert_eq!(
+            ds.broker_pipe.as_deref(),
+            Some("autoui-505-shutdown-test-pipe")
+        );
         ds.shutdown_broker();
         assert!(stop.load(Ordering::Relaxed), "停止旗标置位");
-        assert!(ds.broker_stop.is_none() && ds.broker_pipe.is_none(), "留存清空");
+        assert!(
+            ds.broker_stop.is_none() && ds.broker_pipe.is_none(),
+            "留存清空"
+        );
         // 幂等：无旗标即无操作，不 panic。
         ds.shutdown_broker();
         // serve 线程随旗标退出（探测连接唤醒；≤1s 判定，防环境抖动挂死）。
@@ -7092,7 +7413,11 @@ mod tests {
         {
             let host = ds.host.as_ref().unwrap();
             assert_eq!(host.wm.z_order.last(), Some(&wid2), "release 后置顶");
-            assert_eq!(host.wm.hit_test(50.0, 50.0), Some(wid2), "重叠区命中随置顶翻转");
+            assert_eq!(
+                host.wm.hit_test(50.0, 50.0),
+                Some(wid2),
+                "重叠区命中随置顶翻转"
+            );
         }
 
         // 重复偿还 = no-op。
@@ -7125,7 +7450,10 @@ mod tests {
         // ②焦点被改写：软聚焦 2 后全聚焦回 1 → stale pending 不重排。
         ds.wm_focus_soft(wid2);
         ds.wm_focus(wid1);
-        assert!(!ds.wm_apply_pending_raise(), "stale pending（焦点已改写）no-op");
+        assert!(
+            !ds.wm_apply_pending_raise(),
+            "stale pending（焦点已改写）no-op"
+        );
         {
             let host = ds.host.as_ref().unwrap();
             assert_eq!(host.wm.z_order.last(), Some(&wid1));
@@ -7211,8 +7539,16 @@ mod tests {
             iced::Rectangle::new(iced::Point::new(50.0, 50.0), iced::Size::new(100.0, 100.0)),
         );
         // B 后开 → z 顶：重叠区归 B，A 独占区归 A，桌面外无命中。
-        assert_eq!(ds.drop_hit_app_at_local(75.0, 75.0), Some(app_b), "重叠区归顶窗");
-        assert_eq!(ds.drop_hit_app_at_local(10.0, 10.0), Some(app_a), "A 独占区");
+        assert_eq!(
+            ds.drop_hit_app_at_local(75.0, 75.0),
+            Some(app_b),
+            "重叠区归顶窗"
+        );
+        assert_eq!(
+            ds.drop_hit_app_at_local(10.0, 10.0),
+            Some(app_a),
+            "A 独占区"
+        );
         assert_eq!(ds.drop_hit_app_at_local(5000.0, 5000.0), None, "桌面外");
     }
 
@@ -7231,7 +7567,11 @@ mod tests {
 
         // 第二窗聚焦翻转 + z 置顶。
         let app2 = insert_app(&mut ds, "V2");
-        let wid2 = ds.wm_add_win(app2, "V2".into(), iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)));
+        let wid2 = ds.wm_add_win(
+            app2,
+            "V2".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(100.0, 100.0)),
+        );
         assert_eq!(ds.wm_focused_app(), Some(app2));
         ds.wm_focus(wid);
         let host = ds.host.as_ref().unwrap();
@@ -7296,7 +7636,11 @@ mod tests {
             let v = host.wm.wins.get(&wid).unwrap();
             assert!(v.maximized.get(), "最大化置位");
             let r = v.rect.borrow();
-            assert_eq!((r.x, r.y, r.width, r.height), (0.0, 0.0, 1280.0, 744.0), "rect=可用区");
+            assert_eq!(
+                (r.x, r.y, r.width, r.height),
+                (0.0, 0.0, 1280.0, 744.0),
+                "rect=可用区"
+            );
             assert_eq!(v.restore_rect.borrow().unwrap().width, 300.0, "原矩形存档");
         }
 
@@ -7313,7 +7657,11 @@ mod tests {
 
         // 拖拽退出最大化：回 restore_rect（拖动最大化窗即还原跟手）。
         ds.wm_toggle_maximize(wid);
-        ds.host.as_mut().unwrap().wm.unmaximize_for_interaction(wid, true);
+        ds.host
+            .as_mut()
+            .unwrap()
+            .wm
+            .unmaximize_for_interaction(wid, true);
         {
             let host = ds.host.as_ref().unwrap();
             let v = host.wm.wins.get(&wid).unwrap();
@@ -7323,8 +7671,16 @@ mod tests {
 
         // 缩放退出最大化：仅清标志（新 rect 以缩放结果为准）。
         ds.wm_toggle_maximize(wid);
-        ds.host.as_mut().unwrap().wm.unmaximize_for_interaction(wid2, false);
-        ds.host.as_mut().unwrap().wm.unmaximize_for_interaction(wid, false);
+        ds.host
+            .as_mut()
+            .unwrap()
+            .wm
+            .unmaximize_for_interaction(wid2, false);
+        ds.host
+            .as_mut()
+            .unwrap()
+            .wm
+            .unmaximize_for_interaction(wid, false);
         {
             let host = ds.host.as_ref().unwrap();
             let v = host.wm.wins.get(&wid).unwrap();
@@ -7344,16 +7700,24 @@ mod tests {
     fn wm_split_views_target_vwin_fields() {
         let mut ds = desktop_session_with_host();
         let app = insert_app(&mut ds, "V");
-        ds.wm_add_win(app, "V".into(), iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(640.0, 480.0)));
+        ds.wm_add_win(
+            app,
+            "V".into(),
+            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(640.0, 480.0)),
+        );
         let host_win = ds.host.as_ref().unwrap().window;
         let ghost = iced::window::Id::unique();
 
         // desktop 模式：任何窗口号（含未知 OS 窗）都能按 App 拆到 vwin 字段。
-        let view = ds.split_mut_at(app, ghost).expect("desktop split is win-agnostic");
+        let view = ds
+            .split_mut_at(app, ghost)
+            .expect("desktop split is win-agnostic");
         assert_eq!(view.window, ghost);
         assert!(view.vwin_rect.is_some());
         *view.pending_window_resize.borrow_mut() = Some(iced::Size::new(100.0, 80.0));
-        let view = ds.split_ref_at(app, host_win).expect("split by host window");
+        let view = ds
+            .split_ref_at(app, host_win)
+            .expect("split by host window");
         assert_eq!(view.window_size.borrow().width, 640.0);
         assert!(view.pending_window_resize.borrow().is_some());
     }
@@ -7362,14 +7726,33 @@ mod tests {
     fn wm_drag_and_resize_interaction() {
         let mut ds = desktop_session_with_host();
         let app = insert_app(&mut ds, "V");
-        let wid = ds.wm_add_win(app, "V".into(), iced::Rectangle::new(iced::Point::new(100.0, 100.0), iced::Size::new(300.0, 200.0)));
+        let wid = ds.wm_add_win(
+            app,
+            "V".into(),
+            iced::Rectangle::new(
+                iced::Point::new(100.0, 100.0),
+                iced::Size::new(300.0, 200.0),
+            ),
+        );
 
         // 拖拽：grab 偏移 = 按下点 - 窗口原点；move 后位置随之，尺寸不变。
-        ds.host.as_mut().unwrap().wm.last_cursor.set(iced::Point::new(150.0, 130.0));
-        ds.host.as_mut().unwrap().wm.interaction =
-            Some(WmInteraction::Drag { wid, grab: iced::Point::new(50.0, 30.0) });
+        ds.host
+            .as_mut()
+            .unwrap()
+            .wm
+            .last_cursor
+            .set(iced::Point::new(150.0, 130.0));
+        ds.host.as_mut().unwrap().wm.interaction = Some(WmInteraction::Drag {
+            wid,
+            grab: iced::Point::new(50.0, 30.0),
+        });
         let host_size = iced::Size::new(1600.0, 900.0);
-        assert!(ds.host.as_mut().unwrap().wm.apply_cursor(250.0, 230.0, host_size));
+        assert!(ds
+            .host
+            .as_mut()
+            .unwrap()
+            .wm
+            .apply_cursor(250.0, 230.0, host_size));
         {
             let host = ds.host.as_ref().unwrap();
             let r = host.wm.wins[&wid].rect.borrow();
@@ -7377,16 +7760,26 @@ mod tests {
             assert_eq!((r.width, r.height), (300.0, 200.0), "拖拽不改尺寸");
         }
         assert!(ds.host.as_mut().unwrap().wm.end_interaction());
-        assert!(!ds.host.as_mut().unwrap().wm.end_interaction(), "无交互时 release 返回 false");
+        assert!(
+            !ds.host.as_mut().unwrap().wm.end_interaction(),
+            "无交互时 release 返回 false"
+        );
 
         // 缩放：SE 把手向右下 +50/+50；W 把手左缘跟随保持右缘不动。
         ds.host.as_mut().unwrap().wm.interaction = Some(WmInteraction::Resize {
             wid,
             edge: ResizeEdge::SouthEast,
-            start_rect: iced::Rectangle::new(iced::Point::new(200.0, 200.0), iced::Size::new(300.0, 200.0)),
+            start_rect: iced::Rectangle::new(
+                iced::Point::new(200.0, 200.0),
+                iced::Size::new(300.0, 200.0),
+            ),
             start_cursor: iced::Point::new(0.0, 0.0),
         });
-        ds.host.as_mut().unwrap().wm.apply_cursor(50.0, 50.0, host_size);
+        ds.host
+            .as_mut()
+            .unwrap()
+            .wm
+            .apply_cursor(50.0, 50.0, host_size);
         {
             let host = ds.host.as_ref().unwrap();
             let r = host.wm.wins[&wid].rect.borrow();
@@ -7395,10 +7788,17 @@ mod tests {
         ds.host.as_mut().unwrap().wm.interaction = Some(WmInteraction::Resize {
             wid,
             edge: ResizeEdge::West,
-            start_rect: iced::Rectangle::new(iced::Point::new(200.0, 200.0), iced::Size::new(300.0, 200.0)),
+            start_rect: iced::Rectangle::new(
+                iced::Point::new(200.0, 200.0),
+                iced::Size::new(300.0, 200.0),
+            ),
             start_cursor: iced::Point::new(200.0, 0.0),
         });
-        ds.host.as_mut().unwrap().wm.apply_cursor(160.0, 0.0, host_size);
+        ds.host
+            .as_mut()
+            .unwrap()
+            .wm
+            .apply_cursor(160.0, 0.0, host_size);
         {
             let host = ds.host.as_ref().unwrap();
             let r = host.wm.wins[&wid].rect.borrow();
@@ -7418,7 +7818,11 @@ mod tests {
             ),
             start_cursor: iced::Point::new(0.0, 0.0),
         });
-        ds.host.as_mut().unwrap().wm.apply_cursor(10_000.0, 10_000.0, host_size);
+        ds.host
+            .as_mut()
+            .unwrap()
+            .wm
+            .apply_cursor(10_000.0, 10_000.0, host_size);
         {
             let host = ds.host.as_ref().unwrap();
             let r = host.wm.wins[&wid].rect.borrow();
@@ -7437,7 +7841,11 @@ mod tests {
             ),
             start_cursor: iced::Point::new(0.0, 0.0),
         });
-        ds.host.as_mut().unwrap().wm.apply_cursor(-10_000.0, -10_000.0, host_size);
+        ds.host
+            .as_mut()
+            .unwrap()
+            .wm
+            .apply_cursor(-10_000.0, -10_000.0, host_size);
         {
             let host = ds.host.as_ref().unwrap();
             let r = host.wm.wins[&wid].rect.borrow();
@@ -7490,7 +7898,11 @@ mod tests {
             start_cursor: iced::Point::new(0.0, 0.0),
         });
         assert!(
-            ds.host.as_mut().unwrap().wm.apply_cursor(50.0, 50.0, iced::Size::new(1600.0, 900.0)),
+            ds.host
+                .as_mut()
+                .unwrap()
+                .wm
+                .apply_cursor(50.0, 50.0, iced::Size::new(1600.0, 900.0)),
             "缩放交互应被消费"
         );
         assert!(ds.mark_vwin_resized_dirty(wid), "已知 wid 应标记成功");
@@ -7509,7 +7921,11 @@ mod tests {
             wid,
             grab: iced::Point::new(10.0, 10.0),
         });
-        assert!(ds.host.as_mut().unwrap().wm.apply_cursor(60.0, 60.0, iced::Size::new(1600.0, 900.0)));
+        assert!(ds.host.as_mut().unwrap().wm.apply_cursor(
+            60.0,
+            60.0,
+            iced::Size::new(1600.0, 900.0)
+        ));
         ds.host.as_mut().unwrap().wm.end_interaction();
         assert!(
             !*ds.apps[&app].state.view_dirty.borrow(),
@@ -7580,7 +7996,8 @@ mod tests {
 
     #[test]
     fn desktop_command_parse_skips_bad_records() {
-        let payload = "launch\u{1f}013-todo\u{1e}bogus\u{1e}focus\u{1f}notanumber\u{1e}close\u{1f}9";
+        let payload =
+            "launch\u{1f}013-todo\u{1e}bogus\u{1e}focus\u{1f}notanumber\u{1e}close\u{1f}9";
         assert_eq!(
             DesktopCommand::parse_records(payload),
             vec![
@@ -7627,9 +8044,10 @@ mod tests {
                 daemon: None,
                 back_root: None,
                 fit: false,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
+                exe: None,
+                opens: Vec::new(),
+                render_decl: None,
+            })
         }));
         ds
     }
@@ -7662,9 +8080,10 @@ mod tests {
                 daemon: None,
                 back_root: None,
                 fit: true,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
+                exe: None,
+                opens: Vec::new(),
+                render_decl: None,
+            })
         }));
         let wid = ds.launch_app("probe").expect("launch ok");
         let host = ds.host.as_ref().unwrap();
@@ -7708,9 +8127,10 @@ mod tests {
                 daemon: None,
                 back_root: None,
                 fit: false,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
+                exe: None,
+                opens: Vec::new(),
+                render_decl: None,
+            })
         }));
         let wid = ds.launch_app("probe").expect("launch ok");
         let app = ds.host.as_ref().unwrap().wm.wins[&wid].app;
@@ -7754,11 +8174,7 @@ mod tests {
         let ws = root.join("rust-workspace").join("002-counter");
         for build in ["release", "debug"] {
             std::fs::create_dir_all(ws.join("target").join(build)).unwrap();
-            std::fs::write(
-                ws.join("target").join(build).join("counter.exe"),
-                b"MZ",
-            )
-            .unwrap();
+            std::fs::write(ws.join("target").join(build).join("counter.exe"), b"MZ").unwrap();
         }
         let spec = |exe: Option<std::path::PathBuf>| LaunchSpec {
             media_root: None,
@@ -7795,7 +8211,11 @@ mod tests {
 
         // ④ 蛇形名缺席 → 目录名兜底。
         std::fs::remove_file(ws.join("target").join("debug").join("counter.exe")).unwrap();
-        std::fs::write(ws.join("target").join("debug").join("002-counter.exe"), b"MZ").unwrap();
+        std::fs::write(
+            ws.join("target").join("debug").join("002-counter.exe"),
+            b"MZ",
+        )
+        .unwrap();
         assert_eq!(
             DesktopSession::outproc_native_exe(&spec(None)).as_ref(),
             Some(&ws.join("target").join("debug").join("002-counter.exe")),
@@ -7813,9 +8233,14 @@ mod tests {
             source_path: None,
             name: Some("counter".to_string()),
             exe: None,
-            render_decl: None,            ..Default::default()
+            render_decl: None,
+            ..Default::default()
         };
-        assert_eq!(DesktopSession::outproc_native_exe(&inline), None, "内联 spec 无发现面");
+        assert_eq!(
+            DesktopSession::outproc_native_exe(&inline),
+            None,
+            "内联 spec 无发现面"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -7845,7 +8270,11 @@ mod tests {
             ..Default::default()
         };
         // 全缺 → None（无组内约定、无共享落点）。
-        assert_eq!(DesktopSession::outproc_native_exe(&spec), None, "落点缺席不误报");
+        assert_eq!(
+            DesktopSession::outproc_native_exe(&spec),
+            None,
+            "落点缺席不误报"
+        );
         // ③a 共享 ws member 本地 target。
         let ws_member = root
             .join("examples")
@@ -7879,20 +8308,33 @@ mod tests {
     ///（693 前旧二进制落回孵化臂零变化）同发；render 档透传可选位。
     #[test]
     fn spawn_exe_child_args_dual_dialect() {
-        let args = DesktopSession::spawn_exe_child_args("003-converter", "desk-pipe-1", Some("queue"));
+        let args =
+            DesktopSession::spawn_exe_child_args("003-converter", "desk-pipe-1", Some("queue"));
         let has = |p: &str| args.iter().any(|a| a == p);
         let starts = |p: &str| args.iter().any(|a| a.starts_with(p));
         // desktop 方言（增发）。
-        assert!(has("--render-mode=desktop"), "CLI 顶优先 desktop 底座: {args:?}");
-        assert!(starts("--desktop-endpoint=desk-pipe-1"), "端点 = broker 管道: {args:?}");
+        assert!(
+            has("--render-mode=desktop"),
+            "CLI 顶优先 desktop 底座: {args:?}"
+        );
+        assert!(
+            starts("--desktop-endpoint=desk-pipe-1"),
+            "端点 = broker 管道: {args:?}"
+        );
         // autodesk 方言（保留——旧二进制孵化臂零变化）。
         assert!(has("--autodesk-incubate"));
-        assert!(has("--app386=003-converter"), "Hello app_name 覆盖=认领同源");
+        assert!(
+            has("--app386=003-converter"),
+            "Hello app_name 覆盖=认领同源"
+        );
         assert!(has("--autodesk-broker=desk-pipe-1"));
         // render 档透传（可选位）。
         assert!(has("--autodesk-render=queue"));
         let args = DesktopSession::spawn_exe_child_args("x", "p2", None);
-        assert!(!args.iter().any(|a| a.starts_with("--autodesk-render=")), "缺席不透传");
+        assert!(
+            !args.iter().any(|a| a.starts_with("--autodesk-render=")),
+            "缺席不透传"
+        );
     }
 
     /// Plan 508 G1：outproc 臂子进程体（re-exec）——env 注入时走 broker
@@ -7913,10 +8355,17 @@ mod tests {
         )
         .expect("incubate");
         let component = crate::build_dynamic_component(P508_PROBE_AT, None).expect("child build");
-        let config =
-            ClientConfig { app_name: app_name.clone(), title: app_name, width: 480.0, height: 320.0 };
-        let reconnect =
-            ReconnectPolicy { pipe: per_app_pipe, budget_ms: 30_000, interval_ms: 50 };
+        let config = ClientConfig {
+            app_name: app_name.clone(),
+            title: app_name,
+            width: 480.0,
+            height: 320.0,
+        };
+        let reconnect = ReconnectPolicy {
+            pipe: per_app_pipe,
+            budget_ms: 30_000,
+            interval_ms: 50,
+        };
         // PLAN-033 T-04 迁移：native 投影臂（AppProjector/run_client 退役）。
         let mut projector = RqProjector::new(component, 480.0, 320.0);
         projector.ensure_covered().expect("probe covered");
@@ -7942,9 +8391,10 @@ mod tests {
                 fit: false,
                 daemon: None,
                 back_root: None,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
+                exe: None,
+                opens: Vec::new(),
+                render_decl: None,
+            })
         }));
         // PLAN-033 T-04：outproc 触发 = spawner 注入在场（process_model
         // 配置位已拔除；解释 re-exec 臂退役——生产纯解释 App 走 inproc）。
@@ -7952,11 +8402,16 @@ mod tests {
         ds.desktop.outproc_spawner = Some(std::sync::Arc::new(move |_name| {
             let exe = std::env::current_exe().expect("current_exe");
             let mut cmd = std::process::Command::new(&exe);
-            cmd.args(["launch_outproc_child_body", "--test-threads", "1", "--nocapture"])
-                .env(P508_CHILD_BROKER_ENV, &pipe_for_spawn)
-                .env(P508_CHILD_APP_ENV, "probe")
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::inherit());
+            cmd.args([
+                "launch_outproc_child_body",
+                "--test-threads",
+                "1",
+                "--nocapture",
+            ])
+            .env(P508_CHILD_BROKER_ENV, &pipe_for_spawn)
+            .env(P508_CHILD_APP_ENV, "probe")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::inherit());
             for (k, _) in std::env::vars() {
                 if k.starts_with("NEXTEST_") {
                     cmd.env_remove(&k);
@@ -7978,7 +8433,9 @@ mod tests {
             "registry_id 回填 = launch 名"
         );
         assert!(
-            ds.broker_clients.values().any(|c| c.app_name.as_deref() == Some("probe")),
+            ds.broker_clients
+                .values()
+                .any(|c| c.app_name.as_deref() == Some("probe")),
             "broker_clients 驻留 probe"
         );
 
@@ -8044,9 +8501,8 @@ mod tests {
         let eligible = insert_app(&mut ds, "FitOK");
         let locked = insert_app(&mut ds, "FitLocked");
         let plain = insert_app(&mut ds, "Plain");
-        let rect = || {
-            iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(300.0, 200.0))
-        };
+        let rect =
+            || iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(300.0, 200.0));
         let w1 = ds.wm_add_win(eligible, "A".into(), rect());
         let w2 = ds.wm_add_win(locked, "B".into(), rect());
         let w3 = ds.wm_add_win(plain, "C".into(), rect());
@@ -8084,11 +8540,22 @@ mod tests {
         let fit_app = insert_app(&mut ds, "FitWin");
         let plain_app = insert_app(&mut ds, "PlainWin");
         let rect = || {
-            iced::Rectangle::new(iced::Point::new(100.0, 100.0), iced::Size::new(300.0, 200.0))
+            iced::Rectangle::new(
+                iced::Point::new(100.0, 100.0),
+                iced::Size::new(300.0, 200.0),
+            )
         };
         let w_fit = ds.wm_add_win(fit_app, "F".into(), rect());
         let w_plain = ds.wm_add_win(plain_app, "P".into(), rect());
-        ds.host.as_mut().unwrap().wm.wins.get_mut(&w_fit).unwrap().fit_enabled.set(true);
+        ds.host
+            .as_mut()
+            .unwrap()
+            .wm
+            .wins
+            .get_mut(&w_fit)
+            .unwrap()
+            .fit_enabled
+            .set(true);
         let host_size = iced::Size::new(1600.0, 900.0);
         for (wid, expect_lock) in [(w_fit, true), (w_plain, false)] {
             ds.host.as_mut().unwrap().wm.interaction = Some(WmInteraction::Resize {
@@ -8097,10 +8564,17 @@ mod tests {
                 start_rect: rect(),
                 start_cursor: iced::Point::new(0.0, 0.0),
             });
-            assert!(ds.host.as_mut().unwrap().wm.apply_cursor(50.0, 50.0, host_size));
+            assert!(ds
+                .host
+                .as_mut()
+                .unwrap()
+                .wm
+                .apply_cursor(50.0, 50.0, host_size));
             ds.host.as_mut().unwrap().wm.end_interaction();
             assert_eq!(
-                ds.host.as_ref().unwrap().wm.wins[&wid].fit_user_locked.get(),
+                ds.host.as_ref().unwrap().wm.wins[&wid]
+                    .fit_user_locked
+                    .get(),
                 expect_lock,
                 "wid {wid:?} 锁定状态"
             );
@@ -8115,8 +8589,9 @@ mod tests {
 
     #[test]
     fn launch_app_daemon_ready_injects_env() {
-        let _env_serial =
-            ENV_DAEMON_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _env_serial = ENV_DAEMON_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut ds = t4_session_with_resolver();
         // resolver 换 daemon 声明条目；探活注入 Running（测试端口 url）。
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
@@ -8132,14 +8607,13 @@ mod tests {
                 daemon: Some("autoos".to_string()),
                 back_root: None,
                 fit: false,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
+                exe: None,
+                opens: Vec::new(),
+                render_decl: None,
+            })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
-            crate::ui::osconfig_daemon::DaemonStatus::Running(
-                "http://127.0.0.1:17799".to_string(),
-            )
+            crate::ui::osconfig_daemon::DaemonStatus::Running("http://127.0.0.1:17799".to_string())
         }));
         ds.launch_app("probe").expect("daemon 就绪 launch ok");
         assert_eq!(
@@ -8149,9 +8623,7 @@ mod tests {
         );
         assert_eq!(
             ds.desktop.osconfig_status,
-            crate::ui::osconfig_daemon::DaemonStatus::Running(
-                "http://127.0.0.1:17799".to_string()
-            ),
+            crate::ui::osconfig_daemon::DaemonStatus::Running("http://127.0.0.1:17799".to_string()),
             "检活结果记入会话域（徽标消费）"
         );
         std::env::remove_var(crate::ui::osconfig_daemon::ENV_DAEMON);
@@ -8159,8 +8631,9 @@ mod tests {
 
     #[test]
     fn launch_app_daemon_offline_still_launches_without_env() {
-        let _env_serial =
-            ENV_DAEMON_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _env_serial = ENV_DAEMON_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let mut ds = t4_session_with_resolver();
         ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
             (name == "probe").then(|| LaunchSpec {
@@ -8175,9 +8648,10 @@ mod tests {
                 daemon: Some("autoos".to_string()),
                 back_root: None,
                 fit: false,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
+                exe: None,
+                opens: Vec::new(),
+                render_decl: None,
+            })
         }));
         ds.desktop.osconfig_daemon_probe = Some(std::sync::Arc::new(|| {
             crate::ui::osconfig_daemon::DaemonStatus::Offline("就绪超时".to_string())
@@ -8185,7 +8659,10 @@ mod tests {
         std::env::remove_var(crate::ui::osconfig_daemon::ENV_DAEMON);
         let wid = ds.launch_app("probe").expect("Offline 不阻断 launch");
         let host = ds.host.as_ref().unwrap();
-        assert!(host.wm.wins.contains_key(&wid), "App 照常开窗（daemon_view 自带 UX）");
+        assert!(
+            host.wm.wins.contains_key(&wid),
+            "App 照常开窗（daemon_view 自带 UX）"
+        );
         assert!(
             std::env::var(crate::ui::osconfig_daemon::ENV_DAEMON).is_err(),
             "Offline 不注入 env"
@@ -8259,7 +8736,11 @@ mod tests {
             .collect();
         assert_eq!(rects.len(), 2);
         // 1280x800 宿主、任务栏 56 → 可用 1280x744（T24），两窗左右对半。
-        assert!((rects[0].width - 640.0).abs() < 0.6, "w = {}", rects[0].width);
+        assert!(
+            (rects[0].width - 640.0).abs() < 0.6,
+            "w = {}",
+            rects[0].width
+        );
         assert!((rects[0].height - 744.0).abs() < 0.6);
         assert!((rects[1].x - 640.0).abs() < 0.6, "右半 x = {}", rects[1].x);
     }
@@ -8402,7 +8883,10 @@ mod tests {
 
     #[test]
     fn workspace_commands_encode_parse_round_trip() {
-        let cmds = vec![DesktopCommand::SetWorkspace(2), DesktopCommand::NextWorkspace];
+        let cmds = vec![
+            DesktopCommand::SetWorkspace(2),
+            DesktopCommand::NextWorkspace,
+        ];
         let payload = cmds
             .iter()
             .map(|c| c.encode())
@@ -8466,8 +8950,8 @@ mod tests {
         ds.wm_set_workspace(2);
         let app3 = insert_app(&mut ds, "C");
         let c = ds.wm_add_win(app3, "C".into(), t2_rect(0.0, 0.0)); // ws2, focused
-        // 删当前分区 1：b 重排到 0，current 保持 1（旧 ws2 压实），
-        // 焦点让渡现分区顶窗（重排窗不跨分区抢焦点——所见即所得）。
+                                                                    // 删当前分区 1：b 重排到 0，current 保持 1（旧 ws2 压实），
+                                                                    // 焦点让渡现分区顶窗（重排窗不跨分区抢焦点——所见即所得）。
         ds.wm_remove_workspace(1);
         let host = ds.host.as_ref().unwrap();
         assert_eq!(host.wm.wins[&b].workspace, 0);
@@ -8483,9 +8967,17 @@ mod tests {
         ds.wm_remove_workspace(1);
         assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 1);
         ds.wm_remove_workspace(0);
-        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 1, "末分区 no-op");
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.workspaces.len(),
+            1,
+            "末分区 no-op"
+        );
         ds.wm_remove_workspace(5);
-        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 1, "越界 no-op");
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.workspaces.len(),
+            1,
+            "越界 no-op"
+        );
     }
 
     #[test]
@@ -8495,7 +8987,7 @@ mod tests {
         let a = ds.wm_add_win(app, "A".into(), t2_rect(0.0, 0.0)); // ws0
         let app2 = insert_app(&mut ds, "B");
         let b = ds.wm_add_win(app2, "B".into(), t2_rect(10.0, 10.0)); // ws0, focused
-        // 发送 b 到隐分区 1：归属迁移 + 焦点让渡当前分区顶窗 + 窗保留（隐现）。
+                                                                      // 发送 b 到隐分区 1：归属迁移 + 焦点让渡当前分区顶窗 + 窗保留（隐现）。
         ds.wm_move_win_to_workspace(b, 1);
         {
             let host = ds.host.as_ref().unwrap();
@@ -8524,7 +9016,7 @@ mod tests {
         let b = ds.wm_add_win(app2, "B".into(), t2_rect(10.0, 10.0)); // ws0
         let app3 = insert_app(&mut ds, "C");
         let c = ds.wm_add_win(app3, "C".into(), t2_rect(20.0, 20.0)); // ws0
-        // boot 装载序 = MRU 序（front=最近聚焦）：c, b, a。
+                                                                      // boot 装载序 = MRU 序（front=最近聚焦）：c, b, a。
         assert_eq!(
             ds.host.as_ref().unwrap().wm.mru_in_workspace(0),
             vec![c, b, a]
@@ -8537,10 +9029,7 @@ mod tests {
         );
         // b 移入隐分区 → 分区过滤各自可见。
         ds.wm_move_win_to_workspace(b, 1);
-        assert_eq!(
-            ds.host.as_ref().unwrap().wm.mru_in_workspace(0),
-            vec![a, c]
-        );
+        assert_eq!(ds.host.as_ref().unwrap().wm.mru_in_workspace(0), vec![a, c]);
         assert_eq!(ds.host.as_ref().unwrap().wm.mru_in_workspace(1), vec![b]);
     }
 
@@ -8606,16 +9095,26 @@ mod tests {
         {
             let host = ds.host.as_mut().unwrap();
             host.wm.last_cursor.set(iced::Point::new(110.0, 110.0));
-            host.wm.interaction =
-                Some(WmInteraction::NativeDrag { slot_id: id, grab: iced::Point::new(10.0, 10.0) });
+            host.wm.interaction = Some(WmInteraction::NativeDrag {
+                slot_id: id,
+                grab: iced::Point::new(10.0, 10.0),
+            });
         }
         // dock 时的初始同步项先排空（同步拍既有行为），只盯拖拽增量。
         ds.host.as_mut().unwrap().wm.drain_native_geometry();
         // 光标移动 → 本地矩形跟随 + 待同步几何入队。
         let host = ds.host.as_mut().unwrap();
-        assert!(host.wm.apply_cursor(200.0, 250.0, iced::Size::new(1280.0, 800.0)));
-        assert_eq!(*host.wm.native_slot_local_rects.get(&id).unwrap(), t2_rect(190.0, 240.0));
-        assert_eq!(host.wm.drain_native_geometry(), vec![(id, t2_rect(190.0, 240.0))]);
+        assert!(host
+            .wm
+            .apply_cursor(200.0, 250.0, iced::Size::new(1280.0, 800.0)));
+        assert_eq!(
+            *host.wm.native_slot_local_rects.get(&id).unwrap(),
+            t2_rect(190.0, 240.0)
+        );
+        assert_eq!(
+            host.wm.drain_native_geometry(),
+            vec![(id, t2_rect(190.0, 240.0))]
+        );
         assert!(host.wm.interaction.unwrap().is_native_slot());
         // Free 布局 relayout（恒等分支）不跳位（AC-03 写回语义）。
         crate::ui::layout::apply_layout(
@@ -8623,7 +9122,10 @@ mod tests {
             iced::Rectangle::new(iced::Point::ORIGIN, iced::Size::new(1280.0, 800.0)),
             crate::ui::layout::ReservedEdges::default(),
         );
-        assert_eq!(*host.wm.native_slot_local_rects.get(&id).unwrap(), t2_rect(190.0, 240.0));
+        assert_eq!(
+            *host.wm.native_slot_local_rects.get(&id).unwrap(),
+            t2_rect(190.0, 240.0)
+        );
         // 松手收尾：交互清空。
         assert!(host.wm.end_interaction());
         assert!(host.wm.interaction.is_none());
@@ -8648,7 +9150,9 @@ mod tests {
         // 向西北拽（-50,-50）→ west/north 反向增长被 min 钳制（200x150，
         // 低于 400x400 的右/下缘天花板——min 先绑定）。
         let host = ds.host.as_mut().unwrap();
-        assert!(host.wm.apply_cursor(350.0, 350.0, iced::Size::new(1280.0, 800.0)));
+        assert!(host
+            .wm
+            .apply_cursor(350.0, 350.0, iced::Size::new(1280.0, 800.0)));
         let r = *host.wm.native_slot_local_rects.get(&id).unwrap();
         assert!((r.width - 200.0).abs() < 0.01 && (r.height - 150.0).abs() < 0.01);
         assert!((r.x - (start.x + start.width - 200.0)).abs() < 0.01);
@@ -8688,7 +9192,10 @@ mod tests {
         });
         assert!(host.wm.apply_cursor(400.0, 999.0, host_size));
         let r = *host.wm.native_slot_local_rects.get(&id).unwrap();
-        assert!((r.width - 200.0).abs() < 0.01, "East dx=100 于 start 100 宽: {r:?}");
+        assert!(
+            (r.width - 200.0).abs() < 0.01,
+            "East dx=100 于 start 100 宽: {r:?}"
+        );
         assert!((r.height - 100.0).abs() < 0.01, "East 不动高: {r:?}");
     }
 
@@ -8699,7 +9206,9 @@ mod tests {
         let other = docked_test_slot(&mut ds, 40.0, 40.0);
         let host = ds.host.as_mut().unwrap();
         // 未知/未 dock 槽位聚焦拒绝。
-        assert!(!host.wm.focus_native_slot(crate::ui::native_dock::NativeSlotId(999)));
+        assert!(!host
+            .wm
+            .focus_native_slot(crate::ui::native_dock::NativeSlotId(999)));
         // 聚焦 → 伪 Wid 进 focused/z 顶/mru front。
         assert!(host.wm.focus_native_slot(other));
         let pseudo = crate::ui::session::WmState::native_slot_pseudo_wid(other);
@@ -8725,8 +9234,10 @@ mod tests {
         {
             let host = ds.host.as_mut().unwrap();
             assert!(host.wm.focus_native_slot(id));
-            host.wm.interaction =
-                Some(WmInteraction::NativeDrag { slot_id: id, grab: iced::Point::ORIGIN });
+            host.wm.interaction = Some(WmInteraction::NativeDrag {
+                slot_id: id,
+                grab: iced::Point::ORIGIN,
+            });
         }
         // UndockRequested → Undocking（非终态）：统一序域保留。
         let host = ds.host.as_mut().unwrap();
@@ -8734,7 +9245,10 @@ mod tests {
             .wm
             .advance_native_slot(id, crate::ui::native_dock::SlotEvent::UndockRequested);
         assert!(!removed);
-        assert!(matches!(action, crate::ui::native_dock::SlotAction::RestoreAndRemove { .. }));
+        assert!(matches!(
+            action,
+            crate::ui::native_dock::SlotAction::RestoreAndRemove { .. }
+        ));
         let pseudo = crate::ui::session::WmState::native_slot_pseudo_wid(id);
         assert!(host.wm.z_order.contains(&pseudo));
         // RestoreCompleted → Restored（终态）：自动移除 + 全域摘除。
@@ -8831,7 +9345,10 @@ mod tests {
         let a = docked_test_slot(&mut ds, 0.0, 0.0);
         let host = ds.host.as_ref().unwrap();
         // mru 含槽位（dock 入环）。
-        assert!(host.wm.mru_in_workspace(0).contains(&crate::ui::session::WmState::native_slot_pseudo_wid(a)));
+        assert!(host
+            .wm
+            .mru_in_workspace(0)
+            .contains(&crate::ui::session::WmState::native_slot_pseudo_wid(a)));
         drop(host);
         // 切分区（1 无成员）→ 焦点 None；切回 0 → z 顶成员回退（v 与槽位
         // 同分区，槽位 dock 在后 = z 顶）。
@@ -8859,13 +9376,18 @@ mod tests {
         let v = ds.wm_add_win(app, "V".into(), t2_rect(0.0, 0.0));
         let id = docked_test_slot(&mut ds, 0.0, 0.0);
         let host = ds.host.as_mut().unwrap();
-        host.wm.interaction =
-            Some(WmInteraction::NativeDrag { slot_id: id, grab: iced::Point::ORIGIN });
+        host.wm.interaction = Some(WmInteraction::NativeDrag {
+            slot_id: id,
+            grab: iced::Point::ORIGIN,
+        });
         // 拖槽位进行中关/最小化虚拟窗：跨域不误取消（wid() 伪 Wid 比较永 false）。
         host.wm.minimize_win(v);
         assert!(host.wm.interaction.is_some());
         // 同域：拖虚拟窗进行中最小化同一窗 = 取消（既有语义回归钉）。
-        host.wm.interaction = Some(WmInteraction::Drag { wid: v, grab: iced::Point::ORIGIN });
+        host.wm.interaction = Some(WmInteraction::Drag {
+            wid: v,
+            grab: iced::Point::ORIGIN,
+        });
         host.wm.minimize_win(v);
         assert!(host.wm.interaction.is_none());
     }
@@ -8891,7 +9413,10 @@ mod tests {
         ] {
             let recs = DesktopCommand::parse_records(payload);
             assert_eq!(recs.len(), 1, "{payload}");
-            assert!(matches!(recs[0], DesktopCommand::WinRect { .. }), "{payload}");
+            assert!(
+                matches!(recs[0], DesktopCommand::WinRect { .. }),
+                "{payload}"
+            );
         }
         // 坏值 no-op：缺参/非数字/多余段/空 wid。
         for bad in [
@@ -9040,9 +9565,7 @@ mod tests {
             DesktopCommand::WallpaperBrowseDir,
             DesktopCommand::WallpaperNav("prev".to_string()),
             DesktopCommand::WallpaperNav("next".to_string()),
-            DesktopCommand::WallpaperPreview(
-                "D:/Down/stella-os/wallpapers/room.jpg".to_string(),
-            ),
+            DesktopCommand::WallpaperPreview("D:/Down/stella-os/wallpapers/room.jpg".to_string()),
         ];
         let payload = cmds
             .iter()
@@ -9160,7 +9683,10 @@ mod tests {
         let host = ds.host.as_mut().unwrap();
         // DockRequested → Docking + SyncGeometry（宿主执行 win32 写读回）。
         let (action, removed) = host.wm.advance_native_slot(id, SlotEvent::DockRequested);
-        assert_eq!(action, SlotAction::SyncGeometry(Rect::new(1200, 100, 640, 480)));
+        assert_eq!(
+            action,
+            SlotAction::SyncGeometry(Rect::new(1200, 100, 640, 480))
+        );
         assert!(!removed);
         assert_eq!(host.wm.native_slots[&id].state, SlotState::Docking);
         // DockConfirmed → Docked（驻留注册表）。
@@ -9189,7 +9715,7 @@ mod tests {
 
     #[test]
     fn native_slot_reject_removes_slot() {
-        use crate::ui::native_dock::{RejectReason, Rect, SlotEvent};
+        use crate::ui::native_dock::{Rect, RejectReason, SlotEvent};
         let mut ds = desktop_session_with_host();
         let id = {
             let host = ds.host.as_mut().unwrap();
@@ -9260,11 +9786,18 @@ mod tests {
             let host = ds.host.as_mut().unwrap();
             host.wm.drain_native_geometry()
         };
-        assert_eq!(sync.last().unwrap().1.width, 700.0, "min-size 不足应扩张槽位");
+        assert_eq!(
+            sync.last().unwrap().1.width,
+            700.0,
+            "min-size 不足应扩张槽位"
+        );
         // free 模式恒等：不产生同步项。
         ds.wm_set_layout(crate::ui::layout::LayoutMode::Free);
         let host = ds.host.as_ref().unwrap();
-        assert!(host.wm.pending_native_geometry.is_empty(), "free 模式槽位恒等");
+        assert!(
+            host.wm.pending_native_geometry.is_empty(),
+            "free 模式槽位恒等"
+        );
     }
 
     // ---- PLAN-066 T-03（KD-062）：会话消亡收割 outproc 子进程 ----
@@ -9407,9 +9940,9 @@ mod tests {
 /// 映射纯函数单测钉死；window 位随行（update 臂按桌面窗过滤）。
 pub fn desktop_window_events() -> iced::Subscription<DesktopMessage> {
     iced::event::listen_with(|e, status, wid| match e {
-        iced::Event::Window(iced::window::Event::Opened { size, .. }) => {
-            Some(DesktopMessage::Desktop(DesktopEvent::WindowOpened(wid, size)))
-        }
+        iced::Event::Window(iced::window::Event::Opened { size, .. }) => Some(
+            DesktopMessage::Desktop(DesktopEvent::WindowOpened(wid, size)),
+        ),
         iced::Event::Window(iced::window::Event::Closed) => {
             Some(DesktopMessage::Desktop(DesktopEvent::WindowClosed(wid)))
         }
@@ -9420,19 +9953,24 @@ pub fn desktop_window_events() -> iced::Subscription<DesktopMessage> {
             Some(DesktopMessage::Desktop(DesktopEvent::WindowUnfocused(wid)))
         }
         iced::Event::Keyboard(kb) if status == iced::event::Status::Ignored => {
-            live_inputs_from_keyboard(&kb).into_iter().next().map(|input| {
-                DesktopMessage::Desktop(DesktopEvent::LiveInput { window: wid, input })
-            })
+            live_inputs_from_keyboard(&kb)
+                .into_iter()
+                .next()
+                .map(|input| {
+                    DesktopMessage::Desktop(DesktopEvent::LiveInput { window: wid, input })
+                })
         }
         iced::Event::InputMethod(im) if status == iced::event::Status::Ignored => {
-            live_input_from_input_method(&im)
-                .map(|input| DesktopMessage::Desktop(DesktopEvent::LiveInput { window: wid, input }))
+            live_input_from_input_method(&im).map(|input| {
+                DesktopMessage::Desktop(DesktopEvent::LiveInput { window: wid, input })
+            })
         }
         iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta })
             if status == iced::event::Status::Ignored =>
         {
-            live_input_from_wheel(&delta)
-                .map(|input| DesktopMessage::Desktop(DesktopEvent::LiveInput { window: wid, input }))
+            live_input_from_wheel(&delta).map(|input| {
+                DesktopMessage::Desktop(DesktopEvent::LiveInput { window: wid, input })
+            })
         }
         _ => None,
     })
@@ -9484,13 +10022,15 @@ pub fn dnd_finished_subscription() -> iced::Subscription<DesktopMessage> {
                             })
                         })
                         .or_else(|| {
-                            crate::ui::native_dnd::win32::take_native_drop()
-                                .map(|data| {
-                                    if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
-                                        eprintln!("[dnd-hop2] subscription took native drop (text={:?})", data.text);
-                                    }
-                                    DesktopMessage::Desktop(DesktopEvent::NativeDrop(data))
-                                })
+                            crate::ui::native_dnd::win32::take_native_drop().map(|data| {
+                                if std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1") {
+                                    eprintln!(
+                                        "[dnd-hop2] subscription took native drop (text={:?})",
+                                        data.text
+                                    );
+                                }
+                                DesktopMessage::Desktop(DesktopEvent::NativeDrop(data))
+                            })
                         });
                     match msg {
                         Some(m) => Some((Some(m), ())),
@@ -9528,9 +10068,15 @@ mod hotkey_tests {
 
     fn mods(ctrl: bool, alt: bool, shift: bool) -> Modifiers {
         let mut m = Modifiers::default();
-        if ctrl { m |= Modifiers::CTRL; }
-        if alt { m |= Modifiers::ALT; }
-        if shift { m |= Modifiers::SHIFT; }
+        if ctrl {
+            m |= Modifiers::CTRL;
+        }
+        if alt {
+            m |= Modifiers::ALT;
+        }
+        if shift {
+            m |= Modifiers::SHIFT;
+        }
         m
     }
 
@@ -9542,26 +10088,102 @@ mod hotkey_tests {
 
         // PLAN-526 T13：Escape→ExitDesktop 退役——裸/Ctrl+Esc 均不再退出
         //（图形退出入口 = dock 电源键确认 shutdown 动词）。
-        assert!(!t.matches(HotkeyAction::ExitDesktop, &mods(false, false, false), &named(iced::keyboard::key::Named::Escape)), "裸 Esc 不再退出");
-        assert!(!t.matches(HotkeyAction::ExitDesktop, &mods(true, false, false), &named(iced::keyboard::key::Named::Escape)), "Ctrl+Esc 不是退出");
+        assert!(
+            !t.matches(
+                HotkeyAction::ExitDesktop,
+                &mods(false, false, false),
+                &named(iced::keyboard::key::Named::Escape)
+            ),
+            "裸 Esc 不再退出"
+        );
+        assert!(
+            !t.matches(
+                HotkeyAction::ExitDesktop,
+                &mods(true, false, false),
+                &named(iced::keyboard::key::Named::Escape)
+            ),
+            "Ctrl+Esc 不是退出"
+        );
 
-        assert!(t.matches(HotkeyAction::CycleSwitcher, &mods(true, false, false), &named(iced::keyboard::key::Named::Tab)));
-        assert!(!t.matches(HotkeyAction::CycleSwitcher, &mods(true, true, false), &named(iced::keyboard::key::Named::Tab)), "Ctrl+Alt+Tab 不是 switcher");
+        assert!(t.matches(
+            HotkeyAction::CycleSwitcher,
+            &mods(true, false, false),
+            &named(iced::keyboard::key::Named::Tab)
+        ));
+        assert!(
+            !t.matches(
+                HotkeyAction::CycleSwitcher,
+                &mods(true, true, false),
+                &named(iced::keyboard::key::Named::Tab)
+            ),
+            "Ctrl+Alt+Tab 不是 switcher"
+        );
 
-        assert!(t.matches(HotkeyAction::SetLayoutGrid, &mods(true, true, false), &Key::Character("g".into())));
-        assert!(t.matches(HotkeyAction::SetLayoutGrid, &mods(true, true, false), &Key::Character("G".into())), "字母大小写不敏感");
-        assert!(!t.matches(HotkeyAction::SetLayoutFree, &mods(true, true, false), &Key::Character("g".into())), "错键不命中");
+        assert!(t.matches(
+            HotkeyAction::SetLayoutGrid,
+            &mods(true, true, false),
+            &Key::Character("g".into())
+        ));
+        assert!(
+            t.matches(
+                HotkeyAction::SetLayoutGrid,
+                &mods(true, true, false),
+                &Key::Character("G".into())
+            ),
+            "字母大小写不敏感"
+        );
+        assert!(
+            !t.matches(
+                HotkeyAction::SetLayoutFree,
+                &mods(true, true, false),
+                &Key::Character("g".into())
+            ),
+            "错键不命中"
+        );
 
         // G2：分区切换默认 = bracket 族；方向键默认不再命中。
-        assert!(t.matches(HotkeyAction::WorkspaceNext, &mods(true, true, false), &Key::Character("]".into())));
-        assert!(t.matches(HotkeyAction::WorkspacePrev, &mods(true, true, false), &Key::Character("[".into())));
-        assert!(!t.matches(HotkeyAction::WorkspaceNext, &mods(true, true, false), &named(iced::keyboard::key::Named::ArrowRight)), "方向键默认退役（可覆盖恢复）");
+        assert!(t.matches(
+            HotkeyAction::WorkspaceNext,
+            &mods(true, true, false),
+            &Key::Character("]".into())
+        ));
+        assert!(t.matches(
+            HotkeyAction::WorkspacePrev,
+            &mods(true, true, false),
+            &Key::Character("[".into())
+        ));
+        assert!(
+            !t.matches(
+                HotkeyAction::WorkspaceNext,
+                &mods(true, true, false),
+                &named(iced::keyboard::key::Named::ArrowRight)
+            ),
+            "方向键默认退役（可覆盖恢复）"
+        );
 
-        assert!(t.matches(HotkeyAction::SendToNext, &mods(true, true, true), &named(iced::keyboard::key::Named::ArrowRight)));
-        assert!(!t.matches(HotkeyAction::SendToNext, &mods(true, true, false), &named(iced::keyboard::key::Named::ArrowRight)), "SendTo 需 shift");
+        assert!(t.matches(
+            HotkeyAction::SendToNext,
+            &mods(true, true, true),
+            &named(iced::keyboard::key::Named::ArrowRight)
+        ));
+        assert!(
+            !t.matches(
+                HotkeyAction::SendToNext,
+                &mods(true, true, false),
+                &named(iced::keyboard::key::Named::ArrowRight)
+            ),
+            "SendTo 需 shift"
+        );
 
         // G1：Alt+Tab 内置无臂（CycleWindow 退役）。
-        assert!(!t.matches(HotkeyAction::CycleWindow, &mods(false, true, false), &named(iced::keyboard::key::Named::Tab)), "Alt+Tab 内置表不配（退役）");
+        assert!(
+            !t.matches(
+                HotkeyAction::CycleWindow,
+                &mods(false, true, false),
+                &named(iced::keyboard::key::Named::Tab)
+            ),
+            "Alt+Tab 内置表不配（退役）"
+        );
     }
 
     /// launcher 双收：主键 Ctrl+Space + 别名 Ctrl+Alt+Space（IME 兜底，
@@ -9570,10 +10192,38 @@ mod hotkey_tests {
     fn hotkey_launcher_alias_dual_receive() {
         let t = HotkeyTable::builtin();
         let space = named(iced::keyboard::key::Named::Space);
-        assert!(t.matches(HotkeyAction::SummonLauncher, &mods(true, false, false), &space), "主键 Ctrl+Space");
-        assert!(t.matches(HotkeyAction::SummonLauncher, &mods(true, true, false), &space), "别名 Ctrl+Alt+Space（IME 兜底）");
-        assert!(!t.matches(HotkeyAction::SummonLauncher, &mods(true, false, true), &space), "Ctrl+Shift+Space 不收");
-        assert!(!t.matches(HotkeyAction::SummonLauncher, &mods(false, false, false), &space), "裸 Space 不收");
+        assert!(
+            t.matches(
+                HotkeyAction::SummonLauncher,
+                &mods(true, false, false),
+                &space
+            ),
+            "主键 Ctrl+Space"
+        );
+        assert!(
+            t.matches(
+                HotkeyAction::SummonLauncher,
+                &mods(true, true, false),
+                &space
+            ),
+            "别名 Ctrl+Alt+Space（IME 兜底）"
+        );
+        assert!(
+            !t.matches(
+                HotkeyAction::SummonLauncher,
+                &mods(true, false, true),
+                &space
+            ),
+            "Ctrl+Shift+Space 不收"
+        );
+        assert!(
+            !t.matches(
+                HotkeyAction::SummonLauncher,
+                &mods(false, false, false),
+                &space
+            ),
+            "裸 Space 不收"
+        );
     }
 
     /// KeySpec 解析：词形/原始字符/大小写/坏串。
@@ -9581,15 +10231,30 @@ mod hotkey_tests {
     fn hotkey_spec_parse() {
         assert_eq!(
             KeySpec::parse("ctrl+alt+bracketleft"),
-            Some(KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::BracketLeft })
+            Some(KeySpec {
+                ctrl: true,
+                alt: true,
+                shift: false,
+                key: KeyName::BracketLeft
+            })
         );
         assert_eq!(
             KeySpec::parse("Ctrl+Alt+]"),
-            Some(KeySpec { ctrl: true, alt: true, shift: false, key: KeyName::BracketRight })
+            Some(KeySpec {
+                ctrl: true,
+                alt: true,
+                shift: false,
+                key: KeyName::BracketRight
+            })
         );
         assert_eq!(
             KeySpec::parse("SHIFT+ESC"),
-            Some(KeySpec { ctrl: false, alt: false, shift: true, key: KeyName::Escape })
+            Some(KeySpec {
+                ctrl: false,
+                alt: false,
+                shift: true,
+                key: KeyName::Escape
+            })
         );
         assert_eq!(KeySpec::parse("ctrl+q"), None, "未知主键");
         assert_eq!(KeySpec::parse("super+x"), None, "Super 系不支持");
@@ -9603,17 +10268,54 @@ mod hotkey_tests {
     fn hotkey_storage_override_roundtrip() {
         let mut t = HotkeyTable::builtin();
 
-        assert!(t.apply_override("workspace_next", "ctrl+alt+right"), "合法覆盖生效");
-        assert!(t.matches(HotkeyAction::WorkspaceNext, &mods(true, true, false), &named(iced::keyboard::key::Named::ArrowRight)), "覆盖后方向键恢复");
-        assert!(!t.matches(HotkeyAction::WorkspaceNext, &mods(true, true, false), &Key::Character("]".into())), "覆盖后主键被替换（非叠加）");
+        assert!(
+            t.apply_override("workspace_next", "ctrl+alt+right"),
+            "合法覆盖生效"
+        );
+        assert!(
+            t.matches(
+                HotkeyAction::WorkspaceNext,
+                &mods(true, true, false),
+                &named(iced::keyboard::key::Named::ArrowRight)
+            ),
+            "覆盖后方向键恢复"
+        );
+        assert!(
+            !t.matches(
+                HotkeyAction::WorkspaceNext,
+                &mods(true, true, false),
+                &Key::Character("]".into())
+            ),
+            "覆盖后主键被替换（非叠加）"
+        );
 
-        assert!(!t.apply_override("workspace_prev", "ctrl+alt+!!!"), "坏值被拒");
-        assert!(t.matches(HotkeyAction::WorkspacePrev, &mods(true, true, false), &Key::Character("[".into())), "坏值保留缺省");
+        assert!(
+            !t.apply_override("workspace_prev", "ctrl+alt+!!!"),
+            "坏值被拒"
+        );
+        assert!(
+            t.matches(
+                HotkeyAction::WorkspacePrev,
+                &mods(true, true, false),
+                &Key::Character("[".into())
+            ),
+            "坏值保留缺省"
+        );
 
-        assert!(!t.apply_override("no_such_action", "ctrl+a"), "未知动作被拒");
+        assert!(
+            !t.apply_override("no_such_action", "ctrl+a"),
+            "未知动作被拒"
+        );
 
-        assert!(t.apply_override("cycle_window", "alt+tab"), "G1 逃生舱：显式复活 Alt+Tab");
-        assert!(t.matches(HotkeyAction::CycleWindow, &mods(false, true, false), &named(iced::keyboard::key::Named::Tab)));
+        assert!(
+            t.apply_override("cycle_window", "alt+tab"),
+            "G1 逃生舱：显式复活 Alt+Tab"
+        );
+        assert!(t.matches(
+            HotkeyAction::CycleWindow,
+            &mods(false, true, false),
+            &named(iced::keyboard::key::Named::Tab)
+        ));
     }
 }
 
@@ -9658,26 +10360,33 @@ mod live_input_tests {
     /// Chars；KeyReleased/ModifiersChanged/修饰 Named 不转发。
     #[test]
     fn keyboard_mapping_shapes() {
-        use iced::keyboard::{Event as Kb, Key, Modifiers, key::Named as N};
+        use iced::keyboard::{key::Named as N, Event as Kb, Key, Modifiers};
         let mut m = Modifiers::default();
         m |= Modifiers::CTRL;
         assert_eq!(
             live_inputs_from_keyboard(&Kb::KeyPressed {
                 key: Key::Named(N::Escape),
                 modified_key: Key::Named(N::Escape),
-                physical_key: iced::keyboard::key::Physical::Unidentified(iced::keyboard::key::NativeCode::Unidentified),
+                physical_key: iced::keyboard::key::Physical::Unidentified(
+                    iced::keyboard::key::NativeCode::Unidentified
+                ),
                 location: iced::keyboard::Location::Standard,
                 modifiers: m,
                 text: None,
                 repeat: false,
             }),
-            vec![LiveInput::KeyPressed { key: 27, modifiers: 0b10 }]
+            vec![LiveInput::KeyPressed {
+                key: 27,
+                modifiers: 0b10
+            }]
         );
         assert_eq!(
             live_inputs_from_keyboard(&Kb::KeyPressed {
                 key: Key::Character("1".into()),
                 modified_key: Key::Character("1".into()),
-                physical_key: iced::keyboard::key::Physical::Unidentified(iced::keyboard::key::NativeCode::Unidentified),
+                physical_key: iced::keyboard::key::Physical::Unidentified(
+                    iced::keyboard::key::NativeCode::Unidentified
+                ),
                 location: iced::keyboard::Location::Standard,
                 modifiers: Modifiers::default(),
                 text: Some("1".into()),
@@ -9689,7 +10398,9 @@ mod live_input_tests {
         assert!(live_inputs_from_keyboard(&Kb::KeyPressed {
             key: Key::Named(N::Shift),
             modified_key: Key::Named(N::Shift),
-            physical_key: iced::keyboard::key::Physical::Unidentified(iced::keyboard::key::NativeCode::Unidentified),
+            physical_key: iced::keyboard::key::Physical::Unidentified(
+                iced::keyboard::key::NativeCode::Unidentified
+            ),
             location: iced::keyboard::Location::Standard,
             modifiers: Modifiers::default(),
             text: None,
@@ -9699,7 +10410,9 @@ mod live_input_tests {
         assert!(live_inputs_from_keyboard(&Kb::KeyReleased {
             key: Key::Named(N::Enter),
             modified_key: Key::Named(N::Enter),
-            physical_key: iced::keyboard::key::Physical::Unidentified(iced::keyboard::key::NativeCode::Unidentified),
+            physical_key: iced::keyboard::key::Physical::Unidentified(
+                iced::keyboard::key::NativeCode::Unidentified
+            ),
             location: iced::keyboard::Location::Standard,
             modifiers: Modifiers::default(),
         })
@@ -9716,23 +10429,37 @@ mod live_input_tests {
         use iced::mouse::ScrollDelta;
         assert_eq!(
             live_input_from_input_method(&Ime::Preedit("中".into(), None)),
-            Some(LiveInput::ImePreedit { text: "中".into(), selection: None })
+            Some(LiveInput::ImePreedit {
+                text: "中".into(),
+                selection: None
+            })
         );
         // PLAN-690 T-03：选区保留（字节区间透传）。
         assert_eq!(
             live_input_from_input_method(&Ime::Preedit("nihao".into(), Some(2..4))),
-            Some(LiveInput::ImePreedit { text: "nihao".into(), selection: Some((2, 4)) })
+            Some(LiveInput::ImePreedit {
+                text: "nihao".into(),
+                selection: Some((2, 4))
+            })
         );
         assert_eq!(
             live_input_from_input_method(&Ime::Commit("中文".into())),
-            Some(LiveInput::ImeCommit { text: "中文".into() })
+            Some(LiveInput::ImeCommit {
+                text: "中文".into()
+            })
         );
-        assert_eq!(live_input_from_input_method(&Ime::Closed), Some(LiveInput::ImeCancelled));
+        assert_eq!(
+            live_input_from_input_method(&Ime::Closed),
+            Some(LiveInput::ImeCancelled)
+        );
         assert_eq!(live_input_from_input_method(&Ime::Opened), None);
 
         assert_eq!(
             live_input_from_wheel(&ScrollDelta::Lines { x: 0.0, y: -3.0 }),
-            Some(LiveInput::Wheel { dx: 0.0, dy: -120.0 })
+            Some(LiveInput::Wheel {
+                dx: 0.0,
+                dy: -120.0
+            })
         );
         assert_eq!(
             live_input_from_wheel(&ScrollDelta::Pixels { x: 4.0, y: -9.5 }),
@@ -9758,11 +10485,8 @@ mod live_input_tests {
         let mut session = DesktopSession::__test_session();
         session.open_desktop(iced::window::Id::unique());
 
-        let component = crate::build_dynamic_component(
-            r#"widget t { view { text "x" } }"#,
-            None,
-        )
-        .expect("build");
+        let component = crate::build_dynamic_component(r#"widget t { view { text "x" } }"#, None)
+            .expect("build");
         let app_id = session.allocate_app(component);
         let wid = session.wm_add_win(
             app_id,
@@ -9777,9 +10501,7 @@ mod live_input_tests {
         client.wid = Some(wid);
         session.broker_clients.insert(pipe.clone(), client);
 
-        fn wait_msg(
-            child_end: &mut Box<dyn transport::Transport + Send>,
-        ) -> Option<ProtocolMsg> {
+        fn wait_msg(child_end: &mut Box<dyn transport::Transport + Send>) -> Option<ProtocolMsg> {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
             loop {
                 if let Some(loaded) = child_end.try_recv() {
@@ -9793,7 +10515,10 @@ mod live_input_tests {
         }
 
         // 键盘（VK）→ 焦点窗 KeyPressed 落 wire。
-        assert!(session.route_live_input(&LiveInput::KeyPressed { key: 13, modifiers: 0 }));
+        assert!(session.route_live_input(&LiveInput::KeyPressed {
+            key: 13,
+            modifiers: 0
+        }));
         match wait_msg(&mut child_end) {
             Some(ProtocolMsg::Input(InputMsg::KeyPressed { wid: w, key, .. })) => {
                 assert_eq!((w, key), (wid.0, 13));
@@ -9822,7 +10547,13 @@ mod live_input_tests {
         }
 
         // 滚轮 → last_cursor 命中窗（hover 语义）。
-        session.host.as_mut().unwrap().wm.last_cursor.set(iced::Point::new(100.0, 100.0));
+        session
+            .host
+            .as_mut()
+            .unwrap()
+            .wm
+            .last_cursor
+            .set(iced::Point::new(100.0, 100.0));
         assert!(session.route_live_input(&LiveInput::Wheel { dx: 0.0, dy: -40.0 }));
         match wait_msg(&mut child_end) {
             Some(ProtocolMsg::Input(InputMsg::Scroll { wid: w, dx, dy })) => {

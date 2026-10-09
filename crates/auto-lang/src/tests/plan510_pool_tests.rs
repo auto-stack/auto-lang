@@ -27,14 +27,12 @@ mod plan510 {
     /// stdout 只含 VM print 的 "done";「跑完」即契约本体。
     #[test]
     fn hash_log_macros_log_and_continue() {
-        let out = run(
-            "fn main() {\n\
+        let out = run("fn main() {\n\
              \x20   #info(\"i\")\n\
              \x20   #warn(\"w\")\n\
              \x20   #error(\"e\")\n\
              \x20   print(\"done\")\n\
-             }\n",
-        )
+             }\n")
         .expect("#info/#warn/#error program must run to completion");
         assert_eq!(out, "done\n");
     }
@@ -44,8 +42,7 @@ mod plan510 {
     #[test]
     fn log_native_ids_do_not_collide_with_shell_family() {
         use crate::vm::native::{
-            NATIVE_SHELL_EXIT, NATIVE_SHELL_EXPORT, NATIVE_SHELL_SYSTEM,
-            NATIVE_SHELL_SYSTEM_STATUS,
+            NATIVE_SHELL_EXIT, NATIVE_SHELL_EXPORT, NATIVE_SHELL_SYSTEM, NATIVE_SHELL_SYSTEM_STATUS,
         };
         use crate::vm::native_registry::NATIVE_ID_MAP;
 
@@ -95,7 +92,10 @@ mod plan510 {
         // (b) rc 覆盖且配平:入栈恰好 +1 份;release 一次归零
         let rc_now = {
             let st = vm.pool_state.read().unwrap();
-            assert!(idx < st.rc.len(), "rc array must cover the slot (ensure_len)");
+            assert!(
+                idx < st.rc.len(),
+                "rc array must cover the slot (ensure_len)"
+            );
             st.rc[idx].load(Ordering::Relaxed)
         };
         assert_eq!(rc_now, 1, "push must retain exactly one share");
@@ -327,10 +327,7 @@ fn main() int {
         let (vm, out) = run_code_vm_checked(code).await;
         assert!(out.contains("done"), "program must complete: [{}]", out);
         let h = vm.pool_health();
-        assert_eq!(
-            h.underflow_events, 0,
-            "结算不得引入多扣款下溢"
-        );
+        assert_eq!(h.underflow_events, 0, "结算不得引入多扣款下溢");
         assert_eq!(
             h.live_shares, 0,
             "CALL_SPEC push 50 次后池份额必须配平(修复前每调用孤儿 +1): {h:?}"
@@ -360,10 +357,7 @@ fn main() int {
         let (vm, out) = run_code_vm_checked(code).await;
         assert!(!out.is_empty(), "program must produce output: [{}]", out);
         let h = vm.pool_health();
-        assert_eq!(
-            h.underflow_events, 0,
-            "结算不得引入多扣款下溢"
-        );
+        assert_eq!(h.underflow_events, 0, "结算不得引入多扣款下溢");
         assert_eq!(
             h.live_shares, 0,
             "trimEnd 50 次调用后接收者池份额必须配平(修复前每调用孤儿 +1): {h:?}"

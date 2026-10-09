@@ -3,7 +3,7 @@
 //! This module provides utilities for constructing ATOM format values
 //! from AST nodes, following the ATOM specification (nodes, arrays, objects).
 
-use auto_val::{Array, Arg as AutoValArg, Node, Obj, Value, ValueKey};
+use auto_val::{Arg as AutoValArg, Array, Node, Obj, Value, ValueKey};
 
 /// Helper functions for ATOM construction
 pub struct AtomBuilder;

@@ -38,7 +38,7 @@ pub struct ClassTemplate {
 #[derive(Debug, Clone)]
 pub struct FieldDef {
     pub name: String,
-    pub field_type: Type,  // May contain type parameters (e.g., User("K"))
+    pub field_type: Type, // May contain type parameters (e.g., User("K"))
 }
 
 impl FieldDef {
@@ -63,9 +63,9 @@ impl fmt::Display for FieldDef {
 #[derive(Debug, Clone)]
 pub struct MethodInfo {
     pub name: String,
-    pub fn_decl: Fn,  // Original method declaration (may contain type parameters)
-    pub mono_impls: HashMap<String, Fn>,  // Monomorphized implementations
-                                              // Key: mono_name (e.g., "Pair_int_str")
+    pub fn_decl: Fn, // Original method declaration (may contain type parameters)
+    pub mono_impls: HashMap<String, Fn>, // Monomorphized implementations
+                     // Key: mono_name (e.g., "Pair_int_str")
 }
 
 impl MethodInfo {
@@ -149,7 +149,7 @@ impl ClassTemplate {
             .iter()
             .filter_map(|p| match p {
                 GenericParam::Type(tp) => Some(tp.name.clone()),
-                GenericParam::Const(_) => None,  // TODO: Handle const parameters
+                GenericParam::Const(_) => None, // TODO: Handle const parameters
             })
             .collect();
 
@@ -261,7 +261,8 @@ impl ClassType {
     /// Get field type by name (Plan 118 Phase 7: for nested field access type inference)
     pub fn field_type(&self, field_name: &str) -> Option<Type> {
         let fields = self.fields();
-        fields.iter()
+        fields
+            .iter()
             .find(|f| f.name == field_name)
             .map(|f| f.field_type.clone())
     }
@@ -278,7 +279,11 @@ impl ClassType {
 
     /// Plan 197 Task 9: Get field names from the template
     pub fn field_names(&self) -> Vec<String> {
-        self.template.fields.iter().map(|f| f.name.clone()).collect()
+        self.template
+            .fields
+            .iter()
+            .map(|f| f.name.clone())
+            .collect()
     }
 }
 
@@ -364,94 +369,128 @@ impl SpecializedPair {
     /// Set field by index (0 = key, 1 = val)
     pub fn set_field(&mut self, index: usize, value: Value) -> Result<(), String> {
         match (self, index, value) {
-            (SpecializedPair::IntInt { key, .. }, 0, Value::Int(v)) => { *key = v; Ok(()) }
-            (SpecializedPair::IntInt { val, .. }, 1, Value::Int(v)) => { *val = v; Ok(()) }
-            (SpecializedPair::IntBool { key, .. }, 0, Value::Int(v)) => { *key = v; Ok(()) }
-            (SpecializedPair::IntBool { val, .. }, 1, Value::Bool(v)) => { *val = v; Ok(()) }
-            (SpecializedPair::BoolInt { key, .. }, 0, Value::Bool(v)) => { *key = v; Ok(()) }
-            (SpecializedPair::BoolInt { val, .. }, 1, Value::Int(v)) => { *val = v; Ok(()) }
-            (SpecializedPair::IntValue { key, .. }, 0, Value::Int(v)) => { *key = v; Ok(()) }
-            (SpecializedPair::IntValue { val, .. }, 1, v) => { *val = v; Ok(()) }
-            (SpecializedPair::ValueInt { key, .. }, 0, v) => { *key = v; Ok(()) }
-            (SpecializedPair::ValueInt { val, .. }, 1, Value::Int(v)) => { *val = v; Ok(()) }
-            (SpecializedPair::BoolValue { key, .. }, 0, Value::Bool(v)) => { *key = v; Ok(()) }
-            (SpecializedPair::BoolValue { val, .. }, 1, v) => { *val = v; Ok(()) }
-            (SpecializedPair::ValueBool { key, .. }, 0, v) => { *key = v; Ok(()) }
-            (SpecializedPair::ValueBool { val, .. }, 1, Value::Bool(v)) => { *val = v; Ok(()) }
-            (SpecializedPair::Generic { key, .. }, 0, v) => { *key = v; Ok(()) }
-            (SpecializedPair::Generic { val, .. }, 1, v) => { *val = v; Ok(()) }
+            (SpecializedPair::IntInt { key, .. }, 0, Value::Int(v)) => {
+                *key = v;
+                Ok(())
+            }
+            (SpecializedPair::IntInt { val, .. }, 1, Value::Int(v)) => {
+                *val = v;
+                Ok(())
+            }
+            (SpecializedPair::IntBool { key, .. }, 0, Value::Int(v)) => {
+                *key = v;
+                Ok(())
+            }
+            (SpecializedPair::IntBool { val, .. }, 1, Value::Bool(v)) => {
+                *val = v;
+                Ok(())
+            }
+            (SpecializedPair::BoolInt { key, .. }, 0, Value::Bool(v)) => {
+                *key = v;
+                Ok(())
+            }
+            (SpecializedPair::BoolInt { val, .. }, 1, Value::Int(v)) => {
+                *val = v;
+                Ok(())
+            }
+            (SpecializedPair::IntValue { key, .. }, 0, Value::Int(v)) => {
+                *key = v;
+                Ok(())
+            }
+            (SpecializedPair::IntValue { val, .. }, 1, v) => {
+                *val = v;
+                Ok(())
+            }
+            (SpecializedPair::ValueInt { key, .. }, 0, v) => {
+                *key = v;
+                Ok(())
+            }
+            (SpecializedPair::ValueInt { val, .. }, 1, Value::Int(v)) => {
+                *val = v;
+                Ok(())
+            }
+            (SpecializedPair::BoolValue { key, .. }, 0, Value::Bool(v)) => {
+                *key = v;
+                Ok(())
+            }
+            (SpecializedPair::BoolValue { val, .. }, 1, v) => {
+                *val = v;
+                Ok(())
+            }
+            (SpecializedPair::ValueBool { key, .. }, 0, v) => {
+                *key = v;
+                Ok(())
+            }
+            (SpecializedPair::ValueBool { val, .. }, 1, Value::Bool(v)) => {
+                *val = v;
+                Ok(())
+            }
+            (SpecializedPair::Generic { key, .. }, 0, v) => {
+                *key = v;
+                Ok(())
+            }
+            (SpecializedPair::Generic { val, .. }, 1, v) => {
+                *val = v;
+                Ok(())
+            }
             (_, _, _) => Err(format!("Type mismatch in specialized pair set")),
         }
     }
 
     /// Create specialized pair from type arguments
-    pub fn from_type_args(key_type: &Type, val_type: &Type, key: Value, val: Value) -> Result<Self, String> {
+    pub fn from_type_args(
+        key_type: &Type,
+        val_type: &Type,
+        key: Value,
+        val: Value,
+    ) -> Result<Self, String> {
         use Type::*;
 
         match (key_type, val_type) {
             // Pair<int, int> - Most specialized
-            (Int, Int) => {
-                match (key, val) {
-                    (Value::Int(key_i32), Value::Int(val_i32)) => {
-                        Ok(SpecializedPair::IntInt { key: key_i32, val: val_i32 })
-                    }
-                    _ => Err("Type mismatch: expected Int for both fields".to_string())
-                }
-            }
+            (Int, Int) => match (key, val) {
+                (Value::Int(key_i32), Value::Int(val_i32)) => Ok(SpecializedPair::IntInt {
+                    key: key_i32,
+                    val: val_i32,
+                }),
+                _ => Err("Type mismatch: expected Int for both fields".to_string()),
+            },
             // Pair<int, bool>
-            (Int, Bool) => {
-                match (key, val) {
-                    (Value::Int(key_i32), Value::Bool(val_bool)) => {
-                        Ok(SpecializedPair::IntBool { key: key_i32, val: val_bool })
-                    }
-                    _ => Err("Type mismatch: expected Int for key, Bool for val".to_string())
-                }
-            }
+            (Int, Bool) => match (key, val) {
+                (Value::Int(key_i32), Value::Bool(val_bool)) => Ok(SpecializedPair::IntBool {
+                    key: key_i32,
+                    val: val_bool,
+                }),
+                _ => Err("Type mismatch: expected Int for key, Bool for val".to_string()),
+            },
             // Pair<bool, int>
-            (Bool, Int) => {
-                match (key, val) {
-                    (Value::Bool(key_bool), Value::Int(val_i32)) => {
-                        Ok(SpecializedPair::BoolInt { key: key_bool, val: val_i32 })
-                    }
-                    _ => Err("Type mismatch: expected Bool for key, Int for val".to_string())
-                }
-            }
+            (Bool, Int) => match (key, val) {
+                (Value::Bool(key_bool), Value::Int(val_i32)) => Ok(SpecializedPair::BoolInt {
+                    key: key_bool,
+                    val: val_i32,
+                }),
+                _ => Err("Type mismatch: expected Bool for key, Int for val".to_string()),
+            },
             // Pair<int, V> - Half specialized
-            (Int, _) => {
-                match key {
-                    Value::Int(key_i32) => {
-                        Ok(SpecializedPair::IntValue { key: key_i32, val })
-                    }
-                    _ => Err("Type mismatch: expected Int for key".to_string())
-                }
-            }
+            (Int, _) => match key {
+                Value::Int(key_i32) => Ok(SpecializedPair::IntValue { key: key_i32, val }),
+                _ => Err("Type mismatch: expected Int for key".to_string()),
+            },
             // Pair<K, int> - Half specialized
-            (_, Int) => {
-                match val {
-                    Value::Int(val_i32) => {
-                        Ok(SpecializedPair::ValueInt { key, val: val_i32 })
-                    }
-                    _ => Err("Type mismatch: expected Int for val".to_string())
-                }
-            }
+            (_, Int) => match val {
+                Value::Int(val_i32) => Ok(SpecializedPair::ValueInt { key, val: val_i32 }),
+                _ => Err("Type mismatch: expected Int for val".to_string()),
+            },
             // Pair<bool, V> - Half specialized
-            (Bool, _) => {
-                match key {
-                    Value::Bool(key_bool) => {
-                        Ok(SpecializedPair::BoolValue { key: key_bool, val })
-                    }
-                    _ => Err("Type mismatch: expected Bool for key".to_string())
-                }
-            }
+            (Bool, _) => match key {
+                Value::Bool(key_bool) => Ok(SpecializedPair::BoolValue { key: key_bool, val }),
+                _ => Err("Type mismatch: expected Bool for key".to_string()),
+            },
             // Pair<V, bool> - Half specialized
-            (_, Bool) => {
-                match val {
-                    Value::Bool(val_bool) => {
-                        Ok(SpecializedPair::ValueBool { key, val: val_bool })
-                    }
-                    _ => Err("Type mismatch: expected Bool for val".to_string())
-                }
-            }
+            (_, Bool) => match val {
+                Value::Bool(val_bool) => Ok(SpecializedPair::ValueBool { key, val: val_bool }),
+                _ => Err("Type mismatch: expected Bool for val".to_string()),
+            },
             // Pair<K, V> - Generic fallback
             _ => Ok(SpecializedPair::Generic { key, val }),
         }
@@ -461,14 +500,38 @@ impl SpecializedPair {
 impl Clone for SpecializedPair {
     fn clone(&self) -> Self {
         match self {
-            SpecializedPair::IntInt { key, val } => SpecializedPair::IntInt { key: *key, val: *val },
-            SpecializedPair::IntBool { key, val } => SpecializedPair::IntBool { key: *key, val: *val },
-            SpecializedPair::BoolInt { key, val } => SpecializedPair::BoolInt { key: *key, val: *val },
-            SpecializedPair::IntValue { key, val } => SpecializedPair::IntValue { key: *key, val: val.clone() },
-            SpecializedPair::ValueInt { key, val } => SpecializedPair::ValueInt { key: key.clone(), val: *val },
-            SpecializedPair::BoolValue { key, val } => SpecializedPair::BoolValue { key: *key, val: val.clone() },
-            SpecializedPair::ValueBool { key, val } => SpecializedPair::ValueBool { key: key.clone(), val: *val },
-            SpecializedPair::Generic { key, val } => SpecializedPair::Generic { key: key.clone(), val: val.clone() },
+            SpecializedPair::IntInt { key, val } => SpecializedPair::IntInt {
+                key: *key,
+                val: *val,
+            },
+            SpecializedPair::IntBool { key, val } => SpecializedPair::IntBool {
+                key: *key,
+                val: *val,
+            },
+            SpecializedPair::BoolInt { key, val } => SpecializedPair::BoolInt {
+                key: *key,
+                val: *val,
+            },
+            SpecializedPair::IntValue { key, val } => SpecializedPair::IntValue {
+                key: *key,
+                val: val.clone(),
+            },
+            SpecializedPair::ValueInt { key, val } => SpecializedPair::ValueInt {
+                key: key.clone(),
+                val: *val,
+            },
+            SpecializedPair::BoolValue { key, val } => SpecializedPair::BoolValue {
+                key: *key,
+                val: val.clone(),
+            },
+            SpecializedPair::ValueBool { key, val } => SpecializedPair::ValueBool {
+                key: key.clone(),
+                val: *val,
+            },
+            SpecializedPair::Generic { key, val } => SpecializedPair::Generic {
+                key: key.clone(),
+                val: val.clone(),
+            },
         }
     }
 }
@@ -504,8 +567,8 @@ impl Clone for SpecializedPair {
 /// ```
 #[derive(Debug)]
 pub struct GenericInstanceData {
-    pub mono_name: String,       // Monomorphic name (e.g., "Pair_int_str")
-    pub fields: Vec<Value>,      // Type-erased field values
+    pub mono_name: String,        // Monomorphic name (e.g., "Pair_int_str")
+    pub fields: Vec<Value>,       // Type-erased field values
     pub field_names: Vec<String>, // Field names for debugging/formatting
 }
 
@@ -513,12 +576,20 @@ impl GenericInstanceData {
     /// Create a new generic instance with placeholder field names
     pub fn new(mono_name: String, fields: Vec<Value>) -> Self {
         let field_names = vec!["_unknown".to_string(); fields.len()];
-        Self { mono_name, fields, field_names }
+        Self {
+            mono_name,
+            fields,
+            field_names,
+        }
     }
 
     /// Create a new generic instance with explicit field names
     pub fn new_with_names(mono_name: String, fields: Vec<Value>, field_names: Vec<String>) -> Self {
-        Self { mono_name, fields, field_names }
+        Self {
+            mono_name,
+            fields,
+            field_names,
+        }
     }
 
     /// Get field by index
@@ -529,7 +600,11 @@ impl GenericInstanceData {
     /// Set field by index
     pub fn set_field(&mut self, index: usize, value: Value) -> Result<(), String> {
         if index >= self.fields.len() {
-            return Err(format!("Field index {} out of bounds (len: {})", index, self.fields.len()));
+            return Err(format!(
+                "Field index {} out of bounds (len: {})",
+                index,
+                self.fields.len()
+            ));
         }
         self.fields[index] = value;
         Ok(())
@@ -552,12 +627,24 @@ impl HeapObject for SpecializedPair {
     fn type_tag(&self) -> TypeTag {
         match self {
             SpecializedPair::IntInt { .. } => TypeTag::SpecializedPair("Pair_int_int".to_string()),
-            SpecializedPair::IntBool { .. } => TypeTag::SpecializedPair("Pair_int_bool".to_string()),
-            SpecializedPair::BoolInt { .. } => TypeTag::SpecializedPair("Pair_bool_int".to_string()),
-            SpecializedPair::IntValue { .. } => TypeTag::SpecializedPair("Pair_int_Value".to_string()),
-            SpecializedPair::ValueInt { .. } => TypeTag::SpecializedPair("Pair_Value_int".to_string()),
-            SpecializedPair::BoolValue { .. } => TypeTag::SpecializedPair("Pair_bool_Value".to_string()),
-            SpecializedPair::ValueBool { .. } => TypeTag::SpecializedPair("Pair_Value_bool".to_string()),
+            SpecializedPair::IntBool { .. } => {
+                TypeTag::SpecializedPair("Pair_int_bool".to_string())
+            }
+            SpecializedPair::BoolInt { .. } => {
+                TypeTag::SpecializedPair("Pair_bool_int".to_string())
+            }
+            SpecializedPair::IntValue { .. } => {
+                TypeTag::SpecializedPair("Pair_int_Value".to_string())
+            }
+            SpecializedPair::ValueInt { .. } => {
+                TypeTag::SpecializedPair("Pair_Value_int".to_string())
+            }
+            SpecializedPair::BoolValue { .. } => {
+                TypeTag::SpecializedPair("Pair_bool_Value".to_string())
+            }
+            SpecializedPair::ValueBool { .. } => {
+                TypeTag::SpecializedPair("Pair_Value_bool".to_string())
+            }
             SpecializedPair::Generic { .. } => TypeTag::SpecializedPair("Pair_generic".to_string()),
         }
     }
@@ -648,7 +735,7 @@ impl Clone for GenericInstanceData {
 #[derive(Clone)]
 pub struct GenericRegistry {
     templates: HashMap<String, Arc<ClassTemplate>>,
-    types: HashMap<String, Arc<ClassType>>,  // mono_name → ClassType
+    types: HashMap<String, Arc<ClassType>>, // mono_name → ClassType
 }
 
 impl GenericRegistry {
@@ -714,9 +801,14 @@ impl GenericRegistry {
     ///
     /// # Returns
     /// Arc<ClassType> for the instantiation
-    pub fn get_or_create_type(&mut self, base_name: &str, type_args: Vec<Type>) -> Result<Arc<ClassType>, String> {
+    pub fn get_or_create_type(
+        &mut self,
+        base_name: &str,
+        type_args: Vec<Type>,
+    ) -> Result<Arc<ClassType>, String> {
         // Get template
-        let template = self.get_template(base_name)
+        let template = self
+            .get_template(base_name)
             .ok_or_else(|| format!("Generic type '{}' not found", base_name))?;
 
         // Generate monomorphic name
@@ -731,7 +823,8 @@ impl GenericRegistry {
         let class_type = Arc::new(ClassType::new(Arc::clone(&template), type_args));
 
         // Store and return
-        self.types.insert(mono_name.clone(), Arc::clone(&class_type));
+        self.types
+            .insert(mono_name.clone(), Arc::clone(&class_type));
         Ok(class_type)
     }
 
@@ -774,9 +867,10 @@ impl Default for GenericRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Body, Fn as AstFn, FnKind, GenericParam, Type, TypeDecl, TypeDeclKind, TypeParam};
+    use crate::ast::{
+        Body, Fn as AstFn, FnKind, GenericParam, Type, TypeDecl, TypeDeclKind, TypeParam,
+    };
     use auto_val::AutoStr;
-    
 
     fn make_type_param(name: &str) -> GenericParam {
         GenericParam::Type(TypeParam {
@@ -927,19 +1021,25 @@ mod tests {
         let _ = registry.register_template(template).unwrap();
 
         // First call should create
-        let class_type1 = registry.get_or_create_type("Pair", vec![Type::Int, Type::StrFixed(0)]).unwrap();
+        let class_type1 = registry
+            .get_or_create_type("Pair", vec![Type::Int, Type::StrFixed(0)])
+            .unwrap();
         assert_eq!(class_type1.mono_name, "Pair_int_str");
         assert_eq!(registry.type_count(), 1);
 
         // Second call should reuse
-        let class_type2 = registry.get_or_create_type("Pair", vec![Type::Int, Type::StrFixed(0)]).unwrap();
+        let class_type2 = registry
+            .get_or_create_type("Pair", vec![Type::Int, Type::StrFixed(0)])
+            .unwrap();
         assert_eq!(class_type2.mono_name, "Pair_int_str");
-        assert_eq!(registry.type_count(), 1);  // No new type created
+        assert_eq!(registry.type_count(), 1); // No new type created
 
         // Different args should create new type
-        let class_type3 = registry.get_or_create_type("Pair", vec![Type::Bool, Type::Int]).unwrap();
+        let class_type3 = registry
+            .get_or_create_type("Pair", vec![Type::Bool, Type::Int])
+            .unwrap();
         assert_eq!(class_type3.mono_name, "Pair_bool_int");
-        assert_eq!(registry.type_count(), 2);  // New type created
+        assert_eq!(registry.type_count(), 2); // New type created
     }
 
     #[test]
@@ -992,7 +1092,10 @@ mod tests {
 
         assert_eq!(instance.field_count(), 2);
         assert_eq!(instance.get_field(0), Some(&Value::Int(42)));
-        assert_eq!(instance.get_field(1), Some(&Value::Str(AutoStr::from("hello"))));
+        assert_eq!(
+            instance.get_field(1),
+            Some(&Value::Str(AutoStr::from("hello")))
+        );
         assert_eq!(instance.get_field(2), None);
     }
 
@@ -1071,7 +1174,7 @@ mod tests {
     fn test_template_with_no_generic_params() {
         let template = ClassTemplate::new(
             "SimpleType",
-            vec![],  // No generic parameters
+            vec![], // No generic parameters
             vec![
                 FieldDef::new("x", Type::Int),
                 FieldDef::new("y", Type::StrFixed(0)),
@@ -1089,9 +1192,10 @@ mod tests {
         let template = ClassTemplate::new(
             "Box",
             vec![make_type_param("T")],
-            vec![
-                FieldDef::new("value", Type::User(make_type_param_decl("T"))),
-            ],
+            vec![FieldDef::new(
+                "value",
+                Type::User(make_type_param_decl("T")),
+            )],
             vec![],
         );
 
@@ -1105,7 +1209,11 @@ mod tests {
     fn test_three_generic_params() {
         let template = ClassTemplate::new(
             "Triple",
-            vec![make_type_param("T"), make_type_param("U"), make_type_param("V")],
+            vec![
+                make_type_param("T"),
+                make_type_param("U"),
+                make_type_param("V"),
+            ],
             vec![
                 FieldDef::new("first", Type::User(make_type_param_decl("T"))),
                 FieldDef::new("second", Type::User(make_type_param_decl("U"))),
@@ -1128,7 +1236,7 @@ mod tests {
             vec![make_type_param("T"), make_type_param("U")],
             vec![
                 FieldDef::new("generic_field", Type::User(make_type_param_decl("T"))),
-                FieldDef::new("concrete_field", Type::Int),  // Not a generic param
+                FieldDef::new("concrete_field", Type::Int), // Not a generic param
                 FieldDef::new("another_generic", Type::User(make_type_param_decl("U"))),
             ],
             vec![],
@@ -1138,7 +1246,7 @@ mod tests {
 
         assert_eq!(substituted.len(), 3);
         assert!(matches!(substituted[0].field_type, Type::Bool));
-        assert!(matches!(substituted[1].field_type, Type::Int));  // Unchanged
+        assert!(matches!(substituted[1].field_type, Type::Int)); // Unchanged
         assert!(matches!(substituted[2].field_type, Type::StrFixed(_)));
     }
 
@@ -1148,9 +1256,7 @@ mod tests {
         let template = ClassTemplate::new(
             "ArrayContainer",
             vec![make_type_param("T")],
-            vec![
-                FieldDef::new("data", Type::User(make_type_param_decl("T"))),
-            ],
+            vec![FieldDef::new("data", Type::User(make_type_param_decl("T")))],
             vec![],
         );
 
@@ -1178,9 +1284,10 @@ mod tests {
         let template = ClassTemplate::new(
             "ListContainer",
             vec![make_type_param("T")],
-            vec![
-                FieldDef::new("items", Type::User(make_type_param_decl("T"))),
-            ],
+            vec![FieldDef::new(
+                "items",
+                Type::User(make_type_param_decl("T")),
+            )],
             vec![],
         );
 
@@ -1220,9 +1327,7 @@ mod tests {
         let template = ClassTemplate::new(
             "Pair",
             vec![make_type_param("K"), make_type_param("V")],
-            vec![
-                FieldDef::new("key", Type::User(make_type_param_decl("K"))),
-            ],
+            vec![FieldDef::new("key", Type::User(make_type_param_decl("K")))],
             methods,
         );
 
@@ -1232,7 +1337,10 @@ mod tests {
 
         assert!(get_key_idx.is_some(), "get_key should exist");
         assert!(set_key_idx.is_some(), "set_key should exist");
-        assert_ne!(get_key_idx, set_key_idx, "Methods should have different indices");
+        assert_ne!(
+            get_key_idx, set_key_idx,
+            "Methods should have different indices"
+        );
         assert_eq!(template.method_index("nonexistent"), None);
 
         // Verify we have exactly 2 methods
@@ -1241,15 +1349,13 @@ mod tests {
 
     #[test]
     fn test_generic_instance_get_field_out_of_bounds() {
-        let instance = GenericInstanceData::new(
-            "TestType".to_string(),
-            vec![Value::Int(1), Value::Int(2)],
-        );
+        let instance =
+            GenericInstanceData::new("TestType".to_string(), vec![Value::Int(1), Value::Int(2)]);
 
         assert_eq!(instance.get_field(0), Some(&Value::Int(1)));
         assert_eq!(instance.get_field(1), Some(&Value::Int(2)));
-        assert_eq!(instance.get_field(2), None);  // Out of bounds
-        assert_eq!(instance.get_field(100), None);  // Way out of bounds
+        assert_eq!(instance.get_field(2), None); // Out of bounds
+        assert_eq!(instance.get_field(100), None); // Way out of bounds
     }
 
     #[test]
@@ -1270,10 +1376,7 @@ mod tests {
 
     #[test]
     fn test_generic_instance_empty_fields() {
-        let mut instance = GenericInstanceData::new(
-            "EmptyType".to_string(),
-            vec![],
-        );
+        let mut instance = GenericInstanceData::new("EmptyType".to_string(), vec![]);
 
         assert_eq!(instance.field_count(), 0);
         assert_eq!(instance.get_field(0), None);
@@ -1284,7 +1387,7 @@ mod tests {
     fn test_class_type_with_no_type_args() {
         let template = Arc::new(ClassTemplate::new(
             "NonGeneric",
-            vec![],  // No generic params
+            vec![], // No generic params
             vec![],
             vec![],
         ));
@@ -1293,7 +1396,7 @@ mod tests {
 
         assert_eq!(class_type.base_name(), "NonGeneric");
         assert_eq!(class_type.mono_name, "NonGeneric");
-        assert!(!class_type.is_generic());  // Not a generic type
+        assert!(!class_type.is_generic()); // Not a generic type
         assert_eq!(class_type.type_args.len(), 0);
     }
 
@@ -1327,7 +1430,11 @@ mod tests {
     fn test_mono_name_with_various_types() {
         let template = ClassTemplate::new(
             "Triple",
-            vec![make_type_param("A"), make_type_param("B"), make_type_param("C")],
+            vec![
+                make_type_param("A"),
+                make_type_param("B"),
+                make_type_param("C"),
+            ],
             vec![],
             vec![],
         );
@@ -1352,17 +1459,25 @@ mod tests {
 
         let template2 = ClassTemplate::new(
             "Triple",
-            vec![make_type_param("A"), make_type_param("B"), make_type_param("C")],
+            vec![
+                make_type_param("A"),
+                make_type_param("B"),
+                make_type_param("C"),
+            ],
             vec![],
             vec![],
         );
         let _ = registry.register_template(template2);
 
         // Create types from both templates
-        let pair_type = registry.get_or_create_type("Pair", vec![Type::Int, Type::StrFixed(0)]).unwrap();
+        let pair_type = registry
+            .get_or_create_type("Pair", vec![Type::Int, Type::StrFixed(0)])
+            .unwrap();
         assert_eq!(pair_type.mono_name, "Pair_int_str");
 
-        let triple_type = registry.get_or_create_type("Triple", vec![Type::Bool, Type::Int, Type::Float]).unwrap();
+        let triple_type = registry
+            .get_or_create_type("Triple", vec![Type::Bool, Type::Int, Type::Float])
+            .unwrap();
         assert_eq!(triple_type.mono_name, "Triple_bool_int_float");
     }
 
@@ -1376,12 +1491,7 @@ mod tests {
             FieldDef::new("f4", Type::Double),
         ];
 
-        let template = ClassTemplate::new(
-            "ManyFields",
-            vec![],
-            fields,
-            vec![],
-        );
+        let template = ClassTemplate::new("ManyFields", vec![], fields, vec![]);
 
         assert_eq!(template.fields.len(), 5);
         assert_eq!(template.field_index("f0"), Some(0));
@@ -1394,18 +1504,17 @@ mod tests {
     fn test_registry_same_type_different_args() {
         let mut registry = GenericRegistry::new();
 
-        let template = ClassTemplate::new(
-            "Box",
-            vec![make_type_param("T")],
-            vec![],
-            vec![],
-        );
+        let template = ClassTemplate::new("Box", vec![make_type_param("T")], vec![], vec![]);
         let _ = registry.register_template(template);
 
         // Create same type with different arguments
         let box_int = registry.get_or_create_type("Box", vec![Type::Int]).unwrap();
-        let box_str = registry.get_or_create_type("Box", vec![Type::StrFixed(0)]).unwrap();
-        let box_bool = registry.get_or_create_type("Box", vec![Type::Bool]).unwrap();
+        let box_str = registry
+            .get_or_create_type("Box", vec![Type::StrFixed(0)])
+            .unwrap();
+        let box_bool = registry
+            .get_or_create_type("Box", vec![Type::Bool])
+            .unwrap();
 
         assert_eq!(box_int.mono_name, "Box_int");
         assert_eq!(box_str.mono_name, "Box_str");
@@ -1436,7 +1545,10 @@ mod tests {
         assert_eq!(instance.get_field(1), Some(&Value::Uint(100)));
         assert_eq!(instance.get_field(2), Some(&Value::Bool(true)));
         assert!(matches!(instance.get_field(3), Some(&Value::Float(_))));
-        assert_eq!(instance.get_field(4), Some(&Value::Str(AutoStr::from("hello"))));
+        assert_eq!(
+            instance.get_field(4),
+            Some(&Value::Str(AutoStr::from("hello")))
+        );
         assert_eq!(instance.get_field(5), Some(&Value::Char('a')));
     }
 
@@ -1449,7 +1561,10 @@ mod tests {
             vec![
                 FieldDef::new("first", Type::User(make_type_param_decl("T"))),
                 FieldDef::new("second", Type::User(make_type_param_decl("U"))),
-                FieldDef::new("list_of_t", Type::List(Box::new(Type::User(make_type_param_decl("T"))))),
+                FieldDef::new(
+                    "list_of_t",
+                    Type::List(Box::new(Type::User(make_type_param_decl("T")))),
+                ),
             ],
             vec![],
         );
@@ -1475,7 +1590,8 @@ mod tests {
             &Type::Int,
             Value::Int(42),
             Value::Int(100),
-        ).unwrap();
+        )
+        .unwrap();
 
         match pair {
             SpecializedPair::IntInt { key, val } => {
@@ -1493,7 +1609,8 @@ mod tests {
             &Type::Bool,
             Value::Int(1),
             Value::Bool(true),
-        ).unwrap();
+        )
+        .unwrap();
 
         match pair {
             SpecializedPair::IntBool { key, val } => {
@@ -1511,7 +1628,8 @@ mod tests {
             &Type::Int,
             Value::Bool(false),
             Value::Int(99),
-        ).unwrap();
+        )
+        .unwrap();
 
         match pair {
             SpecializedPair::BoolInt { key, val } => {
@@ -1529,7 +1647,8 @@ mod tests {
             &Type::StrFixed(0),
             Value::Int(55),
             Value::Str(AutoStr::from("hello")),
-        ).unwrap();
+        )
+        .unwrap();
 
         match pair {
             SpecializedPair::IntValue { key, val } => {
@@ -1547,7 +1666,8 @@ mod tests {
             &Type::Int,
             Value::Str(AutoStr::from("key")),
             Value::Int(77),
-        ).unwrap();
+        )
+        .unwrap();
 
         match pair {
             SpecializedPair::ValueInt { key, val } => {
@@ -1566,7 +1686,8 @@ mod tests {
             &Type::StrFixed(0),
             Value::Str(AutoStr::from("hello")),
             Value::Str(AutoStr::from("world")),
-        ).unwrap();
+        )
+        .unwrap();
 
         match pair {
             SpecializedPair::Generic { key, val } => {
@@ -1617,13 +1738,20 @@ mod tests {
             val: Value::Int(0),
         };
         assert!(pair.set_field(0, Value::Int(15)).is_ok());
-        assert!(pair.set_field(1, Value::Str(AutoStr::from("updated"))).is_ok());
+        assert!(pair
+            .set_field(1, Value::Str(AutoStr::from("updated")))
+            .is_ok());
         assert_eq!(pair.get_field(0), Some(Value::Int(15)));
-        assert_eq!(pair.get_field(1), Some(Value::Str(AutoStr::from("updated"))));
+        assert_eq!(
+            pair.get_field(1),
+            Some(Value::Str(AutoStr::from("updated")))
+        );
 
         // Test type mismatch
         let mut pair = SpecializedPair::IntInt { key: 1, val: 2 };
-        assert!(pair.set_field(0, Value::Str(AutoStr::from("wrong"))).is_err());
+        assert!(pair
+            .set_field(0, Value::Str(AutoStr::from("wrong")))
+            .is_err());
     }
 
     #[test]

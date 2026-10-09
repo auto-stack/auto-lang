@@ -24,10 +24,7 @@ pub enum FFIError {
     InvalidHeapObjectId(u64),
 
     /// Stack underflow when popping arguments
-    StackUnderflow {
-        expected: usize,
-        found: usize,
-    },
+    StackUnderflow { expected: usize, found: usize },
 
     /// Runtime error from the FFI function
     RuntimeError(String),
@@ -43,7 +40,11 @@ impl fmt::Display for FFIError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FFIError::TypeMismatch { expected, found } => {
-                write!(f, "FFI type mismatch: expected {}, found {}", expected, found)
+                write!(
+                    f,
+                    "FFI type mismatch: expected {}, found {}",
+                    expected, found
+                )
             }
             FFIError::InvalidStringIndex(idx) => {
                 write!(f, "Invalid string index: {}", idx)

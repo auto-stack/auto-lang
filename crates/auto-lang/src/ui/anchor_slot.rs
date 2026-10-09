@@ -112,7 +112,10 @@ impl<M: Clone + std::fmt::Debug + 'static> iced::advanced::Widget<M, Theme, iced
         renderer: &iced::Renderer,
         limits: &iced::advanced::layout::Limits,
     ) -> iced::advanced::layout::Node {
-        let node = self.child.as_widget_mut().layout(&mut tree.children[0], renderer, limits);
+        let node = self
+            .child
+            .as_widget_mut()
+            .layout(&mut tree.children[0], renderer, limits);
         // PLAN-063 T-04d-2: 记录块高（高度在子件自身 layout 内即确定，
         // 不依赖父级定位；y 由消费侧按累计+间距计算）。
         record_slot(self.index, node.bounds().height);
@@ -139,7 +142,14 @@ impl<M: Clone + std::fmt::Debug + 'static> iced::advanced::Widget<M, Theme, iced
         // column::update 三方 zip 把 children[0]（无状态）配给首个孙件，
         // mouse_area downcast 即崩（T-04d-2 挂起问题的实证根因）。
         self.child.as_widget_mut().update(
-            &mut tree.children[0], event, layout, cursor, renderer, clipboard, shell, viewport,
+            &mut tree.children[0],
+            event,
+            layout,
+            cursor,
+            renderer,
+            clipboard,
+            shell,
+            viewport,
         );
     }
 
@@ -154,7 +164,13 @@ impl<M: Clone + std::fmt::Debug + 'static> iced::advanced::Widget<M, Theme, iced
         viewport: &Rectangle,
     ) {
         self.child.as_widget().draw(
-            &tree.children[0], renderer, theme, style, layout, cursor, viewport,
+            &tree.children[0],
+            renderer,
+            theme,
+            style,
+            layout,
+            cursor,
+            viewport,
         );
     }
 
@@ -166,9 +182,13 @@ impl<M: Clone + std::fmt::Debug + 'static> iced::advanced::Widget<M, Theme, iced
         viewport: &Rectangle,
         renderer: &iced::Renderer,
     ) -> iced::mouse::Interaction {
-        self.child
-            .as_widget()
-            .mouse_interaction(&tree.children[0], layout, cursor, viewport, renderer)
+        self.child.as_widget().mouse_interaction(
+            &tree.children[0],
+            layout,
+            cursor,
+            viewport,
+            renderer,
+        )
     }
 
     fn size_hint(&self) -> Size<Length> {
@@ -195,8 +215,12 @@ impl<M: Clone + std::fmt::Debug + 'static> iced::advanced::Widget<M, Theme, iced
         viewport: &Rectangle,
         translation: iced::Vector,
     ) -> Option<iced::advanced::overlay::Element<'b, M, Theme, iced::Renderer>> {
-        self.child
-            .as_widget_mut()
-            .overlay(&mut tree.children[0], layout, renderer, viewport, translation)
+        self.child.as_widget_mut().overlay(
+            &mut tree.children[0],
+            layout,
+            renderer,
+            viewport,
+            translation,
+        )
     }
 }

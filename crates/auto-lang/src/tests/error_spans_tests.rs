@@ -18,9 +18,7 @@ fn parse_ui(code: &str) -> Result<crate::ast::Code, AutoError> {
 /// Offset of the first miette label of an error (delegates into the first
 /// inner error for MultipleErrors).
 fn first_label_offset(e: &AutoError) -> Option<usize> {
-    e.labels()
-        .and_then(|mut it| it.next())
-        .map(|l| l.offset())
+    e.labels().and_then(|mut it| it.next()).map(|l| l.offset())
 }
 
 fn widget_decl(code: &crate::ast::Code) -> &crate::ast::WidgetDecl {
@@ -177,7 +175,10 @@ fn gap37b_handler_multi_params_stay_in_scope() {
     let ast = parse_ui(code).expect("multi-param handler must parse");
     let w = widget_decl(&ast);
     let on = w.on.as_ref().expect("on block");
-    assert_eq!(on.handlers[0].params, vec!["a".to_string(), "e".to_string()]);
+    assert_eq!(
+        on.handlers[0].params,
+        vec!["a".to_string(), "e".to_string()]
+    );
 
     let widget = crate::aura::extract_widget_from_decl(w).expect("extract widget");
     let sfc = VueGenerator::new().generate(&widget).expect("generate SFC");
@@ -220,10 +221,14 @@ fn gap46_text_fn_call_parses_as_call_expr() {
         ViewNode::Element { props, .. } => props,
         other => panic!("expected text element, got {:?}", other),
     };
-    let is_call = text_props.iter().any(|p| {
-        matches!(&p.value, ViewPropValue::Expr(Expr::Call(_)))
-    });
-    assert!(is_call, "text primary prop must be a Call expr: {:?}", text_props);
+    let is_call = text_props
+        .iter()
+        .any(|p| matches!(&p.value, ViewPropValue::Expr(Expr::Call(_))));
+    assert!(
+        is_call,
+        "text primary prop must be a Call expr: {:?}",
+        text_props
+    );
 }
 
 /// Plan 410: `check_symbol`'s UndefinedVariable span must point at the
@@ -236,19 +241,15 @@ fn gap46_text_fn_call_parses_as_call_expr() {
 /// identifier — `missingVar + 1` is a Bina(Add) and is not checked at all.
 #[test]
 fn plan410_undefined_ident_span_points_at_expression_start() {
-    let code = concat!(
-        "fn main() {\n",
-        "  if missingVar {\n",
-        "  }\n",
-        "}\n"
-    );
+    let code = concat!("fn main() {\n", "  if missingVar {\n", "  }\n", "}\n");
     let mut parser = Parser::from(code);
     let err = parser.parse().expect_err("undefined variable must fail");
 
     let ident_off = code.find("missingVar").unwrap();
     let label_off = first_label_offset(&err).expect("error must carry a label");
     assert_eq!(
-        label_off, ident_off,
+        label_off,
+        ident_off,
         "error span must point at the offending identifier `missingVar` (code[..] = {:?})",
         &code[label_off..(label_off + 10).min(code.len())]
     );
@@ -261,18 +262,17 @@ fn plan410_undefined_ident_span_points_at_expression_start() {
 /// after the argument (the `)` here).
 #[test]
 fn plan410_undefined_ident_in_call_arg_span_points_at_itself() {
-    let code = concat!(
-        "fn main() {\n",
-        "  log(missingVar)\n",
-        "}\n"
-    );
+    let code = concat!("fn main() {\n", "  log(missingVar)\n", "}\n");
     let mut parser = Parser::from(code);
-    let err = parser.parse().expect_err("undefined variable in arg must fail");
+    let err = parser
+        .parse()
+        .expect_err("undefined variable in arg must fail");
 
     let ident_off = code.find("missingVar").unwrap();
     let label_off = first_label_offset(&err).expect("error must carry a label");
     assert_eq!(
-        label_off, ident_off,
+        label_off,
+        ident_off,
         "error span must point at the offending identifier `missingVar` (code[..] = {:?})",
         &code[label_off..(label_off + 10).min(code.len())]
     );
@@ -287,5 +287,3 @@ fn plan410_undefined_ident_in_call_arg_span_points_at_itself() {
 // hint so it stays correct if it ever becomes reachable; extending
 // check_symbol to `Expr::Dot` is a semantic change (today `x = a.b` with
 // undefined `a` parses fine) and is out of this plan's scope.
-
-

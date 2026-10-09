@@ -77,7 +77,11 @@ impl RouteDef {
     /// ```
     pub fn new(path: String, module: String) -> Self {
         let params = extract_route_params(&path);
-        Self { path, module, params }
+        Self {
+            path,
+            module,
+            params,
+        }
     }
 }
 

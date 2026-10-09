@@ -454,10 +454,11 @@ impl<T1: VMConvertible, T2: VMConvertible, T3: VMConvertible> VMConvertible for 
 // Plan 377: BigInt 堆装箱辅助函数（>2^48 的 i64/u64 完整范围兜底）
 // ============================================================================
 
-use auto_val::{NanoValue, try_encode_i64, try_encode_u64, decode_i64, decode_u64,
-    decode_i32, encode_bigint, is_bigint, decode_bigint_handle, tag_of,
-    is_nanboxed, decode_f32, decode_f64};
-use crate::vm::heap_object::{BigIntData, downcast};
+use crate::vm::heap_object::{downcast, BigIntData};
+use auto_val::{
+    decode_bigint_handle, decode_f32, decode_f64, decode_i32, decode_i64, decode_u64,
+    encode_bigint, is_bigint, is_nanboxed, tag_of, try_encode_i64, try_encode_u64, NanoValue,
+};
 
 /// 将 i64 编码为单槽 NanoValue：48 位内联，否则堆装箱（TAG_BIGINT handle）。
 pub fn encode_i64_with_heap(vm: &AutoVM, val: i64) -> NanoValue {
@@ -490,9 +491,10 @@ pub fn encode_u64_with_heap(vm: &AutoVM, val: u64) -> NanoValue {
 /// I64_TO_F64 即得位模式垃圾），按数值截断。
 pub fn decode_i64_full(vm: &AutoVM, nv: NanoValue) -> i64 {
     match tag_of(nv) {
-        t if t == 8 => decode_i64(nv),       // TAG_I64
+        t if t == 8 => decode_i64(nv),        // TAG_I64
         t if t == 9 => decode_u64(nv) as i64, // TAG_U64
-        t if t == 0xA => {                    // TAG_BIGINT
+        t if t == 0xA => {
+            // TAG_BIGINT
             let id = decode_bigint_handle(nv) as u64;
             if let Some(obj) = vm.get_heap_object(id) {
                 if let Some(guard) = obj.read().ok() {
@@ -522,7 +524,8 @@ pub fn decode_u64_full(vm: &AutoVM, nv: NanoValue) -> u64 {
     match tag_of(nv) {
         t if t == 9 => decode_u64(nv),        // TAG_U64
         t if t == 8 => decode_i64(nv) as u64, // TAG_I64
-        t if t == 0xA => {                    // TAG_BIGINT
+        t if t == 0xA => {
+            // TAG_BIGINT
             let id = decode_bigint_handle(nv) as u64;
             if let Some(obj) = vm.get_heap_object(id) {
                 if let Some(guard) = obj.read().ok() {
@@ -548,4 +551,6 @@ pub fn decode_u64_full(vm: &AutoVM, nv: NanoValue) -> u64 {
 
 /// 判定 NanoValue 是否为 BIGINT（供算术 opcode 慢路径检测用）。
 #[allow(dead_code)]
-pub fn nv_is_bigint(nv: NanoValue) -> bool { is_bigint(nv) }
+pub fn nv_is_bigint(nv: NanoValue) -> bool {
+    is_bigint(nv)
+}

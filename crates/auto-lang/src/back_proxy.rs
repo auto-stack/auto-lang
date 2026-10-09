@@ -296,7 +296,10 @@ fn bind_with_fallback(want: u16) -> std::io::Result<(TcpListener, u16)> {
         }
     }
     Err(last_err.unwrap_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::AddrInUse, "no free port in fallback range")
+        std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            "no free port in fallback range",
+        )
     }))
 }
 
@@ -317,7 +320,10 @@ fn spawn_session(spec: &SessionSpec) -> std::io::Result<SessionHandle> {
                 format!("spawn session thread for {} failed: {e}", spec.app_id),
             )
         })?;
-    Ok(SessionHandle { tx, join: Some(join) })
+    Ok(SessionHandle {
+        tx,
+        join: Some(join),
+    })
 }
 
 /// PLAN-675 T-08: lazy 档未命中即载——会话表锁内完成「查目录→spawn→插表」
@@ -365,7 +371,10 @@ impl RunningProxy {
         if sessions.contains_key(&spec.app_id) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::AlreadyExists,
-                format!("back-proxy: session for `{}` already registered", spec.app_id),
+                format!(
+                    "back-proxy: session for `{}` already registered",
+                    spec.app_id
+                ),
             ));
         }
         let handle = spawn_session(&spec)?;
@@ -514,7 +523,13 @@ fn read_request(stream: &mut TcpStream) -> std::io::Result<Option<ParsedRequest>
     if content_length > 0 {
         reader.read_exact(&mut body)?;
     }
-    Ok(Some(ParsedRequest { method, path, query, headers, body }))
+    Ok(Some(ParsedRequest {
+        method,
+        path,
+        query,
+        headers,
+        body,
+    }))
 }
 
 fn route_request(shared: &ProxyShared, req: &ParsedRequest) -> ProxyReply {
@@ -543,7 +558,10 @@ fn route_request(shared: &ProxyShared, req: &ParsedRequest) -> ProxyReply {
         return ProxyReply::json(200, body);
     }
     let Some(rest) = req.path.strip_prefix("/apps/") else {
-        return ProxyReply::json(404, error_json("back-proxy: path must start with /apps/<id>/"));
+        return ProxyReply::json(
+            404,
+            error_json("back-proxy: path must start with /apps/<id>/"),
+        );
     };
     let (app_id, sub_path) = match rest.split_once('/') {
         Some((id, rest)) => (id.to_string(), format!("/{rest}")),
@@ -615,7 +633,10 @@ fn route_request(shared: &ProxyShared, req: &ParsedRequest) -> ProxyReply {
         .get(&app_id)
         .map(|handle| handle.tx.clone());
     let Some(tx) = tx else {
-        return ProxyReply::json(404, error_json(&format!("back-proxy: unknown app `{app_id}`")));
+        return ProxyReply::json(
+            404,
+            error_json(&format!("back-proxy: unknown app `{app_id}`")),
+        );
     };
     let (reply_tx, reply_rx) = mpsc::channel::<ProxyReply>();
     let sent = tx.send(ProxyRequest {
@@ -660,16 +681,32 @@ fn write_response(stream: &mut TcpStream, reply: ProxyReply) -> std::io::Result<
         other => other,
     };
     let (status, content_type, extra_headers, body_source) = match reply {
-        ProxyReply::Response { status, content_type, body } => {
-            (status, content_type.to_string(), Vec::<(String, String)>::new(), BodySource::Bytes(body))
-        }
+        ProxyReply::Response {
+            status,
+            content_type,
+            body,
+        } => (
+            status,
+            content_type.to_string(),
+            Vec::<(String, String)>::new(),
+            BodySource::Bytes(body),
+        ),
         ProxyReply::Sse(_) => unreachable!("Sse handled in the outer match"),
         #[cfg(feature = "ui")]
-        ProxyReply::Stream { status, content_type, extra_headers, content_length, reader } => (
+        ProxyReply::Stream {
             status,
             content_type,
             extra_headers,
-            BodySource::Reader { content_length, reader },
+            content_length,
+            reader,
+        } => (
+            status,
+            content_type,
+            extra_headers,
+            BodySource::Reader {
+                content_length,
+                reader,
+            },
         ),
     };
     let reason = match status {
@@ -695,7 +732,10 @@ fn write_response(stream: &mut TcpStream, reply: ProxyReply) -> std::io::Result<
             stream.write_all(head.as_bytes())?;
             stream.write_all(&body)?;
         }
-        BodySource::Reader { content_length, mut reader } => {
+        BodySource::Reader {
+            content_length,
+            mut reader,
+        } => {
             head.push_str(&format!("Content-Length: {content_length}\r\n\r\n"));
             stream.write_all(head.as_bytes())?;
             let mut buf = [0u8; 64 * 1024];
@@ -758,7 +798,12 @@ impl ProxyShared {
                     .iter()
                     .find(|(k, _)| k == "range")
                     .map(|(_, v)| v.clone());
-                return Some(Self::media_stream(state, &id, range.as_deref(), req.method == "HEAD"));
+                return Some(Self::media_stream(
+                    state,
+                    &id,
+                    range.as_deref(),
+                    req.method == "HEAD",
+                ));
             }
         }
         None
@@ -769,10 +814,7 @@ impl ProxyShared {
     /// §5.3 实施裁定）。
     fn media_scan(state: &NativeMediaState) -> ProxyReply {
         let Some(root) = &state.root else {
-            return ProxyReply::json(
-                200,
-                "{\"entries\":[],\"root_missing\":false}".to_string(),
-            );
+            return ProxyReply::json(200, "{\"entries\":[],\"root_missing\":false}".to_string());
         };
         if !root.exists() {
             return ProxyReply::json(200, "{\"entries\":[],\"root_missing\":true}".to_string());
@@ -786,15 +828,17 @@ impl ProxyShared {
             if i > 0 {
                 out.push(',');
             }
-            let (artist, song_title) =
-                crate::ui::media_service::parse_artist_and_title(&e.name);
+            let (artist, song_title) = crate::ui::media_service::parse_artist_and_title(&e.name);
             let album = if e.rel_dir.is_empty() {
                 "本地单曲".to_string()
             } else {
                 e.rel_dir.clone()
             };
             let index_str = format!("{:02}", i + 1);
-            let abs = format!("{}/apps/{}/api/media/stream/{}", state.base, state.app_id, e.id);
+            let abs = format!(
+                "{}/apps/{}/api/media/stream/{}",
+                state.base, state.app_id, e.id
+            );
             out.push_str(
                 &serde_json::json!({
                     "id": &e.id,
@@ -830,7 +874,9 @@ impl ProxyShared {
         range: Option<&str>,
         head_only: bool,
     ) -> ProxyReply {
-        use crate::ui::media_service::{content_range, content_type, find, parse_range, StreamPlan};
+        use crate::ui::media_service::{
+            content_range, content_type, find, parse_range, StreamPlan,
+        };
         let Some(root) = &state.root else {
             return ProxyReply::json(503, error_json("media root not configured"));
         };
@@ -843,7 +889,10 @@ impl ProxyShared {
         };
         let path = root.join(&entry.relative_path);
         let Ok(file) = std::fs::File::open(&path) else {
-            return ProxyReply::json(404, error_json(&format!("media file missing: {}", entry.name)));
+            return ProxyReply::json(
+                404,
+                error_json(&format!("media file missing: {}", entry.name)),
+            );
         };
         let len = file.metadata().map(|m| m.len()).unwrap_or(0);
         let plan = parse_range(range, len);
@@ -950,7 +999,10 @@ impl ProxyShared {
             );
         };
         if !root.exists() {
-            return ProxyReply::json(200, "{\"entries\":[],\"dirs\":[],\"root_missing\":true}".to_string());
+            return ProxyReply::json(
+                200,
+                "{\"entries\":[],\"dirs\":[],\"root_missing\":true}".to_string(),
+            );
         }
         let listing = match crate::ui::photo_service::list_directory(root, dir) {
             Ok(l) => l,
@@ -963,8 +1015,14 @@ impl ProxyShared {
             if i > 0 {
                 out.push(',');
             }
-            let abs_thumb = format!("{}/apps/{}/api/photos/thumb/{}", state.base, state.app_id, e.id);
-            let abs_full = format!("{}/apps/{}/api/photos/full/{}", state.base, state.app_id, e.id);
+            let abs_thumb = format!(
+                "{}/apps/{}/api/photos/thumb/{}",
+                state.base, state.app_id, e.id
+            );
+            let abs_full = format!(
+                "{}/apps/{}/api/photos/full/{}",
+                state.base, state.app_id, e.id
+            );
             out.push_str(
                 &serde_json::json!({
                     "id": &e.id,
@@ -1010,10 +1068,16 @@ impl ProxyShared {
         id: &str,
     ) -> Result<crate::ui::photo_service::PhotoEntry, ProxyReply> {
         let Some(root) = &state.root else {
-            return Err(ProxyReply::json(503, error_json("photo root not configured")));
+            return Err(ProxyReply::json(
+                503,
+                error_json("photo root not configured"),
+            ));
         };
         let Some(rel) = crate::ui::photo_service::resolve_token(root, id) else {
-            return Err(ProxyReply::json(404, error_json(&format!("unknown photo id `{id}`"))));
+            return Err(ProxyReply::json(
+                404,
+                error_json(&format!("unknown photo id `{id}`")),
+            ));
         };
         crate::ui::photo_service::photo_from_rel(root, &rel)
             .ok_or_else(|| ProxyReply::json(404, error_json("photo file missing")))
@@ -1055,7 +1119,10 @@ impl ProxyShared {
         let root = state.root.as_ref().expect("photo_entry_for 已验 root");
         let path = crate::ui::photo_service::rel_to_path(root, &entry.relative_path);
         let Ok(file) = std::fs::File::open(&path) else {
-            return ProxyReply::json(404, error_json(&format!("photo file missing: {}", entry.name)));
+            return ProxyReply::json(
+                404,
+                error_json(&format!("photo file missing: {}", entry.name)),
+            );
         };
         let len = file.metadata().map(|m| m.len()).unwrap_or(0);
         ProxyReply::Stream {
@@ -1101,7 +1168,9 @@ struct SessionBus {
 
 impl SessionBus {
     fn new() -> Self {
-        SessionBus { subs: std::sync::Mutex::new(Vec::new()) }
+        SessionBus {
+            subs: std::sync::Mutex::new(Vec::new()),
+        }
     }
 
     fn subscribe(&self) -> mpsc::Receiver<String> {
@@ -1131,7 +1200,14 @@ fn shim_sys_panic_hard(task: &mut AutoTask, vm: &AutoVM) -> Result<(), crate::vm
     } else {
         String::new()
     };
-    panic!("{}", if msg.is_empty() { "panic_hard".to_string() } else { msg });
+    panic!(
+        "{}",
+        if msg.is_empty() {
+            "panic_hard".to_string()
+        } else {
+            msg
+        }
+    );
 }
 
 /// PLAN-658 T-06: panic 消息提取（&str/String 双态 downcast）。
@@ -1152,7 +1228,10 @@ fn panic_payload_msg(p: &Box<dyn std::any::Any + Send>) -> String {
 fn session_main(app_id: String, back_entry: std::path::PathBuf, rx: mpsc::Receiver<ProxyRequest>) {
     let mut rt = match load_back_session(&app_id, &back_entry) {
         Ok(rt) => {
-            log::info!("[back-proxy:{app_id}] session up ({} routes)", rt.routes.len());
+            log::info!(
+                "[back-proxy:{app_id}] session up ({} routes)",
+                rt.routes.len()
+            );
             Some(rt)
         }
         Err(e) => {
@@ -1225,7 +1304,12 @@ fn backoff_ms(streak: u32) -> u64 {
 
 /// PLAN-658 T-06: 每 session 日志环（容量 256；宿主观测面 + 调试路由消费）。
 fn session_log(app_id: &str, line: &str) {
-    SESSION_LOGS.lock().unwrap().entry(app_id.to_string()).or_default().push(line);
+    SESSION_LOGS
+        .lock()
+        .unwrap()
+        .entry(app_id.to_string())
+        .or_default()
+        .push(line);
 }
 
 #[derive(Default)]
@@ -1299,12 +1383,18 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
     for stmt in &import_stmts {
         if let Stmt::Fn(f) = stmt {
             let qualified = f.name.to_string();
-            let bare = qualified.rsplit('.').next().unwrap_or(&qualified).to_string();
+            let bare = qualified
+                .rsplit('.')
+                .next()
+                .unwrap_or(&qualified)
+                .to_string();
             codegen
                 .import_scope
                 .entry(bare)
                 .or_insert_with(|| qualified.clone());
-            codegen.fn_return_types.insert(qualified.clone(), f.ret.clone());
+            codegen
+                .fn_return_types
+                .insert(qualified.clone(), f.ret.clone());
         }
     }
     for stmt in &import_stmts {
@@ -1353,7 +1443,10 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
         codegen.force_global_store = false;
     }
     for stmt in &import_stmts {
-        if matches!(stmt, Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)) {
+        if matches!(
+            stmt,
+            Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::Ext(_)
+        ) {
             if let Err(e) = codegen.compile_stmt(stmt) {
                 return Err(format!("back chain stmt compile failed: {e}"));
             }
@@ -1386,8 +1479,7 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
                     .map(|a| a.method.clone())
                     .unwrap_or_default();
                 let display = format!("{}", f.ret);
-                let primary = primary_type_name(&f.ret)
-                    .unwrap_or_else(|| display.clone());
+                let primary = primary_type_name(&f.ret).unwrap_or_else(|| display.clone());
                 fn_meta.insert(f.name.to_string(), (method, format!("{primary}|{display}")));
             }
         }
@@ -1408,9 +1500,9 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
     vm.load_generic_registry(registry);
     vm.load_strings(strings);
     {
+        // 标准 stdlib shim 已由 production() 完成；重复注册会按 R2 撤销
+        // 语义删除同 ID 契约，此处只补本服务的额外原生。
         let mut ni = crate::vm::native::NativeInterface::new();
-        ni.register_std_shims();
-        crate::vm::ffi::stdlib::register_stdlib_ffi(&mut ni);
         // PLAN-658 T-06: 崩溃隔离测试面——真 Rust panic 注入（VM 内建
         // `panic` 有意映射 RuntimeError，走的是 500 错误臂而非 unwind 边界；
         // 本原生专供 AC-05 隔离/重启路径的可控触发）。
@@ -1420,7 +1512,11 @@ fn load_back_session(app_id: &str, back_entry: &std::path::Path) -> Result<Sessi
 
     let rt_routes: Vec<HttpRoute> = api_routes
         .into_iter()
-        .map(|(method, path, fn_name)| HttpRoute { method, path, fn_name })
+        .map(|(method, path, fn_name)| HttpRoute {
+            method,
+            path,
+            fn_name,
+        })
         .collect();
 
     let mut session = SessionRuntime {
@@ -1491,7 +1587,10 @@ impl SessionRuntime {
             // 形态经 is_upload_param 双族识别）即使返回串分类错过也命中。
             if kind != crate::api::contract::ResponseKind::Upload {
                 if let Some(sigs) = self.fn_params.get(&route_match.fn_name) {
-                    if sigs.iter().any(|s| crate::api::contract::is_upload_param(&s.ty)) {
+                    if sigs
+                        .iter()
+                        .any(|s| crate::api::contract::is_upload_param(&s.ty))
+                    {
                         kind = crate::api::contract::ResponseKind::Upload;
                     }
                 }
@@ -1612,12 +1711,10 @@ impl SessionRuntime {
         let pre_args_sp = task.ram.sp;
         for src in &arg_srcs {
             let pushed: Result<(), ApiArgBindError> = match src {
-                ArgSrc::Json(v) => {
-                    crate::vm::ffi::stdlib::json_to_vm_value(&mut task, &self.vm, v, 0)
-                        .map_err(|e| {
-                            ApiArgBindError::Internal(format!("arg marshal failed: {e:?}"))
-                        })
-                }
+                ArgSrc::Json(v) => crate::vm::ffi::stdlib::json_to_vm_value(
+                    &mut task, &self.vm, v, 0,
+                )
+                .map_err(|e| ApiArgBindError::Internal(format!("arg marshal failed: {e:?}"))),
                 ArgSrc::TypedString(sig, s) => crate::vm::ffi::http_server::push_typed_string_arg(
                     &self.vm,
                     &mut task,
@@ -1638,7 +1735,10 @@ impl SessionRuntime {
                 );
             }
         }
-        if let Err(e) = self.vm.call_fn_by_name(&mut task, &route_match.fn_name, bound.len()) {
+        if let Err(e) = self
+            .vm
+            .call_fn_by_name(&mut task, &route_match.fn_name, bound.len())
+        {
             return ProxyReply::json(
                 500,
                 error_json(&format!(
@@ -1686,8 +1786,7 @@ impl SessionRuntime {
                             serde_json::json!(name)
                         ));
                     } else if display != "void" && !display.contains("Stream<") {
-                        if let Ok(mut v) =
-                            serde_json::from_str::<serde_json::Value>(&body_json_str)
+                        if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&body_json_str)
                         {
                             if let Some(obj) = v.as_object_mut() {
                                 obj.insert(

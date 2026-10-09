@@ -29,7 +29,7 @@
 use crate::ast::{Fn, Name, SpecDecl, Store, StoreKind, Type};
 use crate::database::Database;
 use crate::error::{AutoError, TypeError, Warning};
-use crate::types;  // Plan 084 Phase 4: TypeStore integration
+use crate::types; // Plan 084 Phase 4: TypeStore integration
 use miette::SourceSpan;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -451,10 +451,11 @@ impl InferenceContext {
             (Type::StrSlice, Type::StrFixed(_)) => Ok(Type::StrSlice),
             (Type::StrSlice, Type::StrSlice) => Ok(Type::StrSlice),
             // String ↔ StrSlice 隐式转换
-            (Type::StrOwned, Type::StrSlice) | (Type::StrSlice, Type::StrOwned) => Ok(Type::StrSlice),
-            (Type::StrFixed(_) | Type::StrOwned, Type::StrOwned) | (Type::StrOwned, Type::StrFixed(_)) => {
-                Ok(Type::StrOwned)
+            (Type::StrOwned, Type::StrSlice) | (Type::StrSlice, Type::StrOwned) => {
+                Ok(Type::StrSlice)
             }
+            (Type::StrFixed(_) | Type::StrOwned, Type::StrOwned)
+            | (Type::StrOwned, Type::StrFixed(_)) => Ok(Type::StrOwned),
             (Type::CStrLit, Type::CStrLit) => Ok(Type::CStrLit),
 
             // 数组类型：统一元素类型和长度

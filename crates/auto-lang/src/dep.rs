@@ -122,7 +122,7 @@ impl<'db> DepScanner<'db> {
             Stmt::Alias(_) => {}
             Stmt::TypeAlias(_) => {}
             Stmt::EmptyLine(_) => {}
-            Stmt::Dep(_) => {}  // Plan 092: Dependency declaration - no fragment deps
+            Stmt::Dep(_) => {} // Plan 092: Dependency declaration - no fragment deps
 
             // Plan 096: UI scenario statements
             Stmt::WidgetDecl(_) => {}
@@ -238,75 +238,93 @@ impl<'db> DepScanner<'db> {
             | Expr::Str(_)
             | Expr::CStr(_)
             | Expr::Nil => {}
-            | Expr::Lambda(_) => {}  // TODO: Phase 3.3 - track closure captures
-            | Expr::Closure(_) => {}  // TODO: Phase 3.3 - track closure captures
-            | Expr::Pair(_) => {}
-            | Expr::Object(pairs) => {
+            Expr::Lambda(_) => {}  // TODO: Phase 3.3 - track closure captures
+            Expr::Closure(_) => {} // TODO: Phase 3.3 - track closure captures
+            Expr::Pair(_) => {}
+            Expr::Object(pairs) => {
                 for pair in pairs {
                     self.walk_expr(&pair.value, deps);
                 }
             }
-            | Expr::Dot(_, _) => {}
-            | Expr::Node(_) => {}
-            | Expr::FStr(_) => {}
-            | Expr::Grid(_) => {}
-            | Expr::Cover(_) => {}
-            | Expr::Uncover(_) => {}
-            | Expr::GenName(_) => {}
-            | Expr::View(_) => {}
-            | Expr::Mut(_) => {}
-            | Expr::Range(_) => {}
-            | Expr::Ref(_) => {}
-            | Expr::Null => {}
-            | Expr::NullCoalesce(_, _) => {}
-            | Expr::ErrorPropagate(_) => {}
-            | Expr::Cast { expr, .. } => { self.walk_expr(expr, deps); }
-            | Expr::To { expr, .. } => { self.walk_expr(expr, deps); }
-            | Expr::TupleDestruct { expr, .. } => { self.walk_expr(expr, deps); }
-            | Expr::NavCall { .. } => {}  // Plan 105: Navigation has no dependencies
+            Expr::Dot(_, _) => {}
+            Expr::Node(_) => {}
+            Expr::FStr(_) => {}
+            Expr::Grid(_) => {}
+            Expr::Cover(_) => {}
+            Expr::Uncover(_) => {}
+            Expr::GenName(_) => {}
+            Expr::View(_) => {}
+            Expr::Mut(_) => {}
+            Expr::Range(_) => {}
+            Expr::Ref(_) => {}
+            Expr::Null => {}
+            Expr::NullCoalesce(_, _) => {}
+            Expr::ErrorPropagate(_) => {}
+            Expr::Cast { expr, .. } => {
+                self.walk_expr(expr, deps);
+            }
+            Expr::To { expr, .. } => {
+                self.walk_expr(expr, deps);
+            }
+            Expr::TupleDestruct { expr, .. } => {
+                self.walk_expr(expr, deps);
+            }
+            Expr::NavCall { .. } => {} // Plan 105: Navigation has no dependencies
             // Plan 120: Option and Result constructors - walk inner expressions
-            | Expr::Some(e) => { self.walk_expr(e, deps); }
-            | Expr::None => {}
-            | Expr::Ok(e) => { self.walk_expr(e, deps); }
-            | Expr::Err(e) => { self.walk_expr(e, deps); }
+            Expr::Some(e) => {
+                self.walk_expr(e, deps);
+            }
+            Expr::None => {}
+            Expr::Ok(e) => {
+                self.walk_expr(e, deps);
+            }
+            Expr::Err(e) => {
+                self.walk_expr(e, deps);
+            }
             // Plan 6B-4.14: Smart pointer constructors
-            | Expr::BoxExpr(e) => { self.walk_expr(e, deps); }
-            | Expr::ArcExpr(e) => { self.walk_expr(e, deps); }
+            Expr::BoxExpr(e) => {
+                self.walk_expr(e, deps);
+            }
+            Expr::ArcExpr(e) => {
+                self.walk_expr(e, deps);
+            }
             // Plan 120: Option/Result patterns in is statements - no dependencies
-            | Expr::OptionPattern(_) => {}
-            | Expr::ResultPattern(_) => {}
-            | Expr::OptionUncover(_) => {}
-            | Expr::ResultUncover(_) => {}
+            Expr::OptionPattern(_) => {}
+            Expr::ResultPattern(_) => {}
+            Expr::OptionUncover(_) => {}
+            Expr::ResultUncover(_) => {}
             // Plan 165: Struct destructuring pattern - no dependencies
-            | Expr::StructPattern(_) => {}
+            Expr::StructPattern(_) => {}
             // Plan 124: Async/Future/Await - walk inner expressions
-            | Expr::AsyncBlock { body, .. } => {
+            Expr::AsyncBlock { body, .. } => {
                 for stmt in &body.stmts {
                     self.walk_stmt(stmt, deps);
                 }
             }
-            | Expr::Await { expr } => {
+            Expr::Await { expr } => {
                 self.walk_expr(expr, deps);
             }
             // Plan 126: .go postfix operator - walk inner expression
-            | Expr::Go { expr } => {
+            Expr::Go { expr } => {
                 self.walk_expr(expr, deps);
             }
             // Plan 321: yield expression — walk inner expression
-            | Expr::Yield(expr) => {
+            Expr::Yield(expr) => {
                 self.walk_expr(expr, deps);
             }
             // Plan 095: Compile-time expression - walk inner expression
-            | Expr::Comptime(hash_brace) => {
+            Expr::Comptime(hash_brace) => {
                 self.walk_expr(&hash_brace.expr, deps);
             }
             // Plan 223: is as expression
-            | Expr::Is(is) => {
+            Expr::Is(is) => {
                 self.walk_expr(&is.target, deps);
                 for branch in &is.branches {
                     match branch {
                         crate::ast::IsBranch::EqBranch(pats, body) => {
-                            for pat in pats { self.walk_expr(pat, deps); }
+                            for pat in pats {
+                                self.walk_expr(pat, deps);
+                            }
                             self.walk_body(body, deps);
                         }
                         crate::ast::IsBranch::IfBranch(expr, body) => {
@@ -380,6 +398,10 @@ mod tests {
         );
 
         let deps = scanner.scan_fn(&fn_decl);
-        assert_eq!(deps.len(), 0, "Function with no calls should have no dependencies");
+        assert_eq!(
+            deps.len(),
+            0,
+            "Function with no calls should have no dependencies"
+        );
     }
 }

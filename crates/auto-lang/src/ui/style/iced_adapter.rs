@@ -3,7 +3,7 @@
 // This adapter translates the unified StyleClass IR into Iced-specific
 // style objects for styling components.
 
-use super::{Style, StyleClass, SizeValue, Color};
+use super::{Color, SizeValue, Style, StyleClass};
 
 // Theme state + semantic color resolution now live in `super::theme`
 // (backend-neutral, so `code-editor`-only builds keep dark-mode-aware
@@ -11,8 +11,7 @@ use super::{Style, StyleClass, SizeValue, Color};
 // existing `iced_adapter::…` call sites.
 pub use super::theme::{
     accent_name, dark_mode, resolve_border_rgb, resolve_semantic_rgb, set_accent_name,
-    set_dark_mode, set_window_width, set_window_height, window_width,
-    window_height,
+    set_dark_mode, set_window_height, set_window_width, window_height, window_width,
 };
 
 // Plan 412 §1.3:降级必须"显式" — iced 物理不支持的能力(flex-wrap/self-*/order/
@@ -69,15 +68,15 @@ pub struct IcedStyle {
     pub padding_right: Option<f32>,
     // NOTE: Iced doesn't support margin - these fields are handled as external spacing
     pub margin: Option<f32>,        // Not supported by Iced
-    pub margin_x: Option<f32>,       // Not supported by Iced
-    pub margin_y: Option<f32>,       // Not supported by Iced
-    pub margin_top: Option<f32>,      // Converted to external top spacing
-    pub margin_bottom: Option<f32>,   // mb-N: converted to external bottom spacing (Plan 448 对齐批)
-    pub margin_left: Option<f32>,     // ml-N: converted to external left spacing
-    pub margin_right: Option<f32>,    // mr-N: converted to external right spacing
-    pub margin_left_auto: bool,       // ml-auto: push element to right in row
-    pub margin_top_auto: bool,        // mt-auto: push element to bottom in column (PLAN-080)
-    pub margin_right_auto: bool,      // mr-auto: push element to left in row
+    pub margin_x: Option<f32>,      // Not supported by Iced
+    pub margin_y: Option<f32>,      // Not supported by Iced
+    pub margin_top: Option<f32>,    // Converted to external top spacing
+    pub margin_bottom: Option<f32>, // mb-N: converted to external bottom spacing (Plan 448 对齐批)
+    pub margin_left: Option<f32>,   // ml-N: converted to external left spacing
+    pub margin_right: Option<f32>,  // mr-N: converted to external right spacing
+    pub margin_left_auto: bool,     // ml-auto: push element to right in row
+    pub margin_top_auto: bool,      // mt-auto: push element to bottom in column (PLAN-080)
+    pub margin_right_auto: bool,    // mr-auto: push element to left in row
     /// PLAN-663 C2: my-auto/m-auto — 定高列内垂直安全居中标记
     pub margin_y_auto: bool,
     pub gap: Option<f32>,
@@ -167,14 +166,13 @@ pub struct IcedStyle {
     // Position (L3)
     // NOTE: Iced doesn't support absolute positioning - these fields are ignored
     pub position: Option<IcedPosition>,
-    pub z_index: Option<i16>,       // Not supported by Iced
+    pub z_index: Option<i16>, // Not supported by Iced
     /// PLAN-095 T-03: 浮层穿透标记（pointer-events-none）与百分比定位/尺寸。
     pub pointer_events_none: bool,
     pub top_percent: Option<f32>,
     pub right_percent: Option<f32>,
     pub bottom_percent: Option<f32>,
     pub left_percent: Option<f32>,
-
 
     // Overflow (L3)
     pub overflow_x: Option<IcedOverflow>,
@@ -190,23 +188,23 @@ pub struct IcedStyle {
     pub align_self: Option<IcedAlign>,
 
     // Plan 412 — Layout engine extras
-    pub items_stretch: bool,          // cross-axis Fill (build_row/build_column wrap children)
-    pub row_reverse: bool,           // flex-row-reverse: reverse children at build time
-    pub col_reverse: bool,           // flex-col-reverse: reverse children at build time
-    pub flex_wrap: bool,             // flex-wrap: iced 无 wrap — 降级单行标记(仅提示)
+    pub items_stretch: bool, // cross-axis Fill (build_row/build_column wrap children)
+    pub row_reverse: bool,   // flex-row-reverse: reverse children at build time
+    pub col_reverse: bool,   // flex-col-reverse: reverse children at build time
+    pub flex_wrap: bool,     // flex-wrap: iced 无 wrap — 降级单行标记(仅提示)
 
     // Grid (L3)
     // NOTE: Iced doesn't support grid layout - these fields are ignored
-    pub grid: bool,                 // Not supported by Iced
-    pub grid_cols: Option<u8>,      // Not supported by Iced
-    pub grid_rows: Option<u8>,      // Not supported by Iced
-    pub col_span: Option<u8>,       // Not supported by Iced
-    pub row_span: Option<u8>,       // Not supported by Iced
-    pub col_start: Option<u8>,      // Not supported by Iced
-    pub row_start: Option<u8>,      // Not supported by Iced
+    pub grid: bool,            // Not supported by Iced
+    pub grid_cols: Option<u8>, // Not supported by Iced
+    pub grid_rows: Option<u8>, // Not supported by Iced
+    pub col_span: Option<u8>,  // Not supported by Iced
+    pub row_span: Option<u8>,  // Not supported by Iced
+    pub col_start: Option<u8>, // Not supported by Iced
+    pub row_start: Option<u8>, // Not supported by Iced
     // Plan 527 T3: grid 定位扩档(存字段,渲染降级同 col_start/row_start)
-    pub col_end: Option<u8>,        // Not supported by Iced
-    pub row_end: Option<u8>,        // Not supported by Iced
+    pub col_end: Option<u8>, // Not supported by Iced
+    pub row_end: Option<u8>, // Not supported by Iced
     /// Plan 527 T3: order-N 存字段(渲染按源码序,降级语义,KNOWN-DEBT 登记)
     pub order: Option<i16>,
     /// Plan 527 T3: flex-basis(Fill-ratio/像素近似,渲染层分期消费)
@@ -276,7 +274,7 @@ pub enum IcedPosition {
     Relative,
     Absolute, // Not supported by Iced
     /// Plan 527 T3: fixed/sticky 落 position 字段(渲染降级为文档流位,表可见)
-    Fixed,    // Not supported by Iced (degrades to in-flow)
+    Fixed, // Not supported by Iced (degrades to in-flow)
     Sticky,   // Not supported by Iced (degrades to in-flow)
 }
 
@@ -365,9 +363,9 @@ impl IcedStyle {
             padding_bottom: None,
             padding_left: None,
             padding_right: None,
-            margin: None,      // Not supported by Iced
-            margin_x: None,    // Not supported by Iced
-            margin_y: None,    // Not supported by Iced
+            margin: None,   // Not supported by Iced
+            margin_x: None, // Not supported by Iced
+            margin_y: None, // Not supported by Iced
             margin_top: None,
             margin_bottom: None,
             margin_left: None,
@@ -426,7 +424,7 @@ impl IcedStyle {
             shadow_size: None,
             opacity: None,
             position: None,
-            z_index: None,      // Not supported by Iced
+            z_index: None, // Not supported by Iced
             overflow_x: None,
             overflow_y: None,
             align_items: None,
@@ -437,13 +435,13 @@ impl IcedStyle {
             row_reverse: false,
             col_reverse: false,
             flex_wrap: false,
-            grid: false,        // Not supported by Iced
-            grid_cols: None,    // Not supported by Iced
-            grid_rows: None,    // Not supported by Iced
-            col_span: None,     // Not supported by Iced
-            row_span: None,     // Not supported by Iced
-            col_start: None,    // Not supported by Iced
-            row_start: None,    // Not supported by Iced
+            grid: false,     // Not supported by Iced
+            grid_cols: None, // Not supported by Iced
+            grid_rows: None, // Not supported by Iced
+            col_span: None,  // Not supported by Iced
+            row_span: None,  // Not supported by Iced
+            col_start: None, // Not supported by Iced
+            row_start: None, // Not supported by Iced
             // Plan 527 T3
             col_end: None,
             row_end: None,
@@ -488,9 +486,7 @@ impl IcedStyle {
         // PLAN-625 T-05: bg-clip-text + text-transparent 组合降级——iced 无
         // 文字填充渐变,透明文字叠渐变底 = 不可读色块(ui-gallery 顶栏实证);
         // 文字色清空回落继承可读色,渐变背景盒由渲染容器臂抑制。
-        if iced_style.gradient_clip_text
-            && iced_style.text_color.map_or(false, |c| c.a == 0.0)
-        {
+        if iced_style.gradient_clip_text && iced_style.text_color.map_or(false, |c| c.a == 0.0) {
             iced_style.text_color = None;
         }
 
@@ -511,8 +507,13 @@ impl IcedStyle {
         //     (auto-os-config System Overview 六卡片全灭的根因)。纵向主轴
         //     场景由 renderer Row/Column 分派点的轴向预修正接管(Column 分支
         //     把 Flex1/FlexAuto/Grow 转写为显式 Height(Full)),此处不再猜测。
-        let is_scroll_overflow = matches!(iced_style.overflow_x, Some(IcedOverflow::Auto | IcedOverflow::Scroll))
-            || matches!(iced_style.overflow_y, Some(IcedOverflow::Auto | IcedOverflow::Scroll));
+        let is_scroll_overflow = matches!(
+            iced_style.overflow_x,
+            Some(IcedOverflow::Auto | IcedOverflow::Scroll)
+        ) || matches!(
+            iced_style.overflow_y,
+            Some(IcedOverflow::Auto | IcedOverflow::Scroll)
+        );
         if iced_style.width == Some(IcedSize::Full)
             && iced_style.height.is_none()
             && (is_scroll_overflow || iced_style.min_height == Some(0.0))
@@ -716,10 +717,14 @@ impl IcedStyle {
             }
             // Plan 412: space-x/y 视觉等价 gap-x/y(Tailwind per-child margin ≈ gap)。
             StyleClass::SpaceX(size) => {
-                if self.gap_x.is_none() { self.gap_x = Some(size.to_pixels() as f32); }
+                if self.gap_x.is_none() {
+                    self.gap_x = Some(size.to_pixels() as f32);
+                }
             }
             StyleClass::SpaceY(size) => {
-                if self.gap_y.is_none() { self.gap_y = Some(size.to_pixels() as f32); }
+                if self.gap_y.is_none() {
+                    self.gap_y = Some(size.to_pixels() as f32);
+                }
             }
 
             // ========== Colors (L1) ==========
@@ -1233,7 +1238,9 @@ impl IcedStyle {
                     self.width = Some(IcedSize::Full);
                 }
             }
-            StyleClass::FlexInitial | StyleClass::FlexNone | StyleClass::Grow0
+            StyleClass::FlexInitial
+            | StyleClass::FlexNone
+            | StyleClass::Grow0
             | StyleClass::Shrink => {}
             StyleClass::FlexRowReverse => {
                 self.row_reverse = true;
@@ -1477,9 +1484,12 @@ fn convert_size(size: &SizeValue) -> IcedSize {
 /// hover:text-* StyleClass::TextColor(Color) 转成 iced::Color。
 pub fn convert_color(color: &Color) -> iced::Color {
     match color {
-        Color::Rgba { r, g, b, a } => {
-            iced::Color::from_rgba(*r as f32 / 255.0, *g as f32 / 255.0, *b as f32 / 255.0, *a as f32 / 255.0)
-        }
+        Color::Rgba { r, g, b, a } => iced::Color::from_rgba(
+            *r as f32 / 255.0,
+            *g as f32 / 255.0,
+            *b as f32 / 255.0,
+            *a as f32 / 255.0,
+        ),
         Color::Hex(value) => {
             let r = ((value >> 16) & 0xFF) as f32 / 255.0;
             let g = ((value >> 8) & 0xFF) as f32 / 255.0;
@@ -1492,10 +1502,22 @@ pub fn convert_color(color: &Color) -> iced::Color {
             iced::Color::from_rgba(r, g, b, a)
         }
         // Plan 370 D-GAP-2/D-GAP-5: semantic colors use dark-mode + accent-aware RGB
-        Color::Primary | Color::Secondary | Color::Background | Color::Surface | Color::Muted
-        | Color::Popover | Color::PopoverForeground
-        | Color::Error | Color::Warning | Color::Success | Color::Info
-        | Color::OnPrimary | Color::OnSecondary | Color::OnBackground | Color::OnSurface | Color::OnDestructive
+        Color::Primary
+        | Color::Secondary
+        | Color::Background
+        | Color::Surface
+        | Color::Muted
+        | Color::Popover
+        | Color::PopoverForeground
+        | Color::Error
+        | Color::Warning
+        | Color::Success
+        | Color::Info
+        | Color::OnPrimary
+        | Color::OnSecondary
+        | Color::OnBackground
+        | Color::OnSurface
+        | Color::OnDestructive
         | Color::Border => {
             let (r, g, b) = resolve_semantic_rgb(color).unwrap_or((128, 128, 128));
             iced::Color::from_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
@@ -1546,18 +1568,28 @@ mod tests {
         .unwrap();
         let is = IcedStyle::from_style(&style);
         assert!(is.gradient_clip_text, "clip flag set");
-        assert!(is.gradient_from.is_some() && is.gradient_to.is_some(), "gradient kept (renderer suppresses box)");
-        assert!(is.text_color.is_none(), "transparent text color cleared to inherit");
+        assert!(
+            is.gradient_from.is_some() && is.gradient_to.is_some(),
+            "gradient kept (renderer suppresses box)"
+        );
+        assert!(
+            is.text_color.is_none(),
+            "transparent text color cleared to inherit"
+        );
     }
 
     /// PLAN-625 T-05 反向守卫:无 bg-clip-text 时 text-transparent 仍生效
     /// (渐变按钮等合法透明文字场景不受降级波及)。
     #[test]
     fn test_transparent_text_without_clip_untouched() {
-        let style = Style::parse("bg-gradient-to-r from-primary to-primary/60 text-transparent").unwrap();
+        let style =
+            Style::parse("bg-gradient-to-r from-primary to-primary/60 text-transparent").unwrap();
         let is = IcedStyle::from_style(&style);
         assert!(!is.gradient_clip_text);
-        assert!(is.text_color.map_or(false, |c| c.a == 0.0), "transparent kept");
+        assert!(
+            is.text_color.map_or(false, |c| c.a == 0.0),
+            "transparent kept"
+        );
     }
 
     #[test]
@@ -1567,10 +1599,18 @@ mod tests {
         let s = Style::parse("bg-transparent hover:bg-muted/60").unwrap();
         let mut merged = s.classes.clone();
         merged.extend(s.hover_classes.iter().cloned());
-        let is = IcedStyle::from_style(&Style { classes: merged, hover_classes: Vec::new(), variant_classes: Vec::new() });
+        let is = IcedStyle::from_style(&Style {
+            classes: merged,
+            hover_classes: Vec::new(),
+            variant_classes: Vec::new(),
+        });
         // hover bg-muted/60 wins over bg-transparent: semi-opaque surface.
         let bg = is.background_color.expect("hover bg must be set");
-        assert!(bg.a > 0.0 && bg.a < 1.0, "expected muted/60 alpha, got {}", bg.a);
+        assert!(
+            bg.a > 0.0 && bg.a < 1.0,
+            "expected muted/60 alpha, got {}",
+            bg.a
+        );
     }
 
     // PLAN-050 T6 (C4): bg-<token>/<nn> 全链 alpha 保留——解析侧 Plan 409 已库
@@ -1581,13 +1621,25 @@ mod tests {
     fn plan050_bg_alpha_survives_to_iced_style() {
         let style = Style::parse("bg-primary/10").unwrap();
         let is = IcedStyle::from_style(&style);
-        let bg = is.background_color.expect("bg-primary/10 must set background_color");
-        assert!((bg.a - 25.0 / 255.0).abs() < 1e-4, "10% alpha → 25/255, got {}", bg.a);
+        let bg = is
+            .background_color
+            .expect("bg-primary/10 must set background_color");
+        assert!(
+            (bg.a - 25.0 / 255.0).abs() < 1e-4,
+            "10% alpha → 25/255, got {}",
+            bg.a
+        );
         // 非语义色同样保 alpha:bg-gray-500/50 → 127/255。
         let style = Style::parse("bg-gray-500/50").unwrap();
         let is = IcedStyle::from_style(&style);
-        let bg = is.background_color.expect("bg-gray-500/50 must set background_color");
-        assert!((bg.a - 127.0 / 255.0).abs() < 1e-4, "50% alpha → 127/255, got {}", bg.a);
+        let bg = is
+            .background_color
+            .expect("bg-gray-500/50 must set background_color");
+        assert!(
+            (bg.a - 127.0 / 255.0).abs() < 1e-4,
+            "50% alpha → 127/255, got {}",
+            bg.a
+        );
     }
 
     // PLAN-050 T8 (C6): absolute 定位工具类在 VM 轨的降级契约——解析不报错、
@@ -1611,13 +1663,24 @@ mod tests {
             "IcedStyle.position 应记录 Absolute（渲染端忽略=内联降级）"
         );
         // 外观/布局类存活
-        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::Width(_))), "w-full 必须存活");
         assert!(
-            s.classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))),
+            s.classes.iter().any(|c| matches!(c, StyleClass::Width(_))),
+            "w-full 必须存活"
+        );
+        assert!(
+            s.classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::BackgroundColor(_))),
             "bg-card 必须存活"
         );
-        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::Border)), "border 必须存活");
-        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::FlexCol)), "flex-col 必须存活");
+        assert!(
+            s.classes.iter().any(|c| matches!(c, StyleClass::Border)),
+            "border 必须存活"
+        );
+        assert!(
+            s.classes.iter().any(|c| matches!(c, StyleClass::FlexCol)),
+            "flex-col 必须存活"
+        );
     }
 
     #[test]
@@ -1661,12 +1724,17 @@ mod tests {
         assert_eq!(is.ring_width, Some(2.0));
         assert!(is.ring_color.is_some());
         // object-fit / 彩色阴影
-        let is = IcedStyle::from_style(&Style::parse("object-cover shadow-red-500 shadow-md").unwrap());
-        assert!(matches!(is.object_fit, Some(crate::ui::style::ObjectFit::Cover)));
+        let is =
+            IcedStyle::from_style(&Style::parse("object-cover shadow-red-500 shadow-md").unwrap());
+        assert!(matches!(
+            is.object_fit,
+            Some(crate::ui::style::ObjectFit::Cover)
+        ));
         assert!(is.shadow_color.is_some());
         // 渐变三 stop + 位置
         let is = IcedStyle::from_style(
-            &Style::parse("bg-gradient-to-r from-red-500 via-yellow-300 to-blue-500 from-10 to-90").unwrap(),
+            &Style::parse("bg-gradient-to-r from-red-500 via-yellow-300 to-blue-500 from-10 to-90")
+                .unwrap(),
         );
         assert!(is.gradient_via.is_some());
         assert_eq!(is.gradient_from_pos, Some(0.1));
@@ -1674,16 +1742,23 @@ mod tests {
         // 新色板
         let is = IcedStyle::from_style(&Style::parse("bg-lime-500").unwrap());
         let bg = is.background_color.unwrap();
-        assert_eq!((bg.r, bg.g, bg.b), (132.0 / 255.0, 204.0 / 255.0, 22.0 / 255.0));
+        assert_eq!(
+            (bg.r, bg.g, bg.b),
+            (132.0 / 255.0, 204.0 / 255.0, 22.0 / 255.0)
+        );
     }
 
     #[test]
     fn test_chat_bubble_style() {
         set_dark_mode(true);
-        let style_str = "text-sm bg-muted text-foreground px-4 py-2 rounded-2xl rounded-bl-sm max-w-md";
+        let style_str =
+            "text-sm bg-muted text-foreground px-4 py-2 rounded-2xl rounded-bl-sm max-w-md";
         let style = Style::parse(style_str).expect("should parse chat bubble style");
         let iced_style = IcedStyle::from_style(&style);
-        assert!(iced_style.background_color.is_some(), "background_color must be Some");
+        assert!(
+            iced_style.background_color.is_some(),
+            "background_color must be Some"
+        );
         let bg = iced_style.background_color.unwrap();
         println!("bg-muted in dark mode: {:?}", bg);
         assert_eq!(iced_style.padding_x, Some(16.0));

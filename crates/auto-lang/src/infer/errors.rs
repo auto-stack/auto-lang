@@ -57,7 +57,13 @@ pub fn should_continue(error_count: usize) -> bool {
 pub fn format_multiple_errors(errors: &[TypeError]) -> String {
     let mut msg = String::new();
 
-    writeln!(msg, "found {} type error{}:", errors.len(), if errors.len() != 1 { "s" } else { "" }).ok();
+    writeln!(
+        msg,
+        "found {} type error{}:",
+        errors.len(),
+        if errors.len() != 1 { "s" } else { "" }
+    )
+    .ok();
 
     for (i, error) in errors.iter().enumerate() {
         writeln!(msg, "  {}. {}", i + 1, error).ok();
@@ -314,9 +320,7 @@ pub fn unused_variable_warning(name: &Name, span: miette::SourceSpan) -> Warning
 ///
 /// Generates a warning when code is unreachable (e.g., after return).
 pub fn dead_code_warning(span: miette::SourceSpan) -> Warning {
-    Warning::DeadCode {
-        span,
-    }
+    Warning::DeadCode { span }
 }
 
 //===========================================================================

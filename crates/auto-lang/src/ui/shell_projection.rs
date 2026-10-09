@@ -314,7 +314,9 @@ pub struct DesktopCellEntry {
 #[cfg(feature = "ui-iced")]
 pub mod wire {
     use super::*;
-    use crate::ui::desktop_protocol::codec::{put_bool, put_string, put_u32, put_u64, put_u8, Reader};
+    use crate::ui::desktop_protocol::codec::{
+        put_bool, put_string, put_u32, put_u64, put_u8, Reader,
+    };
 
     type CResult<T> = Result<T, crate::ui::desktop_protocol::CodecError>;
 
@@ -367,9 +369,7 @@ pub mod wire {
             7 => ShellEvent::Back,
             8 => ShellEvent::Pick,
             9 => ShellEvent::Escape,
-            other => {
-                return Err(crate::ui::desktop_protocol::CodecError::UnknownTag(other))
-            }
+            other => return Err(crate::ui::desktop_protocol::CodecError::UnknownTag(other)),
         })
     }
 
@@ -473,7 +473,11 @@ pub mod wire {
         }
 
         pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
-            Ok(Self { id: r.string()?, icon: r.string()?, running: r.bool()? })
+            Ok(Self {
+                id: r.string()?,
+                icon: r.string()?,
+                running: r.bool()?,
+            })
         }
     }
 
@@ -690,7 +694,10 @@ pub mod wire {
         }
 
         pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
-            Ok(Self { running_csv: r.string()?, events: events_of(r)? })
+            Ok(Self {
+                running_csv: r.string()?,
+                events: events_of(r)?,
+            })
         }
     }
 
@@ -703,7 +710,10 @@ pub mod wire {
         }
 
         pub fn wire_decode(r: &mut Reader<'_>) -> CResult<Self> {
-            Ok(Self { time: r.string()?, date: r.string()? })
+            Ok(Self {
+                time: r.string()?,
+                date: r.string()?,
+            })
         }
     }
 
@@ -861,7 +871,15 @@ pub mod wire {
                 faces.push(DashboardFace::wire_decode(r)?);
             }
             let events = events_of(r)?;
-            Ok(Self { hosted, visible, panel_w, panel_h, panel_top, faces, events })
+            Ok(Self {
+                hosted,
+                visible,
+                panel_w,
+                panel_h,
+                panel_top,
+                faces,
+                events,
+            })
         }
     }
 }
@@ -959,15 +977,22 @@ impl DockPin {
 impl ShellProjection {
     /// 解释轨回写序列——与 sync_shell_windows 现行写集逐一对应
     /// （调用方按序 write_state[_vec] 后置 view_dirty）。
-    pub fn interpreted_writes(&self) -> Vec<ShellWrite> {        let badge: auto_val::Value = s(self.notes_badge.clone());
+    pub fn interpreted_writes(&self) -> Vec<ShellWrite> {
+        let badge: auto_val::Value = s(self.notes_badge.clone());
         vec![
-            ShellWrite::Array("__wm_wins", self.wins.iter().map(|w| w.to_value()).collect()),
+            ShellWrite::Array(
+                "__wm_wins",
+                self.wins.iter().map(|w| w.to_value()).collect(),
+            ),
             ShellWrite::Array(
                 "__wm_workspaces",
                 self.workspaces.iter().map(|w| w.to_value()).collect(),
             ),
             ShellWrite::Array("__wm_mru", self.mru.iter().map(|w| w.to_value()).collect()),
-            ShellWrite::Array("__wm_notes", self.notes.iter().map(|n| n.to_value()).collect()),
+            ShellWrite::Array(
+                "__wm_notes",
+                self.notes.iter().map(|n| n.to_value()).collect(),
+            ),
             ShellWrite::Scalar("__wm_meta", s(self.meta.clone())),
             ShellWrite::Scalar("__wm_running", s(self.running_csv.clone())),
             ShellWrite::Scalar("__wm_focused_app", s(self.focused_app.clone())),
@@ -1037,8 +1062,14 @@ impl DesktopSurfaceSnapshot {
     /// `__desktop_cursor_*` 事件通道独立，不在本组）。
     pub fn interpreted_writes(&self) -> Vec<ShellWrite> {
         vec![
-            ShellWrite::Array("__desktop_icons", self.icons.iter().map(|e| e.to_value()).collect()),
-            ShellWrite::Array("__desktop_cells", self.cells.iter().map(|e| e.to_value()).collect()),
+            ShellWrite::Array(
+                "__desktop_icons",
+                self.icons.iter().map(|e| e.to_value()).collect(),
+            ),
+            ShellWrite::Array(
+                "__desktop_cells",
+                self.cells.iter().map(|e| e.to_value()).collect(),
+            ),
             ShellWrite::Array(
                 "__desktop_cell_ids",
                 self.cell_ids.iter().map(|v| s(v.clone())).collect(),
@@ -1052,7 +1083,10 @@ impl DesktopSurfaceSnapshot {
                 self.cell_rs.iter().map(|v| s(v.clone())).collect(),
             ),
             ShellWrite::Scalar("__desktop_bg", s(self.bg.clone())),
-            ShellWrite::Scalar("__desktop_label_dark", s(if self.label_dark { "1" } else { "0" })),
+            ShellWrite::Scalar(
+                "__desktop_label_dark",
+                s(if self.label_dark { "1" } else { "0" }),
+            ),
             ShellWrite::Scalar("__desktop_hidden", s(self.hidden.clone())),
             ShellWrite::Scalar("__wm_running", s(self.running_csv.clone())),
         ]
@@ -1084,8 +1118,14 @@ impl LauncherSnapshot {
                 "apps_cats",
                 self.app_cats.iter().map(|v| s(v.clone())).collect(),
             ),
-            ShellWrite::Array("apps_lns", self.app_lns.iter().map(|v| s(v.clone())).collect()),
-            ShellWrite::Array("apps_lts", self.app_lts.iter().map(|v| s(v.clone())).collect()),
+            ShellWrite::Array(
+                "apps_lns",
+                self.app_lns.iter().map(|v| s(v.clone())).collect(),
+            ),
+            ShellWrite::Array(
+                "apps_lts",
+                self.app_lts.iter().map(|v| s(v.clone())).collect(),
+            ),
             ShellWrite::Array(
                 "apps_colors",
                 self.app_colors.iter().map(|v| s(v.clone())).collect(),
@@ -1115,7 +1155,10 @@ impl DashboardSnapshot {
         vec![
             ShellWrite::Scalar("hosted", s(if self.hosted { "1" } else { "" })),
             ShellWrite::Scalar("visible", s(if self.visible { "1" } else { "" })),
-            ShellWrite::Array("face_ids", self.faces.iter().map(|f| s(f.id.clone())).collect()),
+            ShellWrite::Array(
+                "face_ids",
+                self.faces.iter().map(|f| s(f.id.clone())).collect(),
+            ),
             ShellWrite::Array(
                 "face_titles",
                 self.faces.iter().map(|f| s(f.title.clone())).collect(),
@@ -1160,7 +1203,10 @@ impl DashboardSnapshot {
         }
         fp.push('|');
         fp.push_str(if self.visible { "v1" } else { "v0" });
-        fp.push_str(&format!("|{}x{}@{}", self.panel_w, self.panel_h, self.panel_top));
+        fp.push_str(&format!(
+            "|{}x{}@{}",
+            self.panel_w, self.panel_h, self.panel_top
+        ));
         fp
     }
 }
@@ -1173,17 +1219,26 @@ impl SwitcherSnapshot {
         vec![
             ShellWrite::Scalar("hosted", s(if self.hosted { "1" } else { "" })),
             ShellWrite::Scalar("visible", s(if self.visible { "1" } else { "" })),
-            ShellWrite::Array("mru_wids", self.mru_wids.iter().map(|v| s(v.clone())).collect()),
+            ShellWrite::Array(
+                "mru_wids",
+                self.mru_wids.iter().map(|v| s(v.clone())).collect(),
+            ),
             ShellWrite::Array(
                 "mru_titles",
                 self.mru_titles.iter().map(|v| s(v.clone())).collect(),
             ),
-            ShellWrite::Array("mru_icons", self.mru_icons.iter().map(|v| s(v.clone())).collect()),
+            ShellWrite::Array(
+                "mru_icons",
+                self.mru_icons.iter().map(|v| s(v.clone())).collect(),
+            ),
             ShellWrite::Array(
                 "mru_thumbs",
                 self.mru_thumbs.iter().map(|v| s(v.clone())).collect(),
             ),
-            ShellWrite::Array("__wm_mru", self.wm_mru.iter().map(|w| w.to_value()).collect()),
+            ShellWrite::Array(
+                "__wm_mru",
+                self.wm_mru.iter().map(|w| w.to_value()).collect(),
+            ),
         ]
     }
 
@@ -1269,15 +1324,31 @@ pub struct ShellFace {
 pub const SHELL_MANIFEST: ShellManifest = ShellManifest {
     crate_name: "shell-pack",
     faces: &[
-        ShellFace { id: "shell", widget: "Desktop", mount: ShellMount::ResidentBoot },
-        ShellFace { id: "desktop", widget: "DesktopSurface", mount: ShellMount::ResidentBoot },
-        ShellFace { id: "switcher", widget: "Switcher", mount: ShellMount::LazyOverlay },
+        ShellFace {
+            id: "shell",
+            widget: "Desktop",
+            mount: ShellMount::ResidentBoot,
+        },
+        ShellFace {
+            id: "desktop",
+            widget: "DesktopSurface",
+            mount: ShellMount::ResidentBoot,
+        },
+        ShellFace {
+            id: "switcher",
+            widget: "Switcher",
+            mount: ShellMount::LazyOverlay,
+        },
         ShellFace {
             id: "notification_center",
             widget: "NotificationCenter",
             mount: ShellMount::LazyOverlay,
         },
-        ShellFace { id: "dashboard", widget: "DashboardPanel", mount: ShellMount::LazyOverlay },
+        ShellFace {
+            id: "dashboard",
+            widget: "DashboardPanel",
+            mount: ShellMount::LazyOverlay,
+        },
     ],
 };
 
@@ -1317,13 +1388,23 @@ mod tests {
             dup_app: false,
         }
         .to_value();
-        let auto_val::Value::Obj(obj) = app else { panic!("obj") };
+        let auto_val::Value::Obj(obj) = app else {
+            panic!("obj")
+        };
         let keys: Vec<String> = obj.key_names().iter().map(|k| k.to_string()).collect();
         assert_eq!(
             keys,
             vec![
-                "wid", "title", "focused", "workspace", "native", "app", "icon", "pager",
-                "pinned", "dup_app"
+                "wid",
+                "title",
+                "focused",
+                "workspace",
+                "native",
+                "app",
+                "icon",
+                "pager",
+                "pinned",
+                "dup_app"
             ]
         );
         let focused = obj.get("focused").expect("focused key");
@@ -1344,11 +1425,21 @@ mod tests {
             dup_app: false,
         }
         .to_value();
-        let auto_val::Value::Obj(obj) = native else { panic!("obj") };
+        let auto_val::Value::Obj(obj) = native else {
+            panic!("obj")
+        };
         let keys: Vec<String> = obj.key_names().iter().map(|k| k.to_string()).collect();
         assert_eq!(
             keys,
-            vec!["wid", "title", "focused", "workspace", "native", "icon", "pager"]
+            vec![
+                "wid",
+                "title",
+                "focused",
+                "workspace",
+                "native",
+                "icon",
+                "pager"
+            ]
         );
         let focused = obj.get("focused").expect("focused key");
         assert!(matches!(&focused, auto_val::Value::Str(s) if s.as_str() == "1"));
@@ -1365,9 +1456,12 @@ mod tests {
             ..Default::default()
         };
         let writes = proj.interpreted_writes();
-        let keys: Vec<&str> = writes.iter().map(|w| match w {
-            ShellWrite::Scalar(k, _) | ShellWrite::Array(k, _) => *k,
-        }).collect();
+        let keys: Vec<&str> = writes
+            .iter()
+            .map(|w| match w {
+                ShellWrite::Scalar(k, _) | ShellWrite::Array(k, _) => *k,
+            })
+            .collect();
         assert_eq!(
             keys,
             vec![
@@ -1407,7 +1501,13 @@ mod tests {
                         _ => "",
                     }
                 };
-                if matches!(k, "__wm_notes_visible" | "__wm_showdesk" | "__wm_settings_open" | "__wm_dashboard") {
+                if matches!(
+                    k,
+                    "__wm_notes_visible"
+                        | "__wm_showdesk"
+                        | "__wm_settings_open"
+                        | "__wm_dashboard"
+                ) {
                     assert!(
                         matches!(&v, auto_val::Value::Str(sv) if sv.as_str() == expect(k)),
                         "{k} wire form"
@@ -1421,10 +1521,19 @@ mod tests {
     #[test]
     fn shell_manifest_faces() {
         assert_eq!(SHELL_MANIFEST.faces.len(), 5);
-        assert_eq!(SHELL_MANIFEST.face("shell").unwrap().mount, ShellMount::ResidentBoot);
-        assert_eq!(SHELL_MANIFEST.face("desktop").unwrap().mount, ShellMount::ResidentBoot);
+        assert_eq!(
+            SHELL_MANIFEST.face("shell").unwrap().mount,
+            ShellMount::ResidentBoot
+        );
+        assert_eq!(
+            SHELL_MANIFEST.face("desktop").unwrap().mount,
+            ShellMount::ResidentBoot
+        );
         for lazy in ["switcher", "notification_center", "dashboard"] {
-            assert_eq!(SHELL_MANIFEST.face(lazy).unwrap().mount, ShellMount::LazyOverlay);
+            assert_eq!(
+                SHELL_MANIFEST.face(lazy).unwrap().mount,
+                ShellMount::LazyOverlay
+            );
         }
         assert!(SHELL_MANIFEST.face("nope").is_none());
     }
@@ -1467,15 +1576,16 @@ mod tests {
                 ShellEvent::Escape,
             ],
         };
-        let keys: Vec<&str> = sw
-            .interpreted_writes()
-            .iter()
-            .map(|w| w.key())
-            .collect();
+        let keys: Vec<&str> = sw.interpreted_writes().iter().map(|w| w.key()).collect();
         assert_eq!(
             keys,
             vec![
-                "hosted", "visible", "mru_wids", "mru_titles", "mru_icons", "mru_thumbs",
+                "hosted",
+                "visible",
+                "mru_wids",
+                "mru_titles",
+                "mru_icons",
+                "mru_thumbs",
                 "__wm_mru"
             ],
             "switcher 写集键序"
@@ -1505,16 +1615,20 @@ mod tests {
             wm_notes_unread: 2,
             events: vec![ShellEvent::RebuildNotes],
         };
-        let keys: Vec<&str> = notes
-            .interpreted_writes()
-            .iter()
-            .map(|w| w.key())
-            .collect();
+        let keys: Vec<&str> = notes.interpreted_writes().iter().map(|w| w.key()).collect();
         assert_eq!(
             keys,
             vec![
-                "hosted", "visible", "__panel_max_h", "note_ids", "note_kinds", "note_msgs",
-                "note_ats", "note_apps", "__wm_notes", "__wm_notes_unread"
+                "hosted",
+                "visible",
+                "__panel_max_h",
+                "note_ids",
+                "note_kinds",
+                "note_msgs",
+                "note_ats",
+                "note_apps",
+                "__wm_notes",
+                "__wm_notes_unread"
             ],
             "notes 写集键序"
         );
@@ -1528,7 +1642,12 @@ mod tests {
         let back = NotesSnapshot::wire_decode(&mut Reader::new(&buf)).expect("decode");
         assert_eq!(back, notes, "round-trip 全等");
         // 事件名 ↔ child dispatch 单点映射（编译轨 Msg variant 名直派）。
-        for e in [ShellEvent::Advance, ShellEvent::Back, ShellEvent::Pick, ShellEvent::Escape] {
+        for e in [
+            ShellEvent::Advance,
+            ShellEvent::Back,
+            ShellEvent::Pick,
+            ShellEvent::Escape,
+        ] {
             assert_eq!(shell_event_name(&e).len() > 0, true);
         }
     }
@@ -1554,16 +1673,21 @@ mod tests {
             }],
             events: vec![ShellEvent::RebuildFaces],
         };
-        let keys: Vec<&str> = dash
-            .interpreted_writes()
-            .iter()
-            .map(|w| w.key())
-            .collect();
+        let keys: Vec<&str> = dash.interpreted_writes().iter().map(|w| w.key()).collect();
         assert_eq!(
             keys,
             vec![
-                "hosted", "visible", "face_ids", "face_titles", "face_icons", "face_statuses",
-                "face_spans", "face_tabs", "__dashboard_faces", "__panel_w", "__panel_h",
+                "hosted",
+                "visible",
+                "face_ids",
+                "face_titles",
+                "face_icons",
+                "face_statuses",
+                "face_spans",
+                "face_tabs",
+                "__dashboard_faces",
+                "__panel_w",
+                "__panel_h",
                 "__panel_top"
             ],
             "dashboard 写集键序"
@@ -1599,8 +1723,15 @@ mod tests {
         assert_eq!(
             keys,
             vec![
-                "hosted", "visible", "apps_names", "apps_titles", "apps_icons", "apps_cats",
-                "apps_lns", "apps_lts", "apps_colors"
+                "hosted",
+                "visible",
+                "apps_names",
+                "apps_titles",
+                "apps_icons",
+                "apps_cats",
+                "apps_lns",
+                "apps_lts",
+                "apps_colors"
             ],
             "launcher 写集键序（apps_* 对齐召唤写点）"
         );
@@ -1649,7 +1780,11 @@ mod tests {
             notes_badge: "9+".into(),
             notes_visible: true,
             dock_pinned_csv: ",a,".into(),
-            dock_pinned: vec![DockPin { id: "a".into(), icon: "i".into(), running: false }],
+            dock_pinned: vec![DockPin {
+                id: "a".into(),
+                icon: "i".into(),
+                running: false,
+            }],
             settings_open: false,
             showdesk: true,
             dashboard_visible: false,
@@ -1716,7 +1851,10 @@ mod tests {
         let mut r = Reader::new(&buf);
         assert_eq!(DesktopSurfaceSync::wire_decode(&mut r).unwrap(), sync);
 
-        let clock = ShellClock { time: "09:05".into(), date: "9月19日 周六".into() };
+        let clock = ShellClock {
+            time: "09:05".into(),
+            date: "9月19日 周六".into(),
+        };
         let mut buf = Vec::new();
         clock.wire_encode(&mut buf);
         let mut r = Reader::new(&buf);
@@ -1794,7 +1932,7 @@ mod tests {
         assert_eq!(DashboardSnapshot::wire_decode(&mut r).unwrap(), dash);
     }
 
-    /// PLAN-030 T-02：DesktopSurfaceSnapshot 解释轨 lowering 键集 = 
+    /// PLAN-030 T-02：DesktopSurfaceSnapshot 解释轨 lowering 键集 =
     /// inject_desktop_surface 现行写集（`__desktop_cursor_*` 除外——事件
     /// 通道独立）。
     #[test]

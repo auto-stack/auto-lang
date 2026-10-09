@@ -215,8 +215,16 @@ mod t03_assembly_wiring {
         }
         let sel = &rs_session.layer_selections[0];
         assert_eq!(sel.target, AssemblyTarget::Rust);
-        assert!(sel.context_file.as_ref().is_some_and(|file| file.ends_with("proto.rs.at")), "actual Rust project layer must be consumed");
-        assert!(!sel.candidate_files.iter().any(|c| c.ends_with("proto.rs.at")));
+        assert!(
+            sel.context_file
+                .as_ref()
+                .is_some_and(|file| file.ends_with("proto.rs.at")),
+            "actual Rust project layer must be consumed"
+        );
+        assert!(!sel
+            .candidate_files
+            .iter()
+            .any(|c| c.ends_with("proto.rs.at")));
 
         // C 目标：同构（c 层 candidate，vm 层不串入）。
         let mut c_session = crate::compile::CompileSession::new();
@@ -410,7 +418,7 @@ mod t02_providers {
 #[cfg(test)]
 mod t04_core_bindings {
     use crate::stdlib_assembly::model::Environment;
-    use crate::stdlib_assembly::validate::{self, CoreSymbolStatus, };
+    use crate::stdlib_assembly::validate::{self, CoreSymbolStatus};
 
     /// 生产同款构造：CWD 钉仓根 → 磁盘扫描注册 + NativeInterface 手工面
     ///（register_std_shims + register_stdlib_ffi）+ 全库 inventory。
@@ -457,18 +465,39 @@ mod t04_core_bindings {
         let validations =
             validate::validate_core_vm_bindings(&inv, &registry, &shims, Environment::Native);
 
-        let tcp_bind = validations.iter().find(|v| v.public_symbol && v.native_name == "auto.net.tcp_bind").unwrap();
-        assert_eq!(tcp_bind.status, CoreSymbolStatus::Supported, "{:?}", tcp_bind.reason);
-        assert_eq!(tcp_bind.verification, crate::stdlib_assembly::model::VerificationLevel::SignatureChecked);
+        let tcp_bind = validations
+            .iter()
+            .find(|v| v.public_symbol && v.native_name == "auto.net.tcp_bind")
+            .unwrap();
+        assert_eq!(
+            tcp_bind.status,
+            CoreSymbolStatus::Supported,
+            "{:?}",
+            tcp_bind.reason
+        );
+        assert_eq!(
+            tcp_bind.verification,
+            crate::stdlib_assembly::model::VerificationLevel::SignatureChecked
+        );
         // Every signature-checked claim must come from a producer contract.
         for v in &validations {
-            if v.verification == crate::stdlib_assembly::model::VerificationLevel::SignatureChecked {
-                let id = registry.get_id(&v.native_name).or_else(|| shims.resolve(&v.native_name)).unwrap();
-                assert!(shims.contract(id).is_some() || v.module == "io"
-                    && crate::vm::io::method_contract(v.symbol.rsplit('.').next().unwrap()).is_some());
+            if v.verification == crate::stdlib_assembly::model::VerificationLevel::SignatureChecked
+            {
+                let id = registry
+                    .get_id(&v.native_name)
+                    .or_else(|| shims.resolve(&v.native_name))
+                    .unwrap();
+                assert!(
+                    shims.contract(id).is_some()
+                        || v.module == "io"
+                            && crate::vm::io::method_contract(v.symbol.rsplit('.').next().unwrap())
+                                .is_some()
+                );
             }
         }
-        assert!(validations.iter().any(|v| v.public_symbol && v.symbol == "TcpListener.close"));
+        assert!(validations
+            .iter()
+            .any(|v| v.public_symbol && v.symbol == "TcpListener.close"));
     }
 
     /// AC-03 负测：sse.at 顶层 #[vm] parse_sse 无任何 native 注册——
@@ -520,8 +549,12 @@ mod t04_core_bindings {
             "net 全族应 Unsupported（{net_unsup}/{net_all}）"
         );
 
-        assert!(v_browser.iter().all(|v| v.status == CoreSymbolStatus::Unsupported));
-        assert!(v_browser.iter().all(|v| v.reason.as_deref().is_some_and(|r| r.contains("browser"))));
+        assert!(v_browser
+            .iter()
+            .all(|v| v.status == CoreSymbolStatus::Unsupported));
+        assert!(v_browser
+            .iter()
+            .all(|v| v.reason.as_deref().is_some_and(|r| r.contains("browser"))));
 
         // Native 下无 Unsupported（对照组）
         assert!(
@@ -1055,12 +1088,23 @@ mod t07_witness_and_matrix {
         assert_eq!(modules.len(), 6, "六核心全在册");
         for (name, cell) in modules {
             let denominator: std::collections::BTreeSet<_> = cell["rust"]["public_symbols"]
-                .as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect();
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| s.as_str().unwrap())
+                .collect();
             for target in ["vm", "rust", "c"] {
                 for environment in ["native", "browser"] {
                     let actual: std::collections::BTreeSet<_> = cell[target][environment]
-                        .as_array().unwrap().iter().map(|s| s["symbol"].as_str().unwrap()).collect();
-                    assert_eq!(actual, denominator, "{name}/{target}/{environment}: full public denominator");
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|s| s["symbol"].as_str().unwrap())
+                        .collect();
+                    assert_eq!(
+                        actual, denominator,
+                        "{name}/{target}/{environment}: full public denominator"
+                    );
                 }
             }
             // 四格全在册
@@ -1451,7 +1495,9 @@ fn main() {
         let source = fs::read_to_string(tmp.path().join("main.at")).unwrap();
         // 双 body 在 wildcat 平铺冲突检测（Plan 545 D2 preparse 快照）报
         // ambiguous import——同符号异源定义不得静默择一。
-        let error = s.resolve_uses(&source).expect_err("multiple providers must be rejected");
+        let error = s
+            .resolve_uses(&source)
+            .expect_err("multiple providers must be rejected");
         assert!(error.to_string().contains("PROVIDER_CONFLICT"), "{error:?}");
         assert!(s.layer_selections.is_empty());
     }

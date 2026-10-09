@@ -68,7 +68,11 @@ mod plan667_capture_tests {
             "fn main() int {\n    var n = 10\n    var f fn(int) int = (x => { n = n + x; return n })\n    var r = f(5)\n    print(r)\n    return r\n}\n",
         )
         .await;
-        assert!(err.is_none(), "positive write case must not error: {:?}", err);
+        assert!(
+            err.is_none(),
+            "positive write case must not error: {:?}",
+            err
+        );
         assert!(out.contains("15"), "expected 15 in stdout, got: {}", out);
         assert_eq!(vm.rc_stats().live_heap, 0);
     }
@@ -80,7 +84,11 @@ mod plan667_capture_tests {
             "fn main() int {\n    var a = 100\n    var outer fn(int) int = (x => {\n        var inner = (y => y + x + a)\n        return inner(x)\n    })\n    var r = outer(3)\n    print(r)\n    return r\n}\n",
         )
         .await;
-        assert!(err.is_none(), "nested positive case must not error: {:?}", err);
+        assert!(
+            err.is_none(),
+            "nested positive case must not error: {:?}",
+            err
+        );
         assert!(out.contains("106"), "expected 106 in stdout, got: {}", out);
         assert_eq!(vm.rc_stats().live_heap, 0);
     }
@@ -143,7 +151,8 @@ mod plan667_capture_tests {
             "var g = 0\n\nfn make() {\n    var n = 10\n    g = (x => x + n)\n}\n\nfn main() int {\n    make()\n    var f fn(int) int = g\n    return f(1)\n}\n",
         )
         .await;
-        let err = err.expect("global-escaped capture invoked after creator returned MUST be rejected");
+        let err =
+            err.expect("global-escaped capture invoked after creator returned MUST be rejected");
         assert!(
             err.contains("creator frame") || err.contains("capture"),
             "rejection must name the capture/frame problem, got: {}",
@@ -168,9 +177,7 @@ mod plan667_rc_tests {
     fn plan667_rc_stats_pure_and_explicit_drain() {
         let vm = make_vm();
         let mut task = AutoTask::new(1, 64, 0);
-        let id = vm
-            .insert_heap_object(crate::vm::types::ListData::<i32>::new())
-            as u64;
+        let id = vm.insert_heap_object(crate::vm::types::ListData::<i32>::new()) as u64;
         vm.rc_push_id(&mut task, id);
         vm.rc_release_id(id); // rc 1→0 → dying 队列（宽限窗内未回收）
         let before = vm.rc_stats().live_heap;
@@ -195,7 +202,11 @@ mod plan667_rc_tests {
         )
         .await;
         assert!(err.is_none(), "churn program must not error: {:?}", err);
-        assert!(out.contains("7"), "aliased object must survive >8192 steps, got: {}", out);
+        assert!(
+            out.contains("7"),
+            "aliased object must survive >8192 steps, got: {}",
+            out
+        );
     }
 
     /// F-07：与活 heap id 相等的整数不得冒领持有份额。
@@ -215,12 +226,14 @@ mod plan667_rc_tests {
         // i32≥4M）：g 的整数给 id 4000000 冒领一份 → 第一个 Note 滞留
         // （live_heap==1 且 rc_count==1）；修复后归零。
         assert_eq!(
-            vm.rc_stats().live_heap, 0,
+            vm.rc_stats().live_heap,
+            0,
             "integer equal to a live heap id must not claim a share (heap ids: {:?})",
             vm.heap_objects.iter().map(|r| *r.key()).collect::<Vec<_>>()
         );
         assert_eq!(
-            vm.rc_count(4_000_000), 0,
+            vm.rc_count(4_000_000),
+            0,
             "no residual rc entry for the integer (heap ids: {:?})",
             vm.heap_objects.iter().map(|r| *r.key()).collect::<Vec<_>>()
         );
@@ -236,7 +249,11 @@ mod plan667_rc_tests {
         .await;
         assert!(err.is_none(), "churn must run clean: {:?}", err);
         vm.reap_all();
-        assert_eq!(vm.rc_stats().live_heap, 0, "no residual objects after teardown+drain");
+        assert_eq!(
+            vm.rc_stats().live_heap,
+            0,
+            "no residual objects after teardown+drain"
+        );
         let h = vm.pool_health();
         assert_eq!(h.underflow_events, 0, "no over-release during run");
     }
@@ -249,10 +266,18 @@ mod plan667_rc_tests {
             "fn main() int {\n    var n = 0\n    var f fn(int) int = (x => { n = n + x; return n })\n    for i in 0..50 {\n        f(1)\n    }\n    print(n)\n    return n\n}\n",
         )
         .await;
-        assert!(err.is_none(), "loop write capture must run clean: {:?}", err);
+        assert!(
+            err.is_none(),
+            "loop write capture must run clean: {:?}",
+            err
+        );
         assert!(out.contains("50"), "expected 50 in stdout, got: {}", out);
         vm.reap_all();
-        assert_eq!(vm.rc_stats().live_heap, 0, "no rc growth from capture writes");
+        assert_eq!(
+            vm.rc_stats().live_heap,
+            0,
+            "no rc growth from capture writes"
+        );
         assert_eq!(vm.rc_stats().rc_traffic, vm.rc_stats().rc_traffic); // 稳定读
         let _ = VirtualRAM::new(8);
     }
@@ -263,7 +288,7 @@ mod plan667_rc_tests {
 // ============================================================================
 
 mod plan667_a2r_tests {
-    use crate::ast::{Stmt};
+    use crate::ast::Stmt;
     use crate::parser::{CompileDest, Parser};
     use crate::trans::escape::analyzer::EscapeAnalyzer;
     use crate::trans::rust::transpile_rust;
@@ -300,7 +325,10 @@ mod plan667_a2r_tests {
             "fn main() {\n    let s = \"abc\"\n    let f = (a) => { s = a; return s }\n}\n",
         );
         let map = EscapeAnalyzer::analyze_fn(&f);
-        assert!(map.is_write_capture(&"s".into()), "s must be flagged write-captured");
+        assert!(
+            map.is_write_capture(&"s".into()),
+            "s must be flagged write-captured"
+        );
     }
 
     /// F-04：嵌套作用域同名绑定合并保守身份——内层逃逸反映到根查询
@@ -311,7 +339,9 @@ mod plan667_a2r_tests {
             "fn main() {\n    let t = \"outer\"\n    if true {\n        let t = \"inner\"\n        let f = (a) => t\n    }\n    let y = t.view\n}\n",
         );
         let map = EscapeAnalyzer::analyze_fn(&f);
-        let tier = map.lookup(0, &"t".into()).expect("t should be tracked at root");
+        let tier = map
+            .lookup(0, &"t".into())
+            .expect("t should be tracked at root");
         assert!(
             !tier.is_borrow(),
             "same-name inner escape must surface at root (generator queries depth 0), got {:?}",
@@ -337,16 +367,10 @@ mod plan667_a2r_tests {
     /// Reply 语句与 Return 同样触发逃逸（基线：`_ => {}` 静默忽略）。
     #[test]
     fn plan667_a2r_reply_escapes() {
-        let f = parse_fn(
-            "fn main() {\n    let s = \"abc\"\n    reply s\n}\n",
-        );
+        let f = parse_fn("fn main() {\n    let s = \"abc\"\n    reply s\n}\n");
         let map = EscapeAnalyzer::analyze_fn(&f);
         let tier = map.lookup(0, &"s".into()).expect("s should be tracked");
-        assert!(
-            !tier.is_borrow(),
-            "replied binding escapes, got {:?}",
-            tier
-        );
+        assert!(!tier.is_borrow(), "replied binding escapes, got {:?}", tier);
     }
 
     /// F-05：`.mut` 于逃逸（Clone 层）绑定必须给出 Auto 侧诊断，
@@ -437,13 +461,22 @@ mod plan667_a2r_tests {
         std::fs::write(&main_rs, code).unwrap();
         let status = std::process::Command::new("rustc")
             .args([
-                "--edition=2021", "-A", "warnings",
-                main_rs.to_str().unwrap(), "-o", tmp.join("case.exe").to_str().unwrap(),
+                "--edition=2021",
+                "-A",
+                "warnings",
+                main_rs.to_str().unwrap(),
+                "-o",
+                tmp.join("case.exe").to_str().unwrap(),
             ])
             .status()
             .expect("failed to spawn rustc");
-        assert!(status.success(), "rustc compile failed for positive borrow case");
-        let out = std::process::Command::new(tmp.join("case.exe")).output().unwrap();
+        assert!(
+            status.success(),
+            "rustc compile failed for positive borrow case"
+        );
+        let out = std::process::Command::new(tmp.join("case.exe"))
+            .output()
+            .unwrap();
         let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             out.status.success() && stdout.contains("hello"),

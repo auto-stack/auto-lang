@@ -76,13 +76,15 @@ mod plan_088_tests {
         assert!(!Type::Array(crate::ast::ArrayType {
             elem: Box::new(Type::Int),
             len: 10,
-        }).is_optimized_by_value());
+        })
+        .is_optimized_by_value());
 
         // Runtime array
         assert!(!Type::RuntimeArray(crate::ast::RuntimeArrayType {
             elem: Box::new(Type::Int),
             size_expr: Box::new(crate::ast::Expr::Int(10)),
-        }).is_optimized_by_value());
+        })
+        .is_optimized_by_value());
 
         // List
         assert!(!Type::List(Box::new(Type::Int)).is_optimized_by_value());
@@ -90,7 +92,8 @@ mod plan_088_tests {
         // Slice
         assert!(!Type::Slice(crate::ast::SliceType {
             elem: Box::new(Type::Int),
-        }).is_optimized_by_value());
+        })
+        .is_optimized_by_value());
     }
 
     #[test]
@@ -98,7 +101,8 @@ mod plan_088_tests {
         // Pointer types should return false
         assert!(!Type::Ptr(crate::ast::PtrType {
             of: std::rc::Rc::new(std::cell::RefCell::new(Type::Int)),
-        }).is_optimized_by_value());
+        })
+        .is_optimized_by_value());
 
         assert!(!Type::Reference(Box::new(Type::Int)).is_optimized_by_value());
     }
@@ -108,9 +112,7 @@ mod plan_088_tests {
         // User-defined types should return false (V1 conservative)
         // Note: We can't easily test these without creating actual TypeDecl,
         // but we can verify they exist in the Type enum
-        let type_names = vec![
-            "User", "Tag", "Enum", "Union", "CStruct", "GenericInstance",
-        ];
+        let type_names = vec!["User", "Tag", "Enum", "Union", "CStruct", "GenericInstance"];
 
         // The test verifies these types are handled in the match statement
         for name in type_names {

@@ -66,7 +66,10 @@ mod plan051_ext_widget_tests {
             Ok(auto_val::Value::Str(s)) => s.as_str().to_string(),
             other => panic!("body 状态异常: {:?}", other),
         };
-        assert_eq!(body, "vm-plain-degraded", "helperFn 必须来自 VM adapter（非 web 原文件）");
+        assert_eq!(
+            body, "vm-plain-degraded",
+            "helperFn 必须来自 VM adapter（非 web 原文件）"
+        );
 
         // Markdown widget 渲染了 source（pre-wrap 降级形态）。
         let (view, _, _) = dc.view_with_debug_gated(false);
@@ -189,11 +192,7 @@ mod plan051_ext_widget_tests {
             &mut ext_adapter_paths,
         )
         .expect_err("typo 必须报错");
-        assert!(
-            err.contains("noSuchHelper"),
-            "报错必须点名符号: {}",
-            err
-        );
+        assert!(err.contains("noSuchHelper"), "报错必须点名符号: {}", err);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

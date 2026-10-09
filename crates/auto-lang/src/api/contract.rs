@@ -261,12 +261,7 @@ impl EndpointContract {
     }
 }
 
-fn plan_param(
-    p: &ApiParam,
-    method: &str,
-    path: &str,
-    module_types: &[ApiType],
-) -> ParamPlan {
+fn plan_param(p: &ApiParam, method: &str, path: &str, module_types: &[ApiType]) -> ParamPlan {
     let declared_ty = p.ty.trim().to_string();
     let source = if is_upload_param(&declared_ty) {
         ParamSource::Upload
@@ -347,10 +342,7 @@ mod tests {
             k("[]Note"),
             ParamKind::Array(Box::new(ParamKind::Record("Note".into())))
         );
-        assert_eq!(
-            k("[3]int"),
-            ParamKind::Array(Box::new(ParamKind::Int))
-        );
+        assert_eq!(k("[3]int"), ParamKind::Array(Box::new(ParamKind::Int)));
         assert_eq!(k("Note"), ParamKind::Record("Note".into()));
         // 未声明/宿主资源 → Unsupported（不降 String）。
         assert_eq!(

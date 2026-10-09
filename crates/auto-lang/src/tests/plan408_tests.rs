@@ -28,16 +28,20 @@ mod plan408_tests {
         let at_path = tmp.join("app.at");
         // Plan 425: `component fn` sugars to a widget — the FIRST widget in
         // source order is the root (vue_code), so App is declared first.
-        std::fs::write(&at_path, concat!(
-            "widget App {\n",
-            "    view { Card(title: .greeting) }\n",
-            "    model { var greeting str = \"hi\" }\n",
-            "}\n",
-            "\n",
-            "component fn Card(title: str) {\n",
-            "    col { text .title }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "widget App {\n",
+                "    view { Card(title: .greeting) }\n",
+                "    model { var greeting str = \"hi\" }\n",
+                "}\n",
+                "\n",
+                "component fn Card(title: str) {\n",
+                "    col { text .title }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let (vue_code, widgets, _stores) = crate::ui_build_shadcn_with_widgets_and_stores(
             at_path.to_str().unwrap(),
@@ -45,23 +49,42 @@ mod plan408_tests {
             None,
             None,
             None,
-        ).expect("legacy entry must compile component fn source");
+        )
+        .expect("legacy entry must compile component fn source");
 
         // The component fn is synthesized to its own SFC on disk.
         let card_vue = std::fs::read_to_string(tmp.join("Card.vue"))
             .expect("Card.vue must be written by the legacy entry");
-        assert!(card_vue.contains("defineProps"), "Card.vue must declare props: {}", card_vue);
-        assert!(card_vue.contains("title"), "Card.vue must declare the title prop: {}", card_vue);
+        assert!(
+            card_vue.contains("defineProps"),
+            "Card.vue must declare props: {}",
+            card_vue
+        );
+        assert!(
+            card_vue.contains("title"),
+            "Card.vue must declare the title prop: {}",
+            card_vue
+        );
 
         // The host widget references it as a component (not inlined).
-        assert!(vue_code.contains("import Card from '@/components/Card.vue'"),
-            "App must import Card: {}", vue_code);
-        assert!(vue_code.contains("<Card"),
-            "App must render <Card/>: {}", vue_code);
+        assert!(
+            vue_code.contains("import Card from '@/components/Card.vue'"),
+            "App must import Card: {}",
+            vue_code
+        );
+        assert!(
+            vue_code.contains("<Card"),
+            "App must render <Card/>: {}",
+            vue_code
+        );
 
         // Card also appears in the returned widget list (sub-widget discovery).
         let names: Vec<&str> = widgets.iter().map(|w| w.name.as_str()).collect();
-        assert!(names.contains(&"Card"), "Card must be in widgets list: {:?}", names);
+        assert!(
+            names.contains(&"Card"),
+            "Card must be in widgets list: {:?}",
+            names
+        );
 
         // Cleanup.
         let _ = std::fs::remove_dir_all(&tmp);
@@ -78,9 +101,11 @@ mod plan408_tests {
         // Exactly one view fn (inline) + one widget — no `component fn`.
         // Plan 425: ViewFragmentDecl is view-fn-only now (component fn
         // sugars to WidgetDecl), so every fragment counts as inline.
-        let view_fns = ast.stmts.iter().filter(|s| matches!(
-            s, crate::ast::Stmt::ViewFragmentDecl(_)
-        )).count();
+        let view_fns = ast
+            .stmts
+            .iter()
+            .filter(|s| matches!(s, crate::ast::Stmt::ViewFragmentDecl(_)))
+            .count();
         assert_eq!(view_fns, 1, "expected exactly one inline view fn");
     }
 
@@ -112,7 +137,8 @@ mod plan408_tests {
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("use{component} without from must compile");
+        )
+        .expect("use{component} without from must compile");
 
         let app_code = result.vue_code.clone();
         assert!(
@@ -143,26 +169,33 @@ mod plan408_tests {
         // Badge derives `label` from props via computed, then renders it.
         // Use a plain prop-ref expression (f-string in computed is a separate
         // transpile concern, out of scope for this P3 capability test).
-        std::fs::write(&at_path, concat!(
-            "component fn Badge(text: str) {\n",
-            "    computed {\n",
-            "        label => .text\n",
-            "    }\n",
-            "    span { text .label }\n",
-            "}\n",
-            "\n",
-            "widget App {\n",
-            "    view { Badge(text: .heading) }\n",
-            "    model { var heading str = \"hi\" }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "component fn Badge(text: str) {\n",
+                "    computed {\n",
+                "        label => .text\n",
+                "    }\n",
+                "    span { text .label }\n",
+                "}\n",
+                "\n",
+                "widget App {\n",
+                "    view { Badge(text: .heading) }\n",
+                "    model { var heading str = \"hi\" }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("component fn with computed must compile");
+        )
+        .expect("component fn with computed must compile");
 
-        let badge_code = result.all_widget_codes.iter()
+        let badge_code = result
+            .all_widget_codes
+            .iter()
             .find(|(name, _)| name == "Badge")
             .map(|(_, code)| code)
             .expect("Badge component fn must be synthesized");
@@ -215,32 +248,39 @@ mod plan408_tests {
         // component-fn track did (compatibility pinned; see also
         // test_plan425_legacy_on_event_spelling in vue.rs tests).
         // Plan 425: App first (root = first widget in source order).
-        std::fs::write(&at_path, concat!(
-            "widget App {\n",
-            "    model { var count int = 0 }\n",
-            "    view {\n",
-            "        CollapseBtn(label: \"go\", ontogglecollapse: .Bump)\n",
-            "    }\n",
-            "    on { .Bump -> { .count = .count + 1 } }\n",
-            "}\n",
-            "\n",
-            "component fn CollapseBtn(label: str) {\n",
-            "    msg Msg { ToggleCollapse }\n",
-            "    model { var collapsed bool = false }\n",
-            "    on { .ToggleCollapse -> { .collapsed = !.collapsed } }\n",
-            "    button {\n",
-            "        text .label\n",
-            "        onclick: .ToggleCollapse\n",
-            "    }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "widget App {\n",
+                "    model { var count int = 0 }\n",
+                "    view {\n",
+                "        CollapseBtn(label: \"go\", ontogglecollapse: .Bump)\n",
+                "    }\n",
+                "    on { .Bump -> { .count = .count + 1 } }\n",
+                "}\n",
+                "\n",
+                "component fn CollapseBtn(label: str) {\n",
+                "    msg Msg { ToggleCollapse }\n",
+                "    model { var collapsed bool = false }\n",
+                "    on { .ToggleCollapse -> { .collapsed = !.collapsed } }\n",
+                "    button {\n",
+                "        text .label\n",
+                "        onclick: .ToggleCollapse\n",
+                "    }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("component fn with emit must compile");
+        )
+        .expect("component fn with emit must compile");
 
-        let btn_code = result.all_widget_codes.iter()
+        let btn_code = result
+            .all_widget_codes
+            .iter()
             .find(|(name, _)| name == "CollapseBtn")
             .map(|(_, code)| code)
             .expect("CollapseBtn component fn must be synthesized");
@@ -293,9 +333,11 @@ mod plan408_tests {
         let session = CompilerSession::ui();
         let mut parser = crate::Parser::from(bad_src).with_session(session);
         let parse_outcome = parser.parse();
-        assert!(parse_outcome.is_err(),
+        assert!(
+            parse_outcome.is_err(),
             "view fn with a msg block must NOT parse cleanly (msg is component-fn-only): {:?}",
-            parse_outcome);
+            parse_outcome
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -310,41 +352,61 @@ mod plan408_tests {
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
         // Plan 425: App first (root = first widget in source order).
-        std::fs::write(&at_path, concat!(
-            "widget App {\n",
-            "    model { var heading str = \"hi\" }\n",
-            "    view {\n",
-            "        col {\n",
-            "            Card(title: .heading, active: true)\n",
-            "            Card(title: \"second\", active: false)\n",
-            "        }\n",
-            "    }\n",
-            "}\n",
-            "\n",
-            "component fn Card(title: str, active: bool) {\n",
-            "    col { text .title }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "widget App {\n",
+                "    model { var heading str = \"hi\" }\n",
+                "    view {\n",
+                "        col {\n",
+                "            Card(title: .heading, active: true)\n",
+                "            Card(title: \"second\", active: false)\n",
+                "        }\n",
+                "    }\n",
+                "}\n",
+                "\n",
+                "component fn Card(title: str, active: bool) {\n",
+                "    col { text .title }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("literal props case must compile");
+        )
+        .expect("literal props case must compile");
         let app_code = result.vue_code.clone();
 
         // bool 字面量 → :active="true" / "false"（无双花括号）
-        assert!(app_code.contains(":active=\"true\""),
-            "bool true literal must bind as :active=\"true\": {}", app_code);
-        assert!(app_code.contains(":active=\"false\""),
-            "bool false literal must bind as :active=\"false\": {}", app_code);
-        assert!(!app_code.contains("{{"),
-            "no double-mustache leakage in props: {}", app_code);
+        assert!(
+            app_code.contains(":active=\"true\""),
+            "bool true literal must bind as :active=\"true\": {}",
+            app_code
+        );
+        assert!(
+            app_code.contains(":active=\"false\""),
+            "bool false literal must bind as :active=\"false\": {}",
+            app_code
+        );
+        assert!(
+            !app_code.contains("{{"),
+            "no double-mustache leakage in props: {}",
+            app_code
+        );
         // str 字面量 → :title="'second'"（带引号，不被当变量）
-        assert!(app_code.contains(":title=\"'second'\""),
-            "str literal must be quoted as :title=\"'second'\": {}", app_code);
+        assert!(
+            app_code.contains(":title=\"'second'\""),
+            "str literal must be quoted as :title=\"'second'\": {}",
+            app_code
+        );
         // 变量 prop → :title="heading"（剥离 self 前缀，无多余空格）
-        assert!(app_code.contains(":title=\"heading\""),
-            "var prop must bind as :title=\"heading\" (no self prefix): {}", app_code);
+        assert!(
+            app_code.contains(":title=\"heading\""),
+            "var prop must bind as :title=\"heading\" (no self prefix): {}",
+            app_code
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -363,29 +425,36 @@ mod plan408_tests {
         let at_path = tmp.join("app.at");
         // Notice uses `use { fn: renderMentions from "..." }` to bring an
         // escape-hatch function into scope, then references it in computed.
-        std::fs::write(&at_path, concat!(
-            "component fn Notice(content: str) {\n",
-            "    use {\n",
-            "        fn: renderMentions from \"src/front/utils/renderMentions.ts\"\n",
-            "    }\n",
-            "    computed {\n",
-            "        html => renderMentions(.content)\n",
-            "    }\n",
-            "    div { text .html }\n",
-            "}\n",
-            "\n",
-            "widget App {\n",
-            "    model { var msg str = \"hi\" }\n",
-            "    view { Notice(content: .msg) }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "component fn Notice(content: str) {\n",
+                "    use {\n",
+                "        fn: renderMentions from \"src/front/utils/renderMentions.ts\"\n",
+                "    }\n",
+                "    computed {\n",
+                "        html => renderMentions(.content)\n",
+                "    }\n",
+                "    div { text .html }\n",
+                "}\n",
+                "\n",
+                "widget App {\n",
+                "    model { var msg str = \"hi\" }\n",
+                "    view { Notice(content: .msg) }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("component fn with use{fn} must compile");
+        )
+        .expect("component fn with use{fn} must compile");
 
-        let notice_code = result.all_widget_codes.iter()
+        let notice_code = result
+            .all_widget_codes
+            .iter()
             .find(|(name, _)| name == "Notice")
             .map(|(_, code)| code)
             .expect("Notice component fn must be synthesized");
@@ -416,24 +485,29 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
-        std::fs::write(&at_path, concat!(
-            "widget TableView {\n",
-            "    model {\n",
-            "        var rows []map = []\n",
-            "        var col str = \"name\"\n",
-            "    }\n",
-            "    view {\n",
-            "        for row in .rows {\n",
-            "            td { text .row[.col] }\n",
-            "        }\n",
-            "    }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "widget TableView {\n",
+                "    model {\n",
+                "        var rows []map = []\n",
+                "        var col str = \"name\"\n",
+                "    }\n",
+                "    view {\n",
+                "        for row in .rows {\n",
+                "            td { text .row[.col] }\n",
+                "        }\n",
+                "    }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("dynamic index case must compile");
+        )
+        .expect("dynamic index case must compile");
         let code = result.vue_code.clone();
 
         // Single interpolated node `{{ row[col] }}`, not three split nodes.
@@ -463,53 +537,64 @@ mod plan408_tests {
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
         // Plan 425: App first (root = first widget in source order).
-        std::fs::write(&at_path, concat!(
-            "widget App {\n",
-            "    model { var heading str = \"hi\" }\n",
-            "    view {\n",
-            "        Card(title: .heading) {\n",
-            "            slot(name: \"header\") {\n",
-            "                text \"custom header\"\n",
-            "            }\n",
-            "        }\n",
-            "    }\n",
-            "}\n",
-            "\n",
-            "component fn Card(title: str) {\n",
-            "    col {\n",
-            "        slot(name: \"header\") { text .title }\n",
-            "    }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "widget App {\n",
+                "    model { var heading str = \"hi\" }\n",
+                "    view {\n",
+                "        Card(title: .heading) {\n",
+                "            slot(name: \"header\") {\n",
+                "                text \"custom header\"\n",
+                "            }\n",
+                "        }\n",
+                "    }\n",
+                "}\n",
+                "\n",
+                "component fn Card(title: str) {\n",
+                "    col {\n",
+                "        slot(name: \"header\") { text .title }\n",
+                "    }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("slot case must compile");
+        )
+        .expect("slot case must compile");
         let app = result.vue_code.clone();
-        let card = result.all_widget_codes.iter()
+        let card = result
+            .all_widget_codes
+            .iter()
             .find(|(n, _)| n == "Card")
             .map(|(_, c)| c.clone())
             .unwrap();
 
         // Card declares the slot outlet.
-        assert!(card.contains("<slot name=\"header\""), "Card must declare slot outlet: {}", card);
-        // App injects slot content as a non-self-closing Card with template #header.
         assert!(
-            app.contains("<Card"),
-            "App must render <Card>: {}", app
+            card.contains("<slot name=\"header\""),
+            "Card must declare slot outlet: {}",
+            card
         );
+        // App injects slot content as a non-self-closing Card with template #header.
+        assert!(app.contains("<Card"), "App must render <Card>: {}", app);
         assert!(
             app.contains("#header"),
-            "App must inject slot content via template #header: {}", app
+            "App must inject slot content via template #header: {}",
+            app
         );
         assert!(
             app.contains("custom header"),
-            "App slot content must reach the output: {}", app
+            "App slot content must reach the output: {}",
+            app
         );
         assert!(
             !app.contains("<Card ") || !app.trim_end_matches('\n').ends_with("/>"),
-            "App Card must NOT be self-closing when it has slot children: {}", app
+            "App Card must NOT be self-closing when it has slot children: {}",
+            app
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -522,32 +607,46 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
-        std::fs::write(&at_path, concat!(
-            "component fn Preview(path: str) {\n",
-            "    use { fn: loadText from \"./load.ts\" }\n",
-            "    model { var content str = \"\" }\n",
-            "    on { .Init -> { .content = loadText(.path).await } }\n",
-            "    div { text .content }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "component fn Preview(path: str) {\n",
+                "    use { fn: loadText from \"./load.ts\" }\n",
+                "    model { var content str = \"\" }\n",
+                "    on { .Init -> { .content = loadText(.path).await } }\n",
+                "    div { text .content }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("async handler must compile");
+        )
+        .expect("async handler must compile");
         let code = result.vue_code.clone();
 
         // 缺口 A: async handler（PLAN-684 rev4/ADR-19 形态——Init 统一发
         // `async function __autoReplayInit()` + onMounted 调用 + watch(props)
         // 重放；旧 `onMounted(async () =>` 内联形态已被替换）。
-        assert!(code.contains("async function __autoReplayInit()"),
-            "Init handler with await must be async (ADR-19 replay form): {}", code);
+        assert!(
+            code.contains("async function __autoReplayInit()"),
+            "Init handler with await must be async (ADR-19 replay form): {}",
+            code
+        );
         // 缺口 B: props access in handler body.
-        assert!(code.contains("props.path"),
-            "handler body prop access must use props. prefix: {}", code);
+        assert!(
+            code.contains("props.path"),
+            "handler body prop access must use props. prefix: {}",
+            code
+        );
         // await expression transpiled.
-        assert!(code.contains("await loadText(props.path)"),
-            "await + props.path must both be present: {}", code);
+        assert!(
+            code.contains("await loadText(props.path)"),
+            "await + props.path must both be present: {}",
+            code
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -559,33 +658,40 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
-        std::fs::write(&at_path, concat!(
-            "widget Counter {\n",
-            "    use {\n",
-            "        composable: useCounter refs: [count] from \"./useCounter.ts\"\n",
-            "    }\n",
-            "    computed {\n",
-            "        doubled => .counter.count * 2\n",
-            "    }\n",
-            "    view { div { text .doubled } }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "widget Counter {\n",
+                "    use {\n",
+                "        composable: useCounter refs: [count] from \"./useCounter.ts\"\n",
+                "    }\n",
+                "    computed {\n",
+                "        doubled => .counter.count * 2\n",
+                "    }\n",
+                "    view { div { text .doubled } }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("facade ref case must compile");
+        )
+        .expect("facade ref case must compile");
         let code = result.vue_code.clone();
 
         // The ref-annotated field must unwrap via .value.
         assert!(
             code.contains("counter.count.value"),
-            "facade ref field must unwrap .value: {}", code
+            "facade ref field must unwrap .value: {}",
+            code
         );
         // The composable call binds the local.
         assert!(
             code.contains("const counter = useCounter()"),
-            "composable must bind local: {}", code
+            "composable must bind local: {}",
+            code
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -603,12 +709,16 @@ mod plan408_tests {
         );
         let session = CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
-        let ast = parser.parse().expect(
-            "host global document must NOT be flagged as undefined variable"
-        );
+        let ast = parser
+            .parse()
+            .expect("host global document must NOT be flagged as undefined variable");
         // Parsed cleanly — document was not blocked by check_symbol.
-        assert!(ast.stmts.iter().any(|s| matches!(s, crate::ast::Stmt::WidgetDecl(_))),
-            "widget must parse");
+        assert!(
+            ast.stmts
+                .iter()
+                .any(|s| matches!(s, crate::ast::Stmt::WidgetDecl(_))),
+            "widget must parse"
+        );
     }
 
     #[test]
@@ -617,32 +727,47 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
-        std::fs::write(&at_path, concat!(
-            "component fn Preview(path: str) {\n",
-            "    model { var content str = \"\" }\n",
-            "    watch {\n",
-            "        .path -> { .content = .path }\n",
-            "    }\n",
-            "    div { text .content }\n",
-            "}\n",
-            "\n",
-            "widget App {\n",
-            "    model { var p str = \"a\" }\n",
-            "    view { Preview(path: .p) }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "component fn Preview(path: str) {\n",
+                "    model { var content str = \"\" }\n",
+                "    watch {\n",
+                "        .path -> { .content = .path }\n",
+                "    }\n",
+                "    div { text .content }\n",
+                "}\n",
+                "\n",
+                "widget App {\n",
+                "    model { var p str = \"a\" }\n",
+                "    view { Preview(path: .p) }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("watch case must compile");
-        let preview = result.all_widget_codes.iter()
+        )
+        .expect("watch case must compile");
+        let preview = result
+            .all_widget_codes
+            .iter()
             .find(|(n, _)| n == "Preview")
             .map(|(_, c)| c.clone())
             .unwrap();
 
-        assert!(preview.contains("watch("), "Preview must emit watch(): {}", preview);
-        assert!(preview.contains("props.path"), "watch source must be props.path: {}", preview);
+        assert!(
+            preview.contains("watch("),
+            "Preview must emit watch(): {}",
+            preview
+        );
+        assert!(
+            preview.contains("props.path"),
+            "watch source must be props.path: {}",
+            preview
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -653,22 +778,27 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
-        std::fs::write(&at_path, concat!(
-            "widget Avatar {\n",
-            "    model { var bg str = \"red\" }\n",
-            "    view {\n",
-            "        span {\n",
-            "            class: if .bg == \"red\" { \"on\" } else { \"off\" }\n",
-            "            style: .bg\n",
-            "        }\n",
-            "    }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "widget Avatar {\n",
+                "    model { var bg str = \"red\" }\n",
+                "    view {\n",
+                "        span {\n",
+                "            class: if .bg == \"red\" { \"on\" } else { \"off\" }\n",
+                "            style: .bg\n",
+                "        }\n",
+                "    }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("dynamic style + class must compile");
+        )
+        .expect("dynamic style + class must compile");
         let code = result.vue_code.clone();
 
         assert!(code.contains(":style="), "must emit :style: {}", code);
@@ -699,12 +829,14 @@ mod plan408_tests {
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("narrowing case must compile");
+        )
+        .expect("narrowing case must compile");
         let code = result.vue_code.clone();
 
         assert!(
             code.contains(")?.name"),
-            "fn().field must use optional chaining: {}", code
+            "fn().field must use optional chaining: {}",
+            code
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -734,7 +866,8 @@ mod plan408_tests {
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("nested if case must compile");
+        )
+        .expect("nested if case must compile");
         let code = result.vue_code.clone();
 
         // Count `status.value` — should appear in BOTH the outer and the
@@ -743,7 +876,8 @@ mod plan408_tests {
         assert!(
             count >= 2,
             "nested if must unwrap .value at every level (expected >=2 status.value, got {}): {}",
-            count, code
+            count,
+            code
         );
         // No bare `status ==` (without .value) left.
         assert!(
@@ -754,8 +888,6 @@ mod plan408_tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
-
-
 
     /// unwrap the inner ComputedRef with `.value` at **field-access** position
     /// (`b => .a.field` → `a.value.field`), not just at comparison position.
@@ -770,33 +902,38 @@ mod plan408_tests {
         // errandStatus is a computed; hasState compares it (Bool position),
         // statusLabel accesses its .label field (Dot position). Both must
         // unwrap via .value.
-        std::fs::write(&at_path, concat!(
-            "widget ErrandCard {\n",
-            "    model { var active bool = false }\n",
-            "    computed {\n",
-            "        errandStatus => if .active { \"done\" } else { \"todo\" }\n",
-            "        statusLabel => .errandStatus\n",
-            "    }\n",
-            "    view { div { text .statusLabel } }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "widget ErrandCard {\n",
+                "    model { var active bool = false }\n",
+                "    computed {\n",
+                "        errandStatus => if .active { \"done\" } else { \"todo\" }\n",
+                "        statusLabel => .errandStatus\n",
+                "    }\n",
+                "    view { div { text .statusLabel } }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("cross-computed case must compile");
+        )
+        .expect("cross-computed case must compile");
         let code = result.vue_code.clone();
 
         // statusLabel references errandStatus (another computed) — script-side
         // access must unwrap via .value: `errandStatus.value`.
         assert!(
             code.contains("errandStatus.value"),
-            "cross-computed reference must unwrap .value: {}", code
+            "cross-computed reference must unwrap .value: {}",
+            code
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
-
 
     /// where `onselect` is a declared prop — must bind `@click="props.onselect()"`
     /// and NOT synthesize an empty `// TODO: handler not defined` stub. Before
@@ -808,26 +945,33 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
-        std::fs::write(&at_path, concat!(
-            "component fn NavItem(label: str, onselect: msg) {\n",
-            "    button {\n",
-            "        text .label\n",
-            "        onclick: onselect\n",
-            "    }\n",
-            "}\n",
-            "\n",
-            "widget App {\n",
-            "    model { var clicked int = 0 }\n",
-            "    view { NavItem(label: \"go\", onselect: .Clicked) }\n",
-            "    on { .Clicked -> { .clicked = .clicked + 1 } }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "component fn NavItem(label: str, onselect: msg) {\n",
+                "    button {\n",
+                "        text .label\n",
+                "        onclick: onselect\n",
+                "    }\n",
+                "}\n",
+                "\n",
+                "widget App {\n",
+                "    model { var clicked int = 0 }\n",
+                "    view { NavItem(label: \"go\", onselect: .Clicked) }\n",
+                "    on { .Clicked -> { .clicked = .clicked + 1 } }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("prop-as-handler case must compile");
-        let nav = result.all_widget_codes.iter()
+        )
+        .expect("prop-as-handler case must compile");
+        let nav = result
+            .all_widget_codes
+            .iter()
             .find(|(n, _)| n == "NavItem")
             .map(|(_, c)| c.clone())
             .expect("NavItem component fn must be synthesized");
@@ -835,21 +979,25 @@ mod plan408_tests {
         // The callback prop is called directly — `@click="props.onselect()"`.
         assert!(
             nav.contains("@click=\"props.onselect()\""),
-            "onclick bound to a callback prop must render props.onselect(): {}", nav
+            "onclick bound to a callback prop must render props.onselect(): {}",
+            nav
         );
         // No empty stub function synthesized.
         assert!(
             !nav.contains("// TODO: handler not defined"),
-            "must NOT synthesize a handler-not-defined stub for a callback prop: {}", nav
+            "must NOT synthesize a handler-not-defined stub for a callback prop: {}",
+            nav
         );
         assert!(
             !nav.contains("ononselect"),
-            "must NOT mangle the bare handler name into ononselect: {}", nav
+            "must NOT mangle the bare handler name into ononselect: {}",
+            nav
         );
         // The prop is still declared in defineProps.
         assert!(
             nav.contains("onselect"),
-            "onselect must remain in defineProps: {}", nav
+            "onselect must remain in defineProps: {}",
+            nav
         );
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -864,25 +1012,32 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
-        std::fs::write(&at_path, concat!(
-            "component fn Badge(count: int) {\n",
-            "    computed {\n",
-            "        label => if .count > 0 { \"has\" } else { \"none\" }\n",
-            "    }\n",
-            "    span { text .label }\n",
-            "}\n",
-            "\n",
-            "widget App {\n",
-            "    model { var n int = 0 }\n",
-            "    view { Badge(count: .n) }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "component fn Badge(count: int) {\n",
+                "    computed {\n",
+                "        label => if .count > 0 { \"has\" } else { \"none\" }\n",
+                "    }\n",
+                "    span { text .label }\n",
+                "}\n",
+                "\n",
+                "widget App {\n",
+                "    model { var n int = 0 }\n",
+                "    view { Badge(count: .n) }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("computed if case must compile");
-        let badge = result.all_widget_codes.iter()
+        )
+        .expect("computed if case must compile");
+        let badge = result
+            .all_widget_codes
+            .iter()
             .find(|(n, _)| n == "Badge")
             .map(|(_, c)| c.clone())
             .unwrap();
@@ -912,29 +1067,38 @@ mod plan408_tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
-        std::fs::write(&at_path, concat!(
-            "widget TableView {\n",
-            "    view {\n",
-            "        table {\n",
-            "            thead {\n",
-            "                tr {\n",
-            "                    th { text \"Name\" }\n",
-            "                }\n",
-            "            }\n",
-            "            tbody {\n",
-            "                tr {\n",
-            "                    td { text \"Alice\" }\n",
-            "                }\n",
-            "            }\n",
-            "        }\n",
-            "    }\n",
-            "}\n",
-        )).unwrap();
+        std::fs::write(
+            &at_path,
+            concat!(
+                "widget TableView {\n",
+                "    view {\n",
+                "        table {\n",
+                "            thead {\n",
+                "                tr {\n",
+                "                    th { text \"Name\" }\n",
+                "                }\n",
+                "            }\n",
+                "            tbody {\n",
+                "                tr {\n",
+                "                    td { text \"Alice\" }\n",
+                "                }\n",
+                "            }\n",
+                "        }\n",
+                "    }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
 
         // shadcn mode (real build path).
         let (vue_code, _widgets, _stores) = crate::ui_build_shadcn_with_widgets_and_stores(
-            at_path.to_str().unwrap(), None, None, None, None,
-        ).expect("native table case must compile");
+            at_path.to_str().unwrap(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("native table case must compile");
 
         // Native `<table>`, not shadcn <Table>.
         assert!(

@@ -50,10 +50,7 @@ mod plan446_batch4_probes {
                    \x20   print(g.count.to_string())\n\
                    }\n";
         let out = run(src).expect("F3 method-in-literal must run");
-        assert!(
-            out.contains("g2"),
-            "F3: literal field lost, stdout={out:?}"
-        );
+        assert!(out.contains("g2"), "F3: literal field lost, stdout={out:?}");
         assert!(
             out.contains('3'),
             "F3: method call inside map literal evaluated to garbage (expected 3), stdout={out:?}"
@@ -131,9 +128,9 @@ mod plan446_batch4_probes {
             out.contains("boom"),
             "E3: res.body() on error response garbage (expected boom!), stdout={out:?}"
         );
-        let garbage = out.lines().any(|l| {
-            l.len() > 12 && l.chars().all(|c| c.is_ascii_digit())
-        });
+        let garbage = out
+            .lines()
+            .any(|l| l.len() > 12 && l.chars().all(|c| c.is_ascii_digit()));
         assert!(
             !garbage,
             "E3: garbage digit-run leaked into body, stdout={out:?}"

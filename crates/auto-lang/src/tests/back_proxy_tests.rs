@@ -193,10 +193,7 @@ fn http_e2e_back_proxy_json_routes_and_session_state() {
 /// 改走 HTTP URL 指引（不回 opaque id）。
 #[test]
 fn http_e2e_back_proxy_file_endpoint_rejected_501() {
-    let dir = std::env::temp_dir().join(format!(
-        "p729-back-proxy-file-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("p729-back-proxy-file-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("fixture dir");
     std::fs::write(
@@ -230,10 +227,7 @@ pub fn download(name str) FileResponse {
         body.contains("requires HTTP transport"),
         "HTTP URL 指引: {body}"
     );
-    assert!(
-        body.contains("download"),
-        "接口名在诊断中: {body}"
-    );
+    assert!(body.contains("download"), "接口名在诊断中: {body}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -241,10 +235,7 @@ pub fn download(name str) FileResponse {
 /// 数据（501 + HTTP URL 指引；与 729 文件端点同形）。
 #[test]
 fn http_e2e_back_proxy_upload_endpoint_rejected_501() {
-    let dir = std::env::temp_dir().join(format!(
-        "p730-back-proxy-upload-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("p730-back-proxy-upload-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("fixture dir");
     std::fs::write(
@@ -278,10 +269,7 @@ pub fn upload(req UploadRequest) ~UploadReceipt {
         body.contains("requires HTTP transport"),
         "HTTP URL 指引: {body}"
     );
-    assert!(
-        body.contains("upload"),
-        "接口名在诊断中: {body}"
-    );
+    assert!(body.contains("upload"), "接口名在诊断中: {body}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -398,25 +386,45 @@ fn http_e2e_back_proxy_path_param_typed_binding() {
 
     let (status, body) = http_request(proxy.port, "GET", "/apps/p675/api/echo/21", None);
     assert_eq!(status, 200, "int path param echo, body: {body}");
-    assert_eq!(body.trim().parse::<i64>().ok(), Some(21), "echo body: {body}");
+    assert_eq!(
+        body.trim().parse::<i64>().ok(),
+        Some(21),
+        "echo body: {body}"
+    );
 
     let (status, body) = http_request(proxy.port, "PUT", "/apps/p675/api/notes/7", None);
     assert_eq!(status, 200, "PUT int path param, body: {body}");
-    assert_eq!(body.trim().parse::<i64>().ok(), Some(28), "PUT body: {body}");
+    assert_eq!(
+        body.trim().parse::<i64>().ok(),
+        Some(28),
+        "PUT body: {body}"
+    );
 
     let (status, body) = http_request(proxy.port, "DELETE", "/apps/p675/api/notes/2", None);
     assert_eq!(status, 200, "DELETE int path param, body: {body}");
-    assert_eq!(body.trim().parse::<i64>().ok(), Some(30), "DELETE body: {body}");
+    assert_eq!(
+        body.trim().parse::<i64>().ok(),
+        Some(30),
+        "DELETE body: {body}"
+    );
 
     // 跨请求 session 态与绑定值一致（21+7+2，证明三次都按 int 落账）。
     let (status, body) = http_request(proxy.port, "GET", "/apps/p675/api/ledger", None);
     assert_eq!(status, 200, "ledger, body: {body}");
-    assert_eq!(body.trim().parse::<i64>().ok(), Some(30), "ledger body: {body}");
+    assert_eq!(
+        body.trim().parse::<i64>().ok(),
+        Some(30),
+        "ledger body: {body}"
+    );
 
     // str `:slug` 保形（ApiTyKind::Str 走 push_str_arg 咽喉，零转型）。
     let (status, body) = http_request(proxy.port, "GET", "/apps/p675/api/posts/my-slug", None);
     assert_eq!(status, 200, "str slug, body: {body}");
-    assert_eq!(body.trim().trim_matches('"'), "my-slug", "slug body: {body}");
+    assert_eq!(
+        body.trim().trim_matches('"'),
+        "my-slug",
+        "slug body: {body}"
+    );
 }
 
 /// 不可转型的路径段 → 400（客户端错，非服务端 500），且 session 态不被
@@ -433,7 +441,11 @@ fn http_e2e_back_proxy_bad_path_param_is_400() {
 
     let (status, body) = http_request(proxy.port, "GET", "/apps/p675/api/ledger", None);
     assert_eq!(status, 200, "ledger after rejection, body: {body}");
-    assert_eq!(body.trim().parse::<i64>().ok(), Some(0), "ledger body: {body}");
+    assert_eq!(
+        body.trim().parse::<i64>().ok(),
+        Some(0),
+        "ledger body: {body}"
+    );
 }
 
 /// PLAN-675 T-08: lazy 档按需装载——启动零预 spawning;首击同步装载并在
@@ -445,10 +457,8 @@ fn http_e2e_back_proxy_lazy_sessions_load_on_demand() {
     // 坏语料:`use db` 断链(无 db.at)→ 会话装载失败 → degraded 503 面。
     // (注:语法级垃圾会被宽容 parser 解析成零路由会话——那是 404 非 503;
     // 断链才是 load_back_session 的真失败面。)
-    let baddir = std::env::temp_dir().join(format!(
-        "p675-back-proxy-lazy-bad-{}",
-        std::process::id()
-    ));
+    let baddir =
+        std::env::temp_dir().join(format!("p675-back-proxy-lazy-bad-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&baddir);
     std::fs::create_dir_all(&baddir).expect("create bad fixture dir");
     std::fs::write(
@@ -485,18 +495,32 @@ pub fn echo(n int) int {
     let proxy = start(config).expect("lazy start");
 
     // 目录在册即可服务(lazy 语义;此刻尚未装载)。
-    assert!(proxy.has_session("good"), "cataloged app must report has_session");
-    assert!(proxy.has_session("broken"), "cataloged app must report has_session");
+    assert!(
+        proxy.has_session("good"),
+        "cataloged app must report has_session"
+    );
+    assert!(
+        proxy.has_session("broken"),
+        "cataloged app must report has_session"
+    );
 
     // 首击:装载 + 应答(int 路径参数类型绑定照常生效)。
     let (status, body) = http_request(proxy.port, "GET", "/apps/good/api/echo/21", None);
     assert_eq!(status, 200, "lazy first-hit load+serve, body: {body}");
-    assert_eq!(body.trim().parse::<i64>().ok(), Some(21), "echo body: {body}");
+    assert_eq!(
+        body.trim().parse::<i64>().ok(),
+        Some(21),
+        "echo body: {body}"
+    );
 
     // 次击:复用现成会话(模块态延续——ledger 累计 21)。
     let (status, body) = http_request(proxy.port, "GET", "/apps/good/api/ledger", None);
     assert_eq!(status, 200, "lazy second hit, body: {body}");
-    assert_eq!(body.trim().parse::<i64>().ok(), Some(21), "ledger body: {body}");
+    assert_eq!(
+        body.trim().parse::<i64>().ok(),
+        Some(21),
+        "ledger body: {body}"
+    );
 
     // 坏语料首击 → degraded 503(诚实诊断,非死锁/超时)。
     let (status, body) = http_request(proxy.port, "GET", "/apps/broken/api/echo/1", None);
@@ -516,7 +540,11 @@ pub fn echo(n int) int {
 #[test]
 fn http_e2e_back_proxy_real_routes_corpora_data_face() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest.ancestors().nth(2).expect("repo root").to_path_buf();
+    let repo_root = manifest
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .to_path_buf();
     let ui = repo_root.join("examples").join("ui");
     let spec = |id: &str| SessionSpec {
         app_id: id.to_string(),
@@ -559,7 +587,10 @@ fn http_e2e_back_proxy_real_routes_corpora_data_face() {
         None,
     );
     assert_eq!(status, 200, "018 chapters of book 1: {body}");
-    assert!(body.contains("chapter") || body.contains("title"), "018 chapters: {body}");
+    assert!(
+        body.contains("chapter") || body.contains("title"),
+        "018 chapters: {body}"
+    );
 
     let (status, body) = http_request(
         proxy.port,
@@ -567,18 +598,31 @@ fn http_e2e_back_proxy_real_routes_corpora_data_face() {
         "/apps/018-book-reader/api/books/1/progress",
         Some(r#"{"progress":55}"#),
     );
-    assert_eq!(status, 200, "018 PUT progress (path :id + body field): {body}");
+    assert_eq!(
+        status, 200,
+        "018 PUT progress (path :id + body field): {body}"
+    );
     assert!(body.contains("55"), "018 progress echoed: {body}");
 
     // 019：列表种子 + int :id GET。
-    let (status, body) = http_request(proxy.port, "GET", "/apps/019-video-app/api/videos?category=All&tab=Recommend&q=", None);
+    let (status, body) = http_request(
+        proxy.port,
+        "GET",
+        "/apps/019-video-app/api/videos?category=All&tab=Recommend&q=",
+        None,
+    );
     assert_eq!(status, 200, "019 list: {body}");
     assert!(body.contains("Learn Rust"), "019 seed: {body}");
     let (status, body) = http_request(proxy.port, "GET", "/apps/019-video-app/api/videos/1", None);
     assert_eq!(status, 200, "019 get video 1 (int :id): {body}");
 
     // 021：列表 + int :id GET（种子首条 id=6）。
-    let (status, body) = http_request(proxy.port, "GET", "/apps/021-blog-viewer/api/posts?category=All", None);
+    let (status, body) = http_request(
+        proxy.port,
+        "GET",
+        "/apps/021-blog-viewer/api/posts?category=All",
+        None,
+    );
     assert_eq!(status, 200, "021 list: {body}");
     let (status, body) = http_request(proxy.port, "GET", "/apps/021-blog-viewer/api/posts/6", None);
     assert_eq!(status, 200, "021 get post 6 (int :id): {body}");
@@ -603,7 +647,10 @@ fn http_e2e_back_proxy_real_routes_corpora_data_face() {
         None,
     );
     assert_eq!(status, 200, "023 get by slug (str :slug): {body}");
-    assert!(body.contains("Server Components"), "023 article body: {body}");
+    assert!(
+        body.contains("Server Components"),
+        "023 article body: {body}"
+    );
 }
 
 /// 真实语料冒烟（T-01 验收）：020-music-player 的 #[api] status 路由经
@@ -611,7 +658,11 @@ fn http_e2e_back_proxy_real_routes_corpora_data_face() {
 #[test]
 fn http_e2e_back_proxy_real_020_status_route() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest.ancestors().nth(2).expect("repo root").to_path_buf();
+    let repo_root = manifest
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .to_path_buf();
     let entry = repo_root.join("examples/ui/020-music-player/src/back/api.at");
     if !entry.exists() {
         // 仓外发布形态（语料不在）——跳过而非假绿。
@@ -631,10 +682,17 @@ fn http_e2e_back_proxy_real_020_status_route() {
         native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start back proxy for 020");
-    let (status, body) =
-        http_request(proxy.port, "GET", "/apps/020-music-player/api/player/status", None);
+    let (status, body) = http_request(
+        proxy.port,
+        "GET",
+        "/apps/020-music-player/api/player/status",
+        None,
+    );
     assert_eq!(status, 200, "020 status route, body: {body}");
-    assert_eq!(body, "[]", "020 player/status returns empty PlayerInfo list");
+    assert_eq!(
+        body, "[]",
+        "020 player/status returns empty PlayerInfo list"
+    );
 }
 
 /// PLAN-658 T-03: 原生 media 路由——scan 绝对 URL + 字节保真 + Range 语义。
@@ -642,10 +700,7 @@ fn http_e2e_back_proxy_real_020_status_route() {
 #[cfg(feature = "ui")]
 #[test]
 fn http_e2e_back_proxy_native_media_routes() {
-    let dir = std::env::temp_dir().join(format!(
-        "p658-back-proxy-media-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("p658-back-proxy-media-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("media dir");
     let payload: Vec<u8> = b"ID3-fake-mp3-payload-0123456789abcdef".to_vec();
@@ -674,8 +729,15 @@ fn http_e2e_back_proxy_native_media_routes() {
     assert_eq!(entry["extension"].as_str(), Some("mp3"));
     assert_eq!(entry["bytes"].as_u64(), Some(payload.len() as u64));
     let id = entry["id"].as_str().expect("id").to_string();
-    let expected_url = format!("http://127.0.0.1:{}/apps/020-t/api/media/stream/{id}", proxy.port);
-    assert_eq!(entry["url"].as_str(), Some(expected_url.as_str()), "absolute url");
+    let expected_url = format!(
+        "http://127.0.0.1:{}/apps/020-t/api/media/stream/{id}",
+        proxy.port
+    );
+    assert_eq!(
+        entry["url"].as_str(),
+        Some(expected_url.as_str()),
+        "absolute url"
+    );
     // 原始 socket 请求用 path 段（绝对 URL 是浏览器/reqwest 展开后的形态）。
     let stream_path = format!("/apps/020-t/api/media/stream/{id}");
 
@@ -705,11 +767,7 @@ fn http_e2e_back_proxy_native_media_routes() {
         .find(|(k, _)| k.eq_ignore_ascii_case("content-range"))
         .map(|(_, v)| v.clone())
         .unwrap_or_default();
-    assert_eq!(
-        cr,
-        format!("bytes 4-11/{}", payload.len()),
-        "content range"
-    );
+    assert_eq!(cr, format!("bytes 4-11/{}", payload.len()), "content range");
 
     // 未知 id → 404；未配置 root 的 app → 诚实空列表。
     let (status, body) = http_request(
@@ -740,7 +798,10 @@ fn http_e2e_back_proxy_native_media_no_root_honest_empty() {
     let proxy = start(config).expect("start back proxy (no root)");
     let (status, body) = http_request(proxy.port, "GET", "/apps/no-root-t/api/media/scan", None);
     assert_eq!(status, 200, "no-root scan status");
-    assert_eq!(body, "{\"entries\":[],\"root_missing\":true}", "honest empty");
+    assert_eq!(
+        body, "{\"entries\":[],\"root_missing\":true}",
+        "honest empty"
+    );
 }
 
 /// PLAN-658 T-04 探针（临时）：017-chat 真实 back（含 ~Stream 死码体
@@ -748,7 +809,11 @@ fn http_e2e_back_proxy_native_media_no_root_honest_empty() {
 #[test]
 fn http_e2e_back_proxy_real_017_crud_probe() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest.ancestors().nth(2).expect("repo root").to_path_buf();
+    let repo_root = manifest
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .to_path_buf();
     let entry = repo_root.join("examples/ui/017-chat/src/back/api.at");
     if !entry.exists() {
         eprintln!("skip: {} not present", entry.display());
@@ -789,7 +854,11 @@ fn http_e2e_back_proxy_real_017_crud_probe() {
 #[test]
 fn http_e2e_back_proxy_real_017_sse_stream() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest.ancestors().nth(2).expect("repo root").to_path_buf();
+    let repo_root = manifest
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .to_path_buf();
     let entry = repo_root.join("examples/ui/017-chat/src/back/api.at");
     if !entry.exists() {
         eprintln!("skip: {} not present", entry.display());
@@ -811,7 +880,8 @@ fn http_e2e_back_proxy_real_017_sse_stream() {
 
     // 打开 SSE 长连接（独立 socket，读超时防挂死）。
     let mut sse = TcpStream::connect(("127.0.0.1", proxy.port)).expect("connect sse");
-    sse.set_read_timeout(Some(std::time::Duration::from_secs(8))).unwrap();
+    sse.set_read_timeout(Some(std::time::Duration::from_secs(8)))
+        .unwrap();
     let req = "GET /apps/017-chat/api/stream HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\nConnection: close\r\n\r\n";
     sse.write_all(req.as_bytes()).unwrap();
     let mut reader = BufReader::new(sse.try_clone().unwrap());
@@ -882,7 +952,11 @@ fn http_e2e_back_proxy_real_017_sse_stream() {
 #[test]
 fn http_e2e_back_proxy_real_031_native_ns_session() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest.ancestors().nth(2).expect("repo root").to_path_buf();
+    let repo_root = manifest
+        .ancestors()
+        .nth(2)
+        .expect("repo root")
+        .to_path_buf();
     let base = repo_root.join("examples/ui/031-image-viewer");
     if !base.join("src/back/api.at").exists() {
         eprintln!("skip: 031 corpus not present");
@@ -902,7 +976,12 @@ fn http_e2e_back_proxy_real_031_native_ns_session() {
     let proxy = start(config).expect("start proxy 031");
 
     // health：纯字面路由。
-    let (status, body) = http_request(proxy.port, "GET", "/apps/031-image-viewer/api/viewer/health", None);
+    let (status, body) = http_request(
+        proxy.port,
+        "GET",
+        "/apps/031-image-viewer/api/viewer/health",
+        None,
+    );
     assert_eq!(status, 200, "health, body: {body}");
     assert!(body.contains("Ready"), "health body: {body}");
 
@@ -955,9 +1034,15 @@ fn http_e2e_back_proxy_media_uri_byte_fidelity() {
             ..Default::default()
         },
     );
-    registry.transition(ticket.id, MediaAssetState::Reading).unwrap();
-    registry.transition(ticket.id, MediaAssetState::Decoding).unwrap();
-    registry.transition(ticket.id, MediaAssetState::Transforming).unwrap();
+    registry
+        .transition(ticket.id, MediaAssetState::Reading)
+        .unwrap();
+    registry
+        .transition(ticket.id, MediaAssetState::Decoding)
+        .unwrap();
+    registry
+        .transition(ticket.id, MediaAssetState::Transforming)
+        .unwrap();
     let payload: std::sync::Arc<[u8]> = std::sync::Arc::from([7u8, 255, 0, 128, 42, 99]);
     registry
         .publish_ready(ticket.id, ticket.revision, payload.clone())
@@ -972,7 +1057,10 @@ fn http_e2e_back_proxy_media_uri_byte_fidelity() {
         native_photos: Vec::new(),
     };
     let proxy = start(config).expect("start proxy (media uri)");
-    let path = format!("/apps/031-image-viewer/api/__auto/media/{}/{}", ticket.id, ticket.revision);
+    let path = format!(
+        "/apps/031-image-viewer/api/__auto/media/{}/{}",
+        ticket.id, ticket.revision
+    );
 
     // GET：字节一致 + Content-Type。
     let (status, headers, bytes) = http_request_raw(proxy.port, "GET", &path, None, &[]);
@@ -1093,7 +1181,11 @@ pub fn boom() str {
     // 重启后状态归零（hits 回 0）+ 路由恢复。
     let (s, body) = http_request(proxy.port, "GET", "/apps/boom-app/api/hits", None);
     assert_eq!(s, 200, "boom-app recovered, body: {body}");
-    assert_eq!(body.trim_matches(|c| c == '"'), "0", "state reset after restart: {body}");
+    assert_eq!(
+        body.trim_matches(|c| c == '"'),
+        "0",
+        "state reset after restart: {body}"
+    );
 
     // 日志环：PANIC + RESTART 记录。
     let (s, body) = http_request(proxy.port, "GET", "/__backproxy/log?app=boom-app", None);
@@ -1160,7 +1252,8 @@ fn http_e2e_back_proxy_runtime_add_remove_and_join_exit() {
     let (status, body) = http_request(proxy.port, "GET", "/apps/fixture/api/notes", None);
     assert_eq!(status, 404, "after remove, body: {body}");
     assert!(body.contains("unknown app"), "route table detached: {body}");
-    join.join().expect("session thread exits cleanly on drop-sender");
+    join.join()
+        .expect("session thread exits cleanly on drop-sender");
     assert!(!proxy.has_session("fixture"));
 
     // 复 add 重建可用（关窗复 launch 语义）。
@@ -1211,7 +1304,10 @@ fn http_e2e_back_proxy_runtime_native_media_add_remove() {
     assert_eq!(entries.len(), 1);
     let url = entries[0]["url"].as_str().expect("url").to_string();
     assert!(
-        url.starts_with(&format!("http://127.0.0.1:{}/apps/020-rt/api/media/stream/", proxy.port)),
+        url.starts_with(&format!(
+            "http://127.0.0.1:{}/apps/020-rt/api/media/stream/",
+            proxy.port
+        )),
         "absolute url on runtime port: {url}"
     );
     // 字节保真（stream 直答）。
@@ -1221,7 +1317,10 @@ fn http_e2e_back_proxy_runtime_native_media_add_remove() {
     assert_eq!(bytes, payload, "byte fidelity via runtime media route");
 
     // remove_app：无 session → None；media 路由摘除 → 404。
-    assert!(proxy.remove_app("020-rt").is_none(), "no session → no join handle");
+    assert!(
+        proxy.remove_app("020-rt").is_none(),
+        "no session → no join handle"
+    );
     let (status, body) = http_request(proxy.port, "GET", "/apps/020-rt/api/media/scan", None);
     assert_eq!(status, 404, "media route detached, body: {body}");
 }

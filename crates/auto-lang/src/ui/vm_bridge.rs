@@ -38,15 +38,15 @@
 
 use std::collections::HashMap;
 
+use crate::ast::Expr;
 use crate::ast::Stmt;
+#[allow(unused_imports)] // AuraStateDef/AuraNode used in #[cfg(test)] below
+use crate::aura::{AuraNode, AuraStateDef, AuraWidget};
 use crate::vm::engine::{AutoVM, ParkedSegment, ParkedWait, SegmentOutcome};
 use crate::vm::generic_registry::GenericInstanceData;
 use crate::vm::loader::Linker;
 use crate::vm::task::AutoTask;
 use crate::vm::virt_memory::VirtualFlash;
-#[allow(unused_imports)] // AuraStateDef/AuraNode used in #[cfg(test)] below
-use crate::aura::{AuraWidget, AuraStateDef, AuraNode};
-use crate::ast::Expr;
 use auto_val::{Op, Value};
 
 // ============================================================================
@@ -213,8 +213,6 @@ pub struct VmBridge {
     /// 第二个 A 携带新代际号（708 设计 §4）。
     init_generation: std::cell::Cell<u64>,
 
-
-
     /// PLAN-702 T-04: `__busy_handlers` 镜像的已写字集——parked 键集无变化
     /// 时跳过堆列表重铸（每 tick 调 sync_busy_flag，稳态零写）。
     busy_flag_names: std::cell::RefCell<Vec<String>>,
@@ -241,8 +239,7 @@ pub struct VmBridge {
     /// 键控的信号节点（值缓存 + 动态 dep 基线对）。生命周期随桥（hot-reload
     /// 新建桥自然弃置）。RefCell 理由同 memo_cache（渲染期 `&self`）。
     #[cfg(feature = "ui-interpreter")]
-    computed_signals:
-        std::cell::RefCell<HashMap<(String, String), ComputedSignal>>,
+    computed_signals: std::cell::RefCell<HashMap<(String, String), ComputedSignal>>,
 
     /// PLAN-047 T-06: 信号网命中/未命中计数（观测面——AC-04 断言用）。
     pub signal_hits: std::sync::atomic::AtomicU64,
@@ -506,7 +503,9 @@ fn nv_to_pub_value(nv: auto_val::NanoValue) -> Value {
     } else if auto_val::is_list(nv) {
         Value::Int(auto_val::decode_list(nv) as i32)
     } else if auto_val::is_object(nv) {
-        Value::VmRef(auto_val::VmRef { id: auto_val::decode_object(nv) as usize })
+        Value::VmRef(auto_val::VmRef {
+            id: auto_val::decode_object(nv) as usize,
+        })
     } else if auto_val::is_string(nv) {
         Value::Int(auto_val::decode_string(nv) as i32)
     } else if auto_val::is_null(nv) {
@@ -550,7 +549,9 @@ fn collect_param_names_from_decl(
 fn frame_rc_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| {
-        std::env::var("AUTOUI_FRAME_RC").map(|v| v != "0").unwrap_or(true)
+        std::env::var("AUTOUI_FRAME_RC")
+            .map(|v| v != "0")
+            .unwrap_or(true)
     })
 }
 
@@ -637,14 +638,22 @@ impl VmBridge {
 
         // 1. Synthesize imports + ALL widgets' state types + handlers into ONE
         //    Module via the genuine VM Codegen. Plan 320: single VM.
-        let (module, registry) = crate::ui::handler_codegen::synthesize_widget_module(widget, child_widgets, import_stmts, import_aliases, api_over_http)
-            .map_err(|e| VmBridgeError::InvalidState(format!(
-                "handler synthesis failed for '{}': {}", widget_name, e
-            )))?;
+        let (module, registry) = crate::ui::handler_codegen::synthesize_widget_module(
+            widget,
+            child_widgets,
+            import_stmts,
+            import_aliases,
+            api_over_http,
+        )
+        .map_err(|e| {
+            VmBridgeError::InvalidState(format!(
+                "handler synthesis failed for '{}': {}",
+                widget_name, e
+            ))
+        })?;
         // PLAN-642 T-15: 合成同线程紧邻捕获视图侧 store 别名快照（线程级
         // 快照会被多组件工程的后续合成覆盖，须随 bridge 存档）。
-        let store_alias_snapshot =
-            crate::ui::handler_codegen::capture_view_store_alias_snapshot();
+        let store_alias_snapshot = crate::ui::handler_codegen::capture_view_store_alias_snapshot();
 
         // Metadata we still need after handing the module to the linker.
         let object_keys = module.object_keys.clone();
@@ -654,9 +663,9 @@ impl VmBridge {
         // 2. Link (single module → no cross-module relocation).
         let mut linker = Linker::new();
         linker.add_entry_module(module);
-        let (code, exports) = linker.link().map_err(|e| VmBridgeError::InvalidState(
-            format!("link failed for '{}': {}", widget_name, e)
-        ))?;
+        let (code, exports) = linker.link().map_err(|e| {
+            VmBridgeError::InvalidState(format!("link failed for '{}': {}", widget_name, e))
+        })?;
 
         // 3. Build flash + VM with unified metadata tables.
         let flash = VirtualFlash::from_vec_with_metadata(code, exports, object_keys, object_types);
@@ -679,11 +688,8 @@ impl VmBridge {
         }
 
         let mono_name = format!("{}_State", widget_name);
-        let instance = GenericInstanceData::new_with_names(
-            mono_name,
-            field_values,
-            field_names.clone(),
-        );
+        let instance =
+            GenericInstanceData::new_with_names(mono_name, field_values, field_names.clone());
         let state_obj_id = vm.insert_heap_object(instance);
         // Plan 419: widget state 的永久 stake(bridges 与 VM 同寿命;每次
         // call_handler 的 push/RET-sweep 在此之上配平)。
@@ -759,14 +765,15 @@ impl VmBridge {
             import_aliases,
             api_over_http,
         )
-        .map_err(|e| VmBridgeError::InvalidState(format!(
-            "handler synthesis failed for '{}': {}",
-            widget_name, e
-        )))?;
+        .map_err(|e| {
+            VmBridgeError::InvalidState(format!(
+                "handler synthesis failed for '{}': {}",
+                widget_name, e
+            ))
+        })?;
         // PLAN-642 T-15: 同 new_with_children——快照随 bridge 存档
         // （线程级快照会被多组件工程的后续合成覆盖）。
-        let store_alias_snapshot =
-            crate::ui::handler_codegen::capture_view_store_alias_snapshot();
+        let store_alias_snapshot = crate::ui::handler_codegen::capture_view_store_alias_snapshot();
 
         // Metadata we still need after handing the module to the linker.
         let object_keys = module.object_keys.clone();
@@ -776,9 +783,9 @@ impl VmBridge {
         // 2. Link (single module → no cross-module relocation).
         let mut linker = Linker::new();
         linker.add_entry_module(module);
-        let (code, exports) = linker.link().map_err(|e| VmBridgeError::InvalidState(
-            format!("link failed for '{}': {}", widget_name, e)
-        ))?;
+        let (code, exports) = linker.link().map_err(|e| {
+            VmBridgeError::InvalidState(format!("link failed for '{}': {}", widget_name, e))
+        })?;
 
         // 3. Build flash + VM with unified metadata tables.
         let flash = VirtualFlash::from_vec_with_metadata(code, exports, object_keys, object_types);
@@ -841,7 +848,11 @@ impl VmBridge {
             if !field_names.iter().any(|n| n == "__current_route") {
                 field_names.push("__current_route".to_string());
                 field_values.push(auto_val::Value::str(
-                    decl.routes.as_ref().and_then(|r| r.routes.first()).map(|r| r.path.as_str()).unwrap_or("/")
+                    decl.routes
+                        .as_ref()
+                        .and_then(|r| r.routes.first())
+                        .map(|r| r.path.as_str())
+                        .unwrap_or("/"),
                 ));
             }
             if !field_names.iter().any(|n| n == "__route_params") {
@@ -854,7 +865,9 @@ impl VmBridge {
                 // rc_retain 同寿命语义；write_state 路径的对称面见
                 // stake/release_state_value）。
                 vm.rc_retain_id(seeded as u64);
-                field_values.push(auto_val::Value::VmRef(auto_val::VmRef { id: seeded as usize }));
+                field_values.push(auto_val::Value::VmRef(auto_val::VmRef {
+                    id: seeded as usize,
+                }));
             }
         }
 
@@ -882,11 +895,8 @@ impl VmBridge {
         }
 
         let mono_name = format!("{}_State", widget_name);
-        let instance = GenericInstanceData::new_with_names(
-            mono_name,
-            field_values,
-            field_names.clone(),
-        );
+        let instance =
+            GenericInstanceData::new_with_names(mono_name, field_values, field_names.clone());
         let state_obj_id = vm.insert_heap_object(instance);
         // Plan 419: widget state 的永久 stake(bridges 与 VM 同寿命;每次
         // call_handler 的 push/RET-sweep 在此之上配平)。
@@ -958,27 +968,37 @@ impl VmBridge {
         // `collapsed`) into the root heap object AFTER the bridge is built, so
         // those fields are missing from `state_field_names` and the cached
         // index lookup alone would wrongly report FieldNotFound.
-        let obj = self.vm.get_heap_object(self.state_obj_id)
-            .ok_or_else(|| VmBridgeError::InvalidState(
-                format!("state heap object {} not found", self.state_obj_id)
-            ))?;
+        let obj = self.vm.get_heap_object(self.state_obj_id).ok_or_else(|| {
+            VmBridgeError::InvalidState(format!(
+                "state heap object {} not found",
+                self.state_obj_id
+            ))
+        })?;
 
         let field_index = {
             let guard = obj.read().unwrap();
-            let instance = guard.as_any().downcast_ref::<GenericInstanceData>()
-                .ok_or_else(|| VmBridgeError::InvalidState(
-                    "state object is not a GenericInstanceData".to_string()
-                ))?;
-            self.state_field_names.iter().position(|name| name == field_name)
+            let instance = guard
+                .as_any()
+                .downcast_ref::<GenericInstanceData>()
+                .ok_or_else(|| {
+                    VmBridgeError::InvalidState(
+                        "state object is not a GenericInstanceData".to_string(),
+                    )
+                })?;
+            self.state_field_names
+                .iter()
+                .position(|name| name == field_name)
                 .or_else(|| instance.field_names.iter().position(|n| n == field_name))
                 .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))?
         };
 
         let guard = obj.read().unwrap();
-        let instance = guard.as_any().downcast_ref::<GenericInstanceData>()
-            .ok_or_else(|| VmBridgeError::InvalidState(
-                "state object is not a GenericInstanceData".to_string()
-            ))?;
+        let instance = guard
+            .as_any()
+            .downcast_ref::<GenericInstanceData>()
+            .ok_or_else(|| {
+                VmBridgeError::InvalidState("state object is not a GenericInstanceData".to_string())
+            })?;
 
         // PLAN-047 T-01: 读通道录制——成功的具名字段读 = 一条依赖边。
         match instance.get_field(field_index).cloned() {
@@ -1001,32 +1021,47 @@ impl VmBridge {
     pub fn write_state(&mut self, field_name: &str, value: Value) -> Result<()> {
         // Find field index by name — same cached-list-first + live-object
         // fallback as read_state (Plan 049 child model-var defaults).
-        let obj = self.vm.get_heap_object(self.state_obj_id)
-            .ok_or_else(|| VmBridgeError::InvalidState(
-                format!("state heap object {} not found", self.state_obj_id)
-            ))?;
+        let obj = self.vm.get_heap_object(self.state_obj_id).ok_or_else(|| {
+            VmBridgeError::InvalidState(format!(
+                "state heap object {} not found",
+                self.state_obj_id
+            ))
+        })?;
         let field_index = {
             let guard = obj.read().unwrap();
-            let instance = guard.as_any().downcast_ref::<GenericInstanceData>()
-                .ok_or_else(|| VmBridgeError::InvalidState(
-                    "state object is not a GenericInstanceData".to_string()
-                ))?;
-            self.state_field_names.iter().position(|name| name == field_name)
+            let instance = guard
+                .as_any()
+                .downcast_ref::<GenericInstanceData>()
+                .ok_or_else(|| {
+                    VmBridgeError::InvalidState(
+                        "state object is not a GenericInstanceData".to_string(),
+                    )
+                })?;
+            self.state_field_names
+                .iter()
+                .position(|name| name == field_name)
                 .or_else(|| instance.field_names.iter().position(|n| n == field_name))
                 .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))?
         };
 
         // Access the heap object with write access
-        let obj = self.vm.get_heap_object_mut(self.state_obj_id)
-            .ok_or_else(|| VmBridgeError::InvalidState(
-                format!("state heap object {} not found", self.state_obj_id)
-            ))?;
+        let obj = self
+            .vm
+            .get_heap_object_mut(self.state_obj_id)
+            .ok_or_else(|| {
+                VmBridgeError::InvalidState(format!(
+                    "state heap object {} not found",
+                    self.state_obj_id
+                ))
+            })?;
 
         let mut guard = obj.write().unwrap();
-        let instance = guard.as_any_mut().downcast_mut::<GenericInstanceData>()
-            .ok_or_else(|| VmBridgeError::InvalidState(
-                "state object is not a GenericInstanceData".to_string()
-            ))?;
+        let instance = guard
+            .as_any_mut()
+            .downcast_mut::<GenericInstanceData>()
+            .ok_or_else(|| {
+                VmBridgeError::InvalidState("state object is not a GenericInstanceData".to_string())
+            })?;
 
         // PLAN-062 T12: Rust 侧直写绕过 VM 栈——容器字段获得持有时必须
         // 显式记账（rc.rs §2.3 协议）：新值（含 Array 内层 VmRef）+1，
@@ -1037,7 +1072,8 @@ impl VmBridge {
             self.release_state_value(&old_v);
         }
         self.stake_state_value(&value);
-        instance.set_field(field_index, value)
+        instance
+            .set_field(field_index, value)
             .map_err(|e| VmBridgeError::InvalidState(e))?;
         // PLAN-045 T-02：Rust 侧直写绕过 engine 突变臂，全局 state_mutation_seq
         // 原本不动——`set_route` 等桥写通道因此对 memo 快速路径不可见（陈旧
@@ -1053,15 +1089,24 @@ impl VmBridge {
         match self.write_state(field_name, value.clone()) {
             Ok(()) => Ok(()),
             Err(VmBridgeError::FieldNotFound(_)) => {
-                let obj = self.vm.get_heap_object_mut(self.state_obj_id)
-                    .ok_or_else(|| VmBridgeError::InvalidState(
-                        format!("state heap object {} not found", self.state_obj_id)
-                    ))?;
+                let obj = self
+                    .vm
+                    .get_heap_object_mut(self.state_obj_id)
+                    .ok_or_else(|| {
+                        VmBridgeError::InvalidState(format!(
+                            "state heap object {} not found",
+                            self.state_obj_id
+                        ))
+                    })?;
                 let mut guard = obj.write().unwrap();
-                let instance = guard.as_any_mut().downcast_mut::<GenericInstanceData>()
-                    .ok_or_else(|| VmBridgeError::InvalidState(
-                        "state object is not a GenericInstanceData".to_string()
-                    ))?;
+                let instance = guard
+                    .as_any_mut()
+                    .downcast_mut::<GenericInstanceData>()
+                    .ok_or_else(|| {
+                        VmBridgeError::InvalidState(
+                            "state object is not a GenericInstanceData".to_string(),
+                        )
+                    })?;
                 instance.field_names.push(field_name.to_string());
                 instance.fields.push(value);
                 self.state_field_names.push(field_name.to_string());
@@ -1170,20 +1215,23 @@ impl VmBridge {
                     } else if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
                         Ok(list.elems.iter().map(|i| Value::Int(*i)).collect())
                     } else {
-                        Err(VmBridgeError::InvalidState(
-                            format!("array_id {} is not a readable list", arr_id)
-                        ))
+                        Err(VmBridgeError::InvalidState(format!(
+                            "array_id {} is not a readable list",
+                            arr_id
+                        )))
                     }
                 } else {
-                    Err(VmBridgeError::InvalidState(
-                        format!("array_id {} not found in heap_objects", arr_id)
-                    ))
+                    Err(VmBridgeError::InvalidState(format!(
+                        "array_id {} not found in heap_objects",
+                        arr_id
+                    )))
                 }
             }
             Value::VmRef(r) => self.vmref_to_vec(r.id),
-            other => Err(VmBridgeError::InvalidState(
-                format!("Expected array for field '{}', got {:?}", field_name, other)
-            )),
+            other => Err(VmBridgeError::InvalidState(format!(
+                "Expected array for field '{}', got {:?}",
+                field_name, other
+            ))),
         }
     }
 
@@ -1268,7 +1316,8 @@ impl VmBridge {
             }
         }
         Err(VmBridgeError::InvalidState(format!(
-            "VmRef {} is not a readable list (not in heap_objects as ListData)", id
+            "VmRef {} is not a readable list (not in heap_objects as ListData)",
+            id
         )))
     }
 
@@ -1289,7 +1338,10 @@ impl VmBridge {
                 let arr_id = id as u64;
                 if let Some(obj) = self.vm.get_heap_object(arr_id) {
                     let mut guard = obj.write().unwrap();
-                    if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<Value>>() {
+                    if let Some(list) = guard
+                        .as_any_mut()
+                        .downcast_mut::<crate::vm::types::ListData<Value>>()
+                    {
                         // PLAN-062 T12: 元素整体替换——旧元素释放、新元素
                         // 获得（容器持有协议,同 write_state）。
                         for old_el in list.elems.iter() {
@@ -1306,14 +1358,16 @@ impl VmBridge {
                         self.vm.bump_path(arr_id, None);
                         Ok(())
                     } else {
-                        Err(VmBridgeError::InvalidState(
-                            format!("array_id {} is not a writable list", arr_id)
-                        ))
+                        Err(VmBridgeError::InvalidState(format!(
+                            "array_id {} is not a writable list",
+                            arr_id
+                        )))
                     }
                 } else {
-                    Err(VmBridgeError::InvalidState(
-                        format!("array_id {} not found in heap_objects", arr_id)
-                    ))
+                    Err(VmBridgeError::InvalidState(format!(
+                        "array_id {} not found in heap_objects",
+                        arr_id
+                    )))
                 }
             }
             // EDGE-16: List<T>.new([]) 物化成 VmRef 指向 ListData<Value> 堆对象。
@@ -1322,7 +1376,10 @@ impl VmBridge {
                 let arr_id = r.id as u64;
                 if let Some(obj) = self.vm.get_heap_object(arr_id) {
                     let mut guard = obj.write().unwrap();
-                    if let Some(list) = guard.as_any_mut().downcast_mut::<crate::vm::types::ListData<Value>>() {
+                    if let Some(list) = guard
+                        .as_any_mut()
+                        .downcast_mut::<crate::vm::types::ListData<Value>>()
+                    {
                         // PLAN-062 T12: 同 Int 臂——旧释放新获得。
                         for old_el in list.elems.iter() {
                             self.release_state_value(old_el);
@@ -1337,19 +1394,22 @@ impl VmBridge {
                         self.vm.bump_path(arr_id, None);
                         Ok(())
                     } else {
-                        Err(VmBridgeError::InvalidState(
-                            format!("VmRef id {} is not a writable list", arr_id)
-                        ))
+                        Err(VmBridgeError::InvalidState(format!(
+                            "VmRef id {} is not a writable list",
+                            arr_id
+                        )))
                     }
                 } else {
-                    Err(VmBridgeError::InvalidState(
-                        format!("VmRef id {} not found in heap_objects", arr_id)
-                    ))
+                    Err(VmBridgeError::InvalidState(format!(
+                        "VmRef id {} not found in heap_objects",
+                        arr_id
+                    )))
                 }
             }
-            other => Err(VmBridgeError::InvalidState(
-                format!("Expected array for field '{}', got {:?}", field_name, other)
-            )),
+            other => Err(VmBridgeError::InvalidState(format!(
+                "Expected array for field '{}', got {:?}",
+                field_name, other
+            ))),
         }
     }
 
@@ -1377,7 +1437,10 @@ impl VmBridge {
                     // 全部字段——任一字段原地变都须失效，记 " *" 面）。
                     self.record_dep_any(*id as u64);
                     let guard = obj.read().unwrap();
-                    if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                    if let Some(od) = guard
+                        .as_any()
+                        .downcast_ref::<crate::vm::types::ObjectData>()
+                    {
                         let mut out = auto_val::Obj::new();
                         for (key, val) in od.fields.iter() {
                             if let auto_val::ValueKey::Str(s) = key {
@@ -1390,7 +1453,10 @@ impl VmBridge {
                     // [Note{...}]) stores Note instances as bare Int(heap_id)
                     // elements; without this arm, note.title in a for-loop body
                     // can't resolve.
-                    if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+                    if let Some(inst) = guard
+                        .as_any()
+                        .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>(
+                    ) {
                         let mut out = auto_val::Obj::new();
                         for (val, name) in inst.fields.iter().zip(inst.field_names.iter()) {
                             if name != "_unknown" {
@@ -1413,7 +1479,10 @@ impl VmBridge {
                     // PLAN-047 T-01: 同 Int 臂——堆结构展开读粗粒度依赖。
                     self.record_dep_any(r.id as u64);
                     let guard = obj.read().unwrap();
-                    if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                    if let Some(od) = guard
+                        .as_any()
+                        .downcast_ref::<crate::vm::types::ObjectData>()
+                    {
                         let mut out = auto_val::Obj::new();
                         for (key, val) in od.fields.iter() {
                             if let auto_val::ValueKey::Str(s) = key {
@@ -1422,7 +1491,10 @@ impl VmBridge {
                         }
                         return Value::Obj(Box::new(out));
                     }
-                    if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+                    if let Some(inst) = guard
+                        .as_any()
+                        .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>(
+                    ) {
                         let mut out = auto_val::Obj::new();
                         for (val, name) in inst.fields.iter().zip(inst.field_names.iter()) {
                             if name != "_unknown" {
@@ -1602,12 +1674,10 @@ impl VmBridge {
                     // Convert Array props to heap-stored ListData here.
                     let storable = match val {
                         auto_val::Value::Array(arr) => {
-                            let id = self.vm.insert_heap_object(
-                                crate::vm::types::ListData {
-                                    elems: arr.values.clone(),
-                                    storage: None,
-                                },
-                            );
+                            let id = self.vm.insert_heap_object(crate::vm::types::ListData {
+                                elems: arr.values.clone(),
+                                storage: None,
+                            });
                             // Plan 419: 字段持有列表引用。
                             self.vm.rc_retain_id(id);
                             auto_val::Value::Int(id as i32)
@@ -1652,16 +1722,27 @@ impl VmBridge {
     /// 每帧重渲染身份不变,恒 false——536 防重放语义不变。
     /// Plan 320: read a state field from a SPECIFIC child widget's state object
     /// (by heap id), not the root widget's state.
-    pub fn read_child_state(&self, child_state_id: u64, field_name: &str) -> Result<auto_val::Value> {
+    pub fn read_child_state(
+        &self,
+        child_state_id: u64,
+        field_name: &str,
+    ) -> Result<auto_val::Value> {
         use crate::vm::generic_registry::GenericInstanceData;
-        let obj = self.vm.get_heap_object(child_state_id)
-            .ok_or_else(|| VmBridgeError::InvalidState(
-                format!("child state heap object {} not found", child_state_id)
-            ))?;
+        let obj = self.vm.get_heap_object(child_state_id).ok_or_else(|| {
+            VmBridgeError::InvalidState(format!(
+                "child state heap object {} not found",
+                child_state_id
+            ))
+        })?;
         let guard = obj.read().unwrap();
-        let inst = guard.as_any().downcast_ref::<GenericInstanceData>()
+        let inst = guard
+            .as_any()
+            .downcast_ref::<GenericInstanceData>()
             .ok_or_else(|| VmBridgeError::InvalidState("not GenericInstanceData".into()))?;
-        let idx = inst.field_names.iter().position(|n| n == field_name)
+        let idx = inst
+            .field_names
+            .iter()
+            .position(|n| n == field_name)
             .ok_or_else(|| VmBridgeError::FieldNotFound(field_name.to_string()))?;
         inst.get_field(idx)
             .cloned()
@@ -1677,9 +1758,13 @@ impl VmBridge {
         let map = self.child_state_map.borrow();
         let mut out: Vec<(String, HashMap<String, auto_val::Value>)> = Vec::new();
         for (name, id) in map.iter() {
-            let Some(obj) = self.vm.get_heap_object(*id) else { continue };
+            let Some(obj) = self.vm.get_heap_object(*id) else {
+                continue;
+            };
             let guard = obj.read().unwrap();
-            let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() else { continue };
+            let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() else {
+                continue;
+            };
             let mut fields = HashMap::new();
             for (i, fname) in inst.field_names.iter().enumerate() {
                 if let Some(v) = inst.get_field(i) {
@@ -1706,9 +1791,13 @@ impl VmBridge {
                 auto_val::Value::Int(id) if *id >= 4_000_000 => *id as u64,
                 _ => continue,
             };
-            let Some(obj) = self.vm.get_heap_object(id) else { continue };
+            let Some(obj) = self.vm.get_heap_object(id) else {
+                continue;
+            };
             let guard = obj.read().unwrap();
-            let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() else { continue };
+            let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() else {
+                continue;
+            };
             let mut fields = HashMap::new();
             for (i, n) in inst.field_names.iter().enumerate() {
                 if let Some(v) = inst.get_field(i) {
@@ -1729,7 +1818,11 @@ impl VmBridge {
         // No-op placeholder — actual syncing happens in ensure_child_state which
         // writes directly to root state. Kept for API compat.
     }
-    pub fn read_child_state_as_vec(&self, child_state_id: u64, field_name: &str) -> Result<Vec<auto_val::Value>> {
+    pub fn read_child_state_as_vec(
+        &self,
+        child_state_id: u64,
+        field_name: &str,
+    ) -> Result<Vec<auto_val::Value>> {
         let val = self.read_child_state(child_state_id, field_name)?;
         match val {
             auto_val::Value::Array(arr) => Ok(arr.values),
@@ -1742,22 +1835,29 @@ impl VmBridge {
                     if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
                         Ok(list.elems.clone())
                     } else if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
-                        Ok(list.elems.iter().map(|i| auto_val::Value::Int(*i)).collect())
+                        Ok(list
+                            .elems
+                            .iter()
+                            .map(|i| auto_val::Value::Int(*i))
+                            .collect())
                     } else {
-                        Err(VmBridgeError::InvalidState(
-                            format!("array_id {} is not a readable list", id)
-                        ))
+                        Err(VmBridgeError::InvalidState(format!(
+                            "array_id {} is not a readable list",
+                            id
+                        )))
                     }
                 } else {
-                    Err(VmBridgeError::InvalidState(
-                        format!("array_id {} not found in heap_objects", id)
-                    ))
+                    Err(VmBridgeError::InvalidState(format!(
+                        "array_id {} not found in heap_objects",
+                        id
+                    )))
                 }
             }
             auto_val::Value::VmRef(r) => self.vmref_to_vec(r.id),
-            other => Err(VmBridgeError::InvalidState(
-                format!("Expected array for '{}', got {:?}", field_name, other)
-            )),
+            other => Err(VmBridgeError::InvalidState(format!(
+                "Expected array for '{}', got {:?}",
+                field_name, other
+            ))),
         }
     }
 
@@ -1791,7 +1891,10 @@ impl VmBridge {
     /// PLAN-702 T-04: is a segment already parked for this resolved handler
     /// fn (the (widget, handler) reentry key — namespaced fn 名编码二者)?
     pub fn is_handler_parked(&self, fn_name: &str) -> bool {
-        self.parked_tasks.borrow().iter().any(|p| p.fn_name == fn_name)
+        self.parked_tasks
+            .borrow()
+            .iter()
+            .any(|p| p.fn_name == fn_name)
     }
 
     /// PLAN-702 T-03: probe every parked segment's wait and resume the ready
@@ -2024,10 +2127,7 @@ impl VmBridge {
     ///   原样放回下一轮继续。
     /// - 片间消费至多一条排队写事件（同 App 写序纪律：写事件只在泵上下文
     ///   串行落堆，不与在途 continuation 交错）；轮末兜底清剩余队列。
-    pub fn resume_cpu_slices(
-        &self,
-        budget: crate::vm::engine::CpuSliceBudget,
-    ) -> CpuPumpReport {
+    pub fn resume_cpu_slices(&self, budget: crate::vm::engine::CpuSliceBudget) -> CpuPumpReport {
         let round_start = std::time::Instant::now();
         let mut report = CpuPumpReport::default();
         let mut ready: Vec<ParkedTask> = {
@@ -2051,14 +2151,19 @@ impl VmBridge {
                 continue;
             }
             report.slices_run += 1;
-            match self.vm.resume_fn_by_name_cpu_slice(&mut p.task, &p.seg, budget) {
+            match self
+                .vm
+                .resume_fn_by_name_cpu_slice(&mut p.task, &p.seg, budget)
+            {
                 SegmentOutcome::Completed(Ok(())) => {
                     if p.release_stack_on_complete {
                         self.vm.rc_release_task_stack(&mut p.task);
                     }
                     eprintln!(
                         "[VM-CPU] {} slice-resumed to completion (parked {:?}, {} total steps)",
-                        p.fn_name, p.parked_at.elapsed(), p.task.cpu_steps_total
+                        p.fn_name,
+                        p.parked_at.elapsed(),
+                        p.task.cpu_steps_total
                     );
                     report.completed += 1;
                 }
@@ -2198,10 +2303,8 @@ impl VmBridge {
                     self.cancel_queued_init(&old_identity);
                 }
                 if had_in_flight {
-                    let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(
-                        widget_name,
-                        "Init",
-                    );
+                    let fn_name =
+                        crate::ui::handler_codegen::namespaced_handler_fn_name(widget_name, "Init");
                     self.cancel_parked_by_fn(&fn_name);
                 }
             }
@@ -2217,15 +2320,13 @@ impl VmBridge {
                 self.init_generation.set(generation + 1);
             }
         }
-        self.init_demand_queue
-            .borrow_mut()
-            .push_back(InitDemand {
-                widget_name: widget_name.to_string(),
-                identity: identity.to_string(),
-                state_obj_id,
-                generation: self.init_generation.get(),
-                props,
-            });
+        self.init_demand_queue.borrow_mut().push_back(InitDemand {
+            widget_name: widget_name.to_string(),
+            identity: identity.to_string(),
+            state_obj_id,
+            generation: self.init_generation.get(),
+            props,
+        });
         if std::env::var("AUTO_SCHED_DIAG").ok().as_deref() == Some("1") {
             let t0 = crate::ui::dynamic::sched_diag_t0();
             eprintln!(
@@ -2282,7 +2383,8 @@ impl VmBridge {
                     .iter()
                     .find(|(_, r)| r.phase == InitDemandPhase::InFlight)
                     .map(|(w, _)| {
-                        let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(w, "Init");
+                        let fn_name =
+                            crate::ui::handler_codegen::namespaced_handler_fn_name(w, "Init");
                         (w.clone(), !self.is_handler_parked(&fn_name))
                     })
             };
@@ -2309,10 +2411,8 @@ impl VmBridge {
                 break;
             };
             report.dispatched += 1;
-            let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(
-                &demand.widget_name,
-                "Init",
-            );
+            let fn_name =
+                crate::ui::handler_codegen::namespaced_handler_fn_name(&demand.widget_name, "Init");
             // PLAN-711 T-03: 派发时解析**当前** child state id——登记到派发
             // 之间可能发生重建（child state 对象更替/旧对象随帧账本释放），
             // 陈旧 id 的字段读取得空值（donut Init 除零实录：total=0）。
@@ -2404,7 +2504,11 @@ impl VmBridge {
     /// - `CpuRunnable` → 纯栈份额，随清栈释放。
     /// 取消不回滚已发生副作用（前缀写入保留，M-01 契约）。
     pub fn cancel_parked_by_fn(&self, fn_name: &str) -> bool {
-        let pos = self.parked_tasks.borrow().iter().position(|p| p.fn_name == fn_name);
+        let pos = self
+            .parked_tasks
+            .borrow()
+            .iter()
+            .position(|p| p.fn_name == fn_name);
         let Some(idx) = pos else {
             return false;
         };
@@ -2449,7 +2553,10 @@ impl VmBridge {
     /// 名字解析序：裸名 → import_aliases 限定名。返回值按栈顶 nanbox 解码
     /// （列表为 heap id Int ≥4M，由调用方 index_list_all 展开）。
     pub fn call_vm_fn(&self, name: &str, args: &[Value]) -> Result<Value> {
-        let candidates = [Some(name.to_string()), self.import_aliases.get(name).cloned()];
+        let candidates = [
+            Some(name.to_string()),
+            self.import_aliases.get(name).cloned(),
+        ];
         let fn_name = candidates
             .into_iter()
             .flatten()
@@ -2482,13 +2589,16 @@ impl VmBridge {
                 // 运行时根因）。encode_object 后 heap_ref_id（双 tag 识别）
                 // 记账不变。
                 Value::Int(id) if *id >= 4_000_000 => {
-                    self.vm.rc_push(&mut task, auto_val::encode_object(*id as u32));
+                    self.vm
+                        .rc_push(&mut task, auto_val::encode_object(*id as u32));
                 }
                 Value::VmRef(r) if r.id >= 4_000_000 => {
-                    self.vm.rc_push(&mut task, auto_val::encode_object(r.id as u32));
+                    self.vm
+                        .rc_push(&mut task, auto_val::encode_object(r.id as u32));
                 }
                 Value::VmRef(r) => {
-                    self.vm.rc_push(&mut task, auto_val::encode_object(r.id as u32));
+                    self.vm
+                        .rc_push(&mut task, auto_val::encode_object(r.id as u32));
                 }
                 // PLAN-053 P-053-6: Obj/Array 实参物化——原落 push_value 的
                 // push_i32(0) 占位，helper 收到的 msg 是 Int(0)，`.content`/
@@ -2524,7 +2634,9 @@ impl VmBridge {
         // 无投递面）；视图 fn 含异步等待本属病理（纯度约束另立计划）。
         self.vm
             .call_fn_by_name(&mut task, &fn_name, args.len())
-            .map_err(|e| VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name)))?;
+            .map_err(|e| {
+                VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
+            })?;
         let nv = task.ram.pop_nv();
         // PLAN-062 T12: 结果槽份额**接管**（取走不释放）——bp==0 主任务
         // RET 不做帧清扫,结果值压栈携带的份额直接转为宿主持有（避免
@@ -2608,7 +2720,9 @@ impl VmBridge {
 
     /// PLAN-062 F2: 帧账本记账（开关关时零开销直返）。
     fn record_frame_retain(&self, id: u64) {
-        if !frame_rc_enabled() { return; }
+        if !frame_rc_enabled() {
+            return;
+        }
         if let Ok(mut cur) = self.frame_retains_cur.lock() {
             cur.push(id);
         }
@@ -2619,14 +2733,16 @@ impl VmBridge {
     /// 内容晋升为 prev。时序保证帧 N 的 retain 结果在帧 N+1 构建全程
     /// 存活；旧缓存树与新账本同帧换代，无悬挂窗口。
     pub fn commit_dirty_frame(&self) {
-        if !frame_rc_enabled() { return; }
-        let released: Vec<u64> =
-            match (self.frame_retains_cur.lock(), self.frame_retains_prev.lock()) {
-                (Ok(mut cur), Ok(mut prev)) => {
-                    std::mem::replace(&mut *prev, std::mem::take(&mut *cur))
-                }
-                _ => return,
-            };
+        if !frame_rc_enabled() {
+            return;
+        }
+        let released: Vec<u64> = match (
+            self.frame_retains_cur.lock(),
+            self.frame_retains_prev.lock(),
+        ) {
+            (Ok(mut cur), Ok(mut prev)) => std::mem::replace(&mut *prev, std::mem::take(&mut *cur)),
+            _ => return,
+        };
         for id in released {
             self.vm.rc_release_id(id);
         }
@@ -2649,7 +2765,10 @@ impl VmBridge {
 
     /// PLAN-045: memo 缓存快照口（渲染期 builder 走 `&self`，RefCell 内可变）。
     #[cfg(feature = "ui-interpreter")]
-    pub fn with_memo_cache<R>(&self, f: impl FnOnce(&mut crate::ui::memo_deps::MemoCache) -> R) -> R {
+    pub fn with_memo_cache<R>(
+        &self,
+        f: impl FnOnce(&mut crate::ui::memo_deps::MemoCache) -> R,
+    ) -> R {
         f(&mut self.memo_cache.borrow_mut())
     }
 
@@ -2778,15 +2897,14 @@ impl VmBridge {
             signals
                 .get(&(widget.to_string(), prop.to_string()))
                 .and_then(|sig| {
-                    self.deps_unchanged(&sig.deps)
-                        .then(|| {
-                            if let Some(rec) = self.dep_recorder.borrow_mut().as_mut() {
-                                for (k, _) in &sig.deps {
-                                    rec.record(k.clone());
-                                }
+                    self.deps_unchanged(&sig.deps).then(|| {
+                        if let Some(rec) = self.dep_recorder.borrow_mut().as_mut() {
+                            for (k, _) in &sig.deps {
+                                rec.record(k.clone());
                             }
-                            sig.cached.clone()
-                        })
+                        }
+                        sig.cached.clone()
+                    })
                 })
         };
         if hit.is_some() {
@@ -2825,9 +2943,10 @@ impl VmBridge {
             return;
         }
         let deps = self.dep_pairs(&rec.deps);
-        self.computed_signals
-            .borrow_mut()
-            .insert((widget.to_string(), prop.to_string()), ComputedSignal { cached, deps });
+        self.computed_signals.borrow_mut().insert(
+            (widget.to_string(), prop.to_string()),
+            ComputedSignal { cached, deps },
+        );
     }
 
     /// PLAN-045: 指纹展开器——堆引用展开一层为纯值（memo 值指纹用）。
@@ -2844,7 +2963,10 @@ impl VmBridge {
             return v.clone();
         };
         let guard = obj.read().unwrap();
-        if let Some(od) = guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+        if let Some(od) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ObjectData>()
+        {
             let mut out = auto_val::Obj::new();
             for (key, val) in od.fields.iter() {
                 if let auto_val::ValueKey::Str(s) = key {
@@ -2853,7 +2975,10 @@ impl VmBridge {
             }
             return Value::Obj(Box::new(out));
         }
-        if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+        if let Some(inst) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+        {
             let mut out = auto_val::Obj::new();
             for (val, name) in inst.fields.iter().zip(inst.field_names.iter()) {
                 if name != "_unknown" {
@@ -2862,7 +2987,10 @@ impl VmBridge {
             }
             return Value::Obj(Box::new(out));
         }
-        if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<Value>>() {
+        if let Some(list) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<Value>>()
+        {
             return Value::Array(auto_val::Array {
                 values: list.elems.clone(),
             });
@@ -2884,11 +3012,13 @@ impl VmBridge {
         }
         let mut task = AutoTask::new(0, 4096, 0);
         self.vm.rc_push_id(&mut task, self.state_obj_id()); // Plan 419
-        // PLAN-702 T-05: legacy 同步驱动保留位②——block computed 求值（同
-        // call_vm_fn：本次调用返回 Value 契约，无 park 形态）。
+                                                            // PLAN-702 T-05: legacy 同步驱动保留位②——block computed 求值（同
+                                                            // call_vm_fn：本次调用返回 Value 契约，无 park 形态）。
         self.vm
             .call_fn_by_name(&mut task, &fn_name, 1)
-            .map_err(|e| VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name)))?;
+            .map_err(|e| {
+                VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
+            })?;
         let nv = task.ram.pop_nv();
         // PLAN-062 T12: 同 call_vm_fn——结果槽份额接管（取走不释放）。
         let result_stake = task.ram.take_stake_at(task.ram.sp);
@@ -2899,7 +3029,13 @@ impl VmBridge {
         Ok(out)
     }
 
-    pub fn call_handler_for(&self, widget_name: &str, event_name: &str, state_obj_id: u64, args: &[Value]) -> Result<()> {
+    pub fn call_handler_for(
+        &self,
+        widget_name: &str,
+        event_name: &str,
+        state_obj_id: u64,
+        args: &[Value],
+    ) -> Result<()> {
         let Some((fn_name, mut task)) =
             self.prepare_handler_dispatch(widget_name, event_name, state_obj_id, args)?
         else {
@@ -2912,14 +3048,20 @@ impl VmBridge {
         // PLAN-702 T-02: 段派发——Yield+等待即 park（task 入注册表、零忙等，
         // UI 立即恢复事件循环）；从不 yield 的 handler 在本次 update 内跑完，
         // 与同步驱动逐字节同（兼容性论证见计划 §架构方案 4）。
-        match self.vm.call_fn_by_name_segment(&mut task, &fn_name, 1 + args.len()) {
+        match self
+            .vm
+            .call_fn_by_name_segment(&mut task, &fn_name, 1 + args.len())
+        {
             SegmentOutcome::Completed(res) => {
                 // PLAN-062 F2 配套: 主任务边界 RET 无帧清扫(见 call_vm_fn 注)——
                 // 任务弃前整栈清账。Err 路径同样清(局部/临时槽可能已持 stake,
                 // 不清则崩掉的 handler 额外漏一份)。
                 self.vm.rc_release_task_stack(&mut task);
                 res.map_err(|e| {
-                    VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
+                    VmBridgeError::VmError(format!(
+                        "{:?} (crash ip=0x{:x} in {})",
+                        e, task.ip, fn_name
+                    ))
                 })
             }
             SegmentOutcome::Parked { wait, seg } => {
@@ -2965,7 +3107,10 @@ impl VmBridge {
             SegmentOutcome::Completed(res) => {
                 self.vm.rc_release_task_stack(&mut task);
                 res.map_err(|e| {
-                    VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
+                    VmBridgeError::VmError(format!(
+                        "{:?} (crash ip=0x{:x} in {})",
+                        e, task.ip, fn_name
+                    ))
                 })
             }
             SegmentOutcome::Parked { wait, seg } => {
@@ -2999,10 +3144,14 @@ impl VmBridge {
         state_obj_id: u64,
         args: &[Value],
     ) -> Result<Option<(String, AutoTask)>> {
-        let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(widget_name, event_name);
+        let fn_name =
+            crate::ui::handler_codegen::namespaced_handler_fn_name(widget_name, event_name);
         if !event_name.starts_with("__") {
             if crate::is_vm_hot_trace() {
-                eprintln!("[VM_EXEC] fn_name={} state_obj_id={} args={:?}", fn_name, state_obj_id, args);
+                eprintln!(
+                    "[VM_EXEC] fn_name={} state_obj_id={} args={:?}",
+                    fn_name, state_obj_id, args
+                );
             }
         }
 
@@ -3017,15 +3166,24 @@ impl VmBridge {
                     fn_name
                 );
             } else {
-                eprintln!("[CALL_HANDLER_FOR_NOT_FOUND] fn_name={} not in exports", fn_name);
+                eprintln!(
+                    "[CALL_HANDLER_FOR_NOT_FOUND] fn_name={} not in exports",
+                    fn_name
+                );
             }
-            return Err(VmBridgeError::HandlerNotFound(format!("{}.{}", widget_name, event_name)));
+            return Err(VmBridgeError::HandlerNotFound(format!(
+                "{}.{}",
+                widget_name, event_name
+            )));
         }
 
         // PLAN-702 T-04: parked 段在途的重入默认忽略（队列/合并策略留待
         // 使用反馈）；`__busy_handlers` 镜像已在 park 时置位，.at 可查询。
         if self.is_handler_parked(&fn_name) {
-            eprintln!("[VM-PARKED] {} re-entry ignored (segment in flight)", fn_name);
+            eprintln!(
+                "[VM-PARKED] {} re-entry ignored (segment in flight)",
+                fn_name
+            );
             return Ok(None);
         }
 
@@ -3056,7 +3214,9 @@ impl VmBridge {
                 if pushed_idx as usize != idx {
                     eprintln!(
                         "[P053-8] push drift: arg {:?} idx {} -> pushed idx {}",
-                        s.as_str(), idx, pushed_idx
+                        s.as_str(),
+                        idx,
+                        pushed_idx
                     );
                 }
             } else {
@@ -3077,9 +3237,7 @@ impl VmBridge {
         let mut fired = 0usize;
         for (_id, callback) in due {
             let result = match callback {
-                crate::vm::engine::TimerCallback::Event(event) => {
-                    self.call_handler(&event, &[])
-                }
+                crate::vm::engine::TimerCallback::Event(event) => self.call_handler(&event, &[]),
                 crate::vm::engine::TimerCallback::Closure(closure_id) => {
                     let mut task = AutoTask::new(0, 4096, 0);
                     // call_closure pops closure_id + arg_count args off the stack.
@@ -3115,10 +3273,8 @@ impl VmBridge {
         fields: Vec<(String, RecordValue)>,
     ) -> Result<()> {
         let fn_name = format!("handler_{}", extract_handler_name(event_name));
-        let namespaced = crate::ui::handler_codegen::namespaced_handler_fn_name(
-            &self.widget_name,
-            event_name,
-        );
+        let namespaced =
+            crate::ui::handler_codegen::namespaced_handler_fn_name(&self.widget_name, event_name);
         let fn_name = if self.vm.flash.exports_by_name.contains_key(&namespaced) {
             namespaced
         } else if self.vm.flash.exports_by_name.contains_key(&fn_name) {
@@ -3135,10 +3291,7 @@ impl VmBridge {
         // handler 同样可能内部等待）。
         match self.vm.call_fn_by_name_segment(&mut task, &fn_name, 2) {
             SegmentOutcome::Completed(res) => res.map_err(|e| {
-                VmBridgeError::VmError(format!(
-                    "{:?} (crash ip=0x{:x} in {})",
-                    e, task.ip, fn_name
-                ))
+                VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
             }),
             SegmentOutcome::Parked { wait, seg } => {
                 self.register_parked(task, seg, wait, event_name.to_string(), false);
@@ -3190,7 +3343,8 @@ impl VmBridge {
 
         // Plan 320: try namespaced first (handler_<WidgetName>_<Event>),
         // then fall back to legacy (handler_<Event>) for backward compat.
-        let namespaced = crate::ui::handler_codegen::namespaced_handler_fn_name(&self.widget_name, event_name);
+        let namespaced =
+            crate::ui::handler_codegen::namespaced_handler_fn_name(&self.widget_name, event_name);
         let fn_name = if self.vm.flash.exports_by_name.contains_key(&namespaced) {
             namespaced
         } else if self.vm.flash.exports_by_name.contains_key(&fn_name) {
@@ -3199,11 +3353,17 @@ impl VmBridge {
             return Err(VmBridgeError::HandlerNotFound(event_name.to_string()));
         };
 
-        eprintln!("[CALL_HANDLER] widget={} event_name={} fn_name={} args={:?}", self.widget_name, event_name, fn_name, args);
+        eprintln!(
+            "[CALL_HANDLER] widget={} event_name={} fn_name={} args={:?}",
+            self.widget_name, event_name, fn_name, args
+        );
 
         // PLAN-702 T-04: parked 段在途的重入默认忽略（同 call_handler_for）。
         if self.is_handler_parked(&fn_name) {
-            eprintln!("[VM-PARKED] {} re-entry ignored (segment in flight)", fn_name);
+            eprintln!(
+                "[VM-PARKED] {} re-entry ignored (segment in flight)",
+                fn_name
+            );
             return Ok(());
         }
 
@@ -3214,7 +3374,10 @@ impl VmBridge {
         // frame; params are accessed as bp-(n_args+1) .. bp-2 (see LOAD_LOCAL).
         self.vm.rc_push_id(&mut task, self.state_obj_id); // Plan 419
         if std::env::var_os("AUTO_DEBUG_G9").is_some() {
-            eprintln!("[G9] dispatch {} state_obj_id={} (slot0)", fn_name, self.state_obj_id);
+            eprintln!(
+                "[G9] dispatch {} state_obj_id={} (slot0)",
+                fn_name, self.state_obj_id
+            );
         }
         for a in args {
             // Strings must be interned into the VM strings pool and pushed as
@@ -3233,13 +3396,27 @@ impl VmBridge {
         // 无位置信息,task.ip 在 Err 返回后指向失败指令附近。
         // PLAN-702 T-02: 段派发（同 call_handler_for；本入口的弃栈行为
         // 保持既有纪律——Completed 也不 rc_release_task_stack）。
-        match self.vm.call_fn_by_name_segment(&mut task, &fn_name, 1 + args.len()) {
+        match self
+            .vm
+            .call_fn_by_name_segment(&mut task, &fn_name, 1 + args.len())
+        {
             SegmentOutcome::Completed(res) => res.map_err(|e| {
-                eprintln!("[CALL_HANDLER_ERR] {} error: {:?} at ip=0x{:x}", fn_name, e, task.ip);
-                eprintln!("[CALL_HANDLER_ERR] exports: {:?}", self.vm.flash.exports_by_name.keys().collect::<Vec<_>>());
+                eprintln!(
+                    "[CALL_HANDLER_ERR] {} error: {:?} at ip=0x{:x}",
+                    fn_name, e, task.ip
+                );
+                eprintln!(
+                    "[CALL_HANDLER_ERR] exports: {:?}",
+                    self.vm.flash.exports_by_name.keys().collect::<Vec<_>>()
+                );
                 let start = task.ip.saturating_sub(40);
                 let end = (task.ip + 40).min(self.vm.flash.memory.len());
-                eprintln!("[CALL_HANDLER_ERR] code around ip (0x{:x}..0x{:x}): {:?}", start, end, &self.vm.flash.memory[start..end]);
+                eprintln!(
+                    "[CALL_HANDLER_ERR] code around ip (0x{:x}..0x{:x}): {:?}",
+                    start,
+                    end,
+                    &self.vm.flash.memory[start..end]
+                );
                 VmBridgeError::VmError(format!("{:?} (crash ip=0x{:x} in {})", e, task.ip, fn_name))
             }),
             SegmentOutcome::Parked { wait, seg } => {
@@ -3303,7 +3480,8 @@ impl VmBridge {
     /// 派发前直查本表：未命中即响亮报错（此前 `on_with_input_for` 未
     /// 命中静默无操作，AddrGo 实证病灶）。
     pub fn has_handler_for(&self, widget_name: &str, event_name: &str) -> bool {
-        let fn_name = crate::ui::handler_codegen::namespaced_handler_fn_name(widget_name, event_name);
+        let fn_name =
+            crate::ui::handler_codegen::namespaced_handler_fn_name(widget_name, event_name);
         self.vm.flash.exports_by_name.contains_key(&fn_name)
     }
 
@@ -3453,9 +3631,7 @@ fn eval_expr_to_value(expr: &Expr, vm: &mut AutoVM) -> Value {
         // "Field index out of bounds for primitive" (GET_GENERIC_FIELD on Nil).
         // Field extraction mirrors vm codegen (codegen.rs:4817-4845): args
         // (Pos/Pair) + body stmts (Expr::Pair). Nested type literals recurse.
-        Expr::Node(node) => {
-            materialize_type_literal(node, vm)
-        }
+        Expr::Node(node) => materialize_type_literal(node, vm),
         // Function-style type constructor Type(...) — also materialize if the
         // callee is a registered type (same as codegen.rs:6562 Expr::Call path).
         Expr::Call(call) => {
@@ -3491,7 +3667,9 @@ fn eval_expr_to_value(expr: &Expr, vm: &mut AutoVM) -> Value {
                         // List<T>.new(...) — 物化成空 ListData 堆对象
                         // (忽略 args,等价 List::new;初始 elems 后续由 push 填充)。
                         if tn.starts_with("List") {
-                            let id = vm.insert_heap_object(crate::vm::types::ListData::<auto_val::Value> {
+                            let id = vm.insert_heap_object(crate::vm::types::ListData::<
+                                auto_val::Value,
+                            > {
                                 elems: Vec::new(),
                                 storage: None,
                             });
@@ -3536,7 +3714,10 @@ fn materialize_type_literal(node: &crate::ast::Node, vm: &mut AutoVM) -> Value {
     use crate::vm::generic_registry::GenericInstanceData;
     let type_name = node.name.to_string();
     // Look up the ClassType to get mono_name + field count + field names.
-    let class_type = match vm.generic_registry.get_or_create_type(&type_name, Vec::new()) {
+    let class_type = match vm
+        .generic_registry
+        .get_or_create_type(&type_name, Vec::new())
+    {
         Ok(ct) => ct,
         Err(_) => return Value::Nil,
     };
@@ -3581,7 +3762,9 @@ fn materialize_type_literal(node: &crate::ast::Node, vm: &mut AutoVM) -> Value {
     // 引用将被 state 字段长期持有,补持有份额(+1)。缺它时链式写
     // (`.field.x = v`)的 receiver stake 死亡即归零 → 字段悬垂 → canary UAF。
     vm.rc_retain_id(heap_id);
-    Value::VmRef(auto_val::VmRef { id: heap_id as usize })
+    Value::VmRef(auto_val::VmRef {
+        id: heap_id as usize,
+    })
 }
 
 /// Extract a clean handler name from an event pattern.
@@ -3687,8 +3870,12 @@ mod tests {
             .insert(".Poke".to_string(), LogicPayload::AstStmts(ast2.stmts));
         let mut bridge = VmBridge::new(&widget).expect("bridge");
         // 连续两次链式写:第一次若缺持有份额,receiver stake 死亡即 UAF。
-        bridge.call_handler("Poke", &[]).expect("first chained write");
-        bridge.call_handler("Poke", &[]).expect("second chained write");
+        bridge
+            .call_handler("Poke", &[])
+            .expect("first chained write");
+        bridge
+            .call_handler("Poke", &[])
+            .expect("second chained write");
         let tabs = bridge.read_state_as_vec("tabs").expect("tabs");
         let first = bridge.materialize_obj_ref(&tabs[0]);
         match first {
@@ -3750,11 +3937,21 @@ mod tests {
             .handlers
             .insert(".DoIt".to_string(), LogicPayload::AstStmts(ast2.stmts));
         let mut bridge = VmBridge::new(&widget).expect("bridge");
-        bridge.call_handler("DoIt", &[]).expect("DoIt must not abort");
+        bridge
+            .call_handler("DoIt", &[])
+            .expect("DoIt must not abort");
         let count = bridge.read_state("count").expect("count");
-        assert_eq!(count, Value::Int(1), "statements after the map write must run");
+        assert_eq!(
+            count,
+            Value::Int(1),
+            "statements after the map write must run"
+        );
         match bridge.read_state("readback").expect("readback") {
-            Value::Str(s) => assert_eq!(s.as_str(), "2", "read-back of written key must observe the write"),
+            Value::Str(s) => assert_eq!(
+                s.as_str(),
+                "2",
+                "read-back of written key must observe the write"
+            ),
             other => panic!("readback not a str: {other:?}"),
         }
         // var 键形态：既有键覆写 + var 键读回。
@@ -3773,9 +3970,15 @@ mod tests {
             .handlers
             .insert(".Poke".to_string(), LogicPayload::AstStmts(ast3.stmts));
         let mut bridge2 = VmBridge::new(&widget2).expect("bridge2");
-        bridge2.call_handler("Poke", &[]).expect("Poke must not abort");
+        bridge2
+            .call_handler("Poke", &[])
+            .expect("Poke must not abort");
         match bridge2.read_state("readback").expect("readback2") {
-            Value::Str(s) => assert_eq!(s.as_str(), "41", "var-key overwrite of existing entry must land"),
+            Value::Str(s) => assert_eq!(
+                s.as_str(),
+                "41",
+                "var-key overwrite of existing entry must land"
+            ),
             other => panic!("readback2 not a str: {other:?}"),
         }
     }
@@ -3794,9 +3997,10 @@ mod tests {
         "#;
         let mut parser = Parser::from(handler_src).with_session(CompilerSession::ui());
         let ast = parser.parse().expect("parse handler");
-        widget
-            .handlers
-            .insert(".CloseRequest".to_string(), LogicPayload::AstStmts(ast.stmts));
+        widget.handlers.insert(
+            ".CloseRequest".to_string(),
+            LogicPayload::AstStmts(ast.stmts),
+        );
         let bridge = VmBridge::new(&widget).expect("bridge");
         assert!(
             bridge.has_handler("CloseRequest"),
@@ -4024,14 +4228,9 @@ widget SlideTest {
                 _ => None,
             })
             .expect("widget decl");
-        let mut bridge = VmBridge::new_from_decls(
-            &decl,
-            &[],
-            vec![],
-            &std::collections::HashMap::new(),
-            false,
-        )
-        .expect("bridge from decls");
+        let mut bridge =
+            VmBridge::new_from_decls(&decl, &[], vec![], &std::collections::HashMap::new(), false)
+                .expect("bridge from decls");
         let sid = bridge.state_obj_id();
         // 与实机一致的 Init dispatch。
         bridge
@@ -4041,7 +4240,11 @@ widget SlideTest {
             .call_handler_for("SlideTest", "Tick", sid, &[])
             .expect("tick 1");
         let data = bridge.read_state_as_vec("data").expect("data");
-        assert_eq!(data.len(), 3, "满窗时追加必须滑出最旧一点（.data = out 必须落地）");
+        assert_eq!(
+            data.len(),
+            3,
+            "满窗时追加必须滑出最旧一点（.data = out 必须落地）"
+        );
         let tick_n = bridge.read_state("tickN").expect("tickN");
         assert_eq!(tick_n, Value::Int(1), "tickN 递增");
         bridge
@@ -4096,14 +4299,9 @@ widget SvgProbe {
                 _ => None,
             })
             .expect("widget decl");
-        let mut bridge = VmBridge::new_from_decls(
-            &decl,
-            &[],
-            vec![],
-            &std::collections::HashMap::new(),
-            false,
-        )
-        .expect("bridge from decls");
+        let mut bridge =
+            VmBridge::new_from_decls(&decl, &[], vec![], &std::collections::HashMap::new(), false)
+                .expect("bridge from decls");
         let sid = bridge.state_obj_id();
         bridge
             .call_handler_for("SvgProbe", "Init", sid, &[])
@@ -4117,14 +4315,19 @@ widget SvgProbe {
                 View::Image { src, .. } => out.push(src.clone()),
                 View::ImageSurface { src, .. } => out.push(src.clone()),
                 View::Column { children, .. } | View::Row { children, .. } => {
-                    for c in children { find_svgdoc(c, out); }
+                    for c in children {
+                        find_svgdoc(c, out);
+                    }
                 }
                 _ => {}
             }
         }
         let mut docs = Vec::new();
         find_svgdoc(&view, &mut docs);
-        let doc = docs.iter().find(|s| s.starts_with("svgdoc:")).expect("svgdoc image");
+        let doc = docs
+            .iter()
+            .find(|s| s.starts_with("svgdoc:"))
+            .expect("svgdoc image");
         assert!(
             doc.contains("M 40 260 L 550 20"),
             "动态 d 必须解析进 svgdoc（got: {doc}）"
@@ -4185,17 +4388,24 @@ widget OpProbeOrig {
         let session = CompilerSession::ui();
         let mut parser = Parser::from(app_src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let (decl, widget) = ast.stmts.into_iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => {
-                let w = crate::aura::extract_widget_from_decl(&d).expect("extract");
-                Some((d, w))
-            }
-            _ => None,
-        }).expect("decl");
-        let mut bridge = VmBridge::new_from_decls(&decl, &[], vec![],
-            &std::collections::HashMap::new(), false).expect("bridge");
+        let (decl, widget) = ast
+            .stmts
+            .into_iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => {
+                    let w = crate::aura::extract_widget_from_decl(&d).expect("extract");
+                    Some((d, w))
+                }
+                _ => None,
+            })
+            .expect("decl");
+        let mut bridge =
+            VmBridge::new_from_decls(&decl, &[], vec![], &std::collections::HashMap::new(), false)
+                .expect("bridge");
         let sid = bridge.state_obj_id();
-        bridge.call_handler_for("OpProbe", "Init", sid, &[]).expect("init");
+        bridge
+            .call_handler_for("OpProbe", "Init", sid, &[])
+            .expect("init");
         let builder = AuraViewBuilder::new(&bridge, "OpProbe");
         let view = builder.build(&widget.view_tree);
         fn find_svgdoc(v: &crate::ui::View<crate::DynamicMessage>, out: &mut Vec<String>) {
@@ -4204,7 +4414,9 @@ widget OpProbeOrig {
                 View::Image { src, .. } => out.push(src.clone()),
                 View::ImageSurface { src, .. } => out.push(src.clone()),
                 View::Column { children, .. } | View::Row { children, .. } => {
-                    for c in children { find_svgdoc(c, out); }
+                    for c in children {
+                        find_svgdoc(c, out);
+                    }
                 }
                 _ => {}
             }
@@ -4216,8 +4428,14 @@ widget OpProbeOrig {
         // Plan 445 后续回归钉：Conditional 包裹的 path 必须序列化进 svgdoc
         // （此前 serializer 跳过 Conditional → VM 轨图表区无数据，仅字面量
         // 网格/轴线；runtime SVGDOC 打印实锤）。
-        assert!(doc.contains("M44 113 h19 v146 h-19"), "if .dVisible 的 barD 必须进文档: {doc}");
-        assert!(doc.contains("M72 197 h19 v62 h-19"), "if .mVisible 的 barM 必须进文档: {doc}");
+        assert!(
+            doc.contains("M44 113 h19 v146 h-19"),
+            "if .dVisible 的 barD 必须进文档: {doc}"
+        );
+        assert!(
+            doc.contains("M72 197 h19 v62 h-19"),
+            "if .mVisible 的 barM 必须进文档: {doc}"
+        );
         assert!(doc.contains("fill-opacity"), "fill-opacity 属性透传: {doc}");
     }
 
@@ -4257,7 +4475,6 @@ widget OpProbeOrig {
         assert_eq!(bridge.widget_name(), "EmptyWidget");
         assert!(bridge.state_fields().is_empty());
         assert!(bridge.handler_names().is_empty());
-
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -4347,7 +4564,11 @@ widget OpProbeOrig {
 
         bridge.computed_signal_store("SigCycle", "m", Value::Int(1), &rec);
         bridge.computed_signal_store("SigCycle", "m", Value::Int(1), &rec);
-        assert_eq!(bridge.computed_signals.borrow().len(), 1, "同键重入库存幂等（单条目）");
+        assert_eq!(
+            bridge.computed_signals.borrow().len(),
+            1,
+            "同键重入库存幂等（单条目）"
+        );
 
         let hit = bridge.computed_signal_hit("SigCycle", "m");
         assert!(matches!(hit, Some(Value::Int(1))), "命中返回缓存值");
@@ -4462,15 +4683,14 @@ widget OpProbeOrig {
             other => panic!("items not a heap list: {other:?}"),
         };
         assert!(
-            rec.deps.contains(&crate::ui::memo_deps::DepKey::any(list_id)),
+            rec.deps
+                .contains(&crate::ui::memo_deps::DepKey::any(list_id)),
             "容器内容读 = (heap_id, \"*\") 粗粒度依赖"
         );
-        assert!(
-            rec.deps.contains(&crate::ui::memo_deps::DepKey::field(
-                bridge.state_obj_id(),
-                "items"
-            ))
-        );
+        assert!(rec.deps.contains(&crate::ui::memo_deps::DepKey::field(
+            bridge.state_obj_id(),
+            "items"
+        )));
         assert_eq!(rec.deps.len(), 3, "count + items 字段 + 列表内容");
     }
 
@@ -4515,20 +4735,23 @@ widget OpProbeOrig {
     #[test]
     #[cfg(feature = "ui-interpreter")]
     fn plan047_attribution_set_field_is_path_exact() {
-        let mut widget = make_test_widget("AttrRoot", vec![
-            AuraStateDef {
-                name: "count".to_string(),
-                type_info: Type::Int,
-                initial: Expr::Int(0),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "label".to_string(),
-                type_info: Type::StrFixed(0),
-                initial: Expr::Str("L".into()),
-                decorators: vec![],
-            },
-        ]);
+        let mut widget = make_test_widget(
+            "AttrRoot",
+            vec![
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "label".to_string(),
+                    type_info: Type::StrFixed(0),
+                    initial: Expr::Str("L".into()),
+                    decorators: vec![],
+                },
+            ],
+        );
         plan047_attach_handler(&mut widget, "Poke", "\n    .count = .count + 1\n");
         let mut bridge = VmBridge::new(&widget).expect("bridge");
         let root = bridge.state_obj_id();
@@ -4548,14 +4771,15 @@ widget OpProbeOrig {
     #[test]
     #[cfg(feature = "ui-interpreter")]
     fn plan047_attribution_list_push_wildcard_only() {
-        let mut widget = make_test_widget("AttrList", vec![
-            AuraStateDef {
+        let mut widget = make_test_widget(
+            "AttrList",
+            vec![AuraStateDef {
                 name: "items".to_string(),
                 type_info: Type::Unknown,
                 initial: Expr::Array(vec![Expr::Int(1), Expr::Int(2)]),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         plan047_attach_handler(&mut widget, "Add", "\n    .items.push(3)\n");
         let mut bridge = VmBridge::new(&widget).expect("bridge");
         let root = bridge.state_obj_id();
@@ -4578,14 +4802,15 @@ widget OpProbeOrig {
     #[test]
     #[cfg(feature = "ui-interpreter")]
     fn plan047_attribution_bridge_write_state_exact() {
-        let widget = make_test_widget("AttrBridge", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "AttrBridge",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).expect("bridge");
         let root = bridge.state_obj_id();
         bridge.write_state("count", Value::Int(9)).expect("write");
@@ -4601,10 +4826,12 @@ widget OpProbeOrig {
         let seq0 = bridge.state_mutation_seq();
         // C 类：堆对象出世（insert_heap_object）——全局 seq 前进，per-path
         // 表零条目（新 id 无既有 dep 可指）。
-        let new_id = bridge.vm.insert_heap_object(crate::vm::types::ListData::<i32> {
-            elems: vec![1, 2],
-            storage: None,
-        });
+        let new_id = bridge
+            .vm
+            .insert_heap_object(crate::vm::types::ListData::<i32> {
+                elems: vec![1, 2],
+                storage: None,
+            });
         assert!(bridge.state_mutation_seq() > seq0);
         assert_eq!(bridge.vm.path_version(new_id, "*"), 0);
         assert_eq!(bridge.vm.path_version(new_id, "x"), 0);
@@ -4619,17 +4846,16 @@ widget OpProbeOrig {
         let widget = make_test_widget("AttrMap", vec![]);
         let bridge = VmBridge::new(&widget).expect("bridge");
         let seq0 = bridge.state_mutation_seq();
-        let map_id = bridge.vm.insert_heap_object(
-            crate::vm::collections::SpecializedHashMap::new("str"),
-        );
+        let map_id = bridge
+            .vm
+            .insert_heap_object(crate::vm::collections::SpecializedHashMap::new("str"));
         let mut task = crate::vm::task::AutoTask::new(0, 4096, 0);
         // 栈序（shim pop 序 value→key→map）：先 map_id、再 key、后 value。
         task.ram.push_i32(map_id as i32);
         let key_idx = bridge.vm.add_string(b"k".to_vec());
         task.ram.push_string(key_idx as u32);
         task.ram.push_i32(42);
-        crate::vm::native::shim_hashmap_insert_str(&mut task, &bridge.vm)
-            .expect("shim insert");
+        crate::vm::native::shim_hashmap_insert_str(&mut task, &bridge.vm).expect("shim insert");
         // 全局 seq 补齐（原盲区）+ 定点归因（A-able 按键名，exact+wildcard）。
         assert!(bridge.state_mutation_seq() > seq0, "全局 seq 补 bump");
         assert_eq!(bridge.vm.path_version(map_id, "k"), 1, "按键名 exact");
@@ -4655,9 +4881,9 @@ widget OpProbeOrig {
         bridge.vm.record_heap_read_any(9);
         let rec = bridge.vm.take_dep_recorder();
         assert_eq!(rec.deps.len(), 2, "激活期两条落账");
-        assert!(
-            rec.deps.contains(&crate::ui::memo_deps::DepKey::field(7, "count"))
-        );
+        assert!(rec
+            .deps
+            .contains(&crate::ui::memo_deps::DepKey::field(7, "count")));
         assert!(rec.deps.contains(&crate::ui::memo_deps::DepKey::any(9)));
         // take 后去激活：再录零账。
         bridge.vm.record_heap_read(1, "g");
@@ -4671,14 +4897,15 @@ widget OpProbeOrig {
         // 编码）的依赖由引擎影子集承载——集含 (root,"count")。call_handler
         // 是 &mut self，故直挂 vm 槽（guard 的桥侧并集语义由 T-01 套件
         // 承载，此处专证引擎读臂面）。
-        let mut widget = make_test_widget("RecEngine", vec![
-            AuraStateDef {
+        let mut widget = make_test_widget(
+            "RecEngine",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         plan047_attach_handler(&mut widget, "Poke", "\n    .count = .count + 1\n");
         let mut bridge = VmBridge::new(&widget).expect("bridge");
         let root = bridge.state_obj_id();
@@ -4690,7 +4917,8 @@ widget OpProbeOrig {
         bridge.vm.take_dep_recorder();
         let rec = arc.lock().unwrap().clone();
         assert!(
-            rec.deps.contains(&crate::ui::memo_deps::DepKey::field(root, "count")),
+            rec.deps
+                .contains(&crate::ui::memo_deps::DepKey::field(root, "count")),
             "引擎读臂录制面: deps={rec:?}"
         );
         assert!(!rec.overflow);
@@ -4713,20 +4941,23 @@ widget OpProbeOrig {
 
     #[test]
     fn test_vm_bridge_creation_with_state() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
-                name: "count".to_string(),
-                type_info: Type::Int,
-                initial: Expr::Int(0),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "label".to_string(),
-                type_info: Type::StrFixed(0),
-                initial: Expr::Str("Hello".into()),
-                decorators: vec![],
-            },
-        ]);
+        let widget = make_test_widget(
+            "Counter",
+            vec![
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "label".to_string(),
+                    type_info: Type::StrFixed(0),
+                    initial: Expr::Str("Hello".into()),
+                    decorators: vec![],
+                },
+            ],
+        );
 
         let bridge = VmBridge::new(&widget).unwrap();
 
@@ -4738,14 +4969,15 @@ widget OpProbeOrig {
 
     #[test]
     fn test_read_state_int() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(42),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let bridge = VmBridge::new(&widget).unwrap();
 
@@ -4755,14 +4987,15 @@ widget OpProbeOrig {
 
     #[test]
     fn test_read_state_string() {
-        let widget = make_test_widget("Greeter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Greeter",
+            vec![AuraStateDef {
                 name: "greeting".to_string(),
                 type_info: Type::StrFixed(0),
                 initial: Expr::Str("Hello World".into()),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let bridge = VmBridge::new(&widget).unwrap();
 
@@ -4772,14 +5005,15 @@ widget OpProbeOrig {
 
     #[test]
     fn test_read_state_bool() {
-        let widget = make_test_widget("Toggle", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Toggle",
+            vec![AuraStateDef {
                 name: "active".to_string(),
                 type_info: Type::Bool,
                 initial: Expr::Bool(true),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let bridge = VmBridge::new(&widget).unwrap();
 
@@ -4792,14 +5026,15 @@ widget OpProbeOrig {
         // This mirrors how `var editing_id int = -1` is parsed:
         // Expr::Unary(Sub, Int(1)). eval_expr_to_value should produce
         // Value::Int(-1), NOT Value::Int(0)
-        let widget = make_test_widget("Todo", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Todo",
+            vec![AuraStateDef {
                 name: "editing_id".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Unary(Op::Sub, Box::new(Expr::Int(1))),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let bridge = VmBridge::new(&widget).unwrap();
         let value = bridge.read_state("editing_id").unwrap();
@@ -4808,14 +5043,15 @@ widget OpProbeOrig {
 
     #[test]
     fn test_read_state_not_found() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let bridge = VmBridge::new(&widget).unwrap();
 
@@ -4829,14 +5065,15 @@ widget OpProbeOrig {
 
     #[test]
     fn test_write_state() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let mut bridge = VmBridge::new(&widget).unwrap();
 
@@ -4859,26 +5096,29 @@ widget OpProbeOrig {
 
     #[test]
     fn test_read_all_state() {
-        let widget = make_test_widget("Multi", vec![
-            AuraStateDef {
-                name: "x".to_string(),
-                type_info: Type::Int,
-                initial: Expr::Int(1),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "y".to_string(),
-                type_info: Type::Int,
-                initial: Expr::Int(2),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "name".to_string(),
-                type_info: Type::StrFixed(0),
-                initial: Expr::Str("test".into()),
-                decorators: vec![],
-            },
-        ]);
+        let widget = make_test_widget(
+            "Multi",
+            vec![
+                AuraStateDef {
+                    name: "x".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(1),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "y".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(2),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "name".to_string(),
+                    type_info: Type::StrFixed(0),
+                    initial: Expr::Str("test".into()),
+                    decorators: vec![],
+                },
+            ],
+        );
 
         let bridge = VmBridge::new(&widget).unwrap();
 
@@ -4897,33 +5137,40 @@ widget OpProbeOrig {
     /// desktop_mcp's element-count assertions went blind.
     #[test]
     fn test_read_all_state_materializes_int_handle_list() {
-        let widget = make_test_widget("Store", vec![
-            AuraStateDef {
-                name: "notes".to_string(),
-                type_info: Type::Unknown,
-                initial: Expr::Int(0),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "count".to_string(),
-                type_info: Type::Int,
-                initial: Expr::Int(7),
-                decorators: vec![],
-            },
-        ]);
+        let widget = make_test_widget(
+            "Store",
+            vec![
+                AuraStateDef {
+                    name: "notes".to_string(),
+                    type_info: Type::Unknown,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(7),
+                    decorators: vec![],
+                },
+            ],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
-        let arr_id = bridge.vm.insert_heap_object(
-            crate::vm::types::ListData::<Value> {
+        let arr_id = bridge
+            .vm
+            .insert_heap_object(crate::vm::types::ListData::<Value> {
                 elems: vec![Value::Int(1), Value::Int(2)],
                 storage: None,
-            },
-        );
-        bridge.write_state("notes", Value::Int(arr_id as i32)).unwrap();
+            });
+        bridge
+            .write_state("notes", Value::Int(arr_id as i32))
+            .unwrap();
 
         let state = bridge.read_all_state_materialized();
         assert_eq!(
             state.get("notes"),
-            Some(&Value::Array(auto_val::Array { values: vec![Value::Int(1), Value::Int(2)] })),
+            Some(&Value::Array(auto_val::Array {
+                values: vec![Value::Int(1), Value::Int(2)]
+            })),
             "Int-held list handle should materialize to an inline array"
         );
         // A genuine Int with no ListData behind it must stay untouched.
@@ -4932,14 +5179,15 @@ widget OpProbeOrig {
 
     #[test]
     fn test_read_all_state_after_write() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let mut bridge = VmBridge::new(&widget).unwrap();
 
@@ -5008,9 +5256,18 @@ widget OpProbeOrig {
         let flash = crate::vm::virt_memory::VirtualFlash::new(64);
         let mut vm = AutoVM::new(flash, 64);
         assert_eq!(eval_expr_to_value(&Expr::Int(42), &mut vm), Value::Int(42));
-        assert_eq!(eval_expr_to_value(&Expr::Double(3.14, "".into()), &mut vm), Value::Double(3.14f64));
-        assert_eq!(eval_expr_to_value(&Expr::Bool(true), &mut vm), Value::Bool(true));
-        assert_eq!(eval_expr_to_value(&Expr::Str("hi".into()), &mut vm), Value::str("hi"));
+        assert_eq!(
+            eval_expr_to_value(&Expr::Double(3.14, "".into()), &mut vm),
+            Value::Double(3.14f64)
+        );
+        assert_eq!(
+            eval_expr_to_value(&Expr::Bool(true), &mut vm),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            eval_expr_to_value(&Expr::Str("hi".into()), &mut vm),
+            Value::str("hi")
+        );
     }
 
     #[test]
@@ -5043,14 +5300,15 @@ widget OpProbeOrig {
 
     #[test]
     fn test_multiple_writes() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let mut bridge = VmBridge::new(&widget).unwrap();
 
@@ -5073,12 +5331,15 @@ widget OpProbeOrig {
         use crate::aura::LogicPayload;
         use auto_val::Op;
 
-        let mut widget = make_test_widget("Counter", vec![AuraStateDef {
-            name: "count".to_string(),
-            type_info: Type::Int,
-            initial: Expr::Int(0),
-            decorators: vec![],
-        }]);
+        let mut widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: Expr::Int(0),
+                decorators: vec![],
+            }],
+        );
 
         // `.Inc -> { .count = .count + 1 }` parses as a single Asn expression stmt.
         let inc_body = vec![Stmt::Expr(Expr::Bina(
@@ -5119,12 +5380,15 @@ widget OpProbeOrig {
         use crate::aura::LogicPayload;
         use auto_val::Op;
 
-        let mut widget = make_test_widget("Counter", vec![AuraStateDef {
-            name: "count".to_string(),
-            type_info: Type::Int,
-            initial: Expr::Int(10),
-            decorators: vec![],
-        }]);
+        let mut widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: Expr::Int(10),
+                decorators: vec![],
+            }],
+        );
 
         // `.Inc -> { .count += 1 }` — dot-shorthand LHS: Dot(self, count).
         let dot_body = vec![Stmt::Expr(Expr::Bina(
@@ -5190,17 +5454,28 @@ widget OpProbeOrig {
         let session = crate::session::CompilerSession::ui();
         let mut parser = Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .expect("widget decl");
 
-        let mut bridge = VmBridge::new_from_decls(&decl, &[], Vec::new(), &Default::default(), false)
-            .expect("decl-based bridge");
+        let mut bridge =
+            VmBridge::new_from_decls(&decl, &[], Vec::new(), &Default::default(), false)
+                .expect("decl-based bridge");
         let state_obj_id = bridge.state_obj_id();
 
-        assert!(bridge.has_handler("__evt_onclick_1"), "+ handler synthesized from the decl");
-        assert!(bridge.has_handler("__evt_onclick_2"), "- handler synthesized from the decl");
+        assert!(
+            bridge.has_handler("__evt_onclick_1"),
+            "+ handler synthesized from the decl"
+        );
+        assert!(
+            bridge.has_handler("__evt_onclick_2"),
+            "- handler synthesized from the decl"
+        );
 
         bridge
             .call_handler_for("App", "__evt_onclick_1", state_obj_id, &[])
@@ -5237,15 +5512,25 @@ widget OpProbeOrig {
         let session = crate::session::CompilerSession::ui();
         let mut parser = Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut bridge = VmBridge::new(&widget).unwrap();
-        assert!(bridge.has_handler("__evt_onclick_1"), "+ handler synthesized");
-        assert!(bridge.has_handler("__evt_onclick_2"), "- handler synthesized");
+        assert!(
+            bridge.has_handler("__evt_onclick_1"),
+            "+ handler synthesized"
+        );
+        assert!(
+            bridge.has_handler("__evt_onclick_2"),
+            "- handler synthesized"
+        );
 
         for _ in 0..3 {
             bridge.call_handler("__evt_onclick_1", &[]).unwrap();
@@ -5268,10 +5553,14 @@ widget OpProbeOrig {
         let session = CompilerSession::ui();
         let mut parser = Parser::from(&app_src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut bridge = VmBridge::new(&widget).unwrap();
@@ -5279,11 +5568,15 @@ widget OpProbeOrig {
         assert!(bridge.has_handler("__evt_oninput_1"));
         assert!(bridge.has_handler("__evt_oninput_2"));
 
-        bridge.write_state("fahrenheit", Value::Double(323.0)).unwrap();
+        bridge
+            .write_state("fahrenheit", Value::Double(323.0))
+            .unwrap();
         bridge.call_handler("__evt_oninput_2", &[]).unwrap();
         let celsius = bridge.read_state("celsius").unwrap();
         match celsius {
-            Value::Float(f) | Value::Double(f) => assert!((f - 161.67).abs() < 0.01, "expected ~161.67, got {}", f),
+            Value::Float(f) | Value::Double(f) => {
+                assert!((f - 161.67).abs() < 0.01, "expected ~161.67, got {}", f)
+            }
             other => panic!("expected float/double celsius, got {:?}", other),
         }
     }
@@ -5333,7 +5626,12 @@ widget OpProbeOrig {
             .bridge()
             .call_vm_fn(
                 "build_month_grid",
-                &[Value::Int(2026), Value::Int(6), Value::str("2026-06-17"), Value::str("2026-06-17")],
+                &[
+                    Value::Int(2026),
+                    Value::Int(6),
+                    Value::str("2026-06-17"),
+                    Value::str("2026-06-17"),
+                ],
             )
             .expect("build_month_grid via bare alias");
         let days: Vec<Value> = match &cells {
@@ -5510,8 +5808,7 @@ widget Store {
             }
         }
         let widget = widget.expect("src must declare a widget");
-        let mut bridge = VmBridge::new_with_imports(&widget, import_stmts)
-            .expect("bridge builds");
+        let mut bridge = VmBridge::new_with_imports(&widget, import_stmts).expect("bridge builds");
         bridge.run_module_init().expect("module init");
 
         bridge.call_handler("Add", &[]).expect("Add handler runs");
@@ -5534,25 +5831,21 @@ widget Store {
         // field — `Todo { id: nextid, ... }` with nextid=2 must yield id=2,
         // not 0 (GUI probe: constructed Obj carried id: 0 while nextid was
         // verifiably 4 at LOAD_GLOBAL time). List must hold 3 (2 seeds + 1).
-        let elems = bridge.read_state_as_vec("list").expect("list readable as vec");
+        let elems = bridge
+            .read_state_as_vec("list")
+            .expect("list readable as vec");
         assert_eq!(elems.len(), 3, "2 seeds + 1 new, got {}", elems.len());
-        let new_id = elems
-            .iter()
-            .rev()
-            .find_map(|e| match e {
-                Value::VmRef(r) => bridge
-                    .vm
-                    .get_heap_object(r.id as u64)
-                    .and_then(|o| {
-                        let g = o.read().ok()?;
-                        let inst = g
-                            .as_any()
-                            .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()?;
-                        inst.get_field(0).cloned()
-                    }),
-                Value::Obj(o) => o.get_str("id").map(|s| Value::str(s)),
-                _ => None,
-            });
+        let new_id = elems.iter().rev().find_map(|e| match e {
+            Value::VmRef(r) => bridge.vm.get_heap_object(r.id as u64).and_then(|o| {
+                let g = o.read().ok()?;
+                let inst = g
+                    .as_any()
+                    .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()?;
+                inst.get_field(0).cloned()
+            }),
+            Value::Obj(o) => o.get_str("id").map(|s| Value::str(s)),
+            _ => None,
+        });
         match new_id {
             Some(Value::Int(id)) => assert_eq!(id, 2, "constructed Todo.id must be nextid (2)"),
             other => panic!("expected constructed Todo with id, got {:?}", other),
@@ -5601,20 +5894,23 @@ widget Store {
         use auto_val::Op;
 
         // widget with an int field and a str field
-        let mut widget = make_test_widget("App", vec![
-            AuraStateDef {
-                name: "count".to_string(),
-                type_info: Type::Int,
-                initial: Expr::Int(0),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "label".to_string(),
-                type_info: Type::StrOwned,
-                initial: Expr::Str(String::new().into()),
-                decorators: vec![],
-            },
-        ]);
+        let mut widget = make_test_widget(
+            "App",
+            vec![
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "label".to_string(),
+                    type_info: Type::StrOwned,
+                    initial: Expr::Str(String::new().into()),
+                    decorators: vec![],
+                },
+            ],
+        );
 
         // `.SetCount(n) -> { .count = n }` — `n` is a handler param (not a state
         // field), so the rewriter must leave it alone and Codegen resolves it as
@@ -5694,9 +5990,7 @@ widget Store {
             .stmts
             .iter()
             .find_map(|s| match s {
-                crate::ast::Stmt::WidgetDecl(d) => {
-                    crate::aura::extract_widget_from_decl(d).ok()
-                }
+                crate::ast::Stmt::WidgetDecl(d) => crate::aura::extract_widget_from_decl(d).ok(),
                 _ => None,
             })
             .expect("002-counter must declare a widget");
@@ -5779,9 +6073,9 @@ widget Store {
             "format_date",
             "is_leap",
         ] {
-            let present = names.iter().any(|n| {
-                n == required || n.strip_prefix(module_prefix) == Some(required)
-            });
+            let present = names
+                .iter()
+                .any(|n| n == required || n.strip_prefix(module_prefix) == Some(required));
             assert!(
                 present,
                 "recursive import collection must include `{}` (callee of build_month_grid not named in the use clause). collected = {:?}",
@@ -5805,7 +6099,12 @@ widget Store {
             .bridge()
             .call_vm_fn(
                 "build_month_grid",
-                &[Value::Int(2026), Value::Int(6), Value::str("2026-06-17"), Value::str("2026-06-17")],
+                &[
+                    Value::Int(2026),
+                    Value::Int(6),
+                    Value::str("2026-06-17"),
+                    Value::str("2026-06-17"),
+                ],
             )
             .expect("build_month_grid executes via the production import chain");
         let count = match &cells {
@@ -5842,7 +6141,12 @@ impl VmBridge {
 
     /// 原始字节读取(不变量测试用)。
     pub fn debug_byte(&self, addr: u32) -> u8 {
-        self.vm.flash.memory.get(addr as usize).copied().unwrap_or(0xEE)
+        self.vm
+            .flash
+            .memory
+            .get(addr as usize)
+            .copied()
+            .unwrap_or(0xEE)
     }
 
     /// PLAN-046 (auto-musk T10): total linked bytecode size in bytes.
@@ -5885,9 +6189,7 @@ impl VmBridge {
         for l in dis.disassemble_range(start, end) {
             out.push_str(&format!(
                 "  0x{:04x} {} {}\n",
-                l.offset,
-                l.mnemonic,
-                l.operands
+                l.offset, l.mnemonic, l.operands
             ));
         }
         out

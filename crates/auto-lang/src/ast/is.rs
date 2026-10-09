@@ -24,7 +24,9 @@ impl fmt::Display for Is {
                 IsBranch::EqBranch(patterns, body) => {
                     write!(f, "(eq ")?;
                     for (i, p) in patterns.iter().enumerate() {
-                        if i > 0 { write!(f, "| ")?; }
+                        if i > 0 {
+                            write!(f, "| ")?;
+                        }
                         write!(f, "{} ", p)?;
                     }
                     write!(f, "{}", body)?;
@@ -89,7 +91,10 @@ impl AtomWriter for IsBranch {
     fn write_atom(&self, f: &mut impl stdio::Write) -> auto_val::AutoResult<()> {
         match self {
             IsBranch::EqBranch(patterns, body) => {
-                let pats: Vec<String> = patterns.iter().map(|p| p.to_atom_str().to_string()).collect();
+                let pats: Vec<String> = patterns
+                    .iter()
+                    .map(|p| p.to_atom_str().to_string())
+                    .collect();
                 write!(f, "eq({}) {{ {} }}", pats.join(" | "), body.to_atom_str())?;
             }
             IsBranch::IfBranch(expr, body) => {

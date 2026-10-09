@@ -55,7 +55,9 @@
 //! Based on auto-ui/trans/rust_gen.rs, adapted for AuraWidget input.
 
 use super::{BackendGenerator, GenError, GenResult};
-use crate::aura::{AuraEvent, AuraMsgVariant, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{
+    AuraEvent, AuraMsgVariant, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload,
+};
 
 /// Plan 371 L1: Semantic info about a child component, collected via
 /// cross-file pre-scan. Used to replace hardcoded special-case logic (Init
@@ -332,7 +334,8 @@ impl RustGenerator {
     /// Plan 374: Register a store composable name.
     pub fn register_store(&mut self, alias: &str, store_name: &str) {
         STORE_NAMES.with(|sn| {
-            sn.borrow_mut().insert(alias.to_string(), store_name.to_string());
+            sn.borrow_mut()
+                .insert(alias.to_string(), store_name.to_string());
         });
     }
 
@@ -422,9 +425,9 @@ impl RustGenerator {
             let names: Vec<String> = sn.borrow().values().cloned().collect();
             STORE_FIELD_TYPES.with(|m| {
                 let m = m.borrow();
-                names.iter().find_map(|store| {
-                    m.get(store).and_then(|f| f.get(field)).cloned()
-                })
+                names
+                    .iter()
+                    .find_map(|store| m.get(store).and_then(|f| f.get(field)).cloned())
             })
         })
     }
@@ -461,7 +464,8 @@ impl RustGenerator {
                         crate::ast::Expr::Int(_) | crate::ast::Expr::I64(_) => "int",
                         crate::ast::Expr::Bool(_) => "bool",
                         crate::ast::Expr::Array(_) => "list",
-                        crate::ast::Expr::Str(_) | crate::ast::Expr::CStr(_)
+                        crate::ast::Expr::Str(_)
+                        | crate::ast::Expr::CStr(_)
                         | crate::ast::Expr::FStr(_) => "str",
                         crate::ast::Expr::Ident(n) => {
                             let nm = n.as_str();
@@ -511,10 +515,7 @@ impl RustGenerator {
     /// PLAN-039 T-13（批次 E，E-D2）：store 记录字段的子字段形状表查询
     /// （按 STORE_NAMES 注册的 store 名限域）。None = 非记录字段/未知
     /// 形状 → 访问器回落启发式（动态容差）。
-    fn store_record_shape(
-        &self,
-        field: &str,
-    ) -> Option<std::collections::HashMap<String, String>> {
+    fn store_record_shape(&self, field: &str) -> Option<std::collections::HashMap<String, String>> {
         STORE_NAMES.with(|sn| {
             let names: Vec<String> = sn.borrow().values().cloned().collect();
             STORE_RECORD_SHAPES.with(|m| {
@@ -596,8 +597,10 @@ impl RustGenerator {
                 match stmt {
                     Stmt::Store(s) => {
                         let k = match &s.ty {
-                            crate::ast::Type::Int | crate::ast::Type::I64
-                            | crate::ast::Type::Uint | crate::ast::Type::U64
+                            crate::ast::Type::Int
+                            | crate::ast::Type::I64
+                            | crate::ast::Type::Uint
+                            | crate::ast::Type::U64
                             | crate::ast::Type::USize => "int",
                             crate::ast::Type::Bool => "bool",
                             crate::ast::Type::List(_) | crate::ast::Type::Array(_) => "list",
@@ -620,21 +623,23 @@ impl RustGenerator {
             }
         }
         // 记录字面量值表达式 → kind（局部声明优先,动态读默认 str）。
-        fn value_kind_of(
-            e: &Expr,
-            locals: &std::collections::HashMap<String, String>,
-        ) -> String {
+        fn value_kind_of(e: &Expr, locals: &std::collections::HashMap<String, String>) -> String {
             match e {
                 Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => "str".into(),
                 Expr::Int(_) | Expr::I64(_) | Expr::Uint(_) | Expr::U64(_) => "int".into(),
                 Expr::Bool(_) => "bool".into(),
                 Expr::Array(_) => "list".into(),
-                Expr::Ident(n) => {
-                    locals.get(n.as_str()).cloned().unwrap_or_else(|| "str".into())
-                }
+                Expr::Ident(n) => locals
+                    .get(n.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| "str".into()),
                 Expr::Unary(op, inner) if matches!(op, auto_val::Op::Not) => {
                     let k = value_kind_of(inner, locals);
-                    if k == "bool" { "bool".into() } else { "str".into() }
+                    if k == "bool" {
+                        "bool".into()
+                    } else {
+                        "str".into()
+                    }
                 }
                 _ => "str".into(),
             }
@@ -658,9 +663,7 @@ impl RustGenerator {
                                 {
                                     for p in pairs {
                                         let key = match &p.key {
-                                            crate::ast::Key::NamedKey(n) => {
-                                                n.as_str().to_string()
-                                            }
+                                            crate::ast::Key::NamedKey(n) => n.as_str().to_string(),
                                             crate::ast::Key::StrKey(s) => s.to_string(),
                                             _ => continue,
                                         };
@@ -681,9 +684,7 @@ impl RustGenerator {
                             collect_push_shapes(&e.stmts, locals, value_kind, out);
                         }
                     }
-                    Stmt::For(f) => {
-                        collect_push_shapes(&f.body.stmts, locals, value_kind, out)
-                    }
+                    Stmt::For(f) => collect_push_shapes(&f.body.stmts, locals, value_kind, out),
                     Stmt::Block(b) => collect_push_shapes(&b.stmts, locals, value_kind, out),
                     _ => {}
                 }
@@ -691,22 +692,29 @@ impl RustGenerator {
         }
         for stmt in &ast.stmts {
             if let Stmt::Fn(f) = stmt {
-                let param_kinds: Vec<String> =
-                    f.params.iter().map(|p| ty_kind(&p.ty)).collect();
+                let param_kinds: Vec<String> = f.params.iter().map(|p| ty_kind(&p.ty)).collect();
                 let ret = ret_rust(&f.ret);
                 let list_elem_shape = if matches!(f.ret, Type::List(_) | Type::Array(_)) {
                     let mut locals = std::collections::HashMap::new();
                     collect_local_kinds(&f.body.stmts, &mut locals);
                     let mut shape = std::collections::HashMap::new();
                     collect_push_shapes(&f.body.stmts, &locals, &value_kind_of, &mut shape);
-                    if shape.is_empty() { None } else { Some(shape) }
+                    if shape.is_empty() {
+                        None
+                    } else {
+                        Some(shape)
+                    }
                 } else {
                     None
                 };
                 BARE_FN_SIGS.with(|m| {
                     m.borrow_mut().insert(
                         f.name.as_str().to_string(),
-                        BareFnSig { ret_rust_type: ret, param_kinds, list_elem_shape },
+                        BareFnSig {
+                            ret_rust_type: ret,
+                            param_kinds,
+                            list_elem_shape,
+                        },
                     );
                 });
             }
@@ -859,7 +867,8 @@ impl RustGenerator {
 
     /// Get the Rust type for a state var, using refined type from initial expression
     fn state_rust_type(&self, state: &crate::aura::AuraStateDef) -> String {
-        self.state_types.get(&state.name)
+        self.state_types
+            .get(&state.name)
             .cloned()
             .unwrap_or_else(|| self.auto_type_to_rust(&state.type_info))
     }
@@ -885,7 +894,9 @@ impl RustGenerator {
     /// indicating the prop needs to be serde_json::Value, not String
     fn view_accesses_prop_field(&self, node: &AuraNode, prop_name: &str) -> bool {
         match node {
-            AuraNode::Element { props, children, .. } => {
+            AuraNode::Element {
+                props, children, ..
+            } => {
                 // Check if any prop value is a FieldAccess on our prop
                 for (_key, value) in props {
                     if let crate::aura::AuraPropValue::Expr(expr) = value {
@@ -907,7 +918,11 @@ impl RustGenerator {
                     }
                 }
             }
-            AuraNode::Conditional { then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 for child in then_body {
                     if self.view_accesses_prop_field(child, prop_name) {
                         return true;
@@ -932,7 +947,11 @@ impl RustGenerator {
         match expr {
             Expr::Dot(object, _field) => {
                 if let Expr::Ident(name) = object.as_ref() {
-                    let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                    let resolved = if name.starts_with('.') {
+                        &name[1..]
+                    } else {
+                        name.as_str()
+                    };
                     if resolved == prop_name {
                         return true;
                     }
@@ -940,7 +959,8 @@ impl RustGenerator {
                 self.expr_accesses_field(object, prop_name)
             }
             Expr::Bina(left, _op, right) => {
-                self.expr_accesses_field(left, prop_name) || self.expr_accesses_field(right, prop_name)
+                self.expr_accesses_field(left, prop_name)
+                    || self.expr_accesses_field(right, prop_name)
             }
             Expr::Call(call) => {
                 self.expr_accesses_field(&call.name, prop_name)
@@ -1043,7 +1063,9 @@ impl RustGenerator {
                     crate::ast::Expr::Object(_) => "serde_json::Value".to_string(),
                     crate::ast::Expr::Str(_) => "String".to_string(),
                     crate::ast::Expr::Int(_) => "i32".to_string(),
-                    crate::ast::Expr::Float(_, _) | crate::ast::Expr::Double(_, _) => "f64".to_string(),
+                    crate::ast::Expr::Float(_, _) | crate::ast::Expr::Double(_, _) => {
+                        "f64".to_string()
+                    }
                     crate::ast::Expr::Bool(_) => "bool".to_string(),
                     _ => self.auto_type_to_rust(&state.type_info),
                 }
@@ -1154,9 +1176,10 @@ impl RustGenerator {
         // :1461-1490）；多路由/带参标记 Reject（Outlet 位响亮拒）。
         self.outlet_route = match &widget.routes {
             None => OutletRoute::None,
-            Some(rb) if rb.routes.len() == 1
-                && rb.routes[0].path == "/"
-                && rb.routes[0].params.is_empty() =>
+            Some(rb)
+                if rb.routes.len() == 1
+                    && rb.routes[0].path == "/"
+                    && rb.routes[0].params.is_empty() =>
             {
                 let module = rb.routes[0].module.clone();
                 if !self.child_components.contains(&module) {
@@ -1256,7 +1279,11 @@ impl RustGenerator {
         /// convert_menubar_component）。枚举先于 view 树生成——变体在
         /// 此预扫描推送（scan_input_fields 同序先例）。
         if self.view_tree_has_menubar(&widget.view_tree) {
-            if !self.message_variants.iter().any(|v| v.name == "__MenubarToggle") {
+            if !self
+                .message_variants
+                .iter()
+                .any(|v| v.name == "__MenubarToggle")
+            {
                 self.message_variants.push(AuraMsgVariant {
                     name: "__MenubarToggle".to_string(),
                     quoted: false,
@@ -1264,7 +1291,11 @@ impl RustGenerator {
                     payload_names: vec![Some("id".to_string())],
                 });
             }
-            if !self.message_variants.iter().any(|v| v.name == "__MenubarClose") {
+            if !self
+                .message_variants
+                .iter()
+                .any(|v| v.name == "__MenubarClose")
+            {
                 self.message_variants.push(AuraMsgVariant {
                     name: "__MenubarClose".to_string(),
                     quoted: false,
@@ -1319,7 +1350,9 @@ impl RustGenerator {
                 // Plan 043 M5 #1: emit each payload type as a tuple field, so
                 // `Complete(str, int)` → `Complete(String, i32)` and a single
                 // `Set(int)` → `Set(i32)`.
-                let ty_strs: Vec<String> = variant.payload.iter()
+                let ty_strs: Vec<String> = variant
+                    .payload
+                    .iter()
                     .map(|t| self.auto_type_to_rust(t))
                     .collect();
                 code.push_str(&format!("    {}({}),\n", variant.name, ty_strs.join(", ")));
@@ -1356,11 +1389,12 @@ impl RustGenerator {
         let mut code = String::new();
 
         // Plan 371 Task 22c / L3: stores + persistent child components need Clone.
-        let is_store_itself = STORE_NAMES.with(|sn| {
-            sn.borrow().values().any(|s| s.as_str() == widget.name)
-        });
+        let is_store_itself =
+            STORE_NAMES.with(|sn| sn.borrow().values().any(|s| s.as_str() == widget.name));
         let has_store_field = STORE_NAMES.with(|sn| !sn.borrow().is_empty()) && !is_store_itself;
-        let has_persistent_child = self.child_components.iter()
+        let has_persistent_child = self
+            .child_components
+            .iter()
             .any(|c| self.is_persistent_child(c));
         if is_store_itself || has_store_field || has_persistent_child {
             code.push_str("#[derive(Clone, Debug)]\n");
@@ -1376,7 +1410,9 @@ impl RustGenerator {
         // Plan 374: Skip `msg`-typed callback props — they use VM parent-to-child
         // message passing which is replaced by Rust's child-to-parent enum forwarding.
         for prop in &widget.props {
-            let field_type = self.prop_types.get(&prop.name)
+            let field_type = self
+                .prop_types
+                .get(&prop.name)
                 .cloned()
                 .unwrap_or_else(|| self.prop_rust_type(prop));
             if field_type == "msg" {
@@ -1389,9 +1425,7 @@ impl RustGenerator {
         // Plan 374: Register widget prop declaration order for child component
         // constructor arg ordering.
         {
-            let ordered: Vec<String> = widget.props.iter()
-                .map(|p| p.name.clone())
-                .collect();
+            let ordered: Vec<String> = widget.props.iter().map(|p| p.name.clone()).collect();
             WIDGET_PROP_ORDERS.with(|po| {
                 po.borrow_mut().insert(widget.name.clone(), ordered);
             });
@@ -1439,26 +1473,25 @@ impl RustGenerator {
         // add `pub store: StoreName` field.
         // Plan 374: Skip store field injection for the store struct itself
         // to avoid recursive types (NotesStore { store: NotesStore }).
-        let is_store_itself = STORE_NAMES.with(|sn| {
-            sn.borrow().values().any(|s| s.as_str() == widget.name)
-        });
+        let is_store_itself =
+            STORE_NAMES.with(|sn| sn.borrow().values().any(|s| s.as_str() == widget.name));
         if !is_store_itself {
             if is_root {
-            STORE_NAMES.with(|sn| {
-                for (_alias, store_name) in sn.borrow().iter() {
-                    code.push_str(&format!("    pub store: {},\n", store_name));
-                }
-            });
-        } else {
-            // Child widgets also need store field (they access self.store.X)
-            STORE_NAMES.with(|sn| {
-                for (_alias, store_name) in sn.borrow().iter() {
-                    if !own_fields.contains("store") {
+                STORE_NAMES.with(|sn| {
+                    for (_alias, store_name) in sn.borrow().iter() {
                         code.push_str(&format!("    pub store: {},\n", store_name));
                     }
-                }
-            });
-        }
+                });
+            } else {
+                // Child widgets also need store field (they access self.store.X)
+                STORE_NAMES.with(|sn| {
+                    for (_alias, store_name) in sn.borrow().iter() {
+                        if !own_fields.contains("store") {
+                            code.push_str(&format!("    pub store: {},\n", store_name));
+                        }
+                    }
+                });
+            }
         } // !is_store_itself — skip store field injection for store structs
         if is_root {
             // Record root state fields for child widgets to pick up.
@@ -1496,9 +1529,13 @@ impl RustGenerator {
 
         // new() constructor — accepts props as parameters
         // Plan 374: Skip `msg`-typed callback props in constructor.
-        let non_msg_props: Vec<&crate::aura::AuraProp> = widget.props.iter()
+        let non_msg_props: Vec<&crate::aura::AuraProp> = widget
+            .props
+            .iter()
             .filter(|p| {
-                let ty = self.prop_types.get(&p.name)
+                let ty = self
+                    .prop_types
+                    .get(&p.name)
                     .cloned()
                     .unwrap_or_else(|| self.prop_rust_type(p));
                 ty != "msg"
@@ -1506,15 +1543,21 @@ impl RustGenerator {
             .collect();
         let has_props = !non_msg_props.is_empty();
         if has_props {
-            let params: Vec<String> = non_msg_props.iter()
+            let params: Vec<String> = non_msg_props
+                .iter()
                 .map(|p| {
-                    let ty = self.prop_types.get(&p.name)
+                    let ty = self
+                        .prop_types
+                        .get(&p.name)
                         .cloned()
                         .unwrap_or_else(|| self.prop_rust_type(*p));
                     format!("{}: {}", p.name, ty)
                 })
                 .collect();
-            code.push_str(&format!("    pub fn new({}) -> Self {{\n", params.join(", ")));
+            code.push_str(&format!(
+                "    pub fn new({}) -> Self {{\n",
+                params.join(", ")
+            ));
         } else {
             code.push_str("    pub fn new() -> Self {\n");
         }
@@ -1525,7 +1568,9 @@ impl RustGenerator {
         let sync_init = self.has_init && self.init_api_info.is_none();
         // Plan 371 L3: force __self mode if we have persistent children (need
         // post-construct re-initialization with real props).
-        let has_persistent_child = self.child_components.iter()
+        let has_persistent_child = self
+            .child_components
+            .iter()
             .any(|c| self.is_persistent_child(c));
         let force_self = sync_init || has_persistent_child;
         if force_self {
@@ -1598,18 +1643,18 @@ impl RustGenerator {
         //   Real props are synced after __self construction (see post-construct block).
         // - Loop children: hoist scalar state fields with defaults (legacy).
         {
-            let own_names: std::collections::HashSet<String> = widget
-                .state_vars
-                .iter()
-                .map(|s| s.name.clone())
-                .collect();
+            let own_names: std::collections::HashSet<String> =
+                widget.state_vars.iter().map(|s| s.name.clone()).collect();
             for child_name in &self.child_components {
                 if self.is_persistent_child(child_name) {
                     // L3: persistent instance — placeholder init via Default.
                     // Real props are applied post-construct below.
                     let field = Self::child_field_name(child_name);
                     if !own_names.contains(&field) {
-                        code.push_str(&format!("            {}: {}::default(),\n", field, child_name));
+                        code.push_str(&format!(
+                            "            {}: {}::default(),\n",
+                            field, child_name
+                        ));
                     }
                 } else if let Some(child_fields) = self.component_state_fields.get(child_name) {
                     for (f, ty) in child_fields {
@@ -1630,12 +1675,10 @@ impl RustGenerator {
 
         // Plan 346: Initialize root state fields (for child widgets) with defaults.
         if widget.name != "App" {
-            let own_names: std::collections::HashSet<String> = widget.state_vars.iter()
-                .map(|s| s.name.clone())
-                .collect();
-            let own_props: std::collections::HashSet<String> = widget.props.iter()
-                .map(|p| p.name.clone())
-                .collect();
+            let own_names: std::collections::HashSet<String> =
+                widget.state_vars.iter().map(|s| s.name.clone()).collect();
+            let own_props: std::collections::HashSet<String> =
+                widget.props.iter().map(|p| p.name.clone()).collect();
             ROOT_STATE_FIELDS.with(|rsf| {
                 let fields = rsf.borrow();
                 for (name, ty) in fields.iter() {
@@ -1700,10 +1743,7 @@ impl RustGenerator {
                     let constructor_args = self.find_constructor_args_for_child(widget, child_name);
                     // Replace self. with __self. in constructor args (we're in __self context).
                     let args = constructor_args.replace("self.", "__self.");
-                    let stmt = format!(
-                        "__self.{} = {}::new({});",
-                        field, child_name, args
-                    );
+                    let stmt = format!("__self.{} = {}::new({});", field, child_name, args);
                     if let Some(collection) = first_indexed_collection(&args) {
                         code.push_str(&format!(
                             "        if !{}.is_empty() {{\n            {}\n        }}\n",
@@ -1732,9 +1772,12 @@ impl RustGenerator {
             ));
         } else {
             // Generate Default with placeholder props matching each prop's type.
-            let placeholder_args: Vec<String> = non_msg_props.iter()
+            let placeholder_args: Vec<String> = non_msg_props
+                .iter()
                 .map(|p| {
-                    let ty = self.prop_types.get(&p.name)
+                    let ty = self
+                        .prop_types
+                        .get(&p.name)
                         .cloned()
                         .unwrap_or_else(|| self.prop_rust_type(p));
                     match ty.as_str() {
@@ -1747,12 +1790,14 @@ impl RustGenerator {
                         // 不配（TreeView::default 株）。
                         t if t == "Vec<serde_json::Value>" || t.starts_with("Vec<") => "vec![]",
                         _ => "serde_json::Value::Null",
-                    }.to_string()
+                    }
+                    .to_string()
                 })
                 .collect();
             code.push_str(&format!(
                 "impl Default for {} {{\n    fn default() -> Self {{ Self::new({}) }}\n}}\n",
-                widget_name, placeholder_args.join(", ")
+                widget_name,
+                placeholder_args.join(", ")
             ));
         }
 
@@ -1792,7 +1837,9 @@ impl RustGenerator {
         if !widget.key_bindings.is_empty() {
             let mut bindings: Vec<(&String, &String)> = widget.key_bindings.iter().collect();
             bindings.sort_by(|a, b| a.0.cmp(b.0));
-            code.push_str("\n    fn key_bindings(&self) -> std::collections::HashMap<String, String> {\n");
+            code.push_str(
+                "\n    fn key_bindings(&self) -> std::collections::HashMap<String, String> {\n",
+            );
             code.push_str("        let mut bindings = std::collections::HashMap::new();\n");
             for (key, handler) in &bindings {
                 code.push_str(&format!(
@@ -1805,9 +1852,10 @@ impl RustGenerator {
             code.push_str("        match key {\n");
             for (key, handler) in &bindings {
                 let variant = self.extract_variant_name(handler);
-                let has_unit_variant = self.message_variants.iter().any(|v| {
-                    v.name == variant && v.payload.is_empty()
-                });
+                let has_unit_variant = self
+                    .message_variants
+                    .iter()
+                    .any(|v| v.name == variant && v.payload.is_empty());
                 if has_unit_variant {
                     code.push_str(&format!(
                         "            {:?} => Some({}::{}),\n",
@@ -1837,9 +1885,9 @@ impl RustGenerator {
             let interval = u32::try_from(timer.every_ms).unwrap_or(u32::MAX);
             (interval, timer.event.as_str())
         });
-        if let Some((interval, event)) = periodic_timer.or_else(|| {
-            widget.tick_interval.map(|interval| (interval, "Tick"))
-        }) {
+        if let Some((interval, event)) =
+            periodic_timer.or_else(|| widget.tick_interval.map(|interval| (interval, "Tick")))
+        {
             let msg_name = self.current_msg_name();
             code.push_str(&format!(
                 "    fn tick_interval_ms(&self) -> Option<u32> {{ Some({}) }}\n",
@@ -1904,9 +1952,8 @@ impl RustGenerator {
         // matches a registered component name.
         let mut recurse_fields: Vec<String> = Vec::new();
         // Store composable field (always named "store" per generate_struct).
-        let is_store_itself = STORE_NAMES.with(|sn| {
-            sn.borrow().values().any(|s| s.as_str() == _widget.name)
-        });
+        let is_store_itself =
+            STORE_NAMES.with(|sn| sn.borrow().values().any(|s| s.as_str() == _widget.name));
         if !is_store_itself {
             STORE_NAMES.with(|sn| {
                 if !sn.borrow().is_empty() && !scalars.iter().any(|(n, _)| n == "store") {
@@ -1917,8 +1964,8 @@ impl RustGenerator {
         // Child components stored as struct fields (type matches a known
         // component — registered store or a child_components entry).
         let known_components: std::collections::HashSet<String> = {
-            let mut s: std::collections::HashSet<String> = STORE_NAMES
-                .with(|sn| sn.borrow().values().cloned().collect());
+            let mut s: std::collections::HashSet<String> =
+                STORE_NAMES.with(|sn| sn.borrow().values().cloned().collect());
             for c in &self.child_components {
                 s.insert(c.clone());
             }
@@ -1980,7 +2027,11 @@ impl RustGenerator {
             // 全局面——与 VM 轨 renderer.rs __menubar_toggle/__menubar_close
             // 同机制；toggle 同 id 关/异 id 开，view() 每帧读
             // menubar_open() 复帧）。
-            if self.message_variants.iter().any(|v| v.name == "__MenubarToggle") {
+            if self
+                .message_variants
+                .iter()
+                .any(|v| v.name == "__MenubarToggle")
+            {
                 code.push_str(&format!(
                     "            {}::__MenubarToggle(id) => {{\n                let __open = auto_lang::ui::action_config::menubar_open();\n                auto_lang::ui::action_config::set_menubar_open(if __open.as_deref() == Some(id.as_str()) {{ None }} else {{ Some(id.clone()) }});\n            }}\n",
                     msg_name
@@ -1996,7 +2047,9 @@ impl RustGenerator {
                 let variant_name = self.extract_variant_name(pattern);
                 let body = self.generate_handler_body(payload);
                 // Check if variant has payload — if so, bind it to a variable
-                let variant_info = self.message_variants.iter()
+                let variant_info = self
+                    .message_variants
+                    .iter()
                     .find(|v| v.name == variant_name);
                 // Plan 374: Skip handlers whose variant is not in the message enum.
                 // This handles cases like NewNoteInFolder where the handler exists
@@ -2006,15 +2059,24 @@ impl RustGenerator {
                 }
                 let has_payload = variant_info.map_or(false, |v| !v.payload.is_empty());
                 // Tick handler: guard with running check if "running" field exists
-                let is_tick_guarded = variant_name == "Tick" && self.state_types.contains_key("running");
+                let is_tick_guarded =
+                    variant_name == "Tick" && self.state_types.contains_key("running");
                 if has_payload {
                     // Plan 346: use the source parameter name (e.g., `i` from
                     // `.SelectNote(i)`) as the match binding, not a hardcoded `id`.
                     // PLAN-681 T-05：多参载荷绑定名序（.EditorCtx(x, y) 形）。
                     let names = self.extract_payload_names(pattern, variant_info.unwrap());
-                    code.push_str(&format!("            {}::{}({}) => {{\n", msg_name, variant_name, names.join(", ")));
+                    code.push_str(&format!(
+                        "            {}::{}({}) => {{\n",
+                        msg_name,
+                        variant_name,
+                        names.join(", ")
+                    ));
                 } else {
-                    code.push_str(&format!("            {}::{} => {{\n", msg_name, variant_name));
+                    code.push_str(&format!(
+                        "            {}::{} => {{\n",
+                        msg_name, variant_name
+                    ));
                 }
                 if is_tick_guarded {
                     code.push_str("                if self.running == \"true\" {\n");
@@ -2024,7 +2086,9 @@ impl RustGenerator {
                 if let Some(field_names) = self.input_fields.get(&variant_name) {
                     // Plan 413: code_editor events read the text via the keyed
                     // accessor instead of the single-slot thread-local.
-                    let text_source = if let Some(keys) = self.code_editor_sources.get(&variant_name) {
+                    let text_source = if let Some(keys) =
+                        self.code_editor_sources.get(&variant_name)
+                    {
                         format!(
                             "auto_lang::ui::code_editor::code_editor_text(\"{}\").unwrap_or_default()",
                             keys.first().map(|s| s.as_str()).unwrap_or("editor")
@@ -2040,10 +2104,18 @@ impl RustGenerator {
                     // Set ALL bound fields to the input text (multiple inputs may share one event)
                     let last_idx = field_names.len() - 1;
                     for (i, field_name) in field_names.iter().enumerate() {
-                        let rust_type = self.state_types.get(field_name).map(|s| s.as_str()).unwrap_or("f64");
+                        let rust_type = self
+                            .state_types
+                            .get(field_name)
+                            .map(|s| s.as_str())
+                            .unwrap_or("f64");
                         if rust_type == "String" {
                             // Last field can consume _text directly; others must clone
-                            let text_expr = if i == last_idx { "_text".to_string() } else { "_text.clone()".to_string() };
+                            let text_expr = if i == last_idx {
+                                "_text".to_string()
+                            } else {
+                                "_text.clone()".to_string()
+                            };
                             code.push_str(&format!(
                                 "                self.{} = {};\n",
                                 field_name, text_expr
@@ -2132,15 +2204,16 @@ impl RustGenerator {
                 //   2. There exists a child component whose props are written by
                 //      its own handlers (component_semantics written_props), i.e.
                 //      a child that owns editable state tied to those props.
-                if self.handler_mutates_store_data(payload)
-                    && !self.child_components.is_empty()
-                {
+                if self.handler_mutates_store_data(payload) && !self.child_components.is_empty() {
                     // Find the first child whose handlers write props (i.e. it has
                     // editable state to reset on data change). This replaces the
                     // old `.contains("Editor")` name match.
-                    let target = self.child_components.iter()
+                    let target = self
+                        .child_components
+                        .iter()
                         .find(|c| {
-                            self.component_semantics.get(*c)
+                            self.component_semantics
+                                .get(*c)
                                 .map(|s| !s.written_props.is_empty())
                                 .unwrap_or(false)
                         })
@@ -2153,7 +2226,8 @@ impl RustGenerator {
                         code.push_str("                ;\n");
                         if persistent {
                             // L3: use persistent instance — update props then Init.
-                            let constructor_args = self.find_constructor_args_for_child(widget, &child_name);
+                            let constructor_args =
+                                self.find_constructor_args_for_child(widget, &child_name);
                             // Sync props from constructor args, then call on(Init).
                             code.push_str(&format!(
                                 "                self.{} = {}::new({});\n",
@@ -2165,10 +2239,13 @@ impl RustGenerator {
                             ));
                         } else {
                             // Loop child: temp-construct, Init, sync back.
-                            let sync: Vec<String> = self.component_state_fields.get(&child_name)
-                                .map(|fs| fs.iter().map(|(f,_)| f.clone()).collect())
+                            let sync: Vec<String> = self
+                                .component_state_fields
+                                .get(&child_name)
+                                .map(|fs| fs.iter().map(|(f, _)| f.clone()).collect())
                                 .unwrap_or_default();
-                            let constructor_args = self.find_constructor_args_for_child(widget, &child_name);
+                            let constructor_args =
+                                self.find_constructor_args_for_child(widget, &child_name);
                             code.push_str(&format!(
                                 "                {{ let mut __ep = {}::new({});\n",
                                 child_name, constructor_args
@@ -2179,7 +2256,8 @@ impl RustGenerator {
                             ));
                             for f in &sync {
                                 code.push_str(&format!(
-                                    "                self.{} = __ep.{}.clone();\n", f, f
+                                    "                self.{} = __ep.{}.clone();\n",
+                                    f, f
                                 ));
                             }
                             code.push_str("                }\n");
@@ -2196,7 +2274,9 @@ impl RustGenerator {
                 code.push_str(&format!("            {}::{} => {{\n", msg_name, lc.name));
                 if lc.name == "Init" && self.init_api_info.is_some() {
                     // Async Init: body is handled by __InitLoaded message from boot task
-                    code.push_str("                // async init — data arrives via __InitLoaded\n");
+                    code.push_str(
+                        "                // async init — data arrives via __InitLoaded\n",
+                    );
                 } else {
                     code.push_str(&format!("                {}\n", body));
                 }
@@ -2229,10 +2309,7 @@ impl RustGenerator {
                     // SelectPinned sets store.active_folder). Sync store back so the
                     // parent sees the change. Private state (editing etc.) persists
                     // in the field and needs no sync.
-                    code.push_str(&format!(
-                        "                self.{}.on(inner);\n",
-                        field_name
-                    ));
+                    code.push_str(&format!("                self.{}.on(inner);\n", field_name));
                     // Sync store back if the child has one.
                     let has_store = STORE_NAMES.with(|sn| !sn.borrow().is_empty());
                     if has_store {
@@ -2271,15 +2348,30 @@ impl RustGenerator {
                 // handlers WRITE, write the (possibly mutated) child prop back to the
                 // parent's data source. Persistent children use self.<field>.<prop>;
                 // temp children use __child.<prop>.
-                let written_props: Vec<String> = self.component_semantics.get(child_name)
+                let written_props: Vec<String> = self
+                    .component_semantics
+                    .get(child_name)
                     .map(|s| s.written_props.clone())
                     .unwrap_or_default();
                 if !written_props.is_empty() {
                     let has_notes = self.state_types.contains_key("notes");
                     let has_store_notes = STORE_NAMES.with(|sn| !sn.borrow().is_empty())
-                        && !STORE_NAMES.with(|sn| sn.borrow().values().any(|s| s.as_str() == widget.name));
-                    let notes_prefix = if has_notes { "self.notes" } else if has_store_notes { "self.store.notes" } else { "" };
-                    let active_prefix = if self.state_types.contains_key("active_id") { "self.active_id" } else if has_store_notes { "self.store.active_id" } else { "" };
+                        && !STORE_NAMES
+                            .with(|sn| sn.borrow().values().any(|s| s.as_str() == widget.name));
+                    let notes_prefix = if has_notes {
+                        "self.notes"
+                    } else if has_store_notes {
+                        "self.store.notes"
+                    } else {
+                        ""
+                    };
+                    let active_prefix = if self.state_types.contains_key("active_id") {
+                        "self.active_id"
+                    } else if has_store_notes {
+                        "self.store.active_id"
+                    } else {
+                        ""
+                    };
                     let prop_owner = if persistent {
                         format!("self.{}", field_name)
                     } else {
@@ -2303,8 +2395,12 @@ impl RustGenerator {
             // We generate arms for: handlers + lifecycle + child_components + __InitLoaded (if async).
             // If there are more enum variants than named arms, we need a wildcard.
             let async_init_arm = if self.init_api_info.is_some() { 1 } else { 0 };
-            let total_enum_variants = self.message_variants.len() + self.child_components.len() + async_init_arm;
-            let named_arms = widget.handlers.len() + widget.lifecycle.len() + self.child_components.len() + async_init_arm;
+            let total_enum_variants =
+                self.message_variants.len() + self.child_components.len() + async_init_arm;
+            let named_arms = widget.handlers.len()
+                + widget.lifecycle.len()
+                + self.child_components.len()
+                + async_init_arm;
             if total_enum_variants > named_arms {
                 code.push_str("            _ => {}\n");
             }
@@ -2331,14 +2427,29 @@ impl RustGenerator {
         // (from view fragment NoteItem parameter substitution that didn't complete).
         view_code = view_code.replace("if active {", "if i == self.store.active_id {");
         // Fix 2: Value["field"].iter() → Value["field"].as_array().into_iter().flatten()
-        view_code = view_code.replace("[\"tags\"].iter()", "[\"tags\"].as_array().unwrap_or(&Vec::new()).iter()");
+        view_code = view_code.replace(
+            "[\"tags\"].iter()",
+            "[\"tags\"].as_array().unwrap_or(&Vec::new()).iter()",
+        );
         // Fix 3: String == &Value → String == X.as_str().unwrap_or_default()
-        view_code = view_code.replace("self.store.active_tag == t {", "self.store.active_tag == t.as_str().unwrap_or_default() {");
-        view_code = view_code.replace("*self.store.active_tag == *t {", "self.store.active_tag == t.as_str().unwrap_or_default() {");
+        view_code = view_code.replace(
+            "self.store.active_tag == t {",
+            "self.store.active_tag == t.as_str().unwrap_or_default() {",
+        );
+        view_code = view_code.replace(
+            "*self.store.active_tag == *t {",
+            "self.store.active_tag == t.as_str().unwrap_or_default() {",
+        );
         // Fix 4: RemoveTag(t) where t is &Value → RemoveTag(t.to_string())
-        view_code = view_code.replace("EditorPanelMsg::RemoveTag(t)", "EditorPanelMsg::RemoveTag(t.to_string())");
+        view_code = view_code.replace(
+            "EditorPanelMsg::RemoveTag(t)",
+            "EditorPanelMsg::RemoveTag(t.to_string())",
+        );
         // Fix 5: SelectTag(t) where t is &Value → SelectTag(t.to_string())
-        view_code = view_code.replace("NavTreeMsg::SelectTag(t)", "NavTreeMsg::SelectTag(t.to_string())");
+        view_code = view_code.replace(
+            "NavTreeMsg::SelectTag(t)",
+            "NavTreeMsg::SelectTag(t.to_string())",
+        );
 
         code.push_str(&format!("        {}\n", view_code));
 
@@ -2373,7 +2484,8 @@ impl RustGenerator {
                         let field_ref_with_iter = format!("self.{}.iter()", state.name);
                         let target = format!("{}{}", field_ref, method);
                         let replacement = format!("{}{}", field_ref_with_iter, method);
-                        if expr_rust.contains(&target) && !expr_rust.contains(&field_ref_with_iter) {
+                        if expr_rust.contains(&target) && !expr_rust.contains(&field_ref_with_iter)
+                        {
                             expr_rust = expr_rust.replace(&target, &replacement);
                         }
                     }
@@ -2386,7 +2498,9 @@ impl RustGenerator {
             // - If expr is a string literal or str field access → String
             // - If expr is a self.field that's typed String → String
             // - Otherwise default to String (safer than Vec for scalar computed).
-            let needs_collect = expr_rust.contains(".iter().") || expr_rust.contains(".filter(") || expr_rust.contains(".map(");
+            let needs_collect = expr_rust.contains(".iter().")
+                || expr_rust.contains(".filter(")
+                || expr_rust.contains(".map(");
             // PLAN-681 T-05（N3）：computed 表达式是伴生依赖裸 fn 调用
             //（`rows => flatten_tree(…)`）——返回型经 BARE_FN_SIGS registry
             // 判定（bare List → Vec<Value>;元素形状已在 generate_rust 的
@@ -2394,7 +2508,10 @@ impl RustGenerator {
             let bare_fn_ret = match &computed_prop.expr {
                 crate::ast::Expr::Call(c)
                     if matches!(c.name.as_ref(), crate::ast::Expr::Ident(_))
-                        && c.args.args.iter().all(|a| matches!(a, crate::ast::Arg::Pos(_))) =>
+                        && c.args
+                            .args
+                            .iter()
+                            .all(|a| matches!(a, crate::ast::Arg::Pos(_))) =>
                 {
                     if let crate::ast::Expr::Ident(fname) = c.name.as_ref() {
                         self.bare_fn_sig(fname.as_str())
@@ -2404,13 +2521,12 @@ impl RustGenerator {
                 }
                 _ => None,
             };
-            let is_string_expr = !needs_collect && (
-                expr_rust.contains("\"")  // string literal
+            let is_string_expr = !needs_collect
+                && (expr_rust.contains("\"")  // string literal
                 || expr_rust.contains(".to_string()")
                 || expr_rust.contains("+ \"")  // string concatenation
                 || self.state_types.iter().any(|(k, v)|
-                    v == "String" && expr_rust.contains(&format!("self.{}", k)))
-            );
+                    v == "String" && expr_rust.contains(&format!("self.{}", k))));
             let (return_type, final_expr) = if needs_collect {
                 let rt = "Vec<serde_json::Value>";
                 let fe = if !expr_rust.contains(".collect(") {
@@ -2434,7 +2550,10 @@ impl RustGenerator {
                 // Default: String for scalar computed (int/bool/str).
                 ("String", expr_rust.clone())
             };
-            code.push_str(&format!("    pub fn {}(&self) -> {} {{\n", method_name, return_type));
+            code.push_str(&format!(
+                "    pub fn {}(&self) -> {} {{\n",
+                method_name, return_type
+            ));
             code.push_str(&format!("        {}\n", final_expr));
             code.push_str("    }\n\n");
         }
@@ -2446,7 +2565,10 @@ impl RustGenerator {
 
     /// Check if a tag is a leaf element that has no children (text, button, etc.)
     fn is_leaf_tag(&self, tag: &str) -> bool {
-        matches!(tag, "text" | "label" | "span" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "button")
+        matches!(
+            tag,
+            "text" | "label" | "span" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "button"
+        )
     }
 
     /// Pre-scan handler bodies to find local `let` bindings from function calls.
@@ -2490,7 +2612,9 @@ impl RustGenerator {
                 Stmt::Store(store)
                     if matches!(
                         store.kind,
-                        crate::ast::StoreKind::Let | crate::ast::StoreKind::Const | crate::ast::StoreKind::Var
+                        crate::ast::StoreKind::Let
+                            | crate::ast::StoreKind::Const
+                            | crate::ast::StoreKind::Var
                     ) && matches!(store.ty, crate::ast::Type::Unknown) =>
                 {
                     let name = store.name.as_str().trim_start_matches('.');
@@ -2541,7 +2665,9 @@ impl RustGenerator {
                 Stmt::Store(store)
                     if matches!(
                         store.kind,
-                        crate::ast::StoreKind::Let | crate::ast::StoreKind::Const | crate::ast::StoreKind::Var
+                        crate::ast::StoreKind::Let
+                            | crate::ast::StoreKind::Const
+                            | crate::ast::StoreKind::Var
                     ) && !matches!(store.ty, crate::ast::Type::Unknown) =>
                 {
                     out.insert(store.name.as_str().trim_start_matches('.').to_string());
@@ -2612,8 +2738,8 @@ impl RustGenerator {
                 if let crate::ast::Expr::Dot(_, m) = call.name.as_ref() {
                     match m.as_str() {
                         "len" | "str" => return "int",
-                        "slice" | "lower" | "upper" | "trim" | "replace"
-                        | "to_string" | "to_lowercase" | "to_uppercase" => return "str",
+                        "slice" | "lower" | "upper" | "trim" | "replace" | "to_string"
+                        | "to_lowercase" | "to_uppercase" => return "str",
                         _ => {}
                     }
                 }
@@ -2654,13 +2780,15 @@ impl RustGenerator {
         // **只在顶层跑一次**（递归体单独 scan 时外层声明不可见——
         // `var c int` 顶层 + `c = items[0]` 在 if 体：子集 declared 空
         // 致误收，probe 实证株）；递归走 scan_stmts_no_union。
-        let mut assign_kinds: std::collections::HashMap<String, std::collections::HashSet<&'static str>> =
-            std::collections::HashMap::new();
+        let mut assign_kinds: std::collections::HashMap<
+            String,
+            std::collections::HashSet<&'static str>,
+        > = std::collections::HashMap::new();
         let mut declared = std::collections::HashSet::new();
         self.collect_declared_names(stmts, &mut declared);
         self.collect_assign_kinds(stmts, &mut assign_kinds, &declared);
         // PLAN-710 D-6 时序注：单遍收格先行——declared_locals 先落格，
-        // 联合格插入的显式声明名排除才有判据（`var e str = "lf"` + 
+        // 联合格插入的显式声明名排除才有判据（`var e str = "lf"` +
         // `e = "crlf".to_string()`（Call RHS → value 误格）的 __at_str
         // 错包裹 e 株由此切断；赋值点按声明型强转归 declared_locals 面）。
         self.scan_stmts_no_union(stmts);
@@ -2725,7 +2853,10 @@ impl RustGenerator {
 
     /// 表达式侧收集：NullCoalesce 链根 + 复合形态递归（Object 对/调用
     /// 实参/二元两侧/一元内层/索引偶/块尾）。
-    fn collect_coalesce_receivers_expr(e: &crate::ast::Expr, out: &mut std::collections::HashSet<String>) {
+    fn collect_coalesce_receivers_expr(
+        e: &crate::ast::Expr,
+        out: &mut std::collections::HashSet<String>,
+    ) {
         use crate::ast::Expr;
         match e {
             Expr::NullCoalesce(left, right) => {
@@ -2789,7 +2920,12 @@ impl RustGenerator {
         for stmt in stmts {
             match stmt {
                 crate::ast::Stmt::Store(store) => {
-                    if matches!(store.kind, crate::ast::StoreKind::Let | crate::ast::StoreKind::Const | crate::ast::StoreKind::Var) {
+                    if matches!(
+                        store.kind,
+                        crate::ast::StoreKind::Let
+                            | crate::ast::StoreKind::Const
+                            | crate::ast::StoreKind::Var
+                    ) {
                         let name = store.name.as_str();
                         // PLAN-039 T-12（批次 E，E-D3 第一轨）：显式声明型
                         // （`var cx int = …`）保持声明型——不收 Value/集合
@@ -2800,8 +2936,10 @@ impl RustGenerator {
                         // PLAN-039 T-14（E-D3 第一轨）：显式声明局部型记录。
                         if !untyped {
                             let kind = match &store.ty {
-                                crate::ast::Type::Int | crate::ast::Type::I64
-                                | crate::ast::Type::Uint | crate::ast::Type::U64 => "int",
+                                crate::ast::Type::Int
+                                | crate::ast::Type::I64
+                                | crate::ast::Type::Uint
+                                | crate::ast::Type::U64 => "int",
                                 crate::ast::Type::Bool => "bool",
                                 crate::ast::Type::StrFixed(_)
                                 | crate::ast::Type::StrOwned
@@ -2809,8 +2947,10 @@ impl RustGenerator {
                                 _ => "",
                             };
                             if !kind.is_empty() {
-                                self.declared_locals
-                                    .insert(name.trim_start_matches('.').to_string(), kind.to_string());
+                                self.declared_locals.insert(
+                                    name.trim_start_matches('.').to_string(),
+                                    kind.to_string(),
+                                );
                             }
                         }
                         // Check if the value is a function call (likely returns Value).
@@ -2818,15 +2958,17 @@ impl RustGenerator {
                         // so it must retain ordinary Rust field/index syntax.
                         if untyped {
                             if let crate::ast::Expr::Call(call) = &store.expr {
-                                let call_name = call.get_name_text_safe()
-                                    .map(|n| n.as_str().to_string());
+                                let call_name =
+                                    call.get_name_text_safe().map(|n| n.as_str().to_string());
                                 // PLAN-039 T-13（E-D5-A 配套）：返回类型化
                                 // user 型的 api 桩调用不收 Value 格——
                                 // `let r = board_cards(..)` 的 r.cards 直达
                                 // （typed 局部形态，Object/Array 分支天然
                                 // 不命中 Call 形态）。
                                 let api_typed = API_TYPED_FNS.with(|m| {
-                                    call_name.as_deref().map_or(false, |n| m.borrow().contains(n))
+                                    call_name
+                                        .as_deref()
+                                        .map_or(false, |n| m.borrow().contains(n))
                                 });
                                 if !api_typed && call_name.as_deref() != Some("names") {
                                     self.value_locals.insert(name.to_string());
@@ -2839,8 +2981,16 @@ impl RustGenerator {
                                 if let crate::ast::Expr::Dot(_, m) = call.name.as_ref() {
                                     if matches!(
                                         m.as_str(),
-                                        "len" | "str" | "slice" | "lower" | "upper" | "trim"
-                                            | "replace" | "contains" | "starts_with" | "ends_with"
+                                        "len"
+                                            | "str"
+                                            | "slice"
+                                            | "lower"
+                                            | "upper"
+                                            | "trim"
+                                            | "replace"
+                                            | "contains"
+                                            | "starts_with"
+                                            | "ends_with"
                                     ) {
                                         self.value_locals.remove(name);
                                     }
@@ -2859,8 +3009,7 @@ impl RustGenerator {
                                 self.value_locals.insert(name.to_string());
                                 // E-D2：局部记录形状（row.score 访问器选型）。
                                 if let Some(shape) = self.object_literal_shape(&store.expr) {
-                                    self.local_record_shapes
-                                        .insert(name.to_string(), shape);
+                                    self.local_record_shapes.insert(name.to_string(), shape);
                                 }
                             }
                             if let crate::ast::Expr::Array(elems) = &store.expr {
@@ -2868,8 +3017,7 @@ impl RustGenerator {
                                 // E-D2：字面量数组的元素形状（记录元素首位推）。
                                 if let Some(first) = elems.first() {
                                     if let Some(shape) = self.object_literal_shape(first) {
-                                        self.array_element_shapes
-                                            .insert(name.to_string(), shape);
+                                        self.array_element_shapes.insert(name.to_string(), shape);
                                     }
                                 }
                             }
@@ -2905,32 +3053,36 @@ impl RustGenerator {
                         // Check if the value is an index into a state Vec<Value>
                         if untyped {
                             if let crate::ast::Expr::Index(target, _idx) = &store.expr {
-                            // Plan 407 R4a: resolve collection name from Ident or Dot patterns.
-                            let coll_stripped: Option<&str> = match target.as_ref() {
-                                crate::ast::Expr::Ident(collection) => {
-                                    let s = collection.as_str();
-                                    Some(s.strip_prefix('.').unwrap_or(s))
+                                // Plan 407 R4a: resolve collection name from Ident or Dot patterns.
+                                let coll_stripped: Option<&str> = match target.as_ref() {
+                                    crate::ast::Expr::Ident(collection) => {
+                                        let s = collection.as_str();
+                                        Some(s.strip_prefix('.').unwrap_or(s))
+                                    }
+                                    crate::ast::Expr::Dot(inner, field) => {
+                                        if matches!(inner.as_ref(), crate::ast::Expr::Ident(_)) {
+                                            // PLAN-039 T-13：任意 Ident 基座
+                                            // （r.cards 局部集合 → "cards"，
+                                            // state/local 判定随后收口）。
+                                            Some(field.as_str())
+                                        } else {
+                                            None
+                                        }
+                                    }
+                                    _ => None,
+                                };
+                                if let Some(coll) = coll_stripped {
+                                    if self
+                                        .state_types
+                                        .get(coll)
+                                        // PLAN-039 T-13（E-D5-A）：收窄为
+                                        // Vec<Value> 专属（typed Vec 元素是 typed）。
+                                        .map(|ty| ty == "Vec<serde_json::Value>")
+                                        .unwrap_or(false)
+                                    {
+                                        self.value_locals.insert(name.to_string());
+                                    }
                                 }
-                                crate::ast::Expr::Dot(inner, field) => {
-                                    if matches!(inner.as_ref(), crate::ast::Expr::Ident(_)) {
-                                        // PLAN-039 T-13：任意 Ident 基座
-                                        // （r.cards 局部集合 → "cards"，
-                                        // state/local 判定随后收口）。
-                                        Some(field.as_str())
-                                    } else { None }
-                                }
-                                _ => None,
-                            };
-                            if let Some(coll) = coll_stripped {
-                                if self.state_types.get(coll)
-                                    // PLAN-039 T-13（E-D5-A）：收窄为
-                                    // Vec<Value> 专属（typed Vec 元素是 typed）。
-                                    .map(|ty| ty == "Vec<serde_json::Value>")
-                                    .unwrap_or(false)
-                                {
-                                    self.value_locals.insert(name.to_string());
-                                }
-                            }
                             }
                         }
                     }
@@ -2946,7 +3098,9 @@ impl RustGenerator {
                             // `for todo in .todos` — check if .todos is Vec<Value>
                             if let crate::ast::Expr::Dot(obj, field) = &for_stmt.range {
                                 if let crate::ast::Expr::Ident(_) = obj.as_ref() {
-                                    if self.state_types.get(field.as_str())
+                                    if self
+                                        .state_types
+                                        .get(field.as_str())
                                         .map(|ty| ty == "Vec<serde_json::Value>")
                                         .unwrap_or(false)
                                     {
@@ -2961,22 +3115,24 @@ impl RustGenerator {
                                 }
                             } else if let crate::ast::Expr::Ident(name_expr) = &for_stmt.range {
                                 let coll = name_expr.as_str();
-                                if self.state_types.get(coll)
+                                if self
+                                    .state_types
+                                    .get(coll)
                                     .map(|ty| ty == "Vec<serde_json::Value>")
                                     .unwrap_or(false)
                                 {
                                     self.value_loop_vars.insert(name.as_str().to_string());
-                                    self.loop_var_collections.insert(
-                                        name.as_str().to_string(),
-                                        coll.to_string(),
-                                    );
+                                    self.loop_var_collections
+                                        .insert(name.as_str().to_string(), coll.to_string());
                                 }
                             }
                         }
                         crate::ast::Iter::Indexed(_idx, name) => {
                             if let crate::ast::Expr::Dot(obj, field) = &for_stmt.range {
                                 if let crate::ast::Expr::Ident(_) = obj.as_ref() {
-                                    if self.state_types.get(field.as_str())
+                                    if self
+                                        .state_types
+                                        .get(field.as_str())
                                         .map(|ty| ty == "Vec<serde_json::Value>")
                                         .unwrap_or(false)
                                     {
@@ -2985,7 +3141,9 @@ impl RustGenerator {
                                 }
                             } else if let crate::ast::Expr::Ident(name_expr) = &for_stmt.range {
                                 let coll = name_expr.as_str();
-                                if self.state_types.get(coll)
+                                if self
+                                    .state_types
+                                    .get(coll)
                                     .map(|ty| ty == "Vec<serde_json::Value>")
                                     .unwrap_or(false)
                                 {
@@ -3027,9 +3185,7 @@ impl RustGenerator {
                                             }
                                         });
                                         if let Some(shape) = shape {
-                                            self.array_element_shapes
-                                                .entry(arr)
-                                                .or_insert(shape);
+                                            self.array_element_shapes.entry(arr).or_insert(shape);
                                         }
                                     }
                                 }
@@ -3086,9 +3242,7 @@ impl RustGenerator {
                     });
                     if let (Some(var), Some(func)) = (state_var, fn_name) {
                         if api_imports.iter().any(|api| api == &func) {
-                            self.init_api_info = Some(InitApiInfo {
-                                state_var: var,
-                            });
+                            self.init_api_info = Some(InitApiInfo { state_var: var });
                         }
                     }
                 }
@@ -3099,30 +3253,61 @@ impl RustGenerator {
     /// Pre-scan view tree to find input/textarea elements and record event→field mappings
     fn scan_input_fields(&mut self, node: &AuraNode) {
         match node {
-            AuraNode::Element { tag, props, events, children, .. } => {
+            AuraNode::Element {
+                tag,
+                props,
+                events,
+                children,
+                ..
+            } => {
                 // Plan 413: code_editor registers field + storage key.
                 if tag == "code_editor" {
-                    let key = props.get("key")
+                    let key = props
+                        .get("key")
                         .or_else(|| props.get("id"))
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_else(|| "editor".to_string());
-                    let value_field: Option<String> = match props.get("content").or_else(|| props.get("value")) {
-                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => Some(name.to_string()),
-                        Some(AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field))) => {
-                            let is_direct_self = match obj.as_ref() {
-                                crate::ast::Expr::Ident(name) => name.as_str() == "self" || name.as_str() == ".",
-                                _ => false,
-                            };
-                            if is_direct_self { Some(field.to_string()) } else { None }
-                        }
-                        _ => None,
-                    };
+                    let value_field: Option<String> =
+                        match props.get("content").or_else(|| props.get("value")) {
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => {
+                                Some(name.to_string())
+                            }
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field))) => {
+                                let is_direct_self = match obj.as_ref() {
+                                    crate::ast::Expr::Ident(name) => {
+                                        name.as_str() == "self" || name.as_str() == "."
+                                    }
+                                    _ => false,
+                                };
+                                if is_direct_self {
+                                    Some(field.to_string())
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        };
                     if let Some(name) = value_field {
                         for (event, handler) in events {
-                            if matches!(event.as_str(), "oninput" | "onInput" | "onchange" | "onChange") {
+                            if matches!(
+                                event.as_str(),
+                                "oninput" | "onInput" | "onchange" | "onChange"
+                            ) {
                                 let variant = self.extract_variant_name(&handler.handler);
-                                self.input_fields.entry(variant.clone()).or_default().push(name.to_string());
-                                self.code_editor_sources.entry(variant).or_default().push(key.clone());
+                                self.input_fields
+                                    .entry(variant.clone())
+                                    .or_default()
+                                    .push(name.to_string());
+                                self.code_editor_sources
+                                    .entry(variant)
+                                    .or_default()
+                                    .push(key.clone());
                             }
                         }
                     }
@@ -3147,18 +3332,30 @@ impl RustGenerator {
                         Some(AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field))) => {
                             // Check it's a direct self.field, not self.store.field
                             let is_direct_self = match obj.as_ref() {
-                                crate::ast::Expr::Ident(name) => name.as_str() == "self" || name.as_str() == ".",
+                                crate::ast::Expr::Ident(name) => {
+                                    name.as_str() == "self" || name.as_str() == "."
+                                }
                                 _ => false,
                             };
-                            if is_direct_self { Some(field.to_string()) } else { None }
+                            if is_direct_self {
+                                Some(field.to_string())
+                            } else {
+                                None
+                            }
                         }
                         _ => None,
                     };
                     if let Some(name) = value_field {
                         for (event, handler) in events {
-                            if matches!(event.as_str(), "oninput" | "onInput" | "onchange" | "onChange") {
+                            if matches!(
+                                event.as_str(),
+                                "oninput" | "onInput" | "onchange" | "onChange"
+                            ) {
                                 let variant = self.extract_variant_name(&handler.handler);
-                                self.input_fields.entry(variant).or_default().push(name.to_string());
+                                self.input_fields
+                                    .entry(variant)
+                                    .or_default()
+                                    .push(name.to_string());
                             }
                         }
                     }
@@ -3172,7 +3369,11 @@ impl RustGenerator {
                     self.scan_input_fields(child);
                 }
             }
-            AuraNode::Conditional { then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 for child in then_body {
                     self.scan_input_fields(child);
                 }
@@ -3217,7 +3418,11 @@ impl RustGenerator {
                     self.scan_child_components_inner(child, true);
                 }
             }
-            AuraNode::Conditional { then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 for child in then_body {
                     self.scan_child_components_inner(child, in_loop);
                 }
@@ -3313,7 +3518,12 @@ impl RustGenerator {
                     }
                 }
             },
-            AuraNode::Element { tag, props, children, .. } => {
+            AuraNode::Element {
+                tag,
+                props,
+                children,
+                ..
+            } => {
                 if tag == "text" {
                     if let Some(AuraPropValue::Expr(expr)) = props.get("text") {
                         parts.push(self.ast_expr_to_rust(expr));
@@ -3338,8 +3548,11 @@ impl RustGenerator {
     fn generate_for_loop_cells(&mut self, node: &AuraNode) -> String {
         let col_expr = self.generate_view_tree(node);
         // Strip "View::col().children(" prefix and ").collect::<Vec<_>>()).build()" suffix
-        if col_expr.starts_with("View::col().children(") && col_expr.ends_with(".collect::<Vec<_>>()).build()") {
-            let inner = &col_expr["View::col().children(".len()..col_expr.len() - ".collect::<Vec<_>>()).build()".len()];
+        if col_expr.starts_with("View::col().children(")
+            && col_expr.ends_with(".collect::<Vec<_>>()).build()")
+        {
+            let inner = &col_expr["View::col().children(".len()
+                ..col_expr.len() - ".collect::<Vec<_>>()).build()".len()];
             inner.to_string()
         } else {
             col_expr
@@ -3382,7 +3595,8 @@ impl RustGenerator {
                                 shortcut: Option<String>,
                                 prefix_expr: String,
                                 enabled_off: bool,
-                                handler: Option<String>| -> String {
+                                handler: Option<String>|
+         -> String {
             let icon_pua = icon
                 .map(|i| format!("\\u{{EE01}}{i}\\u{{EE02}}"))
                 .unwrap_or_default();
@@ -3406,9 +3620,16 @@ impl RustGenerator {
         };
         let mut code = String::new();
         for (item_idx, item) in nodes.iter().enumerate() {
-            let crate::aura::AuraNode::Element { tag: itag, props: iprops, events: ievents, children: ikids, .. } =
-                item
-            else { continue };
+            let crate::aura::AuraNode::Element {
+                tag: itag,
+                props: iprops,
+                events: ievents,
+                children: ikids,
+                ..
+            } = item
+            else {
+                continue;
+            };
             let itag = itag.replace('_', "-");
             match itag.as_str() {
                 "menubar-separator" => {
@@ -3447,9 +3668,8 @@ impl RustGenerator {
                         iprops.get("disabled"),
                         Some(AuraPropValue::Expr(crate::ast::Expr::Bool(true)))
                     );
-                    let child_expr = emit_item_button(
-                        &title, icon, shortcut, prefix_expr, enabled_off, handler,
-                    );
+                    let child_expr =
+                        emit_item_button(&title, icon, shortcut, prefix_expr, enabled_off, handler);
                     code = format!("{code}.child({child_expr})");
                 }
                 // PLAN-695 T-07: label / 独立 shortcut——muted 静态文本。
@@ -3477,8 +3697,11 @@ impl RustGenerator {
                         _ => "String::new()".to_string(),
                     };
                     let children_code = self.a2r_menubar_panel_children(
-                        &ikids.iter().collect::<Vec<_>>(), msg_name, &group_expr,
-                        sub_key_prefix, depth,
+                        &ikids.iter().collect::<Vec<_>>(),
+                        msg_name,
+                        &group_expr,
+                        sub_key_prefix,
+                        depth,
                     );
                     code = format!(
                         "{code}.child(View::col(){children_code}.with_style(auto_lang::ui::style::Style::parse(\"w-full\").unwrap_or_default()).build())"
@@ -3507,9 +3730,8 @@ impl RustGenerator {
                         iprops.get("disabled"),
                         Some(AuraPropValue::Expr(crate::ast::Expr::Bool(true)))
                     );
-                    let child_expr = emit_item_button(
-                        &title, icon, shortcut, prefix_expr, enabled_off, handler,
-                    );
+                    let child_expr =
+                        emit_item_button(&title, icon, shortcut, prefix_expr, enabled_off, handler);
                     code = format!("{code}.child({child_expr})");
                 }
                 // PLAN-695 T-06/T-11: submenu——trigger（标签纯文本）+ 内联
@@ -3521,7 +3743,13 @@ impl RustGenerator {
                     let mut sub_title = String::new();
                     let mut sub_content: Vec<&AuraNode> = Vec::new();
                     for sk in ikids {
-                        if let crate::aura::AuraNode::Element { tag: stag, props: sprops, children: skids, .. } = sk {
+                        if let crate::aura::AuraNode::Element {
+                            tag: stag,
+                            props: sprops,
+                            children: skids,
+                            ..
+                        } = sk
+                        {
                             match stag.replace('_', "-").as_str() {
                                 "menubar-sub-trigger" => {
                                     sub_title = str_lit(sprops.get("text"))
@@ -3554,8 +3782,11 @@ impl RustGenerator {
                 // PLAN-695 T-07: 语义分组容器——col 透传。
                 "menubar-group" => {
                     let children_code = self.a2r_menubar_panel_children(
-                        &ikids.iter().collect::<Vec<_>>(), msg_name, radio_group_expr,
-                        sub_key_prefix, depth,
+                        &ikids.iter().collect::<Vec<_>>(),
+                        msg_name,
+                        radio_group_expr,
+                        sub_key_prefix,
+                        depth,
                     );
                     code = format!(
                         "{code}.child(View::col(){children_code}.with_style(auto_lang::ui::style::Style::parse(\"w-full\").unwrap_or_default()).build())"
@@ -3569,7 +3800,13 @@ impl RustGenerator {
 
     fn generate_view_tree(&mut self, node: &AuraNode) -> String {
         match node {
-            AuraNode::Element { tag, props, events, children, .. } => {
+            AuraNode::Element {
+                tag,
+                props,
+                events,
+                children,
+                ..
+            } => {
                 // PLAN-571: button 注入 variant/size preset（单源 ui::style::variants，
                 // 与 VM 臂同表）；preset 前置、user class 后置（后类胜，与 VM 臂同语义）。
                 let props = self.with_button_preset(tag, props);
@@ -3587,14 +3824,16 @@ impl RustGenerator {
                 // 既有原语 on_double_click，Plan 496 M5，三消费端零涟漪）。
                 // 非 button tag 的 ondblclick 维持事件流（拒绝门响亮拒——I1）。
                 let dbl_event: Option<&AuraEvent> = if tag == "button" {
-                    events.iter()
+                    events
+                        .iter()
                         .find(|(e, _)| e.split('.').next() == Some("ondblclick"))
                         .map(|(_, h)| h)
                 } else {
                     None
                 };
                 let events_sorted: Vec<(&String, &AuraEvent)> = {
-                    let mut v: Vec<(&String, &AuraEvent)> = events.iter()
+                    let mut v: Vec<(&String, &AuraEvent)> = events
+                        .iter()
                         .filter(|(e, _)| {
                             !(tag == "button" && e.split('.').next() == Some("ondblclick"))
                         })
@@ -3642,8 +3881,16 @@ impl RustGenerator {
                         } else {
                             content_expr
                         };
-                        let style_str = props.get("style").or_else(|| props.get("class"))
-                            .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        let style_str = props
+                            .get("style")
+                            .or_else(|| props.get("class"))
+                            .and_then(|v| {
+                                if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                    Some(s.to_string())
+                                } else {
+                                    None
+                                }
+                            })
                             .unwrap_or_default();
                         return format!(
                             "View::col().style(\"{}\").child(View::text_styled({}, \"text-sm text-foreground whitespace-pre-wrap\")).build()",
@@ -3658,14 +3905,18 @@ impl RustGenerator {
                 // callout 的 kind 为字面量时静态选样式;动态表达式则发射 match(全臂
                 // 覆盖,未知值落 zinc 档)——生成代码保持纯表达式形态。
                 if tag == "heading" {
-                    let content_expr = props.get("text").or_else(|| props.get("content"))
+                    let content_expr = props
+                        .get("text")
+                        .or_else(|| props.get("content"))
                         .map(|v| self.autodown_panel_prop_expr(v))
                         .unwrap_or_else(|| "\"\".to_string()".to_string());
                     // level: Int 或可 parse 的 Str 字面量 → 静态选样式(grid 特例
                     // 同款 parse);其他表达式 → 发射全臂 match(纯表达式形态)。
                     let level_static = props.get("level").and_then(|v| match v {
                         AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n),
-                        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.trim().parse::<i32>().ok(),
+                        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                            s.trim().parse::<i32>().ok()
+                        }
                         _ => None,
                     });
                     let style_expr = if let Some(n) = level_static {
@@ -3684,9 +3935,12 @@ impl RustGenerator {
                     return format!("View::text_styled({}, {})", content_expr, style_expr);
                 }
                 if tag == "quote" || tag == "blockquote" {
-                    let inner = self.autodown_panel_children_col(children)
+                    let inner = self
+                        .autodown_panel_children_col(children)
                         .unwrap_or_else(|| {
-                            props.get("text").or_else(|| props.get("content"))
+                            props
+                                .get("text")
+                                .or_else(|| props.get("content"))
                                 .map(|v| self.autodown_panel_prop_expr(v))
                                 .map(|e| format!("View::text_styled({}, \"text-sm\")", e))
                                 .unwrap_or_else(|| "View::text(\"\".to_string())".to_string())
@@ -3697,15 +3951,35 @@ impl RustGenerator {
                     );
                 }
                 if tag == "callout" {
-                    let kind_static = props.get("kind")
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None });
+                    let kind_static = props.get("kind").and_then(|v| {
+                        if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                            Some(s.to_string())
+                        } else {
+                            None
+                        }
+                    });
                     // (容器 tint, 标题样式) —— 与 VM 侧面板臂同表。
                     let tint_of = |k: &str| match k {
-                        "tip" | "success" => ("border-emerald-500/40 bg-emerald-500/10", "text-sm font-medium text-emerald-400"),
-                        "warning" | "warn" => ("border-amber-500/40 bg-amber-500/10", "text-sm font-medium text-amber-400"),
-                        "danger" | "error" | "caution" => ("border-red-500/40 bg-red-500/10", "text-sm font-medium text-red-400"),
-                        "note" | "info" => ("border-blue-500/40 bg-blue-500/10", "text-sm font-medium text-blue-400"),
-                        _ => ("border-zinc-500/40 bg-zinc-500/10", "text-sm font-medium text-zinc-400"),
+                        "tip" | "success" => (
+                            "border-emerald-500/40 bg-emerald-500/10",
+                            "text-sm font-medium text-emerald-400",
+                        ),
+                        "warning" | "warn" => (
+                            "border-amber-500/40 bg-amber-500/10",
+                            "text-sm font-medium text-amber-400",
+                        ),
+                        "danger" | "error" | "caution" => (
+                            "border-red-500/40 bg-red-500/10",
+                            "text-sm font-medium text-red-400",
+                        ),
+                        "note" | "info" => (
+                            "border-blue-500/40 bg-blue-500/10",
+                            "text-sm font-medium text-blue-400",
+                        ),
+                        _ => (
+                            "border-zinc-500/40 bg-zinc-500/10",
+                            "text-sm font-medium text-zinc-400",
+                        ),
                     };
                     let (tint_expr, title_style) = match (&kind_static, props.get("kind")) {
                         (Some(k), _) => (format!("\"{}\"", tint_of(k).0), tint_of(k).1.to_string()),
@@ -3723,8 +3997,15 @@ impl RustGenerator {
                     let mut col = "View::col()".to_string();
                     if let Some(AuraPropValue::Expr(expr)) = props.get("title") {
                         let title_expr = self.ast_expr_to_rust(expr);
-                        let title_expr = if title_expr.starts_with("self.") { format!("{}.clone()", title_expr) } else { title_expr };
-                        col = format!("{}.child(View::text_styled({}, \"{}\"))", col, title_expr, title_style);
+                        let title_expr = if title_expr.starts_with("self.") {
+                            format!("{}.clone()", title_expr)
+                        } else {
+                            title_expr
+                        };
+                        col = format!(
+                            "{}.child(View::text_styled({}, \"{}\"))",
+                            col, title_expr, title_style
+                        );
                     }
                     for c in children {
                         col = format!("{}.child({})", col, self.generate_view_tree(c));
@@ -3735,12 +4016,17 @@ impl RustGenerator {
                     );
                 }
                 if tag == "details" {
-                    let summary_expr = props.get("summary")
+                    let summary_expr = props
+                        .get("summary")
                         .map(|v| self.autodown_panel_prop_expr(v))
                         .unwrap_or_else(|| "\"Details\".to_string()".to_string());
-                    let mut item = format!("auto_lang::ui::view::AccordionItem::new({})", summary_expr);
+                    let mut item =
+                        format!("auto_lang::ui::view::AccordionItem::new({})", summary_expr);
                     if !children.is_empty() {
-                        let kids: Vec<String> = children.iter().map(|c| self.generate_view_tree(c)).collect();
+                        let kids: Vec<String> = children
+                            .iter()
+                            .map(|c| self.generate_view_tree(c))
+                            .collect();
                         item = format!("{}.with_children(vec![{}])", item, kids.join(", "));
                     }
                     item = format!("{}.with_expanded(true)", item);
@@ -3749,7 +4035,9 @@ impl RustGenerator {
                 // 注册位面板(消费方注册渲染器,plan 017 待澄清 #2):iced 侧降级为
                 // 可见的源码/引用文本,避免内容静默丢弃。tag 族与 VM 侧一致。
                 if tag == "math_block" || tag == "mathblock" || tag == "math-block" {
-                    let source = props.get("source").map(|v| self.autodown_panel_prop_expr(v))
+                    let source = props
+                        .get("source")
+                        .map(|v| self.autodown_panel_prop_expr(v))
                         .unwrap_or_else(|| "\"\".to_string()".to_string());
                     return format!(
                         "View::container(View::text_styled({}, \"font-mono text-sm\")).style(\"rounded-lg border bg-card p-4 w-full\").build()",
@@ -3757,7 +4045,9 @@ impl RustGenerator {
                     );
                 }
                 if tag == "query_block" || tag == "queryblock" || tag == "query-block" {
-                    let query = props.get("query").map(|v| self.autodown_panel_prop_expr(v))
+                    let query = props
+                        .get("query")
+                        .map(|v| self.autodown_panel_prop_expr(v))
                         .unwrap_or_else(|| "\"\".to_string()".to_string());
                     return format!(
                         "View::container(View::text_styled({}, \"font-mono text-xs text-muted-foreground\")).style(\"rounded-lg border p-3 w-full\").build()",
@@ -3765,7 +4055,9 @@ impl RustGenerator {
                     );
                 }
                 if tag == "embed_block" || tag == "embedblock" || tag == "embed-block" {
-                    let target = props.get("target").map(|v| self.autodown_panel_prop_expr(v))
+                    let target = props
+                        .get("target")
+                        .map(|v| self.autodown_panel_prop_expr(v))
                         .unwrap_or_else(|| "\"\".to_string()".to_string());
                     return format!(
                         "View::container(View::text_styled(format!(\"↪ {{}}\", {}), \"text-sm text-muted-foreground\")).style(\"rounded-lg border bg-muted p-3 w-full\").build()",
@@ -3849,20 +4141,14 @@ impl RustGenerator {
                             for c in children {
                                 b = format!("{}.child({})", b, self.generate_view_tree(c));
                             }
-                            return format!(
-                                "{}.style(\"flex flex-col gap-2\").build()",
-                                b
-                            );
+                            return format!("{}.style(\"flex flex-col gap-2\").build()", b);
                         }
                         "footer" => {
                             let mut b = "View::row()".to_string();
                             for c in children {
                                 b = format!("{}.child({})", b, self.generate_view_tree(c));
                             }
-                            return format!(
-                                "{}.style(\"flex justify-end gap-2\").build()",
-                                b
-                            );
+                            return format!("{}.style(\"flex justify-end gap-2\").build()", b);
                         }
                         "item" => {
                             // PLAN-533 T7: dropdown-menu-item——有 onclick
@@ -3872,7 +4158,9 @@ impl RustGenerator {
                             let onclick = ["onclick", "onClick", "on_click"]
                                 .iter()
                                 .find_map(|k| events.get(*k))
-                                .map(|h| self.handler_to_rust_closure_with_params(&h.handler, &h.params));
+                                .map(|h| {
+                                    self.handler_to_rust_closure_with_params(&h.handler, &h.params)
+                                });
                             return match onclick {
                                 Some(cl) => format!(
                                     "View::button(\"{}\").style(\"{}\").on_click({}).build()",
@@ -3892,7 +4180,8 @@ impl RustGenerator {
                             );
                         }
                         "separator" => {
-                            return "View::col().style(\"w-full h-px bg-border my-1\").build()".to_string();
+                            return "View::col().style(\"w-full h-px bg-border my-1\").build()"
+                                .to_string();
                         }
                         "cancel" | "close" => {
                             return self.generate_modal_button(
@@ -3938,26 +4227,30 @@ impl RustGenerator {
                         format!("{col}.build()")
                     };
                     let ev = |names: &[&str]| -> Option<String> {
-                        events.iter().find(|(k, _)| {
-                            let base = k.split('.').next().unwrap_or(k);
-                            names.contains(&base)
-                        }).map(|(_, h)| {
-                            format!(
-                                "Some({})",
-                                self.handler_to_rust_direct_msg(&h.handler, &h.params)
-                            )
-                        })
+                        events
+                            .iter()
+                            .find(|(k, _)| {
+                                let base = k.split('.').next().unwrap_or(k);
+                                names.contains(&base)
+                            })
+                            .map(|(_, h)| {
+                                format!(
+                                    "Some({})",
+                                    self.handler_to_rust_direct_msg(&h.handler, &h.params)
+                                )
+                            })
                     };
-                    let user_style = props
-                        .get("style")
-                        .or_else(|| props.get("class"))
-                        .and_then(|v| {
-                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
-                                Some(s.to_string())
-                            } else {
-                                None
-                            }
-                        });
+                    let user_style =
+                        props
+                            .get("style")
+                            .or_else(|| props.get("class"))
+                            .and_then(|v| {
+                                if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                    Some(s.to_string())
+                                } else {
+                                    None
+                                }
+                            });
                     let style_expr = match user_style {
                         Some(s) => {
                             format!("auto_lang::ui::style::Style::parse(\"{s}\").ok()")
@@ -4053,7 +4346,9 @@ impl RustGenerator {
                     let cols_static: Option<usize> = cols_prop
                         .and_then(|v| match v {
                             AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as usize),
-                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.trim().parse::<usize>().ok(),
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                                s.trim().parse::<usize>().ok()
+                            }
                             _ => None,
                         })
                         .map(|c| c.max(1));
@@ -4061,33 +4356,54 @@ impl RustGenerator {
                         Some(c) => c.to_string(),
                         None => cols_prop
                             .and_then(|v| match v {
-                                AuraPropValue::Expr(e @ crate::ast::Expr::Dot(..)) => Some(
-                                    format!("({}) as usize", self.ast_expr_to_rust(e).replace("self..", "self.")),
-                                ),
+                                AuraPropValue::Expr(e @ crate::ast::Expr::Dot(..)) => {
+                                    Some(format!(
+                                        "({}) as usize",
+                                        self.ast_expr_to_rust(e).replace("self..", "self.")
+                                    ))
+                                }
                                 AuraPropValue::Expr(crate::ast::Expr::Ident(name))
-                                    if name.as_str().starts_with('.') => Some(
-                                    format!("({}) as usize", self.ast_expr_to_rust(&crate::ast::Expr::Ident(name.clone())).replace("self..", "self.")),
-                                ),
+                                    if name.as_str().starts_with('.') =>
+                                {
+                                    Some(format!(
+                                        "({}) as usize",
+                                        self.ast_expr_to_rust(&crate::ast::Expr::Ident(
+                                            name.clone()
+                                        ))
+                                        .replace("self..", "self.")
+                                    ))
+                                }
                                 _ => None,
                             })
                             .unwrap_or_else(|| "1".to_string()),
                     };
-                    let gap = props.get("gap")
+                    let gap = props
+                        .get("gap")
                         .and_then(|v| match v {
                             AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as u16),
-                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => s.trim().parse::<u16>().ok(),
+                            AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                                s.trim().parse::<u16>().ok()
+                            }
                             _ => None,
                         })
                         .unwrap_or(0);
-                    let style_str = props.get("style").or_else(|| props.get("class"))
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
-                            Some(s.to_string())
-                        } else { None })
+                    let style_str = props
+                        .get("style")
+                        .or_else(|| props.get("class"))
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_default();
 
                     let mut g = "View::grid()".to_string();
                     g = format!("{}.cols({})", g, cols);
-                    if gap > 0 { g = format!("{}.spacing({})", g, gap); }
+                    if gap > 0 {
+                        g = format!("{}.spacing({})", g, gap);
+                    }
                     for c in children {
                         // Plan 407: for grid children that are ForLoops, use
                         // .children() (bulk add) instead of .child() (single).
@@ -4112,7 +4428,6 @@ impl RustGenerator {
                     return format!("{}.build()", g);
                 }
 
-
                 // PLAN-013 T3: terminal 臂——View::Terminal 真身组件(props-feed
                 // 形态甲)直达发射。key 为状态存储键;cols/rows 字面量或 .field
                 // 绑定;lines 为 Vec<String> 表达式(识别 .field → self.field.clone())。
@@ -4125,7 +4440,9 @@ impl RustGenerator {
                     // 原样;Ident → self.field 克隆(lines 臂同款);其余回落
                     // "main"。
                     let key_expr = match props.get("key") {
-                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => format!("\"{s}\".to_string()"),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                            format!("\"{s}\".to_string()")
+                        }
                         Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => {
                             format!("self.{}.clone()", id.as_str())
                         }
@@ -4143,8 +4460,12 @@ impl RustGenerator {
                     };
                     let geom = |name: &str, dft: u16| -> String {
                         match props.get(name) {
-                            Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => format!("{n}u16"),
-                            Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{} as u16", id.as_str()),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => {
+                                format!("{n}u16")
+                            }
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => {
+                                format!("self.{} as u16", id.as_str())
+                            }
                             // `.field` 实际解析为 FieldAccess(lines 同款回退);
                             // 只有 self. 前缀的求值可信,其余落默认。
                             Some(AuraPropValue::Expr(expr)) => {
@@ -4159,7 +4480,9 @@ impl RustGenerator {
                         }
                     };
                     let lines = match props.get("lines") {
-                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{}.clone()", id.as_str()),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => {
+                            format!("self.{}.clone()", id.as_str())
+                        }
                         Some(AuraPropValue::Expr(expr)) => {
                             let e = self.ast_expr_to_rust(expr);
                             if e.starts_with("self.") {
@@ -4173,7 +4496,9 @@ impl RustGenerator {
                     // PLAN-019:scheme 同款——.field FieldAccess 绑定支持
                     // (仅认 Ident 时动态绑定静默回落 0)。
                     let scroll = match props.get("scroll_offset") {
-                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{} as u16", id.as_str()),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => {
+                            format!("self.{} as u16", id.as_str())
+                        }
                         Some(AuraPropValue::Expr(expr)) => {
                             let e = self.ast_expr_to_rust(expr);
                             if e.starts_with("self.") {
@@ -4187,8 +4512,12 @@ impl RustGenerator {
                     // 014 光标格:字面量或 .field 绑定(缺省 0,0 = 占位)。
                     let cursor = |name: &str| -> String {
                         match props.get(name) {
-                            Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => format!("{n}u16"),
-                            Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{} as u16", id.as_str()),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => {
+                                format!("{n}u16")
+                            }
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => {
+                                format!("self.{} as u16", id.as_str())
+                            }
                             Some(AuraPropValue::Expr(expr)) => {
                                 let e = self.ast_expr_to_rust(expr);
                                 if e.starts_with("self.") {
@@ -4204,7 +4533,9 @@ impl RustGenerator {
                     // 缺省 0 = 未喂入占位)。
                     let history = match props.get("history") {
                         Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) => format!("{n}i32"),
-                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => format!("self.{} as i32", id.as_str()),
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Ident(id))) => {
+                            format!("self.{} as i32", id.as_str())
+                        }
                         Some(AuraPropValue::Expr(expr)) => {
                             let e = self.ast_expr_to_rust(expr);
                             if e.starts_with("self.") {
@@ -4240,7 +4571,10 @@ impl RustGenerator {
                         .iter()
                         .find_map(|k| events.get(*k))
                         .map(|h| {
-                            format!("Some({})", self.handler_to_rust_direct_msg(&h.handler, &h.params))
+                            format!(
+                                "Some({})",
+                                self.handler_to_rust_direct_msg(&h.handler, &h.params)
+                            )
                         })
                         .unwrap_or_else(|| "None".to_string());
                     // PLAN-018 D10:scheme prop(Int 字面量或 .field 绑定;
@@ -4271,7 +4605,10 @@ impl RustGenerator {
                             let norm = rest
                                 .split('.')
                                 .filter(|seg| {
-                                    !matches!(*seg, "prevent" | "stop" | "exact" | "capture" | "self" | "once")
+                                    !matches!(
+                                        *seg,
+                                        "prevent" | "stop" | "exact" | "capture" | "self" | "once"
+                                    )
                                 })
                                 .collect::<Vec<_>>()
                                 .join(".")
@@ -4297,17 +4634,19 @@ impl RustGenerator {
                 // For text elements with a "text" prop and no extra styling/events,
                 // emit View::text("content") or View::text(format!(...)) directly.
                 if tag == "text" && children.is_empty() && events.is_empty() {
-                    let style_count = props.keys()
-                        .filter(|k| *k != "text")
-                        .count();
+                    let style_count = props.keys().filter(|k| *k != "text").count();
                     if style_count == 0 {
-                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("text") {
+                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) =
+                            props.get("text")
+                        {
                             if s.contains("${") {
                                 return format!("View::text({})", self.interpolate_str(s));
                             }
                             return format!("View::text(\"{}\".to_string())", s);
                         }
-                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("text") {
+                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) =
+                            props.get("text")
+                        {
                             let name_str = name.as_str();
                             if self.is_loop_var(name_str) {
                                 return format!("View::text(format!(\"{{}}\", {}))", name_str);
@@ -4316,30 +4655,61 @@ impl RustGenerator {
                         }
                     } else {
                         // Text with styling — collect classes and use View::text_styled
-                        let class_str = props.get("style")
+                        let class_str = props
+                            .get("style")
                             .or_else(|| props.get("class"))
-                            .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                            .and_then(|v| {
+                                if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                    Some(s.to_string())
+                                } else {
+                                    None
+                                }
+                            })
                             .unwrap_or_default();
-                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("text") {
+                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) =
+                            props.get("text")
+                        {
                             let name_str = name.as_str();
                             if self.is_loop_var(name_str) {
-                                return format!("View::text_styled(format!(\"{{}}\", {}), \"{}\")", name_str, class_str);
+                                return format!(
+                                    "View::text_styled(format!(\"{{}}\", {}), \"{}\")",
+                                    name_str, class_str
+                                );
                             }
-                            return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name_str, class_str);
+                            return format!(
+                                "View::text_styled(format!(\"{{}}\", self.{}), \"{}\")",
+                                name_str, class_str
+                            );
                         }
-                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("text") {
+                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) =
+                            props.get("text")
+                        {
                             if s.contains("${") {
-                                return format!("View::text_styled({}, \"{}\")", self.interpolate_str(s), class_str);
+                                return format!(
+                                    "View::text_styled({}, \"{}\")",
+                                    self.interpolate_str(s),
+                                    class_str
+                                );
                             }
-                            return format!("View::text_styled(\"{}\".to_string(), \"{}\")", s, class_str);
+                            return format!(
+                                "View::text_styled(\"{}\".to_string(), \"{}\")",
+                                s, class_str
+                            );
                         }
                     }
                 }
 
                 // Special handling for input elements — View::input(placeholder).value(...).on_change(...)
                 if tag == "input" {
-                    let placeholder = props.get("placeholder")
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                    let placeholder = props
+                        .get("placeholder")
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_default();
 
                     let mut builder = format!("View::input(\"{}\")", placeholder);
@@ -4371,7 +4741,9 @@ impl RustGenerator {
                     });
                     if let Some(name) = &value_field {
                         builder = format!("{}.value(format!(\"{{}}\", self.{}))", builder, name);
-                    } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("value") {
+                    } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) =
+                        props.get("value")
+                    {
                         builder = format!("{}.value(\"{}\".to_string())", builder, s);
                     } else if let Some(AuraPropValue::Expr(e)) = props.get("value") {
                         // PLAN-039 T-03④：多级点链/复杂表达式值面通用求值
@@ -4393,7 +4765,9 @@ impl RustGenerator {
 
                     // Other props (class, style, width — skip placeholder, value, type)
                     for (key, value) in props_sorted.clone() {
-                        if key == "placeholder" || key == "value" || key == "type" { continue; }
+                        if key == "placeholder" || key == "value" || key == "type" {
+                            continue;
+                        }
                         builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
 
@@ -4407,24 +4781,43 @@ impl RustGenerator {
                                 // Plan 374: For variants with String payload, pass a default
                                 // value — the handler reads actual text via last_input_text().
                                 // This keeps the builder's type parameter as M (not fn pointer).
-                                let has_string_payload = self.message_variants.iter()
+                                let has_string_payload = self
+                                    .message_variants
+                                    .iter()
                                     .find(|v| v.name == variant)
-                                    .map(|v| v.payload.first().map_or(false, |t| matches!(t, crate::ast::Type::StrOwned | crate::ast::Type::StrSlice | crate::ast::Type::StrFixed(_))))
+                                    .map(|v| {
+                                        v.payload.first().map_or(false, |t| {
+                                            matches!(
+                                                t,
+                                                crate::ast::Type::StrOwned
+                                                    | crate::ast::Type::StrSlice
+                                                    | crate::ast::Type::StrFixed(_)
+                                            )
+                                        })
+                                    })
                                     .unwrap_or(false);
                                 if has_string_payload {
-                                    builder = format!("{}.on_change({}::{}(\"\".to_string()))", builder, msg_name, variant);
+                                    builder = format!(
+                                        "{}.on_change({}::{}(\"\".to_string()))",
+                                        builder, msg_name, variant
+                                    );
                                 } else {
-                                    builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
+                                    builder =
+                                        format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 }
                                 // Record event→field mapping for handler generation
                                 if let Some(name) = &value_field {
-                                    self.input_fields.entry(variant).or_default().push(name.clone());
+                                    self.input_fields
+                                        .entry(variant)
+                                        .or_default()
+                                        .push(name.clone());
                                 }
                             }
                             "onenter" | "onEnter" | "onsubmit" | "onSubmit" => {
                                 let variant = self.extract_variant_name(&handler.handler);
                                 let msg_name = self.current_msg_name();
-                                builder = format!("{}.on_submit({}::{})", builder, msg_name, variant);
+                                builder =
+                                    format!("{}.on_submit({}::{})", builder, msg_name, variant);
                             }
                             _ => {}
                         }
@@ -4435,8 +4828,15 @@ impl RustGenerator {
 
                 // Special handling for textarea elements — View::textarea(placeholder).value(...).on_change(...)
                 if tag == "textarea" {
-                    let placeholder = props.get("placeholder")
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                    let placeholder = props
+                        .get("placeholder")
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_default();
 
                     let mut builder = format!("View::textarea(\"{}\")", placeholder);
@@ -4457,8 +4857,7 @@ impl RustGenerator {
                         }
                         Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => {
                             let f = name.as_str().trim_start_matches('.');
-                            (!f.is_empty())
-                                .then(|| format!("format!(\"{{}}\", self.{})", f))
+                            (!f.is_empty()).then(|| format!("format!(\"{{}}\", self.{})", f))
                         }
                         Some(AuraPropValue::Expr(e)) => Some(format!(
                             "format!(\"{{}}\", {})",
@@ -4472,7 +4871,9 @@ impl RustGenerator {
 
                     // Other props (skip placeholder, value)
                     for (key, value) in props_sorted.clone() {
-                        if key == "placeholder" || key == "value" { continue; }
+                        if key == "placeholder" || key == "value" {
+                            continue;
+                        }
                         builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
 
@@ -4485,17 +4886,37 @@ impl RustGenerator {
                                 // Plan 374: For variants with String payload, pass a default
                                 // value — the handler reads actual text via last_input_text().
                                 // This keeps the builder's type parameter as M (not fn pointer).
-                                let has_string_payload = self.message_variants.iter()
+                                let has_string_payload = self
+                                    .message_variants
+                                    .iter()
                                     .find(|v| v.name == variant)
-                                    .map(|v| v.payload.first().map_or(false, |t| matches!(t, crate::ast::Type::StrOwned | crate::ast::Type::StrSlice | crate::ast::Type::StrFixed(_))))
+                                    .map(|v| {
+                                        v.payload.first().map_or(false, |t| {
+                                            matches!(
+                                                t,
+                                                crate::ast::Type::StrOwned
+                                                    | crate::ast::Type::StrSlice
+                                                    | crate::ast::Type::StrFixed(_)
+                                            )
+                                        })
+                                    })
                                     .unwrap_or(false);
                                 if has_string_payload {
-                                    builder = format!("{}.on_change({}::{}(\"\".to_string()))", builder, msg_name, variant);
+                                    builder = format!(
+                                        "{}.on_change({}::{}(\"\".to_string()))",
+                                        builder, msg_name, variant
+                                    );
                                 } else {
-                                    builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
+                                    builder =
+                                        format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 }
-                                if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
-                                    self.input_fields.entry(variant).or_default().push(name.to_string());
+                                if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) =
+                                    props.get("value")
+                                {
+                                    self.input_fields
+                                        .entry(variant)
+                                        .or_default()
+                                        .push(name.to_string());
                                 }
                             }
                             _ => {}
@@ -4543,10 +4964,14 @@ impl RustGenerator {
                     }
 
                     // Config props.
-                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(lang))) = props.get("lang") {
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(lang))) =
+                        props.get("lang")
+                    {
                         builder = format!("{}.lang(\"{}\")", builder, lang);
                     }
-                    let bool_prop = |props: &std::collections::HashMap<String, AuraPropValue>, name: &str| -> Option<bool> {
+                    let bool_prop = |props: &std::collections::HashMap<String, AuraPropValue>,
+                                     name: &str|
+                     -> Option<bool> {
                         match props.get(name) {
                             Some(AuraPropValue::Expr(crate::ast::Expr::Bool(b))) => Some(*b),
                             _ => None,
@@ -4564,10 +4989,14 @@ impl RustGenerator {
                     if let Some(b) = bool_prop(props, "highlight_current_line") {
                         builder = format!("{}.highlight_current_line({})", builder, b);
                     }
-                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) = props.get("tab_width") {
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Int(n))) =
+                        props.get("tab_width")
+                    {
                         builder = format!("{}.tab_width({})", builder, n);
                     }
-                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Float(f, _))) = props.get("font_size") {
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Float(f, _))) =
+                        props.get("font_size")
+                    {
                         builder = format!("{}.font_size({})", builder, f);
                     }
 
@@ -4575,7 +5004,9 @@ impl RustGenerator {
                     let search_prop = props.get("search");
                     if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(pattern))) = search_prop {
                         builder = format!("{}.search(\"{}\")", builder, pattern);
-                    } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = search_prop {
+                    } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) =
+                        search_prop
+                    {
                         builder = format!("{}.search(self.{}.clone())", builder, name);
                     }
 
@@ -4590,14 +5021,26 @@ impl RustGenerator {
                                 // （原 has_string_payload 特例推广——str/int/
                                 // float/bool 全型；事件真值由 store 臂查询）。
                                 if let Some(args) = self.variant_default_args(&variant) {
-                                    builder = format!("{}.on_change({}::{}({}))", builder, msg_name, variant, args);
+                                    builder = format!(
+                                        "{}.on_change({}::{}({}))",
+                                        builder, msg_name, variant, args
+                                    );
                                 } else {
-                                    builder = format!("{}.on_change({}::{})", builder, msg_name, variant);
+                                    builder =
+                                        format!("{}.on_change({}::{})", builder, msg_name, variant);
                                 }
                                 // Handler reads the text via code_editor_text(key).
-                                self.code_editor_sources.entry(variant.clone()).or_default().push(key_id.clone());
-                                if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = value_prop {
-                                    self.input_fields.entry(variant).or_default().push(name.to_string());
+                                self.code_editor_sources
+                                    .entry(variant.clone())
+                                    .or_default()
+                                    .push(key_id.clone());
+                                if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) =
+                                    value_prop
+                                {
+                                    self.input_fields
+                                        .entry(variant)
+                                        .or_default()
+                                        .push(name.to_string());
                                 }
                             }
                             "oncursor" | "onCursor" => {
@@ -4606,18 +5049,28 @@ impl RustGenerator {
                                 // PLAN-681 T-05：载荷变体以型默认实参构造
                                 // （variant_default_args 注记）。
                                 if let Some(args) = self.variant_default_args(&variant) {
-                                    builder = format!("{}.on_cursor({}::{}({}))", builder, msg_name, variant, args);
+                                    builder = format!(
+                                        "{}.on_cursor({}::{}({}))",
+                                        builder, msg_name, variant, args
+                                    );
                                 } else {
-                                    builder = format!("{}.on_cursor({}::{})", builder, msg_name, variant);
+                                    builder =
+                                        format!("{}.on_cursor({}::{})", builder, msg_name, variant);
                                 }
                             }
                             "oncontextmenu" | "onContextMenu" => {
                                 let variant = self.extract_variant_name(&handler.handler);
                                 let msg_name = self.current_msg_name();
                                 if let Some(args) = self.variant_default_args(&variant) {
-                                    builder = format!("{}.on_context_menu({}::{}({}))", builder, msg_name, variant, args);
+                                    builder = format!(
+                                        "{}.on_context_menu({}::{}({}))",
+                                        builder, msg_name, variant, args
+                                    );
                                 } else {
-                                    builder = format!("{}.on_context_menu({}::{})", builder, msg_name, variant);
+                                    builder = format!(
+                                        "{}.on_context_menu({}::{})",
+                                        builder, msg_name, variant
+                                    );
                                 }
                             }
                             _ => {}
@@ -4640,35 +5093,50 @@ impl RustGenerator {
                     None
                 };
 
-                let text_prop = props.get("text")
-                    .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                let text_prop = props
+                    .get("text")
+                    .and_then(|v| {
+                        if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                            Some(s.to_string())
+                        } else {
+                            None
+                        }
+                    })
                     .or_else(|| {
                         // Fallback: extract literal text from child Text node
                         match &child_text_content {
                             Some(AuraTextContent::Literal(s)) => Some(s.clone()),
-                            Some(AuraTextContent::Interpolated { template, .. }) => Some(template.clone()),
+                            Some(AuraTextContent::Interpolated { template, .. }) => {
+                                Some(template.clone())
+                            }
                             None => None,
                         }
                     });
 
                 // Check if text prop is a state reference (text .name)
-                let text_state_ref = props.get("text")
-                    .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = v { Some(name.clone()) } else { None });
+                let text_state_ref = props.get("text").and_then(|v| {
+                    if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = v {
+                        Some(name.clone())
+                    } else {
+                        None
+                    }
+                });
 
                 // Generate a Rust expression string for the text prop, handling ALL AuraExpr types.
                 // This catches FieldAccess (note.title), Index, and other dynamic expressions
                 // that fall through the Literal/StateRef checks above.
-                let text_rust_expr: Option<String> = if text_prop.is_some() || text_state_ref.is_some() {
-                    None // Already handled by text_prop or text_state_ref
-                } else {
-                    props.get("text").and_then(|v| {
-                        if let AuraPropValue::Expr(expr) = v {
-                            Some(self.ast_expr_to_rust(expr))
-                        } else {
-                            None
-                        }
-                    })
-                };
+                let text_rust_expr: Option<String> =
+                    if text_prop.is_some() || text_state_ref.is_some() {
+                        None // Already handled by text_prop or text_state_ref
+                    } else {
+                        props.get("text").and_then(|v| {
+                            if let AuraPropValue::Expr(expr) = v {
+                                Some(self.ast_expr_to_rust(expr))
+                            } else {
+                                None
+                            }
+                        })
+                    };
 
                 // PLAN-036 T-02：button icon 词汇臂（真编译门首漏——词汇表
                 // 超记、实臂缺位；variant/size 已由 with_button_preset 消费，
@@ -4725,7 +5193,8 @@ impl RustGenerator {
                     if !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
                         builder = format!("{}.on_click(|_| ())", builder);
                     }
-                    return self.wrap_button_double_click(format!("{}.build()", builder), dbl_event);
+                    return self
+                        .wrap_button_double_click(format!("{}.build()", builder), dbl_event);
                 }
 
                 // Handle image element — generate View::image() or View::image_styled()
@@ -4764,9 +5233,16 @@ impl RustGenerator {
                             })
                             .unwrap_or_else(|| "\"\"".to_string()),
                     };
-                    let style_str = props.get("style")
+                    let style_str = props
+                        .get("style")
                         .or_else(|| props.get("class"))
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_default();
                     if style_str.is_empty() {
                         return format!("View::image({})", src);
@@ -4781,7 +5257,10 @@ impl RustGenerator {
                 // Runtime event payloads are appended by the Iced surface;
                 // the typed message variant and declared Aura arguments are
                 // captured here as Option<M> values.
-                if matches!(tag.as_str(), "imagesurface" | "image-surface" | "image_surface" | "ImageSurface") {
+                if matches!(
+                    tag.as_str(),
+                    "imagesurface" | "image-surface" | "image_surface" | "ImageSurface"
+                ) {
                     let expr_for = |key: &str, default: &str| -> String {
                         props
                             .get(key)
@@ -4812,7 +5291,9 @@ impl RustGenerator {
                     let event_expr = |names: &[&str]| -> String {
                         events
                             .iter()
-                            .find(|(name, _)| names.iter().any(|candidate| *candidate == name.as_str()))
+                            .find(|(name, _)| {
+                                names.iter().any(|candidate| *candidate == name.as_str())
+                            })
                             .map(|(_, event)| {
                                 format!(
                                     "Some({})",
@@ -4854,19 +5335,20 @@ impl RustGenerator {
                 // convert_spacer :6813 / convert_avatar :8559 同型）。
                 // 降级纪律：label/src/progress 等关键 prop 不静默丢失
                 // （字面量必达；动态求值面逐臂随注）。
-                let user_style_str = |props: &std::collections::HashMap<String, AuraPropValue>| -> String {
-                    props
-                        .get("style")
-                        .or_else(|| props.get("class"))
-                        .and_then(|v| {
-                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
-                                Some(s.to_string())
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or_default()
-                };
+                let user_style_str =
+                    |props: &std::collections::HashMap<String, AuraPropValue>| -> String {
+                        props
+                            .get("style")
+                            .or_else(|| props.get("class"))
+                            .and_then(|v| {
+                                if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                    Some(s.to_string())
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_default()
+                    };
 
                 // PLAN-027 T-03: 宿主合成件槽位 —— window_thumbnail /
                 // workspace_preview codegen 直发**既有** View 变体（定案
@@ -4878,7 +5360,11 @@ impl RustGenerator {
                 // key prop（wid / ws）字面量或动态表达式；fallback 档
                 // 缺省 app-window；style 直传（None = 缺省）。
                 if tag == "window_thumbnail" || tag == "workspace_preview" {
-                    let key_prop = if tag == "window_thumbnail" { "wid" } else { "ws" };
+                    let key_prop = if tag == "window_thumbnail" {
+                        "wid"
+                    } else {
+                        "ws"
+                    };
                     let key_expr = match props.get(key_prop) {
                         Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
                             format!("\"{s}\".to_string()")
@@ -4899,7 +5385,11 @@ impl RustGenerator {
                         }
                         _ => "String::new()".to_string(),
                     };
-                    let fb_prop = if tag == "window_thumbnail" { "fallback_icon" } else { "fallback" };
+                    let fb_prop = if tag == "window_thumbnail" {
+                        "fallback_icon"
+                    } else {
+                        "fallback"
+                    };
                     let fallback_expr = match props.get(fb_prop) {
                         Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
                             format!("\"{s}\".to_string()")
@@ -4918,7 +5408,10 @@ impl RustGenerator {
                     let style_expr = if user_style.is_empty() {
                         "None".to_string()
                     } else {
-                        format!("auto_lang::ui::style::Style::parse(\"{}\").ok()", user_style)
+                        format!(
+                            "auto_lang::ui::style::Style::parse(\"{}\").ok()",
+                            user_style
+                        )
                     };
                     if tag == "window_thumbnail" {
                         return format!(
@@ -4968,24 +5461,31 @@ impl RustGenerator {
                         .or_else(|| props.get("class"))
                         .and_then(|v| match v {
                             AuraPropValue::Expr(crate::ast::Expr::Str(_)) => None,
-                            AuraPropValue::Expr(e @ crate::ast::Expr::Dot(..)) => Some(
-                                self.ast_expr_to_rust(e).replace("self..", "self."),
-                            ),
+                            AuraPropValue::Expr(e @ crate::ast::Expr::Dot(..)) => {
+                                Some(self.ast_expr_to_rust(e).replace("self..", "self."))
+                            }
                             AuraPropValue::Expr(crate::ast::Expr::Ident(name))
-                                if name.as_str().starts_with('.') => Some(
-                                self.ast_expr_to_rust(&crate::ast::Expr::Ident(name.clone()))
-                                    .replace("self..", "self."),
-                            ),
+                                if name.as_str().starts_with('.') =>
+                            {
+                                Some(
+                                    self.ast_expr_to_rust(&crate::ast::Expr::Ident(name.clone()))
+                                        .replace("self..", "self."),
+                                )
+                            }
                             _ => None,
                         });
                     if let Some(dyn_expr) = dyn_style {
-                        let px: f32 = props.get("size").and_then(|v| match v {
-                            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as f32),
-                            AuraPropValue::Expr(crate::ast::Expr::Float(f, _)) => Some(*f as f32),
-                            _ => None,
-                        })
-                        .filter(|v| *v > 0.0)
-                        .unwrap_or(20.0);
+                        let px: f32 = props
+                            .get("size")
+                            .and_then(|v| match v {
+                                AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as f32),
+                                AuraPropValue::Expr(crate::ast::Expr::Float(f, _)) => {
+                                    Some(*f as f32)
+                                }
+                                _ => None,
+                            })
+                            .filter(|v| *v > 0.0)
+                            .unwrap_or(20.0);
                         return format!(
                             "{{ let __c = format!(\"{{}}\", {dyn_expr}); \
                              let mut __s = __c.clone(); \
@@ -4998,12 +5498,16 @@ impl RustGenerator {
                     let has_w = classes.split_whitespace().any(|t| t.starts_with("w-"));
                     let has_h = classes.split_whitespace().any(|t| t.starts_with("h-"));
                     if !has_w || !has_h {
-                        let px: Option<f32> = props.get("size").and_then(|v| match v {
-                            AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as f32),
-                            AuraPropValue::Expr(crate::ast::Expr::Float(f, _)) => Some(*f as f32),
-                            _ => None,
-                        })
-                        .filter(|v| *v > 0.0);
+                        let px: Option<f32> = props
+                            .get("size")
+                            .and_then(|v| match v {
+                                AuraPropValue::Expr(crate::ast::Expr::Int(n)) => Some(*n as f32),
+                                AuraPropValue::Expr(crate::ast::Expr::Float(f, _)) => {
+                                    Some(*f as f32)
+                                }
+                                _ => None,
+                            })
+                            .filter(|v| *v > 0.0);
                         // 动态 size 求值 not-yet（VM 走 bindings 求值；a2r
                         // 静态发射面暂只认字面量）——缺省档兜底。
                         let d = px.unwrap_or(20.0);
@@ -5035,7 +5539,11 @@ impl RustGenerator {
                         })
                         .unwrap_or(false);
                     let base = if tag == "separator" {
-                        if vertical { "w-px h-6 bg-border" } else { "w-full h-px bg-border" }
+                        if vertical {
+                            "w-px h-6 bg-border"
+                        } else {
+                            "w-full h-px bg-border"
+                        }
                     } else if vertical {
                         "w-px h-6 bg-gray-200"
                     } else {
@@ -5054,11 +5562,10 @@ impl RustGenerator {
                 if tag == "spacer" {
                     let user_style = user_style_str(props);
                     if user_style.is_empty() {
-                        return "View::container(View::Empty).style(\"flex-1\").build()".to_string();
+                        return "View::container(View::Empty).style(\"flex-1\").build()"
+                            .to_string();
                     }
-                    return format!(
-                        "View::container(View::Empty).style(\"{user_style}\").build()"
-                    );
+                    return format!("View::container(View::Empty).style(\"{user_style}\").build()");
                 }
 
                 // avatar → 占位容器（VM convert_avatar 同型：缺省
@@ -5120,7 +5627,8 @@ impl RustGenerator {
                         "destructive" => "bg-destructive text-destructive-foreground",
                         _ => "bg-primary text-primary-foreground",
                     };
-                    let base = "items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium";
+                    let base =
+                        "items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium";
                     let user_style = user_style_str(props);
                     let merged = if user_style.is_empty() {
                         format!("{base} {preset}")
@@ -5184,7 +5692,9 @@ impl RustGenerator {
                     if user_style.is_empty() {
                         return format!("View::container({child_view}).build()");
                     }
-                    return format!("View::container({child_view}).style(\"{user_style}\").build()");
+                    return format!(
+                        "View::container({child_view}).style(\"{user_style}\").build()"
+                    );
                 }
 
                 // scroll → View::scrollable（既有构造器；style 透传）。
@@ -5238,13 +5748,20 @@ impl RustGenerator {
                         } else {
                             format!("self.{}", name)
                         };
-                        return format!("View::text_styled(format!(\"{{}}\", {name_ref}), \"{style_str}\")");
+                        return format!(
+                            "View::text_styled(format!(\"{{}}\", {name_ref}), \"{style_str}\")"
+                        );
                     }
                     if let Some(label) = &text_prop {
                         if label.contains("${") {
-                            return format!("View::text_styled({}, \"{style_str}\")", self.interpolate_str(label));
+                            return format!(
+                                "View::text_styled({}, \"{style_str}\")",
+                                self.interpolate_str(label)
+                            );
                         }
-                        return format!("View::text_styled(\"{label}\".to_string(), \"{style_str}\")");
+                        return format!(
+                            "View::text_styled(\"{label}\".to_string(), \"{style_str}\")"
+                        );
                     }
                     if let Some(text) = &text_rust_expr {
                         let text = if text.starts_with("self.") {
@@ -5259,26 +5776,46 @@ impl RustGenerator {
 
                 // Handle progress — View::progress_bar(value / max)
                 if tag == "progress" {
-                    let value_expr = if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) = props.get("value") {
-                        format!("self.{}", name)
-                    } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("value") {
-                        s.to_string()
-                    } else {
-                        "0".to_string()
-                    };
-                    let max_val = if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("max") {
+                    let value_expr =
+                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) =
+                            props.get("value")
+                        {
+                            format!("self.{}", name)
+                        } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) =
+                            props.get("value")
+                        {
+                            s.to_string()
+                        } else {
+                            "0".to_string()
+                        };
+                    let max_val = if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) =
+                        props.get("max")
+                    {
                         s.to_string()
                     } else {
                         "100".to_string()
                     };
-                    let style_str = props.get("style")
+                    let style_str = props
+                        .get("style")
                         .or_else(|| props.get("class"))
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_default();
                     if style_str.is_empty() {
-                        return format!("View::progress_bar({} as f32 / {} as f32)", value_expr, max_val);
+                        return format!(
+                            "View::progress_bar({} as f32 / {} as f32)",
+                            value_expr, max_val
+                        );
                     } else {
-                        return format!("View::progress_bar_styled({} as f32 / {} as f32, \"{}\")", value_expr, max_val, style_str);
+                        return format!(
+                            "View::progress_bar_styled({} as f32 / {} as f32, \"{}\")",
+                            value_expr, max_val, style_str
+                        );
                     }
                 }
 
@@ -5286,17 +5823,26 @@ impl RustGenerator {
                 // View::checkbox() returns View<M> (enum), not a builder, so we can't chain
                 // .style() / .on_click() / .build(). Use direct struct literal instead.
                 if tag == "checkbox" {
-                    let is_checked = props.get("checked")
+                    let is_checked = props
+                        .get("checked")
                         .or_else(|| props.get("is_checked"))
                         .map(|v| match v {
                             AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => b.to_string(),
-                            AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => format!("self.{}", name),
+                            AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
+                                format!("self.{}", name)
+                            }
                             AuraPropValue::Expr(crate::ast::Expr::Dot(object, field)) => {
                                 let field = field.clone();
                                 let obj_str = match object.as_ref() {
                                     crate::ast::Expr::Ident(name) => {
-                                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
-                                        if self.is_loop_var(resolved) && self.value_loop_vars.contains(resolved) {
+                                        let resolved = if name.starts_with('.') {
+                                            &name[1..]
+                                        } else {
+                                            name.as_str()
+                                        };
+                                        if self.is_loop_var(resolved)
+                                            && self.value_loop_vars.contains(resolved)
+                                        {
                                             resolved.to_string()
                                         } else {
                                             format!("self.{}", resolved)
@@ -5309,33 +5855,56 @@ impl RustGenerator {
                             // PLAN-035 T-11：一般表达式（如 `.__wm_dashboard
                             // == "1"` 比较）走既有 a2r 表达式渲染器——此前
                             // 未知形态静默 false（勾选态恒错的根因）。
-                            AuraPropValue::Expr(other) => self
-                                .ast_expr_to_rust_with_value_params(other, &[]),
+                            AuraPropValue::Expr(other) => {
+                                self.ast_expr_to_rust_with_value_params(other, &[])
+                            }
                             _ => "false".to_string(),
                         })
                         .unwrap_or_else(|| "false".to_string());
-                    let label = props.get("label")
+                    let label = props
+                        .get("label")
                         .or_else(|| props.get("text"))
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_default();
 
                     // Parse class/style into Style
-                    let class_str = props.get("class")
+                    let class_str = props
+                        .get("class")
                         .or_else(|| props.get("style"))
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_default();
                     let style_expr = if class_str.is_empty() {
                         "None".to_string()
                     } else {
-                        format!("Some(auto_lang::ui::style::Style::parse(\"{}\").unwrap())", class_str)
+                        format!(
+                            "Some(auto_lang::ui::style::Style::parse(\"{}\").unwrap())",
+                            class_str
+                        )
                     };
 
                     // Build on_toggle handler
                     // NOTE: Checkbox.on_toggle is Option<M>, NOT a closure.
                     // Must emit the message value directly, e.g. Some(AppMsg::ToggleTodo(42)),
                     // not Some(|_| AppMsg::ToggleTodo(42)).
-                    let on_toggle = events.iter()
-                        .find(|(e, _)| e.as_str() == "onclick" || e.as_str() == "onClick" || e.as_str() == "on_click")
+                    let on_toggle = events
+                        .iter()
+                        .find(|(e, _)| {
+                            e.as_str() == "onclick"
+                                || e.as_str() == "onClick"
+                                || e.as_str() == "on_click"
+                        })
                         .map(|(_, handler)| {
                             self.handler_to_rust_direct_msg(&handler.handler, &handler.params)
                         });
@@ -5363,8 +5932,12 @@ impl RustGenerator {
                         // f32 实参拒收整数字面量（Rust 整型字面量不向浮点
                         // 收敛）——恒带小数点输出。
                         match v {
-                            Some(AuraPropValue::Expr(crate::ast::Expr::Float(f, _))) => format!("{f:.1}"),
-                            Some(AuraPropValue::Expr(crate::ast::Expr::Double(f, _))) => format!("{f:.1}"),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Float(f, _))) => {
+                                format!("{f:.1}")
+                            }
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Double(f, _))) => {
+                                format!("{f:.1}")
+                            }
                             Some(AuraPropValue::Expr(crate::ast::Expr::Int(i))) => format!("{i}.0"),
                             Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
                             _ => format!("{default:.1}"),
@@ -5376,7 +5949,9 @@ impl RustGenerator {
                     // ——View::slider 载荷恒 f32）；字面量直用。
                     let value_expr = match props.get("value") {
                         Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => {
-                            if self.state_types.get(name.as_str()).map(|s| s.as_str()) == Some("f64") {
+                            if self.state_types.get(name.as_str()).map(|s| s.as_str())
+                                == Some("f64")
+                            {
                                 format!("self.{name} as f32")
                             } else {
                                 format!("self.{name}")
@@ -5403,7 +5978,9 @@ impl RustGenerator {
                         builder = format!("{builder}.step({})", numeric(Some(st), 0.0));
                     }
                     for (key, value) in props_sorted.clone() {
-                        if key == "min" || key == "max" || key == "value" || key == "step" { continue; }
+                        if key == "min" || key == "max" || key == "value" || key == "step" {
+                            continue;
+                        }
                         builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
                     return format!("{builder}.build()");
@@ -5421,7 +5998,9 @@ impl RustGenerator {
                             let elems: Vec<String> = items
                                 .iter()
                                 .filter_map(|e| match e {
-                                    crate::ast::Expr::Str(s) => Some(format!("\"{s}\".to_string()")),
+                                    crate::ast::Expr::Str(s) => {
+                                        Some(format!("\"{s}\".to_string()"))
+                                    }
                                     _ => None,
                                 })
                                 .collect();
@@ -5430,7 +6009,9 @@ impl RustGenerator {
                         _ => "Vec::new()".to_string(),
                     };
                     let mut builder = format!("View::select({options_expr})");
-                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Int(i))) = props.get("selected") {
+                    if let Some(AuraPropValue::Expr(crate::ast::Expr::Int(i))) =
+                        props.get("selected")
+                    {
                         builder = format!("{builder}.selected({i})");
                     }
                     if let Some((_, handler)) = events
@@ -5455,7 +6036,9 @@ impl RustGenerator {
                         builder = format!("{builder}.on_choose({closure})");
                     }
                     for (key, value) in props_sorted.clone() {
-                        if key == "options" || key == "selected" { continue; }
+                        if key == "options" || key == "selected" {
+                            continue;
+                        }
                         builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
                     // View::select 直返 View（链式 self）——无 .build()。
@@ -5507,33 +6090,50 @@ impl RustGenerator {
                     // 标签/值：prop text/label → 直接 Text 子件 → text-like
                     // 元素子件（convert_tabs 同序）；缺省 "Tab N"/索引串。
                     fn node_text(node: &crate::aura::AuraNode) -> Option<String> {
-                        let crate::aura::AuraNode::Element { props, children, .. } = node else {
+                        let crate::aura::AuraNode::Element {
+                            props, children, ..
+                        } = node
+                        else {
                             return None;
                         };
                         for key in ["text", "label"] {
-                            if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get(key) {
+                            if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) =
+                                props.get(key)
+                            {
                                 return Some(s.to_string());
                             }
                         }
-                        if let Some(crate::aura::AuraNode::Text(crate::aura::AuraTextContent::Literal(s))) =
-                            children.iter().next()
+                        if let Some(crate::aura::AuraNode::Text(
+                            crate::aura::AuraTextContent::Literal(s),
+                        )) = children.iter().next()
                         {
                             return Some(s.clone());
                         }
                         children.iter().find_map(|c| {
-                            let crate::aura::AuraNode::Element { tag, props, children, .. } = c else {
+                            let crate::aura::AuraNode::Element {
+                                tag,
+                                props,
+                                children,
+                                ..
+                            } = c
+                            else {
                                 return None;
                             };
-                            if !matches!(tag.as_str(), "text" | "label" | "span" | "p" | "h1" | "h2" | "h3") {
+                            if !matches!(
+                                tag.as_str(),
+                                "text" | "label" | "span" | "p" | "h1" | "h2" | "h3"
+                            ) {
                                 return None;
                             }
-                            if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) = props.get("text") {
+                            if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) =
+                                props.get("text")
+                            {
                                 return Some(s.to_string());
                             }
                             children.iter().find_map(|d| match d {
-                                crate::aura::AuraNode::Text(crate::aura::AuraTextContent::Literal(s)) => {
-                                    Some(s.clone())
-                                }
+                                crate::aura::AuraNode::Text(
+                                    crate::aura::AuraTextContent::Literal(s),
+                                ) => Some(s.clone()),
                                 _ => None,
                             })
                         })
@@ -5545,10 +6145,14 @@ impl RustGenerator {
                         for (i, t) in flats.iter().enumerate() {
                             let label = node_text(t).unwrap_or_else(|| format!("Tab {}", i + 1));
                             let value = match t {
-                                crate::aura::AuraNode::Element { props, .. } => match props.get("value") {
-                                    Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
-                                    _ => i.to_string(),
-                                },
+                                crate::aura::AuraNode::Element { props, .. } => {
+                                    match props.get("value") {
+                                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                                            s.to_string()
+                                        }
+                                        _ => i.to_string(),
+                                    }
+                                }
                                 _ => i.to_string(),
                             };
                             labels.push(label);
@@ -5558,10 +6162,14 @@ impl RustGenerator {
                         for (i, t) in triggers.iter().enumerate() {
                             let label = node_text(t).unwrap_or_else(|| format!("Tab {}", i + 1));
                             let value = match t {
-                                crate::aura::AuraNode::Element { props, .. } => match props.get("value") {
-                                    Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
-                                    _ => i.to_string(),
-                                },
+                                crate::aura::AuraNode::Element { props, .. } => {
+                                    match props.get("value") {
+                                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                                            s.to_string()
+                                        }
+                                        _ => i.to_string(),
+                                    }
+                                }
                                 _ => i.to_string(),
                             };
                             labels.push(label);
@@ -5618,17 +6226,16 @@ impl RustGenerator {
                             .collect::<Vec<_>>()
                             .join(", ")
                     );
-                    let contents_lit = format!(
-                        "vec![{}]",
-                        content_exprs.join(", ")
-                    );
+                    let contents_lit = format!("vec![{}]", content_exprs.join(", "));
                     let mut builder = format!("View::tabs({labels_lit}).contents({contents_lit})");
                     // selected：active（索引）→ value（字面量=编译期匹配 /
                     // 绑定=运行时 position 表达式）→ defaultvalue/default
                     //（同前）→ 0；越界钳制 min（sel.min(n-1) 运行时兜底）。
                     let prop_str_lit = |key: &str| -> Option<String> {
                         match props.get(key) {
-                            Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => Some(s.to_string()),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                                Some(s.to_string())
+                            }
                             _ => None,
                         }
                     };
@@ -5647,16 +6254,16 @@ impl RustGenerator {
                                 let f = name.as_str().trim_start_matches('.');
                                 (!f.is_empty()).then(|| f.to_string())
                             }
-                            Some(AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field))) => match obj
-                                .as_ref()
-                            {
-                                crate::ast::Expr::Ident(base)
-                                    if base.as_str() == "." || base.as_str() == "self" =>
-                                {
-                                    Some(field.as_str().to_string())
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field))) => {
+                                match obj.as_ref() {
+                                    crate::ast::Expr::Ident(base)
+                                        if base.as_str() == "." || base.as_str() == "self" =>
+                                    {
+                                        Some(field.as_str().to_string())
+                                    }
+                                    _ => None,
                                 }
-                                _ => None,
-                            },
+                            }
                             _ => None,
                         }
                     };
@@ -5669,37 +6276,44 @@ impl RustGenerator {
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         );
-                        format!("{arr}.iter().position(|v| *v == self.{field}.as_str()).unwrap_or(0)")
+                        format!(
+                            "{arr}.iter().position(|v| *v == self.{field}.as_str()).unwrap_or(0)"
+                        )
                     };
-                    let has_active_or_value =
-                        props.keys().any(|k| matches!(k.as_str(), "active" | "value"));
-                    let selected_expr: Option<String> = if let Some(AuraPropValue::Expr(
-                        crate::ast::Expr::Int(i),
-                    )) = props.get("active")
-                    {
-                        Some(format!("({i} as usize)"))
-                    } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) =
-                        props.get("value")
-                    {
-                        Some(values_match_arm(s, &values))
-                    } else if let Some(field) = value_binding("value") {
-                        Some(values_pos_expr(&field, &values))
-                    } else if !has_active_or_value {
-                        prop_str_lit("defaultvalue")
-                            .or_else(|| prop_str_lit("default"))
-                            .map(|s| values_match_arm(&s, &values))
-                            .or_else(|| value_binding("defaultvalue").map(|f| values_pos_expr(&f, &values)))
-                    } else {
-                        None
-                    };
+                    let has_active_or_value = props
+                        .keys()
+                        .any(|k| matches!(k.as_str(), "active" | "value"));
+                    let selected_expr: Option<String> =
+                        if let Some(AuraPropValue::Expr(crate::ast::Expr::Int(i))) =
+                            props.get("active")
+                        {
+                            Some(format!("({i} as usize)"))
+                        } else if let Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) =
+                            props.get("value")
+                        {
+                            Some(values_match_arm(s, &values))
+                        } else if let Some(field) = value_binding("value") {
+                            Some(values_pos_expr(&field, &values))
+                        } else if !has_active_or_value {
+                            prop_str_lit("defaultvalue")
+                                .or_else(|| prop_str_lit("default"))
+                                .map(|s| values_match_arm(&s, &values))
+                                .or_else(|| {
+                                    value_binding("defaultvalue")
+                                        .map(|f| values_pos_expr(&f, &values))
+                                })
+                        } else {
+                            None
+                        };
                     if let Some(expr) = selected_expr {
                         builder = format!("{builder}.selected({expr})");
                     }
                     // variant：TabsVariant::parse（full path——生成物预载
                     // use 不含该类型；PointerMoveHandler 同款先例）。
                     if let Some(v) = prop_str_lit("variant") {
-                        builder =
-                            format!("{builder}.variant(auto_lang::ui::view::TabsVariant::parse(\"{v}\"))");
+                        builder = format!(
+                            "{builder}.variant(auto_lang::ui::view::TabsVariant::parse(\"{v}\"))"
+                        );
                     }
                     // 样式（style/class prop → TabsBuilder.style）。
                     if let Some(st) = prop_str_lit("style").or_else(|| prop_str_lit("class")) {
@@ -5769,22 +6383,32 @@ impl RustGenerator {
                     let msg_name = self.current_msg_name();
                     let str_lit = |v: Option<&AuraPropValue>| -> Option<String> {
                         match v {
-                            Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => Some(s.to_string()),
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                                Some(s.to_string())
+                            }
                             _ => None,
                         }
                     };
                     let node_text = |n: &crate::aura::AuraNode| -> Option<String> {
                         match n {
-                            crate::aura::AuraNode::Text(crate::aura::AuraTextContent::Literal(s)) => Some(s.clone()),
+                            crate::aura::AuraNode::Text(crate::aura::AuraTextContent::Literal(
+                                s,
+                            )) => Some(s.clone()),
                             _ => None,
                         }
                     };
                     let mut root = String::from("View::row()");
                     let mut menu_index = 0usize;
                     for menu_node in children {
-                        let crate::aura::AuraNode::Element { tag: mtag, props: mprops, children: mkids, .. } =
-                            menu_node
-                        else { continue };
+                        let crate::aura::AuraNode::Element {
+                            tag: mtag,
+                            props: mprops,
+                            children: mkids,
+                            ..
+                        } = menu_node
+                        else {
+                            continue;
+                        };
                         if mtag.replace('_', "-") != "menubar-menu" {
                             continue;
                         }
@@ -5794,9 +6418,15 @@ impl RustGenerator {
                         let mut trigger_title = String::new();
                         let mut content_nodes: Vec<&AuraNode> = Vec::new();
                         for kid in mkids {
-                            let crate::aura::AuraNode::Element { tag: ktag, props: kprops, children: kkids, .. } =
-                                kid
-                            else { continue };
+                            let crate::aura::AuraNode::Element {
+                                tag: ktag,
+                                props: kprops,
+                                children: kkids,
+                                ..
+                            } = kid
+                            else {
+                                continue;
+                            };
                             match ktag.replace('_', "-").as_str() {
                                 "menubar-trigger" => {
                                     trigger_title = str_lit(kprops.get("text"))
@@ -5834,8 +6464,8 @@ impl RustGenerator {
                         );
                         root = format!("{root}.child({popover})");
                     }
-                    let user_class = str_lit(props.get("class").or(props.get("style")))
-                        .unwrap_or_default();
+                    let user_class =
+                        str_lit(props.get("class").or(props.get("style"))).unwrap_or_default();
                     let root = if user_class.is_empty() {
                         format!("{root}.build()")
                     } else {
@@ -5850,10 +6480,18 @@ impl RustGenerator {
                     if let Some(ref name) = text_state_ref {
                         if tag == "button" {
                             // Plan 374: Use loop var directly if it's in scope
-                            let name_ref = if self.is_loop_var(name) { name.to_string() } else { format!("self.{}", name) };
+                            let name_ref = if self.is_loop_var(name) {
+                                name.to_string()
+                            } else {
+                                format!("self.{}", name)
+                            };
                             format!("View::button(format!(\"{{}}\", {}))", name_ref)
                         } else {
-                            let name_ref = if self.is_loop_var(name) { name.to_string() } else { format!("self.{}", name) };
+                            let name_ref = if self.is_loop_var(name) {
+                                name.to_string()
+                            } else {
+                                format!("self.{}", name)
+                            };
                             format!("View::text(format!(\"{{}}\", {}))", name_ref)
                         }
                     } else if let Some(label) = &text_prop {
@@ -5890,31 +6528,57 @@ impl RustGenerator {
                 // use View::text_styled() to avoid builder pattern issues
                 // (View::text("str") returns View, not ViewBuilder, so chaining won't work)
                 // Also handles text from a single Text child node (e.g. text f"..." { class: "..." })
-                if self.is_leaf_tag(tag.as_str()) && tag != "button" && (children.is_empty() || child_text_content.is_some()) && has_styling {
-                    let user_style = props.get("style")
+                if self.is_leaf_tag(tag.as_str())
+                    && tag != "button"
+                    && (children.is_empty() || child_text_content.is_some())
+                    && has_styling
+                {
+                    let user_style = props
+                        .get("style")
                         .or_else(|| props.get("class"))
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_default();
 
                     // Prepend heading default styles (h1→text-4xl font-bold, etc.)
                     let style_str = match Self::heading_default_style(tag.as_str()) {
-                        Some(default) if !user_style.is_empty() => format!("{} {}", default, user_style),
+                        Some(default) if !user_style.is_empty() => {
+                            format!("{} {}", default, user_style)
+                        }
                         Some(default) => default.to_string(),
                         None => user_style,
                     };
 
                     if let Some(ref name) = text_state_ref {
                         if self.is_loop_var(name) {
-                            return format!("View::text_styled(format!(\"{{}}\", {}), \"{}\")", name, style_str);
+                            return format!(
+                                "View::text_styled(format!(\"{{}}\", {}), \"{}\")",
+                                name, style_str
+                            );
                         }
-                        return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name, style_str);
+                        return format!(
+                            "View::text_styled(format!(\"{{}}\", self.{}), \"{}\")",
+                            name, style_str
+                        );
                     }
                     if let Some(label) = &text_prop {
                         // Check if text contains interpolation like ${.field}
                         if label.contains("${") {
-                            return format!("View::text_styled({}, \"{}\")", self.interpolate_str(label), style_str);
+                            return format!(
+                                "View::text_styled({}, \"{}\")",
+                                self.interpolate_str(label),
+                                style_str
+                            );
                         }
-                        return format!("View::text_styled(\"{}\".to_string(), \"{}\")", label, style_str);
+                        return format!(
+                            "View::text_styled(\"{}\".to_string(), \"{}\")",
+                            label, style_str
+                        );
                     }
                     if let Some(ref text) = text_rust_expr {
                         // Plan 407 R2: wrap self. references in format! to avoid
@@ -5930,23 +6594,35 @@ impl RustGenerator {
 
                 // Whether the "text" prop was consumed as a constructor arg
                 let text_prop_consumed = self.is_leaf_tag(tag.as_str())
-                    && (text_prop.is_some() || text_state_ref.is_some() || text_rust_expr.is_some());
+                    && (text_prop.is_some()
+                        || text_state_ref.is_some()
+                        || text_rust_expr.is_some());
 
                 // Non-button leaf tags with text and no styling:
                 // View::text("str") returns View<M> directly, NOT a builder.
                 // Skip .build() to avoid compile error.
                 // Heading tags (h1-h3) always use text_styled with their default styles.
                 let heading_default = Self::heading_default_style(tag.as_str());
-                if self.is_leaf_tag(tag.as_str()) && tag != "button" && (children.is_empty() || child_text_content.is_some()) && !has_styling {
+                if self.is_leaf_tag(tag.as_str())
+                    && tag != "button"
+                    && (children.is_empty() || child_text_content.is_some())
+                    && !has_styling
+                {
                     if let Some(ref name) = text_state_ref {
                         if let Some(default) = heading_default {
-                            return format!("View::text_styled(format!(\"{{}}\", self.{}), \"{}\")", name, default);
+                            return format!(
+                                "View::text_styled(format!(\"{{}}\", self.{}), \"{}\")",
+                                name, default
+                            );
                         }
                         return format!("View::text(format!(\"{{}}\", self.{}))", name);
                     }
                     if let Some(label) = &text_prop {
                         if let Some(default) = heading_default {
-                            return format!("View::text_styled(\"{}\".to_string(), \"{}\")", label, default);
+                            return format!(
+                                "View::text_styled(\"{}\".to_string(), \"{}\")",
+                                label, default
+                            );
                         }
                         if label.contains("${") {
                             return format!("View::text({})", self.interpolate_str(label));
@@ -5972,9 +6648,16 @@ impl RustGenerator {
                 // Special handling for "center" — View::center(child) takes a child directly,
                 // not the builder pattern. Assemble children into a col, then wrap in center.
                 if tag == "center" {
-                    let style_str = props.get("style")
+                    let style_str = props
+                        .get("style")
                         .or_else(|| props.get("class"))
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_default();
 
                     // Build children into a col
@@ -6005,9 +6688,16 @@ impl RustGenerator {
                 // (app.at 载具)编译不过且语义错。027 T-04 div→container
                 // 映射的配套缺口,归 027 面备案。
                 if tag == "container" {
-                    let style_str = props.get("style")
+                    let style_str = props
+                        .get("style")
                         .or_else(|| props.get("class"))
-                        .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v { Some(s.to_string()) } else { None })
+                        .and_then(|v| {
+                            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                                Some(s.to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_default();
 
                     let child_view = if children.is_empty() {
@@ -6036,7 +6726,9 @@ impl RustGenerator {
 
                     // Add props (skip "text" if already used as constructor arg)
                     for (key, value) in props_sorted.clone() {
-                        if text_prop_consumed && key == "text" { continue; }
+                        if text_prop_consumed && key == "text" {
+                            continue;
+                        }
                         builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
 
@@ -6046,7 +6738,9 @@ impl RustGenerator {
                     }
 
                     // Button without onclick — add no-op handler to prevent panic
-                    if tag == "button" && !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
+                    if tag == "button"
+                        && !events.iter().any(|(e, _)| e == "onclick" || e == "onClick")
+                    {
                         builder = format!("{}.on_click(|_| ())", builder);
                     }
 
@@ -6060,7 +6754,9 @@ impl RustGenerator {
                     let label_expr = self.collect_button_label(children);
                     let mut builder = format!("View::button({})", label_expr);
                     for (key, value) in props_sorted.clone() {
-                        if key == "text" { continue; }
+                        if key == "text" {
+                            continue;
+                        }
                         builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
                     for (event, handler) in events_sorted.clone() {
@@ -6076,7 +6772,9 @@ impl RustGenerator {
 
                     // Add props (skip "text" if already used as constructor arg)
                     for (key, value) in props_sorted.clone() {
-                        if text_prop_consumed && key == "text" { continue; }
+                        if text_prop_consumed && key == "text" {
+                            continue;
+                        }
                         builder = self.add_prop_to_builder(&builder, tag, key, value);
                     }
 
@@ -6090,7 +6788,10 @@ impl RustGenerator {
                         if tag == "row" {
                             if matches!(child, AuraNode::ForLoop { .. }) {
                                 let map_expr = self.generate_for_loop_cells(child);
-                                builder = format!("{}.children({}.collect::<Vec<_>>())", builder, map_expr);
+                                builder = format!(
+                                    "{}.children({}.collect::<Vec<_>>())",
+                                    builder, map_expr
+                                );
                                 continue;
                             }
                         }
@@ -6106,7 +6807,9 @@ impl RustGenerator {
                     }
 
                     // Button without onclick — add no-op handler to prevent panic
-                    if tag == "button" && !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
+                    if tag == "button"
+                        && !events.iter().any(|(e, _)| e == "onclick" || e == "onClick")
+                    {
                         builder = format!("{}.on_click(|_| ())", builder);
                     }
 
@@ -6126,14 +6829,9 @@ impl RustGenerator {
 
                         for binding in bindings.iter() {
                             // Replace ${.binding} and ${binding} with {}
-                            format_str = format_str.replace(
-                                &format!("${{{}.{}}}", ".", binding),
-                                "{}"
-                            );
-                            format_str = format_str.replace(
-                                &format!("${{{}}}", binding),
-                                "{}"
-                            );
+                            format_str =
+                                format_str.replace(&format!("${{{}.{}}}", ".", binding), "{}");
+                            format_str = format_str.replace(&format!("${{{}}}", binding), "{}");
 
                             // Use binding directly if loop var, otherwise self.binding
                             let arg = if self.is_loop_var(binding) {
@@ -6144,12 +6842,22 @@ impl RustGenerator {
                             format_args.push(arg);
                         }
 
-                        format!("View::text(format!(\"{}\", {}))", format_str, format_args.join(", "))
+                        format!(
+                            "View::text(format!(\"{}\", {}))",
+                            format_str,
+                            format_args.join(", ")
+                        )
                     }
                 }
             }
 
-            AuraNode::ForLoop { var, index, iterable, body, .. } => {
+            AuraNode::ForLoop {
+                var,
+                index,
+                iterable,
+                body,
+                ..
+            } => {
                 // Plan 371 步骤3: Sanitize loop var to avoid Rust keyword/macro
                 // conflicts (e.g., `for todo in ...` collides with `todo!()` macro).
                 let var = sanitize_rust_ident(var);
@@ -6193,15 +6901,15 @@ impl RustGenerator {
                 // PLAN-039 T-13（E-D5-A）：store 字段 typed 短路——
                 // `.store.cards`（Vec<Card>）迭代变量是 typed（元素字段
                 // 直达），fallback 兜底臂不再误收 Value 格（×25 株）。
-                let store_field_ty = if iter_name.starts_with("store.")
-                    || iter_name.starts_with(".store.")
-                {
-                    self.store_field_rust_type(iter_last_name)
-                } else {
-                    None
-                };
-                let store_typed_iter = store_field_ty
-                    .map_or(false, |t| t != "Vec<serde_json::Value>" && t != "serde_json::Value");
+                let store_field_ty =
+                    if iter_name.starts_with("store.") || iter_name.starts_with(".store.") {
+                        self.store_field_rust_type(iter_last_name)
+                    } else {
+                        None
+                    };
+                let store_typed_iter = store_field_ty.map_or(false, |t| {
+                    t != "Vec<serde_json::Value>" && t != "serde_json::Value"
+                });
                 // PLAN-681 T-05（N3）：返回 Vec<Value> 的 computed（BARE_
                 // FN_SIGS 判得,computed_value_rets 在 generate_rust 的
                 // computed 扫描处登记）——`.rows` 迭代按 Value 格消费,
@@ -6237,7 +6945,8 @@ impl RustGenerator {
                 }
 
                 // Generate body with loop vars in scope
-                let body_code: Vec<String> = body.iter()
+                let body_code: Vec<String> = body
+                    .iter()
                     .map(|child| self.generate_view_tree(child))
                     .collect();
 
@@ -6304,26 +7013,52 @@ impl RustGenerator {
                         body_code.join(", ")
                     )
                 } else {
-                    format!("{}.iter(){}{}.map(|{}| {{ {} }})", iter_expr, search_filter.as_ref().map_or(String::new(), |f| f.clone()), "", var, body_code.join("\n"))
+                    format!(
+                        "{}.iter(){}{}.map(|{}| {{ {} }})",
+                        iter_expr,
+                        search_filter.as_ref().map_or(String::new(), |f| f.clone()),
+                        "",
+                        var,
+                        body_code.join("\n")
+                    )
                 };
                 // Plan 374: Always produce a single View by wrapping in col().children().
                 // This works in both .child() and conditional/if contexts.
-                format!("View::col().children({}.collect::<Vec<_>>()).build()", map_expr)
+                format!(
+                    "View::col().children({}.collect::<Vec<_>>()).build()",
+                    map_expr
+                )
             }
 
-            AuraNode::Conditional { condition, then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
                 let rust_condition = self.convert_condition(condition);
-                let then_code: Vec<String> = then_body.iter()
+                let then_code: Vec<String> = then_body
+                    .iter()
                     .map(|child| self.generate_view_tree(child))
                     .collect();
 
                 if let Some(else_nodes) = else_body {
-                    let else_code: Vec<String> = else_nodes.iter()
+                    let else_code: Vec<String> = else_nodes
+                        .iter()
                         .map(|child| self.generate_view_tree(child))
                         .collect();
-                    format!("if {} {{ {} }} else {{ {} }}", rust_condition, Self::wrap_views(&then_code), Self::wrap_views(&else_code))
+                    format!(
+                        "if {} {{ {} }} else {{ {} }}",
+                        rust_condition,
+                        Self::wrap_views(&then_code),
+                        Self::wrap_views(&else_code)
+                    )
                 } else {
-                    format!("if {} {{ {} }} else {{ View::Empty }}", rust_condition, Self::wrap_views(&then_code))
+                    format!(
+                        "if {} {{ {} }} else {{ View::Empty }}",
+                        rust_condition,
+                        Self::wrap_views(&then_code)
+                    )
                 }
             }
 
@@ -6361,12 +7096,11 @@ impl RustGenerator {
             //   None（无 routes 块）→ 维持 View::empty（防御形态）。
             // PLAN-046: memo block — VM-track cache boundary; codegen emits
             // the body children (the boundary has no generated-code form).
-            AuraNode::MemoBlock { body, .. } => {
-                body.iter()
-                    .map(|c| self.generate_view_tree(c))
-                    .collect::<Vec<String>>()
-                    .join("\n")
-            }
+            AuraNode::MemoBlock { body, .. } => body
+                .iter()
+                .map(|c| self.generate_view_tree(c))
+                .collect::<Vec<String>>()
+                .join("\n"),
             AuraNode::Outlet { .. } => match self.outlet_route.clone() {
                 OutletRoute::Fold(module) => {
                     let msg_name = self.current_msg_name();
@@ -6389,9 +7123,15 @@ impl RustGenerator {
                     // No routes block; keep the empty placeholder (defensive).
                     "View::empty()".to_string()
                 }
-            }
+            },
 
-            AuraNode::Link { to, text, href, children, .. } => {
+            AuraNode::Link {
+                to,
+                text,
+                href,
+                children,
+                ..
+            } => {
                 // Render link as styled text (no routing in compiled Rust).
                 // PLAN-026 T-02：有子件时组合子件（col）——原实现无条件落
                 // to/href 占位标签，`link (to:) { text … }` 主形态子件内容
@@ -6416,7 +7156,10 @@ impl RustGenerator {
                 } else {
                     to.clone()
                 };
-                format!("View::text_styled(\"{}\", \"text-blue-600 underline cursor-pointer\")", label)
+                format!(
+                    "View::text_styled(\"{}\", \"text-blue-600 underline cursor-pointer\")",
+                    label
+                )
             }
         }
     }
@@ -6565,7 +7308,10 @@ impl RustGenerator {
                         continue;
                     }
                     Some("content") => {
-                        if let AuraNode::Element { children: inner, .. } = c {
+                        if let AuraNode::Element {
+                            children: inner, ..
+                        } = c
+                        {
                             panel_nodes.extend(inner.iter());
                         }
                         continue;
@@ -6575,16 +7321,31 @@ impl RustGenerator {
             }
         }
         let (anchor_code, on_enter, on_exit) = match trigger {
-            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+            Some(AuraNode::Element {
+                children: t_children,
+                props: t_props,
+                events: t_events,
+                ..
+            }) => {
                 let enter = ["onmouseenter", "onhover"]
                     .iter()
                     .find_map(|k| t_events.get(*k))
-                    .map(|h| format!("Some({})", self.handler_to_rust_direct_msg(&h.handler, &h.params)))
+                    .map(|h| {
+                        format!(
+                            "Some({})",
+                            self.handler_to_rust_direct_msg(&h.handler, &h.params)
+                        )
+                    })
                     .unwrap_or_else(|| "None".to_string());
                 let exit = ["onmouseleave", "onhoverout"]
                     .iter()
                     .find_map(|k| t_events.get(*k))
-                    .map(|h| format!("Some({})", self.handler_to_rust_direct_msg(&h.handler, &h.params)))
+                    .map(|h| {
+                        format!(
+                            "Some({})",
+                            self.handler_to_rust_direct_msg(&h.handler, &h.params)
+                        )
+                    })
                     .unwrap_or_else(|| "None".to_string());
                 let inner = if t_children.len() == 1 {
                     self.generate_view_tree(&t_children[0])
@@ -6694,7 +7455,10 @@ impl RustGenerator {
                         continue;
                     }
                     Some("content") => {
-                        if let AuraNode::Element { children: inner, .. } = c {
+                        if let AuraNode::Element {
+                            children: inner, ..
+                        } = c
+                        {
                             panel_nodes.extend(inner.iter());
                         }
                         continue;
@@ -6704,7 +7468,12 @@ impl RustGenerator {
             }
         }
         let anchor_code = match trigger {
-            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+            Some(AuraNode::Element {
+                children: t_children,
+                props: t_props,
+                events: t_events,
+                ..
+            }) => {
                 // 裸文本 trigger（`dialog-trigger "Open"` → text prop）或单
                 // Text 子 → 真 button（vue trigger 语义）。onclick 优先取
                 // trigger 自带事件（parser 铸造的 `.__dlg_toggle_<n>` 或用户
@@ -6748,10 +7517,12 @@ impl RustGenerator {
         // （与解释器臂 convert_side_panel 同序）。
         let is_drawer = Self::drawer_root(tag);
         let side_val = if is_drawer || Self::sheet_root(tag) {
-            Some(match props.get(if is_drawer { "direction" } else { "side" }) {
-                Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
-                _ => "right".to_string(),
-            })
+            Some(
+                match props.get(if is_drawer { "direction" } else { "side" }) {
+                    Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => s.to_string(),
+                    _ => "right".to_string(),
+                },
+            )
         } else {
             None
         };
@@ -6771,9 +7542,11 @@ impl RustGenerator {
             Some(side) => Self::side_panel_emission(side, is_drawer).0.to_string(),
             None => {
                 if Self::dropdown_menu_root(tag) {
-                    "w-44 bg-popover border border-border rounded-md shadow-md p-1 gap-1".to_string()
+                    "w-44 bg-popover border border-border rounded-md shadow-md p-1 gap-1"
+                        .to_string()
                 } else {
-                    "w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4".to_string()
+                    "w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4"
+                        .to_string()
                 }
             }
         };
@@ -6788,7 +7561,12 @@ impl RustGenerator {
         // update:open(false)。alert-dialog 族（shadcn 语义）与显式 open
         // 绑定的自管形态不接管（None）。
         if std::env::var("P533_DBG").is_ok() {
-            eprintln!("[P533] tag={tag} open_prop={:?} role={:?} dismissable={}", props.get("open"), Self::modal_dialog_tag_role(tag), Self::dismissable_dialog_root(tag));
+            eprintln!(
+                "[P533] tag={tag} open_prop={:?} role={:?} dismissable={}",
+                props.get("open"),
+                Self::modal_dialog_tag_role(tag),
+                Self::dismissable_dialog_root(tag)
+            );
         }
         let on_dismiss_expr = if Self::modal_dialog_tag_role(tag) == Some("root")
             && Self::dismissable_dialog_root(tag)
@@ -6800,7 +7578,10 @@ impl RustGenerator {
                         crate::ast::Expr::Ident(b) if b.as_str() == "self" || b.as_str() == "."
                     ) && field.to_string().starts_with("__dlg_open_") =>
                 {
-                    let n = field.to_string().trim_start_matches("__dlg_open_").to_string();
+                    let n = field
+                        .to_string()
+                        .trim_start_matches("__dlg_open_")
+                        .to_string();
                     format!("Some({}::__dlg_close_{})", self.current_msg_name(), n)
                 }
                 _ => "None".to_string(),
@@ -6860,7 +7641,11 @@ impl RustGenerator {
         // placement 串映射（解释臂表同源）；字面量静态选臂，动态表达式发
         // 全臂 match（纯表达式形态，autodown heading 同款纪律）。缺省 =
         // 坐标锚 BottomStart / 锚件 Bottom（PLAN-528 W9 对齐语义）。
-        let default_placement = if point_anchor { "BottomStart" } else { "Bottom" };
+        let default_placement = if point_anchor {
+            "BottomStart"
+        } else {
+            "Bottom"
+        };
         let placement_lit = |s: &str| -> Option<&'static str> {
             match s.to_ascii_lowercase().as_str() {
                 "bottom" => Some("Bottom"),
@@ -6883,12 +7668,21 @@ impl RustGenerator {
             Some(AuraPropValue::Expr(e)) => {
                 let k = self.ast_expr_to_rust(e);
                 let arms = [
-                    "bottom", "bottom-start", "bottom-end", "top", "top-start", "top-end",
-                    "left", "right", "pointer",
+                    "bottom",
+                    "bottom-start",
+                    "bottom-end",
+                    "top",
+                    "top-start",
+                    "top-end",
+                    "left",
+                    "right",
+                    "pointer",
                 ]
                 .iter()
                 .filter_map(|p| {
-                    placement_lit(p).map(|lit| format!("\"{p}\" => auto_lang::ui::view::PopoverPlacement::{lit},"))
+                    placement_lit(p).map(|lit| {
+                        format!("\"{p}\" => auto_lang::ui::view::PopoverPlacement::{lit},")
+                    })
                 })
                 .collect::<Vec<_>>()
                 .join(" ");
@@ -6924,10 +7718,12 @@ impl RustGenerator {
         let class_str = props
             .get("class")
             .or_else(|| props.get("style"))
-            .and_then(|v| if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
-                Some(s.trim().to_string())
-            } else {
-                None
+            .and_then(|v| {
+                if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                    Some(s.trim().to_string())
+                } else {
+                    None
+                }
             })
             .unwrap_or_default();
         let panel_style = if class_str.is_empty() {
@@ -6946,7 +7742,8 @@ impl RustGenerator {
                 y_expr.unwrap()
             )
         } else if children.is_empty() {
-            "auto_lang::ui::view::PopoverAnchor::Widget(Box::new(auto_lang::ui::view::View::Empty))".to_string()
+            "auto_lang::ui::view::PopoverAnchor::Widget(Box::new(auto_lang::ui::view::View::Empty))"
+                .to_string()
         } else {
             let anchor_code = self.generate_view_tree(&children[0]);
             format!("auto_lang::ui::view::PopoverAnchor::Widget(Box::new({anchor_code}))")
@@ -7008,8 +7805,16 @@ impl RustGenerator {
                 _ => None,
             }
         };
-        if props.get("style").map(|v| literal_class(Some(v))).unwrap_or(Some(String::new())).is_none()
-            || props.get("class").map(|v| literal_class(Some(v))).unwrap_or(Some(String::new())).is_none()
+        if props
+            .get("style")
+            .map(|v| literal_class(Some(v)))
+            .unwrap_or(Some(String::new()))
+            .is_none()
+            || props
+                .get("class")
+                .map(|v| literal_class(Some(v)))
+                .unwrap_or(Some(String::new()))
+                .is_none()
         {
             // PLAN-027 T-04：动态 class/style 不注入（PLAN-571 文档化先例），
             // 但 variant/size 已消费词汇仍剥除。
@@ -7019,9 +7824,17 @@ impl RustGenerator {
             return std::borrow::Cow::Owned(merged);
         }
         let mut merged = props.clone();
-        let key = if merged.contains_key("style") { "style" } else { "class" };
+        let key = if merged.contains_key("style") {
+            "style"
+        } else {
+            "class"
+        };
         let user = literal_class(merged.get(key)).unwrap_or_default();
-        let combined = if user.trim().is_empty() { preset } else { format!("{} {}", preset, user) };
+        let combined = if user.trim().is_empty() {
+            preset
+        } else {
+            format!("{} {}", preset, user)
+        };
         merged.insert(
             key.to_string(),
             AuraPropValue::Expr(crate::ast::Expr::Str(auto_val::AutoStr::from(combined))),
@@ -7086,7 +7899,9 @@ impl RustGenerator {
     /// Serializes the SVG DOM tree, converting dynamic property expressions into format! arguments.
     fn generate_svg_element(&self, node: &AuraNode) -> String {
         let (props, _) = match node {
-            AuraNode::Element { props, children, .. } => (props, children),
+            AuraNode::Element {
+                props, children, ..
+            } => (props, children),
             _ => return "View::Empty".to_string(),
         };
 
@@ -7108,14 +7923,23 @@ impl RustGenerator {
             if style_str.is_empty() {
                 format!("View::image(\"svgdoc:{}\")", template)
             } else {
-                format!("View::image_styled(\"svgdoc:{}\", \"{}\")", template, style_str)
+                format!(
+                    "View::image_styled(\"svgdoc:{}\", \"{}\")",
+                    template, style_str
+                )
             }
         } else {
             let args_joined = args.join(", ");
             if style_str.is_empty() {
-                format!("View::image(format!(\"svgdoc:{}\", {}))", template, args_joined)
+                format!(
+                    "View::image(format!(\"svgdoc:{}\", {}))",
+                    template, args_joined
+                )
             } else {
-                format!("View::image_styled(format!(\"svgdoc:{}\", {}), \"{}\")", template, args_joined, style_str)
+                format!(
+                    "View::image_styled(format!(\"svgdoc:{}\", {}), \"{}\")",
+                    template, args_joined, style_str
+                )
             }
         }
     }
@@ -7128,7 +7952,12 @@ impl RustGenerator {
         args: &mut Vec<String>,
     ) {
         match node {
-            AuraNode::Element { tag, props, children, .. } => {
+            AuraNode::Element {
+                tag,
+                props,
+                children,
+                ..
+            } => {
                 template.push('<');
                 template.push_str(tag);
 
@@ -7149,7 +7978,8 @@ impl RustGenerator {
 
                     match val {
                         AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
-                            let escaped = s.as_str()
+                            let escaped = s
+                                .as_str()
                                 .replace('&', "&amp;")
                                 .replace('"', "&quot;")
                                 .replace('<', "&lt;")
@@ -7159,7 +7989,8 @@ impl RustGenerator {
                             template.push_str(&escaped);
                         }
                         AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => {
-                            let escaped = s.as_str()
+                            let escaped = s
+                                .as_str()
                                 .replace('&', "&amp;")
                                 .replace('"', "&quot;")
                                 .replace('<', "&lt;")
@@ -7189,7 +8020,11 @@ impl RustGenerator {
                     template.push_str("\\\"");
                 }
 
-                let text_prop = if tag == "text" { props.get("text") } else { None };
+                let text_prop = if tag == "text" {
+                    props.get("text")
+                } else {
+                    None
+                };
 
                 if children.is_empty() && text_prop.is_none() {
                     template.push_str("/>");
@@ -7198,7 +8033,8 @@ impl RustGenerator {
                     if let Some(val) = text_prop {
                         match val {
                             AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
-                                let escaped = s.as_str()
+                                let escaped = s
+                                    .as_str()
                                     .replace('&', "&amp;")
                                     .replace('<', "&lt;")
                                     .replace('>', "&gt;")
@@ -7223,7 +8059,8 @@ impl RustGenerator {
             }
             AuraNode::Text(content) => match content {
                 crate::aura::AuraTextContent::Literal(s) => {
-                    let escaped = s.as_str()
+                    let escaped = s
+                        .as_str()
                         .replace('&', "&amp;")
                         .replace('<', "&lt;")
                         .replace('>', "&gt;")
@@ -7231,7 +8068,10 @@ impl RustGenerator {
                         .replace('}', "}}");
                     template.push_str(&escaped);
                 }
-                crate::aura::AuraTextContent::Interpolated { template: tpl, bindings } => {
+                crate::aura::AuraTextContent::Interpolated {
+                    template: tpl,
+                    bindings,
+                } => {
                     let mut fmt = tpl.clone();
                     for name in bindings {
                         if let Some(start) = fmt.find("${") {
@@ -7249,7 +8089,11 @@ impl RustGenerator {
         }
     }
 
-    fn generate_child_component(&self, tag: &str, props: &std::collections::HashMap<String, crate::aura::AuraPropValue>) -> String {
+    fn generate_child_component(
+        &self,
+        tag: &str,
+        props: &std::collections::HashMap<String, crate::aura::AuraPropValue>,
+    ) -> String {
         let msg_name = self.current_msg_name();
 
         // Build constructor arguments from props (for loop children or prop sync).
@@ -7257,7 +8101,8 @@ impl RustGenerator {
         // ——组件 new 签名按声明序，字母序调用 = 参数错位株。
         let mut constructor_args: Vec<String> = Vec::new();
         let keep_style = self.component_keeps_style_prop(tag);
-        let mut sorted_keys: Vec<&String> = props.keys()
+        let mut sorted_keys: Vec<&String> = props
+            .keys()
             .filter(|k| (keep_style && *k == "style") || (*k != "style" && *k != "class"))
             .collect();
         self.sort_prop_keys_by_decl_order(&mut sorted_keys, tag);
@@ -7279,7 +8124,8 @@ impl RustGenerator {
             // Collect prop sync assignments for the cloned instance.
             // PLAN-039 T-14：声明序（同构造参数口径；字母序 = 重复/错位
             // 同步株——court_badge specified more than once 家族）。
-            let mut prop_keys: Vec<&String> = props.keys()
+            let mut prop_keys: Vec<&String> = props
+                .keys()
                 .filter(|k| *k != "style" && *k != "class")
                 .collect();
             self.sort_prop_keys_by_decl_order(&mut prop_keys, tag);
@@ -7296,16 +8142,27 @@ impl RustGenerator {
                 sync_code.push_str(&format!("__c.store = self.store.clone(); "));
             }
             if sync_code.is_empty() {
-                format!("self.{}.view().map_msg(|m| {}::{}(m))", field, msg_name, tag)
+                format!(
+                    "self.{}.view().map_msg(|m| {}::{}(m))",
+                    field, msg_name, tag
+                )
             } else {
-                format!("{{ let mut __c = self.{}.clone(); {}__c.view().map_msg(|m| {}::{}(m)) }}",
-                    field, sync_code, msg_name, tag)
+                format!(
+                    "{{ let mut __c = self.{}.clone(); {}__c.view().map_msg(|m| {}::{}(m)) }}",
+                    field, sync_code, msg_name, tag
+                )
             }
         } else {
             // Loop child (or legacy): temp-construct, sync fields, view, drop.
-            let mut sync_fields: Vec<String> = self.state_types.keys()
+            let mut sync_fields: Vec<String> = self
+                .state_types
+                .keys()
                 .filter(|name| {
-                    let ty = self.state_types.get(*name).map(|s| s.as_str()).unwrap_or("");
+                    let ty = self
+                        .state_types
+                        .get(*name)
+                        .map(|s| s.as_str())
+                        .unwrap_or("");
                     !ty.starts_with("Vec<")
                 })
                 .cloned()
@@ -7328,11 +8185,26 @@ impl RustGenerator {
                     tag, args_str, msg_name, tag
                 )
             } else {
-                let mut code = format!("{{ let mut __{} = {}::new({}); ", tag.to_lowercase(), tag, args_str);
+                let mut code = format!(
+                    "{{ let mut __{} = {}::new({}); ",
+                    tag.to_lowercase(),
+                    tag,
+                    args_str
+                );
                 for field in &sync_fields {
-                    code.push_str(&format!("__{}.{} = self.{}.clone(); ", tag.to_lowercase(), field, field));
+                    code.push_str(&format!(
+                        "__{}.{} = self.{}.clone(); ",
+                        tag.to_lowercase(),
+                        field,
+                        field
+                    ));
                 }
-                code.push_str(&format!("__{}.view().map_msg(|m| {}::{}(m)) }}", tag.to_lowercase(), msg_name, tag));
+                code.push_str(&format!(
+                    "__{}.view().map_msg(|m| {}::{}(m)) }}",
+                    tag.to_lowercase(),
+                    msg_name,
+                    tag
+                ));
                 code
             }
         }
@@ -7346,7 +8218,9 @@ impl RustGenerator {
     /// passing state by value into a function or store message constructor.
     /// Shared by store-call rewriting (L4037) and ordinary function calls (L4052).
     fn rust_call_args_with_clone(&self, call: &crate::ast::Call) -> Vec<String> {
-        call.args.args.iter()
+        call.args
+            .args
+            .iter()
             .map(|a| {
                 let arg_expr = a.get_expr();
                 let expr = self.ast_expr_to_rust(&arg_expr);
@@ -7365,8 +8239,10 @@ impl RustGenerator {
                 // 参数补 clone——VM 参数拷贝语义的编译等价（kanban cid
                 // 双用 moved 株：`MoveCard(cid, ..)` 两处发送）。字面量/
                 // 调用/索引形态不动；数值参数 clone 冗余但合法（Copy 型）。
-                if matches!(arg_expr, crate::ast::Expr::Ident(_) | crate::ast::Expr::Dot(..))
-                    && !expr.starts_with('"')
+                if matches!(
+                    arg_expr,
+                    crate::ast::Expr::Ident(_) | crate::ast::Expr::Dot(..)
+                ) && !expr.starts_with('"')
                     && !expr.contains('[')
                 {
                     return format!("{}.clone()", expr);
@@ -7384,9 +8260,8 @@ impl RustGenerator {
         }
         // Plan 371 Task 22c: sync the injected store composable field.
         let has_store = STORE_NAMES.with(|sn| !sn.borrow().is_empty());
-        let is_store_itself = STORE_NAMES.with(|sn| {
-            sn.borrow().values().any(|s| s.as_str() == widget.name)
-        });
+        let is_store_itself =
+            STORE_NAMES.with(|sn| sn.borrow().values().any(|s| s.as_str() == widget.name));
         if has_store && !is_store_itself && !fields.iter().any(|f| f == "store") {
             fields.push("store".to_string());
         }
@@ -7444,7 +8319,12 @@ impl RustGenerator {
     /// Plan 374: Only match the specific child_name to avoid wrong- component args.
     fn extract_child_constructor_args(&self, node: &AuraNode, child_name: &str) -> Option<String> {
         match node {
-            AuraNode::Element { tag, props, children, .. } => {
+            AuraNode::Element {
+                tag,
+                props,
+                children,
+                ..
+            } => {
                 if tag == child_name && self.is_custom_widget(tag) {
                     return Some(self.build_sorted_constructor_args_for_element(props, tag));
                 }
@@ -7470,7 +8350,11 @@ impl RustGenerator {
                 }
                 None
             }
-            AuraNode::Conditional { then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 for child in then_body {
                     if let Some(args) = self.extract_child_constructor_args(child, child_name) {
                         return Some(args);
@@ -7498,26 +8382,25 @@ impl RustGenerator {
                 .get(component)
                 .and_then(|tys| tys.get(prop).cloned())
         });
-        let Some(kind) = kind else { return arg.to_string() };
+        let Some(kind) = kind else {
+            return arg.to_string();
+        };
         let has_str = arg.contains(".as_str().unwrap_or_default().to_string()");
         let has_int = arg.contains(".as_i64().unwrap_or(0) as i32")
             || arg.contains(".as_bool().unwrap_or(false)");
         match kind.as_str() {
-            "int" if has_str => arg
-                .replace(
-                    ".as_str().unwrap_or_default().to_string()",
-                    ".as_i64().unwrap_or(0) as i32",
-                ),
-            "str" if has_int && arg.contains(".as_i64().unwrap_or(0) as i32") => arg
-                .replace(
-                    ".as_i64().unwrap_or(0) as i32",
-                    ".as_str().unwrap_or_default().to_string()",
-                ),
-            "bool" if has_str => arg
-                .replace(
-                    ".as_str().unwrap_or_default().to_string()",
-                    ".as_bool().unwrap_or(false)",
-                ),
+            "int" if has_str => arg.replace(
+                ".as_str().unwrap_or_default().to_string()",
+                ".as_i64().unwrap_or(0) as i32",
+            ),
+            "str" if has_int && arg.contains(".as_i64().unwrap_or(0) as i32") => arg.replace(
+                ".as_i64().unwrap_or(0) as i32",
+                ".as_str().unwrap_or_default().to_string()",
+            ),
+            "bool" if has_str => arg.replace(
+                ".as_str().unwrap_or_default().to_string()",
+                ".as_bool().unwrap_or(false)",
+            ),
             _ => arg.to_string(),
         }
     }
@@ -7539,7 +8422,12 @@ impl RustGenerator {
         let order = WIDGET_PROP_ORDERS.with(|po| po.borrow().get(component).cloned());
         match order {
             Some(order) => {
-                keys.sort_by_key(|k| order.iter().position(|p| p.as_str() == k.as_str()).unwrap_or(usize::MAX));
+                keys.sort_by_key(|k| {
+                    order
+                        .iter()
+                        .position(|p| p.as_str() == k.as_str())
+                        .unwrap_or(usize::MAX)
+                });
             }
             None => {
                 keys.sort();
@@ -7582,7 +8470,8 @@ impl RustGenerator {
         widget_name: &str,
     ) -> String {
         let keep_style = self.component_keeps_style_prop(widget_name);
-        let mut keys: Vec<&String> = props.keys()
+        let mut keys: Vec<&String> = props
+            .keys()
             .filter(|k| (keep_style && *k == "style") || (*k != "style" && *k != "class"))
             .collect();
         self.sort_prop_keys_by_decl_order(&mut keys, widget_name);
@@ -7608,7 +8497,8 @@ impl RustGenerator {
         let entries: Vec<&(String, crate::ast::Expr)> = props.iter().collect();
         // PLAN-039 T-14：声明序（未注册回落字母序）。
         let ordered = self.order_component_props_by_decl(entries, widget_name);
-        ordered.iter()
+        ordered
+            .iter()
             .map(|(_, v)| self.arg_to_rust(v))
             .collect::<Vec<_>>()
             .join(", ")
@@ -7645,7 +8535,9 @@ impl RustGenerator {
             {
                 // Check if this dot is a method call (preceded by ident char)
                 let is_method_call = i > 0
-                    && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_' || bytes[i - 1] == b')');
+                    && (bytes[i - 1].is_ascii_alphanumeric()
+                        || bytes[i - 1] == b'_'
+                        || bytes[i - 1] == b')');
                 if is_method_call {
                     // This is var.field — check if var is a Value-type loop variable
                     // Look backwards to find the identifier before the dot
@@ -7729,7 +8621,9 @@ impl RustGenerator {
                             i = field_end;
                             continue;
                         }
-                        if self.prop_names.contains(var_name) || self.state_types.contains_key(var_name) {
+                        if self.prop_names.contains(var_name)
+                            || self.state_types.contains_key(var_name)
+                        {
                             output.truncate(output.len() - var_name.len());
                             output.push_str(&format!("self.{}", var_name));
                             // Push the dot and advance past it (don't reset i, or we loop forever)
@@ -7805,13 +8699,17 @@ impl RustGenerator {
             }
             // self.<field> / 裸 <field>：String 态字段。
             let name = s.strip_prefix("self.").unwrap_or(s);
-            self.state_types.get(name).map_or(false, |ty| ty == "String")
+            self.state_types
+                .get(name)
+                .map_or(false, |ty| ty == "String")
         };
         let mut out = cond.to_string();
         for op in ["==", "!="] {
             let mut cursor = 0usize;
             loop {
-                let Some(rel) = out[cursor..].find(op) else { break };
+                let Some(rel) = out[cursor..].find(op) else {
+                    break;
+                };
                 let pos = cursor + rel;
                 let bytes = out.as_bytes();
                 // 左段：先回跳空格（生成文本 ` == ` 带空格）再词段回扫。
@@ -7838,7 +8736,12 @@ impl RustGenerator {
                         break;
                     }
                     let two = &out[j..(j + 2).min(out.len())];
-                    if two == "&&" || two == "||" || bytes[j] == b'{' || bytes[j] == b'}' || bytes[j] == b',' {
+                    if two == "&&"
+                        || two == "||"
+                        || bytes[j] == b'{'
+                        || bytes[j] == b'}'
+                        || bytes[j] == b','
+                    {
                         break;
                     }
                     if !is_word(bytes[j]) {
@@ -7906,7 +8809,8 @@ impl RustGenerator {
         }
         // First component determines the base
         let first = parts[0];
-        let mut result = if self.value_prop_names.contains(first) || self.needs_index_access(first) {
+        let mut result = if self.value_prop_names.contains(first) || self.needs_index_access(first)
+        {
             format!("self.{}", first)
         } else {
             format!("self.{}", first)
@@ -7914,15 +8818,18 @@ impl RustGenerator {
         // Remaining components: use bracket access if base is Value, else dot access
         for &part in &parts[1..] {
             // Check if the current result refers to a Value type
-            let is_value = self.value_prop_names.contains(first)
-                || self.needs_index_access(first);
+            let is_value = self.value_prop_names.contains(first) || self.needs_index_access(first);
             if is_value {
                 result = format!("{}[\"{}\"]", result, part);
             } else {
                 // Check if this is a store field that's Vec<Value>
                 let store_check = format!("{}.{}", first, part);
                 if self.state_types.contains_key(part)
-                    && self.state_types.get(part).map(|t| t.starts_with("Vec<")).unwrap_or(false)
+                    && self
+                        .state_types
+                        .get(part)
+                        .map(|t| t.starts_with("Vec<"))
+                        .unwrap_or(false)
                 {
                     result = format!("{}.{}", result, part);
                 } else {
@@ -7943,7 +8850,10 @@ impl RustGenerator {
             Expr::Ident(name) => {
                 let s = name.as_str();
                 let resolved = s.trim_start_matches('.');
-                (Some(resolved.to_string()), s.starts_with('.') || resolved != s)
+                (
+                    Some(resolved.to_string()),
+                    s.starts_with('.') || resolved != s,
+                )
             }
             // self.notes → Dot(Ident("self"), "notes")
             Expr::Dot(obj, field) => {
@@ -7998,18 +8908,62 @@ impl RustGenerator {
     fn is_custom_widget(&self, tag: &str) -> bool {
         // Known tags that should not be treated as custom widgets
         const KNOWN_TAGS: &[&str] = &[
-            "col", "column", "row", "grid", "scroll", "container", "center",
-            "button", "input", "textarea", "code_editor", "checkbox", "toggle", "select", "option", "link",
-            "text", "label", "span", "h1", "h2", "h3", "h4", "h5", "h6", "p",
-            "table", "thead", "tbody", "tr", "th", "td", "tree", "tree_item",
-            "tabs", "tab",
-            "modal", "tooltip",
-            "slider", "radio", "radiogroup",
-            "progress", "badge", "spinner",
-            "card", "avatar",
-            "image", "icon", "imagesurface", "image-surface", "image_surface", "ImageSurface",
-            "divider", "spacer",
-            "for", "if",
+            "col",
+            "column",
+            "row",
+            "grid",
+            "scroll",
+            "container",
+            "center",
+            "button",
+            "input",
+            "textarea",
+            "code_editor",
+            "checkbox",
+            "toggle",
+            "select",
+            "option",
+            "link",
+            "text",
+            "label",
+            "span",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "p",
+            "table",
+            "thead",
+            "tbody",
+            "tr",
+            "th",
+            "td",
+            "tree",
+            "tree_item",
+            "tabs",
+            "tab",
+            "modal",
+            "tooltip",
+            "slider",
+            "radio",
+            "radiogroup",
+            "progress",
+            "badge",
+            "spinner",
+            "card",
+            "avatar",
+            "image",
+            "icon",
+            "imagesurface",
+            "image-surface",
+            "image_surface",
+            "ImageSurface",
+            "divider",
+            "spacer",
+            "for",
+            "if",
         ];
         // Custom widgets start with uppercase letter
         tag.chars().next().map_or(false, |c| c.is_uppercase()) && !KNOWN_TAGS.contains(&tag)
@@ -8188,7 +9142,13 @@ impl RustGenerator {
     /// View IR builder 方法面）；真未知仍显式拒绝（PLAN-027 原则不
     /// 回退），拒绝文案补 `on <kind>` 上下文。复合族 props 由族降层臂
     /// 消费，不经此门。
-    fn add_prop_to_builder(&self, builder: &str, tag: &str, key: &str, value: &AuraPropValue) -> String {
+    fn add_prop_to_builder(
+        &self,
+        builder: &str,
+        tag: &str,
+        key: &str,
+        value: &AuraPropValue,
+    ) -> String {
         match value {
             AuraPropValue::Expr(expr) => {
                 let value_str = self.ast_expr_to_rust(expr);
@@ -8198,7 +9158,8 @@ impl RustGenerator {
                         // for dynamic expressions (If/Binary/StateRef), use
                         // .style(expr) without quotes (expr already produces String).
                         if matches!(expr, crate::ast::Expr::Str(_)) {
-                            let class_str = value_str.trim_matches('"')
+                            let class_str = value_str
+                                .trim_matches('"')
                                 .trim_end_matches(".to_string()")
                                 .trim_matches('"');
                             if class_str.is_empty() {
@@ -8214,7 +9175,8 @@ impl RustGenerator {
                         // Plan 346: same as class — Literal uses quoted string,
                         // dynamic expressions use unquoted Rust expression.
                         if matches!(expr, crate::ast::Expr::Str(_)) {
-                            let style_str = value_str.trim_matches('"')
+                            let style_str = value_str
+                                .trim_matches('"')
                                 .trim_end_matches(".to_string()")
                                 .trim_matches('"');
                             if style_str.is_empty() {
@@ -8236,9 +9198,10 @@ impl RustGenerator {
                     // PLAN-039 T-06（发现臂同款）：`aria-label`/ARIA 族 =
                     // a11y 提示词（tetris app.at 惯用）——a2r 编译轨无
                     // ARIA 面，认知且双轨同弃（key/onmouseenter parity）。
-                    "aria-label" | "aria-labelledby" | "aria-describedby"
-                    | "aria-hidden" | "aria-expanded" | "aria-controls"
-                    | "role" | "tabindex" | "alt" => builder.to_string(),
+                    "aria-label" | "aria-labelledby" | "aria-describedby" | "aria-hidden"
+                    | "aria-expanded" | "aria-controls" | "role" | "tabindex" | "alt" => {
+                        builder.to_string()
+                    }
                     // PLAN-674 T-03：per-kind 词汇表命中——发射
                     // `.{prop}({coerced})`（Flag 形零参方法，字面量 false
                     // 跳过，非字面量落拒绝门——链式面无条件发射通道，
@@ -8251,18 +9214,20 @@ impl RustGenerator {
                         if let Some((prop, shape)) = hit {
                             use crate::ui_gen::vocab::ViewPropShape as S;
                             return match shape {
-                                S::Flag => match expr {
-                                    crate::ast::Expr::Bool(true) => {
-                                        format!("{}.{}()", builder, prop)
-                                    }
-                                    crate::ast::Expr::Bool(false) => builder.to_string(),
-                                    _ => {
-                                        let msg = format!(
+                                S::Flag => {
+                                    match expr {
+                                        crate::ast::Expr::Bool(true) => {
+                                            format!("{}.{}()", builder, prop)
+                                        }
+                                        crate::ast::Expr::Bool(false) => builder.to_string(),
+                                        _ => {
+                                            let msg = format!(
                                             "a2r codegen: prop `{key}` on <{kind}> accepts only a literal bool (flag method has no conditional chain face; PLAN-674 vocab gate)"
                                         );
-                                        format!("{{ std::compile_error!(\"{msg}\"); unreachable!() }}")
+                                            format!("{{ std::compile_error!(\"{msg}\"); unreachable!() }}")
+                                        }
                                     }
-                                },
+                                }
                                 _ => format!(
                                     "{}.{}({})",
                                     builder,
@@ -8289,7 +9254,8 @@ impl RustGenerator {
                 // For Rust, generate conditional style application.
                 // Each binding produces a conditional: if cond { "style" } else { "" }
                 // Uses .with_style() with Style::parse() for safe string construction.
-                let class_conditions: Vec<String> = bindings.iter()
+                let class_conditions: Vec<String> = bindings
+                    .iter()
                     .map(|b| {
                         let cond = self.ast_expr_to_rust(&b.condition);
                         format!("if {} {{ \"{}\" }} else {{ \"\" }}", cond, b.style_name)
@@ -8305,7 +9271,11 @@ impl RustGenerator {
                     // Rust if-expr returns &str, we need to combine them.
                     // Use nested format!: format!("{} {}", c1, c2) then .as_str()
                     // Actually, just construct Style directly from parts
-                    let fmt_str = class_conditions.iter().map(|_| "{}").collect::<Vec<_>>().join(" ");
+                    let fmt_str = class_conditions
+                        .iter()
+                        .map(|_| "{}")
+                        .collect::<Vec<_>>()
+                        .join(" ");
                     // Each condition is an `if ... { &str } else { &str }` expression
                     // format!() needs owned values for interpolation, but &str works fine
                     let args = class_conditions.join(", ");
@@ -8329,7 +9299,11 @@ impl RustGenerator {
             crate::aura::AuraNode::ForLoop { body, .. } => {
                 body.iter().any(|c| self.view_tree_has_menubar(c))
             }
-            crate::aura::AuraNode::Conditional { then_body, else_body, .. } => {
+            crate::aura::AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 then_body.iter().any(|c| self.view_tree_has_menubar(c))
                     || else_body
                         .as_ref()
@@ -8393,8 +9367,15 @@ impl RustGenerator {
     /// 槽形 Closure/Msg 双态发射）。全局族（onclick/oncontextmenu/
     /// onchange + drag not-yet + hover 双轨同弃）维持独立臂；真未知
     /// 仍显式拒绝，文案补 `on <kind>` 上下文。
-    fn add_event_to_builder(&self, builder: &str, tag: &str, event: &str, aura_event: &AuraEvent) -> String {
-        let handler_fn = self.handler_to_rust_closure_with_params(&aura_event.handler, &aura_event.params);
+    fn add_event_to_builder(
+        &self,
+        builder: &str,
+        tag: &str,
+        event: &str,
+        aura_event: &AuraEvent,
+    ) -> String {
+        let handler_fn =
+            self.handler_to_rust_closure_with_params(&aura_event.handler, &aura_event.params);
         match event {
             "onclick" | "onClick" | "on_click" => {
                 format!("{}.on_click({})", builder, handler_fn)
@@ -8411,9 +9392,18 @@ impl RustGenerator {
             // 债指针，区别于通用未知事件臂（kanban board.at
             // ondragover.prevent ×3 = 生成门预期唯一诚实红）；禁静默
             // no-op（I1 红线）。
-            "ondragover" | "ondragover.prevent" | "ondragstart" | "ondragstart.prevent"
-            | "ondragend" | "ondragend.prevent" | "ondrop" | "ondrop.prevent"
-            | "ondragenter" | "ondragenter.prevent" | "ondragleave" | "ondragleave.prevent" => {
+            "ondragover"
+            | "ondragover.prevent"
+            | "ondragstart"
+            | "ondragstart.prevent"
+            | "ondragend"
+            | "ondragend.prevent"
+            | "ondrop"
+            | "ondrop.prevent"
+            | "ondragenter"
+            | "ondragenter.prevent"
+            | "ondragleave"
+            | "ondragleave.prevent" => {
                 let msg = format!(
                     "a2r codegen: event `{event}` (HTML5 drag family) not yet supported in a2r compiled mode (PLAN-039 D3-A explicit not-yet; in-app DnD tracked as P039 debt)"
                 );
@@ -8437,8 +9427,10 @@ impl RustGenerator {
                             format!("{}.{}({})", builder, method, handler_fn)
                         }
                         crate::ui_gen::vocab::ViewEventSlot::Msg(method) => {
-                            let direct =
-                                self.handler_to_rust_direct_msg(&aura_event.handler, &aura_event.params);
+                            let direct = self.handler_to_rust_direct_msg(
+                                &aura_event.handler,
+                                &aura_event.params,
+                            );
                             format!("{}.{}({})", builder, method, direct)
                         }
                     };
@@ -8471,10 +9463,16 @@ impl RustGenerator {
             format!("|_| {}::{}", msg_name, variant)
         } else {
             // Convert dot access on Value-type vars to index access
-            let converted_params: Vec<String> = params.iter()
+            let converted_params: Vec<String> = params
+                .iter()
                 .map(|p| self.convert_param_value_access(p, &variant))
                 .collect();
-            format!("|_| {}::{}({})", msg_name, variant, converted_params.join(", "))
+            format!(
+                "|_| {}::{}({})",
+                msg_name,
+                variant,
+                converted_params.join(", ")
+            )
         }
     }
 
@@ -8486,7 +9484,8 @@ impl RustGenerator {
         if params.is_empty() {
             format!("{}::{}", msg_name, variant)
         } else {
-            let converted_params: Vec<String> = params.iter()
+            let converted_params: Vec<String> = params
+                .iter()
                 .map(|p| self.convert_param_value_access(p, &variant))
                 .collect();
             format!("{}::{}({})", msg_name, variant, converted_params.join(", "))
@@ -8503,25 +9502,39 @@ impl RustGenerator {
             if self.value_loop_vars.contains(var_name) || self.needs_index_access(var_name) {
                 let field = parts[1..].join(".");
                 // Check payload type to determine conversion
-                let payload_ty = self.message_variants.iter()
+                let payload_ty = self
+                    .message_variants
+                    .iter()
                     .find(|v| v.name == variant_name)
                     .and_then(|v| v.payload.first())
                     .map(|t| self.auto_type_to_rust(t));
                 return match payload_ty.as_deref() {
-                    Some("i32") => format!("{}[\"{}\"].as_i64().unwrap_or(0) as i32", var_name, field),
+                    Some("i32") => {
+                        format!("{}[\"{}\"].as_i64().unwrap_or(0) as i32", var_name, field)
+                    }
                     Some("i64") => format!("{}[\"{}\"].as_i64().unwrap_or(0)", var_name, field),
-                    Some("String") => format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", var_name, field),
-                    Some("bool") => format!("{}[\"{}\"].as_bool().unwrap_or(false)", var_name, field),
+                    Some("String") => format!(
+                        "{}[\"{}\"].as_str().unwrap_or_default().to_string()",
+                        var_name, field
+                    ),
+                    Some("bool") => {
+                        format!("{}[\"{}\"].as_bool().unwrap_or(false)", var_name, field)
+                    }
                     _ => format!("{}[\"{}\"]", var_name, field),
                 };
             }
         }
         // Plan 374: String literal args need .to_string() when variant expects String
-        let payload_ty = self.message_variants.iter()
+        let payload_ty = self
+            .message_variants
+            .iter()
             .find(|v| v.name == variant_name)
             .and_then(|v| v.payload.first())
             .map(|t| self.auto_type_to_rust(t));
-        if payload_ty.as_deref() == Some("String") && param.starts_with('"') && !param.contains(".to_string()") {
+        if payload_ty.as_deref() == Some("String")
+            && param.starts_with('"')
+            && !param.contains(".to_string()")
+        {
             return format!("{}.to_string()", param);
         }
         // PLAN-039 T-13（批次 E）：typed 循环变量的字段访问参数补 clone
@@ -8549,9 +9562,9 @@ impl RustGenerator {
                 .chars()
                 .next()
                 .map_or(false, |c| c.is_ascii_alphabetic() || c == '_')
-            && payload_ty
-                .as_deref()
-                .map_or(false, |t| !matches!(t, "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool"))
+            && payload_ty.as_deref().map_or(false, |t| {
+                !matches!(t, "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool")
+            })
         {
             // 纯标识符（`PickCat(c)` 循环变量 String）与点链同 clone
             // ——Fn 闭包 move 株（数值参数 clone 冗余但合法）。
@@ -8565,7 +9578,11 @@ impl RustGenerator {
     /// 顶层 `store.X(a, b)`（转发调用）中，实参全为裸 ident 且与模式参数
     /// 序完全一致时，取 STORE_MSG_PAYLOADS[X] 为载荷型序；其余形态返回
     /// 空（维持零参注册——原响亮失败语义不变）。
-    fn infer_on_only_payload(&self, pattern: &str, payload: &LogicPayload) -> Vec<crate::ast::Type> {
+    fn infer_on_only_payload(
+        &self,
+        pattern: &str,
+        payload: &LogicPayload,
+    ) -> Vec<crate::ast::Type> {
         use crate::ast::{Arg, Expr, Stmt};
         let params = pattern_param_names(pattern);
         if params.is_empty() {
@@ -8582,7 +9599,11 @@ impl RustGenerator {
                     if let Expr::Dot(obj, method) = call.name.as_ref() {
                         if let Expr::Ident(obj_name) = obj.as_ref() {
                             if obj_name.as_str() == "store"
-                                && method.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                                && method
+                                    .chars()
+                                    .next()
+                                    .map(|c| c.is_uppercase())
+                                    .unwrap_or(false)
                             {
                                 let args: Vec<String> = call
                                     .args
@@ -8605,7 +9626,8 @@ impl RustGenerator {
         }
         for (variant, args) in candidates {
             if args == params {
-                if let Some(types) = STORE_MSG_PAYLOADS.with(|m| m.borrow().get(&variant).cloned()) {
+                if let Some(types) = STORE_MSG_PAYLOADS.with(|m| m.borrow().get(&variant).cloned())
+                {
                     if types.len() == params.len() {
                         return types;
                     }
@@ -8710,9 +9732,7 @@ impl RustGenerator {
                 // handler 臂块 = 语句位置:块尾恒补 `;`(PLAN-634 T-03)。
                 self.join_stmt_block(stmts, ";\n                ")
             }
-            LogicPayload::Bytecode(_) => {
-                "// bytecode handler".to_string()
-            }
+            LogicPayload::Bytecode(_) => "// bytecode handler".to_string(),
         };
         // Plan 374: Post-process handler body to fix Value array/bool operations.
         let mut body = self.postprocess_handler_body(&raw);
@@ -8743,7 +9763,7 @@ impl RustGenerator {
         while let Some(pos) = result.find(".as_str().unwrap_or_default().to_string().push(") {
             // Find the start of .push( — we need the base expression before .as_str()
             let push_paren = pos + ".as_str().unwrap_or_default().to_string().push(".len() - 1; // position of '('
-            // Find matching close paren for .push(
+                                                                                                // Find matching close paren for .push(
             let bytes = result.as_bytes();
             let mut depth = 0;
             let mut pe = push_paren;
@@ -8753,19 +9773,31 @@ impl RustGenerator {
                     b'(' => depth += 1,
                     b')' => {
                         depth -= 1;
-                        if depth == 0 { pe = j; found = true; break; }
+                        if depth == 0 {
+                            pe = j;
+                            found = true;
+                            break;
+                        }
                     }
                     _ => {}
                 }
             }
-            if !found { break; }
+            if !found {
+                break;
+            }
             let arg = &result[push_paren + 1..pe];
             // Find the base expression: walk backwards from pos to find self.note["tags"]
             // Look for pattern: word.word[...]
             let mut base_start = pos;
             for k in (0..pos).rev() {
                 let c = bytes[k];
-                if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' || c == b'[' || c == b']' || c == b'"' {
+                if c.is_ascii_alphanumeric()
+                    || c == b'_'
+                    || c == b'.'
+                    || c == b'['
+                    || c == b']'
+                    || c == b'"'
+                {
                     base_start = k;
                 } else {
                     break;
@@ -8776,7 +9808,12 @@ impl RustGenerator {
                 "{{ let mut __a = {}.as_array().cloned().unwrap_or_default(); __a.push(serde_json::json!({})); {} = serde_json::Value::Array(__a); }}",
                 base.trim(), arg.trim(), base.trim()
             );
-            result = format!("{}{}{}", &result[..base_start], replacement, &result[pe + 1..]);
+            result = format!(
+                "{}{}{}",
+                &result[..base_start],
+                replacement,
+                &result[pe + 1..]
+            );
         }
 
         // Fix 2: .as_str().unwrap_or_default().to_string().iter()
@@ -8784,7 +9821,7 @@ impl RustGenerator {
         // Pattern: X.as_str().unwrap_or_default().to_string().iter()
         result = result.replace(
             ".as_str().unwrap_or_default().to_string().iter()",
-            ".as_array().into_iter().flatten()"
+            ".as_array().into_iter().flatten()",
         );
 
         // Fix 2b: #[api] Vec<String> argument marshalling.
@@ -8806,7 +9843,13 @@ impl RustGenerator {
             for (j, &b) in bytes[pos..].iter().enumerate() {
                 match b {
                     b'(' => depth += 1,
-                    b')' => { depth -= 1; if depth == 0 { end = pos + j; break; } }
+                    b')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = pos + j;
+                            break;
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -8840,7 +9883,14 @@ impl RustGenerator {
                 let mut base_start = base_end;
                 for k in (0..base_end).rev() {
                     let c = bytes[k];
-                    if c.is_ascii_alphanumeric() || c == b'_' || c == b'.' || c == b'[' || c == b']' || c == b'"' || c == b' ' {
+                    if c.is_ascii_alphanumeric()
+                        || c == b'_'
+                        || c == b'.'
+                        || c == b'['
+                        || c == b']'
+                        || c == b'"'
+                        || c == b' '
+                    {
                         base_start = k;
                     } else {
                         break;
@@ -8856,12 +9906,26 @@ impl RustGenerator {
                 for j in excl_start..bytes.len() {
                     match bytes[j] {
                         b'(' => depth += 1,
-                        b')' => { depth -= 1; if depth == 0 { close = j; break; } }
+                        b')' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                close = j;
+                                break;
+                            }
+                        }
                         _ => {}
                     }
                 }
-                let replacement = format!("{} = serde_json::json!(!({}.as_bool().unwrap_or(false)))", base, base);
-                result = format!("{}{}{}", &result[..base_start], replacement, &result[close+1..]);
+                let replacement = format!(
+                    "{} = serde_json::json!(!({}.as_bool().unwrap_or(false)))",
+                    base, base
+                );
+                result = format!(
+                    "{}{}{}",
+                    &result[..base_start],
+                    replacement,
+                    &result[close + 1..]
+                );
             }
         }
 
@@ -8887,12 +9951,18 @@ impl RustGenerator {
                 for j in brace_start..bytes.len() {
                     match bytes[j] {
                         b'{' => depth += 1,
-                        b'}' => { depth -= 1; if depth == 0 { brace_end = j; break; } }
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                brace_end = j;
+                                break;
+                            }
+                        }
                         _ => {}
                     }
                 }
                 // Check if there's already an else after brace_end
-                let after = &result[brace_end+1..];
+                let after = &result[brace_end + 1..];
                 if !after.trim_start().starts_with("else") {
                     // Insert `else {}` (unit-typed else branch matches the
                     // statement-context if-body).
@@ -8955,7 +10025,11 @@ impl RustGenerator {
         match stmt {
             crate::ast::Stmt::Store(store) => {
                 let name = store.name.as_str();
-                let resolved = if name.starts_with('.') { &name[1..] } else { name };
+                let resolved = if name.starts_with('.') {
+                    &name[1..]
+                } else {
+                    name
+                };
                 let mut value = self.ast_expr_to_rust(&store.expr);
                 // Let/Const are local variables — use let binding
                 // Var/Field are state variables — but only if they exist in state_types
@@ -8976,7 +10050,9 @@ impl RustGenerator {
                                         // （r.cards 局部集合 → "cards"，
                                         // state/local 判定随后收口）。
                                         Some(field.as_str())
-                                    } else { None }
+                                    } else {
+                                        None
+                                    }
                                 }
                                 _ => None,
                             };
@@ -8990,7 +10066,8 @@ impl RustGenerator {
                                 .unwrap_or(false);
                             let local_index_rhs = coll_stripped
                                 .map(|coll| {
-                                    self.array_locals.contains(coll) || self.value_locals.contains(coll)
+                                    self.array_locals.contains(coll)
+                                        || self.value_locals.contains(coll)
                                 })
                                 .unwrap_or(false);
                             if state_vec || local_index_rhs {
@@ -9041,10 +10118,7 @@ impl RustGenerator {
                             && self.coalesce_receivers.contains(store.name.as_str())
                             && self.expr_is_value_typed(&store.expr)
                         {
-                            value = format!(
-                                "{}.clone()",
-                                self.value_bracket_chain(&store.expr)
-                            );
+                            value = format!("{}.clone()", self.value_bracket_chain(&store.expr));
                         }
                         // PLAN-710 D-6：无类型局部 ← state 非 Copy 字段直读
                         // ——拷贝语义（`var src = .diff_rows` 株——Vec 态
@@ -9073,14 +10147,18 @@ impl RustGenerator {
                         let coerced = self.coerce_typed_local_init(&store.ty, &store.expr, &value);
                         if let crate::ast::Expr::Index(target, _idx) = &store.expr {
                             let coll_stripped: Option<&str> = match target.as_ref() {
-                                crate::ast::Expr::Ident(c) => Some(c.as_str().strip_prefix('.').unwrap_or(c.as_str())),
+                                crate::ast::Expr::Ident(c) => {
+                                    Some(c.as_str().strip_prefix('.').unwrap_or(c.as_str()))
+                                }
                                 crate::ast::Expr::Dot(inner, field) => {
                                     if matches!(inner.as_ref(), crate::ast::Expr::Ident(_)) {
                                         // PLAN-039 T-13：任意 Ident 基座
                                         // （r.cards 局部集合 → "cards"，
                                         // state/local 判定随后收口）。
                                         Some(field.as_str())
-                                    } else { None }
+                                    } else {
+                                        None
+                                    }
                                 }
                                 _ => None,
                             };
@@ -9094,7 +10172,10 @@ impl RustGenerator {
                             // Vec<Card> 索引位 ×株（VM 拷贝语义；Value 元素
                             // clone 语义同）。
                             let local_index_rhs = coll_stripped
-                                .map(|coll| self.array_locals.contains(coll) || self.value_locals.contains(coll))
+                                .map(|coll| {
+                                    self.array_locals.contains(coll)
+                                        || self.value_locals.contains(coll)
+                                })
                                 .unwrap_or(false);
                             if state_vec || local_index_rhs {
                                 // 强转形态自带所有权（as_str→to_string 拷贝）；
@@ -9109,7 +10190,10 @@ impl RustGenerator {
                         }
                         if self.state_types.contains_key(resolved) {
                             // Auto-coerce int → String when assigning to a String field
-                            if self.state_types.get(resolved).map_or(false, |ty| ty == "String")
+                            if self
+                                .state_types
+                                .get(resolved)
+                                .map_or(false, |ty| ty == "String")
                                 && !self.ast_expr_is_string(&store.expr)
                             {
                                 value = format!("{}.to_string()", value);
@@ -9118,11 +10202,12 @@ impl RustGenerator {
                             // 字段访问 RHS 补 clone——`self.cards = r.cards`
                             // move 后 r.meta/r.cards 复用株（VM 拷贝语义的
                             // 编译等价）。数值/布尔态（Copy）不动。
-                            let state_non_copy = self
-                                .state_types
-                                .get(resolved)
-                                .map_or(false, |ty| {
-                                    !matches!(ty.as_str(), "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool")
+                            let state_non_copy =
+                                self.state_types.get(resolved).map_or(false, |ty| {
+                                    !matches!(
+                                        ty.as_str(),
+                                        "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool"
+                                    )
                                 });
                             if state_non_copy
                                 && matches!(
@@ -9142,9 +10227,13 @@ impl RustGenerator {
                             if matches!(&store.ty, crate::ast::Type::List(inner)
                                 if matches!(**inner, crate::ast::Type::Int))
                             {
-                                self.handler_int_list_vars.borrow_mut().insert(name.to_string());
+                                self.handler_int_list_vars
+                                    .borrow_mut()
+                                    .insert(name.to_string());
                             } else {
-                                self.handler_int_list_vars.borrow_mut().remove(&name.to_string());
+                                self.handler_int_list_vars
+                                    .borrow_mut()
+                                    .remove(&name.to_string());
                             }
                             // Local mutable var in handler context.
                             // PLAN-039 T-14（E-D3 第二轨）：Value 联合局部
@@ -9175,7 +10264,10 @@ impl RustGenerator {
                         // If name is a known state var, use self. prefix
                         if self.state_types.contains_key(resolved) {
                             // Auto-coerce int → String when assigning to a String field
-                            if self.state_types.get(resolved).map_or(false, |ty| ty == "String")
+                            if self
+                                .state_types
+                                .get(resolved)
+                                .map_or(false, |ty| ty == "String")
                                 && !self.ast_expr_is_string(&store.expr)
                             {
                                 value = format!("{}.to_string()", value);
@@ -9188,9 +10280,7 @@ impl RustGenerator {
                     }
                 }
             }
-            crate::ast::Stmt::Expr(expr) => {
-                self.ast_expr_to_rust(expr)
-            }
+            crate::ast::Stmt::Expr(expr) => self.ast_expr_to_rust(expr),
             crate::ast::Stmt::If(if_stmt) => {
                 let mut parts = Vec::new();
                 for (i, branch) in if_stmt.branches.iter().enumerate() {
@@ -9224,7 +10314,10 @@ impl RustGenerator {
                         let needs_mut = self.value_loop_vars.contains(iter_name);
                         let iter_method = if needs_mut { "iter_mut" } else { "iter" };
                         let mut_prefix = if needs_mut { "mut " } else { "" };
-                        format!("for {}{} in {}.{}() {{ {} }}", mut_prefix, iter_name, collection, iter_method, body_str)
+                        format!(
+                            "for {}{} in {}.{}() {{ {} }}",
+                            mut_prefix, iter_name, collection, iter_method, body_str
+                        )
                     }
                     crate::ast::Iter::Cond => {
                         // for i >= 0 { ... } → while i >= 0 { ... }
@@ -9239,11 +10332,23 @@ impl RustGenerator {
                     crate::ast::Iter::Indexed(idx, name) => {
                         // for i, todo in .todos { ... } → for (i, todo) in self.todos.iter().enumerate() { ... }
                         let collection = self.ast_expr_to_rust(&for_stmt.range);
-                        format!("for ({}, {}) in {}.iter().enumerate() {{ {} }}", idx.as_str(), name.as_str(), collection, body_str)
+                        format!(
+                            "for ({}, {}) in {}.iter().enumerate() {{ {} }}",
+                            idx.as_str(),
+                            name.as_str(),
+                            collection,
+                            body_str
+                        )
                     }
                     crate::ast::Iter::Destructured(key, val) => {
                         let collection = self.ast_expr_to_rust(&for_stmt.range);
-                        format!("for ({}, {}) in {}.iter() {{ {} }}", key.as_str(), val.as_str(), collection, body_str)
+                        format!(
+                            "for ({}, {}) in {}.iter() {{ {} }}",
+                            key.as_str(),
+                            val.as_str(),
+                            collection,
+                            body_str
+                        )
                     }
                     crate::ast::Iter::Call(_) => {
                         // Fallback for Call-based iterators
@@ -9283,9 +10388,7 @@ impl RustGenerator {
                 let body_str = self.join_stmt_block(&t.body.stmts, "; ");
                 let catch_str = self.join_stmt_block(&t.catch_body.stmts, "; ");
                 let catch_bind = match &t.catch_param {
-                    Some(p) => format!(
-                        "let {p} = auto_lang::a2r_std::panic_message(&__p); "
-                    ),
+                    Some(p) => format!("let {p} = auto_lang::a2r_std::panic_message(&__p); "),
                     None => String::new(),
                 };
                 let catch_arm = if catch_bind.is_empty() && catch_str.is_empty() {
@@ -9345,9 +10448,7 @@ impl RustGenerator {
             && !value.contains('(')
             && !value.contains('[')
             && !value.contains(".clone()")
-            && value
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '_')
+            && value.chars().all(|c| c.is_alphanumeric() || c == '_')
         {
             return format!("{}.clone()", value);
         }
@@ -9532,7 +10633,11 @@ impl RustGenerator {
             if s.starts_with(".store.") {
                 let field = &s[".store.".len()..];
                 if !field.contains('.') {
-                    return match self.store_field_rust_type(field).unwrap_or_default().as_str() {
+                    return match self
+                        .store_field_rust_type(field)
+                        .unwrap_or_default()
+                        .as_str()
+                    {
                         "serde_json::Value" => "value",
                         t if t.starts_with("Vec<") => "vec",
                         "String" => "string",
@@ -9594,9 +10699,10 @@ impl RustGenerator {
             // （int → to_string、String → to_string 皆合法）。
             return match method {
                 "str" => Some(format!("({}).to_string()", self.ast_expr_to_rust(obj))),
-                "slice" | "lower" | "upper" | "trim" | "replace" | "contains"
-                | "starts_with" | "ends_with" => self
-                    .try_string_method_call(obj, method, call, /*force_string=*/ true),
+                "slice" | "lower" | "upper" | "trim" | "replace" | "contains" | "starts_with"
+                | "ends_with" => {
+                    self.try_string_method_call(obj, method, call, /*force_string=*/ true)
+                }
                 // PLAN-710 D-8（T-00 普查残余）：to_int——串解析整形
                 // （失败 0，与 __at_num 宽松收敛同纪律）。
                 "to_int" => Some(format!(
@@ -9688,10 +10794,7 @@ impl RustGenerator {
                     "(({}).trim().parse::<i32>().unwrap_or(0))",
                     self.ast_expr_to_rust(obj)
                 )),
-                "value" => Some(format!(
-                    "__at_num(&({}))",
-                    self.ast_expr_to_rust(obj)
-                )),
+                "value" => Some(format!("__at_num(&({}))", self.ast_expr_to_rust(obj))),
                 _ => None,
             },
             "str" => match kind {
@@ -9832,17 +10935,35 @@ impl RustGenerator {
         // (Fix 2 / __a push), and #[api] Vec<String> arguments are rewritten by
         // the update_tags special-case in postprocess. Keeping this branch as
         // String avoids breaking those rewrites.
-        if field == "id" || field.ends_with("_id") || field == "idx" || field == "count"
-            || field == "x" || field == "y" || field == "adjacent" {
+        if field == "id"
+            || field.ends_with("_id")
+            || field == "idx"
+            || field == "count"
+            || field == "x"
+            || field == "y"
+            || field == "adjacent"
+        {
             // Plan 407: parenthesize so callers can safely append .to_string() etc.
             format!("({}[\"{}\"].as_i64().unwrap_or(0) as i32)", obj_expr, field)
-        } else if field == "pinned" || field == "done" || field == "deleted" || field == "active"
-            || field == "editing" || field == "loading" || field == "dark_mode"
-            || field == "show_tag_input" || field.starts_with("is_")
-            || field == "mine" || field == "revealed" || field == "flagged" {
+        } else if field == "pinned"
+            || field == "done"
+            || field == "deleted"
+            || field == "active"
+            || field == "editing"
+            || field == "loading"
+            || field == "dark_mode"
+            || field == "show_tag_input"
+            || field.starts_with("is_")
+            || field == "mine"
+            || field == "revealed"
+            || field == "flagged"
+        {
             format!("{}[\"{}\"].as_bool().unwrap_or(false)", obj_expr, field)
         } else {
-            format!("{}[\"{}\"].as_str().unwrap_or_default().to_string()", obj_expr, field)
+            format!(
+                "{}[\"{}\"].as_str().unwrap_or_default().to_string()",
+                obj_expr, field
+            )
         }
     }
 
@@ -9887,7 +11008,10 @@ impl RustGenerator {
                 return false;
             };
             let name = n.as_str().strip_prefix('.').unwrap_or(n.as_str());
-            self.state_types.get(name).map(|t| t.starts_with("Vec<")).unwrap_or(false)
+            self.state_types
+                .get(name)
+                .map(|t| t.starts_with("Vec<"))
+                .unwrap_or(false)
                 || self.array_locals.contains(name)
         })();
         // 逐段构造 Value 基座：成员段聚路径，索引段切段组合。
@@ -9954,12 +11078,12 @@ impl RustGenerator {
             {
                 int_default(format!("-{}", Self::int_literal_value(inner).unwrap()))
             }
-            Expr::Bool(b) => format!(
-                "auto_lang::a2r_std::json::get_bool_or(&({subject}), &[{keys_str}], {b})"
-            ),
-            Expr::Array(_) => format!(
-                "auto_lang::a2r_std::json::get_array_or(&({subject}), &[{keys_str}])"
-            ),
+            Expr::Bool(b) => {
+                format!("auto_lang::a2r_std::json::get_bool_or(&({subject}), &[{keys_str}], {b})")
+            }
+            Expr::Array(_) => {
+                format!("auto_lang::a2r_std::json::get_array_or(&({subject}), &[{keys_str}])")
+            }
             other => {
                 let d = self.ast_expr_to_rust(other);
                 format!(
@@ -10183,20 +11307,25 @@ impl RustGenerator {
     }
 
     /// Check if an AST expression produces a String type (for detecting string concatenation)
-    fn ast_expr_is_string(&self, expr: &crate::ast::Expr) -> bool {        use crate::ast::Expr;
+    fn ast_expr_is_string(&self, expr: &crate::ast::Expr) -> bool {
+        use crate::ast::Expr;
         match expr {
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => true,
             Expr::Ident(name) => {
                 let s = name.as_str();
                 let resolved = if s.starts_with('.') { &s[1..] } else { s };
-                self.state_types.get(resolved).map_or(false, |ty| ty == "String")
+                self.state_types
+                    .get(resolved)
+                    .map_or(false, |ty| ty == "String")
             }
             Expr::Dot(obj, field) => {
                 // Dot(Ident("self"), "display") → check field "display" in state_types
                 if let Expr::Ident(obj_name) = obj.as_ref() {
                     let obj_s = obj_name.as_str();
                     if obj_s == "self" || obj_s.starts_with('.') {
-                        return self.state_types.get(field.as_str())
+                        return self
+                            .state_types
+                            .get(field.as_str())
                             .map_or(false, |ty| ty == "String");
                     }
                 }
@@ -10246,7 +11375,11 @@ impl RustGenerator {
 
     /// Like ast_expr_to_rust, but treats specified param names as serde_json::Value variables.
     /// Used for closures passed to findIndex/.position() where params iterate over &Value.
-    fn ast_expr_to_rust_with_value_params(&self, expr: &crate::ast::Expr, value_params: &[String]) -> String {
+    fn ast_expr_to_rust_with_value_params(
+        &self,
+        expr: &crate::ast::Expr,
+        value_params: &[String],
+    ) -> String {
         use crate::ast::Expr;
         // Intercept Dot access on value params
         if let Expr::Dot(obj, field) = expr {
@@ -10362,9 +11495,8 @@ impl RustGenerator {
                 _ => None,
             })
             .collect();
-        let arg = |i: usize| -> Option<String> {
-            pos_args.get(i).map(|e| self.ast_expr_to_rust(e))
-        };
+        let arg =
+            |i: usize| -> Option<String> { pos_args.get(i).map(|e| self.ast_expr_to_rust(e)) };
         match fn_name {
             "console_log" => Some(format!(
                 "{{ auto_lang::vm::ui_console::ui_console_push(&({})); true }}",
@@ -10545,11 +11677,19 @@ impl RustGenerator {
             Expr::Uint(n) => n.to_string(),
             Expr::Float(n, _) => {
                 let s = format!("{}", n);
-                if s.contains('.') { s } else { format!("{}.0", n) }
+                if s.contains('.') {
+                    s
+                } else {
+                    format!("{}.0", n)
+                }
             }
             Expr::Double(n, _) => {
                 let s = format!("{}", n);
-                if s.contains('.') { s } else { format!("{}.0", n) }
+                if s.contains('.') {
+                    s
+                } else {
+                    format!("{}.0", n)
+                }
             }
             Expr::Bool(b) => b.to_string(),
             // PLAN-039 T-13（批次 E，E-D5-A）：用户型构造字面量
@@ -10561,13 +11701,14 @@ impl RustGenerator {
                 if node.args.args.is_empty() {
                     format!("{}::default()", node.name.as_str())
                 } else {
-                    let fields: Vec<String> = node.args.args.iter()
+                    let fields: Vec<String> = node
+                        .args
+                        .args
+                        .iter()
                         .filter_map(|a| match a {
-                            crate::ast::Arg::Pair(n, e) => Some(format!(
-                                "{}: {}",
-                                n.as_str(),
-                                self.ast_expr_to_rust(e)
-                            )),
+                            crate::ast::Arg::Pair(n, e) => {
+                                Some(format!("{}: {}", n.as_str(), self.ast_expr_to_rust(e)))
+                            }
                             _ => None,
                         })
                         .collect();
@@ -10615,7 +11756,10 @@ impl RustGenerator {
                         if self.needs_index_access(first) {
                             let field = &path[dot_pos + 1..];
                             // Reading from serde_json::Value: use index + string conversion
-                            return format!("self.{}[\"{}\"].as_str().unwrap_or_default().to_string()", first, field);
+                            return format!(
+                                "self.{}[\"{}\"].as_str().unwrap_or_default().to_string()",
+                                first, field
+                            );
                         }
                     }
                     format!("self.{}", path)
@@ -10647,7 +11791,9 @@ impl RustGenerator {
                         let inner_s = inner_name.as_str();
                         let prop_name = inner_field.as_str();
                         // Pattern: self.prop_name.field_str
-                        if (inner_s == "self" || inner_s.starts_with('.')) && self.needs_index_access(prop_name) {
+                        if (inner_s == "self" || inner_s.starts_with('.'))
+                            && self.needs_index_access(prop_name)
+                        {
                             // Reading from Value: self.note["field"] with type-aware accessor
                             let obj_expr = format!("self.{}", prop_name);
                             return self.value_field_access(&obj_expr, field_str);
@@ -10673,13 +11819,19 @@ impl RustGenerator {
                     // （store list-of-record 字段跨 widget 可见）。
                     if let Some(coll) = self.loop_var_collections.get(resolved) {
                         if let Some(shape) = self.list_elem_shape(coll) {
-                            return self.value_field_access_shaped(resolved, field_str, Some(&shape));
+                            return self.value_field_access_shaped(
+                                resolved,
+                                field_str,
+                                Some(&shape),
+                            );
                         }
                     }
                     if self.needs_index_access(resolved) {
                         let obj_str = if s == "self" || s.starts_with('.') {
                             format!("self.{}", resolved)
-                        } else if self.state_types.contains_key(resolved) || self.prop_names.contains(resolved) {
+                        } else if self.state_types.contains_key(resolved)
+                            || self.prop_names.contains(resolved)
+                        {
                             format!("self.{}", resolved)
                         } else {
                             resolved.to_string()
@@ -10765,11 +11917,16 @@ impl RustGenerator {
                             if let Expr::Ident(inner_name) = inner_obj.as_ref() {
                                 let inner_s = inner_name.as_str();
                                 let prop_name = inner_field.as_str();
-                                if (inner_s == "self" || inner_s.starts_with('.')) && self.needs_index_access(prop_name) {
+                                if (inner_s == "self" || inner_s.starts_with('.'))
+                                    && self.needs_index_access(prop_name)
+                                {
                                     let field = outer_field.as_str();
                                     let value = self.ast_expr_to_rust(right);
                                     // Write to Value field: self.note["title"] = json!(value)
-                                    return format!("self.{}[\"{}\"] = serde_json::json!({})", prop_name, field, value);
+                                    return format!(
+                                        "self.{}[\"{}\"] = serde_json::json!({})",
+                                        prop_name, field, value
+                                    );
                                 }
                             }
                         }
@@ -10784,7 +11941,10 @@ impl RustGenerator {
                                 if self.needs_index_access(first) {
                                     let field = &path[dot_pos + 1..];
                                     let value = self.ast_expr_to_rust(right);
-                                    return format!("self.{}[\"{}\"] = serde_json::json!({})", first, field, value);
+                                    return format!(
+                                        "self.{}[\"{}\"] = serde_json::json!({})",
+                                        first, field, value
+                                    );
                                 }
                             }
                         }
@@ -10795,7 +11955,12 @@ impl RustGenerator {
                             let s = name.as_str();
                             if self.value_locals.contains(s) || self.needs_index_access(s) {
                                 let value = self.ast_expr_to_rust(right);
-                                return format!("{}[\"{}\"] = serde_json::json!({})", s, field.as_str(), value);
+                                return format!(
+                                    "{}[\"{}\"] = serde_json::json!({})",
+                                    s,
+                                    field.as_str(),
+                                    value
+                                );
                             }
                         }
                         // Check for indexed.field = value (e.g., todos[idx].text = .edit_text)
@@ -10818,8 +11983,14 @@ impl RustGenerator {
                             };
                             if let Some(collection) = coll_opt {
                                 let coll_name = collection.as_str();
-                                let resolved_coll = if coll_name.starts_with('.') { &coll_name[1..] } else { coll_name };
-                                if self.state_types.get(resolved_coll)
+                                let resolved_coll = if coll_name.starts_with('.') {
+                                    &coll_name[1..]
+                                } else {
+                                    coll_name
+                                };
+                                if self
+                                    .state_types
+                                    .get(resolved_coll)
                                     .map(|ty| ty.starts_with("Vec<"))
                                     .unwrap_or(false)
                                 {
@@ -10839,7 +12010,13 @@ impl RustGenerator {
                                         idx_str
                                     };
                                     let value = self.ast_expr_to_rust(right);
-                                    return format!("{}[{}][\"{}\"] = serde_json::json!({})", target_str, idx_cast, field.as_str(), value);
+                                    return format!(
+                                        "{}[{}][\"{}\"] = serde_json::json!({})",
+                                        target_str,
+                                        idx_cast,
+                                        field.as_str(),
+                                        value
+                                    );
                                 }
                             }
                         }
@@ -10864,8 +12041,7 @@ impl RustGenerator {
                                 .as_ref()
                                 .and_then(|rn| self.state_types.get(rn))
                                 .map_or(false, |t| {
-                                    t == "Vec<serde_json::Value>"
-                                        || t == "serde_json::Value"
+                                    t == "Vec<serde_json::Value>" || t == "serde_json::Value"
                                 })
                             {
                                 value = format!("{}.clone()", value);
@@ -10915,8 +12091,7 @@ impl RustGenerator {
                         // ——拷贝语义（先于 Value 判定门；`path = .diff_b` 株
                         // ——move 出借位 E0507）。
                         let bare_name = |v: &str| {
-                            !v.is_empty()
-                                && v.chars().all(|c| c.is_alphanumeric() || c == '_')
+                            !v.is_empty() && v.chars().all(|c| c.is_alphanumeric() || c == '_')
                         };
                         if self.declared_locals.get(ln).map(|k| k.as_str()) == Some("str")
                             && ((value.starts_with("self.")
@@ -10928,8 +12103,8 @@ impl RustGenerator {
                             value = format!("{}.clone()", value);
                         }
                         if let Some(kind) = self.declared_locals.get(ln) {
-                            let rhs_is_value = self.expr_is_value_typed(right)
-                                || value.contains("[\"");
+                            let rhs_is_value =
+                                self.expr_is_value_typed(right) || value.contains("[\"");
                             if rhs_is_value && !value.contains("__at_num")
                                 // PLAN-710 G-A：NullCoalesce 投影发射形自带
                                 // 具体型（i32/String/bool/Vec——a2r_std::json
@@ -10951,9 +12126,7 @@ impl RustGenerator {
                                         );
                                     }
                                     "str" => {
-                                        if value.contains(
-                                            ".as_i64().unwrap_or(0) as i32",
-                                        ) {
+                                        if value.contains(".as_i64().unwrap_or(0) as i32") {
                                             value = value.replace(
                                                 ".as_i64().unwrap_or(0) as i32",
                                                 ".as_str().unwrap_or_default().to_string()",
@@ -11020,10 +12193,8 @@ impl RustGenerator {
                             // int 读数（fold_hidden_count 的 `as i64` 尾缀）
                             // ——窄化 as i32（ui 域 int 模型字段位）。
                             else if ty == "i32" && value.ends_with(" as i64") {
-                                value = format!(
-                                    "{} as i32",
-                                    &value[..value.len() - " as i64".len()]
-                                );
+                                value =
+                                    format!("{} as i32", &value[..value.len() - " as i64".len()]);
                             }
                             let has_str_accessor =
                                 value.contains(".as_str().unwrap_or_default().to_string()");
@@ -11102,13 +12273,13 @@ impl RustGenerator {
                             .resolve_expr_name(left)
                             .and_then(|n| self.state_types.get(&n))
                             .map_or(false, |ty| {
-                                !matches!(ty.as_str(), "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool")
+                                !matches!(
+                                    ty.as_str(),
+                                    "i32" | "i64" | "u32" | "u64" | "f32" | "f64" | "bool"
+                                )
                             });
                         if l_state_non_copy
-                            && matches!(
-                                right.as_ref(),
-                                Expr::Ident(_) | Expr::Dot(..)
-                            )
+                            && matches!(right.as_ref(), Expr::Ident(_) | Expr::Dot(..))
                             && !value.contains('[')
                             && !value.starts_with('"')
                             && !value.contains(".clone()")
@@ -11135,7 +12306,9 @@ impl RustGenerator {
                     let value = self.ast_expr_to_rust(right);
                     // Check if target is a String field — need parse/add/to_string pattern
                     let target_name = self.resolve_expr_name(left);
-                    if target_name.as_ref().map_or(false, |n| self.state_types.get(n).map_or(false, |ty| ty == "String")) {
+                    if target_name.as_ref().map_or(false, |n| {
+                        self.state_types.get(n).map_or(false, |ty| ty == "String")
+                    }) {
                         // PLAN-036 T-02：String 字段的 += 分型——串侧（字面量/
                         // String 态源）= 追加语义 `format!`（VM 串接等价，
                         // __desktop_cmd 总线写点先例）；数值侧保留既有
@@ -11148,7 +12321,10 @@ impl RustGenerator {
                                 ))
                         {
                             let value = self.ast_expr_to_rust_no_to_string(right);
-                            return format!("{} = format!(\"{{}}{{}}\", {}, {})", target, target, value);
+                            return format!(
+                                "{} = format!(\"{{}}{{}}\", {}, {})",
+                                target, target, value
+                            );
                         }
                         let inner_op = match op {
                             Op::AddEq => "+",
@@ -11157,7 +12333,10 @@ impl RustGenerator {
                             Op::DivEq => "/",
                             _ => unreachable!(),
                         };
-                        return format!("{} = ({}.parse::<i32>().unwrap_or(0) {} {}).to_string()", target, target, inner_op, value);
+                        return format!(
+                            "{} = ({}.parse::<i32>().unwrap_or(0) {} {}).to_string()",
+                            target, target, inner_op, value
+                        );
                     }
                     let op_str = match op {
                         Op::AddEq => "+=",
@@ -11172,12 +12351,11 @@ impl RustGenerator {
                 // because Rust's + only works with String + &str, not String + String
                 // Check if EITHER side is a string literal (Expr::Str/CStr/FStr) — that
                 // unambiguously means string concatenation, not numeric addition.
-                let is_string_concat = matches!(op, Op::Add) && (
-                    matches!(left.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
-                    || matches!(right.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
-                    || self.ast_expr_is_string(left)
-                    || self.ast_expr_is_string(right)
-                );
+                let is_string_concat = matches!(op, Op::Add)
+                    && (matches!(left.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                        || matches!(right.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                        || self.ast_expr_is_string(left)
+                        || self.ast_expr_is_string(right));
                 if is_string_concat {
                     let left_str = self.ast_expr_to_rust_no_to_string(left);
                     let right_str = self.ast_expr_to_rust_no_to_string(right);
@@ -11195,11 +12373,12 @@ impl RustGenerator {
                     // 声明 str 局部恒 String——不包（__at_str 需 &Value；
                     // `var e str = …` 串接 e 株）。
                     let declared_str = |ex: &crate::ast::Expr| match ex {
-                        Expr::Ident(n) => self
-                            .declared_locals
-                            .get(n.as_str().trim_start_matches('.'))
-                            .map(|k| k.as_str())
-                            == Some("str"),
+                        Expr::Ident(n) => {
+                            self.declared_locals
+                                .get(n.as_str().trim_start_matches('.'))
+                                .map(|k| k.as_str())
+                                == Some("str")
+                        }
                         _ => false,
                     };
                     let left_str = if self.expr_is_value_typed(left)
@@ -11302,7 +12481,8 @@ impl RustGenerator {
                 format!("{} {} {}", left_wrapped, op_str, right_wrapped)
             }
             Expr::Call(call) => {
-                let fn_name: String = call.get_name_text_safe()
+                let fn_name: String = call
+                    .get_name_text_safe()
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| self.ast_expr_to_rust(&call.name));
                 // PLAN-681 T-05（F1 内建函数面）：VM 裸名/限定名内建 → 宿主
@@ -11322,31 +12502,43 @@ impl RustGenerator {
                     };
                     // Only rewrite if it's a direct store method (no nested dots like "notes.len")
                     // and starts with uppercase (PascalCase handler name).
-                    if !method.contains('.') && method.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
-                    let args_str = self.rust_call_args_with_clone(call).join(", ");
-                    let store_msg = STORE_NAMES.with(|sn| {
-                        sn.borrow().values().next().cloned()
-                            .map(|name| format!("{}Msg", name))
-                            .unwrap_or_else(|| "StoreMsg".to_string())
-                    });
-                    // Plan 407 R7: when generating a handler INSIDE the store itself,
-                    // use self.on(...) instead of self.store.on(...).
-                    let is_in_store = STORE_NAMES.with(|sn| {
-                        let cur = self.current_widget.as_deref();
-                        sn.borrow().values().any(|name| Some(name.as_str()) == cur)
-                    });
-                    let receiver = if is_in_store { "self" } else { "self.store" };
-                    if args_str.is_empty() {
-                        return format!("{}.on({}::{})", receiver, store_msg, method);
-                    } else {
-                        return format!("{}.on({}::{}({}))", receiver, store_msg, method, args_str);
-                    }
+                    if !method.contains('.')
+                        && method
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false)
+                    {
+                        let args_str = self.rust_call_args_with_clone(call).join(", ");
+                        let store_msg = STORE_NAMES.with(|sn| {
+                            sn.borrow()
+                                .values()
+                                .next()
+                                .cloned()
+                                .map(|name| format!("{}Msg", name))
+                                .unwrap_or_else(|| "StoreMsg".to_string())
+                        });
+                        // Plan 407 R7: when generating a handler INSIDE the store itself,
+                        // use self.on(...) instead of self.store.on(...).
+                        let is_in_store = STORE_NAMES.with(|sn| {
+                            let cur = self.current_widget.as_deref();
+                            sn.borrow().values().any(|name| Some(name.as_str()) == cur)
+                        });
+                        let receiver = if is_in_store { "self" } else { "self.store" };
+                        if args_str.is_empty() {
+                            return format!("{}.on({}::{})", receiver, store_msg, method);
+                        } else {
+                            return format!(
+                                "{}.on({}::{}({}))",
+                                receiver, store_msg, method, args_str
+                            );
+                        }
                     } // close if !method.contains('.')
                 } // close if fn_name.starts_with("store.")
-                // PLAN-627: 限定名 `api.X(...)`（模块形态 `use back.api`）——
-                // head 为 Ident("api") 且方法名 ∈ 当前 widget 的 api 清单时按
-                // 裸名同发射（命中文件级生成的 api 桩/merged 吸收 fn；清单门
-                // 防用户自建同名 `api` 对象误伤）。
+                  // PLAN-627: 限定名 `api.X(...)`（模块形态 `use back.api`）——
+                  // head 为 Ident("api") 且方法名 ∈ 当前 widget 的 api 清单时按
+                  // 裸名同发射（命中文件级生成的 api 桩/merged 吸收 fn；清单门
+                  // 防用户自建同名 `api` 对象误伤）。
                 if let crate::ast::Expr::Dot(obj, method) = call.name.as_ref() {
                     if let crate::ast::Expr::Ident(obj_name) = obj.as_ref() {
                         if obj_name.as_str() == "api"
@@ -11440,9 +12632,7 @@ impl RustGenerator {
                                 Some("str") if !a.starts_with('"') => {
                                     format!("{}.as_str()", a)
                                 }
-                                Some("list")
-                                    if a.contains("[\"") && a.ends_with(".clone()") =>
-                                {
+                                Some("list") if a.contains("[\"") && a.ends_with(".clone()") => {
                                     format!("{}.as_array().cloned().unwrap_or_default()", a)
                                 }
                                 _ => a.clone(),
@@ -11576,7 +12766,8 @@ impl RustGenerator {
                 }
             }
             Expr::Object(pairs) => {
-                let fields: Vec<String> = pairs.iter()
+                let fields: Vec<String> = pairs
+                    .iter()
                     .map(|p| {
                         let key_str = match &p.key {
                             crate::ast::Key::NamedKey(name) => format!("\"{}\"", name.as_str()),
@@ -11591,9 +12782,8 @@ impl RustGenerator {
                 format!("serde_json::json!({{{}}})", fields.join(", "))
             }
             Expr::Array(elems) => {
-                let elems_str: Vec<String> = elems.iter()
-                    .map(|e| self.ast_expr_to_rust(e))
-                    .collect();
+                let elems_str: Vec<String> =
+                    elems.iter().map(|e| self.ast_expr_to_rust(e)).collect();
                 format!("vec![{}]", elems_str.join(", "))
             }
             Expr::Index(target, index) => {
@@ -11630,7 +12820,9 @@ impl RustGenerator {
                 // (t => t.id == id) → |t| t["id"].as_i64().unwrap_or(0) as i32 == id
                 // Closure params from findIndex/.position() iterate over &Value,
                 // so any dot access on a closure param needs bracket access.
-                let param_names: Vec<String> = closure.params.iter()
+                let param_names: Vec<String> = closure
+                    .params
+                    .iter()
                     .map(|p| p.name.as_str().to_string())
                     .collect();
                 // Temporarily register closure params as value loop vars so that
@@ -11687,7 +12879,10 @@ impl RustGenerator {
                     "true".to_string()
                 };
                 let then_body = if let Some(branch) = if_expr.branches.first() {
-                    branch.body.stmts.iter()
+                    branch
+                        .body
+                        .stmts
+                        .iter()
                         .filter_map(|s| {
                             if let crate::ast::Stmt::Expr(e) = s {
                                 Some(self.ast_expr_to_rust(e))
@@ -11701,7 +12896,9 @@ impl RustGenerator {
                     String::new()
                 };
                 let else_body = if let Some(else_b) = &if_expr.else_ {
-                    else_b.stmts.iter()
+                    else_b
+                        .stmts
+                        .iter()
                         .filter_map(|s| {
                             if let crate::ast::Stmt::Expr(e) = s {
                                 Some(self.ast_expr_to_rust(e))
@@ -11718,7 +12915,10 @@ impl RustGenerator {
                     // PLAN-036 T-02：值位 if 表达式缺 else = 空值（VM 语义）
                     // ——补 `else { "" }` 防 E0317（值位必须有 else；条件样式
                     // `style: if .x { "A" }` 无 else 先例）。
-                    format!("if {} {{ {} }} else {{ \"\".to_string() }}", cond, then_body)
+                    format!(
+                        "if {} {{ {} }} else {{ \"\".to_string() }}",
+                        cond, then_body
+                    )
                 } else {
                     format!("if {} {{ {} }} else {{ {} }}", cond, then_body, else_body)
                 }
@@ -11775,7 +12975,8 @@ impl RustGenerator {
                 }
             }
             Expr::Object(pairs) => {
-                let fields: Vec<String> = pairs.iter()
+                let fields: Vec<String> = pairs
+                    .iter()
                     .map(|p| {
                         let key_str = match &p.key {
                             crate::ast::Key::NamedKey(name) => format!("\"{}\"", name.as_str()),
@@ -11821,7 +13022,11 @@ impl RustGenerator {
             Type::RuntimeArray(arr) => format!("Vec<{}>", self.auto_type_to_rust(&arr.elem)),
             Type::List(inner) => format!("Vec<{}>", self.auto_type_to_rust(inner)),
             Type::Slice(sl) => format!("Vec<{}>", self.auto_type_to_rust(&sl.elem)),
-            Type::Map(k, v) => format!("std::collections::HashMap<{}, {}>", self.auto_type_to_rust(k), self.auto_type_to_rust(v)),
+            Type::Map(k, v) => format!(
+                "std::collections::HashMap<{}, {}>",
+                self.auto_type_to_rust(k),
+                self.auto_type_to_rust(v)
+            ),
             Type::User(td) => {
                 // PLAN-681 T-05（F3）：裸 `list`——无元素型的动态列表（VM
                 // List 桶，`var tabs list = [...]` 形）此前直发用户型名
@@ -11878,9 +13083,18 @@ fn is_scalar_state_type(ty: &str) -> bool {
     matches!(
         ty.trim(),
         "String"
-            | "i8" | "i16" | "i32" | "i64" | "isize"
-            | "u8" | "u16" | "u32" | "u64" | "usize"
-            | "f32" | "f64"
+            | "i8"
+            | "i16"
+            | "i32"
+            | "i64"
+            | "isize"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "usize"
+            | "f32"
+            | "f64"
             | "bool"
     )
 }
@@ -11912,17 +13126,29 @@ fn scalar_to_auto_value_expr(receiver: &str, field: &str, ty: &str) -> String {
 fn sanitize_rust_ident(name: &str) -> String {
     // Rust reserved keywords (2021 edition) that can't be bare identifiers.
     const RUST_KEYWORDS: &[&str] = &[
-        "as", "break", "const", "continue", "crate", "dyn", "else", "enum",
-        "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop",
-        "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self",
-        "static", "struct", "super", "trait", "true", "type", "unsafe", "use",
-        "where", "while", "async", "await", "box",
+        "as", "break", "const", "continue", "crate", "dyn", "else", "enum", "extern", "false",
+        "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+        "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type",
+        "unsafe", "use", "where", "while", "async", "await", "box",
     ];
     // Common Rust macros/types that conflict with plausible loop var names.
     const RUST_MACROS_TYPES: &[&str] = &[
-        "todo", "unimplemented", "panic", "vec", "format", "println", "print",
-        "eprintln", "eprint", "dbg", "assert", "String", "Vec", "Option",
-        "Result", "Box",
+        "todo",
+        "unimplemented",
+        "panic",
+        "vec",
+        "format",
+        "println",
+        "print",
+        "eprintln",
+        "eprint",
+        "dbg",
+        "assert",
+        "String",
+        "Vec",
+        "Option",
+        "Result",
+        "Box",
     ];
     if RUST_KEYWORDS.contains(&name) {
         format!("r#{}", name)
@@ -11974,9 +13200,7 @@ fn stmt_mutates_store_data(stmt: &crate::ast::Stmt) -> bool {
             if let Expr::Dot(obj, field) = left.as_ref() {
                 if let Expr::Ident(obj_name) = obj.as_ref() {
                     let f = field.as_str();
-                    if (obj_name.as_str() == "store")
-                        && (f == "active_id" || f == "notes")
-                    {
+                    if (obj_name.as_str() == "store") && (f == "active_id" || f == "notes") {
                         return true;
                     }
                 }
@@ -11999,8 +13223,14 @@ fn stmt_mutates_store_data(stmt: &crate::ast::Stmt) -> bool {
         }
         // Recurse into control flow.
         Stmt::Expr(Expr::If(if_stmt)) => {
-            if_stmt.branches.iter().any(|b| b.body.stmts.iter().any(stmt_mutates_store_data))
-                || if_stmt.else_.as_ref().map_or(false, |e| e.stmts.iter().any(stmt_mutates_store_data))
+            if_stmt
+                .branches
+                .iter()
+                .any(|b| b.body.stmts.iter().any(stmt_mutates_store_data))
+                || if_stmt
+                    .else_
+                    .as_ref()
+                    .map_or(false, |e| e.stmts.iter().any(stmt_mutates_store_data))
         }
         Stmt::For(for_stmt) => for_stmt.body.stmts.iter().any(stmt_mutates_store_data),
         Stmt::Block(body) => body.stmts.iter().any(stmt_mutates_store_data),
@@ -12030,7 +13260,10 @@ fn bin_child_needs_parens_side(expr: &crate::ast::Expr, parent_prec: u8, is_righ
     use auto_val::Op;
     if let Expr::Bina(_, child_op, _) = expr {
         let child_prec = bin_op_precedence(child_op);
-        if matches!(child_op, Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq) {
+        if matches!(
+            child_op,
+            Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq
+        ) {
             return false;
         }
         // Plan 407: right child needs parens at same precedence too (left-assoc).
@@ -12092,26 +13325,42 @@ fn tailwind_to_methods(builder: &str, class_str: &str) -> String {
 fn tailwind_single_to_method(class: &str) -> String {
     // --- Spacing ---
     if let Some(rest) = class.strip_prefix("p-") {
-        if rest == "0" { return ".p(0)".to_string(); }
-        if let Ok(n) = rest.parse::<u16>() { return format!(".p({})", n); }
+        if rest == "0" {
+            return ".p(0)".to_string();
+        }
+        if let Ok(n) = rest.parse::<u16>() {
+            return format!(".p({})", n);
+        }
     }
     if let Some(rest) = class.strip_prefix("px-") {
-        if let Ok(n) = rest.parse::<u16>() { return format!(".px({})", n); }
+        if let Ok(n) = rest.parse::<u16>() {
+            return format!(".px({})", n);
+        }
     }
     if let Some(rest) = class.strip_prefix("py-") {
-        if let Ok(n) = rest.parse::<u16>() { return format!(".py({})", n); }
+        if let Ok(n) = rest.parse::<u16>() {
+            return format!(".py({})", n);
+        }
     }
     if let Some(rest) = class.strip_prefix("m-") {
-        if let Ok(n) = rest.parse::<u16>() { return format!(".m({})", n); }
+        if let Ok(n) = rest.parse::<u16>() {
+            return format!(".m({})", n);
+        }
     }
     if let Some(rest) = class.strip_prefix("mx-") {
-        if let Ok(n) = rest.parse::<u16>() { return format!(".mx({})", n); }
+        if let Ok(n) = rest.parse::<u16>() {
+            return format!(".mx({})", n);
+        }
     }
     if let Some(rest) = class.strip_prefix("my-") {
-        if let Ok(n) = rest.parse::<u16>() { return format!(".my({})", n); }
+        if let Ok(n) = rest.parse::<u16>() {
+            return format!(".my({})", n);
+        }
     }
     if let Some(rest) = class.strip_prefix("gap-") {
-        if let Ok(n) = rest.parse::<u16>() { return format!(".gap({})", n); }
+        if let Ok(n) = rest.parse::<u16>() {
+            return format!(".gap({})", n);
+        }
     }
 
     // --- Colors ---
@@ -12123,13 +13372,21 @@ fn tailwind_single_to_method(class: &str) -> String {
     // override for known text- keywords.
 
     // --- Sizing ---
-    if class == "w-full" { return ".w_full()".to_string(); }
-    if let Some(rest) = class.strip_prefix("w-") {
-        if let Ok(n) = rest.parse::<u16>() { return format!(".w({})", n); }
+    if class == "w-full" {
+        return ".w_full()".to_string();
     }
-    if class == "h-full" { return ".h_full()".to_string(); }
+    if let Some(rest) = class.strip_prefix("w-") {
+        if let Ok(n) = rest.parse::<u16>() {
+            return format!(".w({})", n);
+        }
+    }
+    if class == "h-full" {
+        return ".h_full()".to_string();
+    }
     if let Some(rest) = class.strip_prefix("h-") {
-        if let Ok(n) = rest.parse::<u16>() { return format!(".h({})", n); }
+        if let Ok(n) = rest.parse::<u16>() {
+            return format!(".h({})", n);
+        }
     }
 
     // --- Layout ---
@@ -12144,7 +13401,7 @@ fn tailwind_single_to_method(class: &str) -> String {
         "justify-center" => return ".justify_center()".to_string(),
         "justify-between" => return ".justify_between()".to_string(),
         "justify-start" => return String::new(), // no direct method, skip
-        "justify-end" => return String::new(),    // no direct method, skip
+        "justify-end" => return String::new(),   // no direct method, skip
         _ => {}
     }
 
@@ -12158,7 +13415,9 @@ fn tailwind_single_to_method(class: &str) -> String {
     }
 
     // --- Border ---
-    if class == "border" { return ".border()".to_string(); }
+    if class == "border" {
+        return ".border()".to_string();
+    }
 
     // --- Typography (text size) ---
     match class {
@@ -12191,27 +13450,40 @@ fn tailwind_single_to_method(class: &str) -> String {
 
     // --- Effects ---
     match class {
-        "shadow" | "shadow-sm" | "shadow-md" | "shadow-lg" | "shadow-xl" | "shadow-2xl" | "shadow-none" => {
+        "shadow" | "shadow-sm" | "shadow-md" | "shadow-lg" | "shadow-xl" | "shadow-2xl"
+        | "shadow-none" => {
             return String::new(); // no direct builder method yet
         }
         _ => {}
     }
 
     // --- Opacity ---
-    if class.starts_with("opacity-") { return String::new(); }
+    if class.starts_with("opacity-") {
+        return String::new();
+    }
 
     // --- Position ---
-    if class == "relative" || class == "absolute" { return String::new(); }
+    if class == "relative" || class == "absolute" {
+        return String::new();
+    }
 
     // --- Z-index ---
-    if class.starts_with("z-") { return String::new(); }
+    if class.starts_with("z-") {
+        return String::new();
+    }
 
     // --- Overflow ---
-    if class.starts_with("overflow") { return String::new(); }
+    if class.starts_with("overflow") {
+        return String::new();
+    }
 
     // --- Grid ---
-    if class == "grid" || class.starts_with("grid-") { return String::new(); }
-    if class.starts_with("col-") || class.starts_with("row-") { return String::new(); }
+    if class == "grid" || class.starts_with("grid-") {
+        return String::new();
+    }
+    if class.starts_with("col-") || class.starts_with("row-") {
+        return String::new();
+    }
 
     // Unknown class -- skip silently
     String::new()
@@ -12277,14 +13549,40 @@ mod tests {
             timers: Vec::new(),
             name: "ImageViewer".to_string(),
             state_vars: vec![
-                AuraStateDef { name: "asset_src".to_string(), type_info: Type::StrOwned, initial: crate::ast::Expr::Str("/media/a".into()), decorators: vec![] },
-                AuraStateDef { name: "viewport_width".to_string(), type_info: Type::Int, initial: crate::ast::Expr::Int(640), decorators: vec![] },
-                AuraStateDef { name: "fit_mode".to_string(), type_info: Type::StrOwned, initial: crate::ast::Expr::Str("contain".into()), decorators: vec![] },
-                AuraStateDef { name: "zoom".to_string(), type_info: Type::Float, initial: crate::ast::Expr::Float(1.0, "1.0".into()), decorators: vec![] },
+                AuraStateDef {
+                    name: "asset_src".to_string(),
+                    type_info: Type::StrOwned,
+                    initial: crate::ast::Expr::Str("/media/a".into()),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "viewport_width".to_string(),
+                    type_info: Type::Int,
+                    initial: crate::ast::Expr::Int(640),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "fit_mode".to_string(),
+                    type_info: Type::StrOwned,
+                    initial: crate::ast::Expr::Str("contain".into()),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "zoom".to_string(),
+                    type_info: Type::Float,
+                    initial: crate::ast::Expr::Float(1.0, "1.0".into()),
+                    decorators: vec![],
+                },
             ],
-            messages: vec![AuraMessage { variants: vec![
-                msg("ImageLoaded"), msg("ImageFailed"), msg("ZoomAt"), msg("PanBy"), msg("ToggleOneToOne"),
-            ] }],
+            messages: vec![AuraMessage {
+                variants: vec![
+                    msg("ImageLoaded"),
+                    msg("ImageFailed"),
+                    msg("ZoomAt"),
+                    msg("PanBy"),
+                    msg("ToggleOneToOne"),
+                ],
+            }],
             view_tree: AuraNode::element("imagesurface")
                 .with_prop("src", crate::ast::Expr::Ident(".asset_src".into()))
                 .with_prop("width", crate::ast::Expr::Ident(".viewport_width".into()))
@@ -12314,16 +13612,46 @@ mod tests {
         };
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).expect("rust generation");
-        assert!(code.contains("View::image_surface("), "missing constructor:\n{code}");
-        assert!(code.contains("self.asset_src.clone()"), "src state binding lost:\n{code}");
-        assert!(code.contains("self.viewport_width"), "width state binding lost:\n{code}");
-        assert!(code.contains("self.fit_mode.clone()"), "fit state binding lost:\n{code}");
-        assert!(code.contains("image_surface_props"), "scalar props missing:\n{code}");
-        assert!(code.contains("image_surface_events(Some(ImageViewerMsg::ImageFailed)"), "error event missing:\n{code}");
-        assert!(code.contains("Some(ImageViewerMsg::ImageLoaded)"), "load event missing:\n{code}");
-        assert!(code.contains("Some(ImageViewerMsg::ZoomAt)"), "wheel event missing:\n{code}");
-        assert!(code.contains("Some(ImageViewerMsg::PanBy)"), "pan event missing:\n{code}");
-        assert!(code.contains("Some(ImageViewerMsg::ToggleOneToOne)"), "double-click event missing:\n{code}");
+        assert!(
+            code.contains("View::image_surface("),
+            "missing constructor:\n{code}"
+        );
+        assert!(
+            code.contains("self.asset_src.clone()"),
+            "src state binding lost:\n{code}"
+        );
+        assert!(
+            code.contains("self.viewport_width"),
+            "width state binding lost:\n{code}"
+        );
+        assert!(
+            code.contains("self.fit_mode.clone()"),
+            "fit state binding lost:\n{code}"
+        );
+        assert!(
+            code.contains("image_surface_props"),
+            "scalar props missing:\n{code}"
+        );
+        assert!(
+            code.contains("image_surface_events(Some(ImageViewerMsg::ImageFailed)"),
+            "error event missing:\n{code}"
+        );
+        assert!(
+            code.contains("Some(ImageViewerMsg::ImageLoaded)"),
+            "load event missing:\n{code}"
+        );
+        assert!(
+            code.contains("Some(ImageViewerMsg::ZoomAt)"),
+            "wheel event missing:\n{code}"
+        );
+        assert!(
+            code.contains("Some(ImageViewerMsg::PanBy)"),
+            "pan event missing:\n{code}"
+        );
+        assert!(
+            code.contains("Some(ImageViewerMsg::ToggleOneToOne)"),
+            "double-click event missing:\n{code}"
+        );
     }
 
     /// Plan 547 desktop validation: a declarative `timer { ... }` entry must
@@ -12344,18 +13672,26 @@ widget App {
         let session = crate::session::CompilerSession::ui().with_backend("rust");
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let code = RustGenerator::new().generate(&widget).expect("generate");
 
         assert!(
             code.contains("fn tick_interval_ms(&self) -> Option<u32> { Some(80) }")
-                && code.contains("fn tick_msg(&self) -> Option<AppMsg> { Some(AppMsg::SettleTick) }")
+                && code
+                    .contains("fn tick_msg(&self) -> Option<AppMsg> { Some(AppMsg::SettleTick) }")
         );
-        assert!(!code.contains("AppMsg::Tick"), "timer entry must retain its message name");
+        assert!(
+            !code.contains("AppMsg::Tick"),
+            "timer entry must retain its message name"
+        );
     }
 
     /// Plan 436 T1(决策 1-A):带 setup 前导槽的 widget 在 Rust 目标显式
@@ -12416,12 +13752,21 @@ widget App {
             }],
             messages: vec![AuraMessage {
                 variants: vec![
-                    AuraMsgVariant { payload_names: vec![], name: "Inc".to_string(), quoted: false, payload: vec![] },
-                    AuraMsgVariant { payload_names: vec![], name: "Dec".to_string(), quoted: false, payload: vec![] },
+                    AuraMsgVariant {
+                        payload_names: vec![],
+                        name: "Inc".to_string(),
+                        quoted: false,
+                        payload: vec![],
+                    },
+                    AuraMsgVariant {
+                        payload_names: vec![],
+                        name: "Dec".to_string(),
+                        quoted: false,
+                        payload: vec![],
+                    },
                 ],
             }],
-            view_tree: AuraNode::element("col")
-                .with_child(AuraNode::text("Count: 0")),
+            view_tree: AuraNode::element("col").with_child(AuraNode::text("Count: 0")),
             handlers: std::collections::BTreeMap::new(),
             props: vec![],
             computed: vec![],
@@ -12437,8 +13782,7 @@ widget App {
             watchers: Vec::new(),
             exposes: Vec::new(),
             setup: None,
-        }
-;
+        };
 
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).unwrap();
@@ -12448,7 +13792,11 @@ widget App {
         assert!(code.contains("Dec"), "got:\n{}", code);
         assert!(code.contains("pub struct Counter"), "got:\n{}", code);
         assert!(code.contains("pub count: i32"), "got:\n{}", code);
-        assert!(code.contains("impl Component for Counter"), "got:\n{}", code);
+        assert!(
+            code.contains("impl Component for Counter"),
+            "got:\n{}",
+            code
+        );
     }
 
     /// Plan 450 / 019 批次三: AutoDown 面板词汇 a2r 发射断言。面板 tag 此前
@@ -12503,19 +13851,23 @@ widget App {
         );
         let code = RustGenerator::new().generate(&widget).unwrap();
         assert!(code.contains("match lvl {"), "got:\n{}", code);
-        assert!(code.contains("_ => \"text-sm font-semibold mb-1\""), "got:\n{}", code);
+        assert!(
+            code.contains("_ => \"text-sm font-semibold mb-1\""),
+            "got:\n{}",
+            code
+        );
     }
 
     #[test]
     fn test_autodown_panel_quote_callout_codegen() {
-        let widget = autodown_panel_widget(
-            AuraNode::element("quote").with_child(AuraNode::text("cited")),
-        );
+        let widget =
+            autodown_panel_widget(AuraNode::element("quote").with_child(AuraNode::text("cited")));
         let code = RustGenerator::new().generate(&widget).unwrap();
         assert!(code.contains("View::container("), "got:\n{}", code);
         assert!(
             code.contains(".style(\"border-l-4 pl-4 py-2 w-full text-muted-foreground\")"),
-            "got:\n{}", code
+            "got:\n{}",
+            code
         );
 
         let widget = autodown_panel_widget(
@@ -12525,8 +13877,16 @@ widget App {
                 .with_child(AuraNode::text("body")),
         );
         let code = RustGenerator::new().generate(&widget).unwrap();
-        assert!(code.contains("View::container(View::col()"), "got:\n{}", code);
-        assert!(code.contains("border-amber-500/40 bg-amber-500/10"), "got:\n{}", code);
+        assert!(
+            code.contains("View::container(View::col()"),
+            "got:\n{}",
+            code
+        );
+        assert!(
+            code.contains("border-amber-500/40 bg-amber-500/10"),
+            "got:\n{}",
+            code
+        );
         assert!(code.contains("text-amber-400"), "got:\n{}", code);
     }
 
@@ -12540,10 +13900,15 @@ widget App {
         let code = RustGenerator::new().generate(&widget).unwrap();
         assert!(
             code.contains("auto_lang::ui::view::AccordionItem::new(\"展开\".to_string())"),
-            "got:\n{}", code
+            "got:\n{}",
+            code
         );
         assert!(code.contains(".with_expanded(true)"), "got:\n{}", code);
-        assert!(code.contains("View::accordion().items(vec!["), "got:\n{}", code);
+        assert!(
+            code.contains("View::accordion().items(vec!["),
+            "got:\n{}",
+            code
+        );
 
         let widget = autodown_panel_widget(
             AuraNode::element("embed_block")
@@ -12552,9 +13917,14 @@ widget App {
         let code = RustGenerator::new().generate(&widget).unwrap();
         assert!(
             code.contains("format!(\"↪ {}\", \"blk-1\".to_string())"),
-            "got:\n{}", code
+            "got:\n{}",
+            code
         );
-        assert!(code.contains(".style(\"rounded-lg border bg-muted p-3 w-full\")"), "got:\n{}", code);
+        assert!(
+            code.contains(".style(\"rounded-lg border bg-muted p-3 w-full\")"),
+            "got:\n{}",
+            code
+        );
     }
 
     /// Plan 448 B1: inline-lambda events through the real pipeline
@@ -12578,10 +13948,14 @@ widget Counter {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = RustGenerator::new();
@@ -12619,11 +13993,14 @@ widget Counter {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src.as_str()).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        })
-        .expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = RustGenerator::new();
@@ -12691,11 +14068,14 @@ widget Counter {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src.as_str()).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        })
-        .expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = RustGenerator::new();
@@ -12781,7 +14161,13 @@ widget Counter {
             code
         );
         // 断裂构造器零发射（badge/card/icon/scroll/link 映射已移除）。
-        for broken in ["View::badge(", "View::card(", "View::icon(", "View::scroll(", "View::link("] {
+        for broken in [
+            "View::badge(",
+            "View::card(",
+            "View::icon(",
+            "View::scroll(",
+            "View::link(",
+        ] {
             assert!(
                 !code.contains(broken),
                 "断裂构造器 {broken} 不得发射:\n{}",
@@ -12789,7 +14175,6 @@ widget Counter {
             );
         }
     }
-
 
     /// PLAN-025 T-04: select codegen golden（fixture 真源：
     /// tests/fixtures/025-native-input/select.at——View::select 构造 +
@@ -12804,11 +14189,14 @@ widget Counter {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src.as_str()).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        })
-        .expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = RustGenerator::new();
@@ -12825,15 +14213,13 @@ widget Counter {
             code
         );
         assert!(
-            code.contains(".on_choose(|_idx: usize, val: &str| SelectBoxMsg::Pick(val.to_string()))"),
+            code.contains(
+                ".on_choose(|_idx: usize, val: &str| SelectBoxMsg::Pick(val.to_string()))"
+            ),
             "SelectCallback 物化闭包:\n{}",
             code
         );
-        assert!(
-            code.contains("Pick(String)"),
-            "载荷变体 (str):\n{}",
-            code
-        );
+        assert!(code.contains("Pick(String)"), "载荷变体 (str):\n{}", code);
         assert!(
             !code.contains("last_input_text"),
             "select 回写零 thread-local:\n{}",
@@ -12859,32 +14245,40 @@ widget App {
         let session = crate::session::CompilerSession::ui().with_backend("rust");
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).unwrap();
         assert!(
             code.contains("pub enum AppMsg {") && code.contains("    openDialog,"),
             "on-only handler variant must reach the enum:
-{}", code
+{}",
+            code
         );
         assert!(
             code.contains("type Msg = AppMsg;"),
             "Msg type must promote from ():
-{}", code
+{}",
+            code
         );
         assert!(
             code.contains("AppMsg::openDialog => {"),
             "match arm for on-only handler:
-{}", code
+{}",
+            code
         );
         assert!(
             code.contains("self.show = true"),
             "handler body survives:
-{}", code
+{}",
+            code
         );
     }
 
@@ -12905,8 +14299,8 @@ widget App {
             );
             return;
         };
-        let src = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read gallery page: {e}"));
+        let src =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read gallery page: {e}"));
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src.as_str()).with_session(session);
         let ast = parser.parse().expect("parse");
@@ -12969,41 +14363,76 @@ widget Demo {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).unwrap();
 
-        assert!(code.contains("View::Popover {"), "Popover variant literal:\n{}", code);
-        assert!(code.contains("auto_lang::ui::view::PopoverPlacement::Modal"), "Modal placement:\n{}", code);
-        assert!(code.contains("auto_lang::ui::view::PopoverAnchor::Widget"), "widget anchor:\n{}", code);
-        assert!(code.contains("open: self.show"), "open bound to state:\n{}", code);
         assert!(
-            code.contains("w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4"),
-            "panel chrome matches interpreter arm:\n{}", code
+            code.contains("View::Popover {"),
+            "Popover variant literal:\n{}",
+            code
         );
         assert!(
-            code.contains("View::text_styled(\"Are you sure?\".to_string(), \"text-lg font-semibold\")"),
-            "title default class:\n{}", code
+            code.contains("auto_lang::ui::view::PopoverPlacement::Modal"),
+            "Modal placement:\n{}",
+            code
+        );
+        assert!(
+            code.contains("auto_lang::ui::view::PopoverAnchor::Widget"),
+            "widget anchor:\n{}",
+            code
+        );
+        assert!(
+            code.contains("open: self.show"),
+            "open bound to state:\n{}",
+            code
+        );
+        assert!(
+            code.contains("w-96 bg-background border border-border rounded-lg shadow-lg p-6 gap-4"),
+            "panel chrome matches interpreter arm:\n{}",
+            code
+        );
+        assert!(
+            code.contains(
+                "View::text_styled(\"Are you sure?\".to_string(), \"text-lg font-semibold\")"
+            ),
+            "title default class:\n{}",
+            code
         );
         assert!(
             code.contains("text-sm text-muted-foreground"),
-            "description default class:\n{}", code
+            "description default class:\n{}",
+            code
         );
         assert!(
             code.contains("border border-input bg-background text-foreground rounded-md"),
-            "cancel outline preset:\n{}", code
+            "cancel outline preset:\n{}",
+            code
         );
         assert!(
             code.contains("bg-primary text-primary-foreground font-medium rounded-md"),
-            "action primary preset:\n{}", code
+            "action primary preset:\n{}",
+            code
         );
-        assert!(code.contains("DemoMsg::openDialog"), "trigger onclick dispatch:\n{}", code);
-        assert!(code.contains("DemoMsg::cancelAction"), "cancel onclick dispatch:\n{}", code);
+        assert!(
+            code.contains("DemoMsg::openDialog"),
+            "trigger onclick dispatch:\n{}",
+            code
+        );
+        assert!(
+            code.contains("DemoMsg::cancelAction"),
+            "cancel onclick dispatch:\n{}",
+            code
+        );
     }
 
     /// PLAN-027 T-02: 裸 popover codegen 臂 golden —— 坐标锚形态（desktop.at
@@ -13030,35 +14459,48 @@ widget Probe {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).unwrap();
 
-        assert!(code.contains("View::Popover {"), "Popover variant literal:\n{}", code);
+        assert!(
+            code.contains("View::Popover {"),
+            "Popover variant literal:\n{}",
+            code
+        );
         assert!(
             code.contains("auto_lang::ui::view::PopoverAnchor::Point { x: (self.cx"),
-            "Point anchor bound to cursor state:\n{}", code
+            "Point anchor bound to cursor state:\n{}",
+            code
         );
         assert!(
             code.contains("open: self.blank_menu !="),
-            "open bound to state expression:\n{}", code
+            "open bound to state expression:\n{}",
+            code
         );
         assert!(
             code.contains("on_dismiss: Some(ProbeMsg::BlankClose)"),
-            "ondismiss → on_dismiss message:\n{}", code
+            "ondismiss → on_dismiss message:\n{}",
+            code
         );
         assert!(
             code.contains("placement: auto_lang::ui::view::PopoverPlacement::BottomStart,"),
-            "point anchor default placement (PLAN-528 W9):\n{}", code
+            "point anchor default placement (PLAN-528 W9):\n{}",
+            code
         );
         assert!(
             code.contains("p-1 border rounded bg-card w-auto"),
-            "user class on panel + w-auto width injection:\n{}", code
+            "user class on panel + w-auto width injection:\n{}",
+            code
         );
     }
 
@@ -13084,10 +14526,14 @@ widget Taskbar {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = RustGenerator::new();
@@ -13095,25 +14541,30 @@ widget Taskbar {
 
         assert!(
             code.contains("anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new("),
-            "first plain child becomes widget anchor:\n{}", code
+            "first plain child becomes widget anchor:\n{}",
+            code
         );
         assert!(
             code.contains("placement: auto_lang::ui::view::PopoverPlacement::Top,"),
-            "literal top placement (not TopStart/TopEnd):\n{}", code
+            "literal top placement (not TopStart/TopEnd):\n{}",
+            code
         );
         assert!(
             code.contains("on_dismiss: Some(TaskbarMsg::WinMenuClose)"),
-            "ondismiss handler:\n{}", code
+            "ondismiss handler:\n{}",
+            code
         );
         // 内容列 = plain[1..]（锚件不进面板）；面板内子件存活。
         let panel_zone = code.split("content: Box::new(").nth(1).unwrap_or("");
         assert!(
             panel_zone.contains("menu item"),
-            "second plain child lands in panel:\n{}", code
+            "second plain child lands in panel:\n{}",
+            code
         );
         assert!(
             !panel_zone.contains(">anchor<"),
-            "anchor text must not leak into panel:\n{}", code
+            "anchor text must not leak into panel:\n{}",
+            code
         );
     }
 
@@ -13143,10 +14594,14 @@ widget Probe {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = RustGenerator::new();
@@ -13154,15 +14609,20 @@ widget Probe {
 
         assert!(
             code.contains("View::WindowThumbnail { wid: r[\"wid\"]"),
-            "dynamic wid binding (loop var Value index-read convention):\n{}", code
+            "dynamic wid binding (loop var Value index-read convention):\n{}",
+            code
         );
         assert!(
             code.contains("fallback_icon: r[\"icon\"]"),
-            "dynamic fallback_icon survives (no silent default):\n{}", code
+            "dynamic fallback_icon survives (no silent default):\n{}",
+            code
         );
         assert!(
-            code.contains("style: auto_lang::ui::style::Style::parse(\"w-24 h-14 border rounded\").ok()"),
-            "style passthrough:\n{}", code
+            code.contains(
+                "style: auto_lang::ui::style::Style::parse(\"w-24 h-14 border rounded\").ok()"
+            ),
+            "style passthrough:\n{}",
+            code
         );
         assert!(
             code.contains("View::WorkspacePreview { ws: \"2\".to_string(), fallback_icon: \"app-window\".to_string()"),
@@ -13193,17 +14653,22 @@ widget Probe {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(prop_src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).unwrap();
         assert!(
             code.contains("compile_error!(\"a2r codegen: prop `frobnicate`"),
             "unknown prop must compile_error (was silently dropped):
-{}", code
+{}",
+            code
         );
 
         let event_src = r#"
@@ -13219,17 +14684,22 @@ widget Probe2 {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(event_src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).unwrap();
         assert!(
             code.contains("compile_error!(\"a2r codegen: event `onwiggle`"),
             "unknown event must compile_error (was silently dropped):
-{}", code
+{}",
+            code
         );
     }
 
@@ -13326,14 +14796,32 @@ widget Probe2 {
             ("row", "onmouseenter"),
         ];
         let known_tags: &[&str] = &[
-            "col", "row", "taskbar", "div", "spacer", "grid", "button", "text", "icon",
-            "image", "mouse-area", "popover", "window_thumbnail", "workspace_preview",
+            "col",
+            "row",
+            "taskbar",
+            "div",
+            "spacer",
+            "grid",
+            "button",
+            "text",
+            "icon",
+            "image",
+            "mouse-area",
+            "popover",
+            "window_thumbnail",
+            "workspace_preview",
         ];
 
         fn walk(node: &crate::aura::AuraNode, out: &mut Vec<(String, String, bool)>) {
             use crate::aura::AuraNode;
             match node {
-                AuraNode::Element { tag, props, events, children, .. } => {
+                AuraNode::Element {
+                    tag,
+                    props,
+                    events,
+                    children,
+                    ..
+                } => {
                     for k in props.keys() {
                         out.push((tag.clone(), k.clone(), true));
                     }
@@ -13349,7 +14837,11 @@ widget Probe2 {
                         walk(c, out);
                     }
                 }
-                AuraNode::Conditional { then_body, else_body, .. } => {
+                AuraNode::Conditional {
+                    then_body,
+                    else_body,
+                    ..
+                } => {
                     for c in then_body {
                         walk(c, out);
                     }
@@ -13383,7 +14875,9 @@ widget Probe2 {
                 }
             };
             for stmt in &ast.stmts {
-                let crate::ast::Stmt::WidgetDecl(d) = stmt else { continue };
+                let crate::ast::Stmt::WidgetDecl(d) = stmt else {
+                    continue;
+                };
                 let Ok(widget) = crate::aura::extract::extract_widget_from_decl(d) else {
                     continue;
                 };
@@ -13457,10 +14951,14 @@ widget Panels {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = RustGenerator::new();
@@ -13469,49 +14967,60 @@ widget Panels {
         // sheet: 缺省 right → EdgeRight;横条 chrome 同串;铸造 dismiss 折算。
         assert!(
             code.contains("auto_lang::ui::view::PopoverPlacement::EdgeRight"),
-            "sheet default EdgeRight:\n{}", code
+            "sheet default EdgeRight:\n{}",
+            code
         );
         assert!(
             code.contains("w-96 bg-background border shadow-lg p-6 gap-4 h-full"),
-            "sheet chrome matches interpreter side_panel_chrome:\n{}", code
+            "sheet chrome matches interpreter side_panel_chrome:\n{}",
+            code
         );
         assert!(
             code.contains("on_dismiss: Some(PanelsMsg::__dlg_close_1)"),
-            "sheet minted dismiss folding:\n{}", code
+            "sheet minted dismiss folding:\n{}",
+            code
         );
         // drawer: bottom → EdgeBottom;贴缘圆角;装饰把手。
         assert!(
             code.contains("auto_lang::ui::view::PopoverPlacement::EdgeBottom"),
-            "drawer bottom EdgeBottom:\n{}", code
+            "drawer bottom EdgeBottom:\n{}",
+            code
         );
         assert!(
             code.contains("bg-background border shadow-lg p-6 gap-4 w-full rounded-t-lg"),
-            "drawer bottom chrome with rounded-t:\n{}", code
+            "drawer bottom chrome with rounded-t:\n{}",
+            code
         );
         assert!(
             code.contains("w-8 h-1 rounded-full bg-muted"),
-            "drawer handle emission:\n{}", code
+            "drawer handle emission:\n{}",
+            code
         );
         // hovercard: MouseArea 包锚 + Bottom 非模态 + chrome 同串 + enter 接线。
         assert!(
             code.contains("View::MouseArea { content: Box::new("),
-            "hovercard anchor wrapped in MouseArea:\n{}", code
+            "hovercard anchor wrapped in MouseArea:\n{}",
+            code
         );
         assert!(
             code.contains("auto_lang::ui::view::PopoverPlacement::Bottom"),
-            "hovercard Bottom placement:\n{}", code
+            "hovercard Bottom placement:\n{}",
+            code
         );
         assert!(
             code.contains("w-80 bg-popover border rounded-lg shadow-md p-4"),
-            "hovercard chrome matches interpreter arm:\n{}", code
+            "hovercard chrome matches interpreter arm:\n{}",
+            code
         );
         assert!(
             code.contains("on_enter: Some(PanelsMsg::__dlg_enter_3)"),
-            "hovercard enter wiring from minted handler:\n{}", code
+            "hovercard enter wiring from minted handler:\n{}",
+            code
         );
         assert!(
             code.contains("on_dismiss: None"),
-            "hovercard non-modal (no dismiss):\n{}", code
+            "hovercard non-modal (no dismiss):\n{}",
+            code
         );
     }
 
@@ -13541,33 +15050,60 @@ widget DialogDemo {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).unwrap();
 
-        assert!(code.contains("View::Popover {"), "dialog family emits Popover:\n{}", code);
-        assert!(code.contains("auto_lang::ui::view::PopoverPlacement::Modal"), "Modal placement:\n{}", code);
-        assert!(code.contains("open: self.__dlg_open_1"), "minted open bound:\n{}", code);
-        assert!(code.contains("DialogDemoMsg::__dlg_toggle_1"), "minted toggle dispatch:\n{}", code);
-        assert!(code.contains("DialogDemoMsg::__dlg_close_1"), "minted close dispatch:\n{}", code);
+        assert!(
+            code.contains("View::Popover {"),
+            "dialog family emits Popover:\n{}",
+            code
+        );
+        assert!(
+            code.contains("auto_lang::ui::view::PopoverPlacement::Modal"),
+            "Modal placement:\n{}",
+            code
+        );
+        assert!(
+            code.contains("open: self.__dlg_open_1"),
+            "minted open bound:\n{}",
+            code
+        );
+        assert!(
+            code.contains("DialogDemoMsg::__dlg_toggle_1"),
+            "minted toggle dispatch:\n{}",
+            code
+        );
+        assert!(
+            code.contains("DialogDemoMsg::__dlg_close_1"),
+            "minted close dispatch:\n{}",
+            code
+        );
         assert!(
             code.contains("View::button(\"Open Dialog\")"),
-            "bare-text trigger renders as button:\n{}", code
+            "bare-text trigger renders as button:\n{}",
+            code
         );
         assert!(
             code.contains("View::button(\"Save changes\")"),
-            "dialog-close renders as button:\n{}", code
+            "dialog-close renders as button:\n{}",
+            code
         );
         // PLAN-533 T6: dialog（可关闭）族铸造形态 on_dismiss 折算
         // __dlg_close_N（ESC/外点/锚点 → update:open(false)）。
         assert!(
             code.contains("on_dismiss: Some(DialogDemoMsg::__dlg_close_1)"),
-            "unbound dialog must wire dismiss reflow:\n{}", code
+            "unbound dialog must wire dismiss reflow:\n{}",
+            code
         );
     }
 
@@ -13596,33 +15132,42 @@ widget MenuDemo {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).unwrap();
 
         assert!(
             code.contains("auto_lang::ui::view::PopoverPlacement::BottomStart"),
-            "dropdown-menu anchors BottomStart:\n{}", code
+            "dropdown-menu anchors BottomStart:\n{}",
+            code
         );
         assert!(
             code.contains("open: self.__dlg_open_1"),
-            "minted open bound:\n{}", code
+            "minted open bound:\n{}",
+            code
         );
         assert!(
             code.contains("MenuDemoMsg::__dlg_toggle_1"),
-            "minted toggle reaches the wrapped trigger button:\n{}", code
+            "minted toggle reaches the wrapped trigger button:\n{}",
+            code
         );
         assert!(
             code.contains("on_dismiss: Some(MenuDemoMsg::__dlg_close_1)"),
-            "dismiss reflow:\n{}", code
+            "dismiss reflow:\n{}",
+            code
         );
         assert!(
             code.contains("bg-popover border border-border rounded-md shadow-md p-1"),
-            "menu chrome:\n{}", code
+            "menu chrome:\n{}",
+            code
         );
         assert!(
             code.contains("View::text_styled(\"Profile\".to_string(), \"w-full px-2 py-1.5 text-sm cursor-pointer hover:bg-secondary text-start\")"),
@@ -13647,10 +15192,14 @@ widget LoginForm {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut gen = RustGenerator::new();
@@ -13686,14 +15235,32 @@ widget LoginForm {
         let mut element = AuraNode::element("code_editor");
         {
             if let AuraNode::Element { props, events, .. } = &mut element {
-                props.insert("key".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Str("src".into())));
-                props.insert("lang".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Str("rust".into())));
-                props.insert("content".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Ident("source".into())));
-                props.insert("wrap".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Bool(false)));
-                props.insert("search".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Ident("query".into())));
+                props.insert(
+                    "key".to_owned(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("src".into())),
+                );
+                props.insert(
+                    "lang".to_owned(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("rust".into())),
+                );
+                props.insert(
+                    "content".to_owned(),
+                    AuraPropValue::Expr(crate::ast::Expr::Ident("source".into())),
+                );
+                props.insert(
+                    "wrap".to_owned(),
+                    AuraPropValue::Expr(crate::ast::Expr::Bool(false)),
+                );
+                props.insert(
+                    "search".to_owned(),
+                    AuraPropValue::Expr(crate::ast::Expr::Ident("query".into())),
+                );
                 events.insert(
                     "oninput".to_owned(),
-                    AuraEvent { handler: ".SourceChanged".into(), params: vec![] },
+                    AuraEvent {
+                        handler: ".SourceChanged".into(),
+                        params: vec![],
+                    },
                 );
             }
         }
@@ -13730,29 +15297,27 @@ widget LoginForm {
                 let mut h = std::collections::BTreeMap::new();
                 h.insert(
                     "SourceChanged".to_owned(),
-                    LogicPayload::AstStmts(vec![crate::ast::Stmt::Expr(
-                        crate::ast::Expr::Bina(
-                            Box::new(crate::ast::Expr::Dot(
-                                Box::new(crate::ast::Expr::Ident("self".into())),
-                                "source".into(),
-                            )),
-                            auto_val::Op::Asn,
-                            Box::new(crate::ast::Expr::Call(crate::ast::Call {
-                                name: Box::new(crate::ast::Expr::Ident("code_editor_text".into())),
-                                args: {
-                                    let mut a = crate::ast::Args::new();
-                                    a.args.push(crate::ast::Arg::Pos(
-                                        crate::ast::Expr::Str("src".into()),
-                                    ));
-                                    a
-                                },
-                                ret: crate::ast::Type::StrOwned,
-                                type_args: vec![],
-                                generic_args: vec![],
-                                pos: None,
-                            })),
-                        ),
-                    )]),
+                    LogicPayload::AstStmts(vec![crate::ast::Stmt::Expr(crate::ast::Expr::Bina(
+                        Box::new(crate::ast::Expr::Dot(
+                            Box::new(crate::ast::Expr::Ident("self".into())),
+                            "source".into(),
+                        )),
+                        auto_val::Op::Asn,
+                        Box::new(crate::ast::Expr::Call(crate::ast::Call {
+                            name: Box::new(crate::ast::Expr::Ident("code_editor_text".into())),
+                            args: {
+                                let mut a = crate::ast::Args::new();
+                                a.args.push(crate::ast::Arg::Pos(crate::ast::Expr::Str(
+                                    "src".into(),
+                                )));
+                                a
+                            },
+                            ret: crate::ast::Type::StrOwned,
+                            type_args: vec![],
+                            generic_args: vec![],
+                            pos: None,
+                        })),
+                    ))]),
                 );
                 h
             },
@@ -13785,11 +15350,7 @@ widget LoginForm {
             "value binding:\n{}",
             code
         );
-        assert!(
-            code.contains(".lang(\"rust\")"),
-            "lang prop:\n{}",
-            code
-        );
+        assert!(code.contains(".lang(\"rust\")"), "lang prop:\n{}", code);
         assert!(
             code.contains(".on_change(PlaygroundMsg::SourceChanged(\"\".to_string()))"),
             "String-payload variant gets a default arg:\n{}",
@@ -13818,17 +15379,35 @@ widget LoginForm {
         let mut element = AuraNode::element("code_editor");
         {
             if let AuraNode::Element { props, events, .. } = &mut element {
-                props.insert("key".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Str("src".into())));
-                props.insert("lang".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Str("rust".into())));
-                props.insert("content".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Ident("source".into())));
-                props.insert("search".to_owned(), AuraPropValue::Expr(crate::ast::Expr::Ident("query".into())));
+                props.insert(
+                    "key".to_owned(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("src".into())),
+                );
+                props.insert(
+                    "lang".to_owned(),
+                    AuraPropValue::Expr(crate::ast::Expr::Str("rust".into())),
+                );
+                props.insert(
+                    "content".to_owned(),
+                    AuraPropValue::Expr(crate::ast::Expr::Ident("source".into())),
+                );
+                props.insert(
+                    "search".to_owned(),
+                    AuraPropValue::Expr(crate::ast::Expr::Ident("query".into())),
+                );
                 events.insert(
                     "oninput".to_owned(),
-                    AuraEvent { handler: ".SourceChanged".into(), params: vec![] },
+                    AuraEvent {
+                        handler: ".SourceChanged".into(),
+                        params: vec![],
+                    },
                 );
                 events.insert(
                     "oncursor".to_owned(),
-                    AuraEvent { handler: ".CursorMoved".into(), params: vec![] },
+                    AuraEvent {
+                        handler: ".CursorMoved".into(),
+                        params: vec![],
+                    },
                 );
             }
         }
@@ -13854,8 +15433,18 @@ widget LoginForm {
             ],
             messages: vec![AuraMessage {
                 variants: vec![
-                    AuraMsgVariant { payload_names: vec![], name: "SourceChanged".to_string(), payload: vec![Type::StrFixed(0)], quoted: false },
-                    AuraMsgVariant { payload_names: vec![], name: "CursorMoved".to_string(), payload: vec![], quoted: false },
+                    AuraMsgVariant {
+                        payload_names: vec![],
+                        name: "SourceChanged".to_string(),
+                        payload: vec![Type::StrFixed(0)],
+                        quoted: false,
+                    },
+                    AuraMsgVariant {
+                        payload_names: vec![],
+                        name: "CursorMoved".to_string(),
+                        payload: vec![],
+                        quoted: false,
+                    },
                 ],
             }],
             view_tree: element,
@@ -13895,7 +15484,10 @@ fn main() {{}}
             .nth(2)
             .unwrap()
             .to_path_buf();
-        let tmp = root.join("target").join("code-editor-e2e").join("playground");
+        let tmp = root
+            .join("target")
+            .join("code-editor-e2e")
+            .join("playground");
         let src_dir = tmp.join("src");
         std::fs::create_dir_all(&src_dir).unwrap();
         std::fs::write(src_dir.join("main.rs"), &main_rs).unwrap();
@@ -13970,7 +15562,12 @@ fn main() {{}}
                 },
             ],
             messages: vec![AuraMessage {
-                variants: vec![AuraMsgVariant { payload_names: vec![], name: "Inc".to_string(), quoted: false, payload: vec![] }],
+                variants: vec![AuraMsgVariant {
+                    payload_names: vec![],
+                    name: "Inc".to_string(),
+                    quoted: false,
+                    payload: vec![],
+                }],
             }],
             view_tree: AuraNode::element("col"),
             handlers: std::collections::BTreeMap::new(),
@@ -13999,12 +15596,28 @@ fn main() {{}}
             code
         );
         assert!(code.contains(r#""count""#), "missing count: {}", code);
-        assert!(code.contains("Value::Int(self.count)"), "count not Int: {}", code);
+        assert!(
+            code.contains("Value::Int(self.count)"),
+            "count not Int: {}",
+            code
+        );
         assert!(code.contains(r#""title""#), "missing title: {}", code);
-        assert!(code.contains("Value::str(&self.title)"), "title not str: {}", code);
+        assert!(
+            code.contains("Value::str(&self.title)"),
+            "title not str: {}",
+            code
+        );
         assert!(code.contains(r#""editing""#), "missing editing: {}", code);
-        assert!(code.contains("Value::Bool(self.editing)"), "editing not Bool: {}", code);
-        assert!(!code.contains(r#""items""#), "non-scalar items leaked: {}", code);
+        assert!(
+            code.contains("Value::Bool(self.editing)"),
+            "editing not Bool: {}",
+            code
+        );
+        assert!(
+            !code.contains(r#""items""#),
+            "non-scalar items leaked: {}",
+            code
+        );
     }
 
     /// Plan 371 Task 21: no scalar fields -> no override (trait default).
@@ -14022,7 +15635,12 @@ fn main() {{}}
                 decorators: vec![],
             }],
             messages: vec![AuraMessage {
-                variants: vec![AuraMsgVariant { payload_names: vec![], name: "Tick".to_string(), quoted: false, payload: vec![] }],
+                variants: vec![AuraMsgVariant {
+                    payload_names: vec![],
+                    name: "Tick".to_string(),
+                    quoted: false,
+                    payload: vec![],
+                }],
             }],
             view_tree: AuraNode::element("col"),
             handlers: std::collections::BTreeMap::new(),
@@ -14044,7 +15662,11 @@ fn main() {{}}
 
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).unwrap();
-        assert!(!code.contains("fn state_snapshot"), "should not emit override: {}", code);
+        assert!(
+            !code.contains("fn state_snapshot"),
+            "should not emit override: {}",
+            code
+        );
     }
 
     /// Plan 371 Task 22b: a component that has a registered store composable
@@ -14064,7 +15686,12 @@ fn main() {{}}
                 decorators: vec![],
             }],
             messages: vec![AuraMessage {
-                variants: vec![AuraMsgVariant { payload_names: vec![], name: "Tick".to_string(), quoted: false, payload: vec![] }],
+                variants: vec![AuraMsgVariant {
+                    payload_names: vec![],
+                    name: "Tick".to_string(),
+                    quoted: false,
+                    payload: vec![],
+                }],
             }],
             view_tree: AuraNode::element("col"),
             handlers: std::collections::BTreeMap::new(),
@@ -14194,10 +15821,14 @@ widget T {
         let session = crate::session::CompilerSession::ui().with_backend("rust");
         let mut parser = crate::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let code = RustGenerator::new().generate(&widget).expect("generate");
 
@@ -14245,17 +15876,18 @@ widget T {
         let session = crate::session::CompilerSession::ui().with_backend("rust");
         let mut parser = crate::Parser::from(src.as_str()).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let code = RustGenerator::new().generate(&widget).expect("generate");
 
-        let main_rs = format!(
-            "#![allow(dead_code, unused)]\n{}\nfn main() {{}}\n",
-            code
-        );
+        let main_rs = format!("#![allow(dead_code, unused)]\n{}\nfn main() {{}}\n", code);
         let root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let root = std::path::Path::new(&root)
             .ancestors()
@@ -14316,7 +15948,10 @@ widget T {
     #[test]
     fn test_tailwind_single_bg() {
         assert_eq!(tailwind_single_to_method("bg-white"), ".bg(\"white\")");
-        assert_eq!(tailwind_single_to_method("bg-blue-500"), ".bg(\"blue-500\")");
+        assert_eq!(
+            tailwind_single_to_method("bg-blue-500"),
+            ".bg(\"blue-500\")"
+        );
     }
 
     #[test]
@@ -14338,8 +15973,14 @@ widget T {
         assert_eq!(tailwind_single_to_method("flex-row"), ".flex_row()");
         assert_eq!(tailwind_single_to_method("flex-col"), ".flex_col()");
         assert_eq!(tailwind_single_to_method("items-center"), ".items_center()");
-        assert_eq!(tailwind_single_to_method("justify-center"), ".justify_center()");
-        assert_eq!(tailwind_single_to_method("justify-between"), ".justify_between()");
+        assert_eq!(
+            tailwind_single_to_method("justify-center"),
+            ".justify_center()"
+        );
+        assert_eq!(
+            tailwind_single_to_method("justify-between"),
+            ".justify_between()"
+        );
     }
 
     #[test]
@@ -14363,13 +16004,19 @@ widget T {
 
     #[test]
     fn test_tailwind_single_text_color() {
-        assert_eq!(tailwind_single_to_method("text-slate-500"), ".text_color(\"slate-500\")");
+        assert_eq!(
+            tailwind_single_to_method("text-slate-500"),
+            ".text_color(\"slate-500\")"
+        );
     }
 
     #[test]
     fn test_tailwind_to_methods_chain() {
         let result = tailwind_to_methods("View::col()", "gap-4 p-4 bg-white items-center");
-        assert_eq!(result, "View::col().gap(4).p(4).bg(\"white\").items_center()");
+        assert_eq!(
+            result,
+            "View::col().gap(4).p(4).bg(\"white\").items_center()"
+        );
     }
 
     #[test]
@@ -14388,7 +16035,7 @@ widget T {
     fn test_tailwind_to_methods_complex() {
         let result = tailwind_to_methods(
             "View::row()",
-            "w-full h-full justify-center items-center bg-white"
+            "w-full h-full justify-center items-center bg-white",
         );
         assert_eq!(
             result,
@@ -14404,8 +16051,16 @@ widget T {
 
         let mut gen = RustGenerator::new();
         let code = gen.generate_view_tree(&node);
-        assert!(code.contains("View::text(\"Hello, World!\".to_string())"), "got: {}", code);
-        assert!(!code.contains(".build()"), "View::text(str) returns View directly, got: {}", code);
+        assert!(
+            code.contains("View::text(\"Hello, World!\".to_string())"),
+            "got: {}",
+            code
+        );
+        assert!(
+            !code.contains(".build()"),
+            "View::text(str) returns View directly, got: {}",
+            code
+        );
     }
 
     #[test]
@@ -14423,8 +16078,16 @@ widget T {
         let code = gen.generate_view_tree(&svg_node);
         assert!(code.contains("View::image_styled("), "got: {}", code);
         assert!(code.contains("svgdoc:<svg"), "got: {}", code);
-        assert!(code.contains("viewBox=\\\"0 0 240 240\\\""), "got: {}", code);
-        assert!(code.contains("<circle cx=\\\"120\\\" cy=\\\"120\\\" r=\\\"114\\\"/>"), "got: {}", code);
+        assert!(
+            code.contains("viewBox=\\\"0 0 240 240\\\""),
+            "got: {}",
+            code
+        );
+        assert!(
+            code.contains("<circle cx=\\\"120\\\" cy=\\\"120\\\" r=\\\"114\\\"/>"),
+            "got: {}",
+            code
+        );
         assert!(code.contains("\"w-56 h-56\""), "got: {}", code);
     }
 
@@ -14460,22 +16123,41 @@ widget T {
     fn test_msg_multi_param_enum_output() {
         use crate::ast::Type;
         let widget = widget_with_msg(vec![
-            AuraMsgVariant { payload_names: vec![], name: "Init".to_string(), quoted: false, payload: vec![] },
-            AuraMsgVariant { payload_names: vec![], name: "Complete".to_string(), quoted: false, payload: vec![Type::StrSlice, Type::Int] },
+            AuraMsgVariant {
+                payload_names: vec![],
+                name: "Init".to_string(),
+                quoted: false,
+                payload: vec![],
+            },
+            AuraMsgVariant {
+                payload_names: vec![],
+                name: "Complete".to_string(),
+                quoted: false,
+                payload: vec![Type::StrSlice, Type::Int],
+            },
             AuraMsgVariant {
                 name: "RunSmart".to_string(),
                 quoted: false,
                 payload: vec![Type::Int, Type::StrSlice, Type::Unknown],
                 payload_names: vec![],
             },
-            AuraMsgVariant { payload_names: vec![], name: "SetTag".to_string(), quoted: false, payload: vec![Type::StrSlice] },
+            AuraMsgVariant {
+                payload_names: vec![],
+                name: "SetTag".to_string(),
+                quoted: false,
+                payload: vec![Type::StrSlice],
+            },
         ]);
 
         let mut gen = RustGenerator::new();
         let code = gen.generate(&widget).unwrap();
 
         // Unit variant.
-        assert!(code.contains("    Init,\n"), "unit variant Init, got:\n{}", code);
+        assert!(
+            code.contains("    Init,\n"),
+            "unit variant Init, got:\n{}",
+            code
+        );
         // Two-field variant (StrSlice renders as String in the Rust backend).
         assert!(
             code.contains("    Complete(String, i32),\n"),
@@ -14864,10 +16546,22 @@ widget StorageDemo {
                 code = gen.generate(&widget).unwrap();
             }
         }
-        assert!(code.contains("auto_lang::vm::ffi::stdlib::shim_storage_set"), "storage.set lowered:\n{code}");
-        assert!(code.contains("auto_lang::vm::ffi::stdlib::shim_storage_get"), "storage.get lowered:\n{code}");
-        assert!(code.contains("auto_lang::vm::ffi::stdlib::shim_storage_remove"), "storage.remove lowered:\n{code}");
-        assert!(code.contains("auto_lang::vm::ffi::stdlib::shim_time_now_sec() as i32"), "Time.now_sec lowered:\n{code}");
+        assert!(
+            code.contains("auto_lang::vm::ffi::stdlib::shim_storage_set"),
+            "storage.set lowered:\n{code}"
+        );
+        assert!(
+            code.contains("auto_lang::vm::ffi::stdlib::shim_storage_get"),
+            "storage.get lowered:\n{code}"
+        );
+        assert!(
+            code.contains("auto_lang::vm::ffi::stdlib::shim_storage_remove"),
+            "storage.remove lowered:\n{code}"
+        );
+        assert!(
+            code.contains("auto_lang::vm::ffi::stdlib::shim_time_now_sec() as i32"),
+            "Time.now_sec lowered:\n{code}"
+        );
     }
 }
 
@@ -15011,7 +16705,8 @@ mod plan039_a2r_gap_codegen_tests {
     /// 包裹（on_double_click 直发消息；onclick 保留在按钮本体）。
     #[test]
     fn button_ondblclick_mousearea_wrap() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { AutoSendWaste, AutoSendCol(int) }
     view {
@@ -15020,7 +16715,8 @@ widget Demo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains("View::MouseArea { content: Box::new(View::button"),
             "ondblclick 必须 MouseArea 包裹降级:\n{code}"
@@ -15043,7 +16739,8 @@ widget Demo {
     /// （text 叶子短路路径不经过事件门——既有行为，非本臂面。）
     #[test]
     fn non_button_ondblclick_stays_rejected() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { Noop }
     view {
@@ -15053,7 +16750,8 @@ widget Demo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains("not in the recognized vocabulary"),
             "非 button ondblclick 维持响亮拒:\n{code}"
@@ -15066,7 +16764,8 @@ widget Demo {
     /// width 经词汇门发射 builder 调用（此前四 prop 白名单外即拒）。
     #[test]
     fn vocab_gate_per_kind_prop_table() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { Nop }
     view {
@@ -15076,7 +16775,8 @@ widget Demo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains(".height(8)"),
             "textarea height 经词汇表发射:\n{code}"
@@ -15102,7 +16802,8 @@ widget Demo {
     /// 事件臂的既有短路行为不经过门，随注维持。
     #[test]
     fn vocab_gate_unknown_keeps_rejection_with_kind() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { Nop }
     view {
@@ -15112,7 +16813,8 @@ widget Demo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains("prop `mystery` not in the recognized vocabulary on <slider>"),
             "未知 prop 拒绝文案含 kind:\n{code}"
@@ -15131,7 +16833,8 @@ widget Demo {
     /// 变体与 on() 臂；族 props 零拒绝门命中。
     #[test]
     fn menubar_family_lowers_to_popover_row() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { PickOpen, PickToggle }
     model { var tab_count int = 0 }
@@ -15150,7 +16853,8 @@ widget Demo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains("__MenubarToggle(\"file\".to_string())"),
             "trigger 合成开合消息:\n{code}"
@@ -15196,7 +16900,8 @@ widget Demo {
     /// 项置灰静态按钮（muted + opacity-50，无 on_click 链），零字面深色。
     #[test]
     fn p695_menubar_a2r_popover_tokens_and_dimmed() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { PickOpen, PickToggle }
     view {
@@ -15215,7 +16920,8 @@ widget Demo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains("bg-popover text-popover-foreground border border-border"),
             "面板配色 popover token:\n{code}"
@@ -15234,10 +16940,7 @@ widget Demo {
             "可点项 handler:\n{code}"
         );
         let dimmed_count = code.matches("text-muted-foreground opacity-50").count();
-        assert_eq!(
-            dimmed_count, 2,
-            "无 handler + disabled 两项置灰:\n{code}"
-        );
+        assert_eq!(dimmed_count, 2, "无 handler + disabled 两项置灰:\n{code}");
         assert!(
             !code.contains("else { View::Empty }"),
             "enabled:false 隐藏路径退役（置灰替代）:\n{code}"
@@ -15249,7 +16952,8 @@ widget Demo {
     /// label/shortcut text_styled muted 文本。
     #[test]
     fn p695_menubar_a2r_submenu_radio_label_shortcut() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { PickLight, PickDark, PickImport }
     model { var theme string = "dark" }
@@ -15278,7 +16982,8 @@ widget Demo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains("starts_with(\"file::\")"),
             "外层开态前缀感知（子菜单复合键兼容）:\\n{code}"
@@ -15308,7 +17013,8 @@ widget Demo {
     /// D4：grid cols 动态表达式 → 运行期求值臂（字面量维持编译期路径）。
     #[test]
     fn grid_dynamic_cols_runtime_eval() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { NewGame }
     model { var cols int = 9 }
@@ -15318,19 +17024,22 @@ widget Demo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains(".cols((self.cols) as usize)"),
             "动态 cols 运行期求值:\n{code}"
         );
-        let lit = gen_first_widget(r#"
+        let lit = gen_first_widget(
+            r#"
 widget Demo {
     msg { NewGame }
     view {
         grid (cols: 3) { text "c" }
     }
 }
-"#);
+"#,
+        );
         assert!(
             lit.contains(".cols(3)"),
             "字面量 cols 编译期路径不变:\n{lit}"
@@ -15340,13 +17049,15 @@ widget Demo {
     /// ②：icon class 动态表达式 → 运行期拼串 + w-/h- 缺省档运行期复刻。
     #[test]
     fn icon_dynamic_class_runtime_eval() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget CardSuit (style: str = "w-8 h-8") {
     view {
         icon (name: "spade", class: .style) {}
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains("let __c = format!(\"{}\", self.style);"),
             "动态 class 运行期求值:\n{code}"
@@ -15364,7 +17075,8 @@ widget CardSuit (style: str = "w-8 h-8") {
     /// ④：textarea value Dot/点链容差（单级 + `.store.x` 多级拍平形）。
     #[test]
     fn textarea_dot_value_bindings() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget board {
     msg { EditDetail(str) }
     model { var detail str = "hello" }
@@ -15372,33 +17084,34 @@ widget board {
         textarea { value: .detail, oninput: .EditDetail }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains(".value(format!(\"{}\", self.detail))"),
             "单级 Dot value:\n{code}"
         );
-        let multi = gen_first_widget(r#"
+        let multi = gen_first_widget(
+            r#"
 widget board {
     msg { EditDetail(str) }
     view {
         textarea { value: .store.edit_detail, oninput: .EditDetail }
     }
 }
-"#);
+"#,
+        );
         assert!(
             multi.contains(".value(format!(\"{}\", self.store.edit_detail))"),
             "多级点链 value（kanban 形态）:\n{multi}"
         );
-        assert!(
-            !multi.contains("self.."),
-            "双点伪影必须剥除:\n{multi}"
-        );
+        assert!(!multi.contains("self.."), "双点伪影必须剥除:\n{multi}");
     }
 
     /// D5：单路由 routes{"/"->use X} + outlet → 持久子件折平直用。
     #[test]
     fn outlet_single_route_folds_to_persistent_child() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget App {
     routes {
         "/" -> use board
@@ -15410,19 +17123,14 @@ widget App {
         }
     }
 }
-"#);
-        assert!(
-            code.contains("board(boardMsg)"),
-            "包装变体入册:\n{code}"
+"#,
         );
+        assert!(code.contains("board(boardMsg)"), "包装变体入册:\n{code}");
         assert!(
             code.contains("self.board.view().map_msg(|m| AppMsg::board(m))"),
             "outlet 折平持久子件直用:\n{code}"
         );
-        assert!(
-            code.contains("pub board: board"),
-            "持久子件字段:\n{code}"
-        );
+        assert!(code.contains("pub board: board"), "持久子件字段:\n{code}");
         assert!(
             !code.contains("View::empty()"),
             "单路由不再静默空屏:\n{code}"
@@ -15432,7 +17140,8 @@ widget App {
     /// D5 边界：多路由 + outlet → 响亮拒（原 View::empty 静默升级）。
     #[test]
     fn outlet_multi_route_loud_reject() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget App {
     routes {
         "/" -> use home
@@ -15442,7 +17151,8 @@ widget App {
         col { outlet }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains("std::compile_error!(\"a2r codegen: multi-route/parametric `routes` + `outlet` not yet supported (PLAN-039 D5"),
             "多路由响亮拒带 P039 指针:\n{code}"
@@ -15457,7 +17167,8 @@ widget App {
     /// 通用未知事件臂）。
     #[test]
     fn drag_family_events_rejected_with_debt_pointer() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget board {
     msg { AllowDrop }
     view {
@@ -15467,22 +17178,21 @@ widget board {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains("std::compile_error!(\"a2r codegen: event `ondragover.prevent` (HTML5 drag family) not yet supported in a2r compiled mode (PLAN-039 D3-A"),
             "drag 家族专属拒绝臂:\n{code}"
         );
-        assert!(
-            code.contains("P039 debt"),
-            "债指针在案:\n{code}"
-        );
+        assert!(code.contains("P039 debt"), "债指针在案:\n{code}");
     }
 
     /// T-04 发现臂①：`key:` = Vue reconciliation 提示词——认知且双轨
     /// 同弃（非拒绝面），for 循环键提示不得打断生成。
     #[test]
     fn key_prop_silently_skipped() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { Tap }
     model { var items = ["a", "b"] }
@@ -15497,7 +17207,8 @@ widget Demo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             !code.contains("prop `key` not in the recognized vocabulary"),
             "key 不得落拒绝门:\n{code}"
@@ -15509,12 +17220,14 @@ widget Demo {
     /// 曾打断生成物语法）。
     #[test]
     fn string_literals_reescaped_on_emission() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     model { var payload str = "{\"title\":\"" + "x" + "\"}" }
     view { text .payload }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains("\\\"title\\\":"),
             "引号必须转义发射（生成物含 \\\"title\\\": 形态）:\n{code}"
@@ -15528,7 +17241,8 @@ widget Demo {
     /// 再挂尾巴 `()`（launcher ic1.len() 25 错株）。
     #[test]
     fn builtin_method_table_receiver_kinds() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { Tap }
     model {
@@ -15546,7 +17260,8 @@ widget Demo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains(".len() as i32"),
             "Vec 集合 len 落原生（i32 收口）:\n{code}"
@@ -15570,7 +17285,8 @@ widget Demo {
     /// 与 % 13 株）；同型数值比较不受扰动。
     #[test]
     fn value_numeric_use_site_wrap() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { Tap }
     model {
@@ -15587,7 +17303,8 @@ widget Demo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains("__at_num(&(w))) >= (39)"),
             "Value 局部比较包裹 __at_num:\n{code}"
@@ -15654,7 +17371,8 @@ widget Demo {
     /// `/* expr */` 占位（kanban store model meta 初始式株）。
     #[test]
     fn user_type_constructor_literal_emits_struct_init() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { Tap }
     model {
@@ -15663,7 +17381,8 @@ widget Demo {
     view { col { text "t" } }
     on { .Tap -> { .meta = .meta } }
 }
-"#);
+"#,
+        );
         assert!(
             code.contains("Meta { source_root:"),
             "Node 构造字面量必须发射 struct 初始化:
@@ -15681,7 +17400,8 @@ widget Demo {
     /// 配套：赋值点强转（c = items[0] → __at_num）+ 用点免包裹。
     #[test]
     fn declared_int_local_stays_out_of_value_union() {
-        let code = gen_first_widget(r#"
+        let code = gen_first_widget(
+            r#"
 widget Demo {
     msg { Tap }
     model { var items = [] }
@@ -15694,7 +17414,8 @@ widget Demo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             !code.contains("let mut c = serde_json::json!"),
             "显式 int 初始不得 json!:
@@ -15788,7 +17509,11 @@ fn widget_has_children(widget: &AuraWidget) -> bool {
             }
             crate::aura::AuraNode::Component { .. } => true,
             crate::aura::AuraNode::ForLoop { body, .. } => body.iter().any(node_has_component),
-            crate::aura::AuraNode::Conditional { then_body, else_body, .. } => {
+            crate::aura::AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 then_body.iter().any(node_has_component)
                     || else_body
                         .as_ref()
@@ -15869,9 +17594,7 @@ pub(crate) fn fix_string_local_value_element_assign(content: &mut String) {
             let name = &after[..name_end];
             let tail = after[name_end..].trim_start();
             if !name.is_empty()
-                && name
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
                 && tail.starts_with("= \"\".to_string()")
             {
                 names.push(name.to_string());
@@ -15887,18 +17610,14 @@ pub(crate) fn fix_string_local_value_element_assign(content: &mut String) {
         let mut out = String::new();
         let mut rest = content.as_str();
         while let Some(pos) = rest.find(&pat) {
-            let ok_before = pos == 0
-                || {
-                    let b = rest.as_bytes()[pos - 1];
-                    !(b.is_ascii_alphanumeric() || b == b'_')
-                };
+            let ok_before = pos == 0 || {
+                let b = rest.as_bytes()[pos - 1];
+                !(b.is_ascii_alphanumeric() || b == b'_')
+            };
             let seg = &rest[pos..];
             let end = seg.find(';').unwrap_or(seg.len());
             let stmt = &seg[..end];
-            if ok_before
-                && stmt.contains('[')
-                && stmt.ends_with(']')
-                && !stmt.contains(".as_str()")
+            if ok_before && stmt.contains('[') && stmt.ends_with(']') && !stmt.contains(".as_str()")
             {
                 out.push_str(&rest[..pos + end]);
                 out.push_str(".as_str().unwrap_or_default().to_string()");

@@ -41,7 +41,9 @@ fn collect_view_texts(
                 collect_view_texts(c, out);
             }
         }
-        View::Input { placeholder, value, .. } => {
+        View::Input {
+            placeholder, value, ..
+        } => {
             out.push(placeholder.clone());
             out.push(value.clone());
         }
@@ -72,14 +74,22 @@ fn t01_vm_track_full_assembly_renders_four_regions() {
         .expect("047 full assembly must compile on the VM track");
     // PLAN-702 段驱动适配：挂载自发 Init 经 back.api mock 播种即 park——
     // 驱动恢复泵至 nav 标签落账（生产 = __parked_resume_tick 泵）。
-    crate::plan370_test_support::drive_parked_segments(&mut dc, |dc| {
-        let (view, _m, _p) = dc.view_with_debug();
-        let mut texts = Vec::new();
-        collect_view_texts(&view, &mut texts);
-        let joined = texts.join("
-");
-        ["Data", "Settings", "Reports", "About"].iter().all(|e| joined.contains(e))
-    }, "plan657 t01 nav seeding");
+    crate::plan370_test_support::drive_parked_segments(
+        &mut dc,
+        |dc| {
+            let (view, _m, _p) = dc.view_with_debug();
+            let mut texts = Vec::new();
+            collect_view_texts(&view, &mut texts);
+            let joined = texts.join(
+                "
+",
+            );
+            ["Data", "Settings", "Reports", "About"]
+                .iter()
+                .all(|e| joined.contains(e))
+        },
+        "plan657 t01 nav seeding",
+    );
     let (view, _debug_map, _probe) = dc.view_with_debug();
     let mut texts = Vec::new();
     collect_view_texts(&view, &mut texts);
@@ -134,7 +144,16 @@ fn t02_vue_track_imports_and_zero_copy() {
             "app SFC must import the bp component; missing {import:?}; code:\n{code}"
         );
     }
-    for binding in ["@Nav=", "@SignOut=", "@Query=", "@Create=", "@Update=", "@Delete=", "@Save=", "@Primary="] {
+    for binding in [
+        "@Nav=",
+        "@SignOut=",
+        "@Query=",
+        "@Create=",
+        "@Update=",
+        "@Delete=",
+        "@Save=",
+        "@Primary=",
+    ] {
         assert!(
             code.contains(binding),
             "app SFC must wire callback {binding:?}; code:\n{code}"

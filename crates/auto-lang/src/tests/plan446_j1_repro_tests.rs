@@ -37,15 +37,23 @@ mod plan446_j1_repro {
         let (view_gated, _, _) = dc.view_with_debug_gated(true);
         let g = format!("{:?}", view_gated);
         let side_gated = g.matches("Search settings").count();
-        eprintln!("---- gated view: sidebar input occurrences = {side_gated} (tracked-probe on) ----");
+        eprintln!(
+            "---- gated view: sidebar input occurrences = {side_gated} (tracked-probe on) ----"
+        );
         let rendered = format!("{:?}", view);
         eprintln!("---- view dump (first 2000 chars) ----");
         eprintln!("{}", &rendered[..rendered.len().min(2000)]);
-        let bare_refs: Vec<&str> = ["<Sidebar />", "<DaemonView />", "<ConfigEditor />", "<ConfigEditorVm />", "<CollectionBrowserVm />"]
-            .iter()
-            .filter(|r| rendered.contains(*r))
-            .copied()
-            .collect();
+        let bare_refs: Vec<&str> = [
+            "<Sidebar />",
+            "<DaemonView />",
+            "<ConfigEditor />",
+            "<ConfigEditorVm />",
+            "<CollectionBrowserVm />",
+        ]
+        .iter()
+        .filter(|r| rendered.contains(*r))
+        .copied()
+        .collect();
         assert!(
             bare_refs.is_empty(),
             "child-widget references rendered as bare fallback text (J1): {bare_refs:?}"

@@ -183,7 +183,10 @@ mod tests {
         record_stripped(
             "T533WidgetB",
             "DoSend",
-            vec![StrippedCall { callback: "on_send".into(), arg: Some("this.draft".into()) }],
+            vec![StrippedCall {
+                callback: "on_send".into(),
+                arg: Some("this.draft".into()),
+            }],
         );
         let calls = lookup_stripped("t533widgetb", "dosend");
         assert_eq!(calls.len(), 1);

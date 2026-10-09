@@ -705,7 +705,11 @@ mod tests {
         };
 
         let arr = |n: &serde_json::Value| -> Vec<f32> {
-            n.as_array().unwrap().iter().map(|x| x.as_f64().unwrap() as f32).collect()
+            n.as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_f64().unwrap() as f32)
+                .collect()
         };
         let mut checked = 0usize;
         for case in v["cases"].as_array().unwrap() {
@@ -720,12 +724,17 @@ mod tests {
                 "layout" => {
                     let n = case["n"].as_u64().unwrap() as usize;
                     let focused = case["focused"].as_u64().map(|i| i as usize);
-                    let free_rects: Option<Vec<(f32, f32, f32, f32)>> = case.get("freeRects").map(|fr| {
-                        fr.as_array().unwrap().iter().map(|r| {
-                            let a = arr(r);
-                            (a[0], a[1], a[2], a[3])
-                        }).collect()
-                    });
+                    let free_rects: Option<Vec<(f32, f32, f32, f32)>> =
+                        case.get("freeRects").map(|fr| {
+                            fr.as_array()
+                                .unwrap()
+                                .iter()
+                                .map(|r| {
+                                    let a = arr(r);
+                                    (a[0], a[1], a[2], a[3])
+                                })
+                                .collect()
+                        });
                     let input: Vec<WindowState> = (0..n)
                         .map(|i| WindowState {
                             wid: Wid(i as u64 + 1),

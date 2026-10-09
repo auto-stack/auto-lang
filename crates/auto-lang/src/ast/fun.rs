@@ -24,14 +24,15 @@ pub struct Fn {
     pub ret: Type,
     pub ret_name: Option<Name>, // Original return type name (for unresolved types)
     pub is_static: bool, // Plan 035 Phase 4: true for static methods, false for instance methods
-    pub is_pub: bool,   // Plan 163: true for #[pub] functions
-    pub is_mut: bool,   // Plan 163: true for mut fn (generates &mut self)
-    pub is_test: bool,  // Plan 260: true for #[test] functions
+    pub is_pub: bool,    // Plan 163: true for #[pub] functions
+    pub is_mut: bool,    // Plan 163: true for mut fn (generates &mut self)
+    pub is_test: bool,   // Plan 260: true for #[test] functions
     pub type_params: Vec<TypeParam>, // Plan 061: Generic type parameters with constraints
     /// Plan 052-followup (417 项④): const generic params (`fn f<T, N u32>`) —
     /// kept separately from type_params so Rust can emit `<T, const N: u32>`.
     pub const_params: Vec<ConstParam>,
-    pub doc: Option<AutoStr>,        /// Doc comment lines (///)
+    pub doc: Option<AutoStr>,
+    /// Doc comment lines (///)
     pub span: Option<(usize, usize)>, // Source location for error reporting
     /// Plan 312: #[api(method, path)] annotation — makes the function an HTTP
     /// endpoint when run via AutoVM. None for non-api functions.
@@ -211,7 +212,6 @@ pub enum ParamMode {
     Take, // DEPRECATED - Alias for Move (backward compatibility)
 }
 
-
 #[allow(deprecated)]
 impl fmt::Display for ParamMode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -247,7 +247,6 @@ pub enum AccessMode {
     /// Deep copy via .clone() method - O(N)
     Clone,
 }
-
 
 impl fmt::Display for AccessMode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -589,7 +588,7 @@ impl PartialEq for Closure {
         };
 
         params_equal && ret_equal && self.is_move == other.is_move
-            // Skip body comparison (Expr doesn't have PartialEq)
+        // Skip body comparison (Expr doesn't have PartialEq)
     }
 }
 

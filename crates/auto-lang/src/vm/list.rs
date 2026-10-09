@@ -699,7 +699,6 @@ pub fn filter_iter_next(ctx: &mut VmContext, instance: &mut Value, _args: Vec<Va
                             // Drop borrows before updating instance
                             drop(ref_box);
 
-
                             // Check if element satisfies predicate
                             let matches = if let Value::Meta(meta_id) = &predicate {
                                 if let Value::Int(x) = elem {

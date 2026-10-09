@@ -75,7 +75,10 @@ impl ExecutionMode {
 
     /// Check if this mode requires compilation (as opposed to interpretation)
     pub fn requires_compilation(&self) -> bool {
-        matches!(self, ExecutionMode::AutoVM | ExecutionMode::C | ExecutionMode::Rust)
+        matches!(
+            self,
+            ExecutionMode::AutoVM | ExecutionMode::C | ExecutionMode::Rust
+        )
     }
 
     /// Check if this mode is a transpilation mode (to C or Rust)
@@ -111,8 +114,12 @@ impl std::str::FromStr for ExecutionMode {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        ExecutionMode::from_str(s)
-            .ok_or_else(|| format!("Invalid execution mode: '{}'. Expected: autovm, evaluator, c, or rust", s))
+        ExecutionMode::from_str(s).ok_or_else(|| {
+            format!(
+                "Invalid execution mode: '{}'. Expected: autovm, evaluator, c, or rust",
+                s
+            )
+        })
     }
 }
 
@@ -123,14 +130,29 @@ mod tests {
     #[test]
     fn test_from_str() {
         // AutoVM variants
-        assert_eq!(ExecutionMode::from_str("autovm"), Some(ExecutionMode::AutoVM));
+        assert_eq!(
+            ExecutionMode::from_str("autovm"),
+            Some(ExecutionMode::AutoVM)
+        );
         assert_eq!(ExecutionMode::from_str("vm"), Some(ExecutionMode::AutoVM));
-        assert_eq!(ExecutionMode::from_str("bytecode"), Some(ExecutionMode::AutoVM));
+        assert_eq!(
+            ExecutionMode::from_str("bytecode"),
+            Some(ExecutionMode::AutoVM)
+        );
 
         // Evaluator variants
-        assert_eq!(ExecutionMode::from_str("evaluator"), Some(ExecutionMode::Evaluator));
-        assert_eq!(ExecutionMode::from_str("eval"), Some(ExecutionMode::Evaluator));
-        assert_eq!(ExecutionMode::from_str("tree"), Some(ExecutionMode::Evaluator));
+        assert_eq!(
+            ExecutionMode::from_str("evaluator"),
+            Some(ExecutionMode::Evaluator)
+        );
+        assert_eq!(
+            ExecutionMode::from_str("eval"),
+            Some(ExecutionMode::Evaluator)
+        );
+        assert_eq!(
+            ExecutionMode::from_str("tree"),
+            Some(ExecutionMode::Evaluator)
+        );
 
         // C variants
         assert_eq!(ExecutionMode::from_str("c"), Some(ExecutionMode::C));
@@ -185,7 +207,10 @@ mod tests {
     fn test_from_str_trait() {
         use std::str::FromStr;
 
-        assert_eq!(ExecutionMode::from_str("autovm").unwrap(), ExecutionMode::AutoVM);
+        assert_eq!(
+            ExecutionMode::from_str("autovm").unwrap(),
+            ExecutionMode::AutoVM
+        );
         assert_eq!(ExecutionMode::from_str("c").unwrap(), ExecutionMode::C);
 
         // Option doesn't have is_err(), use is_none() instead
@@ -245,19 +270,40 @@ mod tests_script_mode {
         use super::resolve_script_mode;
         use super::ScriptMode;
         // .at 无 pragma → Normal（550 门控 lint 照常）
-        assert_eq!(resolve_script_mode(Some("at"), false, false), ScriptMode::Normal);
+        assert_eq!(
+            resolve_script_mode(Some("at"), false, false),
+            ScriptMode::Normal
+        );
         // .at + #[script] → Script（550 已落通道）
-        assert_eq!(resolve_script_mode(Some("at"), true, false), ScriptMode::Script);
+        assert_eq!(
+            resolve_script_mode(Some("at"), true, false),
+            ScriptMode::Script
+        );
         // .at + #[rust] → Normal（既有 rust pragma 语义不动）
-        assert_eq!(resolve_script_mode(Some("at"), false, true), ScriptMode::Normal);
+        assert_eq!(
+            resolve_script_mode(Some("at"), false, true),
+            ScriptMode::Normal
+        );
         // .as 无 pragma → Script（隐式）
-        assert_eq!(resolve_script_mode(Some("as"), false, false), ScriptMode::Script);
+        assert_eq!(
+            resolve_script_mode(Some("as"), false, false),
+            ScriptMode::Script
+        );
         // .as + #[script] → Script（幂等）
-        assert_eq!(resolve_script_mode(Some("as"), true, false), ScriptMode::Script);
+        assert_eq!(
+            resolve_script_mode(Some("as"), true, false),
+            ScriptMode::Script
+        );
         // .as + #[rust] → Normal（显式压回通道）
-        assert_eq!(resolve_script_mode(Some("as"), false, true), ScriptMode::Normal);
+        assert_eq!(
+            resolve_script_mode(Some("as"), false, true),
+            ScriptMode::Normal
+        );
         // 双 pragma → #[rust] 胜（压回优先，保守取向）
-        assert_eq!(resolve_script_mode(Some("as"), true, true), ScriptMode::Normal);
+        assert_eq!(
+            resolve_script_mode(Some("as"), true, true),
+            ScriptMode::Normal
+        );
         // 无扩展名信息（stdin/eval 场景）→ 仅 pragma 决定
         assert_eq!(resolve_script_mode(None, false, false), ScriptMode::Normal);
         assert_eq!(resolve_script_mode(None, true, false), ScriptMode::Script);

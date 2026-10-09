@@ -8,7 +8,7 @@ use super::Color;
 /// Size value (used for width, height, spacing, etc.)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SizeValue {
-    Full,        // 100%
+    Full, // 100%
     /// PLAN-663 C1a: 视口单位（`h-screen`/`h-dvh`/`h-svh`/`h-lvh`/`w-screen`
     /// 族），与 `Full`（父容器 100%）严格区分。窗口根解析为 Fill（满窗，历
     /// 史行为）；定高/定宽(px)嵌入边界子树内由 rewrite_viewport_units 重锚
@@ -16,10 +16,10 @@ pub enum SizeValue {
     /// 入定高容器后 Fill 失去锚点塌缩为最小内容高——ui-gallery VM 臂全屏
     /// demo 只剩一条播控条的根因。
     Screen,
-    Half,        // 50%
-    Third,       // 33.333%
-    TwoThirds,   // 66.666%
-    Quarter,     // 25%
+    Half,          // 50%
+    Third,         // 33.333%
+    TwoThirds,     // 66.666%
+    Quarter,       // 25%
     ThreeQuarters, // 75%
     Auto,
     Fixed(u16),  // Tailwind spacing units (1 = 4px, 2 = 8px, etc.)
@@ -797,7 +797,10 @@ impl StyleClass {
         let (class, arbitrary_value): (&str, Option<&str>) =
             if class.starts_with(|c: char| c.is_ascii_alphabetic()) && class.ends_with(']') {
                 if let Some(bracket_start) = class.find('[') {
-                    (&class[..bracket_start], Some(&class[bracket_start + 1..class.len() - 1]))
+                    (
+                        &class[..bracket_start],
+                        Some(&class[bracket_start + 1..class.len() - 1]),
+                    )
                 } else {
                     (class, None)
                 }
@@ -1038,7 +1041,9 @@ impl StyleClass {
                     return Ok(StyleClass::GradientToStop(pct));
                 }
             }
-            if let Ok(color) = Color::from_tailwind(color_name).or_else(|_| Color::from_hex(color_name)) {
+            if let Ok(color) =
+                Color::from_tailwind(color_name).or_else(|_| Color::from_hex(color_name))
+            {
                 return Ok(StyleClass::GradientTo(color));
             }
             // PLAN-625 T-05: 语义色回落(to-primary/60 等主题 token 色),
@@ -1234,7 +1239,8 @@ impl StyleClass {
                     arbitrary_value
                         .and_then(|v| Color::from_hex(v).ok())
                         .ok_or_else(|| format!("Unknown accent color: {}", color_name))
-                }) {
+                })
+            {
                 return Ok(StyleClass::AccentColor(color));
             }
         }
@@ -1595,10 +1601,12 @@ impl StyleClass {
             if color_name == "transparent" {
                 // Use a hex color that iced adapter can treat as transparent
                 // Use a special hex value — iced adapter should handle it
-                return Ok(StyleClass::BorderColor(Color::from_hex("#00000000").unwrap_or_else(|_| {
-                    // Fallback: just use white, the border-none style above is preferred
-                    Color::from_hex("#ffffff").unwrap()
-                })));
+                return Ok(StyleClass::BorderColor(
+                    Color::from_hex("#00000000").unwrap_or_else(|_| {
+                        // Fallback: just use white, the border-none style above is preferred
+                        Color::from_hex("#ffffff").unwrap()
+                    }),
+                ));
             }
             let color = parse_color_with_alpha(color_name, arbitrary_value)?;
             return Ok(StyleClass::BorderColor(color));
@@ -1626,8 +1634,8 @@ impl StyleClass {
 
         // Plan 527 T4: 彩色阴影 shadow-{color}(精确档已在上方;inner 不收)
         if let Some(color_name) = class.strip_prefix("shadow-") {
-            if let Ok(color) = Color::from_tailwind(color_name)
-                .or_else(|_| Color::from_hex(color_name))
+            if let Ok(color) =
+                Color::from_tailwind(color_name).or_else(|_| Color::from_hex(color_name))
             {
                 return Ok(StyleClass::ShadowColor(color));
             }
@@ -1645,16 +1653,15 @@ impl StyleClass {
             if let Ok(w) = rest.parse::<f32>() {
                 return Ok(StyleClass::RingWidth(w));
             }
-            if let Ok(color) = Color::from_tailwind(rest)
-                .or_else(|_| Color::from_hex(rest))
-            {
+            if let Ok(color) = Color::from_tailwind(rest).or_else(|_| Color::from_hex(rest)) {
                 return Ok(StyleClass::RingColor(color));
             }
         }
 
         // Parse opacity: opacity-{0-100}
         if let Some(rest) = class.strip_prefix("opacity-") {
-            let value: u8 = rest.parse()
+            let value: u8 = rest
+                .parse()
                 .map_err(|_| format!("Invalid opacity value: {}", rest))?;
             if value > 100 {
                 return Err(format!("Opacity value must be 0-100, got: {}", value));
@@ -1867,7 +1874,8 @@ impl StyleClass {
         }
         if let Some(rest) = class.strip_prefix("z-") {
             // Handle z-{0}, z-10, z-20, z-50, etc.
-            let value: i16 = rest.parse()
+            let value: i16 = rest
+                .parse()
                 .map_err(|_| format!("Invalid z-index value: {}", rest))?;
             if value < 0 || value > 50 {
                 return Err(format!("Z-index value must be 0-50, got: {}", value));
@@ -1907,7 +1915,8 @@ impl StyleClass {
             // Plan 057 (ash-gui 表格列对齐): grid-cols-[N] 任意值形式(纯数字,
             // 如动态拼接 "grid grid-cols-" + n 产出)—— 剥 [] 后按普通值解析。
             let rest = rest.trim_start_matches('[').trim_end_matches(']');
-            let value: u8 = rest.parse()
+            let value: u8 = rest
+                .parse()
                 .map_err(|_| format!("Invalid grid-cols value: {}", rest))?;
             if value < 1 || value > 12 {
                 return Err(format!("Grid columns must be 1-12, got: {}", value));
@@ -1917,7 +1926,8 @@ impl StyleClass {
 
         // Parse grid-rows-{1-6}
         if let Some(rest) = class.strip_prefix("grid-rows-") {
-            let value: u8 = rest.parse()
+            let value: u8 = rest
+                .parse()
                 .map_err(|_| format!("Invalid grid-rows value: {}", rest))?;
             if value < 1 || value > 6 {
                 return Err(format!("Grid rows must be 1-6, got: {}", value));
@@ -1927,7 +1937,8 @@ impl StyleClass {
 
         // Parse col-span-{1-12}
         if let Some(rest) = class.strip_prefix("col-span-") {
-            let value: u8 = rest.parse()
+            let value: u8 = rest
+                .parse()
                 .map_err(|_| format!("Invalid col-span value: {}", rest))?;
             if value < 1 || value > 12 {
                 return Err(format!("Column span must be 1-12, got: {}", value));
@@ -1937,7 +1948,8 @@ impl StyleClass {
 
         // Parse row-span-{1-6}
         if let Some(rest) = class.strip_prefix("row-span-") {
-            let value: u8 = rest.parse()
+            let value: u8 = rest
+                .parse()
                 .map_err(|_| format!("Invalid row-span value: {}", rest))?;
             if value < 1 || value > 6 {
                 return Err(format!("Row span must be 1-6, got: {}", value));
@@ -1948,7 +1960,8 @@ impl StyleClass {
         // Parse col-start-{1-13}
         // Plan 527 T3: 扩档 8..13(与 col-span 对齐;存字段,渲染降级同 1..7)。
         if let Some(rest) = class.strip_prefix("col-start-") {
-            let value: u8 = rest.parse()
+            let value: u8 = rest
+                .parse()
                 .map_err(|_| format!("Invalid col-start value: {}", rest))?;
             if value < 1 || value > 13 {
                 return Err(format!("Column start must be 1-13, got: {}", value));
@@ -1958,7 +1971,8 @@ impl StyleClass {
 
         // Plan 527 T3: col-end-{1-13}(存字段,渲染降级)
         if let Some(rest) = class.strip_prefix("col-end-") {
-            let value: u8 = rest.parse()
+            let value: u8 = rest
+                .parse()
                 .map_err(|_| format!("Invalid col-end value: {}", rest))?;
             if value < 1 || value > 13 {
                 return Err(format!("Column end must be 1-13, got: {}", value));
@@ -1968,7 +1982,8 @@ impl StyleClass {
 
         // Parse row-start-{1-7}
         if let Some(rest) = class.strip_prefix("row-start-") {
-            let value: u8 = rest.parse()
+            let value: u8 = rest
+                .parse()
                 .map_err(|_| format!("Invalid row-start value: {}", rest))?;
             if value < 1 || value > 7 {
                 return Err(format!("Row start must be 1-7, got: {}", value));
@@ -1978,7 +1993,8 @@ impl StyleClass {
 
         // Plan 527 T3: row-end-{1-7}(存字段,渲染降级)
         if let Some(rest) = class.strip_prefix("row-end-") {
-            let value: u8 = rest.parse()
+            let value: u8 = rest
+                .parse()
                 .map_err(|_| format!("Invalid row-end value: {}", rest))?;
             if value < 1 || value > 7 {
                 return Err(format!("Row end must be 1-7, got: {}", value));
@@ -2252,8 +2268,14 @@ mod tests {
 
     #[test]
     fn test_parse_padding() {
-        assert_eq!(StyleClass::parse_single("p-4"), Ok(StyleClass::Padding(SizeValue::Fixed(4))));
-        assert_eq!(StyleClass::parse_single("p-0"), Ok(StyleClass::Padding(SizeValue::Fixed(0))));
+        assert_eq!(
+            StyleClass::parse_single("p-4"),
+            Ok(StyleClass::Padding(SizeValue::Fixed(4)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("p-0"),
+            Ok(StyleClass::Padding(SizeValue::Fixed(0)))
+        );
     }
 
     // Plan 049 (auto-musk D3): p/m 族 0.5 步进分数值——此前只有 gap 族支持分数,
@@ -2261,34 +2283,73 @@ mod tests {
     // 对齐 parse_gap_value 的先例:分数 -> Pixels(N*4px)。
     #[test]
     fn test_parse_fractional_spacing() {
-        assert_eq!(StyleClass::parse_single("px-2.5"), Ok(StyleClass::PaddingX(SizeValue::Pixels(10.0))));
-        assert_eq!(StyleClass::parse_single("py-2.5"), Ok(StyleClass::PaddingY(SizeValue::Pixels(10.0))));
-        assert_eq!(StyleClass::parse_single("py-0.5"), Ok(StyleClass::PaddingY(SizeValue::Pixels(2.0))));
-        assert_eq!(StyleClass::parse_single("mb-0.5"), Ok(StyleClass::MarginBottom(SizeValue::Pixels(2.0))));
-        assert_eq!(StyleClass::parse_single("py-1.5"), Ok(StyleClass::PaddingY(SizeValue::Pixels(6.0))));
-        assert_eq!(StyleClass::parse_single("p-3.5"), Ok(StyleClass::Padding(SizeValue::Pixels(14.0))));
+        assert_eq!(
+            StyleClass::parse_single("px-2.5"),
+            Ok(StyleClass::PaddingX(SizeValue::Pixels(10.0)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("py-2.5"),
+            Ok(StyleClass::PaddingY(SizeValue::Pixels(10.0)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("py-0.5"),
+            Ok(StyleClass::PaddingY(SizeValue::Pixels(2.0)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("mb-0.5"),
+            Ok(StyleClass::MarginBottom(SizeValue::Pixels(2.0)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("py-1.5"),
+            Ok(StyleClass::PaddingY(SizeValue::Pixels(6.0)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("p-3.5"),
+            Ok(StyleClass::Padding(SizeValue::Pixels(14.0)))
+        );
         // 整数与既有语义不回归
-        assert_eq!(StyleClass::parse_single("px-4"), Ok(StyleClass::PaddingX(SizeValue::Fixed(4))));
-        assert_eq!(StyleClass::parse_single("gap-0.5"), Ok(StyleClass::Gap(SizeValue::Pixels(2.0))));
+        assert_eq!(
+            StyleClass::parse_single("px-4"),
+            Ok(StyleClass::PaddingX(SizeValue::Fixed(4)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("gap-0.5"),
+            Ok(StyleClass::Gap(SizeValue::Pixels(2.0)))
+        );
     }
 
     // Plan 049 (auto-musk D3): items-baseline 降级臂——iced 无基线对齐,按
     // Plan 412 降级矩阵先例解析保存为 ItemsStart(顶部对齐近似),不再整类丢弃。
     #[test]
     fn test_parse_items_baseline_degrades_to_center() {
-        assert_eq!(StyleClass::parse_single("items-baseline"), Ok(StyleClass::ItemsCenter));
-        assert_eq!(StyleClass::parse_single("mt-auto"), Ok(StyleClass::MarginTop(SizeValue::Auto)));
+        assert_eq!(
+            StyleClass::parse_single("items-baseline"),
+            Ok(StyleClass::ItemsCenter)
+        );
+        assert_eq!(
+            StyleClass::parse_single("mt-auto"),
+            Ok(StyleClass::MarginTop(SizeValue::Auto))
+        );
     }
 
     #[test]
     fn test_parse_gap() {
-        assert_eq!(StyleClass::parse_single("gap-2"), Ok(StyleClass::Gap(SizeValue::Fixed(2))));
+        assert_eq!(
+            StyleClass::parse_single("gap-2"),
+            Ok(StyleClass::Gap(SizeValue::Fixed(2)))
+        );
     }
 
     #[test]
     fn test_parse_colors() {
-        assert!(matches!(StyleClass::parse_single("bg-white"), Ok(StyleClass::BackgroundColor(_))));
-        assert!(matches!(StyleClass::parse_single("text-slate-500"), Ok(StyleClass::TextColor(_))));
+        assert!(matches!(
+            StyleClass::parse_single("bg-white"),
+            Ok(StyleClass::BackgroundColor(_))
+        ));
+        assert!(matches!(
+            StyleClass::parse_single("text-slate-500"),
+            Ok(StyleClass::TextColor(_))
+        ));
     }
 
     #[test]
@@ -2301,7 +2362,11 @@ mod tests {
         crate::ui::style::iced_adapter::set_dark_mode(true);
         match StyleClass::parse_single("bg-background/95") {
             Ok(StyleClass::BackgroundColor(Color::Rgba { r, g, b, a })) => {
-                assert_eq!((r, g, b), (20, 26, 41), "深色主题下 background 应为语义 Background(stella #141a29),而非白色");
+                assert_eq!(
+                    (r, g, b),
+                    (20, 26, 41),
+                    "深色主题下 background 应为语义 Background(stella #141a29),而非白色"
+                );
                 assert_eq!(a, 242, "95% alpha → 242");
             }
             other => panic!("期望 BackgroundColor(Rgba),得到 {:?}", other),
@@ -2327,15 +2392,30 @@ mod tests {
     #[test]
     fn test_parse_layout() {
         assert_eq!(StyleClass::parse_single("flex"), Ok(StyleClass::Flex));
-        assert_eq!(StyleClass::parse_single("flex-row"), Ok(StyleClass::FlexRow));
-        assert_eq!(StyleClass::parse_single("flex-col"), Ok(StyleClass::FlexCol));
-        assert_eq!(StyleClass::parse_single("items-center"), Ok(StyleClass::ItemsCenter));
+        assert_eq!(
+            StyleClass::parse_single("flex-row"),
+            Ok(StyleClass::FlexRow)
+        );
+        assert_eq!(
+            StyleClass::parse_single("flex-col"),
+            Ok(StyleClass::FlexCol)
+        );
+        assert_eq!(
+            StyleClass::parse_single("items-center"),
+            Ok(StyleClass::ItemsCenter)
+        );
     }
 
     #[test]
     fn test_parse_sizing() {
-        assert_eq!(StyleClass::parse_single("w-full"), Ok(StyleClass::Width(SizeValue::Full)));
-        assert_eq!(StyleClass::parse_single("h-12"), Ok(StyleClass::Height(SizeValue::Fixed(12))));
+        assert_eq!(
+            StyleClass::parse_single("w-full"),
+            Ok(StyleClass::Width(SizeValue::Full))
+        );
+        assert_eq!(
+            StyleClass::parse_single("h-12"),
+            Ok(StyleClass::Height(SizeValue::Fixed(12)))
+        );
     }
 
     #[test]
@@ -2352,15 +2432,30 @@ mod tests {
 
     #[test]
     fn test_parse_padding_xy() {
-        assert_eq!(StyleClass::parse_single("px-4"), Ok(StyleClass::PaddingX(SizeValue::Fixed(4))));
-        assert_eq!(StyleClass::parse_single("py-2"), Ok(StyleClass::PaddingY(SizeValue::Fixed(2))));
+        assert_eq!(
+            StyleClass::parse_single("px-4"),
+            Ok(StyleClass::PaddingX(SizeValue::Fixed(4)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("py-2"),
+            Ok(StyleClass::PaddingY(SizeValue::Fixed(2)))
+        );
     }
 
     #[test]
     fn test_parse_margin() {
-        assert_eq!(StyleClass::parse_single("m-4"), Ok(StyleClass::Margin(SizeValue::Fixed(4))));
-        assert_eq!(StyleClass::parse_single("mx-2"), Ok(StyleClass::MarginX(SizeValue::Fixed(2))));
-        assert_eq!(StyleClass::parse_single("my-2"), Ok(StyleClass::MarginY(SizeValue::Fixed(2))));
+        assert_eq!(
+            StyleClass::parse_single("m-4"),
+            Ok(StyleClass::Margin(SizeValue::Fixed(4)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("mx-2"),
+            Ok(StyleClass::MarginX(SizeValue::Fixed(2)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("my-2"),
+            Ok(StyleClass::MarginY(SizeValue::Fixed(2)))
+        );
     }
 
     #[test]
@@ -2372,7 +2467,10 @@ mod tests {
     fn test_parse_text_size() {
         assert_eq!(StyleClass::parse_single("text-xs"), Ok(StyleClass::TextXs));
         assert_eq!(StyleClass::parse_single("text-sm"), Ok(StyleClass::TextSm));
-        assert_eq!(StyleClass::parse_single("text-base"), Ok(StyleClass::TextBase));
+        assert_eq!(
+            StyleClass::parse_single("text-base"),
+            Ok(StyleClass::TextBase)
+        );
         assert_eq!(StyleClass::parse_single("text-lg"), Ok(StyleClass::TextLg));
         assert_eq!(StyleClass::parse_single("text-xl"), Ok(StyleClass::TextXl));
         // PLAN-053 T14: 任意字号通道（既有 TextArbitrary）
@@ -2380,55 +2478,130 @@ mod tests {
             StyleClass::parse_single("text-[25.3px]"),
             Ok(StyleClass::TextArbitrary(25.3))
         );
-        assert_eq!(StyleClass::parse_single("text-2xl"), Ok(StyleClass::Text2Xl));
-        assert_eq!(StyleClass::parse_single("text-3xl"), Ok(StyleClass::Text3Xl));
+        assert_eq!(
+            StyleClass::parse_single("text-2xl"),
+            Ok(StyleClass::Text2Xl)
+        );
+        assert_eq!(
+            StyleClass::parse_single("text-3xl"),
+            Ok(StyleClass::Text3Xl)
+        );
     }
 
     #[test]
     fn test_parse_font_weight() {
-        assert_eq!(StyleClass::parse_single("font-bold"), Ok(StyleClass::FontBold));
-        assert_eq!(StyleClass::parse_single("font-medium"), Ok(StyleClass::FontMedium));
-        assert_eq!(StyleClass::parse_single("font-normal"), Ok(StyleClass::FontNormal));
+        assert_eq!(
+            StyleClass::parse_single("font-bold"),
+            Ok(StyleClass::FontBold)
+        );
+        assert_eq!(
+            StyleClass::parse_single("font-medium"),
+            Ok(StyleClass::FontMedium)
+        );
+        assert_eq!(
+            StyleClass::parse_single("font-normal"),
+            Ok(StyleClass::FontNormal)
+        );
     }
 
     #[test]
     fn test_parse_text_align() {
-        assert_eq!(StyleClass::parse_single("text-center"), Ok(StyleClass::TextCenter));
-        assert_eq!(StyleClass::parse_single("text-left"), Ok(StyleClass::TextLeft));
-        assert_eq!(StyleClass::parse_single("text-right"), Ok(StyleClass::TextRight));
+        assert_eq!(
+            StyleClass::parse_single("text-center"),
+            Ok(StyleClass::TextCenter)
+        );
+        assert_eq!(
+            StyleClass::parse_single("text-left"),
+            Ok(StyleClass::TextLeft)
+        );
+        assert_eq!(
+            StyleClass::parse_single("text-right"),
+            Ok(StyleClass::TextRight)
+        );
     }
 
     #[test]
     fn test_parse_text_decoration() {
-        assert_eq!(StyleClass::parse_single("line-through"), Ok(StyleClass::LineThrough));
-        assert_eq!(StyleClass::parse_single("underline"), Ok(StyleClass::Underline));
-        assert_eq!(StyleClass::parse_single("no-underline"), Ok(StyleClass::NoUnderline));
+        assert_eq!(
+            StyleClass::parse_single("line-through"),
+            Ok(StyleClass::LineThrough)
+        );
+        assert_eq!(
+            StyleClass::parse_single("underline"),
+            Ok(StyleClass::Underline)
+        );
+        assert_eq!(
+            StyleClass::parse_single("no-underline"),
+            Ok(StyleClass::NoUnderline)
+        );
     }
 
     #[test]
     fn test_parse_items_align() {
-        assert_eq!(StyleClass::parse_single("items-start"), Ok(StyleClass::ItemsStart));
-        assert_eq!(StyleClass::parse_single("items-end"), Ok(StyleClass::ItemsEnd));
+        assert_eq!(
+            StyleClass::parse_single("items-start"),
+            Ok(StyleClass::ItemsStart)
+        );
+        assert_eq!(
+            StyleClass::parse_single("items-end"),
+            Ok(StyleClass::ItemsEnd)
+        );
     }
 
     #[test]
     fn test_parse_justify_align() {
-        assert_eq!(StyleClass::parse_single("justify-start"), Ok(StyleClass::JustifyStart));
-        assert_eq!(StyleClass::parse_single("justify-end"), Ok(StyleClass::JustifyEnd));
+        assert_eq!(
+            StyleClass::parse_single("justify-start"),
+            Ok(StyleClass::JustifyStart)
+        );
+        assert_eq!(
+            StyleClass::parse_single("justify-end"),
+            Ok(StyleClass::JustifyEnd)
+        );
     }
 
     #[test]
     fn test_parse_rounded_variants() {
-        assert_eq!(StyleClass::parse_single("rounded-none"), Ok(StyleClass::RoundedNone));
-        assert_eq!(StyleClass::parse_single("rounded-sm"), Ok(StyleClass::RoundedSm));
-        assert_eq!(StyleClass::parse_single("rounded-md"), Ok(StyleClass::RoundedMd));
-        assert_eq!(StyleClass::parse_single("rounded-lg"), Ok(StyleClass::RoundedLg));
-        assert_eq!(StyleClass::parse_single("rounded-xl"), Ok(StyleClass::RoundedXl));
-        assert_eq!(StyleClass::parse_single("rounded-2xl"), Ok(StyleClass::Rounded2Xl));
-        assert_eq!(StyleClass::parse_single("rounded-3xl"), Ok(StyleClass::Rounded3Xl));
-        assert_eq!(StyleClass::parse_single("rounded-full"), Ok(StyleClass::RoundedFull));
-        assert_eq!(StyleClass::parse_single("rounded-t-lg"), Ok(StyleClass::RoundedT(Some(RoundedSize::Lg))));
-        assert_eq!(StyleClass::parse_single("rounded-b-sm"), Ok(StyleClass::RoundedB(Some(RoundedSize::Sm))));
+        assert_eq!(
+            StyleClass::parse_single("rounded-none"),
+            Ok(StyleClass::RoundedNone)
+        );
+        assert_eq!(
+            StyleClass::parse_single("rounded-sm"),
+            Ok(StyleClass::RoundedSm)
+        );
+        assert_eq!(
+            StyleClass::parse_single("rounded-md"),
+            Ok(StyleClass::RoundedMd)
+        );
+        assert_eq!(
+            StyleClass::parse_single("rounded-lg"),
+            Ok(StyleClass::RoundedLg)
+        );
+        assert_eq!(
+            StyleClass::parse_single("rounded-xl"),
+            Ok(StyleClass::RoundedXl)
+        );
+        assert_eq!(
+            StyleClass::parse_single("rounded-2xl"),
+            Ok(StyleClass::Rounded2Xl)
+        );
+        assert_eq!(
+            StyleClass::parse_single("rounded-3xl"),
+            Ok(StyleClass::Rounded3Xl)
+        );
+        assert_eq!(
+            StyleClass::parse_single("rounded-full"),
+            Ok(StyleClass::RoundedFull)
+        );
+        assert_eq!(
+            StyleClass::parse_single("rounded-t-lg"),
+            Ok(StyleClass::RoundedT(Some(RoundedSize::Lg)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("rounded-b-sm"),
+            Ok(StyleClass::RoundedB(Some(RoundedSize::Sm)))
+        );
         // PLAN-024:方向性任意值 px 刻度(状态栏窗框弧同心 15px 案)。
         assert_eq!(
             StyleClass::parse_single("rounded-b-[15px]"),
@@ -2438,31 +2611,73 @@ mod tests {
             StyleClass::parse_single("rounded-bl-[13px]"),
             Ok(StyleClass::RoundedBL(Some(RoundedSize::Px(13.0))))
         );
-        assert_eq!(StyleClass::parse_single("rounded-tl-md"), Ok(StyleClass::RoundedTL(Some(RoundedSize::Md))));
+        assert_eq!(
+            StyleClass::parse_single("rounded-tl-md"),
+            Ok(StyleClass::RoundedTL(Some(RoundedSize::Md)))
+        );
     }
 
     #[test]
     fn test_parse_negative_margins() {
-        assert_eq!(StyleClass::parse_single("-mt-10"), Ok(StyleClass::NegativeMarginTop(SizeValue::Fixed(10))));
-        assert_eq!(StyleClass::parse_single("-mb-4"), Ok(StyleClass::NegativeMarginBottom(SizeValue::Fixed(4))));
-        assert_eq!(StyleClass::parse_single("-mx-2"), Ok(StyleClass::NegativeMarginX(SizeValue::Fixed(2))));
+        assert_eq!(
+            StyleClass::parse_single("-mt-10"),
+            Ok(StyleClass::NegativeMarginTop(SizeValue::Fixed(10)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("-mb-4"),
+            Ok(StyleClass::NegativeMarginBottom(SizeValue::Fixed(4)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("-mx-2"),
+            Ok(StyleClass::NegativeMarginX(SizeValue::Fixed(2)))
+        );
     }
 
     #[test]
     fn test_parse_border() {
         assert_eq!(StyleClass::parse_single("border"), Ok(StyleClass::Border));
         // PLAN-050 C2
-        assert_eq!(StyleClass::parse_single("border-b"), Ok(StyleClass::BorderBottom));
-        assert_eq!(StyleClass::parse_single("border-t"), Ok(StyleClass::BorderTop));
-        assert_eq!(StyleClass::parse_single("border-l"), Ok(StyleClass::BorderLeft));
-        assert_eq!(StyleClass::parse_single("border-r"), Ok(StyleClass::BorderRight));
-        assert_eq!(StyleClass::parse_single("border-0"), Ok(StyleClass::Border0));
+        assert_eq!(
+            StyleClass::parse_single("border-b"),
+            Ok(StyleClass::BorderBottom)
+        );
+        assert_eq!(
+            StyleClass::parse_single("border-t"),
+            Ok(StyleClass::BorderTop)
+        );
+        assert_eq!(
+            StyleClass::parse_single("border-l"),
+            Ok(StyleClass::BorderLeft)
+        );
+        assert_eq!(
+            StyleClass::parse_single("border-r"),
+            Ok(StyleClass::BorderRight)
+        );
+        assert_eq!(
+            StyleClass::parse_single("border-0"),
+            Ok(StyleClass::Border0)
+        );
         // PLAN-054 T1: 单侧宽度档（§7.4 quote 左条 3px 通道）
-        assert_eq!(StyleClass::parse_single("border-l-3"), Ok(StyleClass::BorderLeftWidth(3.0)));
-        assert_eq!(StyleClass::parse_single("border-l-4"), Ok(StyleClass::BorderLeftWidth(4.0)));
-        assert_eq!(StyleClass::parse_single("border-l-0"), Ok(StyleClass::BorderLeftWidth(0.0)));
-        assert!(matches!(StyleClass::parse_single("border-white"), Ok(StyleClass::BorderColor(_))));
-        assert!(matches!(StyleClass::parse_single("border-red-500"), Ok(StyleClass::BorderColor(_))));
+        assert_eq!(
+            StyleClass::parse_single("border-l-3"),
+            Ok(StyleClass::BorderLeftWidth(3.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("border-l-4"),
+            Ok(StyleClass::BorderLeftWidth(4.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("border-l-0"),
+            Ok(StyleClass::BorderLeftWidth(0.0))
+        );
+        assert!(matches!(
+            StyleClass::parse_single("border-white"),
+            Ok(StyleClass::BorderColor(_))
+        ));
+        assert!(matches!(
+            StyleClass::parse_single("border-red-500"),
+            Ok(StyleClass::BorderColor(_))
+        ));
     }
 
     // ========== L3 Tests ==========
@@ -2470,19 +2685,46 @@ mod tests {
     #[test]
     fn test_parse_shadow() {
         assert_eq!(StyleClass::parse_single("shadow"), Ok(StyleClass::Shadow));
-        assert_eq!(StyleClass::parse_single("shadow-sm"), Ok(StyleClass::ShadowSm));
-        assert_eq!(StyleClass::parse_single("shadow-md"), Ok(StyleClass::ShadowMd));
-        assert_eq!(StyleClass::parse_single("shadow-lg"), Ok(StyleClass::ShadowLg));
-        assert_eq!(StyleClass::parse_single("shadow-xl"), Ok(StyleClass::ShadowXl));
-        assert_eq!(StyleClass::parse_single("shadow-2xl"), Ok(StyleClass::Shadow2Xl));
-        assert_eq!(StyleClass::parse_single("shadow-none"), Ok(StyleClass::ShadowNone));
+        assert_eq!(
+            StyleClass::parse_single("shadow-sm"),
+            Ok(StyleClass::ShadowSm)
+        );
+        assert_eq!(
+            StyleClass::parse_single("shadow-md"),
+            Ok(StyleClass::ShadowMd)
+        );
+        assert_eq!(
+            StyleClass::parse_single("shadow-lg"),
+            Ok(StyleClass::ShadowLg)
+        );
+        assert_eq!(
+            StyleClass::parse_single("shadow-xl"),
+            Ok(StyleClass::ShadowXl)
+        );
+        assert_eq!(
+            StyleClass::parse_single("shadow-2xl"),
+            Ok(StyleClass::Shadow2Xl)
+        );
+        assert_eq!(
+            StyleClass::parse_single("shadow-none"),
+            Ok(StyleClass::ShadowNone)
+        );
     }
 
     #[test]
     fn test_parse_opacity() {
-        assert_eq!(StyleClass::parse_single("opacity-0"), Ok(StyleClass::Opacity(0)));
-        assert_eq!(StyleClass::parse_single("opacity-50"), Ok(StyleClass::Opacity(50)));
-        assert_eq!(StyleClass::parse_single("opacity-100"), Ok(StyleClass::Opacity(100)));
+        assert_eq!(
+            StyleClass::parse_single("opacity-0"),
+            Ok(StyleClass::Opacity(0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("opacity-50"),
+            Ok(StyleClass::Opacity(50))
+        );
+        assert_eq!(
+            StyleClass::parse_single("opacity-100"),
+            Ok(StyleClass::Opacity(100))
+        );
     }
 
     /// Plan 518 G8 T5：backdrop-\* 毛玻璃词汇（声明冻结）——blur 刻度
@@ -2551,23 +2793,53 @@ mod tests {
         assert!(StyleClass::parse_single("backdrop-contrast-100").is_err());
         assert!(StyleClass::parse_single("backdrop-invert").is_err());
         assert!(StyleClass::parse_single("backdrop-grayscale").is_err());
-        assert!(StyleClass::parse_single("backdrop-blur-9").is_err(), "未定义刻度不收");
-        assert!(StyleClass::parse_single("backdrop-saturate-75").is_err(), "未定义刻度不收");
-        assert!(StyleClass::parse_single("backdrop-blur-[2rem]").is_err(), "非 px 单位不收");
+        assert!(
+            StyleClass::parse_single("backdrop-blur-9").is_err(),
+            "未定义刻度不收"
+        );
+        assert!(
+            StyleClass::parse_single("backdrop-saturate-75").is_err(),
+            "未定义刻度不收"
+        );
+        assert!(
+            StyleClass::parse_single("backdrop-blur-[2rem]").is_err(),
+            "非 px 单位不收"
+        );
         assert!(StyleClass::parse_single("backdrop-blur-[abc]").is_err());
     }
 
     #[test]
     fn test_parse_position() {
-        assert_eq!(StyleClass::parse_single("relative"), Ok(StyleClass::Relative));
-        assert_eq!(StyleClass::parse_single("absolute"), Ok(StyleClass::Absolute));
+        assert_eq!(
+            StyleClass::parse_single("relative"),
+            Ok(StyleClass::Relative)
+        );
+        assert_eq!(
+            StyleClass::parse_single("absolute"),
+            Ok(StyleClass::Absolute)
+        );
 
         // PLAN-095 T-03: 浮层穿透与百分比 token。
-        assert_eq!(StyleClass::parse_single("pointer-events-none"), Ok(StyleClass::PointerEventsNone));
-        assert_eq!(StyleClass::parse_single("left-[12.5%]"), Ok(StyleClass::LeftPercent(12.5)));
-        assert_eq!(StyleClass::parse_single("top-[5%]"), Ok(StyleClass::TopPercent(5.0)));
-        assert_eq!(StyleClass::parse_single("w-[30%]"), Ok(StyleClass::WidthPercent(30.0)));
-        assert_eq!(StyleClass::parse_single("h-[25%]"), Ok(StyleClass::HeightPercent(25.0)));
+        assert_eq!(
+            StyleClass::parse_single("pointer-events-none"),
+            Ok(StyleClass::PointerEventsNone)
+        );
+        assert_eq!(
+            StyleClass::parse_single("left-[12.5%]"),
+            Ok(StyleClass::LeftPercent(12.5))
+        );
+        assert_eq!(
+            StyleClass::parse_single("top-[5%]"),
+            Ok(StyleClass::TopPercent(5.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("w-[30%]"),
+            Ok(StyleClass::WidthPercent(30.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("h-[25%]"),
+            Ok(StyleClass::HeightPercent(25.0))
+        );
     }
 
     #[test]
@@ -2579,33 +2851,75 @@ mod tests {
 
     #[test]
     fn test_parse_overflow() {
-        assert_eq!(StyleClass::parse_single("overflow-auto"), Ok(StyleClass::OverflowAuto));
-        assert_eq!(StyleClass::parse_single("overflow-hidden"), Ok(StyleClass::OverflowHidden));
-        assert_eq!(StyleClass::parse_single("overflow-visible"), Ok(StyleClass::OverflowVisible));
-        assert_eq!(StyleClass::parse_single("overflow-scroll"), Ok(StyleClass::OverflowScroll));
-        assert_eq!(StyleClass::parse_single("overflow-x-auto"), Ok(StyleClass::OverflowXAuto));
-        assert_eq!(StyleClass::parse_single("overflow-y-auto"), Ok(StyleClass::OverflowYAuto));
+        assert_eq!(
+            StyleClass::parse_single("overflow-auto"),
+            Ok(StyleClass::OverflowAuto)
+        );
+        assert_eq!(
+            StyleClass::parse_single("overflow-hidden"),
+            Ok(StyleClass::OverflowHidden)
+        );
+        assert_eq!(
+            StyleClass::parse_single("overflow-visible"),
+            Ok(StyleClass::OverflowVisible)
+        );
+        assert_eq!(
+            StyleClass::parse_single("overflow-scroll"),
+            Ok(StyleClass::OverflowScroll)
+        );
+        assert_eq!(
+            StyleClass::parse_single("overflow-x-auto"),
+            Ok(StyleClass::OverflowXAuto)
+        );
+        assert_eq!(
+            StyleClass::parse_single("overflow-y-auto"),
+            Ok(StyleClass::OverflowYAuto)
+        );
     }
 
     #[test]
     fn test_parse_grid() {
         assert_eq!(StyleClass::parse_single("grid"), Ok(StyleClass::Grid));
-        assert_eq!(StyleClass::parse_single("grid-cols-2"), Ok(StyleClass::GridCols(2)));
-        assert_eq!(StyleClass::parse_single("grid-cols-12"), Ok(StyleClass::GridCols(12)));
-        assert_eq!(StyleClass::parse_single("grid-rows-3"), Ok(StyleClass::GridRows(3)));
+        assert_eq!(
+            StyleClass::parse_single("grid-cols-2"),
+            Ok(StyleClass::GridCols(2))
+        );
+        assert_eq!(
+            StyleClass::parse_single("grid-cols-12"),
+            Ok(StyleClass::GridCols(12))
+        );
+        assert_eq!(
+            StyleClass::parse_single("grid-rows-3"),
+            Ok(StyleClass::GridRows(3))
+        );
     }
 
     #[test]
     fn test_parse_grid_span() {
-        assert_eq!(StyleClass::parse_single("col-span-2"), Ok(StyleClass::ColSpan(2)));
-        assert_eq!(StyleClass::parse_single("col-span-6"), Ok(StyleClass::ColSpan(6)));
-        assert_eq!(StyleClass::parse_single("row-span-2"), Ok(StyleClass::RowSpan(2)));
+        assert_eq!(
+            StyleClass::parse_single("col-span-2"),
+            Ok(StyleClass::ColSpan(2))
+        );
+        assert_eq!(
+            StyleClass::parse_single("col-span-6"),
+            Ok(StyleClass::ColSpan(6))
+        );
+        assert_eq!(
+            StyleClass::parse_single("row-span-2"),
+            Ok(StyleClass::RowSpan(2))
+        );
     }
 
     #[test]
     fn test_parse_grid_position() {
-        assert_eq!(StyleClass::parse_single("col-start-2"), Ok(StyleClass::ColStart(2)));
-        assert_eq!(StyleClass::parse_single("row-start-1"), Ok(StyleClass::RowStart(1)));
+        assert_eq!(
+            StyleClass::parse_single("col-start-2"),
+            Ok(StyleClass::ColStart(2))
+        );
+        assert_eq!(
+            StyleClass::parse_single("row-start-1"),
+            Ok(StyleClass::RowStart(1))
+        );
     }
 
     // ========== Plan 412 Tests ==========
@@ -2613,37 +2927,88 @@ mod tests {
     #[test]
     fn test_parse_plan412_axis_gaps() {
         // gap-x-/gap-y- 不能落进裸 gap- 前缀(会因 "x-4" 解析失败而丢类)
-        assert_eq!(StyleClass::parse_single("gap-x-4"), Ok(StyleClass::GapX(SizeValue::Fixed(4))));
-        assert_eq!(StyleClass::parse_single("gap-y-1.5"), Ok(StyleClass::GapY(SizeValue::Pixels(6.0))));
-        assert_eq!(StyleClass::parse_single("space-x-2"), Ok(StyleClass::SpaceX(SizeValue::Fixed(2))));
-        assert_eq!(StyleClass::parse_single("space-y-8"), Ok(StyleClass::SpaceY(SizeValue::Fixed(8))));
+        assert_eq!(
+            StyleClass::parse_single("gap-x-4"),
+            Ok(StyleClass::GapX(SizeValue::Fixed(4)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("gap-y-1.5"),
+            Ok(StyleClass::GapY(SizeValue::Pixels(6.0)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("space-x-2"),
+            Ok(StyleClass::SpaceX(SizeValue::Fixed(2)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("space-y-8"),
+            Ok(StyleClass::SpaceY(SizeValue::Fixed(8)))
+        );
         // 裸 gap 不回归
-        assert_eq!(StyleClass::parse_single("gap-4"), Ok(StyleClass::Gap(SizeValue::Fixed(4))));
+        assert_eq!(
+            StyleClass::parse_single("gap-4"),
+            Ok(StyleClass::Gap(SizeValue::Fixed(4)))
+        );
     }
 
     #[test]
     fn test_parse_plan412_justify_items() {
-        assert_eq!(StyleClass::parse_single("justify-around"), Ok(StyleClass::JustifyAround));
-        assert_eq!(StyleClass::parse_single("justify-evenly"), Ok(StyleClass::JustifyEvenly));
-        assert_eq!(StyleClass::parse_single("items-stretch"), Ok(StyleClass::ItemsStretch));
-        assert_eq!(StyleClass::parse_single("self-center"), Ok(StyleClass::SelfCenter));
-        assert_eq!(StyleClass::parse_single("self-start"), Ok(StyleClass::SelfStart));
+        assert_eq!(
+            StyleClass::parse_single("justify-around"),
+            Ok(StyleClass::JustifyAround)
+        );
+        assert_eq!(
+            StyleClass::parse_single("justify-evenly"),
+            Ok(StyleClass::JustifyEvenly)
+        );
+        assert_eq!(
+            StyleClass::parse_single("items-stretch"),
+            Ok(StyleClass::ItemsStretch)
+        );
+        assert_eq!(
+            StyleClass::parse_single("self-center"),
+            Ok(StyleClass::SelfCenter)
+        );
+        assert_eq!(
+            StyleClass::parse_single("self-start"),
+            Ok(StyleClass::SelfStart)
+        );
     }
 
     #[test]
     fn test_parse_plan412_flex_variants() {
-        assert_eq!(StyleClass::parse_single("flex-auto"), Ok(StyleClass::FlexAuto));
-        assert_eq!(StyleClass::parse_single("flex-initial"), Ok(StyleClass::FlexInitial));
-        assert_eq!(StyleClass::parse_single("flex-none"), Ok(StyleClass::FlexNone));
-        assert_eq!(StyleClass::parse_single("flex-row-reverse"), Ok(StyleClass::FlexRowReverse));
-        assert_eq!(StyleClass::parse_single("flex-col-reverse"), Ok(StyleClass::FlexColReverse));
-        assert_eq!(StyleClass::parse_single("flex-wrap"), Ok(StyleClass::FlexWrap));
+        assert_eq!(
+            StyleClass::parse_single("flex-auto"),
+            Ok(StyleClass::FlexAuto)
+        );
+        assert_eq!(
+            StyleClass::parse_single("flex-initial"),
+            Ok(StyleClass::FlexInitial)
+        );
+        assert_eq!(
+            StyleClass::parse_single("flex-none"),
+            Ok(StyleClass::FlexNone)
+        );
+        assert_eq!(
+            StyleClass::parse_single("flex-row-reverse"),
+            Ok(StyleClass::FlexRowReverse)
+        );
+        assert_eq!(
+            StyleClass::parse_single("flex-col-reverse"),
+            Ok(StyleClass::FlexColReverse)
+        );
+        assert_eq!(
+            StyleClass::parse_single("flex-wrap"),
+            Ok(StyleClass::FlexWrap)
+        );
         assert_eq!(StyleClass::parse_single("grow"), Ok(StyleClass::Grow));
         assert_eq!(StyleClass::parse_single("grow-0"), Ok(StyleClass::Grow0));
         assert_eq!(StyleClass::parse_single("shrink"), Ok(StyleClass::Shrink));
         // 既有 flex 类不回归
         assert_eq!(StyleClass::parse_single("flex-1"), Ok(StyleClass::Flex1));
-        assert_eq!(StyleClass::parse_single("shrink-0"), Ok(StyleClass::Shrink0));
+        assert_eq!(
+            StyleClass::parse_single("shrink-0"),
+            Ok(StyleClass::Shrink0)
+        );
     }
 
     #[test]
@@ -2674,11 +3039,23 @@ mod tests {
     fn test_parse_plan412_position_degraded() {
         assert_eq!(StyleClass::parse_single("fixed"), Ok(StyleClass::Fixed));
         assert_eq!(StyleClass::parse_single("sticky"), Ok(StyleClass::Sticky));
-        assert_eq!(StyleClass::parse_single("inset-0"), Ok(StyleClass::Inset(0.0)));
-        assert_eq!(StyleClass::parse_single("inset-4"), Ok(StyleClass::Inset(16.0)));
-        assert_eq!(StyleClass::parse_single("order-2"), Ok(StyleClass::Order(2)));
+        assert_eq!(
+            StyleClass::parse_single("inset-0"),
+            Ok(StyleClass::Inset(0.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("inset-4"),
+            Ok(StyleClass::Inset(16.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("order-2"),
+            Ok(StyleClass::Order(2))
+        );
         // 响应式前缀剥离对新类同样生效
-        assert_eq!(StyleClass::parse_single("md:grid-cols-2"), Ok(StyleClass::GridCols(2)));
+        assert_eq!(
+            StyleClass::parse_single("md:grid-cols-2"),
+            Ok(StyleClass::GridCols(2))
+        );
     }
 
     // Plan 527 T3:布局家族补全 —— z-auto/overflow 轴向量/clip 归并/px 与负数
@@ -2686,61 +3063,182 @@ mod tests {
     #[test]
     fn test_parse_plan527_t3_layout_extensions() {
         // z-auto ≈ 不设层序,按 z-0 落 IR
-        assert_eq!(StyleClass::parse_single("z-auto"), Ok(StyleClass::ZIndex(0)));
+        assert_eq!(
+            StyleClass::parse_single("z-auto"),
+            Ok(StyleClass::ZIndex(0))
+        );
         // overflow 轴向量全档 + clip 归并 Hidden
-        assert_eq!(StyleClass::parse_single("overflow-x-hidden"), Ok(StyleClass::OverflowXHidden));
-        assert_eq!(StyleClass::parse_single("overflow-x-clip"), Ok(StyleClass::OverflowXHidden));
-        assert_eq!(StyleClass::parse_single("overflow-x-visible"), Ok(StyleClass::OverflowXVisible));
-        assert_eq!(StyleClass::parse_single("overflow-x-scroll"), Ok(StyleClass::OverflowXScroll));
-        assert_eq!(StyleClass::parse_single("overflow-y-hidden"), Ok(StyleClass::OverflowYHidden));
-        assert_eq!(StyleClass::parse_single("overflow-y-scroll"), Ok(StyleClass::OverflowYScroll));
-        assert_eq!(StyleClass::parse_single("overflow-clip"), Ok(StyleClass::OverflowHidden));
+        assert_eq!(
+            StyleClass::parse_single("overflow-x-hidden"),
+            Ok(StyleClass::OverflowXHidden)
+        );
+        assert_eq!(
+            StyleClass::parse_single("overflow-x-clip"),
+            Ok(StyleClass::OverflowXHidden)
+        );
+        assert_eq!(
+            StyleClass::parse_single("overflow-x-visible"),
+            Ok(StyleClass::OverflowXVisible)
+        );
+        assert_eq!(
+            StyleClass::parse_single("overflow-x-scroll"),
+            Ok(StyleClass::OverflowXScroll)
+        );
+        assert_eq!(
+            StyleClass::parse_single("overflow-y-hidden"),
+            Ok(StyleClass::OverflowYHidden)
+        );
+        assert_eq!(
+            StyleClass::parse_single("overflow-y-scroll"),
+            Ok(StyleClass::OverflowYScroll)
+        );
+        assert_eq!(
+            StyleClass::parse_single("overflow-clip"),
+            Ok(StyleClass::OverflowHidden)
+        );
         // inset/offsets:px 刻度 + 负数值刻度
-        assert_eq!(StyleClass::parse_single("inset-px"), Ok(StyleClass::Inset(1.0)));
-        assert_eq!(StyleClass::parse_single("top-px"), Ok(StyleClass::TopOffset(1.0)));
-        assert_eq!(StyleClass::parse_single("left-px"), Ok(StyleClass::LeftOffset(1.0)));
-        assert_eq!(StyleClass::parse_single("-top-4"), Ok(StyleClass::TopOffset(-16.0)));
-        assert_eq!(StyleClass::parse_single("-bottom-2.5"), Ok(StyleClass::BottomOffset(-10.0)));
+        assert_eq!(
+            StyleClass::parse_single("inset-px"),
+            Ok(StyleClass::Inset(1.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("top-px"),
+            Ok(StyleClass::TopOffset(1.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("left-px"),
+            Ok(StyleClass::LeftOffset(1.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("-top-4"),
+            Ok(StyleClass::TopOffset(-16.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("-bottom-2.5"),
+            Ok(StyleClass::BottomOffset(-10.0))
+        );
         // 通用分数 → Fill-ratio(Fraction),此前仅 6 个命名分数
-        assert_eq!(StyleClass::parse_single("w-7/12"), Ok(StyleClass::Width(SizeValue::Fraction(7, 12))));
-        assert_eq!(StyleClass::parse_single("w-2/5"), Ok(StyleClass::Width(SizeValue::Fraction(2, 5))));
-        assert_eq!(StyleClass::parse_single("w-2/4"), Ok(StyleClass::Width(SizeValue::Fraction(2, 4))));
+        assert_eq!(
+            StyleClass::parse_single("w-7/12"),
+            Ok(StyleClass::Width(SizeValue::Fraction(7, 12)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("w-2/5"),
+            Ok(StyleClass::Width(SizeValue::Fraction(2, 5)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("w-2/4"),
+            Ok(StyleClass::Width(SizeValue::Fraction(2, 4)))
+        );
         // PLAN-663 C1a: 视口单位(Screen)与父容器百分比(Full)严格区分
-        assert_eq!(StyleClass::parse_single("h-screen"), Ok(StyleClass::Height(SizeValue::Screen)));
-        assert_eq!(StyleClass::parse_single("h-svh"), Ok(StyleClass::Height(SizeValue::Screen)));
-        assert_eq!(StyleClass::parse_single("h-dvh"), Ok(StyleClass::Height(SizeValue::Screen)));
-        assert_eq!(StyleClass::parse_single("h-lvh"), Ok(StyleClass::Height(SizeValue::Screen)));
-        assert_eq!(StyleClass::parse_single("w-screen"), Ok(StyleClass::Width(SizeValue::Screen)));
-        assert_eq!(StyleClass::parse_single("h-full"), Ok(StyleClass::Height(SizeValue::Full)));
-        assert_eq!(StyleClass::parse_single("w-full"), Ok(StyleClass::Width(SizeValue::Full)));
+        assert_eq!(
+            StyleClass::parse_single("h-screen"),
+            Ok(StyleClass::Height(SizeValue::Screen))
+        );
+        assert_eq!(
+            StyleClass::parse_single("h-svh"),
+            Ok(StyleClass::Height(SizeValue::Screen))
+        );
+        assert_eq!(
+            StyleClass::parse_single("h-dvh"),
+            Ok(StyleClass::Height(SizeValue::Screen))
+        );
+        assert_eq!(
+            StyleClass::parse_single("h-lvh"),
+            Ok(StyleClass::Height(SizeValue::Screen))
+        );
+        assert_eq!(
+            StyleClass::parse_single("w-screen"),
+            Ok(StyleClass::Width(SizeValue::Screen))
+        );
+        assert_eq!(
+            StyleClass::parse_single("h-full"),
+            Ok(StyleClass::Height(SizeValue::Full))
+        );
+        assert_eq!(
+            StyleClass::parse_single("w-full"),
+            Ok(StyleClass::Width(SizeValue::Full))
+        );
         // PLAN-663 C2: 垂直 auto margin
-        assert_eq!(StyleClass::parse_single("my-auto"), Ok(StyleClass::MarginYAuto));
-        assert_eq!(StyleClass::parse_single("m-auto"), Ok(StyleClass::MarginAuto));
-        assert_eq!(StyleClass::parse_single("mx-auto"), Ok(StyleClass::MarginXAuto));
-        assert_eq!(StyleClass::parse_single("ml-auto"), Ok(StyleClass::MarginLeftAuto));
+        assert_eq!(
+            StyleClass::parse_single("my-auto"),
+            Ok(StyleClass::MarginYAuto)
+        );
+        assert_eq!(
+            StyleClass::parse_single("m-auto"),
+            Ok(StyleClass::MarginAuto)
+        );
+        assert_eq!(
+            StyleClass::parse_single("mx-auto"),
+            Ok(StyleClass::MarginXAuto)
+        );
+        assert_eq!(
+            StyleClass::parse_single("ml-auto"),
+            Ok(StyleClass::MarginLeftAuto)
+        );
         // basis 全档
-        assert_eq!(StyleClass::parse_single("basis-4"), Ok(StyleClass::FlexBasis(SizeValue::Fixed(4))));
-        assert_eq!(StyleClass::parse_single("basis-1/2"), Ok(StyleClass::FlexBasis(SizeValue::Half)));
-        assert_eq!(StyleClass::parse_single("basis-auto"), Ok(StyleClass::FlexBasis(SizeValue::Auto)));
+        assert_eq!(
+            StyleClass::parse_single("basis-4"),
+            Ok(StyleClass::FlexBasis(SizeValue::Fixed(4)))
+        );
+        assert_eq!(
+            StyleClass::parse_single("basis-1/2"),
+            Ok(StyleClass::FlexBasis(SizeValue::Half))
+        );
+        assert_eq!(
+            StyleClass::parse_single("basis-auto"),
+            Ok(StyleClass::FlexBasis(SizeValue::Auto))
+        );
         // max-w:none/full → INFINITY;分数刻度;min/max/fit 收紧为 Err
-        assert!(matches!(StyleClass::parse_single("max-w-none"), Ok(StyleClass::MaxWidth(v)) if v == f32::INFINITY));
-        assert!(matches!(StyleClass::parse_single("max-w-full"), Ok(StyleClass::MaxWidth(v)) if v == f32::INFINITY));
-        assert_eq!(StyleClass::parse_single("max-w-0.5"), Ok(StyleClass::MaxWidth(2.0)));
+        assert!(
+            matches!(StyleClass::parse_single("max-w-none"), Ok(StyleClass::MaxWidth(v)) if v == f32::INFINITY)
+        );
+        assert!(
+            matches!(StyleClass::parse_single("max-w-full"), Ok(StyleClass::MaxWidth(v)) if v == f32::INFINITY)
+        );
+        assert_eq!(
+            StyleClass::parse_single("max-w-0.5"),
+            Ok(StyleClass::MaxWidth(2.0))
+        );
         // PLAN-077 (auto-musk ChatMessage): 百分比上限独立变体。
-        assert_eq!(StyleClass::parse_single("max-w-[70%]"), Ok(StyleClass::MaxWidthPct(70.0)));
-        assert_eq!(StyleClass::parse_single("max-w-[33.3%]"), Ok(StyleClass::MaxWidthPct(33.3)));
-        assert_eq!(StyleClass::parse_single("max-h-px"), Ok(StyleClass::MaxHeight(1.0)));
+        assert_eq!(
+            StyleClass::parse_single("max-w-[70%]"),
+            Ok(StyleClass::MaxWidthPct(70.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("max-w-[33.3%]"),
+            Ok(StyleClass::MaxWidthPct(33.3))
+        );
+        assert_eq!(
+            StyleClass::parse_single("max-h-px"),
+            Ok(StyleClass::MaxHeight(1.0))
+        );
         assert!(StyleClass::parse_single("max-w-fit").is_err());
         // grid 扩档:col-start 8..13 / col-end / row-end
-        assert_eq!(StyleClass::parse_single("col-start-13"), Ok(StyleClass::ColStart(13)));
-        assert_eq!(StyleClass::parse_single("col-end-4"), Ok(StyleClass::ColEnd(4)));
-        assert_eq!(StyleClass::parse_single("row-end-6"), Ok(StyleClass::RowEnd(6)));
+        assert_eq!(
+            StyleClass::parse_single("col-start-13"),
+            Ok(StyleClass::ColStart(13))
+        );
+        assert_eq!(
+            StyleClass::parse_single("col-end-4"),
+            Ok(StyleClass::ColEnd(4))
+        );
+        assert_eq!(
+            StyleClass::parse_single("row-end-6"),
+            Ok(StyleClass::RowEnd(6))
+        );
         assert!(StyleClass::parse_single("col-start-14").is_err());
         // min-h/min-w 收紧:未知命名值不再误落 0.0(此前 min-h-svh→0.0)
         assert!(StyleClass::parse_single("min-h-fit").is_err());
         assert!(StyleClass::parse_single("min-w-full").is_err());
-        assert_eq!(StyleClass::parse_single("min-h-svh"), Ok(StyleClass::MinHeight(f32::MAX)));
-        assert_eq!(StyleClass::parse_single("min-w-px"), Ok(StyleClass::MinWidth(1.0)));
+        assert_eq!(
+            StyleClass::parse_single("min-h-svh"),
+            Ok(StyleClass::MinHeight(f32::MAX))
+        );
+        assert_eq!(
+            StyleClass::parse_single("min-w-px"),
+            Ok(StyleClass::MinWidth(1.0))
+        );
     }
 
     // Plan 527 T4:视觉家族补全 —— ring/object-fit/渐变 via+stop 位/彩色阴影/
@@ -2748,37 +3246,100 @@ mod tests {
     #[test]
     fn test_parse_plan527_t4_visual_extensions() {
         // ring 宽度/颜色/inset
-        assert_eq!(StyleClass::parse_single("ring"), Ok(StyleClass::RingWidth(3.0)));
-        assert_eq!(StyleClass::parse_single("ring-2"), Ok(StyleClass::RingWidth(2.0)));
-        assert_eq!(StyleClass::parse_single("ring-inset"), Ok(StyleClass::RingInset));
-        assert!(matches!(StyleClass::parse_single("ring-red-500"), Ok(StyleClass::RingColor(_))));
+        assert_eq!(
+            StyleClass::parse_single("ring"),
+            Ok(StyleClass::RingWidth(3.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("ring-2"),
+            Ok(StyleClass::RingWidth(2.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("ring-inset"),
+            Ok(StyleClass::RingInset)
+        );
+        assert!(matches!(
+            StyleClass::parse_single("ring-red-500"),
+            Ok(StyleClass::RingColor(_))
+        ));
         // object-fit
-        assert_eq!(StyleClass::parse_single("object-cover"), Ok(StyleClass::ObjectFit(ObjectFit::Cover)));
-        assert_eq!(StyleClass::parse_single("object-contain"), Ok(StyleClass::ObjectFit(ObjectFit::Contain)));
-        assert_eq!(StyleClass::parse_single("object-fill"), Ok(StyleClass::ObjectFit(ObjectFit::Fill)));
-        assert_eq!(StyleClass::parse_single("object-none"), Ok(StyleClass::ObjectFit(ObjectFit::None)));
-        assert_eq!(StyleClass::parse_single("object-scale-down"), Ok(StyleClass::ObjectFit(ObjectFit::ScaleDown)));
+        assert_eq!(
+            StyleClass::parse_single("object-cover"),
+            Ok(StyleClass::ObjectFit(ObjectFit::Cover))
+        );
+        assert_eq!(
+            StyleClass::parse_single("object-contain"),
+            Ok(StyleClass::ObjectFit(ObjectFit::Contain))
+        );
+        assert_eq!(
+            StyleClass::parse_single("object-fill"),
+            Ok(StyleClass::ObjectFit(ObjectFit::Fill))
+        );
+        assert_eq!(
+            StyleClass::parse_single("object-none"),
+            Ok(StyleClass::ObjectFit(ObjectFit::None))
+        );
+        assert_eq!(
+            StyleClass::parse_single("object-scale-down"),
+            Ok(StyleClass::ObjectFit(ObjectFit::ScaleDown))
+        );
         // 渐变 via + stop 百分比位(from-100 此前被 3 位 hex 展开误吞 #110000)
-        assert!(matches!(StyleClass::parse_single("via-sky-300"), Ok(StyleClass::GradientVia(_))));
-        assert_eq!(StyleClass::parse_single("from-100"), Ok(StyleClass::GradientFromStop(100)));
-        assert_eq!(StyleClass::parse_single("via-50"), Ok(StyleClass::GradientViaStop(50)));
-        assert_eq!(StyleClass::parse_single("to-0"), Ok(StyleClass::GradientToStop(0)));
-        assert!(matches!(StyleClass::parse_single("from-red-500"), Ok(StyleClass::GradientFrom(_))));
+        assert!(matches!(
+            StyleClass::parse_single("via-sky-300"),
+            Ok(StyleClass::GradientVia(_))
+        ));
+        assert_eq!(
+            StyleClass::parse_single("from-100"),
+            Ok(StyleClass::GradientFromStop(100))
+        );
+        assert_eq!(
+            StyleClass::parse_single("via-50"),
+            Ok(StyleClass::GradientViaStop(50))
+        );
+        assert_eq!(
+            StyleClass::parse_single("to-0"),
+            Ok(StyleClass::GradientToStop(0))
+        );
+        assert!(matches!(
+            StyleClass::parse_single("from-red-500"),
+            Ok(StyleClass::GradientFrom(_))
+        ));
         // 彩色阴影
-        assert!(matches!(StyleClass::parse_single("shadow-red-500"), Ok(StyleClass::ShadowColor(_))));
+        assert!(matches!(
+            StyleClass::parse_single("shadow-red-500"),
+            Ok(StyleClass::ShadowColor(_))
+        ));
         // 缺失色板补全(lime/violet/fuchsia/stone)
-        assert!(matches!(StyleClass::parse_single("bg-lime-500"), Ok(StyleClass::BackgroundColor(Color::Lime(500)))));
-        assert!(matches!(StyleClass::parse_single("text-violet-300"), Ok(StyleClass::TextColor(Color::Violet(300)))));
-        assert!(matches!(StyleClass::parse_single("border-fuchsia-200"), Ok(StyleClass::BorderColor(Color::Fuchsia(200)))));
-        assert!(matches!(StyleClass::parse_single("accent-stone-600"), Ok(StyleClass::AccentColor(Color::Stone(600)))));
+        assert!(matches!(
+            StyleClass::parse_single("bg-lime-500"),
+            Ok(StyleClass::BackgroundColor(Color::Lime(500)))
+        ));
+        assert!(matches!(
+            StyleClass::parse_single("text-violet-300"),
+            Ok(StyleClass::TextColor(Color::Violet(300)))
+        ));
+        assert!(matches!(
+            StyleClass::parse_single("border-fuchsia-200"),
+            Ok(StyleClass::BorderColor(Color::Fuchsia(200)))
+        ));
+        assert!(matches!(
+            StyleClass::parse_single("accent-stone-600"),
+            Ok(StyleClass::AccentColor(Color::Stone(600)))
+        ));
         // 950 档(此前 18 家族缺行,回退灰)
         assert_eq!(
             Color::from_tailwind("slate-950").unwrap().to_rgb8(),
             (2, 6, 23),
             "slate-950 应取真值 #020617,非灰度兜底"
         );
-        assert_eq!(Color::from_tailwind("lime-500").unwrap().to_rgb8(), (132, 204, 22));
-        assert_eq!(Color::from_tailwind("stone-950").unwrap().to_rgb8(), (12, 10, 9));
+        assert_eq!(
+            Color::from_tailwind("lime-500").unwrap().to_rgb8(),
+            (132, 204, 22)
+        );
+        assert_eq!(
+            Color::from_tailwind("stone-950").unwrap().to_rgb8(),
+            (12, 10, 9)
+        );
     }
 
     // Plan 527 T5:文本家族补全 —— tracking/leading 全档/line-clamp/全字重拆分/
@@ -2786,27 +3347,78 @@ mod tests {
     #[test]
     fn test_parse_plan527_t5_text_extensions() {
         // tracking 全档(em)
-        assert_eq!(StyleClass::parse_single("tracking-tighter"), Ok(StyleClass::Tracking(-0.05)));
-        assert_eq!(StyleClass::parse_single("tracking-normal"), Ok(StyleClass::Tracking(0.0)));
-        assert_eq!(StyleClass::parse_single("tracking-widest"), Ok(StyleClass::Tracking(0.1)));
+        assert_eq!(
+            StyleClass::parse_single("tracking-tighter"),
+            Ok(StyleClass::Tracking(-0.05))
+        );
+        assert_eq!(
+            StyleClass::parse_single("tracking-normal"),
+            Ok(StyleClass::Tracking(0.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("tracking-widest"),
+            Ok(StyleClass::Tracking(0.1))
+        );
         // leading 命名(相对)+ 数值(绝对 px)
-        assert_eq!(StyleClass::parse_single("leading-tight"), Ok(StyleClass::LineHeight(1.25)));
-        assert_eq!(StyleClass::parse_single("leading-loose"), Ok(StyleClass::LineHeight(2.0)));
-        assert_eq!(StyleClass::parse_single("leading-3"), Ok(StyleClass::LineHeightPx(12.0)));
-        assert_eq!(StyleClass::parse_single("leading-10"), Ok(StyleClass::LineHeightPx(40.0)));
+        assert_eq!(
+            StyleClass::parse_single("leading-tight"),
+            Ok(StyleClass::LineHeight(1.25))
+        );
+        assert_eq!(
+            StyleClass::parse_single("leading-loose"),
+            Ok(StyleClass::LineHeight(2.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("leading-3"),
+            Ok(StyleClass::LineHeightPx(12.0))
+        );
+        assert_eq!(
+            StyleClass::parse_single("leading-10"),
+            Ok(StyleClass::LineHeightPx(40.0))
+        );
         // line-clamp
-        assert_eq!(StyleClass::parse_single("line-clamp-2"), Ok(StyleClass::LineClamp(2)));
-        assert_eq!(StyleClass::parse_single("line-clamp-none"), Ok(StyleClass::LineClampNone));
-        assert!(StyleClass::parse_single("line-clamp-9").is_err(), "超档不收");
+        assert_eq!(
+            StyleClass::parse_single("line-clamp-2"),
+            Ok(StyleClass::LineClamp(2))
+        );
+        assert_eq!(
+            StyleClass::parse_single("line-clamp-none"),
+            Ok(StyleClass::LineClampNone)
+        );
+        assert!(
+            StyleClass::parse_single("line-clamp-9").is_err(),
+            "超档不收"
+        );
         // 全字重拆分(此前 black/extrabold→FontBold,thin→ExtraLight)
-        assert_eq!(StyleClass::parse_single("font-thin"), Ok(StyleClass::FontThin));
-        assert_eq!(StyleClass::parse_single("font-extrabold"), Ok(StyleClass::FontExtraBold));
-        assert_eq!(StyleClass::parse_single("font-black"), Ok(StyleClass::FontBlack));
+        assert_eq!(
+            StyleClass::parse_single("font-thin"),
+            Ok(StyleClass::FontThin)
+        );
+        assert_eq!(
+            StyleClass::parse_single("font-extrabold"),
+            Ok(StyleClass::FontExtraBold)
+        );
+        assert_eq!(
+            StyleClass::parse_single("font-black"),
+            Ok(StyleClass::FontBlack)
+        );
         // truncate 长形式 + start/end(LTR)
-        assert_eq!(StyleClass::parse_single("text-ellipsis"), Ok(StyleClass::Truncate));
-        assert_eq!(StyleClass::parse_single("text-clip"), Ok(StyleClass::Truncate));
-        assert_eq!(StyleClass::parse_single("text-start"), Ok(StyleClass::TextLeft));
-        assert_eq!(StyleClass::parse_single("text-end"), Ok(StyleClass::TextRight));
+        assert_eq!(
+            StyleClass::parse_single("text-ellipsis"),
+            Ok(StyleClass::Truncate)
+        );
+        assert_eq!(
+            StyleClass::parse_single("text-clip"),
+            Ok(StyleClass::Truncate)
+        );
+        assert_eq!(
+            StyleClass::parse_single("text-start"),
+            Ok(StyleClass::TextLeft)
+        );
+        assert_eq!(
+            StyleClass::parse_single("text-end"),
+            Ok(StyleClass::TextRight)
+        );
     }
 
     /// PLAN-022 T-03 探针(app.at 槽位 div 样式串):多类 parse 后
@@ -2827,5 +3439,4 @@ mod tests {
         });
         assert_eq!(top, Some(640.0), "top value wrong");
     }
-
 }

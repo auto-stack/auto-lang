@@ -3,8 +3,8 @@
 //!
 //! Task definition and message handling structures for the Actor model.
 
-use crate::ast::{Body, Expr, Fn, Name, Type};
 use crate::ast::{AtomWriter, ToAtomStr};
+use crate::ast::{Body, Expr, Fn, Name, Type};
 use crate::token::Pos;
 use auto_val::{AutoStr, Node as AutoNode, Value};
 use std::{fmt, io as stdio};
@@ -293,8 +293,14 @@ impl PartialEq for TaskMsgPattern {
         match (self, other) {
             (TaskMsgPattern::Simple(a), TaskMsgPattern::Simple(b)) => a == b,
             (
-                TaskMsgPattern::WithBindings { variant: v1, bindings: b1 },
-                TaskMsgPattern::WithBindings { variant: v2, bindings: b2 },
+                TaskMsgPattern::WithBindings {
+                    variant: v1,
+                    bindings: b1,
+                },
+                TaskMsgPattern::WithBindings {
+                    variant: v2,
+                    bindings: b2,
+                },
             ) => {
                 // Compare variant + binding NAMES only (declared types are not
                 // part of the pattern's identity; Type has no PartialEq).
@@ -304,11 +310,18 @@ impl PartialEq for TaskMsgPattern {
             }
             (TaskMsgPattern::Literal(a), TaskMsgPattern::Literal(b)) => a == b,
             (
-                TaskMsgPattern::TypeBinding { name: n1, type_expr: t1 },
-                TaskMsgPattern::TypeBinding { name: n2, type_expr: t2 },
+                TaskMsgPattern::TypeBinding {
+                    name: n1,
+                    type_expr: t1,
+                },
+                TaskMsgPattern::TypeBinding {
+                    name: n2,
+                    type_expr: t2,
+                },
             ) => {
                 // Compare names only for TypeBinding (Type doesn't implement PartialEq)
-                n1 == n2 && std::mem::discriminant(t1.as_ref()) == std::mem::discriminant(t2.as_ref())
+                n1 == n2
+                    && std::mem::discriminant(t1.as_ref()) == std::mem::discriminant(t2.as_ref())
             }
             _ => false,
         }
@@ -364,16 +377,14 @@ impl fmt::Display for TaskMsgPattern {
                 }
                 write!(f, ")")
             }
-            TaskMsgPattern::Literal(v) => {
-                match v {
-                    LiteralValue::String(s) => write!(f, "\"{}\"", s),
-                    LiteralValue::Int(n) => write!(f, "{}", n),
-                    LiteralValue::Uint(n) => write!(f, "{}u", n),
-                    LiteralValue::Float(i, frac) => write!(f, "{}.{}", i, frac),
-                    LiteralValue::Bool(b) => write!(f, "{}", b),
-                    LiteralValue::Char(c) => write!(f, "'{}'", c),
-                }
-            }
+            TaskMsgPattern::Literal(v) => match v {
+                LiteralValue::String(s) => write!(f, "\"{}\"", s),
+                LiteralValue::Int(n) => write!(f, "{}", n),
+                LiteralValue::Uint(n) => write!(f, "{}u", n),
+                LiteralValue::Float(i, frac) => write!(f, "{}.{}", i, frac),
+                LiteralValue::Bool(b) => write!(f, "{}", b),
+                LiteralValue::Char(c) => write!(f, "'{}'", c),
+            },
             TaskMsgPattern::TypeBinding { name, type_expr } => {
                 write!(f, "{} ", name)?;
                 write!(f, "{}", type_expr.unique_name())
@@ -723,7 +734,10 @@ impl ToNode for TaskMsgPattern {
                     }
                     LiteralValue::Float(i, f) => {
                         node.set_prop("literal_type", Value::str("float"));
-                        node.set_prop("value", Value::Float((*i as f64 + *f as f64) / 1000000000.0));
+                        node.set_prop(
+                            "value",
+                            Value::Float((*i as f64 + *f as f64) / 1000000000.0),
+                        );
                     }
                     LiteralValue::Bool(b) => {
                         node.set_prop("literal_type", Value::str("bool"));
@@ -788,7 +802,12 @@ mod tests {
 
     #[test]
     fn test_task_on_block_new() {
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let on_block = TaskOnBlock::new(pos);
         assert!(on_block.handlers.is_empty());
         assert!(on_block.else_handler.is_none());
@@ -796,7 +815,12 @@ mod tests {
 
     #[test]
     fn test_task_def_new() {
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let task = TaskDef::new("CounterTask".into(), vec![], pos);
         assert_eq!(task.name, "CounterTask");
         assert!(!task.is_single());
@@ -807,14 +831,24 @@ mod tests {
 
     #[test]
     fn test_task_def_single() {
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let task = TaskDef::new("SingletonTask".into(), vec![TaskAttr::Single], pos);
         assert!(task.is_single());
     }
 
     #[test]
     fn test_task_def_add_state() {
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let mut task = TaskDef::new("CounterTask".into(), vec![], pos);
         task.add_state("count".into(), true, Expr::Int(0));
         assert_eq!(task.state.len(), 1);
@@ -836,7 +870,12 @@ mod tests {
 
     #[test]
     fn test_task_on_block_add_handler() {
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let mut on_block = TaskOnBlock::new(pos);
         let pattern = TaskMsgPattern::simple("Reset".into());
         let body = Body::new();
@@ -847,7 +886,12 @@ mod tests {
 
     #[test]
     fn test_task_on_block_set_else() {
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let mut on_block = TaskOnBlock::new(pos);
         let body = Body::new();
 
@@ -920,7 +964,12 @@ mod tests {
 
     #[test]
     fn test_task_on_block_with_context() {
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let on_block = TaskOnBlock::with_context("ctx".into(), pos);
         assert!(on_block.has_context());
         assert_eq!(on_block.context_param, Some("ctx".into()));
@@ -930,7 +979,12 @@ mod tests {
     fn test_task_on_block_add_handler_with_guard() {
         use auto_val::Op;
 
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let mut on_block = TaskOnBlock::new(pos);
         let pattern = TaskMsgPattern::TypeBinding {
             name: "amount".into(),

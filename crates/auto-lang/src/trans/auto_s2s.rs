@@ -131,7 +131,6 @@ fn main() {
         assert!(p2.parse().is_ok());
     }
 
-
     fn rename_in_expr(e: &mut crate::ast::Expr, hit: &mut bool) {
         use crate::ast::{Arg, Expr};
         match e {
@@ -234,7 +233,11 @@ fn main() {
 }
 "#;
         let out = lower_source(src).unwrap();
-        assert!(out.contains("py_getitem_may(x, py_slice(2, 5)).?"), "{}", out);
+        assert!(
+            out.contains("py_getitem_may(x, py_slice(2, 5)).?"),
+            "{}",
+            out
+        );
         assert!(out.contains("py_slice(null, 5)"), "{}", out);
         assert!(out.contains("py_slice(2, null)"), "{}", out);
         assert!(out.contains("py_slice(1, 9, 2)"), "{}", out);
@@ -319,12 +322,11 @@ fn main() {
             let Ok(src) = std::fs::read_to_string(&path) else {
                 panic!("corpus missing: {}", path.display());
             };
-            let once = lower_source(&src)
-                .unwrap_or_else(|e| panic!("{}: lower 失败: {}", rel, e));
+            let once = lower_source(&src).unwrap_or_else(|e| panic!("{}: lower 失败: {}", rel, e));
             let mut p = crate::parser::Parser::new(&once);
             assert!(p.parse().is_ok(), "{}: 产物不可再解析:\n{}", rel, once);
-            let twice = lower_source(&once)
-                .unwrap_or_else(|e| panic!("{}: 二次 lower 失败: {}", rel, e));
+            let twice =
+                lower_source(&once).unwrap_or_else(|e| panic!("{}: 二次 lower 失败: {}", rel, e));
             assert_eq!(twice, once, "{}: 不幂等", rel);
         }
     }

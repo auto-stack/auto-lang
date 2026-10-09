@@ -76,7 +76,10 @@ fn t01_tier0_catalog_scans_with_full_contracts() {
         let pkg = reg.get(kind, name).unwrap();
         let key = pkg.key();
         assert!(!pkg.spec.props.is_empty(), "{key}: props must be declared");
-        assert!(!pkg.spec.actions.is_empty(), "{key}: actions must be declared");
+        assert!(
+            !pkg.spec.actions.is_empty(),
+            "{key}: actions must be declared"
+        );
         assert!(
             !pkg.spec.data_source.is_empty(),
             "{key}: dataSource slots must be declared"
@@ -141,9 +144,11 @@ fn t04_vm_track_empty_state_reference() {
     let (view, _debug_map, _probe) = dc.view_with_debug();
     let mut texts = Vec::new();
     collect_view_texts(&view, &mut texts);
-    for expected in
-        ["Nothing here yet", "Create your first item to get started.", "New item"]
-    {
+    for expected in [
+        "Nothing here yet",
+        "Create your first item to get started.",
+        "New item",
+    ] {
         assert!(
             texts.iter().any(|t| t.contains(expected)),
             "empty-state VM view must contain {expected:?}; snapshot: {texts:?}"
@@ -159,7 +164,11 @@ fn t05_vue_track_representative_references() {
     let cases: &[((&str, &str, &str), &[&str])] = &[
         (
             ("form", "signup", "minimal"),
-            &["@/components/ui/button", "Create account", "you@example.com"],
+            &[
+                "@/components/ui/button",
+                "Create account",
+                "you@example.com",
+            ],
         ),
         (
             ("data-display", "data-table-crud", "minimal"),
@@ -203,7 +212,9 @@ fn collect_view_texts(
                 collect_view_texts(c, out);
             }
         }
-        View::Input { placeholder, value, .. } => {
+        View::Input {
+            placeholder, value, ..
+        } => {
             out.push(placeholder.clone());
             out.push(value.clone());
         }

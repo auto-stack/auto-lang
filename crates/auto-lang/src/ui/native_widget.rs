@@ -172,10 +172,16 @@ fn register_builtin_entries() -> NativeWidgetRegistry {
         // 压缩小写别名不在 P8-6 折叠兜底范围（无分隔符无大写不折叠），必须
         // 显式注册才不回归。
         reg.register_view("autodown_editor", |ctx| {
-            Some(ctx.builder.convert_autodown_editor_native(ctx.props, ctx.events, ctx.bindings))
+            Some(
+                ctx.builder
+                    .convert_autodown_editor_native(ctx.props, ctx.events, ctx.bindings),
+            )
         });
         reg.register_view("autodowneditor", |ctx| {
-            Some(ctx.builder.convert_autodown_editor_native(ctx.props, ctx.events, ctx.bindings))
+            Some(
+                ctx.builder
+                    .convert_autodown_editor_native(ctx.props, ctx.events, ctx.bindings),
+            )
         });
     }
     #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
@@ -183,10 +189,16 @@ fn register_builtin_entries() -> NativeWidgetRegistry {
         // 无 feature 降级链保持：原臂的 `#[cfg(not(...))] textarea` 分支迁经
         // 注册表（D-GAP-3 textarea 降级语义不变）。双拼写同上。
         reg.register_view("autodown_editor", |ctx| {
-            Some(ctx.builder.convert_textarea(ctx.props, ctx.events, ctx.bindings))
+            Some(
+                ctx.builder
+                    .convert_textarea(ctx.props, ctx.events, ctx.bindings),
+            )
         });
         reg.register_view("autodowneditor", |ctx| {
-            Some(ctx.builder.convert_textarea(ctx.props, ctx.events, ctx.bindings))
+            Some(
+                ctx.builder
+                    .convert_textarea(ctx.props, ctx.events, ctx.bindings),
+            )
         });
     }
     #[cfg(test)]
@@ -224,7 +236,10 @@ mod tests {
     fn register_and_lookup_view_entry() {
         let mut reg = NativeWidgetRegistry::new();
         assert!(reg.register_view("my_widget", stub_factory));
-        assert!(matches!(reg.lookup("my_widget"), Some(NativeWidgetEntry::View(_))));
+        assert!(matches!(
+            reg.lookup("my_widget"),
+            Some(NativeWidgetEntry::View(_))
+        ));
         assert!(reg.contains("my_widget"));
         assert!(reg.violations().is_empty());
     }
@@ -233,7 +248,10 @@ mod tests {
     fn register_element_entry() {
         let mut reg = NativeWidgetRegistry::new();
         assert!(reg.register_element("canvas_thing"));
-        assert!(matches!(reg.lookup("canvas_thing"), Some(NativeWidgetEntry::Element)));
+        assert!(matches!(
+            reg.lookup("canvas_thing"),
+            Some(NativeWidgetEntry::Element)
+        ));
         assert_eq!(reg.lookup("canvas_thing").unwrap().kind(), "element");
     }
 
@@ -284,7 +302,10 @@ mod tests {
     #[test]
     fn global_registers_autodown_editor() {
         let g = global();
-        assert!(matches!(g.lookup("autodown_editor"), Some(NativeWidgetEntry::View(_))));
+        assert!(matches!(
+            g.lookup("autodown_editor"),
+            Some(NativeWidgetEntry::View(_))
+        ));
         // 折叠别名命中同一入口。
         assert!(g.lookup("AutodownEditor").is_some());
         assert!(g.lookup("autodown-editor").is_some());

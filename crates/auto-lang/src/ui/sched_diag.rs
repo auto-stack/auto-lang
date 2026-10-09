@@ -27,8 +27,19 @@ pub fn trace(app: Option<crate::ui::session::AppId>, phase: &str, detail: &str) 
     if enabled() {
         let t0 = crate::ui::dynamic::sched_diag_t0();
         match app {
-            Some(id) => eprintln!("[SCHED-DIAG] {} t={}ms app={:?} {}", phase, t0.elapsed().as_millis(), id, detail),
-            None => eprintln!("[SCHED-DIAG] {} t={}ms {}", phase, t0.elapsed().as_millis(), detail),
+            Some(id) => eprintln!(
+                "[SCHED-DIAG] {} t={}ms app={:?} {}",
+                phase,
+                t0.elapsed().as_millis(),
+                id,
+                detail
+            ),
+            None => eprintln!(
+                "[SCHED-DIAG] {} t={}ms {}",
+                phase,
+                t0.elapsed().as_millis(),
+                detail
+            ),
         }
     }
 }

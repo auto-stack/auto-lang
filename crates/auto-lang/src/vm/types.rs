@@ -15,7 +15,7 @@ use std::io::BufReader;
 // Re-exports from collections
 // ============================================================================
 
-pub use super::collections::{HashMapData, HashSetData, BTreeMapData, VecDequeData};
+pub use super::collections::{BTreeMapData, HashMapData, HashSetData, VecDequeData};
 
 // ============================================================================
 // ListData
@@ -37,24 +37,39 @@ pub struct ListData<T = auto_val::Value> {
 
 impl<T> ListData<T> {
     pub fn new() -> Self {
-        Self { elems: Vec::new(), storage: None }
+        Self {
+            elems: Vec::new(),
+            storage: None,
+        }
     }
 
     pub fn with_storage(storage: ListStorage) -> Self {
-        Self { elems: Vec::new(), storage: Some(storage) }
+        Self {
+            elems: Vec::new(),
+            storage: Some(storage),
+        }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self { elems: Vec::with_capacity(capacity), storage: None }
+        Self {
+            elems: Vec::with_capacity(capacity),
+            storage: None,
+        }
     }
 
-    pub fn len(&self) -> usize { self.elems.len() }
-    pub fn is_empty(&self) -> bool { self.elems.is_empty() }
+    pub fn len(&self) -> usize {
+        self.elems.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.elems.is_empty()
+    }
 
     const INLINE_CAPACITY: usize = 64;
 
     pub fn push(&mut self, elem: T) -> bool {
-        if self.storage == Some(ListStorage::InlineInt64) && self.elems.len() >= Self::INLINE_CAPACITY {
+        if self.storage == Some(ListStorage::InlineInt64)
+            && self.elems.len() >= Self::INLINE_CAPACITY
+        {
             return false;
         }
         self.elems.push(elem);
@@ -79,14 +94,16 @@ impl<T> ListData<T> {
 }
 
 impl<T> Default for ListData<T> {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T: Clone> ListData<T> {
     pub fn reserve(&mut self, additional: usize) {
         self.elems.reserve(additional);
     }
-    
+
     pub fn set(&mut self, index: usize, elem: T) -> bool {
         if index < self.elems.len() {
             self.elems[index] = elem;
@@ -95,10 +112,12 @@ impl<T: Clone> ListData<T> {
             false
         }
     }
-    
+
     pub fn insert(&mut self, index: usize, elem: T) -> bool {
         if index <= self.elems.len() {
-            if self.storage == Some(ListStorage::InlineInt64) && self.elems.len() >= Self::INLINE_CAPACITY {
+            if self.storage == Some(ListStorage::InlineInt64)
+                && self.elems.len() >= Self::INLINE_CAPACITY
+            {
                 return false;
             }
             self.elems.insert(index, elem);
@@ -107,7 +126,7 @@ impl<T: Clone> ListData<T> {
             false
         }
     }
-    
+
     pub fn remove(&mut self, index: usize) -> Option<T> {
         if index < self.elems.len() {
             Some(self.elems.remove(index))
@@ -128,16 +147,22 @@ pub struct StringBuilderData {
 
 impl StringBuilderData {
     pub fn new() -> Self {
-        Self { buffer: String::new() }
+        Self {
+            buffer: String::new(),
+        }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self { buffer: String::with_capacity(capacity) }
+        Self {
+            buffer: String::with_capacity(capacity),
+        }
     }
 }
 
 impl Default for StringBuilderData {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ============================================================================
@@ -151,20 +176,24 @@ pub struct ObjectData {
 
 impl ObjectData {
     pub fn new() -> Self {
-        Self { fields: HashMap::new() }
+        Self {
+            fields: HashMap::new(),
+        }
     }
-    
+
     pub fn set(&mut self, key: auto_val::ValueKey, value: auto_val::Value) {
         self.fields.insert(key, value);
     }
-    
+
     pub fn get(&self, key: &auto_val::ValueKey) -> Option<&auto_val::Value> {
         self.fields.get(key)
     }
 }
 
 impl Default for ObjectData {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Plan 390 §15 Phase H1: impl HeapObject so ObjectData can live in the
@@ -174,8 +203,12 @@ impl crate::vm::heap_object::HeapObject for ObjectData {
     fn type_tag(&self) -> crate::vm::heap_object::TypeTag {
         crate::vm::heap_object::TypeTag::ObjectData
     }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
     // Plan 419: 字段中的 VmRef 是子引用。
     fn child_refs(&self) -> Vec<u64> {
         self.fields
@@ -207,7 +240,6 @@ pub enum VmRefData {
     List(ListData),
     Object(ObjectData),
 }
-
 
 impl<T: Clone> ListData<T> {
     pub fn get_storage(&self) -> ListStorage {
@@ -242,7 +274,6 @@ impl<T: Clone> ListData<T> {
             ListStorage::InlineInt64 => min_cap <= 64,
         }
     }
-
 }
 
 impl<T: Clone> Clone for ListData<T> {
@@ -268,9 +299,15 @@ use crate::vm::heap_object::{HeapObject, TypeTag};
 use std::any::Any;
 
 impl HeapObject for ListData<i32> {
-    fn type_tag(&self) -> TypeTag { TypeTag::ListInt }
-    fn as_any(&self) -> &dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::ListInt
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
     // Plan 419: ListData<i32> 以裸 i32 存引用(shim_iterator_next 把 VmRef
     // 落成 r.id as i32),≥HEAP_ID_BASE 的元素按堆引用递归释放。
     fn child_refs(&self) -> Vec<u64> {
@@ -278,7 +315,11 @@ impl HeapObject for ListData<i32> {
             .iter()
             .filter_map(|&e| {
                 let id = e as i64;
-                if id >= crate::vm::rc::HEAP_ID_BASE as i64 { Some(id as u64) } else { None }
+                if id >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                    Some(id as u64)
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -286,35 +327,57 @@ impl HeapObject for ListData<i32> {
     fn child_pool_idxs(&self) -> Vec<usize> {
         self.elems
             .iter()
-            .filter_map(|&e| {
-                if e < 0 { Some((-e - 1) as usize) } else { None }
-            })
+            .filter_map(|&e| if e < 0 { Some((-e - 1) as usize) } else { None })
             .collect()
     }
 }
 
 impl HeapObject for ListData<char> {
-    fn type_tag(&self) -> TypeTag { TypeTag::ListChar }
-    fn as_any(&self) -> &dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::ListChar
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 impl HeapObject for ListData<bool> {
-    fn type_tag(&self) -> TypeTag { TypeTag::ListBool }
-    fn as_any(&self) -> &dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::ListBool
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 impl HeapObject for ListData<std::string::String> {
-    fn type_tag(&self) -> TypeTag { TypeTag::ListString }
-    fn as_any(&self) -> &dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::ListString
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 impl HeapObject for ListData<auto_val::Value> {
-    fn type_tag(&self) -> TypeTag { TypeTag::ListValue }
-    fn as_any(&self) -> &dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::ListValue
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
     // Plan 419: 元素中的 VmRef 是子引用。
     fn child_refs(&self) -> Vec<u64> {
         self.elems

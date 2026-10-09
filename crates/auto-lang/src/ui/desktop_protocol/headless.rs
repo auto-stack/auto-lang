@@ -25,8 +25,8 @@ use crate::ui::desktop_protocol::message::{
 };
 use crate::ui::iced::renderer::IntoIcedElement;
 
-use iced::advanced::graphics::text::Text as GfxText;
 use iced::advanced::graphics::text::font_system;
+use iced::advanced::graphics::text::Text as GfxText;
 use iced::advanced::input_method::{InputMethod, Purpose};
 use iced::advanced::renderer as advanced_renderer;
 use iced::mouse;
@@ -115,7 +115,12 @@ where
         self.observations.clear();
         self.pending_bitmaps.clear();
         let mut bitmap_seq = 0usize;
-        lower_layers_v2(&layers, &mut self.observations, &mut self.pending_bitmaps, &mut bitmap_seq)
+        lower_layers_v2(
+            &layers,
+            &mut self.observations,
+            &mut self.pending_bitmaps,
+            &mut bitmap_seq,
+        )
     }
 
     /// 驱动一轮 iced 帧循环：view → UI::build（Cache 复用）→ RedrawRequested
@@ -156,9 +161,8 @@ where
         self.capture_ui_state(state);
 
         // 主题单源（PLAN-679）：与独立轨 run 链同款 shadcn 调色板。
-        let theme = crate::ui::iced::renderer::shadcn_theme(
-            crate::ui::style::iced_adapter::dark_mode(),
-        );
+        let theme =
+            crate::ui::iced::renderer::shadcn_theme(crate::ui::style::iced_adapter::dark_mode());
         let style = advanced_renderer::Style {
             text_color: theme.base().text_color,
         };
@@ -231,7 +235,12 @@ where
     /// 公开的 IME 请求/光标形状出口（user_interface.rs:615-640；headless
     /// 旧代码以 `let _ =` 丢弃）。变化才入下行批（iced 每帧重发请求）。
     fn capture_ui_state(&mut self, state: UiState) {
-        let UiState::Updated { input_method, mouse_interaction, .. } = state else {
+        let UiState::Updated {
+            input_method,
+            mouse_interaction,
+            ..
+        } = state
+        else {
             return;
         };
         let ime = match input_method {
@@ -239,13 +248,22 @@ where
                 self.preedit_reported = None;
                 None
             }
-            InputMethod::Enabled { cursor, purpose, preedit } => {
+            InputMethod::Enabled {
+                cursor,
+                purpose,
+                preedit,
+            } => {
                 // 空组合串归一 None（winit Windows commit 序 = Preedit("")
                 // 先行清态——text_input 会存空串，上报面按"无组合态"口径）。
                 self.preedit_reported =
                     preedit.filter(|p| !p.content.is_empty()).map(|p| p.content);
                 Some(ImeReq {
-                    cursor: WRect { x: cursor.x, y: cursor.y, w: cursor.width, h: cursor.height },
+                    cursor: WRect {
+                        x: cursor.x,
+                        y: cursor.y,
+                        w: cursor.width,
+                        h: cursor.height,
+                    },
                     purpose: purpose_u8(purpose),
                 })
             }
@@ -255,13 +273,15 @@ where
             // wid = 0 哨兵（连接级寻址——headless 装配期不知真实 wid，
             // rqhost 客户端单 wid 连接按 client 记录路由，壳投影族同型）。
             let wid = 0;
-            self.pending_controls.push(ControlMsg::ImeRequest { wid, enabled: ime });
+            self.pending_controls
+                .push(ControlMsg::ImeRequest { wid, enabled: ime });
         }
         let kind = cursor_kind_u8(mouse_interaction);
         if kind != self.last_cursor_kind {
             self.last_cursor_kind = kind;
             let wid = 0;
-            self.pending_controls.push(ControlMsg::SetCursor { wid, kind });
+            self.pending_controls
+                .push(ControlMsg::SetCursor { wid, kind });
         }
     }
 
@@ -301,7 +321,9 @@ fn lower_layers(layers: &[Layer], observations: &mut Vec<String>) -> DrawList {
     for (index, layer) in layers.iter().enumerate() {
         let clipped = index > 0;
         if clipped {
-            ops.push(DrawOp::Scissor { rect: to_wrect(layer.bounds) });
+            ops.push(DrawOp::Scissor {
+                rect: to_wrect(layer.bounds),
+            });
         }
         for (quad, background) in &layer.quads {
             lower_quad(quad, background, &mut ops, observations);
@@ -327,7 +349,10 @@ fn lower_layers(layers: &[Layer], observations: &mut Vec<String>) -> DrawList {
             ops.push(DrawOp::ScissorPop);
         }
     }
-    DrawList { clear: Some(super::client_runtime::bg()), ops }
+    DrawList {
+        clear: Some(super::client_runtime::bg()),
+        ops,
+    }
 }
 
 /// quad 降格：Background::Color → Quad/QuadR（圆角取四角 max——v1 单半径
@@ -352,7 +377,11 @@ fn lower_quad(
         iced::Background::Color(color) => {
             let rgba = to_rgba8(*color);
             if radius > 0.5 {
-                ops.push(DrawOp::QuadR { rect, color: rgba, radius });
+                ops.push(DrawOp::QuadR {
+                    rect,
+                    color: rgba,
+                    radius,
+                });
             } else {
                 ops.push(DrawOp::Quad { rect, color: rgba });
             }
@@ -361,17 +390,43 @@ fn lower_quad(
             observations.push(format!(
                 "gradient 降格均值近似（{rect:?}——T-01 v2 原生 stop 记录）"
             ));
-            ops.push(DrawOp::QuadR { rect, color: gradient_average(gradient), radius: 0.0 });
+            ops.push(DrawOp::QuadR {
+                rect,
+                color: gradient_average(gradient),
+                radius: 0.0,
+            });
         }
     }
     if quad.border.width > 0.0 {
         let border = to_rgba8(quad.border.color);
         let w = quad.border.width;
         let WRect { x, y, w: rw, h: rh } = rect;
-        ops.push(DrawOp::Quad { rect: WRect { x, y, w: rw, h: w }, color: border });
-        ops.push(DrawOp::Quad { rect: WRect { x, y: y + rh - w, w: rw, h: w }, color: border });
-        ops.push(DrawOp::Quad { rect: WRect { x, y, w, h: rh }, color: border });
-        ops.push(DrawOp::Quad { rect: WRect { x: x + rw - w, y, w, h: rh }, color: border });
+        ops.push(DrawOp::Quad {
+            rect: WRect { x, y, w: rw, h: w },
+            color: border,
+        });
+        ops.push(DrawOp::Quad {
+            rect: WRect {
+                x,
+                y: y + rh - w,
+                w: rw,
+                h: w,
+            },
+            color: border,
+        });
+        ops.push(DrawOp::Quad {
+            rect: WRect { x, y, w, h: rh },
+            color: border,
+        });
+        ops.push(DrawOp::Quad {
+            rect: WRect {
+                x: x + rw - w,
+                y,
+                w,
+                h: rh,
+            },
+            color: border,
+        });
     }
     if quad.shadow.color.a > 0.0
         && (quad.shadow.blur_radius > 0.0
@@ -395,21 +450,61 @@ fn lower_text(
 ) {
     let translation = transformation.translation();
     match text {
-        GfxText::Paragraph { paragraph, position, color, .. } => {
-            let Some(paragraph) = paragraph.upgrade() else { return };
-            buffer_runs(paragraph.buffer(), *position, *color, translation, &mut |x, y, size, lh, rgba, weight, text| {
-                ops.push(DrawOp::TextStyled {
-                    x, y, size, line_height: lh, color: rgba, weight, italic: false, text,
-                });
-            });
+        GfxText::Paragraph {
+            paragraph,
+            position,
+            color,
+            ..
+        } => {
+            let Some(paragraph) = paragraph.upgrade() else {
+                return;
+            };
+            buffer_runs(
+                paragraph.buffer(),
+                *position,
+                *color,
+                translation,
+                &mut |x, y, size, lh, rgba, weight, text| {
+                    ops.push(DrawOp::TextStyled {
+                        x,
+                        y,
+                        size,
+                        line_height: lh,
+                        color: rgba,
+                        weight,
+                        italic: false,
+                        text,
+                    });
+                },
+            );
         }
-        GfxText::Editor { editor, position, color, .. } => {
-            let Some(editor) = editor.upgrade() else { return };
-            buffer_runs(editor.buffer(), *position, *color, translation, &mut |x, y, size, lh, rgba, weight, text| {
-                ops.push(DrawOp::TextStyled {
-                    x, y, size, line_height: lh, color: rgba, weight, italic: false, text,
-                });
-            });
+        GfxText::Editor {
+            editor,
+            position,
+            color,
+            ..
+        } => {
+            let Some(editor) = editor.upgrade() else {
+                return;
+            };
+            buffer_runs(
+                editor.buffer(),
+                *position,
+                *color,
+                translation,
+                &mut |x, y, size, lh, rgba, weight, text| {
+                    ops.push(DrawOp::TextStyled {
+                        x,
+                        y,
+                        size,
+                        line_height: lh,
+                        color: rgba,
+                        weight,
+                        italic: false,
+                        text,
+                    });
+                },
+            );
         }
         GfxText::Cached {
             content,
@@ -434,14 +529,15 @@ fn lower_text(
                 line_height: line_height.0,
                 color: to_rgba8(*color),
                 weight: iced_weight_u16(font.weight),
-                italic: matches!(font.style, iced::font::Style::Italic | iced::font::Style::Oblique),
+                italic: matches!(
+                    font.style,
+                    iced::font::Style::Italic | iced::font::Style::Oblique
+                ),
                 text: content.clone(),
             });
         }
         GfxText::Raw { .. } => {
-            observations.push(
-                "raw text buffer 降格省略（编辑器组合态——T-02 IME 面）".to_string(),
-            );
+            observations.push("raw text buffer 降格省略（编辑器组合态——T-02 IME 面）".to_string());
         }
     }
 }
@@ -457,7 +553,9 @@ fn buffer_runs(
 ) {
     let rgba = to_rgba8(color);
     for run in buffer.layout_runs() {
-        let Some(first) = run.glyphs.first() else { continue };
+        let Some(first) = run.glyphs.first() else {
+            continue;
+        };
         let line_h = if run.line_height > 0.0 {
             run.line_height
         } else {
@@ -519,12 +617,22 @@ fn text_width_approx(content: &str, size: f32) -> f32 {
 }
 
 fn to_wrect(rect: iced::Rectangle) -> WRect {
-    WRect { x: rect.x, y: rect.y, w: rect.width, h: rect.height }
+    WRect {
+        x: rect.x,
+        y: rect.y,
+        w: rect.width,
+        h: rect.height,
+    }
 }
 
 fn to_rgba8(color: iced::Color) -> Rgba8 {
     let to_u8 = |v: f32| (v * 255.0).round().clamp(0.0, 255.0) as u8;
-    Rgba8::new(to_u8(color.r), to_u8(color.g), to_u8(color.b), to_u8(color.a))
+    Rgba8::new(
+        to_u8(color.r),
+        to_u8(color.g),
+        to_u8(color.b),
+        to_u8(color.a),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -615,26 +723,46 @@ fn vk_to_code(vk: u32) -> Option<iced::keyboard::key::Code> {
 /// `input_method::Event`（text_input 组合态原生消费）；Cancelled →
 /// Closed（组合态清理）。Windows 中文 IME 实机完备性 = T-02 风险面
 ///（待澄清③），残缺则混合方案兜底登记。
-pub(crate) fn input_to_iced_events(input: &crate::ui::desktop_protocol::message::InputMsg) -> Vec<iced::Event> {
+pub(crate) fn input_to_iced_events(
+    input: &crate::ui::desktop_protocol::message::InputMsg,
+) -> Vec<iced::Event> {
     use crate::ui::desktop_protocol::message::InputMsg;
     use iced::keyboard::{Event as KeyEvent, Key};
     use iced::mouse;
     match input {
-        InputMsg::PointerMoved { x, y, .. } => vec![iced::Event::Mouse(
-            mouse::Event::CursorMoved { position: iced::Point::new(*x, *y) },
-        )],
-        InputMsg::PointerPressed { button, x, y, modifiers, .. } => {
+        InputMsg::PointerMoved { x, y, .. } => {
+            vec![iced::Event::Mouse(mouse::Event::CursorMoved {
+                position: iced::Point::new(*x, *y),
+            })]
+        }
+        InputMsg::PointerPressed {
+            button,
+            x,
+            y,
+            modifiers,
+            ..
+        } => {
             vec![
-                iced::Event::Mouse(mouse::Event::CursorMoved { position: iced::Point::new(*x, *y) }),
+                iced::Event::Mouse(mouse::Event::CursorMoved {
+                    position: iced::Point::new(*x, *y),
+                }),
                 iced::Event::Mouse(mouse::Event::ButtonPressed(wire_button(*button))),
                 // 修饰键态同步（iced 内部跟踪依赖事件流——Ctrl+C 等组合
                 // 键的正确派发需要按下时修饰在场）。
                 iced::Event::Keyboard(KeyEvent::ModifiersChanged(wire_mods_to_iced(*modifiers))),
             ]
         }
-        InputMsg::PointerReleased { button, x, y, modifiers, .. } => {
+        InputMsg::PointerReleased {
+            button,
+            x,
+            y,
+            modifiers,
+            ..
+        } => {
             vec![
-                iced::Event::Mouse(mouse::Event::CursorMoved { position: iced::Point::new(*x, *y) }),
+                iced::Event::Mouse(mouse::Event::CursorMoved {
+                    position: iced::Point::new(*x, *y),
+                }),
                 iced::Event::Mouse(mouse::Event::ButtonReleased(wire_button(*button))),
                 iced::Event::Keyboard(KeyEvent::ModifiersChanged(wire_mods_to_iced(*modifiers))),
             ]
@@ -690,12 +818,12 @@ pub(crate) fn input_to_iced_events(input: &crate::ui::desktop_protocol::message:
                 repeat: false,
             })]
         }
-        InputMsg::Scroll { dx, dy, .. } => vec![iced::Event::Mouse(
-            mouse::Event::WheelScrolled {
-                delta: iced::mouse::ScrollDelta::Pixels { x: *dx, y: *dy },
-            },
-        )],
-        InputMsg::ImePreedit { text, selection, .. } => vec![iced::Event::InputMethod(
+        InputMsg::Scroll { dx, dy, .. } => vec![iced::Event::Mouse(mouse::Event::WheelScrolled {
+            delta: iced::mouse::ScrollDelta::Pixels { x: *dx, y: *dy },
+        })],
+        InputMsg::ImePreedit {
+            text, selection, ..
+        } => vec![iced::Event::InputMethod(
             iced::advanced::input_method::Event::Preedit(
                 text.clone(),
                 selection.map(|(s, e)| s as usize..e as usize),
@@ -886,13 +1014,20 @@ fn lower_layers_v2(
     for (index, layer) in layers.iter().enumerate() {
         let clipped = index > 0;
         if clipped {
-            ops.push(DisplayOp::Scissor { rect: to_wrect(layer.bounds) });
+            ops.push(DisplayOp::Scissor {
+                rect: to_wrect(layer.bounds),
+            });
         }
         for (quad, background) in &layer.quads {
             lower_quad_v2(quad, background, &mut ops);
         }
         for item in &layer.text {
-            lower_text_v2(item.as_slice(), item.transformation(), &mut ops, observations);
+            lower_text_v2(
+                item.as_slice(),
+                item.transformation(),
+                &mut ops,
+                observations,
+            );
         }
         for image in &layer.images {
             lower_image_v2(image, &mut ops, observations, bitmaps, bitmap_seq);
@@ -907,7 +1042,10 @@ fn lower_layers_v2(
             ops.push(DisplayOp::ScissorPop);
         }
     }
-    DisplayList { clear: Some(super::client_runtime::bg()), ops }
+    DisplayList {
+        clear: Some(super::client_runtime::bg()),
+        ops,
+    }
 }
 
 /// v2 quad：原生全参——Fill（色/渐变 angle+stops）、四角半径、border、
@@ -951,7 +1089,13 @@ fn lower_quad_v2(
             offset: (quad.shadow.offset.x, quad.shadow.offset.y),
             blur: quad.shadow.blur_radius,
         });
-    ops.push(DisplayOp::Quad { rect, fill, radius, border, shadow });
+    ops.push(DisplayOp::Quad {
+        rect,
+        fill,
+        radius,
+        border,
+        shadow,
+    });
 }
 
 /// v2 文本：项级非恒等变换 → Transform 包络（scale+translate 近似——
@@ -971,14 +1115,18 @@ fn lower_text_v2(
             matrix: [scale, 0.0, 0.0, scale, translation.x, translation.y],
         });
         if (scale - 1.0).abs() > f32::EPSILON {
-            observations.push(
-                "transform scale 近似（旋转/剪切矩阵元 iced 未公开——P683-D2）".to_string(),
-            );
+            observations
+                .push("transform scale 近似（旋转/剪切矩阵元 iced 未公开——P683-D2）".to_string());
         }
     }
     for text in texts {
         match text {
-            GfxText::Paragraph { paragraph, position, color, .. } => {
+            GfxText::Paragraph {
+                paragraph,
+                position,
+                color,
+                ..
+            } => {
                 if let Some(paragraph) = paragraph.upgrade() {
                     buffer_runs(
                         paragraph.buffer(),
@@ -1000,7 +1148,12 @@ fn lower_text_v2(
                     );
                 }
             }
-            GfxText::Editor { editor, position, color, .. } => {
+            GfxText::Editor {
+                editor,
+                position,
+                color,
+                ..
+            } => {
                 if let Some(editor) = editor.upgrade() {
                     buffer_runs(
                         editor.buffer(),
@@ -1053,9 +1206,8 @@ fn lower_text_v2(
                 });
             }
             GfxText::Raw { .. } => {
-                observations.push(
-                    "raw text buffer 省略（编辑器组合态——T-02 IME 面承接）".to_string(),
-                );
+                observations
+                    .push("raw text buffer 省略（编辑器组合态——T-02 IME 面承接）".to_string());
             }
         }
     }
@@ -1077,12 +1229,9 @@ fn lower_image_v2(
     use iced::advanced::image::Handle;
 
     let (handle, bounds, rotation, opacity) = match image {
-        iced::advanced::graphics::image::Image::Raster { image, bounds, .. } => (
-            &image.handle,
-            *bounds,
-            image.rotation,
-            image.opacity,
-        ),
+        iced::advanced::graphics::image::Image::Raster { image, bounds, .. } => {
+            (&image.handle, *bounds, image.rotation, image.opacity)
+        }
         iced::advanced::graphics::image::Image::Vector { bounds, .. } => {
             observations.push(format!(
                 "svg 图像降格省略（{bounds:?}——svg 通道=登记债 P683-D3）"
@@ -1093,7 +1242,12 @@ fn lower_image_v2(
     let rect = to_wrect(bounds);
     let src = match handle {
         Handle::Path(_, path) => path.to_string_lossy().into_owned(),
-        Handle::Rgba { width, height, pixels, .. } => {
+        Handle::Rgba {
+            width,
+            height,
+            pixels,
+            ..
+        } => {
             *bitmap_seq += 1;
             let local = format!("p683-img-{bitmap_seq}");
             bitmaps.push(super::endpoint::BitmapUpload {
@@ -1207,10 +1361,10 @@ mod tests {
         let mut surface = HeadlessSurface::new(component, 480.0, 360.0);
         let list = surface.render_frame();
         assert!(!list.ops.is_empty(), "003 空帧");
-        let has_text = list.ops.iter().any(|op| matches!(
-            op,
-            DrawOp::Text { .. } | DrawOp::TextStyled { .. }
-        ));
+        let has_text = list
+            .ops
+            .iter()
+            .any(|op| matches!(op, DrawOp::Text { .. } | DrawOp::TextStyled { .. }));
         assert!(has_text, "003 无文本原语（标签/数值面缺席）");
         let mut encoded = Vec::new();
         list.encode(&mut encoded);
@@ -1241,7 +1395,9 @@ mod tests {
             // v2 非空 + 文本在档。
             assert!(!v2.ops.is_empty(), "{dir} v2 空帧");
             assert!(
-                v2.ops.iter().any(|op| matches!(op, DisplayOp::TextStyled { .. })),
+                v2.ops
+                    .iter()
+                    .any(|op| matches!(op, DisplayOp::TextStyled { .. })),
                 "{dir} v2 无文本"
             );
 
@@ -1250,7 +1406,11 @@ mod tests {
             v2.encode(&mut buf);
             assert_eq!(buf[0], 2, "{dir} v2 载荷 tag");
             let mut reader = crate::ui::desktop_protocol::codec::Reader::new(&buf);
-            assert_eq!(DisplayList::decode(&mut reader).unwrap(), v2, "{dir} v2 round-trip 漂移");
+            assert_eq!(
+                DisplayList::decode(&mut reader).unwrap(),
+                v2,
+                "{dir} v2 round-trip 漂移"
+            );
 
             // v1 降格 vs v2 原生：文本 run 集合等价（同组件同驱动的
             // 两条降格路径文本面一致——run 提取单源）。
@@ -1263,7 +1423,11 @@ mod tests {
                     })
                     .collect()
             };
-            assert_eq!(texts_of(&lifted), texts_of(&v2), "{dir} 文本面 v1/v2 不一致");
+            assert_eq!(
+                texts_of(&lifted),
+                texts_of(&v2),
+                "{dir} 文本面 v1/v2 不一致"
+            );
 
             // 消息信封 round-trip（FrameReadyV2）。
             let msg = crate::ui::desktop_protocol::message::ProtocolMsg::Frame(
@@ -1347,7 +1511,9 @@ mod tests {
             "聚焦后 IME enable 下行缺席: {controls:?}"
         );
         assert!(
-            controls.iter().any(|c| matches!(c, ControlMsg::SetCursor { kind: 2, .. })),
+            controls
+                .iter()
+                .any(|c| matches!(c, ControlMsg::SetCursor { kind: 2, .. })),
             "text_input hover 光标（Text）下行缺席: {controls:?}"
         );
 
@@ -1379,7 +1545,10 @@ mod tests {
             selection: None,
         });
         surface.update(&clear);
-        let commit = input_to_iced_events(&InputMsg::ImeCommit { wid: 0, text: "你好".into() });
+        let commit = input_to_iced_events(&InputMsg::ImeCommit {
+            wid: 0,
+            text: "你好".into(),
+        });
         surface.update(&commit);
         let committed = surface.render_frame();
         assert!(
@@ -1421,8 +1590,7 @@ mod tests {
     /// 存在档位对齐）。
     #[cfg(debug_assertions)]
     fn replay_with_paint_ops_debug(list: &DrawList) {
-        let bounds =
-            iced::Rectangle::new(iced::Point::ORIGIN, iced::Size::new(640.0, 480.0));
+        let bounds = iced::Rectangle::new(iced::Point::ORIGIN, iced::Size::new(640.0, 480.0));
         let mut frame = iced::widget::canvas::Frame::with_bounds(&(), bounds);
         frame.fill_rectangle(
             iced::Point::ORIGIN,

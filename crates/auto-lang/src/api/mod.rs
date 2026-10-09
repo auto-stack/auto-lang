@@ -29,19 +29,19 @@
 //! let tauri_code = tauri_gen.generate(&api_module);
 //! ```
 
-pub mod types;
-pub mod targets;
 pub mod contract;
 pub mod diagnostic;
+pub mod targets;
+pub mod types;
 
 // Re-export main types
-pub use types::{ApiAttrs, ApiEndpoint, ApiField, ApiModule, ApiParam, ApiType};
 pub use contract::{
     is_meta_alias, is_upload_param, ApiContract, EndpointContract, ParamKind, ParamPlan,
     ParamSource, ResponseKind, META_PARAM_NAMES,
 };
 pub use diagnostic::{ApiDiagnostic, DiagnosticStage};
-pub use targets::{Target, TargetGenerator, TypeScriptGenerator, TauriGenerator, AxumGenerator};
+pub use targets::{AxumGenerator, Target, TargetGenerator, TauriGenerator, TypeScriptGenerator};
+pub use types::{ApiAttrs, ApiEndpoint, ApiField, ApiModule, ApiParam, ApiType};
 
 use crate::ast::{Fn, Stmt, Type};
 
@@ -182,12 +182,16 @@ impl ApiExtractor {
             return None;
         }
 
-        let fields: Vec<ApiField> = type_decl.members.iter().map(|m| ApiField {
-            name: m.name.to_string(),
-            ty: type_to_string(&m.ty),
-            optional: matches!(&m.ty, Type::Option(_)),
-            default: m.value.as_ref().map(expr_to_string),
-        }).collect();
+        let fields: Vec<ApiField> = type_decl
+            .members
+            .iter()
+            .map(|m| ApiField {
+                name: m.name.to_string(),
+                ty: type_to_string(&m.ty),
+                optional: matches!(&m.ty, Type::Option(_)),
+                default: m.value.as_ref().map(expr_to_string),
+            })
+            .collect();
 
         Some(ApiType {
             name: type_decl.name.to_string(),
@@ -243,9 +247,7 @@ fn type_to_string(ty: &Type) -> String {
             if inst.args.is_empty() {
                 inst.base_name.to_string()
             } else {
-                let args: Vec<String> = inst.args.iter()
-                    .map(type_to_string)
-                    .collect();
+                let args: Vec<String> = inst.args.iter().map(type_to_string).collect();
                 format!("{}<{}>", inst.base_name, args.join(", "))
             }
         }
@@ -253,17 +255,15 @@ fn type_to_string(ty: &Type) -> String {
         Type::Linear(inner) => format!("linear<{}>", type_to_string(inner)),
         Type::Variadic => "...".to_string(),
         Type::Fn(params, ret) => {
-            let param_str: Vec<String> = params.iter()
-                .map(type_to_string)
-                .collect();
+            let param_str: Vec<String> = params.iter().map(type_to_string).collect();
             format!("fn({}) {}", param_str.join(", "), type_to_string(ret))
         }
         Type::Storage(storage) => storage.to_string(),
         Type::Union(union) => format!("union({})", union.name),
-        Type::Option(inner) => format!("?{}", type_to_string(inner)),  // Plan 120
-        Type::Result(inner) => format!("!{}", type_to_string(inner)),  // Plan 120
-        Type::Handle { task_type } => format!("Handle<{}>", type_to_string(task_type)),  // Plan 121
-        Type::Rust(source) => source.full_path.clone(),  // Plan 190
+        Type::Option(inner) => format!("?{}", type_to_string(inner)), // Plan 120
+        Type::Result(inner) => format!("!{}", type_to_string(inner)), // Plan 120
+        Type::Handle { task_type } => format!("Handle<{}>", type_to_string(task_type)), // Plan 121
+        Type::Rust(source) => source.full_path.clone(),               // Plan 190
         Type::Tuple(ts) => {
             let elems: Vec<String> = ts.iter().map(type_to_string).collect();
             format!("({})", elems.join(", "))

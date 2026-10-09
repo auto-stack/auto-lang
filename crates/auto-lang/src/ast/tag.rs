@@ -7,7 +7,7 @@ use std::{fmt, io as stdio};
 #[derive(Debug, Clone)]
 pub struct Tag {
     pub name: Name,
-    pub generic_params: Vec<GenericParam>,  // Generic parameters (Plan 052: type + const)
+    pub generic_params: Vec<GenericParam>, // Generic parameters (Plan 052: type + const)
     pub fields: Vec<TagField>,
     pub methods: Vec<super::Fn>,
 }
@@ -93,7 +93,9 @@ impl ToNode for Tag {
 
         // Add generic parameters if present
         if !self.generic_params.is_empty() {
-            let params: Vec<String> = self.generic_params.iter()
+            let params: Vec<String> = self
+                .generic_params
+                .iter()
                 .map(|p| format!("{}", p))
                 .collect();
             node.set_prop("generic_params", Value::str(params.join(", ").as_str()));

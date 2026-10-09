@@ -71,11 +71,11 @@ use auto_val::Value;
 use dashmap::DashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::mpsc;
 use std::sync::RwLock;
+use tokio::sync::mpsc;
 
 // Plan 127: Import scheduler components for task spawning
-use crate::vm::scheduler::{GlobalMeta, TaskContext, task_loop};
+use crate::vm::scheduler::{task_loop, GlobalMeta, TaskContext};
 use crate::vm::task::AutoTask;
 
 /// Lifecycle hook callback type
@@ -375,7 +375,11 @@ impl TaskRegistry {
     ///
     /// Removes and returns the receiver, preventing accidental reuse.
     /// Returns None if no receiver was stored for this task.
-    pub fn take_mailbox_receiver(&self, task_type: &str, instance_id: u64) -> Option<mpsc::Receiver<Value>> {
+    pub fn take_mailbox_receiver(
+        &self,
+        task_type: &str,
+        instance_id: u64,
+    ) -> Option<mpsc::Receiver<Value>> {
         let key = (task_type.to_string(), instance_id);
         self.mailbox_receivers.remove(&key).map(|(_, rx)| rx)
     }
@@ -600,7 +604,9 @@ impl TaskRegistry {
         let meta = match self.get_global_meta() {
             Some(m) => m,
             None => {
-                eprintln!("[TaskSystem] Warning: GlobalMeta not set, tasks will not execute handlers");
+                eprintln!(
+                    "[TaskSystem] Warning: GlobalMeta not set, tasks will not execute handlers"
+                );
                 return;
             }
         };
@@ -838,10 +844,14 @@ mod tests {
         let instance = TaskInstance::new("TestTask".to_string(), 64);
 
         registry.register_instance(instance.handle.clone());
-        assert!(registry.get_instance("TestTask", instance.instance_id).is_some());
+        assert!(registry
+            .get_instance("TestTask", instance.instance_id)
+            .is_some());
 
         registry.remove_instance("TestTask", instance.instance_id);
-        assert!(registry.get_instance("TestTask", instance.instance_id).is_none());
+        assert!(registry
+            .get_instance("TestTask", instance.instance_id)
+            .is_none());
     }
 
     #[test]
@@ -1012,9 +1022,7 @@ mod tests {
     fn test_task_instance_execute_start_hook_failure() {
         let mut instance = TaskInstance::new("TestTask".to_string(), 64);
 
-        instance.set_start_hook(Box::new(|| {
-            Err("Start hook failed!".to_string())
-        }));
+        instance.set_start_hook(Box::new(|| Err("Start hook failed!".to_string())));
 
         let result = instance.execute_start_hook();
 

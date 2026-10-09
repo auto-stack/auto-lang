@@ -34,7 +34,10 @@ pub fn get_title(_target: NativeHwnd) -> Option<String> {
 }
 
 pub fn set_bounds(_target: NativeHwnd, _rect: Rect) -> Result<(), DockError> {
-    Err(DockError::Api { op: "noop", code: 0 })
+    Err(DockError::Api {
+        op: "noop",
+        code: 0,
+    })
 }
 
 pub fn get_bounds(_target: NativeHwnd) -> Option<Rect> {
@@ -46,11 +49,17 @@ pub fn probe_bounds(_target: NativeHwnd, _requested: Rect) -> Option<Rect> {
 }
 
 pub fn strip_chrome(_target: NativeHwnd) -> Result<u32, DockError> {
-    Err(DockError::Api { op: "noop", code: 0 })
+    Err(DockError::Api {
+        op: "noop",
+        code: 0,
+    })
 }
 
 pub fn restore_chrome(_target: NativeHwnd, _saved: u32) -> Result<(), DockError> {
-    Err(DockError::Api { op: "noop", code: 0 })
+    Err(DockError::Api {
+        op: "noop",
+        code: 0,
+    })
 }
 
 pub fn set_square_corners(_target: NativeHwnd) -> bool {
@@ -58,12 +67,18 @@ pub fn set_square_corners(_target: NativeHwnd) -> bool {
 }
 
 pub fn sink_desktop_below(_desktop: NativeHwnd, _slot: NativeHwnd) -> Result<(), DockError> {
-    Err(DockError::Api { op: "noop", code: 0 })
+    Err(DockError::Api {
+        op: "noop",
+        code: 0,
+    })
 }
 
 /// Plan 494：真洞 z 序翻转（no-op 平台同型失败）。
 pub fn raise_desktop_above(_desktop: NativeHwnd, _slot: NativeHwnd) -> Result<(), DockError> {
-    Err(DockError::Api { op: "noop", code: 0 })
+    Err(DockError::Api {
+        op: "noop",
+        code: 0,
+    })
 }
 
 /// PLAN-709：带内 z 序全量重申（no-op 平台同型失败）。
@@ -72,7 +87,10 @@ pub fn restack_slots(
     _slots: &[NativeHwnd],
     _desktop_above: bool,
 ) -> Result<(), DockError> {
-    Err(DockError::Api { op: "noop", code: 0 })
+    Err(DockError::Api {
+        op: "noop",
+        code: 0,
+    })
 }
 
 /// Plan 494：Region 洞排除（no-op 平台同型失败；宿主层据此走回退路径）。
@@ -81,7 +99,10 @@ pub fn apply_hole_regions(
     _win: Rect,
     _holes: &[Rect],
 ) -> Result<(), DockError> {
-    Err(DockError::Api { op: "noop", code: 0 })
+    Err(DockError::Api {
+        op: "noop",
+        code: 0,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,11 +116,17 @@ pub enum ShowMode {
 }
 
 pub fn show_window(_target: NativeHwnd, _mode: ShowMode) -> Result<(), DockError> {
-    Err(DockError::Api { op: "noop", code: 0 })
+    Err(DockError::Api {
+        op: "noop",
+        code: 0,
+    })
 }
 
 pub fn request_close(_target: NativeHwnd) -> Result<(), DockError> {
-    Err(DockError::Api { op: "noop", code: 0 })
+    Err(DockError::Api {
+        op: "noop",
+        code: 0,
+    })
 }
 
 pub fn is_alive(_target: NativeHwnd) -> bool {

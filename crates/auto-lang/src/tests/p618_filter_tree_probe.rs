@@ -127,22 +127,46 @@ fn p618_vm_filter_tree_recursion_probe() {
 
     let nodes = dc.bridge().read_state("nodes").expect("nodes state");
 
-    let f = dc.bridge().call_vm_fn("fact", &[Value::Int(5)]).expect("fact call");
+    let f = dc
+        .bridge()
+        .call_vm_fn("fact", &[Value::Int(5)])
+        .expect("fact call");
     println!("[probe] fact(5) = {:?}", f);
-    let ll = dc.bridge().call_vm_fn("label_lower", &[nodes.clone(), Value::Int(0)]);
+    let ll = dc
+        .bridge()
+        .call_vm_fn("label_lower", &[nodes.clone(), Value::Int(0)]);
     println!("[probe] label_lower = {:?}", ll);
-    let h2 = dc.bridge().call_vm_fn("hit_chain2", &[nodes.clone(), Value::Int(0)]);
+    let h2 = dc
+        .bridge()
+        .call_vm_fn("hit_chain2", &[nodes.clone(), Value::Int(0)]);
     println!("[probe] hit_chain2 = {:?}", h2);
-    let hl = dc.bridge().call_vm_fn("hit_lower", &[nodes.clone(), Value::Int(0), Value::str("DATA")]);
+    let hl = dc.bridge().call_vm_fn(
+        "hit_lower",
+        &[nodes.clone(), Value::Int(0), Value::str("DATA")],
+    );
     println!("[probe] hit_lower = {:?}", hl);
-    let ts = dc.bridge().call_vm_fn("lower_twostep", &[nodes.clone(), Value::Int(0)]);
+    let ts = dc
+        .bridge()
+        .call_vm_fn("lower_twostep", &[nodes.clone(), Value::Int(0)]);
     println!("[probe] lower_twostep = {:?}", ts);
-    let dr = dc.bridge().call_vm_fn("lower_direct", &[nodes.clone(), Value::Int(0)]);
+    let dr = dc
+        .bridge()
+        .call_vm_fn("lower_direct", &[nodes.clone(), Value::Int(0)]);
     println!("[probe] lower_direct = {:?}", dr);
-    let lo = dc.bridge().call_vm_fn("label_of", &[nodes.clone(), Value::Int(0)]).expect("label_of");
+    let lo = dc
+        .bridge()
+        .call_vm_fn("label_of", &[nodes.clone(), Value::Int(0)])
+        .expect("label_of");
     println!("[probe] label_of(nodes,0) = {:?}", lo);
-    let fs = dc.bridge().call_vm_fn("filter_simple", &[nodes.clone(), Value::str("cust")]).expect("filter_simple");
-    let fs_rows = match &fs { Value::Array(a) => a.values.len(), Value::VmRef(r) => dc.bridge().index_list_all(r.id).len(), other => panic!("{other:?}") };
+    let fs = dc
+        .bridge()
+        .call_vm_fn("filter_simple", &[nodes.clone(), Value::str("cust")])
+        .expect("filter_simple");
+    let fs_rows = match &fs {
+        Value::Array(a) => a.values.len(),
+        Value::VmRef(r) => dc.bridge().index_list_all(r.id).len(),
+        other => panic!("{other:?}"),
+    };
     println!("[probe] filter_simple(cust) rows = {}", fs_rows);
 
     // 命中过滤:cust → 保留 db(祖先) + t/customers
@@ -156,7 +180,11 @@ fn p618_vm_filter_tree_recursion_probe() {
         other => panic!("filter result should be a list, got {other:?}"),
     };
     println!("[probe] filter(cust) top rows = {}", rows.len());
-    assert_eq!(rows.len(), 1, "only db kept at top (customers nested, no self match)");
+    assert_eq!(
+        rows.len(),
+        1,
+        "only db kept at top (customers nested, no self match)"
+    );
     // 嵌套断言:db.children 应保留 t/customers(祖先保留语义)
     let db_obj = dc.bridge().materialize_obj_ref(&rows[0]);
     let db_kids = match &db_obj {
@@ -195,5 +223,9 @@ fn p618_vm_filter_tree_recursion_probe() {
         Value::VmRef(r) => dc.bridge().index_list_all(r.id),
         other => panic!("computed should be a list, got {other:?}"),
     };
-    assert_eq!(comp_rows.len(), 1, "computed path sees filtered tree (db only at top)");
+    assert_eq!(
+        comp_rows.len(),
+        1,
+        "computed path sees filtered tree (db only at top)"
+    );
 }

@@ -60,10 +60,13 @@ impl FormGenerator {
 
     /// Extract bool value from prop
     fn extract_bool(props: &HashMap<String, AuraPropValue>, key: &str) -> bool {
-        props.get(key).and_then(|p| match p {
-            AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
-            _ => None,
-        }).unwrap_or(false)
+        props
+            .get(key)
+            .and_then(|p| match p {
+                AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
+                _ => None,
+            })
+            .unwrap_or(false)
     }
 
     /// Extract int value from prop
@@ -124,12 +127,18 @@ impl FormGenerator {
                 "email" => {
                     self.add_import("androidx.compose.foundation.text.KeyboardOptions");
                     self.add_import("androidx.compose.ui.text.input.KeyboardType");
-                    parts.push("keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)".to_string());
+                    parts.push(
+                        "keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)"
+                            .to_string(),
+                    );
                 }
                 "number" => {
                     self.add_import("androidx.compose.foundation.text.KeyboardOptions");
                     self.add_import("androidx.compose.ui.text.input.KeyboardType");
-                    parts.push("keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)".to_string());
+                    parts.push(
+                        "keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)"
+                            .to_string(),
+                    );
                 }
                 _ => {}
             }
@@ -138,11 +147,17 @@ impl FormGenerator {
         parts.push("singleLine = true".to_string());
         parts.push("modifier = Modifier.fillMaxWidth()".to_string());
 
-        Ok(format!("OutlinedTextField(\n        {}\n    )", parts.join(",\n        ")))
+        Ok(format!(
+            "OutlinedTextField(\n        {}\n    )",
+            parts.join(",\n        ")
+        ))
     }
 
     /// Generate OutlinedTextField for textarea element (multi-line)
-    pub fn generate_textarea(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+    pub fn generate_textarea(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> GenResult<String> {
         self.add_import("androidx.compose.material3.OutlinedTextField");
         self.add_import("androidx.compose.material3.Text");
         self.add_import("androidx.compose.ui.Modifier");
@@ -175,11 +190,17 @@ impl FormGenerator {
 
         parts.push("modifier = Modifier.fillMaxWidth()".to_string());
 
-        Ok(format!("OutlinedTextField(\n        {}\n    )", parts.join(",\n        ")))
+        Ok(format!(
+            "OutlinedTextField(\n        {}\n    )",
+            parts.join(",\n        ")
+        ))
     }
 
     /// Generate Checkbox component
-    pub fn generate_checkbox(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+    pub fn generate_checkbox(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> GenResult<String> {
         self.add_import("androidx.compose.material3.Checkbox");
         self.add_import("androidx.compose.material3.Text");
         self.add_import("androidx.compose.foundation.layout.Row");
@@ -189,7 +210,8 @@ impl FormGenerator {
         self.add_import("androidx.compose.ui.Modifier");
         self.add_import("androidx.compose.ui.unit.dp");
 
-        let state_ref = Self::extract_state_ref(props, "checked").unwrap_or_else(|| "checked".to_string());
+        let state_ref =
+            Self::extract_state_ref(props, "checked").unwrap_or_else(|| "checked".to_string());
         let label = Self::extract_string(props, "label");
         let disabled = Self::extract_bool(props, "disabled");
 
@@ -204,7 +226,7 @@ impl FormGenerator {
         // If there's a label, wrap in a Row
         if let Some(label_text) = label {
             Ok(format!(
-r#"Row(
+                r#"Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth()
     ) {{
@@ -218,7 +240,10 @@ r#"Row(
                 label_text
             ))
         } else {
-            Ok(format!("Checkbox(\n        {}\n    )", checkbox_parts.join(",\n        ")))
+            Ok(format!(
+                "Checkbox(\n        {}\n    )",
+                checkbox_parts.join(",\n        ")
+            ))
         }
     }
 
@@ -231,7 +256,8 @@ r#"Row(
         self.add_import("androidx.compose.ui.Alignment");
         self.add_import("androidx.compose.ui.Modifier");
 
-        let state_ref = Self::extract_state_ref(props, "checked").unwrap_or_else(|| "checked".to_string());
+        let state_ref =
+            Self::extract_state_ref(props, "checked").unwrap_or_else(|| "checked".to_string());
         let label = Self::extract_string(props, "label");
         let disabled = Self::extract_bool(props, "disabled");
 
@@ -246,7 +272,7 @@ r#"Row(
         // If there's a label, wrap in a Row with space between
         if let Some(label_text) = label {
             Ok(format!(
-r#"Row(
+                r#"Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier.fillMaxWidth()
@@ -260,7 +286,10 @@ r#"Row(
                 switch_parts.join(",\n            ")
             ))
         } else {
-            Ok(format!("Switch(\n        {}\n    )", switch_parts.join(",\n        ")))
+            Ok(format!(
+                "Switch(\n        {}\n    )",
+                switch_parts.join(",\n        ")
+            ))
         }
     }
 
@@ -269,7 +298,8 @@ r#"Row(
         self.add_import("androidx.compose.material3.Slider");
         self.add_import("androidx.compose.ui.Modifier");
 
-        let state_ref = Self::extract_state_ref(props, "value").unwrap_or_else(|| "value".to_string());
+        let state_ref =
+            Self::extract_state_ref(props, "value").unwrap_or_else(|| "value".to_string());
 
         let min = Self::extract_int(props, "min").unwrap_or(0) as f32;
         let max = Self::extract_int(props, "max").unwrap_or(100) as f32;
@@ -293,7 +323,10 @@ r#"Row(
 
         parts.push("modifier = Modifier.fillMaxWidth()".to_string());
 
-        Ok(format!("Slider(\n        {}\n    )", parts.join(",\n        ")))
+        Ok(format!(
+            "Slider(\n        {}\n    )",
+            parts.join(",\n        ")
+        ))
     }
 
     /// Generate Progress indicator component
@@ -318,10 +351,13 @@ r#"Row(
     /// Progress (value: 0.7) {}              // Circular determinate (70%)
     /// Progress (type: "linear", value: 0.5) {} // Linear determinate (50%)
     /// ```
-    pub fn generate_progress(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+    pub fn generate_progress(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> GenResult<String> {
         // Extract type (default: circular)
-        let progress_type = Self::extract_string(props, "type")
-            .unwrap_or_else(|| "circular".to_string());
+        let progress_type =
+            Self::extract_string(props, "type").unwrap_or_else(|| "circular".to_string());
 
         // Extract value (optional - if present, determinate mode)
         let value = Self::extract_float(props, "value");
@@ -356,14 +392,20 @@ r#"Row(
                 if parts.is_empty() {
                     Ok("LinearProgressIndicator()".to_string())
                 } else {
-                    Ok(format!("LinearProgressIndicator(\n        {}\n    )", parts.join(",\n        ")))
+                    Ok(format!(
+                        "LinearProgressIndicator(\n        {}\n    )",
+                        parts.join(",\n        ")
+                    ))
                 }
             }
             _ => {
                 if parts.is_empty() {
                     Ok("CircularProgressIndicator()".to_string())
                 } else {
-                    Ok(format!("CircularProgressIndicator(\n        {}\n    )", parts.join(",\n        ")))
+                    Ok(format!(
+                        "CircularProgressIndicator(\n        {}\n    )",
+                        parts.join(",\n        ")
+                    ))
                 }
             }
         }
@@ -446,7 +488,10 @@ r#"Row(
         // Modifier placeholder
         parts.push("modifier = Modifier".to_string());
 
-        Ok(format!("AsyncImage(\n        {}\n    )", parts.join(",\n        ")))
+        Ok(format!(
+            "AsyncImage(\n        {}\n    )",
+            parts.join(",\n        ")
+        ))
     }
 
     /// Generate Badge component
@@ -475,8 +520,7 @@ r#"Row(
         self.add_import("androidx.compose.material3.Text");
 
         // Extract variant
-        let variant = Self::extract_string(props, "variant")
-            .unwrap_or_default();
+        let variant = Self::extract_string(props, "variant").unwrap_or_default();
 
         // Extract count (optional)
         let count = Self::extract_int(props, "count");
@@ -581,7 +625,10 @@ r#"Row(
     ///     supportingContent = { Text("App preferences") }
     /// )
     /// ```
-    pub fn generate_list_item(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
+    pub fn generate_list_item(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> GenResult<String> {
         self.add_import("androidx.compose.material3.ListItem");
         self.add_import("androidx.compose.material3.Text");
 
@@ -597,8 +644,8 @@ r#"Row(
             .or_else(|| Self::extract_string(props, "description"));
 
         // Extract leading content
-        let leading = Self::extract_string(props, "leading")
-            .or_else(|| Self::extract_string(props, "icon"));
+        let leading =
+            Self::extract_string(props, "leading").or_else(|| Self::extract_string(props, "icon"));
 
         // Extract trailing content
         let trailing = Self::extract_string(props, "trailing")
@@ -611,7 +658,10 @@ r#"Row(
 
         // Overline
         if let Some(overline_text) = overline {
-            parts.push(format!("overlineContent = {{ Text(\"{}\") }}", overline_text));
+            parts.push(format!(
+                "overlineContent = {{ Text(\"{}\") }}",
+                overline_text
+            ));
         }
 
         // Headline (required)
@@ -619,7 +669,10 @@ r#"Row(
 
         // Supporting content
         if let Some(supporting_text) = supporting {
-            parts.push(format!("supportingContent = {{ Text(\"{}\") }}", supporting_text));
+            parts.push(format!(
+                "supportingContent = {{ Text(\"{}\") }}",
+                supporting_text
+            ));
         }
 
         // Leading content (icon)
@@ -635,7 +688,10 @@ r#"Row(
 
         // Trailing content
         if let Some(trailing_text) = trailing {
-            parts.push(format!("trailingContent = {{ Text(\"{}\") }}", trailing_text));
+            parts.push(format!(
+                "trailingContent = {{ Text(\"{}\") }}",
+                trailing_text
+            ));
         }
 
         Ok(format!(
@@ -661,8 +717,8 @@ r#"Row(
     /// - `onDismiss`: For InputChip, dismiss handler
     pub fn generate_chip(&mut self, props: &HashMap<String, AuraPropValue>) -> GenResult<String> {
         // Extract variant (default: "assist")
-        let variant = Self::extract_string(props, "variant")
-            .unwrap_or_else(|| "assist".to_string());
+        let variant =
+            Self::extract_string(props, "variant").unwrap_or_else(|| "assist".to_string());
 
         // Extract text (primary prop or "text" prop)
         let text = Self::extract_string(props, "text")
@@ -698,7 +754,11 @@ r#"Row(
     }
 
     /// Generate AssistChip
-    fn generate_assist_chip(&mut self, props: &HashMap<String, AuraPropValue>, text: &str) -> GenResult<String> {
+    fn generate_assist_chip(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        text: &str,
+    ) -> GenResult<String> {
         let mut parts = Vec::new();
 
         // onClick
@@ -710,7 +770,10 @@ r#"Row(
         // Leading icon
         if let Some(icon) = Self::extract_string(props, "icon") {
             self.add_import("androidx.compose.material.icons.Icons");
-            self.add_import(&format!("androidx.compose.material.icons.filled.{}", Self::capitalize_icon(&icon)));
+            self.add_import(&format!(
+                "androidx.compose.material.icons.filled.{}",
+                Self::capitalize_icon(&icon)
+            ));
             self.add_import("androidx.compose.material3.Icon");
             parts.push(format!(
                 "leadingIcon = {{ Icon(Icons.Default.{}, contentDescription = null) }}",
@@ -723,11 +786,18 @@ r#"Row(
             parts.push("enabled = false".to_string());
         }
 
-        Ok(format!("AssistChip(\n        {}\n    )", parts.join(",\n        ")))
+        Ok(format!(
+            "AssistChip(\n        {}\n    )",
+            parts.join(",\n        ")
+        ))
     }
 
     /// Generate FilterChip
-    fn generate_filter_chip(&mut self, props: &HashMap<String, AuraPropValue>, text: &str) -> GenResult<String> {
+    fn generate_filter_chip(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        text: &str,
+    ) -> GenResult<String> {
         let mut parts = Vec::new();
 
         // Selected state
@@ -743,7 +813,10 @@ r#"Row(
         // Leading icon (optional)
         if let Some(icon) = Self::extract_string(props, "icon") {
             self.add_import("androidx.compose.material.icons.Icons");
-            self.add_import(&format!("androidx.compose.material.icons.filled.{}", Self::capitalize_icon(&icon)));
+            self.add_import(&format!(
+                "androidx.compose.material.icons.filled.{}",
+                Self::capitalize_icon(&icon)
+            ));
             self.add_import("androidx.compose.material3.Icon");
             parts.push(format!(
                 "leadingIcon = if (selected) {{ {{ Icon(Icons.Default.{}, contentDescription = null) }} }} else null",
@@ -756,11 +829,18 @@ r#"Row(
             parts.push("enabled = false".to_string());
         }
 
-        Ok(format!("FilterChip(\n        {}\n    )", parts.join(",\n        ")))
+        Ok(format!(
+            "FilterChip(\n        {}\n    )",
+            parts.join(",\n        ")
+        ))
     }
 
     /// Generate InputChip
-    fn generate_input_chip(&mut self, props: &HashMap<String, AuraPropValue>, text: &str) -> GenResult<String> {
+    fn generate_input_chip(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        text: &str,
+    ) -> GenResult<String> {
         let mut parts = Vec::new();
 
         // Selected state
@@ -781,7 +861,10 @@ r#"Row(
         // Leading icon (optional)
         if let Some(icon) = Self::extract_string(props, "icon") {
             self.add_import("androidx.compose.material.icons.Icons");
-            self.add_import(&format!("androidx.compose.material.icons.filled.{}", Self::capitalize_icon(&icon)));
+            self.add_import(&format!(
+                "androidx.compose.material.icons.filled.{}",
+                Self::capitalize_icon(&icon)
+            ));
             self.add_import("androidx.compose.material3.Icon");
             parts.push(format!(
                 "avatar = {{ Icon(Icons.Default.{}, contentDescription = null) }}",
@@ -794,11 +877,18 @@ r#"Row(
             parts.push("enabled = false".to_string());
         }
 
-        Ok(format!("InputChip(\n        {}\n    )", parts.join(",\n        ")))
+        Ok(format!(
+            "InputChip(\n        {}\n    )",
+            parts.join(",\n        ")
+        ))
     }
 
     /// Generate SuggestionChip
-    fn generate_suggestion_chip(&mut self, props: &HashMap<String, AuraPropValue>, text: &str) -> GenResult<String> {
+    fn generate_suggestion_chip(
+        &mut self,
+        props: &HashMap<String, AuraPropValue>,
+        text: &str,
+    ) -> GenResult<String> {
         let mut parts = Vec::new();
 
         // onClick
@@ -810,7 +900,10 @@ r#"Row(
         // Icon (optional)
         if let Some(icon) = Self::extract_string(props, "icon") {
             self.add_import("androidx.compose.material.icons.Icons");
-            self.add_import(&format!("androidx.compose.material.icons.filled.{}", Self::capitalize_icon(&icon)));
+            self.add_import(&format!(
+                "androidx.compose.material.icons.filled.{}",
+                Self::capitalize_icon(&icon)
+            ));
             self.add_import("androidx.compose.material3.Icon");
             parts.push(format!(
                 "icon = {{ Icon(Icons.Default.{}, contentDescription = null) }}",
@@ -823,7 +916,10 @@ r#"Row(
             parts.push("enabled = false".to_string());
         }
 
-        Ok(format!("SuggestionChip(\n        {}\n    )", parts.join(",\n        ")))
+        Ok(format!(
+            "SuggestionChip(\n        {}\n    )",
+            parts.join(",\n        ")
+        ))
     }
 
     /// Capitalize icon name (e.g., "add" -> "Add")
@@ -853,7 +949,10 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())),
+        );
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -868,8 +967,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("email".into())));
-        props.insert("placeholder".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Enter email".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("email".into())),
+        );
+        props.insert(
+            "placeholder".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Enter email".into())),
+        );
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -882,8 +987,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("name".into())));
-        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Name".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("name".into())),
+        );
+        props.insert(
+            "label".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Name".into())),
+        );
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -896,8 +1007,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("password".into())));
-        props.insert("type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("password".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("password".into())),
+        );
+        props.insert(
+            "type".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("password".into())),
+        );
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -910,8 +1027,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())));
-        props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())),
+        );
+        props.insert(
+            "disabled".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Bool(true)),
+        );
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -924,8 +1047,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("content".into())));
-        props.insert("rows".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(5)));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("content".into())),
+        );
+        props.insert(
+            "rows".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(5)),
+        );
 
         let result = gen.generate_textarea(&props);
         assert!(result.is_ok());
@@ -938,7 +1067,10 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("done".into())));
+        props.insert(
+            "checked".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("done".into())),
+        );
 
         let result = gen.generate_checkbox(&props);
         assert!(result.is_ok());
@@ -953,8 +1085,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("agree".into())));
-        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("I agree".into())));
+        props.insert(
+            "checked".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("agree".into())),
+        );
+        props.insert(
+            "label".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("I agree".into())),
+        );
 
         let result = gen.generate_checkbox(&props);
         assert!(result.is_ok());
@@ -969,7 +1107,10 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("enabled".into())));
+        props.insert(
+            "checked".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("enabled".into())),
+        );
 
         let result = gen.generate_switch(&props);
         assert!(result.is_ok());
@@ -984,8 +1125,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("notifications".into())));
-        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Enable notifications".into())));
+        props.insert(
+            "checked".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("notifications".into())),
+        );
+        props.insert(
+            "label".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Enable notifications".into())),
+        );
 
         let result = gen.generate_switch(&props);
         assert!(result.is_ok());
@@ -1000,7 +1147,10 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("volume".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("volume".into())),
+        );
 
         let result = gen.generate_slider(&props);
         assert!(result.is_ok());
@@ -1015,9 +1165,18 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("progress".into())));
-        props.insert("min".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(0)));
-        props.insert("max".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(100)));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("progress".into())),
+        );
+        props.insert(
+            "min".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(0)),
+        );
+        props.insert(
+            "max".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(100)),
+        );
 
         let result = gen.generate_slider(&props);
         assert!(result.is_ok());
@@ -1030,10 +1189,22 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("rating".into())));
-        props.insert("min".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(0)));
-        props.insert("max".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(10)));
-        props.insert("step".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(1)));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("rating".into())),
+        );
+        props.insert(
+            "min".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(0)),
+        );
+        props.insert(
+            "max".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(10)),
+        );
+        props.insert(
+            "step".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(1)),
+        );
 
         let result = gen.generate_slider(&props);
         assert!(result.is_ok());
@@ -1064,8 +1235,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("done".into())));
-        props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
+        props.insert(
+            "checked".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("done".into())),
+        );
+        props.insert(
+            "disabled".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Bool(true)),
+        );
 
         let result = gen.generate_checkbox(&props);
         assert!(result.is_ok());
@@ -1078,8 +1255,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("checked".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("enabled".into())));
-        props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
+        props.insert(
+            "checked".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("enabled".into())),
+        );
+        props.insert(
+            "disabled".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Bool(true)),
+        );
 
         let result = gen.generate_switch(&props);
         assert!(result.is_ok());
@@ -1093,7 +1276,10 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("value".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("value".into())),
+        );
 
         let result = gen.generate_slider(&props);
         assert!(result.is_ok());
@@ -1106,13 +1292,21 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())));
-        props.insert("type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("password".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())),
+        );
+        props.insert(
+            "type".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("password".into())),
+        );
 
         let _ = gen.generate_input(&props);
 
         let imports = gen.get_imports();
-        assert!(imports.iter().any(|i| i.contains("PasswordVisualTransformation")));
+        assert!(imports
+            .iter()
+            .any(|i| i.contains("PasswordVisualTransformation")));
     }
 
     #[test]
@@ -1169,8 +1363,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("email".into())));
-        props.insert("type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("email".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("email".into())),
+        );
+        props.insert(
+            "type".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("email".into())),
+        );
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -1187,8 +1387,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("age".into())));
-        props.insert("type".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("number".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("age".into())),
+        );
+        props.insert(
+            "type".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("number".into())),
+        );
 
         let result = gen.generate_input(&props);
         assert!(result.is_ok());
@@ -1205,8 +1411,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("content".into())));
-        props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("content".into())),
+        );
+        props.insert(
+            "disabled".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Bool(true)),
+        );
 
         let result = gen.generate_textarea(&props);
         assert!(result.is_ok());
@@ -1219,7 +1431,10 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())),
+        );
 
         // Generate multiple inputs
         let _ = gen.generate_input(&props);
@@ -1227,7 +1442,10 @@ mod tests {
 
         // Verify no duplicate imports
         let imports = gen.get_imports();
-        let outlined_count = imports.iter().filter(|i| i.contains("OutlinedTextField")).count();
+        let outlined_count = imports
+            .iter()
+            .filter(|i| i.contains("OutlinedTextField"))
+            .count();
         assert_eq!(outlined_count, 1);
     }
 
@@ -1236,7 +1454,10 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Ident("text".into())),
+        );
 
         let _ = gen.generate_input(&props);
         assert!(!gen.get_imports().is_empty());
@@ -1254,8 +1475,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("assist".into())));
-        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Add Item".into())));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("assist".into())),
+        );
+        props.insert(
+            "text".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Add Item".into())),
+        );
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1270,19 +1497,32 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("assist".into())));
-        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Add".into())));
-        props.insert("icon".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("add".into())));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("assist".into())),
+        );
+        props.insert(
+            "text".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Add".into())),
+        );
+        props.insert(
+            "icon".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("add".into())),
+        );
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
         let code = result.unwrap();
         assert!(code.contains("AssistChip"));
-        assert!(code.contains("leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) }"));
+        assert!(
+            code.contains("leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) }")
+        );
 
         // Verify icon imports
         let imports = gen.get_imports();
-        assert!(imports.iter().any(|i| i.contains("androidx.compose.material.icons.filled.Add")));
+        assert!(imports
+            .iter()
+            .any(|i| i.contains("androidx.compose.material.icons.filled.Add")));
     }
 
     #[test]
@@ -1290,9 +1530,18 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("filter".into())));
-        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Filter".into())));
-        props.insert("selected".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("filter".into())),
+        );
+        props.insert(
+            "text".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Filter".into())),
+        );
+        props.insert(
+            "selected".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Bool(true)),
+        );
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1307,8 +1556,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("filter".into())));
-        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Option".into())));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("filter".into())),
+        );
+        props.insert(
+            "text".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Option".into())),
+        );
         // No selected prop - defaults to false
 
         let result = gen.generate_chip(&props);
@@ -1322,9 +1577,18 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("input".into())));
-        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Tag".into())));
-        props.insert("onDismiss".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("RemoveChip".into())));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("input".into())),
+        );
+        props.insert(
+            "text".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Tag".into())),
+        );
+        props.insert(
+            "onDismiss".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("RemoveChip".into())),
+        );
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1339,8 +1603,14 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("suggestion".into())));
-        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Suggestion".into())));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("suggestion".into())),
+        );
+        props.insert(
+            "text".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Suggestion".into())),
+        );
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1356,7 +1626,10 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Default".into())));
+        props.insert(
+            "text".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Default".into())),
+        );
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1369,9 +1642,18 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("assist".into())));
-        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Disabled".into())));
-        props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("assist".into())),
+        );
+        props.insert(
+            "text".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Disabled".into())),
+        );
+        props.insert(
+            "disabled".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Bool(true)),
+        );
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());
@@ -1385,9 +1667,18 @@ mod tests {
         let mut gen = FormGenerator::new();
         let mut props = HashMap::new();
 
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("assist".into())));
-        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Settings".into())));
-        props.insert("icon".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("settings".into())));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("assist".into())),
+        );
+        props.insert(
+            "text".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Settings".into())),
+        );
+        props.insert(
+            "icon".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("settings".into())),
+        );
 
         let result = gen.generate_chip(&props);
         assert!(result.is_ok());

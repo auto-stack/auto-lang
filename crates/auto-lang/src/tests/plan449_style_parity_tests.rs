@@ -29,7 +29,11 @@ mod plan449_style_migration_probe {
         ("shrink-0", "ok", "不收缩"),
         ("bg-card", "ok", "语义卡色"),
         ("bg-secondary", "ok", "语义次面色"),
-        ("border-r", "ok", "PLAN-050 T4 已补单侧边框臂(border-b/r/t/l,iced 1px 填充条降级)"),
+        (
+            "border-r",
+            "ok",
+            "PLAN-050 T4 已补单侧边框臂(border-b/r/t/l,iced 1px 填充条降级)",
+        ),
         ("border-border", "ok", "边框语义色"),
         ("gap-3", "ok", "12px"),
         ("px-3", "ok", "12px"),
@@ -37,7 +41,11 @@ mod plan449_style_migration_probe {
         ("pt-0", "ok", ""),
         ("h-full", "ok", ""),
         ("flex", "ok", ""),
-        ("items-baseline", "ok", "D3 已补降级臂(ItemsStart,iced 无基线对齐)"),
+        (
+            "items-baseline",
+            "ok",
+            "D3 已补降级臂(ItemsStart,iced 无基线对齐)",
+        ),
         ("gap-2", "ok", ""),
         ("px-0", "ok", ""),
         ("text-base", "ok", "16px"),
@@ -50,7 +58,11 @@ mod plan449_style_migration_probe {
         ("text-left", "ok", ""),
         ("bg-primary/10", "ok", "alpha 语法(主题暗感知)"),
         ("font-medium", "ok", ""),
-        ("hover:bg-accent", "variant", "hover 进 hover_classes,iced 按钮消费"),
+        (
+            "hover:bg-accent",
+            "variant",
+            "hover 进 hover_classes,iced 按钮消费",
+        ),
         ("mt-auto", "ok", ""),
         ("items-center", "ok", ""),
         ("justify-between", "ok", ""),
@@ -79,21 +91,33 @@ mod plan449_style_migration_probe {
         ("px-2.5", "ok", "D3 已补分数步进臂 Pixels(10)"),
         ("py-2.5", "ok", "D3 已补分数步进臂"),
         ("py-2", "ok", ""),
-        ("focus:outline-none", "variant", "focus: 非响应式前缀,整体跳过"),
+        (
+            "focus:outline-none",
+            "variant",
+            "focus: 非响应式前缀,整体跳过",
+        ),
         ("focus:ring-2", "variant", "focus: 跳过"),
         ("focus:ring-ring", "variant", "focus: 跳过"),
         ("px-4", "ok", ""),
         ("bg-primary", "ok", ""),
         ("text-primary-foreground", "ok", ""),
         ("hover:opacity-90", "variant", "hover+opacity 装饰"),
-        ("transition-opacity", "variant", "仅 transition-colors 有臂,其余跳过"),
+        (
+            "transition-opacity",
+            "variant",
+            "仅 transition-colors 有臂,其余跳过",
+        ),
         ("mt-1", "ok", ""),
         ("text-center", "ok", ""),
         ("bg-transparent", "ok", ""),
         ("border-none", "ok", ""),
         // Plan 518 注:underline 臂上游已补(class.rs Underline/NoUnderline),
         // 探针翻 ok——master 预存红,与 518 的 token 重校无关,顺带收口。
-        ("underline", "ok", "text-decoration 臂已补(Underline/NoUnderline)"),
+        (
+            "underline",
+            "ok",
+            "text-decoration 臂已补(Underline/NoUnderline)",
+        ),
         ("cursor-pointer", "ok", ""),
         ("hover:opacity-80", "variant", ""),
         ("bg-destructive/10", "ok", "alpha 语法"),
@@ -121,7 +145,11 @@ mod plan449_style_migration_probe {
         ("relative", "ok", ""),
         ("absolute", "ok", "VM 降级(无绝对定位)"),
         ("z-10", "ok", ""),
-        ("z-[100]", "gap", "z>50 拒绝且 arbitrary 不走 pixel 臂——草案避用"),
+        (
+            "z-[100]",
+            "gap",
+            "z>50 拒绝且 arbitrary 不走 pixel 臂——草案避用",
+        ),
         ("hidden", "ok", ""),
         ("inline-flex", "ok", ""),
         ("select-none", "gap", "user-select 无臂"),
@@ -143,7 +171,11 @@ mod plan449_style_migration_probe {
         ("appearance-none", "gap", "无臂"),
         ("italic", "gap", "无臂"),
         // Plan 527 T5:tracking 全档补臂(gap → ok,支持度列同步)
-        ("tracking-wide", "ok", "Plan 527 T5 tracking 全档(iced 无 letter_spacing,渲染分期)"),
+        (
+            "tracking-wide",
+            "ok",
+            "Plan 527 T5 tracking 全档(iced 无 letter_spacing,渲染分期)",
+        ),
     ];
 
     #[test]
@@ -303,11 +335,17 @@ mod plan449_style_parity_dump {
                         json!(format!("color({}@{})", name, fmt_alpha(a))),
                     )];
                     if let Some((r, g, b, a8)) = rgb {
-                        v.push(("_rgb_".to_string() + prop, json!(format!("{r},{g},{b},{a8}"))));
+                        v.push((
+                            "_rgb_".to_string() + prop,
+                            json!(format!("{r},{g},{b},{a8}")),
+                        ));
                     }
                     v
                 }
-                None => vec![(prop.to_string(), json!(format!("unresolved({base_with_alpha})")))],
+                None => vec![(
+                    prop.to_string(),
+                    json!(format!("unresolved({base_with_alpha})")),
+                )],
             }
         };
         let color_base = |prefixes: &[&str]| -> Option<String> {
@@ -441,31 +479,81 @@ mod plan449_style_parity_dump {
             RoundedFull => out.push(("border-radius".into(), json!("9999px"))),
             RoundedT(sz) => {
                 let px = sz.map(|x| x.to_pixels()).unwrap_or(4.0);
-                out.push(("border-top-left-radius".into(), json!(format!("{}px", trim_f32(px)))));
-                out.push(("border-top-right-radius".into(), json!(format!("{}px", trim_f32(px)))));
+                out.push((
+                    "border-top-left-radius".into(),
+                    json!(format!("{}px", trim_f32(px))),
+                ));
+                out.push((
+                    "border-top-right-radius".into(),
+                    json!(format!("{}px", trim_f32(px))),
+                ));
             }
             RoundedB(sz) => {
                 let px = sz.map(|x| x.to_pixels()).unwrap_or(4.0);
-                out.push(("border-bottom-left-radius".into(), json!(format!("{}px", trim_f32(px)))));
-                out.push(("border-bottom-right-radius".into(), json!(format!("{}px", trim_f32(px)))));
+                out.push((
+                    "border-bottom-left-radius".into(),
+                    json!(format!("{}px", trim_f32(px))),
+                ));
+                out.push((
+                    "border-bottom-right-radius".into(),
+                    json!(format!("{}px", trim_f32(px))),
+                ));
             }
             RoundedL(sz) => {
                 let px = sz.map(|x| x.to_pixels()).unwrap_or(4.0);
-                out.push(("border-top-left-radius".into(), json!(format!("{}px", trim_f32(px)))));
-                out.push(("border-bottom-left-radius".into(), json!(format!("{}px", trim_f32(px)))));
+                out.push((
+                    "border-top-left-radius".into(),
+                    json!(format!("{}px", trim_f32(px))),
+                ));
+                out.push((
+                    "border-bottom-left-radius".into(),
+                    json!(format!("{}px", trim_f32(px))),
+                ));
             }
             RoundedR(sz) => {
                 let px = sz.map(|x| x.to_pixels()).unwrap_or(4.0);
-                out.push(("border-top-right-radius".into(), json!(format!("{}px", trim_f32(px)))));
-                out.push(("border-bottom-right-radius".into(), json!(format!("{}px", trim_f32(px)))));
+                out.push((
+                    "border-top-right-radius".into(),
+                    json!(format!("{}px", trim_f32(px))),
+                ));
+                out.push((
+                    "border-bottom-right-radius".into(),
+                    json!(format!("{}px", trim_f32(px))),
+                ));
             }
-            RoundedTL(sz) => out.push(("border-top-left-radius".into(), json!(format!("{}px", trim_f32(sz.map(|x| x.to_pixels()).unwrap_or(4.0)))))),
-            RoundedTR(sz) => out.push(("border-top-right-radius".into(), json!(format!("{}px", trim_f32(sz.map(|x| x.to_pixels()).unwrap_or(4.0)))))),
-            RoundedBL(sz) => out.push(("border-bottom-left-radius".into(), json!(format!("{}px", trim_f32(sz.map(|x| x.to_pixels()).unwrap_or(4.0)))))),
-            RoundedBR(sz) => out.push(("border-bottom-right-radius".into(), json!(format!("{}px", trim_f32(sz.map(|x| x.to_pixels()).unwrap_or(4.0)))))),
+            RoundedTL(sz) => out.push((
+                "border-top-left-radius".into(),
+                json!(format!(
+                    "{}px",
+                    trim_f32(sz.map(|x| x.to_pixels()).unwrap_or(4.0))
+                )),
+            )),
+            RoundedTR(sz) => out.push((
+                "border-top-right-radius".into(),
+                json!(format!(
+                    "{}px",
+                    trim_f32(sz.map(|x| x.to_pixels()).unwrap_or(4.0))
+                )),
+            )),
+            RoundedBL(sz) => out.push((
+                "border-bottom-left-radius".into(),
+                json!(format!(
+                    "{}px",
+                    trim_f32(sz.map(|x| x.to_pixels()).unwrap_or(4.0))
+                )),
+            )),
+            RoundedBR(sz) => out.push((
+                "border-bottom-right-radius".into(),
+                json!(format!(
+                    "{}px",
+                    trim_f32(sz.map(|x| x.to_pixels()).unwrap_or(4.0))
+                )),
+            )),
             Border => out.push(("border-width".into(), json!("1px"))),
             Border0 => out.push(("border-width".into(), json!("0px"))),
-            BorderWidth(w) => out.push(("border-width".into(), json!(format!("{}px", trim_f32(*w))))),
+            BorderWidth(w) => {
+                out.push(("border-width".into(), json!(format!("{}px", trim_f32(*w)))))
+            }
             TextXs => out.push(("font-size".into(), json!("12px"))),
             TextSm => out.push(("font-size".into(), json!("14px"))),
             TextBase => out.push(("font-size".into(), json!("16px"))),
@@ -479,7 +567,9 @@ mod plan449_style_parity_dump {
             Text7Xl => out.push(("font-size".into(), json!("72px"))),
             Text8Xl => out.push(("font-size".into(), json!("96px"))),
             Text9Xl => out.push(("font-size".into(), json!("128px"))),
-            TextArbitrary(px) => out.push(("font-size".into(), json!(format!("{}px", trim_f32(*px))))),
+            TextArbitrary(px) => {
+                out.push(("font-size".into(), json!(format!("{}px", trim_f32(*px)))))
+            }
             FontBold => out.push(("font-weight".into(), json!("700"))),
             FontMedium => out.push(("font-weight".into(), json!("500"))),
             FontNormal => out.push(("font-weight".into(), json!("400"))),
@@ -536,7 +626,9 @@ mod plan449_style_parity_dump {
             Shadow2Xl => out.push(("_shadow".into(), json!("2xl"))),
             ShadowNone => out.push(("box-shadow".into(), json!("none"))),
             TransitionColors => out.push(("_transition".into(), json!("colors"))),
-            TransitionDuration(ms) => out.push(("_transition-duration".into(), json!(ms.to_string()))),
+            TransitionDuration(ms) => {
+                out.push(("_transition-duration".into(), json!(ms.to_string())))
+            }
             Rotate(deg) => out.push(("_rotate".into(), json!(trim_f32(*deg)))),
             Order(n) => out.push(("order".into(), json!(n.to_string()))),
             CodeLang(_) => {} // 元数据类,非视觉
@@ -573,10 +665,21 @@ mod plan449_style_parity_dump {
         let text = std::fs::read_to_string(&path).expect("read cases.json");
         let cases: Value = serde_json::from_str(&text).expect("parse cases.json");
         let empty = Vec::new();
-        let list = cases.get("cases").and_then(|c| c.as_array()).unwrap_or(&empty);
-        println!("[style-parity-dump] BEGIN {} cases from {}", list.len(), path.display());
+        let list = cases
+            .get("cases")
+            .and_then(|c| c.as_array())
+            .unwrap_or(&empty);
+        println!(
+            "[style-parity-dump] BEGIN {} cases from {}",
+            list.len(),
+            path.display()
+        );
         for case in list {
-            let id = case.get("id").and_then(|v| v.as_str()).unwrap_or("?").replace('"', "'");
+            let id = case
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?")
+                .replace('"', "'");
             let classes = case.get("classes").and_then(|v| v.as_str()).unwrap_or("");
             let tokens: Vec<Value> = classes.split_whitespace().map(dump_token).collect();
             println!(

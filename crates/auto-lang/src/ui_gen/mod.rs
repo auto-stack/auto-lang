@@ -15,37 +15,37 @@ pub mod shared;
 // Plan 482: nav-item/nav-group class-token contract (Vue scaffold ↔ VM builder).
 pub mod nav_contract;
 // Plan 561: sidebar_* class-token contract (VM 契约子集 ↔ shadcn 原版资产逐 token 锚).
+pub mod bp;
+pub mod rust;
 pub mod sidebar_contract;
 pub mod ts_adapter;
 pub mod vue;
-pub mod bp;
-pub mod rust;
 // PLAN-674 T-03/T-04：a2r codegen prop/event 词汇单源（per-kind
 // builder 方法面；表体落 ui_gen 的组合律依据见 vocab.rs 头注）。
-pub mod vocab;
-pub mod style;
-pub mod jet;
+pub mod api;
 pub mod ark;
 pub mod ark_adapter;
-pub mod kotlin_adapter;
-pub mod widget;
-pub mod api;
-pub mod validators;
 pub mod docs_gen;
+pub mod jet;
+pub mod kotlin_adapter;
+pub mod style;
+pub mod validators;
+pub mod vocab;
+pub mod widget;
 
 // Re-export main types
-pub use vue::VueGenerator;
-pub use vue::VueMode;
+pub use jet::JetGenerator;
 pub use rust::RustGenerator;
 pub use style::StyleGenerator;
-pub use jet::JetGenerator;
+pub use validators::{validate_sfc, Severity, ValidationContext, ValidationWarning};
+pub use vue::VueGenerator;
+pub use vue::VueMode;
 pub use widget::{WidgetCategory, WidgetRegistry, WidgetSpec};
-pub use validators::{validate_sfc, ValidationContext, ValidationWarning, Severity};
 
 // Re-export transpiler API (Plan 175 Phase 3 + Plan 361 §3)
 pub use api::{
-    transpile_file, transpile_aura, transpile_vue_aura,
-    generate_component_from_file, ComponentGenOptions, GeneratedComponent,
+    generate_component_from_file, transpile_aura, transpile_file, transpile_vue_aura,
+    ComponentGenOptions, GeneratedComponent,
 };
 
 use crate::aura::AuraWidget;

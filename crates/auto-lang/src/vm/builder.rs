@@ -6,7 +6,6 @@ use auto_val::{Instance, Obj, Type, Value};
 // StringBuilder Implementation
 // ============================================================================
 
-
 pub fn string_builder_new(ctx: &mut VmContext, capacity: Value) -> Value {
     let ty = ctx.lookup_type("StringBuilder");
     match &ty {

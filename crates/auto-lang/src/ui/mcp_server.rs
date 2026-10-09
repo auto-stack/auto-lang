@@ -21,8 +21,8 @@
 //! over POST /mcp. Compatible with all standard MCP clients (Claude Code, Cursor, etc.).
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 
 use serde_json::json;
 
@@ -32,8 +32,8 @@ use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::mcp_types::{ActionResult, UiActionType};
 use crate::ui::snapshot_builder::SnapshotBuilder;
-use crate::ui::vnode::{VNode, VNodeProps, VTree, VNodeId};
 use crate::ui::view::View;
+use crate::ui::vnode::{VNode, VNodeId, VNodeProps, VTree};
 use crate::ui::vtree_atom::{VTreeAtomBuilder, VTreeAtomOptions};
 
 // ============================================================================
@@ -255,12 +255,19 @@ pub struct ActionMessage {
 
 #[derive(Debug, Clone)]
 pub enum ActionTarget {
-    Event { widget: String, event: String },
-    Path { path: Vec<u16> },
+    Event {
+        widget: String,
+        event: String,
+    },
+    Path {
+        path: Vec<u16>,
+    },
     /// Test-only VM state injection. The JSON payload is carried in
     /// `ActionMessage.value`; the renderer acknowledges `request_id` after
     /// applying it on the iced thread.
-    Fixture { request_id: u64 },
+    Fixture {
+        request_id: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -272,8 +279,14 @@ pub enum BackendKind {
 
 #[derive(Debug, Clone)]
 pub enum FixtureAck {
-    Applied { changed: Vec<String>, trigger: Option<String> },
-    Error { code: String, message: String },
+    Applied {
+        changed: Vec<String>,
+        trigger: Option<String>,
+    },
+    Error {
+        code: String,
+        message: String,
+    },
 }
 
 impl SharedState {
@@ -311,13 +324,11 @@ impl SharedState {
         if let Some((k, s)) = self.app_surfaces.get_key_value(selector) {
             return Some((k, s));
         }
-        self.app_surfaces
-            .iter()
-            .find(|(k, _)| {
-                k.split(':').next() == Some(selector)
-                    || k.split(':').nth(1) == Some(selector)
-                    || k.contains(selector)
-            })
+        self.app_surfaces.iter().find(|(k, _)| {
+            k.split(':').next() == Some(selector)
+                || k.split(':').nth(1) == Some(selector)
+                || k.contains(selector)
+        })
     }
 
     /// 记一次 MCP 请求到达(HTTP 任何入口)。
@@ -332,7 +343,9 @@ impl SharedState {
 
     /// 最近 `within_secs` 秒内是否有 MCP 请求(agent 活跃)。
     pub fn mcp_active_recently(&self, within_secs: u64) -> bool {
-        let last = self.last_activity_ms.load(std::sync::atomic::Ordering::Relaxed);
+        let last = self
+            .last_activity_ms
+            .load(std::sync::atomic::Ordering::Relaxed);
         if last == 0 {
             return false;
         }
@@ -356,7 +369,9 @@ impl SharedState {
     /// Try to send an action message to the iced event loop.
     pub fn send_action(&self, msg: ActionMessage) -> Result<(), String> {
         match &self.action_tx {
-            Some(tx) => tx.send(msg).map_err(|e| format!("Channel send error: {}", e)),
+            Some(tx) => tx
+                .send(msg)
+                .map_err(|e| format!("Channel send error: {}", e)),
             None => Err("No action channel available".to_string()),
         }
     }
@@ -386,8 +401,8 @@ impl SharedState {
             shared.send_action(msg)?;
         }
         if let Some(id) = ack_id {
-            let deadline = std::time::Instant::now()
-                + std::time::Duration::from_millis(ACTION_ACK_TIMEOUT_MS);
+            let deadline =
+                std::time::Instant::now() + std::time::Duration::from_millis(ACTION_ACK_TIMEOUT_MS);
             while std::time::Instant::now() < deadline {
                 if shared.lock().unwrap().take_fixture_ack(id).is_some() {
                     break;
@@ -1290,7 +1305,11 @@ fn tool_definitions() -> Vec<serde_json::Value> {
 // Tool Dispatch (Plan 299: all tools as top-level functions)
 // ============================================================================
 
-fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json::Value) -> serde_json::Value {
+fn dispatch_tool_static(
+    shared: &SharedStateHandle,
+    name: &str,
+    args: serde_json::Value,
+) -> serde_json::Value {
     match name {
         "autoui_snapshot" => tool_snapshot(shared, args),
         "autoui_inspect" => tool_inspect(shared, args),
@@ -1320,14 +1339,24 @@ fn dispatch_tool_static(shared: &SharedStateHandle, name: &str, args: serde_json
 /// 观测面——.at state 零改动（不占声明位，ghost_* 先例的声明面绕开）。
 /// 线程安全：core 各字段 Mutex 守护，MCP 线程读与渲染线程写互斥安全；
 /// 探针轮询至读数稳定（vm-smoke 口径）。
-fn tool_editor_state(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+fn tool_editor_state(
+    shared_handle: &SharedStateHandle,
+    args: serde_json::Value,
+) -> serde_json::Value {
     let element_id_str = match args.get("element_id").and_then(|v| v.as_str()) {
         Some(s) => s.to_string(),
-        None => return error_result("Missing required parameter: element_id (the editor's vnode_N)"),
+        None => {
+            return error_result("Missing required parameter: element_id (the editor's vnode_N)")
+        }
     };
     let element_id = match parse_element_id(&element_id_str) {
         Some(id) => id,
-        None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'", element_id_str)),
+        None => {
+            return error_result(format!(
+                "Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'",
+                element_id_str
+            ))
+        }
     };
     #[cfg(all(feature = "autodown", feature = "code-editor"))]
     {
@@ -1422,9 +1451,14 @@ fn tool_snapshot(shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
     // 大树 build_aura 期间 UI 线程发帧不再等这把锁（P625-D1 AppHang 结构
     // 面孔的根修）。回退路径（首帧前源模板，小树、低频）保持原锁内语义。
     if let Some(snap) = shared.clone_styled_vtree() {
-        let layout_bounds = if include_bounds { shared.get_layout_bounds().clone() } else { HashMap::new() };
+        let layout_bounds = if include_bounds {
+            shared.get_layout_bounds().clone()
+        } else {
+            HashMap::new()
+        };
         drop(shared);
-        let output = build_aura_from_styled_vtree(&snap, include_status, include_bounds, &layout_bounds);
+        let output =
+            build_aura_from_styled_vtree(&snap, include_status, include_bounds, &layout_bounds);
         return text_result(output);
     }
 
@@ -1465,7 +1499,12 @@ fn tool_inspect(shared: &SharedStateHandle, args: serde_json::Value) -> serde_js
 
     let element_id = match parse_element_id(element_id_str) {
         Some(id) => id,
-        None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'", element_id_str)),
+        None => {
+            return error_result(format!(
+                "Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'",
+                element_id_str
+            ))
+        }
     };
 
     let shared = shared.lock().unwrap();
@@ -1490,7 +1529,9 @@ fn tool_inspect(shared: &SharedStateHandle, args: serde_json::Value) -> serde_js
             crate::ui::vnode::VNodeProps::Button { label, .. } => {
                 out.push_str(&format!("  label: {}\n", label));
             }
-            crate::ui::vnode::VNodeProps::Input { value, placeholder, .. } => {
+            crate::ui::vnode::VNodeProps::Input {
+                value, placeholder, ..
+            } => {
                 out.push_str(&format!("  value: {}\n", value));
                 out.push_str(&format!("  placeholder: {}\n", placeholder));
             }
@@ -1537,7 +1578,11 @@ fn tool_inspect(shared: &SharedStateHandle, args: serde_json::Value) -> serde_js
                     if !events.is_empty() {
                         out.push_str("  events:\n");
                         for (event_name, aura_event) in events {
-                            out.push_str(&format!("    {} -> {}\n", event_name, display_handler(&aura_event.handler)));
+                            out.push_str(&format!(
+                                "    {} -> {}\n",
+                                event_name,
+                                display_handler(&aura_event.handler)
+                            ));
                         }
                     }
 
@@ -1559,7 +1604,11 @@ fn collect_view_events(view: &View<DynamicMessage>) -> Vec<(String, String)> {
                 out.push(("onclick".into(), format!("{}.{}", w, e)));
             }
         }
-        View::Input { on_change, on_submit, .. } => {
+        View::Input {
+            on_change,
+            on_submit,
+            ..
+        } => {
             if let Some(m) = on_change {
                 if let Some((w, e)) = extract_dyn_msg(m) {
                     out.push(("onchange".into(), format!("{}.{}", w, e)));
@@ -1571,7 +1620,11 @@ fn collect_view_events(view: &View<DynamicMessage>) -> Vec<(String, String)> {
                 }
             }
         }
-        View::Textarea { on_change, on_submit, .. } => {
+        View::Textarea {
+            on_change,
+            on_submit,
+            ..
+        } => {
             if let Some(m) = on_change {
                 if let Some((w, e)) = extract_dyn_msg(m) {
                     out.push(("onchange".into(), format!("{}.{}", w, e)));
@@ -1596,7 +1649,6 @@ fn collect_view_events(view: &View<DynamicMessage>) -> Vec<(String, String)> {
     out
 }
 
-
 // ── Tool: autoui_action ──
 
 fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
@@ -1612,7 +1664,12 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
 
     let element_id = match parse_element_id(element_id_str) {
         Some(id) => id,
-        None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'", element_id_str)),
+        None => {
+            return error_result(format!(
+                "Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'",
+                element_id_str
+            ))
+        }
     };
 
     let action_type = match action_str {
@@ -1675,9 +1732,15 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         if !ok {
             return error_result("Action 'scroll' requires a Scrollable element (vnode_N)");
         }
-        let payload = format!("{element_id_str}{}{y}", crate::ui::iced::renderer::PAYLOAD_SEP);
+        let payload = format!(
+            "{element_id_str}{}{y}",
+            crate::ui::iced::renderer::PAYLOAD_SEP
+        );
         let msg = ActionMessage {
-            target: ActionTarget::Event { widget: String::new(), event: "__mcp_scroll".to_string() },
+            target: ActionTarget::Event {
+                widget: String::new(),
+                event: "__mcp_scroll".to_string(),
+            },
             action: UiActionType::Scroll,
             value: Some(payload),
         };
@@ -1720,9 +1783,9 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
                     .as_ref()
                     .and_then(|s| s.vtree.get(vnode_id))
                     .and_then(|n| match &n.props {
-                        crate::ui::vnode::VNodeProps::Table { table_key: Some(k), .. } => {
-                            Some(k.clone())
-                        }
+                        crate::ui::vnode::VNodeProps::Table {
+                            table_key: Some(k), ..
+                        } => Some(k.clone()),
                         _ => None,
                     }),
                 ElementId::Aura(_) => None,
@@ -1789,9 +1852,16 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
                 }
             };
             let dispatch_event = format!("{}\u{1F}s\u{1F}{}", event, id);
-            let widget = if widget.is_empty() { root_widget } else { widget };
+            let widget = if widget.is_empty() {
+                root_widget
+            } else {
+                widget
+            };
             let msg = ActionMessage {
-                target: ActionTarget::Event { widget, event: dispatch_event },
+                target: ActionTarget::Event {
+                    widget,
+                    event: dispatch_event,
+                },
                 action: UiActionType::Press,
                 value: Some(id.clone()),
             };
@@ -1836,9 +1906,17 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         if !pts_ok {
             return error_result("Action 'drag' points must be 'x,y' float pairs joined by ';'");
         }
-        let (w, down, mv, up) = (parts[0].to_string(), parts[1].to_string(), parts[2].to_string(), parts[3].to_string());
+        let (w, down, mv, up) = (
+            parts[0].to_string(),
+            parts[1].to_string(),
+            parts[2].to_string(),
+            parts[3].to_string(),
+        );
         let msg = ActionMessage {
-            target: ActionTarget::Event { widget: String::new(), event: "__mcp_drag".to_string() },
+            target: ActionTarget::Event {
+                widget: String::new(),
+                event: "__mcp_drag".to_string(),
+            },
             action: UiActionType::Drag,
             value: Some(spec),
         };
@@ -1878,7 +1956,10 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
             return error_result("Action 'pen' points must be 'x,y' float pairs joined by ';'");
         }
         let msg = ActionMessage {
-            target: ActionTarget::Event { widget: String::new(), event: "__mcp_pen".to_string() },
+            target: ActionTarget::Event {
+                widget: String::new(),
+                event: "__mcp_pen".to_string(),
+            },
             action: UiActionType::Drag,
             value: Some(spec.clone()),
         };
@@ -1901,12 +1982,22 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
     if action_str == "click" {
         let xy = match value.as_ref() {
             Some(auto_val::Value::Str(s)) => s.as_str().to_string(),
-            _ => return error_result("Action 'click' requires a string 'value' = \"x,y\" (widget-local px)"),
+            _ => {
+                return error_result(
+                    "Action 'click' requires a string 'value' = \"x,y\" (widget-local px)",
+                )
+            }
         };
         {
             let mut it = xy.split(',');
-            if it.next().and_then(|v| v.trim().parse::<f64>().ok()).is_none()
-                || it.next().and_then(|v| v.trim().parse::<f64>().ok()).is_none()
+            if it
+                .next()
+                .and_then(|v| v.trim().parse::<f64>().ok())
+                .is_none()
+                || it
+                    .next()
+                    .and_then(|v| v.trim().parse::<f64>().ok())
+                    .is_none()
             {
                 return error_result("Action 'click' value must be 'x,y' float pair");
             }
@@ -1936,7 +2027,10 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         };
         let payload = format!("{}{}{}", key, crate::ui::iced::renderer::PAYLOAD_SEP, xy);
         let msg = ActionMessage {
-            target: ActionTarget::Event { widget: String::new(), event: "__mcp_click".to_string() },
+            target: ActionTarget::Event {
+                widget: String::new(),
+                event: "__mcp_click".to_string(),
+            },
             action: UiActionType::Press,
             value: Some(payload),
         };
@@ -1971,13 +2065,17 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
                 keyspec
             ));
         }
-        let (key, widget, event) = match resolve_editor_target(shared_handle, element_id, element_id_str) {
-            Ok(t) => t,
-            Err(e) => return error_result(e),
-        };
+        let (key, widget, event) =
+            match resolve_editor_target(shared_handle, element_id, element_id_str) {
+                Ok(t) => t,
+                Err(e) => return error_result(e),
+            };
         let payload = editor_synthesis_payload(&key, &widget, &event, &keyspec);
         let msg = ActionMessage {
-            target: ActionTarget::Event { widget: String::new(), event: "__mcp_key".to_string() },
+            target: ActionTarget::Event {
+                widget: String::new(),
+                event: "__mcp_key".to_string(),
+            },
             action: UiActionType::KeyPress,
             value: Some(payload),
         };
@@ -2002,19 +2100,30 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
         let pts_ok = !pts.is_empty()
             && pts.split(';').all(|pair| {
                 let mut it = pair.split(',');
-                it.next().and_then(|s| s.trim().parse::<f64>().ok()).is_some()
-                    && it.next().and_then(|s| s.trim().parse::<f64>().ok()).is_some()
+                it.next()
+                    .and_then(|s| s.trim().parse::<f64>().ok())
+                    .is_some()
+                    && it
+                        .next()
+                        .and_then(|s| s.trim().parse::<f64>().ok())
+                        .is_some()
             });
         if !pts_ok {
-            return error_result("Action 'editor_drag' value must be non-empty 'x,y' float pairs joined by ';'");
+            return error_result(
+                "Action 'editor_drag' value must be non-empty 'x,y' float pairs joined by ';'",
+            );
         }
-        let (key, widget, event) = match resolve_editor_target(shared_handle, element_id, element_id_str) {
-            Ok(t) => t,
-            Err(e) => return error_result(e),
-        };
+        let (key, widget, event) =
+            match resolve_editor_target(shared_handle, element_id, element_id_str) {
+                Ok(t) => t,
+                Err(e) => return error_result(e),
+            };
         let payload = editor_synthesis_payload(&key, &widget, &event, &pts);
         let msg = ActionMessage {
-            target: ActionTarget::Event { widget: String::new(), event: "__mcp_drag_ade".to_string() },
+            target: ActionTarget::Event {
+                widget: String::new(),
+                event: "__mcp_drag_ade".to_string(),
+            },
             action: UiActionType::EditorDrag,
             value: Some(payload),
         };
@@ -2044,12 +2153,8 @@ fn tool_action(shared_handle: &SharedStateHandle, args: serde_json::Value) -> se
                     (Some(v), Some(m)) => (v, m),
                     _ => return error_result("No UI available yet"),
                 };
-                let snapshot = SnapshotBuilder::build(
-                    &shared.widget_name,
-                    &shared.state,
-                    view,
-                    id_map,
-                );
+                let snapshot =
+                    SnapshotBuilder::build(&shared.widget_name, &shared.state, view, id_map);
                 execute_action_on_shared(&shared, &snapshot.tree, aura_id, action_type, value)
             }
         };
@@ -2078,7 +2183,9 @@ fn find_buttons_by_label(shared: &SharedState, label: &str, limit: usize) -> Vec
         Some(s) => s,
         None => return Vec::new(),
     };
-    snap.vtree.nodes.iter()
+    snap.vtree
+        .nodes
+        .iter()
         .filter(|vnode| {
             format!("{}", vnode.kind).to_lowercase() == "button"
                 && vnode_searchable_text(&vnode.props).to_lowercase() == label_lower
@@ -2118,10 +2225,17 @@ fn format_state(state: &std::collections::HashMap<String, auto_val::Value>) -> S
 // is the "expression evaluation via MCP" interface: send ["2","+","3","="] and
 // read the result from the returned state — the computation happens through
 // real UI button presses, not direct math.
-fn tool_press_sequence(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
+fn tool_press_sequence(
+    shared_handle: &SharedStateHandle,
+    args: serde_json::Value,
+) -> serde_json::Value {
     let keys = match args.get("keys").and_then(|v| v.as_array()) {
         Some(arr) if !arr.is_empty() => arr.clone(),
-        _ => return error_result("Missing or empty required parameter: keys (array of button labels)"),
+        _ => {
+            return error_result(
+                "Missing or empty required parameter: keys (array of button labels)",
+            )
+        }
     };
     let delay_ms = args.get("delay_ms").and_then(|v| v.as_u64()).unwrap_or(50);
 
@@ -2131,7 +2245,10 @@ fn tool_press_sequence(shared_handle: &SharedStateHandle, args: serde_json::Valu
     for key_val in &keys {
         let label = match key_val.as_str() {
             Some(s) => s,
-            None => { last_error = Some(format!("Non-string key: {:?}", key_val)); break; }
+            None => {
+                last_error = Some(format!("Non-string key: {:?}", key_val));
+                break;
+            }
         };
         // Find the button by label.
         let find_result = {
@@ -2140,7 +2257,10 @@ fn tool_press_sequence(shared_handle: &SharedStateHandle, args: serde_json::Valu
         };
         let vnode_id = match find_result.first() {
             Some(id) => *id,
-            None => { last_error = Some(format!("No button found with label '{}'", label)); break; }
+            None => {
+                last_error = Some(format!("No button found with label '{}'", label));
+                break;
+            }
         };
         // Press it.
         let press_result = {
@@ -2154,7 +2274,10 @@ fn tool_press_sequence(shared_handle: &SharedStateHandle, args: serde_json::Valu
                     std::thread::sleep(std::time::Duration::from_millis(delay_ms));
                 }
             }
-            Err(e) => { last_error = Some(format!("Press '{}' failed: {}", label, e)); break; }
+            Err(e) => {
+                last_error = Some(format!("Press '{}' failed: {}", label, e));
+                break;
+            }
         }
     }
 
@@ -2165,12 +2288,19 @@ fn tool_press_sequence(shared_handle: &SharedStateHandle, args: serde_json::Valu
     };
 
     if let Some(err) = last_error {
-        error_result(format!("Sequence aborted after [{}]: {}", pressed.join(", "), err))
+        error_result(format!(
+            "Sequence aborted after [{}]: {}",
+            pressed.join(", "),
+            err
+        ))
     } else {
         let mut msg = format!("Pressed: [{}]\n\n{}", pressed.join(", "), state_text);
         // If a "state_fields" param was given, filter to just those fields.
         if let Some(fields) = args.get("state_fields").and_then(|v| v.as_array()) {
-            let want: Vec<String> = fields.iter().filter_map(|f| f.as_str().map(String::from)).collect();
+            let want: Vec<String> = fields
+                .iter()
+                .filter_map(|f| f.as_str().map(String::from))
+                .collect();
             msg = format!("Pressed: [{}]\n\n", pressed.join(", "));
             for line in state_text.lines() {
                 if want.iter().any(|w| line.contains(w.as_str())) {
@@ -2206,12 +2336,21 @@ fn tool_check(shared: &SharedStateHandle, _args: serde_json::Value) -> serde_jso
 
     fn collect_issues(node: &AuraNode, issues: &mut Vec<Issue>) {
         match node {
-            AuraNode::Element { tag, props, children, debug_id, .. } => {
+            AuraNode::Element {
+                tag,
+                props,
+                children,
+                debug_id,
+                ..
+            } => {
                 let support = render_support::get_support(tag);
                 if support.level != SupportLevel::Full {
-                    let ignored: Vec<String> = props.keys()
+                    let ignored: Vec<String> = props
+                        .keys()
                         .filter(|k| {
-                            if support.level == SupportLevel::Fallback || support.level == SupportLevel::Unsupported {
+                            if support.level == SupportLevel::Fallback
+                                || support.level == SupportLevel::Unsupported
+                            {
                                 !matches!(k.as_str(), "style" | "class")
                                     || support.ignored_props.contains(&k.as_str())
                             } else {
@@ -2238,7 +2377,11 @@ fn tool_check(shared: &SharedStateHandle, _args: serde_json::Value) -> serde_jso
                     collect_issues(child, issues);
                 }
             }
-            AuraNode::Conditional { then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 for child in then_body {
                     collect_issues(child, issues);
                 }
@@ -2260,10 +2403,12 @@ fn tool_check(shared: &SharedStateHandle, _args: serde_json::Value) -> serde_jso
             AuraNode::Element { children, .. } => {
                 1 + children.iter().map(count_elements).sum::<usize>()
             }
-            AuraNode::ForLoop { body, .. } => {
-                body.iter().map(count_elements).sum()
-            }
-            AuraNode::Conditional { then_body, else_body, .. } => {
+            AuraNode::ForLoop { body, .. } => body.iter().map(count_elements).sum(),
+            AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 let mut count: usize = then_body.iter().map(count_elements).sum();
                 if let Some(else_nodes) = else_body {
                     count += else_nodes.iter().map(count_elements).sum::<usize>();
@@ -2275,8 +2420,14 @@ fn tool_check(shared: &SharedStateHandle, _args: serde_json::Value) -> serde_jso
     }
 
     let total_elements = count_elements(template);
-    let error_count = issues.iter().filter(|i| i.level == SupportLevel::Fallback || i.level == SupportLevel::Unsupported).count();
-    let warn_count = issues.iter().filter(|i| i.level == SupportLevel::Partial).count();
+    let error_count = issues
+        .iter()
+        .filter(|i| i.level == SupportLevel::Fallback || i.level == SupportLevel::Unsupported)
+        .count();
+    let warn_count = issues
+        .iter()
+        .filter(|i| i.level == SupportLevel::Partial)
+        .count();
     let ok_count = total_elements - issues.len();
 
     let mut out = String::new();
@@ -2286,7 +2437,10 @@ fn tool_check(shared: &SharedStateHandle, _args: serde_json::Value) -> serde_jso
     if issues.is_empty() {
         out.push_str("No issues found — all elements fully supported.\n");
     } else {
-        out.push_str(&format!("Issues found: {} errors, {} warnings\n\n", error_count, warn_count));
+        out.push_str(&format!(
+            "Issues found: {} errors, {} warnings\n\n",
+            error_count, warn_count
+        ));
 
         for issue in &issues {
             let id_str = issue.id.map(|id| format!("#{}", id)).unwrap_or_default();
@@ -2295,17 +2449,25 @@ fn tool_check(shared: &SharedStateHandle, _args: serde_json::Value) -> serde_jso
                 SupportLevel::Partial => "WARN",
                 SupportLevel::Full => unreachable!(),
             };
-            out.push_str(&format!("[{}] {} {} — {:?}\n", level_str, id_str, issue.tag, issue.level));
+            out.push_str(&format!(
+                "[{}] {} {} — {:?}\n",
+                level_str, id_str, issue.tag, issue.level
+            ));
             out.push_str(&format!("  {}\n", issue.note));
             if !issue.ignored_props.is_empty() {
-                out.push_str(&format!("  Ignored props: {}\n", issue.ignored_props.join(", ")));
+                out.push_str(&format!(
+                    "  Ignored props: {}\n",
+                    issue.ignored_props.join(", ")
+                ));
             }
             out.push('\n');
         }
     }
 
-    out.push_str(&format!("Summary: {} errors, {} warnings, {} OK elements ({} total)\n",
-        error_count, warn_count, ok_count, total_elements));
+    out.push_str(&format!(
+        "Summary: {} errors, {} warnings, {} OK elements ({} total)\n",
+        error_count, warn_count, ok_count, total_elements
+    ));
 
     text_result(out)
 }
@@ -2324,10 +2486,20 @@ fn tool_screenshot(shared: &SharedStateHandle, args: serde_json::Value) -> serde
     }
     // Plan 371 Task 20: parse visual-regression options.
     let opts = ScreenshotOptions {
-        name: args.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-        baseline: args.get("baseline").and_then(|v| v.as_bool()).unwrap_or(false),
+        name: args
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        baseline: args
+            .get("baseline")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
         diff: args.get("diff").and_then(|v| v.as_bool()).unwrap_or(false),
-        threshold: args.get("threshold").and_then(|v| v.as_f64()).unwrap_or(0.01),
+        threshold: args
+            .get("threshold")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.01),
     };
     // diff/baseline require a name.
     if (opts.baseline || opts.diff) && opts.name.is_empty() {
@@ -2349,14 +2521,19 @@ fn tool_screenshot(shared: &SharedStateHandle, args: serde_json::Value) -> serde
 // ── Tool: autoui_state (Plan 299 Phase 2) ──
 
 fn tool_state(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
-    let filter_fields: Option<Vec<String>> = args.get("fields")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect());
+    let filter_fields: Option<Vec<String>> =
+        args.get("fields").and_then(|v| v.as_array()).map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        });
 
     let shared = shared.lock().unwrap();
 
     if shared.state.is_empty() {
-        return text_result("No state available yet — the application may not have rendered".to_string());
+        return text_result(
+            "No state available yet — the application may not have rendered".to_string(),
+        );
     }
 
     let mut out = String::from("State:\n");
@@ -2370,10 +2547,9 @@ fn tool_state(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
             // nested-component state with a prefix (e.g. `store.dark_mode`), so
             // querying `dark_mode` should still surface it; VM mode has the
             // bare name (`dark_mode`) and matches exactly.
-            let matches = fields.iter().any(|f| {
-                name.as_str() == f.as_str()
-                    || name.ends_with(&format!(".{}", f))
-            });
+            let matches = fields
+                .iter()
+                .any(|f| name.as_str() == f.as_str() || name.ends_with(&format!(".{}", f)));
             if !matches {
                 continue;
             }
@@ -2411,11 +2587,16 @@ fn fixture_error(code: &str, message: impl Into<String>) -> serde_json::Value {
     error_result(format!("{}: {}", code, message.into()))
 }
 
-pub(crate) fn fixture_json_to_value(v: &serde_json::Value, depth: usize, array_items: &mut usize)
-    -> Result<auto_val::Value, String>
-{
+pub(crate) fn fixture_json_to_value(
+    v: &serde_json::Value,
+    depth: usize,
+    array_items: &mut usize,
+) -> Result<auto_val::Value, String> {
     if depth > FIXTURE_MAX_DEPTH {
-        return Err(format!("fixture nesting exceeds {} levels", FIXTURE_MAX_DEPTH));
+        return Err(format!(
+            "fixture nesting exceeds {} levels",
+            FIXTURE_MAX_DEPTH
+        ));
     }
     match v {
         serde_json::Value::Null => Ok(auto_val::Value::Null),
@@ -2426,7 +2607,9 @@ pub(crate) fn fixture_json_to_value(v: &serde_json::Value, depth: usize, array_i
                 let i = i32::try_from(i).map_err(|_| "integer outside i32 range".to_string())?;
                 Ok(auto_val::Value::Int(i))
             } else {
-                let f = n.as_f64().ok_or_else(|| "invalid JSON number".to_string())?;
+                let f = n
+                    .as_f64()
+                    .ok_or_else(|| "invalid JSON number".to_string())?;
                 if !f.is_finite() {
                     return Err("fixture float must be finite".to_string());
                 }
@@ -2436,7 +2619,10 @@ pub(crate) fn fixture_json_to_value(v: &serde_json::Value, depth: usize, array_i
         serde_json::Value::Array(items) => {
             *array_items = array_items.saturating_add(items.len());
             if *array_items > FIXTURE_MAX_ARRAY_ITEMS {
-                return Err(format!("fixture arrays exceed {} total items", FIXTURE_MAX_ARRAY_ITEMS));
+                return Err(format!(
+                    "fixture arrays exceed {} total items",
+                    FIXTURE_MAX_ARRAY_ITEMS
+                ));
             }
             let values = items
                 .iter()
@@ -2447,7 +2633,10 @@ pub(crate) fn fixture_json_to_value(v: &serde_json::Value, depth: usize, array_i
         serde_json::Value::Object(map) => {
             let mut obj = auto_val::Obj::new();
             for (key, value) in map {
-                obj.set(key.clone(), fixture_json_to_value(value, depth + 1, array_items)?);
+                obj.set(
+                    key.clone(),
+                    fixture_json_to_value(value, depth + 1, array_items)?,
+                );
             }
             Ok(auto_val::Value::Obj(Box::new(obj)))
         }
@@ -2478,7 +2667,10 @@ pub(crate) fn fixture_value_kind(v: &auto_val::Value) -> &'static str {
     }
 }
 
-pub(crate) fn fixture_value_compatible(existing: &auto_val::Value, incoming: &auto_val::Value) -> bool {
+pub(crate) fn fixture_value_compatible(
+    existing: &auto_val::Value,
+    incoming: &auto_val::Value,
+) -> bool {
     let incoming_kind = fixture_value_kind(incoming);
     match fixture_value_kind(existing) {
         "int" => incoming_kind == "int",
@@ -2494,14 +2686,20 @@ pub(crate) fn fixture_value_compatible(existing: &auto_val::Value, incoming: &au
 
 fn tool_fixture(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
     if std::env::var("AUTOUI_TEST_FIXTURES").ok().as_deref() != Some("1") {
-        return fixture_error("fixtures_disabled", "set AUTOUI_TEST_FIXTURES=1 for test-only state injection");
+        return fixture_error(
+            "fixtures_disabled",
+            "set AUTOUI_TEST_FIXTURES=1 for test-only state injection",
+        );
     }
     let payload_bytes = match serde_json::to_vec(&args) {
         Ok(bytes) => bytes,
         Err(e) => return fixture_error("invalid_schema", format!("cannot encode request: {e}")),
     };
     if payload_bytes.len() > FIXTURE_MAX_BYTES {
-        return fixture_error("invalid_schema", format!("request exceeds {} bytes", FIXTURE_MAX_BYTES));
+        return fixture_error(
+            "invalid_schema",
+            format!("request exceeds {} bytes", FIXTURE_MAX_BYTES),
+        );
     }
     if args.get("schema_version").and_then(|v| v.as_i64()) != Some(1) {
         return fixture_error("invalid_schema", "schema_version must be 1");
@@ -2511,7 +2709,10 @@ fn tool_fixture(shared_handle: &SharedStateHandle, args: serde_json::Value) -> s
         _ => return fixture_error("invalid_schema", "state must be a non-empty object"),
     };
     if state_obj.len() > FIXTURE_MAX_FIELDS {
-        return fixture_error("invalid_schema", format!("state has more than {} fields", FIXTURE_MAX_FIELDS));
+        return fixture_error(
+            "invalid_schema",
+            format!("state has more than {} fields", FIXTURE_MAX_FIELDS),
+        );
     }
     let trigger = args.get("trigger").and_then(|v| v.as_object());
     let trigger_data = match trigger {
@@ -2521,17 +2722,34 @@ fn tool_fixture(shared_handle: &SharedStateHandle, args: serde_json::Value) -> s
             // 派发（on_with_input_for，namespaced 键）；{handler}——裸名
             // 直查注册表（call_handler 双查，驱动侧无需感知 widget 键形，
             // AddrGo 类 msg handler 全量可达）。两形态互斥。
-            let handler = t.get("handler").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
-            let widget = t.get("widget").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
-            let event = t.get("event").and_then(|v| v.as_str()).filter(|s| !s.is_empty());
+            let handler = t
+                .get("handler")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty());
+            let widget = t
+                .get("widget")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty());
+            let event = t
+                .get("event")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty());
             let input = match t.get("input") {
                 None | Some(serde_json::Value::Null) => None,
                 Some(serde_json::Value::String(value)) => Some(value.to_string()),
-                Some(_) => return fixture_error("invalid_schema", "trigger.input must be a string or null"),
+                Some(_) => {
+                    return fixture_error(
+                        "invalid_schema",
+                        "trigger.input must be a string or null",
+                    )
+                }
             };
             match (handler, widget, event) {
                 (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
-                    return fixture_error("invalid_schema", "trigger: use either {handler} or {widget, event}, not both")
+                    return fixture_error(
+                        "invalid_schema",
+                        "trigger: use either {handler} or {widget, event}, not both",
+                    )
                 }
                 (Some(handler), None, None) => Some(json!({ "handler": handler })),
                 (None, Some(widget), Some(event)) => Some(json!({
@@ -2539,7 +2757,12 @@ fn tool_fixture(shared_handle: &SharedStateHandle, args: serde_json::Value) -> s
                     "event": event,
                     "input": input,
                 })),
-                _ => return fixture_error("invalid_schema", "trigger requires non-empty widget+event or handler"),
+                _ => {
+                    return fixture_error(
+                        "invalid_schema",
+                        "trigger requires non-empty widget+event or handler",
+                    )
+                }
             }
         }
     };
@@ -2548,28 +2771,48 @@ fn tool_fixture(shared_handle: &SharedStateHandle, args: serde_json::Value) -> s
         let mut shared = shared_handle.lock().unwrap();
         match shared.backend_kind() {
             BackendKind::Vm => {}
-            BackendKind::Rust => return fixture_error("backend_unsupported", "autoui_fixture is VM-only"),
-            BackendKind::Unknown => return fixture_error("backend_unsupported", "renderer backend capability is not ready"),
+            BackendKind::Rust => {
+                return fixture_error("backend_unsupported", "autoui_fixture is VM-only")
+            }
+            BackendKind::Unknown => {
+                return fixture_error(
+                    "backend_unsupported",
+                    "renderer backend capability is not ready",
+                )
+            }
         }
         let mut array_items = 0usize;
         for (field, raw) in state_obj {
             let existing = match shared.state.get(field) {
                 Some(value) => value,
-                None => return fixture_error("unknown_field", format!("state field '{field}' is not available")),
+                None => {
+                    return fixture_error(
+                        "unknown_field",
+                        format!("state field '{field}' is not available"),
+                    )
+                }
             };
             let incoming = match fixture_json_to_value(raw, 0, &mut array_items) {
                 Ok(value) => value,
                 Err(e) => return fixture_error("invalid_schema", format!("field '{field}': {e}")),
             };
             if !fixture_value_compatible(existing, &incoming) {
-                return fixture_error("type_mismatch", format!("field '{field}' is {}, request is {}", fixture_value_kind(existing), fixture_value_kind(&incoming)));
+                return fixture_error(
+                    "type_mismatch",
+                    format!(
+                        "field '{field}' is {}, request is {}",
+                        fixture_value_kind(existing),
+                        fixture_value_kind(&incoming)
+                    ),
+                );
             }
         }
         let request_id = shared.next_fixture_id();
         let payload = json!({
             "state": state_obj,
             "trigger": trigger_data,
-        }).to_string();
+        })
+        .to_string();
         if let Err(e) = shared.send_action(ActionMessage {
             target: ActionTarget::Fixture { request_id },
             action: UiActionType::Press,
@@ -2580,7 +2823,8 @@ fn tool_fixture(shared_handle: &SharedStateHandle, args: serde_json::Value) -> s
         request_id
     };
 
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(FIXTURE_ACK_TIMEOUT_MS);
+    let deadline =
+        std::time::Instant::now() + std::time::Duration::from_millis(FIXTURE_ACK_TIMEOUT_MS);
     loop {
         if let Some(ack) = shared_handle.lock().unwrap().take_fixture_ack(request_id) {
             return match ack {
@@ -2594,7 +2838,13 @@ fn tool_fixture(shared_handle: &SharedStateHandle, args: serde_json::Value) -> s
             };
         }
         if std::time::Instant::now() >= deadline {
-            return fixture_error("ack_timeout", format!("request {request_id} was not applied within {}ms", FIXTURE_ACK_TIMEOUT_MS));
+            return fixture_error(
+                "ack_timeout",
+                format!(
+                    "request {request_id} was not applied within {}ms",
+                    FIXTURE_ACK_TIMEOUT_MS
+                ),
+            );
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
@@ -2623,7 +2873,8 @@ fn tool_action_config_reload() -> serde_json::Value {
             config_generation(),
         )),
         None => text_result(
-            "ActionConfigReload: no config wired (AUTO_VM_ACTION_CONFIG unset) — DSL bindings only".to_string(),
+            "ActionConfigReload: no config wired (AUTO_VM_ACTION_CONFIG unset) — DSL bindings only"
+                .to_string(),
         ),
     }
 }
@@ -2650,13 +2901,15 @@ fn tool_desktop(_shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
     match action {
         "bus" => {
             let Some(verb) = args.get("verb").and_then(|v| v.as_str()) else {
-                return error_result("Missing required parameter: verb (DesktopBus record, e.g. \"open_settings\")");
+                return error_result(
+                    "Missing required parameter: verb (DesktopBus record, e.g. \"open_settings\")",
+                );
             };
             #[cfg(feature = "ui-iced")]
             {
-                crate::ui::session::desktop_inject_push(
-                    crate::ui::session::DesktopInject::Bus(verb.to_string()),
-                );
+                crate::ui::session::desktop_inject_push(crate::ui::session::DesktopInject::Bus(
+                    verb.to_string(),
+                ));
                 text_result(format!("queued bus record: {verb}"))
             }
             #[cfg(not(feature = "ui-iced"))]
@@ -2668,7 +2921,9 @@ fn tool_desktop(_shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
         "handler" => {
             let app = args.get("app").and_then(|v| v.as_str()).unwrap_or("shell");
             let Some(handler) = args.get("handler").and_then(|v| v.as_str()) else {
-                return error_result("Missing required parameter: handler (e.g. \"OpenSettingsPanel\")");
+                return error_result(
+                    "Missing required parameter: handler (e.g. \"OpenSettingsPanel\")",
+                );
             };
             let arg = args.get("arg").and_then(|v| v.as_str()).map(str::to_string);
             // Plan 559 W7: optional (app, widget) sub-component targeting.
@@ -2752,9 +3007,9 @@ fn tool_desktop(_shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
                         ))
                     }
                 };
-                crate::ui::session::desktop_inject_push(
-                    crate::ui::session::DesktopInject::Key(input),
-                );
+                crate::ui::session::desktop_inject_push(crate::ui::session::DesktopInject::Key(
+                    input,
+                ));
                 text_result(format!("queued live input: {kind}"))
             }
             #[cfg(not(feature = "ui-iced"))]
@@ -2770,14 +3025,23 @@ fn tool_desktop(_shared: &SharedStateHandle, args: serde_json::Value) -> serde_j
 // ── Tool: autoui_wait (Plan 299 Phase 2) ──
 
 fn tool_wait(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serde_json::Value {
-    let timeout_ms = args.get("timeout_ms").and_then(|v| v.as_u64()).unwrap_or(5000);
-    let interval_ms = args.get("interval_ms").and_then(|v| v.as_u64()).unwrap_or(100);
+    let timeout_ms = args
+        .get("timeout_ms")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(5000);
+    let interval_ms = args
+        .get("interval_ms")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(100);
 
     // Plan 371 Task 9: element-level wait — poll autoui_exists until element
     // appears (condition="appears") or disappears (condition="disappears").
     let kind_filter = args.get("kind").and_then(|v| v.as_str());
     let label_filter = args.get("label").and_then(|v| v.as_str());
-    let condition = args.get("condition").and_then(|v| v.as_str()).unwrap_or("appears");
+    let condition = args
+        .get("condition")
+        .and_then(|v| v.as_str())
+        .unwrap_or("appears");
 
     if kind_filter.is_some() || label_filter.is_some() {
         let want_found = condition == "appears";
@@ -2805,7 +3069,10 @@ fn tool_wait(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
                     }
                 }
                 if let Some(lf) = label_filter {
-                    if !vnode_searchable_text(&vnode.props).to_lowercase().contains(&lf.to_lowercase()) {
+                    if !vnode_searchable_text(&vnode.props)
+                        .to_lowercase()
+                        .contains(&lf.to_lowercase())
+                    {
                         return false;
                     }
                 }
@@ -2813,15 +3080,29 @@ fn tool_wait(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
             });
 
             if found == want_found {
-                let state_str = if want_found { "appeared" } else { "disappeared" };
-                let crit: Vec<&str> = [kind_filter, label_filter].iter()
-                    .filter_map(|v| *v).collect();
-                return text_result(format!("Element {} ({}): {}", state_str, crit.join("/"), state_str));
+                let state_str = if want_found {
+                    "appeared"
+                } else {
+                    "disappeared"
+                };
+                let crit: Vec<&str> = [kind_filter, label_filter]
+                    .iter()
+                    .filter_map(|v| *v)
+                    .collect();
+                return text_result(format!(
+                    "Element {} ({}): {}",
+                    state_str,
+                    crit.join("/"),
+                    state_str
+                ));
             }
 
             if std::time::Instant::now() >= deadline {
                 let state_str = if want_found { "appear" } else { "disappear" };
-                return error_result(format!("Timeout waiting for element to {} (waited {}ms)", state_str, timeout_ms));
+                return error_result(format!(
+                    "Timeout waiting for element to {} (waited {}ms)",
+                    state_str, timeout_ms
+                ));
             }
             std::thread::sleep(std::time::Duration::from_millis(interval_ms));
         }
@@ -2860,11 +3141,17 @@ fn tool_wait(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
         };
 
         if after_str != before_str {
-            return text_result(format!("State changed: {}.{} = {} -> {}", field, "", before_str, after_str));
+            return text_result(format!(
+                "State changed: {}.{} = {} -> {}",
+                field, "", before_str, after_str
+            ));
         }
 
         if std::time::Instant::now() >= deadline {
-            return error_result(format!("Timeout waiting for state change on '{}' (waited {}ms)", field, timeout_ms));
+            return error_result(format!(
+                "Timeout waiting for state change on '{}' (waited {}ms)",
+                field, timeout_ms
+            ));
         }
     }
 }
@@ -2877,7 +3164,10 @@ fn tool_type(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
         None => return error_result("Missing required parameter: text"),
     };
     let element_id_opt = args.get("element_id").and_then(|v| v.as_str());
-    let clear_first = args.get("clear_first").and_then(|v| v.as_bool()).unwrap_or(true);
+    let clear_first = args
+        .get("clear_first")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
     // Plan 371 续篇 / ash-gui M1:统一用 parse_element_id,支持 vnode_ 和 aura_。
     // vnode_ 覆盖所有渲染元素(含子组件内部,如 PromptBar 的 input),是 vm 模式
@@ -2887,7 +3177,12 @@ fn tool_type(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
     let element_id = match element_id_opt {
         Some(id_str) => match parse_element_id(id_str) {
             Some(id) => id,
-            None => return error_result(format!("Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'", id_str)),
+            None => {
+                return error_result(format!(
+                    "Invalid element_id format: '{}' — expected 'aura_N' or 'vnode_N'",
+                    id_str
+                ))
+            }
         },
         None => {
             // 优先:从 styled_vtree(渲染后,展开 component)找首个 Input/Textarea vnode。
@@ -2920,8 +3215,15 @@ fn tool_type(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
                         (Some(v), Some(m)) => (v, m),
                         _ => return error_result("No UI available yet"),
                     };
-                    let snapshot = SnapshotBuilder::build(&shared.widget_name, &shared.state, view, id_map);
-                    execute_action_on_shared(&shared, &snapshot.tree, aura_id, UiActionType::Clear, None)
+                    let snapshot =
+                        SnapshotBuilder::build(&shared.widget_name, &shared.state, view, id_map);
+                    execute_action_on_shared(
+                        &shared,
+                        &snapshot.tree,
+                        aura_id,
+                        UiActionType::Clear,
+                        None,
+                    )
                 }
             }
         };
@@ -2935,16 +3237,26 @@ fn tool_type(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
     let result = {
         let shared = shared_handle.lock().unwrap();
         match element_id {
-            ElementId::Vnode(vid) => {
-                execute_action_vnode(&shared, vid, UiActionType::TypeText, Some(auto_val::Value::str(&text)))
-            }
+            ElementId::Vnode(vid) => execute_action_vnode(
+                &shared,
+                vid,
+                UiActionType::TypeText,
+                Some(auto_val::Value::str(&text)),
+            ),
             ElementId::Aura(aura_id) => {
                 let (view, id_map) = match (&shared.view, &shared.id_map) {
                     (Some(v), Some(m)) => (v, m),
                     _ => return error_result("No UI available yet"),
                 };
-                let snapshot = SnapshotBuilder::build(&shared.widget_name, &shared.state, view, id_map);
-                execute_action_on_shared(&shared, &snapshot.tree, aura_id, UiActionType::TypeText, Some(auto_val::Value::str(&text)))
+                let snapshot =
+                    SnapshotBuilder::build(&shared.widget_name, &shared.state, view, id_map);
+                execute_action_on_shared(
+                    &shared,
+                    &snapshot.tree,
+                    aura_id,
+                    UiActionType::TypeText,
+                    Some(auto_val::Value::str(&text)),
+                )
             }
         }
     };
@@ -2963,10 +3275,15 @@ fn tool_type(shared_handle: &SharedStateHandle, args: serde_json::Value) -> serd
 /// 返回 (handler 消息, 当前值) 供 tool_keyboard 合成 Submit 派发。
 fn enter_handler_in_view(view: &View<DynamicMessage>) -> Option<(DynamicMessage, String)> {
     match view {
-        View::Input { on_submit, value, .. } => {
-            on_submit.clone().map(|m| (m, value.clone()))
-        }
-        View::Textarea { on_submit, keydown, value, .. } => {
+        View::Input {
+            on_submit, value, ..
+        } => on_submit.clone().map(|m| (m, value.clone())),
+        View::Textarea {
+            on_submit,
+            keydown,
+            value,
+            ..
+        } => {
             if let Some(m) = on_submit {
                 return Some((m.clone(), value.clone()));
             }
@@ -2987,7 +3304,11 @@ fn enter_dispatch_for_input(shared: &SharedState) -> Option<ActionMessage> {
     let target = find_view_by_path(view, &vnode.path)?;
     let (msg, value) = enter_handler_in_view(target)?;
     let (w, e) = extract_dyn_msg(&msg)?;
-    let widget = if w.is_empty() { shared.widget_name.clone() } else { w };
+    let widget = if w.is_empty() {
+        shared.widget_name.clone()
+    } else {
+        w
+    };
     Some(ActionMessage {
         target: ActionTarget::Event { widget, event: e },
         action: UiActionType::Submit,
@@ -3000,9 +3321,14 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
         Some(k) => k,
         None => return error_result("Missing required parameter: key"),
     };
-    let _modifiers: Vec<String> = args.get("modifiers")
+    let _modifiers: Vec<String> = args
+        .get("modifiers")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
     let shared = shared_handle.lock().unwrap();
@@ -3027,8 +3353,12 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
         let has_alt = _modifiers.iter().any(|m| m.eq_ignore_ascii_case("alt"));
         let key_str = if has_ctrl || has_alt {
             let mut prefix = String::new();
-            if has_ctrl { prefix.push_str("Ctrl+"); }
-            if has_alt { prefix.push_str("Alt+"); }
+            if has_ctrl {
+                prefix.push_str("Ctrl+");
+            }
+            if has_alt {
+                prefix.push_str("Alt+");
+            }
             // For ctrl+r, key is "r"; first char lowercased.
             let c = key.chars().next().unwrap_or(' ').to_ascii_lowercase();
             format!("{}{}", prefix, c)
@@ -3038,7 +3368,9 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
         if key_str == "Enter" {
             if let Some(enter_msg) = enter_dispatch_for_input(&shared) {
                 return match shared.send_action(enter_msg) {
-                    Ok(()) => text_result("Key sent: Enter (routed to focused input declaration)".to_string()),
+                    Ok(()) => text_result(
+                        "Key sent: Enter (routed to focused input declaration)".to_string(),
+                    ),
                     Err(e) => error_result(format!("Failed to send key event: {}", e)),
                 };
             }
@@ -3085,13 +3417,29 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
                     event: handler,
                 },
                 action: UiActionType::Press,
-                value: Some(format!("{}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), key)),
+                value: Some(format!(
+                    "{}{}",
+                    _modifiers
+                        .iter()
+                        .map(|m| format!("{}+", m))
+                        .collect::<Vec<_>>()
+                        .join(""),
+                    key
+                )),
             }
         }
     };
 
     match shared.send_action(msg) {
-        Ok(()) => text_result(format!("Key sent: {}{}", _modifiers.iter().map(|m| format!("{}+", m)).collect::<Vec<_>>().join(""), key)),
+        Ok(()) => text_result(format!(
+            "Key sent: {}{}",
+            _modifiers
+                .iter()
+                .map(|m| format!("{}+", m))
+                .collect::<Vec<_>>()
+                .join(""),
+            key
+        )),
         Err(e) => error_result(format!("Failed to send key event: {}", e)),
     }
 }
@@ -3099,7 +3447,12 @@ fn tool_keyboard(shared_handle: &SharedStateHandle, args: serde_json::Value) -> 
 /// Find the first input element in the view template.
 fn find_first_input(node: &crate::aura::AuraNode) -> Option<AuraNodeId> {
     match node {
-        crate::aura::AuraNode::Element { tag, debug_id, children, .. } => {
+        crate::aura::AuraNode::Element {
+            tag,
+            debug_id,
+            children,
+            ..
+        } => {
             if tag == "input" || tag == "textarea" || tag == "code_editor" {
                 return *debug_id;
             }
@@ -3118,7 +3471,11 @@ fn find_first_input(node: &crate::aura::AuraNode) -> Option<AuraNodeId> {
             }
             None
         }
-        crate::aura::AuraNode::Conditional { then_body, else_body, .. } => {
+        crate::aura::AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             for child in then_body {
                 if let Some(id) = find_first_input(child) {
                     return Some(id);
@@ -3148,7 +3505,9 @@ fn find_first_input_vnode(shared: &SharedState) -> Option<VNodeId> {
     // Input/Textarea. DFS order via children would be more "first visible", but
     // flat iteration matches the snapshot's top-to-bottom render order closely
     // enough for the "type into the input" use case.
-    snap.vtree.nodes.iter()
+    snap.vtree
+        .nodes
+        .iter()
         .find(|n| matches!(n.kind, VNodeKind::Input | VNodeKind::Textarea))
         .map(|n| n.id)
 }
@@ -3229,7 +3588,9 @@ fn execute_action_on_shared(
         // PLAN-043 T6: scroll 在 tool_action 前置分支已处理，此旧通道
         // （execute_action_on_shared）不可达 scroll。
         UiActionType::Scroll => {
-            return Err("Action 'scroll' is handled before this path (Scrollable-only)".to_string());
+            return Err(
+                "Action 'scroll' is handled before this path (Scrollable-only)".to_string(),
+            );
         }
         // PLAN-043 T10: drag 同 scroll 在 tool_action 前置分支处理。
         UiActionType::Drag => {
@@ -3237,49 +3598,76 @@ fn execute_action_on_shared(
         }
         // PLAN-045 T7: resize_col 同 drag 在 tool_action 前置分支处理。
         UiActionType::ResizeCol => {
-            return Err("Action 'resize_col' is handled before this path (Table-keyed)".to_string());
+            return Err(
+                "Action 'resize_col' is handled before this path (Table-keyed)".to_string(),
+            );
         }
         // PLAN-057: key_press/editor_drag 同为前置分支处理的合成通道
         //（__mcp_key/__mcp_drag_ade，编辑壳 keyed 寻址）。
         UiActionType::KeyPress => {
-            return Err("Action 'key_press' is handled before this path (editor-keyed)".to_string());
+            return Err(
+                "Action 'key_press' is handled before this path (editor-keyed)".to_string(),
+            );
         }
         UiActionType::EditorDrag => {
-            return Err("Action 'editor_drag' is handled before this path (editor-keyed)".to_string());
+            return Err(
+                "Action 'editor_drag' is handled before this path (editor-keyed)".to_string(),
+            );
         }
         UiActionType::Press => {
             if target.kind != "Button" {
-                return Err(format!("Action 'press' not valid for component type '{}'", target.kind));
+                return Err(format!(
+                    "Action 'press' not valid for component type '{}'",
+                    target.kind
+                ));
             }
         }
         UiActionType::TypeText => {
             if target.kind != "Input" && target.kind != "Textarea" {
-                return Err(format!("Action 'type_text' not valid for component type '{}'", target.kind));
+                return Err(format!(
+                    "Action 'type_text' not valid for component type '{}'",
+                    target.kind
+                ));
             }
         }
         UiActionType::Toggle => {
             if target.kind != "Checkbox" {
-                return Err(format!("Action 'toggle' not valid for component type '{}'", target.kind));
+                return Err(format!(
+                    "Action 'toggle' not valid for component type '{}'",
+                    target.kind
+                ));
             }
         }
         UiActionType::SelectOption => {
             if target.kind != "Select" && target.kind != "Radio" {
-                return Err(format!("Action 'select_option' not valid for component type '{}'", target.kind));
+                return Err(format!(
+                    "Action 'select_option' not valid for component type '{}'",
+                    target.kind
+                ));
             }
         }
         UiActionType::SetValue => {
             if target.kind != "Slider" {
-                return Err(format!("Action 'set_value' not valid for component type '{}'", target.kind));
+                return Err(format!(
+                    "Action 'set_value' not valid for component type '{}'",
+                    target.kind
+                ));
             }
         }
         UiActionType::Clear => {
             if target.kind != "Input" && target.kind != "Textarea" {
-                return Err(format!("Action 'clear' not valid for component type '{}'", target.kind));
+                return Err(format!(
+                    "Action 'clear' not valid for component type '{}'",
+                    target.kind
+                ));
             }
         }
         UiActionType::Submit => {
             if target.kind != "Input" && target.kind != "Textarea" {
-                return Err(format!("Action 'submit' not valid for component type '{}'", target.kind));
+                return Err(format!(
+                    "Action 'submit' not valid for component type '{}'",
+                    target.kind
+                ));
             }
         }
     }
@@ -3300,23 +3688,33 @@ fn execute_action_on_shared(
         UiActionType::Clear => "type", // Clear uses the same handler as type_text
     };
 
-    let handler = target.actions.iter()
+    let handler = target
+        .actions
+        .iter()
         .find(|a| a.name == action_name)
         .map(|a| a.handler.trim_start_matches('.').to_string())
-        .ok_or_else(|| format!("No '{}' handler found on element #{}", action_name, element_id))?;
+        .ok_or_else(|| {
+            format!(
+                "No '{}' handler found on element #{}",
+                action_name, element_id
+            )
+        })?;
 
     // PLAN-661 T-03: set_value 的 f32 载荷编码进事件串（dynamic.rs
     // decode_payload 的 "f" 型 typechar）——on_with_input_for 解码为
     // Float 实参，`.SetVol(v float)` 收到数值而非空参（此前 SetValue
     // 不带载荷即空转的根因）。
     let dispatch_event = if matches!(action, UiActionType::SetValue) {
-        let v = value.as_ref().and_then(|v| match v {
-            auto_val::Value::Float(f) => Some(*f as f64),
-            auto_val::Value::Double(d) => Some(*d),
-            auto_val::Value::Int(i) => Some(*i as f64),
-            auto_val::Value::Str(s) => s.as_str().trim().parse::<f64>().ok(),
-            _ => None,
-        }).ok_or_else(|| "Action 'set_value' requires a numeric value parameter".to_string())?;
+        let v = value
+            .as_ref()
+            .and_then(|v| match v {
+                auto_val::Value::Float(f) => Some(*f as f64),
+                auto_val::Value::Double(d) => Some(*d),
+                auto_val::Value::Int(i) => Some(*i as f64),
+                auto_val::Value::Str(s) => s.as_str().trim().parse::<f64>().ok(),
+                _ => None,
+            })
+            .ok_or_else(|| "Action 'set_value' requires a numeric value parameter".to_string())?;
         format!("{}\u{1F}f\u{1F}{}", handler, v)
     } else {
         handler.clone()
@@ -3324,14 +3722,15 @@ fn execute_action_on_shared(
 
     // Build the ActionMessage to inject into iced event loop
     let input_value = match &action {
-        UiActionType::TypeText => {
-            Some(value.as_ref()
+        UiActionType::TypeText => Some(
+            value
+                .as_ref()
                 .map(|v| match v {
                     auto_val::Value::Str(s) => s.to_string(),
                     other => other.to_string(),
                 })
-                .ok_or_else(|| "Action 'type_text' requires a value parameter".to_string())?)
-        }
+                .ok_or_else(|| "Action 'type_text' requires a value parameter".to_string())?,
+        ),
         _ => None,
     };
 
@@ -3381,10 +3780,16 @@ enum ElementId {
 /// Parse either `aura_N` or `vnode_N` from a string.
 fn parse_element_id(s: &str) -> Option<ElementId> {
     if let Some(n) = s.strip_prefix("aura_") {
-        return n.parse::<u32>().ok().map(|n| ElementId::Aura(AuraNodeId(n)));
+        return n
+            .parse::<u32>()
+            .ok()
+            .map(|n| ElementId::Aura(AuraNodeId(n)));
     }
     if let Some(n) = s.strip_prefix("vnode_") {
-        return n.parse::<u64>().ok().map(|n| ElementId::Vnode(VNodeId::new(n)));
+        return n
+            .parse::<u64>()
+            .ok()
+            .map(|n| ElementId::Vnode(VNodeId::new(n)));
     }
     None
 }
@@ -3415,7 +3820,11 @@ pub(crate) fn find_view_by_path<'a>(
 /// Plan 403 re-confirmed for `.Digit(n)` single-arg).
 fn extract_dyn_msg(msg: &DynamicMessage) -> Option<(String, String)> {
     match msg {
-        DynamicMessage::Typed { widget_name, event_name, args } => {
+        DynamicMessage::Typed {
+            widget_name,
+            event_name,
+            args,
+        } => {
             let encoded = crate::ui::iced::encode_payload(event_name, args);
             Some((widget_name.clone(), encoded))
         }
@@ -3430,7 +3839,9 @@ pub(crate) fn extract_action_from_view(
     action_name: &str,
 ) -> Option<(String, String)> {
     match view {
-        View::Button { onclick, disabled, .. } if action_name == "press" => {
+        View::Button {
+            onclick, disabled, ..
+        } if action_name == "press" => {
             // Plan 423 P3: 禁用按钮点击无消息(iced 端 on_press=None 的对位)。
             if *disabled {
                 None
@@ -3467,18 +3878,14 @@ pub(crate) fn extract_action_from_view(
         // PLAN-661 T-03: slider set_value → onchange——事件名经
         // SliderChangeHandler 标签旁路（闭包内值不可提取，标签由 aura 臂
         // new_labeled 供给）；widget 名留空由调用方补根组件名。
-        View::Slider { on_change, .. } if action_name == "set_value" => {
-            on_change
-                .as_ref()
-                .and_then(|h| h.label().map(|name| (String::new(), name.to_string())))
-        }
+        View::Slider { on_change, .. } if action_name == "set_value" => on_change
+            .as_ref()
+            .and_then(|h| h.label().map(|name| (String::new(), name.to_string()))),
         // PLAN-661 T-05（R-1）：canvas press → onhit（ElementHitHandler 标签
         // 旁路；命中元素 id 由调用方经 "s" 载荷编码进事件串）。
-        View::Canvas { on_hit, .. } if action_name == "press" => {
-            on_hit
-                .as_ref()
-                .and_then(|h| h.label().map(|name| (String::new(), name.to_string())))
-        }
+        View::Canvas { on_hit, .. } if action_name == "press" => on_hit
+            .as_ref()
+            .and_then(|h| h.label().map(|name| (String::new(), name.to_string()))),
         // PLAN-043 T4: 布局件 onclick（row/col/div parity，renderer 侧
         // wrap_layout_onclick 消费面）——press 通道可达 layout onclick 件
         //（Details summary 行折叠回路）。
@@ -3606,9 +4013,13 @@ fn execute_action_vnode(
     action: UiActionType,
     value: Option<auto_val::Value>,
 ) -> Result<ActionResult, String> {
-    let snap = shared.styled_vtree.as_ref()
+    let snap = shared
+        .styled_vtree
+        .as_ref()
         .ok_or_else(|| "No styled VTree available yet".to_string())?;
-    let vnode = snap.vtree.get(vnode_id)
+    let vnode = snap
+        .vtree
+        .get(vnode_id)
         .ok_or_else(|| format!("VNode not found: vnode_{}", vnode_id.as_u64()))?;
 
     // Validate action type by VNode kind (works for both VM and Rust mode)
@@ -3632,26 +4043,47 @@ fn execute_action_vnode(
         // 的件仍由 extract 的 "No 'press' handler" 错误兜底。
         // PLAN-089: MouseArea 同放行（on_click 臂见 extract_action_from_view）。
         UiActionType::Press
-            if !matches!(vnode_kind_str.as_str(), "Button" | "Row" | "Column" | "Container" | "MouseArea") =>
-            return Err(format!("Action 'press' not valid for component type '{}'", vnode_kind_str)),
-        UiActionType::TypeText if vnode_kind_str != "Input" && vnode_kind_str != "Textarea" =>
-            return Err(format!("Action 'type_text' not valid for component type '{}'", vnode_kind_str)),
-        UiActionType::Submit if vnode_kind_str != "Input" && vnode_kind_str != "Textarea" =>
-            return Err(format!("Action 'submit' not valid for component type '{}'", vnode_kind_str)),
-        UiActionType::Toggle if vnode_kind_str != "Checkbox" =>
-            return Err(format!("Action 'toggle' not valid for component type '{}'", vnode_kind_str)),
+            if !matches!(
+                vnode_kind_str.as_str(),
+                "Button" | "Row" | "Column" | "Container" | "MouseArea"
+            ) =>
+        {
+            return Err(format!(
+                "Action 'press' not valid for component type '{}'",
+                vnode_kind_str
+            ))
+        }
+        UiActionType::TypeText if vnode_kind_str != "Input" && vnode_kind_str != "Textarea" => {
+            return Err(format!(
+                "Action 'type_text' not valid for component type '{}'",
+                vnode_kind_str
+            ))
+        }
+        UiActionType::Submit if vnode_kind_str != "Input" && vnode_kind_str != "Textarea" => {
+            return Err(format!(
+                "Action 'submit' not valid for component type '{}'",
+                vnode_kind_str
+            ))
+        }
+        UiActionType::Toggle if vnode_kind_str != "Checkbox" => {
+            return Err(format!(
+                "Action 'toggle' not valid for component type '{}'",
+                vnode_kind_str
+            ))
+        }
         _ => {}
     }
 
     // Build input_value for type_text/clear
     let mut input_value = match &action {
         UiActionType::TypeText => Some(
-            value.as_ref()
+            value
+                .as_ref()
                 .map(|v| match v {
                     auto_val::Value::Str(s) => s.to_string(),
                     other => other.to_string(),
                 })
-                .ok_or_else(|| "Action 'type_text' requires a value parameter".to_string())?
+                .ok_or_else(|| "Action 'type_text' requires a value parameter".to_string())?,
         ),
         UiActionType::Clear => Some(String::new()),
         _ => None,
@@ -3668,7 +4100,13 @@ fn execute_action_vnode(
         let target_view = find_view_by_path(view, &vnode.path)
             .ok_or_else(|| format!("View not found at path {:?}", vnode.path))?;
         let (widget_name, event_name) = extract_action_from_view(target_view, action_name)
-            .ok_or_else(|| format!("No '{}' handler found on vnode_{}", action_name, vnode_id.as_u64()))?;
+            .ok_or_else(|| {
+                format!(
+                    "No '{}' handler found on vnode_{}",
+                    action_name,
+                    vnode_id.as_u64()
+                )
+            })?;
         // ash-gui M1:submit 模拟 onenter(如 PromptBar 的 `onenter: .OnEnter`)。
         // handler 带 .input 参数,但 submit 不自带 value —— 从 target_view
         // (Input/Textarea)读当前 value 字段作为 handler 参数,使 Run(cmd) 收到
@@ -3680,30 +4118,44 @@ fn execute_action_vnode(
                 input_value = Some(v.clone());
             }
         }
-        let widget = if widget_name.is_empty() { shared.widget_name.clone() } else { widget_name };
+        let widget = if widget_name.is_empty() {
+            shared.widget_name.clone()
+        } else {
+            widget_name
+        };
         // PLAN-661 T-03: set_value 的 f32 载荷编码进事件串（decode_payload
         // "f" 型）——on_with_input_for 解码为 Float 实参送达 `.SetVol(v float)`。
         let dispatch_event = if action == UiActionType::SetValue {
-            let v = value.as_ref().and_then(|v| match v {
-                auto_val::Value::Float(f) => Some(*f as f64),
-                auto_val::Value::Double(d) => Some(*d),
-                auto_val::Value::Int(i) => Some(*i as f64),
-                auto_val::Value::Str(s) => s.as_str().trim().parse::<f64>().ok(),
-                _ => None,
-            }).ok_or_else(|| "Action 'set_value' requires a numeric value parameter".to_string())?;
+            let v = value
+                .as_ref()
+                .and_then(|v| match v {
+                    auto_val::Value::Float(f) => Some(*f as f64),
+                    auto_val::Value::Double(d) => Some(*d),
+                    auto_val::Value::Int(i) => Some(*i as f64),
+                    auto_val::Value::Str(s) => s.as_str().trim().parse::<f64>().ok(),
+                    _ => None,
+                })
+                .ok_or_else(|| {
+                    "Action 'set_value' requires a numeric value parameter".to_string()
+                })?;
             format!("{}\u{1F}f\u{1F}{}", event_name, v)
         } else {
             event_name.clone()
         };
         ActionMessage {
-            target: ActionTarget::Event { widget, event: dispatch_event },
+            target: ActionTarget::Event {
+                widget,
+                event: dispatch_event,
+            },
             action: action.clone(),
             value: input_value.clone(),
         }
     } else {
         // Rust mode: address by VNode path — the iced side resolves it exactly.
         ActionMessage {
-            target: ActionTarget::Path { path: vnode.path.clone() },
+            target: ActionTarget::Path {
+                path: vnode.path.clone(),
+            },
             action: action.clone(),
             value: input_value.clone(),
         }
@@ -3725,8 +4177,6 @@ fn execute_action_vnode(
         state_changes: vec![],
     })
 }
-
-
 
 /// Convert a JSON value to an Auto Value.
 fn json_value_to_auto_val(v: &serde_json::Value) -> Option<auto_val::Value> {
@@ -3769,7 +4219,10 @@ fn tool_vtree(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json
             .get("depth")
             .and_then(|v| v.as_i64())
             .map(|n| n.max(0) as usize),
-        include_box: args.get("include_box").and_then(|v| v.as_bool()).unwrap_or(true),
+        include_box: args
+            .get("include_box")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
         include_style: args
             .get("include_style")
             .and_then(|v| v.as_bool())
@@ -3823,7 +4276,9 @@ fn tool_select_rect(shared: &SharedStateHandle, args: serde_json::Value) -> serd
         return error_result("Invalid rect: w and h must be > 0");
     }
     let format = crate::ui::selection::SelectionFormat::parse(
-        args.get("format").and_then(|v| v.as_str()).unwrap_or("json"),
+        args.get("format")
+            .and_then(|v| v.as_str())
+            .unwrap_or("json"),
     );
     let rect = crate::ui::debug::Rect::new(x, y, w, h);
 
@@ -3838,9 +4293,7 @@ fn tool_select_rect(shared: &SharedStateHandle, args: serde_json::Value) -> serd
     let snap = match snap {
         Some(s) => s,
         None => {
-            return error_result(
-                "No live VTree snapshot yet — retry after the window has painted.",
-            )
+            return error_result("No live VTree snapshot yet — retry after the window has painted.")
         }
     };
 
@@ -3885,7 +4338,9 @@ fn tool_find(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json:
     let snap = shared.lock().unwrap().clone_styled_vtree();
     let snap = match snap {
         Some(s) => s,
-        None => return error_result("No live VTree snapshot yet — retry after the window has painted."),
+        None => {
+            return error_result("No live VTree snapshot yet — retry after the window has painted.")
+        }
     };
 
     let opts = VTreeAtomOptions {
@@ -3902,7 +4357,10 @@ fn tool_find(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json:
     let label_lower = label_filter.map(|s: &str| s.to_lowercase());
 
     // Find matching nodes
-    let matched_ids: Vec<VNodeId> = snap.vtree.nodes.iter()
+    let matched_ids: Vec<VNodeId> = snap
+        .vtree
+        .nodes
+        .iter()
         .filter(|vnode| {
             if let Some(ref kf) = kind_lower {
                 if format!("{}", vnode.kind).to_lowercase() != *kf {
@@ -3910,7 +4368,10 @@ fn tool_find(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json:
                 }
             }
             if let Some(ref lf) = label_lower {
-                if !vnode_searchable_text(&vnode.props).to_lowercase().contains(lf) {
+                if !vnode_searchable_text(&vnode.props)
+                    .to_lowercase()
+                    .contains(lf)
+                {
                     return false;
                 }
             }
@@ -3922,8 +4383,12 @@ fn tool_find(shared: &SharedStateHandle, args: serde_json::Value) -> serde_json:
 
     if matched_ids.is_empty() {
         let mut criteria = Vec::new();
-        if let Some(k) = kind_filter { criteria.push(format!("kind={}", k)); }
-        if let Some(l) = label_filter { criteria.push(format!("label~={}", l)); }
+        if let Some(k) = kind_filter {
+            criteria.push(format!("kind={}", k));
+        }
+        if let Some(l) = label_filter {
+            criteria.push(format!("label~={}", l));
+        }
         return text_result(format!("No nodes found matching: {}", criteria.join(", ")));
     }
 
@@ -3982,7 +4447,10 @@ fn build_ancestor_subtree(
         out.push_str(" {\n");
         // Annotate collapsed siblings
         if sibling_count > 1 {
-            out.push_str(&format!("  // {} sibling(s) collapsed\n", sibling_count - 1));
+            out.push_str(&format!(
+                "  // {} sibling(s) collapsed\n",
+                sibling_count - 1
+            ));
         }
 
         let child_atom = VTreeAtomBuilder::build_node_only(child, &snap.computed, opts);
@@ -4034,7 +4502,10 @@ fn build_ancestor_chain(
     for &idx in path {
         if let Some(node) = current {
             chain.push(node);
-            current = node.children.get(idx as usize).and_then(|id| snap.vtree.get(*id));
+            current = node
+                .children
+                .get(idx as usize)
+                .and_then(|id| snap.vtree.get(*id));
         }
     }
     // Add the target itself
@@ -4077,7 +4548,10 @@ fn tool_exists(shared: &SharedStateHandle, args: serde_json::Value) -> serde_jso
     let kind_lower = kind_filter.map(|s| s.to_lowercase());
     let label_lower = label_filter.map(|s: &str| s.to_lowercase());
 
-    let matches: Vec<&VNode> = snap.vtree.nodes.iter()
+    let matches: Vec<&VNode> = snap
+        .vtree
+        .nodes
+        .iter()
         .filter(|vnode| {
             if let Some(ref kf) = kind_lower {
                 if format!("{}", vnode.kind).to_lowercase() != *kf {
@@ -4085,7 +4559,10 @@ fn tool_exists(shared: &SharedStateHandle, args: serde_json::Value) -> serde_jso
                 }
             }
             if let Some(ref lf) = label_lower {
-                if !vnode_searchable_text(&vnode.props).to_lowercase().contains(lf) {
+                if !vnode_searchable_text(&vnode.props)
+                    .to_lowercase()
+                    .contains(lf)
+                {
                     return false;
                 }
             }
@@ -4094,19 +4571,29 @@ fn tool_exists(shared: &SharedStateHandle, args: serde_json::Value) -> serde_jso
         .collect();
 
     let mut criteria = Vec::new();
-    if let Some(k) = kind_filter { criteria.push(format!("kind={}", k)); }
-    if let Some(l) = label_filter { criteria.push(format!("label~={}", l)); }
+    if let Some(k) = kind_filter {
+        criteria.push(format!("kind={}", k));
+    }
+    if let Some(l) = label_filter {
+        criteria.push(format!("label~={}", l));
+    }
 
     if matches.is_empty() {
         text_result(format!("NOT FOUND (0 matches): {}", criteria.join(", ")))
     } else {
-        let ids: Vec<String> = matches.iter()
+        let ids: Vec<String> = matches
+            .iter()
             .map(|n| format!("vnode_{}", n.id.as_u64()))
             .collect();
-        let labels: Vec<String> = matches.iter()
+        let labels: Vec<String> = matches
+            .iter()
             .map(|n| {
                 let txt = vnode_searchable_text(&n.props);
-                if txt.is_empty() { format!("{}", n.kind) } else { format!("{} \"{}\"", n.kind, txt) }
+                if txt.is_empty() {
+                    format!("{}", n.kind)
+                } else {
+                    format!("{} \"{}\"", n.kind, txt)
+                }
             })
             .collect();
         text_result(format!(
@@ -4124,7 +4611,9 @@ fn vnode_searchable_text(props: &crate::ui::vnode::VNodeProps) -> String {
     match props {
         VNodeProps::Text { content, .. } => content.clone(),
         VNodeProps::Button { label, .. } => label.clone(),
-        VNodeProps::Input { placeholder, value, .. } => format!("{} {}", placeholder, value),
+        VNodeProps::Input {
+            placeholder, value, ..
+        } => format!("{} {}", placeholder, value),
         VNodeProps::Textarea { placeholder, value } => format!("{} {}", placeholder, value),
         VNodeProps::Checkbox { label, .. } => label.clone(),
         VNodeProps::Radio { label, .. } => label.clone(),
@@ -4171,7 +4660,16 @@ fn build_aura_from_styled_vtree(
     out.push_str(&format!("widget: \"{}\"\n", snap.widget_name));
     out.push_str("\ntree:\n");
     if let Some(root) = snap.vtree.root() {
-        aura_vtree_node(root, &snap.vtree, &snap.computed, include_status, include_bounds, layout_bounds, 0, &mut out);
+        aura_vtree_node(
+            root,
+            &snap.vtree,
+            &snap.computed,
+            include_status,
+            include_bounds,
+            layout_bounds,
+            0,
+            &mut out,
+        );
     }
     out
 }
@@ -4222,12 +4720,20 @@ fn aura_vtree_node(
     if include_bounds {
         if let Some(c) = comp {
             if let Some((x, y, w, h)) = c.bounds {
-                suffix.push_str(&format!(" @rect({},{},{},{})", x.round() as i32, y.round() as i32, w.round() as i32, h.round() as i32));
+                suffix.push_str(&format!(
+                    " @rect({},{},{},{})",
+                    x.round() as i32,
+                    y.round() as i32,
+                    w.round() as i32,
+                    h.round() as i32
+                ));
             }
         }
     }
     if let Some((var, idx, val)) = for_ctx {
-        let idx_str = idx.map(|i| i.to_string()).unwrap_or_else(|| "_".to_string());
+        let idx_str = idx
+            .map(|i| i.to_string())
+            .unwrap_or_else(|| "_".to_string());
         suffix.push_str(&format!(" [for: {}, {} = {}]", var, idx_str, val));
     }
 
@@ -4241,14 +4747,18 @@ fn aura_vtree_node(
         &node.props,
         VNodeProps::Textarea { placeholder, .. } if !placeholder.is_empty()
     );
-    let has_body = !node.children.is_empty() || !events.is_empty()
+    let has_body = !node.children.is_empty()
+        || !events.is_empty()
         || raw_class.map_or(false, |c| !c.is_empty())
         || prop_body;
 
     // Opening line
     if let Some(lbl) = &label {
         if has_body {
-            out.push_str(&format!("{}{}{} \"{}\"{} {{\n", pad, tag, id_str, lbl, suffix));
+            out.push_str(&format!(
+                "{}{}{} \"{}\"{} {{\n",
+                pad, tag, id_str, lbl, suffix
+            ));
         } else {
             out.push_str(&format!("{}{}{} \"{}\"{}\n", pad, tag, id_str, lbl, suffix));
             return;
@@ -4269,20 +4779,44 @@ fn aura_vtree_node(
 
     // Special props for inputs etc.
     match &node.props {
-        VNodeProps::Input { placeholder, value, .. } => {
+        VNodeProps::Input {
+            placeholder, value, ..
+        } => {
             if !placeholder.is_empty() {
-                out.push_str(&format!("{}placeholder: \"{}\"\n", "  ".repeat(indent + 1), placeholder));
+                out.push_str(&format!(
+                    "{}placeholder: \"{}\"\n",
+                    "  ".repeat(indent + 1),
+                    placeholder
+                ));
             }
-            out.push_str(&format!("{}value: \"{}\"\n", "  ".repeat(indent + 1), value));
+            out.push_str(&format!(
+                "{}value: \"{}\"\n",
+                "  ".repeat(indent + 1),
+                value
+            ));
         }
-        VNodeProps::Textarea { placeholder, value, .. } => {
-            out.push_str(&format!("{}value: \"{}\"\n", "  ".repeat(indent + 1), value));
+        VNodeProps::Textarea {
+            placeholder, value, ..
+        } => {
+            out.push_str(&format!(
+                "{}value: \"{}\"\n",
+                "  ".repeat(indent + 1),
+                value
+            ));
             if !placeholder.is_empty() {
-                out.push_str(&format!("{}placeholder: \"{}\"\n", "  ".repeat(indent + 1), placeholder));
+                out.push_str(&format!(
+                    "{}placeholder: \"{}\"\n",
+                    "  ".repeat(indent + 1),
+                    placeholder
+                ));
             }
         }
         VNodeProps::Checkbox { is_checked, .. } => {
-            out.push_str(&format!("{}checked: {}\n", "  ".repeat(indent + 1), is_checked));
+            out.push_str(&format!(
+                "{}checked: {}\n",
+                "  ".repeat(indent + 1),
+                is_checked
+            ));
         }
         // PLAN-043 T6：scroll offset 绑定值进 AURA 快照（滚动联动可观测
         // 口；无绑定的 scrollable 不输出该行）。
@@ -4295,13 +4829,25 @@ fn aura_vtree_node(
         }
         // PLAN-045 T7: 表格列宽面进 AURA 快照——table_key（resize_col 寻址
         // 口）+ col_widths（列宽变化观测口，Some 时输出）。
-        VNodeProps::Table { table_key: Some(k), col_widths, .. } => {
-            out.push_str(&format!("{}table_key: \"{}\"
-", "  ".repeat(indent + 1), k));
+        VNodeProps::Table {
+            table_key: Some(k),
+            col_widths,
+            ..
+        } => {
+            out.push_str(&format!(
+                "{}table_key: \"{}\"
+",
+                "  ".repeat(indent + 1),
+                k
+            ));
             if let Some(ws) = col_widths {
                 let fmt: Vec<String> = ws.iter().map(|w| format!("{w:.1}")).collect();
-                out.push_str(&format!("{}col_widths: [{}]
-", "  ".repeat(indent + 1), fmt.join(", ")));
+                out.push_str(&format!(
+                    "{}col_widths: [{}]
+",
+                    "  ".repeat(indent + 1),
+                    fmt.join(", ")
+                ));
             }
         }
         _ => {}
@@ -4311,13 +4857,27 @@ fn aura_vtree_node(
     let mut ev_sorted: Vec<&(String, String)> = events.iter().collect();
     ev_sorted.sort_by(|a, b| a.0.cmp(&b.0));
     for (ev, handler) in ev_sorted {
-        out.push_str(&format!("{}{}: {}\n", "  ".repeat(indent + 1), ev, display_handler(handler)));
+        out.push_str(&format!(
+            "{}{}: {}\n",
+            "  ".repeat(indent + 1),
+            ev,
+            display_handler(handler)
+        ));
     }
 
     // children
     for cid in &node.children {
         if let Some(child) = vtree.get(*cid) {
-            aura_vtree_node(child, vtree, computed, include_status, include_bounds, layout_bounds, indent + 1, out);
+            aura_vtree_node(
+                child,
+                vtree,
+                computed,
+                include_status,
+                include_bounds,
+                layout_bounds,
+                indent + 1,
+                out,
+            );
         }
     }
 
@@ -4353,7 +4913,10 @@ fn error_result(msg: impl Into<String>) -> serde_json::Value {
 ///
 /// * `widget_name` — The name of the main widget
 /// * `port` — TCP port to listen on (default: 9247)
-pub fn start_mcp_server(widget_name: String, port: u16) -> (SharedStateHandle, mpsc::Receiver<ActionMessage>) {
+pub fn start_mcp_server(
+    widget_name: String,
+    port: u16,
+) -> (SharedStateHandle, mpsc::Receiver<ActionMessage>) {
     let (action_tx, action_rx) = mpsc::channel::<ActionMessage>();
 
     let mut shared_state = SharedState::new(widget_name);
@@ -4381,9 +4944,20 @@ pub fn mcp_port() -> u16 {
 fn find_aura_node<'a>(
     node: &'a crate::aura::AuraNode,
     target_id: AuraNodeId,
-) -> Option<(&'a str, &'a std::collections::HashMap<String, crate::aura::AuraPropValue>, &'a std::collections::HashMap<String, crate::aura::AuraEvent>)> {
+) -> Option<(
+    &'a str,
+    &'a std::collections::HashMap<String, crate::aura::AuraPropValue>,
+    &'a std::collections::HashMap<String, crate::aura::AuraEvent>,
+)> {
     match node {
-        crate::aura::AuraNode::Element { tag, props, events, children, debug_id, .. } => {
+        crate::aura::AuraNode::Element {
+            tag,
+            props,
+            events,
+            children,
+            debug_id,
+            ..
+        } => {
             if let Some(id) = debug_id {
                 if *id == target_id {
                     return Some((tag.as_str(), props, events));
@@ -4409,7 +4983,11 @@ fn find_aura_node<'a>(
             }
             None
         }
-        crate::aura::AuraNode::Conditional { then_body, else_body, .. } => {
+        crate::aura::AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             for child in then_body {
                 if let Some(result) = find_aura_node(child, target_id) {
                     return Some(result);
@@ -4437,16 +5015,41 @@ mod tests_314 {
     fn build_sample_tree() -> (VTree, [VNodeId; 3]) {
         let mut tree = VTree::new();
         // root: Column (id 0)
-        let root = VNode::new(VNodeId::new(0), VNodeKind::Column, VNodeProps::Layout { spacing: 8, padding: 4 });
+        let root = VNode::new(
+            VNodeId::new(0),
+            VNodeKind::Column,
+            VNodeProps::Layout {
+                spacing: 8,
+                padding: 4,
+            },
+        );
         tree.set_root(root);
         // child: Text (id 1)
-        let text = VNode::new(VNodeId::new(1), VNodeKind::Text, VNodeProps::Text { content: "Hello".into(), selectable: false });
+        let text = VNode::new(
+            VNodeId::new(1),
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "Hello".into(),
+                selectable: false,
+            },
+        );
         tree.add_node(text);
-        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(1));
+        tree.get_mut(VNodeId::new(0))
+            .unwrap()
+            .add_child(VNodeId::new(1));
         // child: Button (id 2)
-        let btn = VNode::new(VNodeId::new(2), VNodeKind::Button, VNodeProps::Button { label: "OK".into(), disabled: false });
+        let btn = VNode::new(
+            VNodeId::new(2),
+            VNodeKind::Button,
+            VNodeProps::Button {
+                label: "OK".into(),
+                disabled: false,
+            },
+        );
         tree.add_node(btn);
-        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(2));
+        tree.get_mut(VNodeId::new(0))
+            .unwrap()
+            .add_child(VNodeId::new(2));
         (tree, [VNodeId::new(0), VNodeId::new(1), VNodeId::new(2)])
     }
 
@@ -4454,12 +5057,25 @@ mod tests_314 {
         let mut cache = InspectorCache::new();
         // root: bounds only
         let r = cache.get_mut_or_default(ids[0]);
-        r.bounds = Some(Rect { x: 0.0, y: 0.0, width: 100.0, height: 50.0 });
+        r.bounds = Some(Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 50.0,
+        });
         // button: bounds + style + event
         let b = cache.get_mut_or_default(ids[2]);
-        b.bounds = Some(Rect { x: 40.0, y: 10.0, width: 60.0, height: 30.0 });
+        b.bounds = Some(Rect {
+            x: 40.0,
+            y: 10.0,
+            width: 60.0,
+            height: 30.0,
+        });
         b.computed_style.push(("color".into(), "#ffffff".into()));
-        b.events.push(crate::ui::debug::EventHandlerInfo { event: "press".into(), handler: ".Ok".into() });
+        b.events.push(crate::ui::debug::EventHandlerInfo {
+            event: "press".into(),
+            handler: ".Ok".into(),
+        });
         b.raw_class = Some("btn".into());
         cache
     }
@@ -4484,7 +5100,10 @@ mod tests_314 {
         // button: full subset
         let b = snap.computed.get(&ids[2]).expect("button computed present");
         assert_eq!(b.bounds, Some((40.0, 10.0, 60.0, 30.0)));
-        assert_eq!(b.computed_style, vec![("color".to_string(), "#ffffff".to_string())]);
+        assert_eq!(
+            b.computed_style,
+            vec![("color".to_string(), "#ffffff".to_string())]
+        );
         assert_eq!(b.events, vec![("press".to_string(), ".Ok".to_string())]);
         assert_eq!(b.raw_class.as_deref(), Some("btn"));
     }
@@ -4513,12 +5132,13 @@ mod tests_314 {
     /// root 中心 (50,25)；button 中心 (70,25)）。
     fn shared_with_bounds() -> SharedStateHandle {
         let shared = shared_with_snapshot();
-        shared.lock().unwrap().set_layout_bounds(
-            std::collections::HashMap::from([
+        shared
+            .lock()
+            .unwrap()
+            .set_layout_bounds(std::collections::HashMap::from([
                 ("vnode_0".to_string(), (0.0f32, 0.0f32, 100.0f32, 50.0f32)),
                 ("vnode_2".to_string(), (40.0f32, 10.0f32, 60.0f32, 30.0f32)),
-            ]),
-        );
+            ]));
         shared
     }
 
@@ -4526,14 +5146,22 @@ mod tests_314 {
     fn tool_select_rect_trims_to_topmost_and_returns_envelope() {
         let shared = shared_with_bounds();
         // 覆盖 root(中心 50,25) + button(中心 70,25) → 修剪为 root
-        let res = dispatch_tool_static(&shared, "autoui_select_rect", json!({ "x": 0.0, "y": 0.0, "w": 100.0, "h": 50.0 }));
+        let res = dispatch_tool_static(
+            &shared,
+            "autoui_select_rect",
+            json!({ "x": 0.0, "y": 0.0, "w": 100.0, "h": 50.0 }),
+        );
         assert!(!res["isError"].as_bool().unwrap_or(true));
         let text = res["content"][0]["text"].as_str().expect("text content");
         let env: serde_json::Value = serde_json::from_str(text).expect("json envelope");
         assert_eq!(env["surface"], "vm");
         assert_eq!(env["app"], "Demo");
         assert_eq!(env["rect"], json!([0.0, 0.0, 100.0, 50.0]));
-        assert_eq!(env["nodes"].as_array().unwrap().len(), 1, "topmost trim: {env}");
+        assert_eq!(
+            env["nodes"].as_array().unwrap().len(),
+            1,
+            "topmost trim: {env}"
+        );
         assert_eq!(env["nodes"][0]["kind"], "col");
         assert_eq!(env["nodes"][0]["id"], "vnode_0");
         // structure 子树完整（button 作为子孙在 structure 内）
@@ -4545,7 +5173,11 @@ mod tests_314 {
     fn tool_select_rect_hits_child_only_when_parent_center_outside() {
         let shared = shared_with_bounds();
         // 只含 button 中心(70,25)、不含 root 中心(50,25) → 单独命中 button
-        let res = dispatch_tool_static(&shared, "autoui_select_rect", json!({ "x": 60.0, "y": 10.0, "w": 30.0, "h": 20.0 }));
+        let res = dispatch_tool_static(
+            &shared,
+            "autoui_select_rect",
+            json!({ "x": 60.0, "y": 10.0, "w": 30.0, "h": 20.0 }),
+        );
         let text = res["content"][0]["text"].as_str().unwrap();
         let env: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(env["nodes"].as_array().unwrap().len(), 1);
@@ -4556,9 +5188,16 @@ mod tests_314 {
     fn tool_select_rect_edge_sweep_misses_and_format_atom() {
         let shared = shared_with_bounds();
         // 边缘扫过 button（中心不在）→ 空集；atom 格式渲染
-        let res = dispatch_tool_static(&shared, "autoui_select_rect", json!({ "x": 0.0, "y": 0.0, "w": 40.0, "h": 20.0, "format": "atom" }));
+        let res = dispatch_tool_static(
+            &shared,
+            "autoui_select_rect",
+            json!({ "x": 0.0, "y": 0.0, "w": 40.0, "h": 20.0, "format": "atom" }),
+        );
         let text = res["content"][0]["text"].as_str().unwrap();
-        assert!(text.is_empty() || !text.contains("button"), "no hit: {text}");
+        assert!(
+            text.is_empty() || !text.contains("button"),
+            "no hit: {text}"
+        );
     }
 
     #[test]
@@ -4572,8 +5211,14 @@ mod tests_314 {
         text_node.source_span = Some(crate::ui::debug::SourceSpan { offset: 13, len: 6 });
         text_node.parent = Some(VNodeId::new(1));
         tree.add_node(text_node);
-        tree.get_mut(VNodeId::new(1)).unwrap().add_child(VNodeId::new(2));
-        state.set_styled_vtree(StyledNodeSnapshot::from_live("Demo", &tree, &InspectorCache::new()));
+        tree.get_mut(VNodeId::new(1))
+            .unwrap()
+            .add_child(VNodeId::new(2));
+        state.set_styled_vtree(StyledNodeSnapshot::from_live(
+            "Demo",
+            &tree,
+            &InspectorCache::new(),
+        ));
         // root 中心 (50,50)；text 中心 (25,20)——矩形只含后者 → 只命中 text
         state.set_layout_bounds(std::collections::HashMap::from([
             ("vnode_1".to_string(), (0.0, 0.0, 100.0, 100.0)),
@@ -4582,7 +5227,11 @@ mod tests_314 {
         state.set_source_code("app Demo {\n  text \"hi\"\n}\n".into());
         let shared = Arc::new(Mutex::new(state));
 
-        let res = dispatch_tool_static(&shared, "autoui_select_rect", json!({ "x": 10.0, "y": 15.0, "w": 30.0, "h": 10.0 }));
+        let res = dispatch_tool_static(
+            &shared,
+            "autoui_select_rect",
+            json!({ "x": 10.0, "y": 15.0, "w": 30.0, "h": 10.0 }),
+        );
         let env: serde_json::Value =
             serde_json::from_str(res["content"][0]["text"].as_str().unwrap()).unwrap();
         assert_eq!(env["nodes"].as_array().unwrap().len(), 1);
@@ -4596,14 +5245,28 @@ mod tests_314 {
         let shared = shared_with_snapshot();
         // 缺参数
         let res = dispatch_tool_static(&shared, "autoui_select_rect", json!({ "x": 1.0 }));
-        assert!(res["isError"].as_bool().unwrap_or(false), "missing params: {res}");
+        assert!(
+            res["isError"].as_bool().unwrap_or(false),
+            "missing params: {res}"
+        );
         // 非法 w/h
-        let res = dispatch_tool_static(&shared, "autoui_select_rect", json!({ "x": 0.0, "y": 0.0, "w": 0.0, "h": 10.0 }));
+        let res = dispatch_tool_static(
+            &shared,
+            "autoui_select_rect",
+            json!({ "x": 0.0, "y": 0.0, "w": 0.0, "h": 10.0 }),
+        );
         assert!(res["isError"].as_bool().unwrap_or(false), "bad w: {res}");
         // 无快照（未渲染）
         let empty = Arc::new(Mutex::new(SharedState::new("Demo".into())));
-        let res = dispatch_tool_static(&empty, "autoui_select_rect", json!({ "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }));
-        assert!(res["isError"].as_bool().unwrap_or(false), "no snapshot: {res}");
+        let res = dispatch_tool_static(
+            &empty,
+            "autoui_select_rect",
+            json!({ "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0 }),
+        );
+        assert!(
+            res["isError"].as_bool().unwrap_or(false),
+            "no snapshot: {res}"
+        );
     }
 
     #[test]
@@ -4616,9 +5279,18 @@ mod tests_314 {
         assert!(text.contains("text vnode_1"), "text child: {text}");
         assert!(text.contains("button vnode_2"), "button child: {text}");
         // widget props + computed props present by default
-        assert!(text.contains("content:") && text.contains("label:"), "props: {text}");
-        assert!(text.contains("bbox:") && text.contains("style:"), "computed: {text}");
-        assert!(!res["isError"].as_bool().unwrap_or(true), "not an error: {text}");
+        assert!(
+            text.contains("content:") && text.contains("label:"),
+            "props: {text}"
+        );
+        assert!(
+            text.contains("bbox:") && text.contains("style:"),
+            "computed: {text}"
+        );
+        assert!(
+            !res["isError"].as_bool().unwrap_or(true),
+            "not an error: {text}"
+        );
     }
 
     #[test]
@@ -4648,7 +5320,10 @@ mod tests_314 {
     fn tool_vtree_errors_when_no_snapshot() {
         let shared: SharedStateHandle = Arc::new(Mutex::new(SharedState::new("Demo".into())));
         let res = dispatch_tool_static(&shared, "autoui_vtree", json!({}));
-        assert!(res["isError"].as_bool().unwrap_or(false), "should error: {res}");
+        assert!(
+            res["isError"].as_bool().unwrap_or(false),
+            "should error: {res}"
+        );
     }
 
     /// PLAN-051 T2 (C1): Enter 键的焦点 input 声明查找契约——
@@ -4717,7 +5392,10 @@ mod tests_314 {
             password: false,
             style: None,
         };
-        assert!(enter_handler_in_view(&bare).is_none(), "无声明必须回落既有链");
+        assert!(
+            enter_handler_in_view(&bare).is_none(),
+            "无声明必须回落既有链"
+        );
     }
 }
 
@@ -4730,9 +5408,9 @@ mod tests_314 {
 #[cfg(test)]
 mod tests_plan483_d4 {
     use super::*;
+    use crate::ui::view::TabsPosition;
     use crate::ui::vnode::VNodeKind;
     use crate::ui::vnode_converter::view_to_vtree_with_paths;
-    use crate::ui::view::TabsPosition;
 
     fn typed_msg(event: &str) -> DynamicMessage {
         DynamicMessage::Typed {
@@ -4756,13 +5434,22 @@ mod tests_plan483_d4 {
 
     fn label(text: &str) -> View<DynamicMessage> {
         // Plan 481 selectable 字段(merge master 后补;合成标签非用户内容,false)。
-        View::Text { content: text.to_string(), style: None, selectable: false }
+        View::Text {
+            content: text.to_string(),
+            style: None,
+            selectable: false,
+        }
     }
 
     fn column(children: Vec<View<DynamicMessage>>) -> View<DynamicMessage> {
-        View::Column { children, spacing: 0, padding: 0, style: None,
-                onclick: None, on_right_click: None,
-            }
+        View::Column {
+            children,
+            spacing: 0,
+            padding: 0,
+            style: None,
+            onclick: None,
+            on_right_click: None,
+        }
     }
 
     /// 找 vtree 中第 n 个（0 起）Input 节点的 path。
@@ -4800,8 +5487,14 @@ mod tests_plan483_d4 {
     #[test]
     fn plan483_second_input_in_login_shape_dispatches_password() {
         let view = column(vec![
-            column(vec![label("Username"), input("Enter username", "UsernameChanged")]),
-            column(vec![label("Password"), input("Enter password", "PasswordChanged")]),
+            column(vec![
+                label("Username"),
+                input("Enter username", "UsernameChanged"),
+            ]),
+            column(vec![
+                label("Password"),
+                input("Enter password", "PasswordChanged"),
+            ]),
         ]);
         assert_nth_input_dispatches(&view, 1, "PasswordChanged");
     }
@@ -4815,7 +5508,10 @@ mod tests_plan483_d4 {
             onclick: typed_msg("Pressed"),
             style: None,
             on_right_click: None,
-            content: Some(Box::new(column(vec![input("Enter password", "PasswordChanged")]))),
+            content: Some(Box::new(column(vec![input(
+                "Enter password",
+                "PasswordChanged",
+            )]))),
             disabled: false,
         }]);
         assert_nth_input_dispatches(&view, 0, "PasswordChanged");
@@ -4909,7 +5605,17 @@ mod tests_plan057 {
     fn plan057_keyspec_rejects_invalid() {
         // 空串 / 裸前缀 / 多字符 / 修饰键组合（v1 不在词表）/ 大小写敏感 /
         // 未知名 → None（调用方报错返回，不静默）。
-        for bad in ["", "c:", "c:ab", "ctrl+a", "shift+left", "LEFT", "space", "nope", "c:X;extra"] {
+        for bad in [
+            "",
+            "c:",
+            "c:ab",
+            "ctrl+a",
+            "shift+left",
+            "LEFT",
+            "space",
+            "nope",
+            "c:X;extra",
+        ] {
             assert_eq!(parse_editor_key_spec(bad), None, "keyspec '{bad}' 应拒绝");
         }
     }
@@ -4973,8 +5679,14 @@ mod tests_plan623 {
             .into_iter()
             .find(|tool| tool.get("name").and_then(|v| v.as_str()) == Some("autoui_fixture"))
             .expect("autoui_fixture tool definition");
-        assert_eq!(definition["inputSchema"]["properties"]["schema_version"]["const"], 1);
-        assert_eq!(definition["inputSchema"]["properties"]["state"]["type"], "object");
+        assert_eq!(
+            definition["inputSchema"]["properties"]["schema_version"]["const"],
+            1
+        );
+        assert_eq!(
+            definition["inputSchema"]["properties"]["state"]["type"],
+            "object"
+        );
         assert_eq!(definition["annotations"]["readOnlyHint"], false);
         assert_eq!(definition["annotations"]["destructiveHint"], false);
     }

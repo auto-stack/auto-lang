@@ -146,7 +146,8 @@ fn is_valid_crate_name(s: &str) -> bool {
     }
 
     // Rest can be alphanumeric, underscore, or hyphen
-    s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+    s.chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
 }
 
 /// Parse dep properties: `version: "1.0", features: ["derive"]`
@@ -353,7 +354,10 @@ dep tokio
         let deps = scan_dep_statements(source);
         assert_eq!(deps.len(), 1);
         assert!(deps[0].is_git());
-        assert_eq!(deps[0].git, Some("https://github.com/tokio-rs/tokio".to_string()));
+        assert_eq!(
+            deps[0].git,
+            Some("https://github.com/tokio-rs/tokio".to_string())
+        );
         assert_eq!(deps[0].git_ref, Some("main".to_string()));
     }
 

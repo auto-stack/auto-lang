@@ -1,6 +1,6 @@
+use super::TypeScriptTrans;
 use crate::AutoResult;
 use std::io::Write;
-use super::TypeScriptTrans;
 
 impl TypeScriptTrans {
     /// Generate conditional import statement for runtime symbols.
@@ -34,7 +34,7 @@ impl TypeScriptTrans {
     /// Returns the content of the TypeScript runtime module.
     /// This should be written to a file at the runtime_path location.
     pub fn runtime_file_content() -> &'static str {
-r#"/**
+        r#"/**
  * AutoLang TypeScript Runtime
  */
 

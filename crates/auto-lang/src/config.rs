@@ -216,9 +216,17 @@ impl BackendType {
     /// 返回所有可用的后端类型
     pub fn all_variants() -> Vec<BackendType> {
         vec![
-            Self::Vue, Self::Jet, Self::Tauri, Self::Gpui,
-            Self::Iced, Self::Arkts, Self::Cangjie, Self::Godot,
-            Self::Rust, Self::Vm, Self::Vscode,
+            Self::Vue,
+            Self::Jet,
+            Self::Tauri,
+            Self::Gpui,
+            Self::Iced,
+            Self::Arkts,
+            Self::Cangjie,
+            Self::Godot,
+            Self::Rust,
+            Self::Vm,
+            Self::Vscode,
         ]
     }
 }
@@ -252,7 +260,8 @@ impl BackendConfig {
             Value::Str(s) => Self::parse(&s),
             Value::Array(arr) => {
                 // 数组形式：backend: ["vue", "tauri"]
-                let frontends: Vec<BackendType> = arr.iter()
+                let frontends: Vec<BackendType> = arr
+                    .iter()
                     .filter_map(|v| match v {
                         Value::Str(s) => BackendType::from_str(&s),
                         _ => None,
@@ -275,7 +284,7 @@ impl BackendConfig {
                                 Value::Str(s) => BackendType::from_str(&s),
                                 _ => None,
                             })
-                            .collect()
+                            .collect(),
                     ),
                     _ => None,
                 });
@@ -311,7 +320,6 @@ impl BackendConfig {
     }
 }
 
-
 // ── Plan 061:外部后端(契约定位统一帮助函数)─────────────────────────────
 // 供 auto-man(gen/server 编排)与 ui_gen(SSE 接线)共用:前端项目无本地
 // back/ 目录时,经 pac.at `back: { project }` 解析到外部后端项目的 api.at。
@@ -335,7 +343,9 @@ pub fn external_backend_dir(project_dir: &Path) -> Option<std::path::PathBuf> {
             .filter(|s| !s.is_empty())?,
         v => {
             let s = v.to_astr().trim().to_string();
-            if s.is_empty() { return None; }
+            if s.is_empty() {
+                return None;
+            }
             s
         }
     };
@@ -486,10 +496,12 @@ dep("log") {
         assert_eq!(cfg.root.get_prop("default_classes"), Value::Bool(false));
 
         let cfg = AutoConfig::from_code("default_classes: \"off\"\n", &Obj::new()).unwrap();
-        assert_eq!(cfg.root.get_prop("default_classes").to_astr().as_str(), "off");
+        assert_eq!(
+            cfg.root.get_prop("default_classes").to_astr().as_str(),
+            "off"
+        );
 
         let cfg = AutoConfig::from_code("name: \"x\"\n", &Obj::new()).unwrap();
         assert!(!cfg.root.has_prop("default_classes"));
     }
 }
-

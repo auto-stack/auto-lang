@@ -269,8 +269,14 @@ pub fn serialize_config(cfg: &DesktopConfig) -> String {
         "    dock_enabled : {}\n",
         if cfg.dock_enabled { "true" } else { "false" }
     ));
-    out.push_str(&format!("    dock_pinned : \"{}\"\n", cfg.dock_pinned.join(",")));
-    out.push_str(&format!("    wallpaper_path : \"{}\"\n", cfg.wallpaper_path));
+    out.push_str(&format!(
+        "    dock_pinned : \"{}\"\n",
+        cfg.dock_pinned.join(",")
+    ));
+    out.push_str(&format!(
+        "    wallpaper_path : \"{}\"\n",
+        cfg.wallpaper_path
+    ));
     // PLAN-043 Phase 3：分主题壁纸槽恒落盘（通用编辑器展示全字段约定）。
     out.push_str(&format!(
         "    wallpaper_path_dark : \"{}\"\n",
@@ -280,7 +286,10 @@ pub fn serialize_config(cfg: &DesktopConfig) -> String {
         "    wallpaper_path_light : \"{}\"\n",
         cfg.wallpaper_path_light
     ));
-    out.push_str(&format!("    wallpapers_dir : \"{}\"\n", cfg.wallpapers_dir));
+    out.push_str(&format!(
+        "    wallpapers_dir : \"{}\"\n",
+        cfg.wallpapers_dir
+    ));
     out.push_str(&format!(
         "    wallpaper_request : \"{}\"\n",
         cfg.wallpaper_request
@@ -542,9 +551,13 @@ pub fn save(cfg: &DesktopConfig) -> std::io::Result<()> {
     let path = desktop_config_path().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::NotFound, "home directory unavailable")
     })?;
-    let merged =
-        crate::state_file::with_lock(&path, crate::state_file::LOCK_TIMEOUT, || -> DesktopConfig {
-            let disk = std::fs::read_to_string(&path).ok().map(|src| parse_config(&src));
+    let merged = crate::state_file::with_lock(
+        &path,
+        crate::state_file::LOCK_TIMEOUT,
+        || -> DesktopConfig {
+            let disk = std::fs::read_to_string(&path)
+                .ok()
+                .map(|src| parse_config(&src));
             let snapshot = LAST_SNAPSHOT.lock().unwrap().clone();
             match (disk, snapshot) {
                 (Some(base), Some(snap)) => {
@@ -556,8 +569,9 @@ pub fn save(cfg: &DesktopConfig) -> std::io::Result<()> {
                 }
                 _ => cfg.clone(),
             }
-        })
-        .into_inner();
+        },
+    )
+    .into_inner();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -576,7 +590,6 @@ pub fn save_to(path: &std::path::Path, cfg: &DesktopConfig) -> std::io::Result<(
     }
     crate::state_file::atomic_write(path, serialize_config(cfg).as_bytes())
 }
-
 
 /// bool → "1"/"0"（.at 控件选中态判定约定）。
 
@@ -600,8 +613,11 @@ mod tests {
         // None：显式空槽 → 不落盘（保留给「跟随轨缺省」的调用方）
         cfg.theme_name = None;
         let ser = serialize_config(&cfg);
-        assert!(!ser.contains("theme_name"), "None 不落盘:
-{ser}");
+        assert!(
+            !ser.contains("theme_name"),
+            "None 不落盘:
+{ser}"
+        );
 
         // Some：落盘且往返
         cfg.theme_name = Some("zinc".to_string());
@@ -697,7 +713,10 @@ mod tests {
         // 4) daemon 的壁纸保住，宿主的开关落盘
         let disk = std::fs::read_to_string(&path).unwrap();
         assert!(disk.contains("#101014"), "daemon 外写字段被冲掉: {disk}");
-        assert!(disk.contains("notes_enabled : false"), "宿主字段未落盘: {disk}");
+        assert!(
+            disk.contains("notes_enabled : false"),
+            "宿主字段未落盘: {disk}"
+        );
         assert!(!disk.contains("room.jpg"), "陈旧壁纸值被写回: {disk}");
 
         std::env::remove_var("AUTOOS_DESKTOP_CONFIG");
@@ -747,9 +766,18 @@ mod tests {
 
         // 5) 外写字段存活 + 宿主字段落盘（首写走字段级合并，非整份覆盖）。
         let disk = std::fs::read_to_string(&path).unwrap();
-        assert!(disk.contains("transparency : \"low\""), "首写 save 冲掉外写字段: {disk}");
-        assert!(disk.contains("wallpaper_path : \"#ABCDEF\""), "手编壁纸被冲回: {disk}");
-        assert!(disk.contains("notes_enabled : false"), "宿主字段未落盘: {disk}");
+        assert!(
+            disk.contains("transparency : \"low\""),
+            "首写 save 冲掉外写字段: {disk}"
+        );
+        assert!(
+            disk.contains("wallpaper_path : \"#ABCDEF\""),
+            "手编壁纸被冲回: {disk}"
+        );
+        assert!(
+            disk.contains("notes_enabled : false"),
+            "宿主字段未落盘: {disk}"
+        );
 
         std::env::remove_var("AUTOOS_DESKTOP_CONFIG");
         let _ = std::fs::remove_dir_all(&dir);
@@ -852,7 +880,7 @@ mod tests {
     /// 文件缺席 + 旧键全缺 → 全默认、不迁移。
     #[test]
     fn no_file_no_legacy_is_default() {
-        let mut legacy =|_: &str| -> Option<String> { None };
+        let mut legacy = |_: &str| -> Option<String> { None };
         let (cfg, migrated) = load_from(None, &mut legacy);
         assert!(!migrated);
         assert_eq!(cfg, DesktopConfig::default());
@@ -862,7 +890,7 @@ mod tests {
     #[test]
     fn file_present_legacy_ignored() {
         let src = "desktop {\n    dock_position : \"top\"\n}\n";
-        let mut legacy =|_: &str| -> Option<String> { Some("garbage".to_string()) };
+        let mut legacy = |_: &str| -> Option<String> { Some("garbage".to_string()) };
         let (cfg, migrated) = load_from(Some(src), &mut legacy);
         assert!(!migrated);
         assert_eq!(cfg.dock_position, "top");
@@ -874,12 +902,19 @@ mod tests {
     #[test]
     fn dock_pinned_empty_table_semantics() {
         // 缺键 → 空（Default 缺省已置空）。
-        let (cfg, _) = load_from(Some("desktop {\n    dock_enabled : true\n}\n"), &mut |_| None);
+        let (cfg, _) = load_from(Some("desktop {\n    dock_enabled : true\n}\n"), &mut |_| {
+            None
+        });
         assert!(cfg.dock_pinned.is_empty(), "缺键 = 空");
         // 显式空串（行读侧剥引号后空值跳过 = 缺键同型）与纯逗号 → 空。
-        let (cfg2, _) = load_from(Some("desktop {\n    dock_pinned : \"\"\n}\n"), &mut |_| None);
+        let (cfg2, _) = load_from(Some("desktop {\n    dock_pinned : \"\"\n}\n"), &mut |_| {
+            None
+        });
         assert!(cfg2.dock_pinned.is_empty(), "显式空串 = 空");
-        let (cfg3, _) = load_from(Some("desktop {\n    dock_pinned : \" , ,\"\n}\n"), &mut |_| None);
+        let (cfg3, _) = load_from(
+            Some("desktop {\n    dock_pinned : \" , ,\"\n}\n"),
+            &mut |_| None,
+        );
         assert!(cfg3.dock_pinned.is_empty(), "纯逗号 = 空");
         // 非空 csv 逐项采纳（带空白容错）。
         let (cfg4, _) = load_from(
@@ -891,16 +926,20 @@ mod tests {
         assert!(DEFAULT_DOCK_PINNED.is_empty());
     }
 
-
     /// PLAN-615 T-06：theme_source 解析/序列化往返——缺席回退 system（存量
     /// 配置文件缺键即时获得 OS 跟随语义）；坏值回退 system；manual 往返稳定。
     #[test]
     fn theme_source_parse_serialize_roundtrip() {
         // 缺席 → system
-        let (back, _) = load_from(Some("desktop {
+        let (back, _) = load_from(
+            Some(
+                "desktop {
     dark_theme : false
 }
-"), &mut |_| None);
+",
+            ),
+            &mut |_| None,
+        );
         assert_eq!(back.theme_source, "system");
         // 坏值 → system
         let src_bad = "desktop {
@@ -924,10 +963,15 @@ mod tests {
     #[test]
     fn wallpaper_request_parse_serialize_roundtrip() {
         // 缺席 → 空
-        let (back, _) = load_from(Some("desktop {
+        let (back, _) = load_from(
+            Some(
+                "desktop {
     dark_theme : false
 }
-"), &mut |_| None);
+",
+            ),
+            &mut |_| None,
+        );
         assert_eq!(back.wallpaper_request, "");
         // 有值解析 + 序列化往返
         let mut cfg = DesktopConfig::default();
@@ -1023,6 +1067,4 @@ mod tests {
         assert_eq!(cfg.wallpaper_path_light, "C:/pics/light.png");
         assert_eq!(cfg.wallpaper_path_dark, "C:/pics/dark.jpg");
     }
-
-
 }

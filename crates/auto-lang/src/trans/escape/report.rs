@@ -45,7 +45,12 @@ mod tests {
             span_at(10, 3),
         );
         match w {
-            Warning::EscapeFallback { name, reason, tier_desc, .. } => {
+            Warning::EscapeFallback {
+                name,
+                reason,
+                tier_desc,
+                ..
+            } => {
                 assert_eq!(name, "buf");
                 assert_eq!(reason, "captured by closure at line 5");
                 assert_eq!(tier_desc, "Rc<RefCell<T>>");

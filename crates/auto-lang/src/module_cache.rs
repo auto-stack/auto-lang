@@ -359,23 +359,37 @@ impl AutoCache {
         assembly: &AssemblyContext,
         provider_schema: u32,
     ) -> Option<&ModuleCache> {
-        self.get_valid_recursive(module_path, assembly, provider_schema, &mut std::collections::HashSet::new())
+        self.get_valid_recursive(
+            module_path,
+            assembly,
+            provider_schema,
+            &mut std::collections::HashSet::new(),
+        )
     }
 
     fn get_valid_recursive<'a>(
-        &'a self, module_path: &str, assembly: &AssemblyContext,
-        provider_schema: u32, visiting: &mut std::collections::HashSet<String>,
+        &'a self,
+        module_path: &str,
+        assembly: &AssemblyContext,
+        provider_schema: u32,
+        visiting: &mut std::collections::HashSet<String>,
     ) -> Option<&'a ModuleCache> {
-        if !self.enabled { return None; }
+        if !self.enabled {
+            return None;
+        }
         let entry = self.modules.get(module_path)?.iter().find(|c| {
             c.assembly == *assembly && c.provider_schema == provider_schema && c.is_valid()
         })?;
         // Cycles have already checked this node's own sources; traverse each
         // edge once without recursion overflow.
-        if !visiting.insert(module_path.to_string()) { return Some(entry); }
+        if !visiting.insert(module_path.to_string()) {
+            return Some(entry);
+        }
         for (dep, fp) in &entry.dep_fingerprints {
             let child = self.get_valid_recursive(dep, assembly, provider_schema, visiting)?;
-            if child.combined_fingerprint() != *fp { return None; }
+            if child.combined_fingerprint() != *fp {
+                return None;
+            }
         }
         visiting.remove(module_path);
         Some(entry)

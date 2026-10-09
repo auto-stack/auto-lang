@@ -39,8 +39,7 @@ fn generate(path: &PathBuf) -> crate::ui_gen::GeneratedComponent {
 /// AC-01 正断言：bp reference 的跨文件 fn 导入内联进 SFC（SFC 自包含）。
 #[test]
 fn t02_bp_reference_cross_file_fns_inlined_into_sfc() {
-    let Some(reference_at) =
-        repo_file("blueprints/navigation/filetree/reference/default.at")
+    let Some(reference_at) = repo_file("blueprints/navigation/filetree/reference/default.at")
     else {
         eprintln!("[SKIP] filetree reference fixture not found");
         return;
@@ -76,8 +75,7 @@ fn t02_bp_reference_cross_file_fns_inlined_into_sfc() {
 /// AC-01 负断言：未导入符号不入 SFC（仅被引符号闭包——Q-1 默认裁定）。
 #[test]
 fn t02_unimported_helpers_not_pulled() {
-    let Some(reference_at) =
-        repo_file("blueprints/navigation/filetree/reference/default.at")
+    let Some(reference_at) = repo_file("blueprints/navigation/filetree/reference/default.at")
     else {
         eprintln!("[SKIP] filetree reference fixture not found");
         return;
@@ -97,8 +95,7 @@ fn t02_unimported_helpers_not_pulled() {
 /// 与 046 L1 通道同形。
 #[test]
 fn t03_compose_fixture_consumer_imports_bp_component() {
-    let Some(app_at) =
-        repo_file("examples/capability-tests/047-bp-compose/src/front/app.at")
+    let Some(app_at) = repo_file("examples/capability-tests/047-bp-compose/src/front/app.at")
     else {
         eprintln!("[SKIP] 047-bp-compose fixture not found");
         return;

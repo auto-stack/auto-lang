@@ -23,7 +23,14 @@ mod tests {
         ];
         for (tag, want) in expect {
             let got = registry.get_primary_component("vue", tag);
-            assert_eq!(got.as_deref(), want, "tag `{}` -> {:?}, got {:?}", tag, want, got);
+            assert_eq!(
+                got.as_deref(),
+                want,
+                "tag `{}` -> {:?}, got {:?}",
+                tag,
+                want,
+                got
+            );
         }
     }
 }

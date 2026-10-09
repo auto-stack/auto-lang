@@ -55,7 +55,7 @@ fn test_string_push_and_get() {
             s.get(0)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "72");  // 'H' = 72
+    assert_eq!(result, "72"); // 'H' = 72
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn test_string_pop() {
             val
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "67");  // 'C' = 67
+    assert_eq!(result, "67"); // 'C' = 67
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn test_string_get() {
             s.get(1)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "66");  // 'B' = 66
+    assert_eq!(result, "66"); // 'B' = 66
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn test_string_set() {
             s.get(0)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "67");  // 'C' = 67
+    assert_eq!(result, "67"); // 'C' = 67
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn test_string_insert() {
             s.get(1)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "66");  // 'B' = 66
+    assert_eq!(result, "66"); // 'B' = 66
 }
 
 #[test]
@@ -156,7 +156,7 @@ fn test_string_insert_at_beginning() {
             s.get(0)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "65");  // 'A' = 65
+    assert_eq!(result, "65"); // 'A' = 65
 }
 
 #[test]
@@ -169,7 +169,7 @@ fn test_string_remove() {
             s.remove(1)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "66");  // 'B' = 66
+    assert_eq!(result, "66"); // 'B' = 66
 }
 
 #[test]
@@ -290,5 +290,5 @@ fn test_string_from_then_modify() {
             s.get(0)
         "#;
     let result = run(code).unwrap();
-    assert_eq!(result, "68");  // 'D' = 68
+    assert_eq!(result, "68"); // 'D' = 68
 }

@@ -113,9 +113,7 @@ use super::{BackendGenerator, GenError, GenResult, WidgetRegistry};
 fn dot_chain_path(expr: &crate::ast::Expr) -> Option<String> {
     match expr {
         crate::ast::Expr::Ident(n) => Some(n.to_string()),
-        crate::ast::Expr::Dot(inner, name) => {
-            Some(format!("{}.{}", dot_chain_path(inner)?, name))
-        }
+        crate::ast::Expr::Dot(inner, name) => Some(format!("{}.{}", dot_chain_path(inner)?, name)),
         _ => None,
     }
 }
@@ -152,7 +150,9 @@ fn find_loop_child_key(body: &[AuraNode]) -> Option<String> {
             return None;
         }
         match node {
-            AuraNode::Element { props, children, .. } => {
+            AuraNode::Element {
+                props, children, ..
+            } => {
                 for (k, v) in props {
                     if k == "key" {
                         if let AuraPropValue::Expr(crate::ast::Expr::Ident(n)) = v {
@@ -183,7 +183,11 @@ fn find_loop_child_key(body: &[AuraNode]) -> Option<String> {
                 }
                 None
             }
-            AuraNode::Conditional { then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 for sub in then_body.iter().chain(else_body.iter().flatten()) {
                     if let Some(k) = search(sub, depth + 1) {
                         return Some(k);
@@ -248,11 +252,15 @@ fn fold_eq(a: &str, b: &str) -> bool {
 /// 递归 Element/ForLoop/Conditional/Component/Link 的全部子节点。
 fn view_tree_has_tag(node: &AuraNode, tag: &str) -> bool {
     match node {
-        AuraNode::Element { tag: t, children, .. } => {
-            fold_eq(t, tag) || children.iter().any(|c| view_tree_has_tag(c, tag))
-        }
+        AuraNode::Element {
+            tag: t, children, ..
+        } => fold_eq(t, tag) || children.iter().any(|c| view_tree_has_tag(c, tag)),
         AuraNode::ForLoop { body, .. } => body.iter().any(|c| view_tree_has_tag(c, tag)),
-        AuraNode::Conditional { then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             then_body.iter().any(|c| view_tree_has_tag(c, tag))
                 || else_body
                     .as_deref()
@@ -289,19 +297,18 @@ fn tag_is_builtin(tag: &str) -> bool {
 /// 属元素命名空间,即使折叠命中组件名也不桥接(否则 `pre {}` 会变成
 /// 自引用 `<Pre/>`);kebab(copy-button)或含大写(TabTrigger)才是组件形态。
 fn tag_has_component_shape(tag: &str) -> bool {
-    tag.contains('-')
-        || tag.contains('_')
-        || tag.chars().any(|c| c.is_uppercase())
+    tag.contains('-') || tag.contains('_') || tag.chars().any(|c| c.is_uppercase())
 }
 
 /// Plan 435 P3:HashMap/HashSet 迭代序跨进程不确定(RandomState),SFC 发射必须确定。
 /// 约定:各发射点收集后自行内联 `.sort()`(lucide_icons / api_functions_used /
 /// ext_import_lines / custom_imports / generate_shadcn_imports 均如此);
 /// 不设公共排序助手,避免"绕过助手 = 静默不确定"的假统一。
-
-use crate::aura::{AuraEvent, AuraNode, AuraProp, AuraPropValue, AuraStyleBinding, AuraTextContent, AuraWidget, LogicPayload};
+use crate::aura::{
+    AuraEvent, AuraNode, AuraProp, AuraPropValue, AuraStyleBinding, AuraTextContent, AuraWidget,
+    LogicPayload,
+};
 use std::collections::{HashMap, HashSet};
-
 
 // ============================================================================
 // Vue Generator
@@ -332,8 +339,24 @@ fn extract_class_attr(attr_str: &str) -> Option<String> {
 /// text-xs/sm/base/lg/xl…nxl 与 text-[15px]/[1.5rem] 视为字号；text-foreground、
 /// text-red-500、text-[hsl(…)]/#/rgb 视为颜色。
 fn is_text_size_token(tok: &str) -> bool {
-    let Some(s) = tok.strip_prefix("text-") else { return false };
-    if matches!(s, "xs" | "sm" | "base" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl" | "7xl" | "8xl" | "9xl") {
+    let Some(s) = tok.strip_prefix("text-") else {
+        return false;
+    };
+    if matches!(
+        s,
+        "xs" | "sm"
+            | "base"
+            | "lg"
+            | "xl"
+            | "2xl"
+            | "3xl"
+            | "4xl"
+            | "5xl"
+            | "6xl"
+            | "7xl"
+            | "8xl"
+            | "9xl"
+    ) {
         return true;
     }
     s.starts_with('[')
@@ -558,7 +581,6 @@ pub struct VueGenerator {
     use_theme_toggle: bool,
     /// Set when a handler calls toast() so we emit `import { toast } from 'vue-sonner'`.
     needs_toast_import: bool,
-
 
     /// Plan 444 (ash-shell-057 ④): a handler body referenced a VM-only
     /// native (`fs.*` / `File.*`) — the SFC must declare the shared
@@ -918,7 +940,7 @@ impl VueGenerator {
             default_classes: true,
             widget_registry: WidgetRegistry::with_defaults(),
             shadcn_components_used: HashSet::new(),
-            use_typescript: true,  // Plan 100: TypeScript by default
+            use_typescript: true, // Plan 100: TypeScript by default
             previewcard_counter: 0,
             previewcard_data: Vec::new(),
             needs_copy_code: false,
@@ -1011,7 +1033,10 @@ impl VueGenerator {
     }
 
     /// PLAN-037 T5: provide the sub-widget model-var map (name -> channels).
-    pub fn with_sub_widget_models(mut self, models: std::collections::HashMap<String, Vec<String>>) -> Self {
+    pub fn with_sub_widget_models(
+        mut self,
+        models: std::collections::HashMap<String, Vec<String>>,
+    ) -> Self {
         self.sub_widget_models = models;
         self
     }
@@ -1191,8 +1216,8 @@ impl VueGenerator {
     /// Emits a standalone `.vue` file backed by `reka-ui` (never
     /// `@/components/ui/*`), driven by the widget's library template.
     pub fn generate_widget_sfc(&mut self, name: &str) -> GenResult<String> {
-        let tpl = library_template(name)
-            .ok_or_else(|| GenError::UnknownWidget(name.to_string()))?;
+        let tpl =
+            library_template(name).ok_or_else(|| GenError::UnknownWidget(name.to_string()))?;
         Ok(format!(
             "{header}\n<script setup lang=\"ts\">\n{script}\n</script>\n\n<template>\n{template}\n</template>\n",
             header = attribution_header(name),
@@ -1223,9 +1248,7 @@ impl VueGenerator {
         let mut index = String::new();
         for file in &vue_files {
             let stem = file.trim_end_matches(".vue");
-            index.push_str(&format!(
-                "export {{ default as {stem} }} from './{file}'\n"
-            ));
+            index.push_str(&format!("export {{ default as {stem} }} from './{file}'\n"));
         }
         let mut files = vec![("index.ts".to_string(), index)];
         files.extend(extras);
@@ -1443,23 +1466,33 @@ impl VueGenerator {
                         // Plan 012 P0#13 follow-up: an arg form the bound-value
                         // transpiler rejects used to silently become `null`
                         // (then dropped by unwrap_or_default) — warn R013.
-                        let args_js = imp.call_args.iter()
-                            .map(|a| self.bound_value_or_warn(
-                                a,
-                                &format!("composable `{}` call args", imp.path),
-                                "null",
-                            ))
+                        let args_js = imp
+                            .call_args
+                            .iter()
+                            .map(|a| {
+                                self.bound_value_or_warn(
+                                    a,
+                                    &format!("composable `{}` call args", imp.path),
+                                    "null",
+                                )
+                            })
                             .collect::<Vec<_>>()
                             .join(", ");
                         for sym in &symbols {
                             let local = Self::ext_composable_local_name(sym);
-                            self.ext_composables
-                                .push((local.clone(), sym.clone(), args_js.clone()));
+                            self.ext_composables.push((
+                                local.clone(),
+                                sym.clone(),
+                                args_js.clone(),
+                            ));
                             // Plan 408 P12 §10.4: 收集 ref 字段标注。
                             if !imp.ref_fields.is_empty() {
                                 self.facade_ref_fields.insert(
                                     local,
-                                    imp.ref_fields.iter().map(|f| f.as_str().to_string()).collect(),
+                                    imp.ref_fields
+                                        .iter()
+                                        .map(|f| f.as_str().to_string())
+                                        .collect(),
                                 );
                             }
                         }
@@ -1524,16 +1557,12 @@ impl VueGenerator {
     fn nav_attr_fragment(&self, key: &str, value: &AuraPropValue) -> Option<String> {
         use crate::ast::Expr;
         match value {
-            AuraPropValue::Expr(Expr::Str(s)) | AuraPropValue::Expr(Expr::CStr(s)) => {
-                Some(format!("{}=\"{}\"", key, Self::escape_html_attr(s.as_str())))
-            }
+            AuraPropValue::Expr(Expr::Str(s)) | AuraPropValue::Expr(Expr::CStr(s)) => Some(
+                format!("{}=\"{}\"", key, Self::escape_html_attr(s.as_str())),
+            ),
             AuraPropValue::Expr(Expr::Bool(b)) => Some(format!(":{}=\"{}\"", key, b)),
             AuraPropValue::Expr(expr) => {
-                let js = self.bound_value_or_warn(
-                    expr,
-                    &format!("nav prop `{key}`"),
-                    "null",
-                );
+                let js = self.bound_value_or_warn(expr, &format!("nav prop `{key}`"), "null");
                 Some(format!(":{}=\"{}\"", key, js))
             }
             AuraPropValue::StyleBinding(_) => None,
@@ -1542,8 +1571,7 @@ impl VueGenerator {
 
     /// Plan 482: 用户 class/style 追加属性（契约类之后，逃生通道）。
     fn nav_user_class_attr(&self, props: &HashMap<String, AuraPropValue>) -> Option<String> {
-        let user = props.get("class")
-            .or_else(|| props.get("style"))?;
+        let user = props.get("class").or_else(|| props.get("style"))?;
         if let Some(s) = self.extract_string_value(user) {
             if s.trim().is_empty() {
                 return None;
@@ -1574,7 +1602,8 @@ impl VueGenerator {
                     handler_fn = format!("{}($event)", handler_fn);
                 } else {
                     handler_fn = format!("{}({})", handler_fn, loop_var);
-                    self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                    self.loop_param_handlers
+                        .insert(handler_name.clone(), loop_var.clone());
                 }
             }
         }
@@ -1603,7 +1632,10 @@ impl VueGenerator {
                 }
             }
         }
-        if attrs.iter().any(|a| a.starts_with("to=") || a.starts_with(":to=")) {
+        if attrs
+            .iter()
+            .any(|a| a.starts_with("to=") || a.starts_with(":to="))
+        {
             self.needs_router = true;
         }
         // active / disabled —— 布尔绑定。
@@ -1618,7 +1650,9 @@ impl VueGenerator {
         if let Some(icon_value) = props.get("icon") {
             if let Some(name) = self.extract_string_value(icon_value) {
                 let is_lucide = !name.is_empty()
-                    && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                    && name
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
                     && name.starts_with(|c: char| c.is_ascii_lowercase());
                 if is_lucide {
                     let lucide = Self::lucide_component_name(&name);
@@ -1655,19 +1689,24 @@ impl VueGenerator {
 
         // 非 shadcn：内联契约标记。静态基类 + :class 三态切换（active 字面
         // 布尔则烘焙进静态串；表达式则进 :class 三元）。
-        let size = props.get("size").and_then(|v| self.extract_string_value(v)).unwrap_or("");
+        let size = props
+            .get("size")
+            .and_then(|v| self.extract_string_value(v))
+            .unwrap_or("");
         let base = match size {
             "sm" => nc::ITEM_BASE_SM,
             "lg" => nc::ITEM_BASE_LG,
             _ => nc::ITEM_BASE_MD,
         };
-        let static_active = props.get("active")
+        let static_active = props
+            .get("active")
             .and_then(|v| match v {
                 AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
                 _ => None,
             })
             .unwrap_or(false);
-        let static_disabled = props.get("disabled")
+        let static_disabled = props
+            .get("disabled")
             .and_then(|v| match v {
                 AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
                 _ => None,
@@ -1692,8 +1731,16 @@ impl VueGenerator {
             }
         }
         let mut inline_attrs: Vec<String> = vec![format!("class=\"{}\"", static_cls)];
-        if let Some(state_ref) = props.get("class").or_else(|| props.get("style"))
-            .and_then(|v| if self.extract_string_value(v).is_some() { None } else { self.extract_state_ref(v) })
+        if let Some(state_ref) = props
+            .get("class")
+            .or_else(|| props.get("style"))
+            .and_then(|v| {
+                if self.extract_string_value(v).is_some() {
+                    None
+                } else {
+                    self.extract_state_ref(v)
+                }
+            })
         {
             inline_attrs.push(format!(":class=\"{}\"", state_ref));
         }
@@ -1731,7 +1778,9 @@ impl VueGenerator {
             }
         }
         // 嵌套路由模式 → router-link；否则 button。
-        let has_to = attrs.iter().any(|a| a.starts_with("to=") || a.starts_with(":to="));
+        let has_to = attrs
+            .iter()
+            .any(|a| a.starts_with("to=") || a.starts_with(":to="));
         let tag_name = if has_to { "router-link" } else { "button" };
         if tag_name == "button" {
             inline_attrs.push("type=\"button\"".to_string());
@@ -1757,7 +1806,11 @@ impl VueGenerator {
         }
 
         // 内容：children 优先；否则 icon + label/desc + badge 合成。
-        let icon_cls = if size == "lg" { nc::ICON_LG } else { nc::ICON_MD };
+        let icon_cls = if size == "lg" {
+            nc::ICON_LG
+        } else {
+            nc::ICON_MD
+        };
         let mut content = String::new();
         if !children.is_empty() {
             for child in children {
@@ -1768,12 +1821,15 @@ impl VueGenerator {
             if let Some(icon_value) = props.get("icon") {
                 if let Some(name) = self.extract_string_value(icon_value) {
                     let is_lucide = !name.is_empty()
-                        && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                        && name
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
                         && name.starts_with(|c: char| c.is_ascii_lowercase());
                     if is_lucide {
                         let lucide = Self::lucide_component_name(&name);
                         self.lucide_icons.insert(lucide.clone());
-                        content.push_str(&format!("{}<{} class=\"{}\" />\n", cind, lucide, icon_cls));
+                        content
+                            .push_str(&format!("{}<{} class=\"{}\" />\n", cind, lucide, icon_cls));
                     } else if !name.is_empty() {
                         content.push_str(&format!(
                             "{}<span class=\"inline-flex items-center justify-center {}\">{}</span>\n",
@@ -1791,7 +1847,10 @@ impl VueGenerator {
             let has_label = props.contains_key("label");
             let has_desc = props.contains_key("desc");
             if has_label || has_desc {
-                let badge = props.get("badge").and_then(|v| self.extract_string_value(v)).unwrap_or_default();
+                let badge = props
+                    .get("badge")
+                    .and_then(|v| self.extract_string_value(v))
+                    .unwrap_or_default();
                 let texts_cls = if badge.is_empty() {
                     "flex flex-col min-w-0".to_string()
                 } else {
@@ -1802,24 +1861,35 @@ impl VueGenerator {
                     if let Some(value) = props.get("label") {
                         let frag = match value {
                             AuraPropValue::Expr(expr) => {
-                                format!("{{{{{}}}}}", self.bound_value_or_warn(expr, "nav-item label", "''"))
+                                format!(
+                                    "{{{{{}}}}}",
+                                    self.bound_value_or_warn(expr, "nav-item label", "''")
+                                )
                             }
                             _ => self.prop_to_text_content(value)?,
                         };
-                        content.push_str(&format!("{}  <span class=\"nav-name truncate\">{}</span>\n", cind, frag));
+                        content.push_str(&format!(
+                            "{}  <span class=\"nav-name truncate\">{}</span>\n",
+                            cind, frag
+                        ));
                     }
                 }
                 if has_desc {
                     if let Some(value) = props.get("desc") {
                         let frag = match value {
                             AuraPropValue::Expr(expr) => {
-                                format!("{{{{{}}}}}", self.bound_value_or_warn(expr, "nav-item desc", "''"))
+                                format!(
+                                    "{{{{{}}}}}",
+                                    self.bound_value_or_warn(expr, "nav-item desc", "''")
+                                )
                             }
                             _ => self.prop_to_text_content(value)?,
                         };
                         content.push_str(&format!(
                             "{}  <span class=\"{} truncate\">{}</span>\n",
-                            cind, nc::TEXT_DESC, frag
+                            cind,
+                            nc::TEXT_DESC,
+                            frag
                         ));
                     }
                 }
@@ -1828,18 +1898,36 @@ impl VueGenerator {
             if let Some(value) = props.get("badge") {
                 let frag = match value {
                     AuraPropValue::Expr(expr) => {
-                        format!("{{{{{}}}}}", self.bound_value_or_warn(expr, "nav-item badge", "''"))
+                        format!(
+                            "{{{{{}}}}}",
+                            self.bound_value_or_warn(expr, "nav-item badge", "''")
+                        )
                     }
                     _ => self.prop_to_text_content(value)?,
                 };
-                content.push_str(&format!("{}<span class=\"{}\">{}</span>\n", cind, nc::BADGE_PILL, frag));
+                content.push_str(&format!(
+                    "{}<span class=\"{}\">{}</span>\n",
+                    cind,
+                    nc::BADGE_PILL,
+                    frag
+                ));
             }
         }
 
         if content.is_empty() {
-            html.push_str(&format!("{}<{} {} />\n", ind, tag_name, inline_attrs.join(" ")));
+            html.push_str(&format!(
+                "{}<{} {} />\n",
+                ind,
+                tag_name,
+                inline_attrs.join(" ")
+            ));
         } else {
-            html.push_str(&format!("{}<{} {}>\n", ind, tag_name, inline_attrs.join(" ")));
+            html.push_str(&format!(
+                "{}<{} {}>\n",
+                ind,
+                tag_name,
+                inline_attrs.join(" ")
+            ));
             html.push_str(&content);
             html.push_str(&format!("{}</{}>\n", ind, tag_name));
         }
@@ -1904,11 +1992,17 @@ impl VueGenerator {
                 AuraPropValue::Expr(crate::ast::Expr::Str(s))
                 | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => {
                     let p = Self::escape_js_string(s.as_str());
-                    format!("$route.path === '{0}' || $route.path.startsWith('{0}' + '/')", p)
+                    format!(
+                        "$route.path === '{0}' || $route.path.startsWith('{0}' + '/')",
+                        p
+                    )
                 }
                 AuraPropValue::Expr(expr) => {
                     let js = self.bound_value_or_warn(expr, "sidebar menu button `to`", "''");
-                    format!("$route.path === ({0}) || $route.path.startsWith(({0}) + '/')", js)
+                    format!(
+                        "$route.path === ({0}) || $route.path.startsWith(({0}) + '/')",
+                        js
+                    )
                 }
                 _ => String::new(),
             };
@@ -1974,7 +2068,10 @@ impl VueGenerator {
             html.push_str(&format!("{}</RouterLink>\n", ind1));
             html.push_str(&format!("{}</{}>\n", ind, comp));
         } else if content.is_empty() {
-            html.push_str(&format!("{}<{}{}{} />\n", ind, comp, as_child_str, attr_str));
+            html.push_str(&format!(
+                "{}<{}{}{} />\n",
+                ind, comp, as_child_str, attr_str
+            ));
         } else {
             html.push_str(&format!("{}<{}{}{}>\n", ind, comp, as_child_str, attr_str));
             html.push_str(&content);
@@ -1994,17 +2091,20 @@ impl VueGenerator {
         use crate::ui_gen::nav_contract as nc;
 
         let ind = "  ".repeat(indent);
-        let label = props.get("label")
+        let label = props
+            .get("label")
             .or_else(|| props.get("text"))
             .and_then(|v| self.extract_string_value(v))
             .unwrap_or_default();
-        let collapsible = props.get("collapsible")
+        let collapsible = props
+            .get("collapsible")
             .and_then(|v| match v {
                 AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
                 _ => None,
             })
             .unwrap_or_else(|| props.contains_key("collapsible"));
-        let indent_children = props.get("indent")
+        let indent_children = props
+            .get("indent")
             .and_then(|v| match v {
                 AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
                 _ => None,
@@ -2056,7 +2156,12 @@ impl VueGenerator {
         if !collapsible {
             html.push_str(&format!("{}<div class=\"nav-group flex flex-col\">\n", ind));
             if !label.is_empty() {
-                html.push_str(&format!("{}  <div class=\"{}\">{}</div>\n", ind, nc::GROUP_LABEL, Self::escape_html_text(&label)));
+                html.push_str(&format!(
+                    "{}  <div class=\"{}\">{}</div>\n",
+                    ind,
+                    nc::GROUP_LABEL,
+                    Self::escape_html_text(&label)
+                ));
             }
             html.push_str(&format!("{}  <div class=\"{}\">\n", ind, content_cls));
             for child in children {
@@ -2078,7 +2183,12 @@ impl VueGenerator {
             );
             html.push_str(&format!("{}<div class=\"nav-group flex flex-col\">\n", ind));
             if !label.is_empty() {
-                html.push_str(&format!("{}  <div class=\"{}\">{}</div>\n", ind, nc::GROUP_LABEL, Self::escape_html_text(&label)));
+                html.push_str(&format!(
+                    "{}  <div class=\"{}\">{}</div>\n",
+                    ind,
+                    nc::GROUP_LABEL,
+                    Self::escape_html_text(&label)
+                ));
             }
             html.push_str(&format!("{}  <div class=\"{}\">\n", ind, content_cls));
             for child in children {
@@ -2104,13 +2214,29 @@ impl VueGenerator {
         html.push_str(&format!("{}<div class=\"nav-group flex flex-col\">\n", ind));
         html.push_str(&format!(
             "{}  <button type=\"button\" class=\"{} {}\"{}>\n",
-            ind, nc::GROUP_TOGGLE, nc::GROUP_TOGGLE_HOVER, toggle_attr
+            ind,
+            nc::GROUP_TOGGLE,
+            nc::GROUP_TOGGLE_HOVER,
+            toggle_attr
         ));
-        html.push_str(&format!("{}    <span v-if=\"{}\" class=\"{}\">▾</span>\n", ind, open_js, chevron_cls));
-        html.push_str(&format!("{}    <span v-else class=\"{}\">▸</span>\n", ind, chevron_cls));
-        html.push_str(&format!("{}    <span class=\"truncate\">{}</span>\n", ind, Self::escape_html_text(&label)));
+        html.push_str(&format!(
+            "{}    <span v-if=\"{}\" class=\"{}\">▾</span>\n",
+            ind, open_js, chevron_cls
+        ));
+        html.push_str(&format!(
+            "{}    <span v-else class=\"{}\">▸</span>\n",
+            ind, chevron_cls
+        ));
+        html.push_str(&format!(
+            "{}    <span class=\"truncate\">{}</span>\n",
+            ind,
+            Self::escape_html_text(&label)
+        ));
         html.push_str(&format!("{}  </button>\n", ind));
-        html.push_str(&format!("{}  <div v-show=\"{}\" class=\"{}\">\n", ind, open_js, content_cls));
+        html.push_str(&format!(
+            "{}  <div v-show=\"{}\" class=\"{}\">\n",
+            ind, open_js, content_cls
+        ));
         for child in children {
             html.push_str(&self.node_to_html(child, indent + 2)?);
         }
@@ -2131,7 +2257,8 @@ impl VueGenerator {
         use crate::ui_gen::nav_contract as nc;
 
         let ind = "  ".repeat(indent);
-        let placeholder = props.get("search_placeholder")
+        let placeholder = props
+            .get("search_placeholder")
             .and_then(|v| self.extract_string_value(v))
             .unwrap_or("Search...");
 
@@ -2153,13 +2280,15 @@ impl VueGenerator {
             self.lucide_icons.insert("Search".to_string());
             html.push_str(&format!(
                 "{}    <Search class=\"{} text-muted-foreground shrink-0\" />\n",
-                ind, nc::ICON_MD
+                ind,
+                nc::ICON_MD
             ));
         } else {
             // 非 shadcn 轨：🔍 文本字形——与 VM 端同构，免 lucide 依赖。
             html.push_str(&format!(
                 "{}    <span class=\"{} text-muted-foreground shrink-0\">🔍</span>\n",
-                ind, nc::ICON_MD
+                ind,
+                nc::ICON_MD
             ));
         }
         let mut input_attrs: Vec<String> = vec![format!("class=\"{}\"", nc::SEARCH_INPUT)];
@@ -2174,12 +2303,18 @@ impl VueGenerator {
                 input_attrs.push(format!(":value=\"{}\"", js));
             }
         }
-        input_attrs.push(format!("placeholder=\"{}\"", Self::escape_html_attr(&placeholder)));
+        input_attrs.push(format!(
+            "placeholder=\"{}\"",
+            Self::escape_html_attr(&placeholder)
+        ));
         if let Some(event) = events.get("onsearch") {
             let handler_name = self.handler_to_function_call(&event.handler);
             let wants_text = self.input_text_handler_wants_text_arg(event);
             let handler_fn = if wants_text {
-                format!("{}(($event.target as HTMLInputElement).value)", handler_name)
+                format!(
+                    "{}(($event.target as HTMLInputElement).value)",
+                    handler_name
+                )
             } else {
                 self.handler_to_function_call_with_params(&event.handler, &event.params)
             };
@@ -2203,11 +2338,23 @@ impl VueGenerator {
         indent: usize,
     ) -> GenResult<String> {
         let ind = "  ".repeat(indent);
-        let name = props.get("name").and_then(|v| self.extract_string_value(v)).unwrap_or("Category");
-        let color = props.get("color").and_then(|v| self.extract_string_value(v)).unwrap_or("gray");
-        let count = props.get("count")
+        let name = props
+            .get("name")
+            .and_then(|v| self.extract_string_value(v))
+            .unwrap_or("Category");
+        let color = props
+            .get("color")
+            .and_then(|v| self.extract_string_value(v))
+            .unwrap_or("gray");
+        let count = props
+            .get("count")
             .and_then(|v| self.extract_int_value(v).map(|n| n.to_string()))
-            .or_else(|| props.get("count").and_then(|v| self.extract_string_value(v)).map(|s| s.to_string()))
+            .or_else(|| {
+                props
+                    .get("count")
+                    .and_then(|v| self.extract_string_value(v))
+                    .map(|s| s.to_string())
+            })
             .unwrap_or_default();
 
         let (item_classes, dot_class) = Self::category_color_classes(color);
@@ -2215,27 +2362,59 @@ impl VueGenerator {
 
         let mut html = String::new();
         html.push_str(&format!("{}<div>\n", ind));
-        html.push_str(&format!("{}  <div class=\"flex items-center gap-2 mb-4\">\n", ind));
-        html.push_str(&format!("{}    <span class=\"h-2.5 w-2.5 rounded-full {}\" />\n", ind, dot_class));
+        html.push_str(&format!(
+            "{}  <div class=\"flex items-center gap-2 mb-4\">\n",
+            ind
+        ));
+        html.push_str(&format!(
+            "{}    <span class=\"h-2.5 w-2.5 rounded-full {}\" />\n",
+            ind, dot_class
+        ));
         html.push_str(&format!("{}    <h2 class=\"m-0 text-sm font-semibold uppercase tracking-wider text-muted-foreground\">{}</h2>\n", ind, name));
-        html.push_str(&format!("{}    <span class=\"text-xs text-muted-foreground/60\">({})</span>\n", ind, count));
+        html.push_str(&format!(
+            "{}    <span class=\"text-xs text-muted-foreground/60\">({})</span>\n",
+            ind, count
+        ));
         html.push_str(&format!("{}  </div>\n", ind));
         html.push_str(&format!("{}  <div class=\"grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3\">\n", ind));
 
         let has_search = self.state_names.contains(&"searchQuery".to_string());
 
         for child in children {
-            if let AuraNode::Element { tag: child_tag, props: child_props, .. } = child {
-                if child_tag == "component-card" || child_tag == "component_card" || child_tag == "componentcard" {
-                    let to = child_props.get("to").and_then(|v| self.extract_string_value(v)).unwrap_or("#");
-                    let card_name = child_props.get("name").and_then(|v| self.extract_string_value(v)).unwrap_or("");
-                    let desc = child_props.get("desc").and_then(|v| self.extract_string_value(v)).unwrap_or("");
-                    let icon_name = child_props.get("icon").and_then(|v| self.extract_string_value(v)).unwrap_or("");
+            if let AuraNode::Element {
+                tag: child_tag,
+                props: child_props,
+                ..
+            } = child
+            {
+                if child_tag == "component-card"
+                    || child_tag == "component_card"
+                    || child_tag == "componentcard"
+                {
+                    let to = child_props
+                        .get("to")
+                        .and_then(|v| self.extract_string_value(v))
+                        .unwrap_or("#");
+                    let card_name = child_props
+                        .get("name")
+                        .and_then(|v| self.extract_string_value(v))
+                        .unwrap_or("");
+                    let desc = child_props
+                        .get("desc")
+                        .and_then(|v| self.extract_string_value(v))
+                        .unwrap_or("");
+                    let icon_name = child_props
+                        .get("icon")
+                        .and_then(|v| self.extract_string_value(v))
+                        .unwrap_or("");
                     let lucide_component = Self::lucide_component_name(icon_name);
                     self.lucide_icons.insert(lucide_component.clone());
 
                     let vshow = if has_search {
-                        format!(r#" v-show="!searchQuery || '{}'.toLowerCase().includes(searchQuery.toLowerCase()) || '{}'.toLowerCase().includes(searchQuery.toLowerCase())""#, card_name, desc)
+                        format!(
+                            r#" v-show="!searchQuery || '{}'.toLowerCase().includes(searchQuery.toLowerCase()) || '{}'.toLowerCase().includes(searchQuery.toLowerCase())""#,
+                            card_name, desc
+                        )
                     } else {
                         String::new()
                     };
@@ -2300,7 +2479,9 @@ impl VueGenerator {
             use std::collections::HashSet;
             let mut seen: HashSet<String> = HashSet::new();
             for a in &acts.actions {
-                let Some(sc) = a.shortcut.as_deref() else { continue };
+                let Some(sc) = a.shortcut.as_deref() else {
+                    continue;
+                };
                 let key = crate::ui_gen::normalize_shortcut(sc);
                 if key.is_empty() || !seen.insert(key.clone()) {
                     continue;
@@ -2330,8 +2511,10 @@ impl VueGenerator {
             // Plan 426 §1.5: setup statements run BEFORE state/computed/props
             // declarations (bindings first) — a reference to any of them is a
             // runtime TDZ error, rejected at compile time.
-            let forbidden: std::collections::HashSet<&str> =
-                widget.state_vars.iter().map(|sv| sv.name.as_str())
+            let forbidden: std::collections::HashSet<&str> = widget
+                .state_vars
+                .iter()
+                .map(|sv| sv.name.as_str())
                 .chain(widget.computed.iter().map(|c| c.name.as_str()))
                 .chain(widget.props.iter().map(|p| p.name.as_str()))
                 .collect();
@@ -2360,10 +2543,8 @@ impl VueGenerator {
                 }
             }
             for (binding, fields) in &setup.ref_annotations {
-                self.setup_ref_fields.insert(
-                    binding.clone(),
-                    fields.iter().cloned().collect(),
-                );
+                self.setup_ref_fields
+                    .insert(binding.clone(), fields.iter().cloned().collect());
             }
             self.current_setup_stmts = Some(setup.body.stmts.clone());
         }
@@ -2374,7 +2555,8 @@ impl VueGenerator {
         for msg in &widget.messages {
             for variant in &msg.variants {
                 let handler_name = Self::sanitize_ident(&variant.name);
-                self.msg_payload_arities.insert(handler_name, variant.payload.len());
+                self.msg_payload_arities
+                    .insert(handler_name, variant.payload.len());
             }
         }
 
@@ -2385,9 +2567,14 @@ impl VueGenerator {
         self.handler_params = widget.handler_params.clone();
 
         // Detect dark mode: check widget state vars, view tree, or handler names
-        self.has_dark_mode = widget.state_vars.iter().any(|s| s.name == "isDark" || s.name == "dark_mode");
+        self.has_dark_mode = widget
+            .state_vars
+            .iter()
+            .any(|s| s.name == "isDark" || s.name == "dark_mode");
         // Determine the dark mode state variable name for template binding
-        self.dark_mode_var = widget.state_vars.iter()
+        self.dark_mode_var = widget
+            .state_vars
+            .iter()
             .find(|s| s.name == "isDark" || s.name == "dark_mode")
             .map(|s| s.name.clone());
         // Plan 458: widget-local declaration (root-App pattern) vs store
@@ -2403,7 +2590,10 @@ impl VueGenerator {
         if !self.has_dark_mode {
             // Handler keys are stored as ".ToggleDarkMode" (with leading dot)
             let has_toggle = widget.handlers.contains_key(".ToggleDarkMode")
-                || widget.lifecycle.iter().any(|l| l.name.contains("DarkMode") || l.name.contains("dark_mode"));
+                || widget
+                    .lifecycle
+                    .iter()
+                    .any(|l| l.name.contains("DarkMode") || l.name.contains("dark_mode"));
             if has_toggle {
                 self.has_dark_mode = true;
                 self.dark_mode_var = Some("dark_mode".to_string());
@@ -2413,7 +2603,10 @@ impl VueGenerator {
         // Pre-populate state_names so expr_to_js recognizes refs during template generation
         for state in &widget.state_vars {
             self.state_names.push(state.name.clone());
-            self.state_types.insert(state.name.clone(), Self::auto_type_to_ts_type(&state.type_info));
+            self.state_types.insert(
+                state.name.clone(),
+                Self::auto_type_to_ts_type(&state.type_info),
+            );
             if Self::is_int_auto_type(&state.type_info) {
                 self.int_names.insert(state.name.clone());
             }
@@ -2429,7 +2622,10 @@ impl VueGenerator {
         // Register prop names (props are NOT refs — no .value suffix in script)
         for prop in &widget.props {
             self.prop_names.push(prop.name.clone());
-            self.prop_types.insert(prop.name.clone(), Self::auto_type_to_ts_type(&prop.type_info));
+            self.prop_types.insert(
+                prop.name.clone(),
+                Self::auto_type_to_ts_type(&prop.type_info),
+            );
             if Self::is_int_auto_type(&prop.type_info) {
                 self.int_names.insert(prop.name.clone());
             }
@@ -2440,7 +2636,8 @@ impl VueGenerator {
         for prop in &widget.props {
             if Self::prop_is_emitted_callback(prop, widget) {
                 if let Some(snake) = prop.name.strip_prefix("on_") {
-                    self.callback_contract_events.insert(Self::snake_to_pascal(snake));
+                    self.callback_contract_events
+                        .insert(Self::snake_to_pascal(snake));
                 }
             }
         }
@@ -2579,8 +2776,14 @@ impl VueGenerator {
         // (rule, message) — handler bodies are transpiled more than once
         // (route pre-analysis + real generation), so R010 notes repeat.
         let mut all_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = Vec::new();
-        let mut seen: std::collections::HashSet<(&'static str, String)> = std::collections::HashSet::new();
-        for w in self.codegen_warnings.borrow_mut().drain(..).chain(warnings.into_iter()) {
+        let mut seen: std::collections::HashSet<(&'static str, String)> =
+            std::collections::HashSet::new();
+        for w in self
+            .codegen_warnings
+            .borrow_mut()
+            .drain(..)
+            .chain(warnings.into_iter())
+        {
             if seen.insert((w.rule, w.message.clone())) {
                 all_warnings.push(w);
             }
@@ -2599,10 +2802,15 @@ impl VueGenerator {
         severity: crate::ui_gen::validators::Severity,
         message: impl Into<String>,
     ) {
-        let widget = self.current_widget.clone().unwrap_or_else(|| "?".to_string());
-        self.codegen_warnings.borrow_mut().push(
-            crate::ui_gen::validators::ValidationWarning::new(rule, severity, &widget, message),
-        );
+        let widget = self
+            .current_widget
+            .clone()
+            .unwrap_or_else(|| "?".to_string());
+        self.codegen_warnings
+            .borrow_mut()
+            .push(crate::ui_gen::validators::ValidationWarning::new(
+                rule, severity, &widget, message,
+            ));
     }
 
     /// Generate <script setup> content
@@ -2818,7 +3026,10 @@ impl VueGenerator {
         if !self.lucide_icons.is_empty() {
             let mut icons: Vec<String> = self.lucide_icons.iter().cloned().collect();
             icons.sort();
-            script.push_str(&format!("import {{ {} }} from 'lucide-vue-next'\n", icons.join(", ")));
+            script.push_str(&format!(
+                "import {{ {} }} from 'lucide-vue-next'\n",
+                icons.join(", ")
+            ));
             script.push('\n');
         }
 
@@ -2831,7 +3042,9 @@ impl VueGenerator {
                 .iter()
                 .filter(|(names, is_component, _)| {
                     !*is_component
-                        || !names.iter().any(|n| self.shadcn_components_used.contains(n))
+                        || !names
+                            .iter()
+                            .any(|n| self.shadcn_components_used.contains(n))
                 })
                 .map(|(_, _, line)| line.clone())
                 .collect();
@@ -2867,7 +3080,8 @@ impl VueGenerator {
             let mut emitted: Vec<String> = Vec::new();
             for stmt in setup {
                 let body = crate::ui_gen::ts_adapter::transpile_handler_body(
-                    std::slice::from_ref(stmt), &ctx,
+                    std::slice::from_ref(stmt),
+                    &ctx,
                 );
                 let body = match stmt {
                     crate::ast::Stmt::Store(store)
@@ -2919,7 +3133,10 @@ impl VueGenerator {
             if ext_imported_names.contains(comp.as_str()) {
                 continue;
             }
-            custom_imports.push(format!("import {} from '@/components/{}.vue'\n", comp, comp));
+            custom_imports.push(format!(
+                "import {} from '@/components/{}.vue'\n",
+                comp, comp
+            ));
         }
         if !custom_imports.is_empty() {
             custom_imports.sort();
@@ -2966,7 +3183,8 @@ impl VueGenerator {
         for (pattern, payload) in &widget.handlers {
             if let LogicPayload::AstStmts(stmts) = payload {
                 if Self::stmts_call_complete(stmts) {
-                    self.debounced_handlers.insert(self.pattern_to_handler_name(pattern));
+                    self.debounced_handlers
+                        .insert(self.pattern_to_handler_name(pattern));
                 }
                 // Plan 410: detect toast() calls so we import { toast } from vue-sonner.
                 if Self::stmts_call_toast(stmts) {
@@ -2989,7 +3207,10 @@ impl VueGenerator {
         if !self.api_functions_used.is_empty() {
             let mut api_funcs: Vec<String> = self.api_functions_used.iter().cloned().collect();
             api_funcs.sort();
-            script.push_str(&format!("import {{ {} }} from '@/lib/api'\n", api_funcs.join(", ")));
+            script.push_str(&format!(
+                "import {{ {} }} from '@/lib/api'\n",
+                api_funcs.join(", ")
+            ));
             // Deprecation warning for implicit API usage
             if !self.explicit_api_imports {
                 eprintln!(
@@ -3020,7 +3241,9 @@ impl VueGenerator {
         // `withDefaults(defineProps, {...})` so the default VALUES apply at
         // runtime, not just `?:` optionality.
         if !widget.props.is_empty() {
-            let has_defaults = widget.props.iter()
+            let has_defaults = widget
+                .props
+                .iter()
                 .any(|p| p.default.is_some() && !Self::prop_is_emitted_callback(p, widget));
             script.push_str(if has_defaults {
                 "const props = withDefaults(defineProps<{\n"
@@ -3168,7 +3391,8 @@ impl VueGenerator {
         // `let` (not const) — clearTimeout() and ++__completeSeq mutate them.
         if !self.debounced_handlers.is_empty() {
             if self.use_typescript {
-                script.push_str("let __completeTimer: ReturnType<typeof setTimeout> | null = null\n");
+                script
+                    .push_str("let __completeTimer: ReturnType<typeof setTimeout> | null = null\n");
             } else {
                 script.push_str("let __completeTimer = null\n");
             }
@@ -3198,7 +3422,10 @@ impl VueGenerator {
                     ref_name
                 ));
             } else {
-                script.push_str(&format!("const {} = ref<HTMLElement | null>(null)\n", ref_name));
+                script.push_str(&format!(
+                    "const {} = ref<HTMLElement | null>(null)\n",
+                    ref_name
+                ));
             }
         }
         if !self.template_refs.is_empty() {
@@ -3218,7 +3445,11 @@ impl VueGenerator {
                         format!("{call}(0, 0, 'end')"),
                     )
                 } else {
-                    (format!("{call}()"), format!("{call}()"), format!("{call}()"))
+                    (
+                        format!("{call}()"),
+                        format!("{call}()"),
+                        format!("{call}()"),
+                    )
                 };
                 script.push_str(&format!(
                     concat!(
@@ -3281,7 +3512,9 @@ impl VueGenerator {
         // Dark mode: detect system preference on mount (only for isDark pattern)
         if self.has_dark_mode && self.dark_mode_var.as_deref() != Some("dark_mode") {
             script.push_str("onMounted(() => {\n");
-            script.push_str("  isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches\n");
+            script.push_str(
+                "  isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches\n",
+            );
             script.push_str("})\n\n");
         }
 
@@ -3326,9 +3559,7 @@ impl VueGenerator {
                 let base = Self::base_pattern(pattern)
                     .trim_start_matches('.')
                     .trim_matches('"');
-                if base == trimmed
-                    || fn_name == trimmed
-                    || fn_name == Self::sanitize_ident(trimmed)
+                if base == trimmed || fn_name == trimmed || fn_name == Self::sanitize_ident(trimmed)
                 {
                     self.used_handlers.insert(fn_name);
                 }
@@ -3341,7 +3572,8 @@ impl VueGenerator {
             // Each variant may carry a single payload type (e.g. SelectTag(str) → str).
             // handler_params stores param names (e.g. ["t"]) for the on-block's .Handler(t).
             // We use the variant's payload type when available.
-            let mut event_payload_types: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            let mut event_payload_types: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
             for msg in &widget.messages {
                 for variant in &msg.variants {
                     // Plan 043 M5 #1: payload is now Vec<Type>; the TS event
@@ -3405,8 +3637,12 @@ impl VueGenerator {
                     for stmt in stmts {
                         let Stmt::Expr(e) = stmt else { continue };
                         let Expr::Call(call) = e else { continue };
-                        let Expr::Ident(name) = call.name.as_ref() else { continue };
-                        let Some(prop) = name.as_str().strip_prefix("on_") else { continue };
+                        let Expr::Ident(name) = call.name.as_ref() else {
+                            continue;
+                        };
+                        let Some(prop) = name.as_str().strip_prefix("on_") else {
+                            continue;
+                        };
                         let arity = call
                             .args
                             .args
@@ -3458,7 +3694,10 @@ impl VueGenerator {
                 let _ = (&self.quoted_events, &self.callback_contract_events);
                 // TS object-literal keys must be quoted when the emit name is
                 // not a plain identifier (e.g. 'update:modelValue').
-                let key = if event.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$') {
+                let key = if event
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+                {
                     event.clone()
                 } else {
                     format!("'{}'", event)
@@ -3522,13 +3761,17 @@ impl VueGenerator {
         // directly); props need a getter (`() => props.x`).
         for watcher in &widget.watchers {
             let body = self.generate_handler_body(&watcher.payload)?;
-            let sources: Vec<String> = watcher.sources.iter().map(|s| {
-                if self.prop_names.contains(s) {
-                    format!("() => props.{}", s)
-                } else {
-                    s.clone()
-                }
-            }).collect();
+            let sources: Vec<String> = watcher
+                .sources
+                .iter()
+                .map(|s| {
+                    if self.prop_names.contains(s) {
+                        format!("() => props.{}", s)
+                    } else {
+                        s.clone()
+                    }
+                })
+                .collect();
             let source = if sources.len() == 1 {
                 sources[0].clone()
             } else {
@@ -3549,8 +3792,15 @@ impl VueGenerator {
             };
             let indented = Self::indent_body(&body, "  ");
             // Plan 408 P12 §10.7: watch 回调含 await/API 调用时用 async。
-            let async_kw = if self.handler_has_api_calls(&watcher.payload) { "async " } else { "" };
-            script.push_str(&format!("watch({}, {}() => {{\n{}\n}}{})\n\n", source, async_kw, indented, opts));
+            let async_kw = if self.handler_has_api_calls(&watcher.payload) {
+                "async "
+            } else {
+                ""
+            };
+            script.push_str(&format!(
+                "watch({}, {}() => {{\n{}\n}}{})\n\n",
+                source, async_kw, indented, opts
+            ));
         }
 
         // Plan 053 后续: scroll auto_scroll — emit a scroll-to-bottom watcher for
@@ -3580,16 +3830,15 @@ impl VueGenerator {
                 }
             };
             let (k, ax, a, b) = if self.use_typescript {
-                (
-                    "k: string",
-                    "ax: string",
-                    "a: string | number",
-                    "b: number",
-                )
+                ("k: string", "ax: string", "a: string | number", "b: number")
             } else {
                 ("k", "ax", "a", "b")
             };
-            let el_ret_t = if self.use_typescript { "Element | null" } else { "" };
+            let el_ret_t = if self.use_typescript {
+                "Element | null"
+            } else {
+                ""
+            };
             let state_ret_t = if self.use_typescript {
                 "{ offset_x: number; offset_y: number; viewport_w: number; viewport_h: number; content_w: number; content_h: number; progress_x: number; progress_y: number }"
             } else {
@@ -3707,8 +3956,10 @@ impl VueGenerator {
             std::collections::HashMap::new();
         for (pattern, payload) in &widget.handlers {
             let handler_name = self.pattern_to_handler_name(pattern);
-            handler_base_patterns
-                .insert(handler_name.clone(), Self::base_pattern(pattern).to_string());
+            handler_base_patterns.insert(
+                handler_name.clone(),
+                Self::base_pattern(pattern).to_string(),
+            );
             // Plan 053 M5/P5-6: complete-handlers get a debounced body
             // (setTimeout 80ms + seq guard); other handlers transpile normally.
             let is_debounced = self.debounced_handlers.contains(&handler_name);
@@ -3784,8 +4035,7 @@ impl VueGenerator {
             if let Some(emit_name) = emit_name {
                 let snake = Self::pascal_to_snake(&handler_name);
                 let callback_key = format!("props.on_{}", snake);
-                let already_notifies_parent =
-                    callback_relayed || body.contains(&callback_key);
+                let already_notifies_parent = callback_relayed || body.contains(&callback_key);
                 // Plan 053 M4 (P5-7 residual): internal helper handlers that are
                 // only self-called (`.DoContinuation()` from OnInput/OnEnter,
                 // `.DoTokenize()` from OnInput) skip the trailing emit('X') —
@@ -3814,47 +4064,52 @@ impl VueGenerator {
                     // would produce "Cannot find name" TS2304.
                     let pattern_key = Self::base_pattern(pattern);
                     let declared = Self::get_handler_params(&widget.handler_params, pattern_key);
-                    let emit_args: String = if let Some(loop_var) =
-                        self.loop_param_handlers.get(&handler_name)
-                    {
-                        // Loop-param handlers (template calls OpenPath(b) inside
-                        // a v-for) must emit the loop var, NOT the on-block's
-                        // declared param name (`path`) which is never bound.
-                        // BUT a no-arg handler (.Stop) also receives the loop
-                        // var in its function signature — it must still emit()
-                        // WITHOUT args, matching its `Stop: []` payload.
-                        if declared.map(|p| !p.is_empty()).unwrap_or(false) {
-                            loop_var.clone()
-                        } else {
-                            String::new()
-                        }
-                    } else {
-                        // Plan 444 (ash-shell-057 ③): when the on-block
-                        // declares no params but the msg variant carries a
-                        // payload, forward synthesized arg names — the
-                        // defineEmits type now always carries the variant's
-                        // payload arity, so an arg-less emit would TS2554.
-                        let declared_args = declared
-                            .map(|params| params.iter().map(|p| p.as_str().to_string()).collect::<Vec<_>>().join(", "))
-                            .unwrap_or_default();
-                        if declared_args.is_empty() {
-                            let arity = self
-                                .msg_payload_arities
-                                .get(&handler_name)
-                                .cloned()
-                                .unwrap_or(0);
-                            if arity > 0 {
-                                (0..arity)
-                                    .map(|i| format!("arg{}", i))
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
+                    let emit_args: String =
+                        if let Some(loop_var) = self.loop_param_handlers.get(&handler_name) {
+                            // Loop-param handlers (template calls OpenPath(b) inside
+                            // a v-for) must emit the loop var, NOT the on-block's
+                            // declared param name (`path`) which is never bound.
+                            // BUT a no-arg handler (.Stop) also receives the loop
+                            // var in its function signature — it must still emit()
+                            // WITHOUT args, matching its `Stop: []` payload.
+                            if declared.map(|p| !p.is_empty()).unwrap_or(false) {
+                                loop_var.clone()
                             } else {
                                 String::new()
                             }
                         } else {
-                            declared_args
-                        }
-                    };
+                            // Plan 444 (ash-shell-057 ③): when the on-block
+                            // declares no params but the msg variant carries a
+                            // payload, forward synthesized arg names — the
+                            // defineEmits type now always carries the variant's
+                            // payload arity, so an arg-less emit would TS2554.
+                            let declared_args = declared
+                                .map(|params| {
+                                    params
+                                        .iter()
+                                        .map(|p| p.as_str().to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                })
+                                .unwrap_or_default();
+                            if declared_args.is_empty() {
+                                let arity = self
+                                    .msg_payload_arities
+                                    .get(&handler_name)
+                                    .cloned()
+                                    .unwrap_or(0);
+                                if arity > 0 {
+                                    (0..arity)
+                                        .map(|i| format!("arg{}", i))
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                } else {
+                                    String::new()
+                                }
+                            } else {
+                                declared_args
+                            }
+                        };
                     if emit_args.is_empty() {
                         body.push_str(&format!("\nemit('{}')", emit_name));
                     } else {
@@ -3881,8 +4136,8 @@ impl VueGenerator {
             // Plan 617 T-06: `Http.get` transpiles to `await (await fetch(..)).json()`,
             // so a handler whose body awaits must be emitted async. Same heuristic the
             // module-fn path already uses (`body.contains("await")`).
-            let is_async = (self.handler_has_api_calls(payload) || body.contains("await"))
-                && !is_debounced;
+            let is_async =
+                (self.handler_has_api_calls(payload) || body.contains("await")) && !is_debounced;
             self.handlers.push((handler_name.clone(), body, is_async));
         }
 
@@ -3920,7 +4175,8 @@ impl VueGenerator {
         // from extensions (no view binding) used to be silently dropped by
         // the used_handlers filter, forcing inert event decoys and duplicated
         // logic in the extensions (demo CustomScrollbar, jade panels).
-        let mut generated_handlers: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut generated_handlers: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
         for (handler_name, handler_body, is_async) in &self.handlers {
             // Plan 448 C: auto-sync mints (`__bind_oninput_<n>`) are empty by
             // construction — Vue realizes the sync via the v-model fold, so
@@ -3941,9 +4197,8 @@ impl VueGenerator {
             } else {
                 let declared = Self::get_handler_params(&widget.handler_params, &pattern_key)
                     .map(|params| {
-                        let param_names: Vec<String> = params.iter()
-                            .map(|p| format!("{}: any", p))
-                            .collect();
+                        let param_names: Vec<String> =
+                            params.iter().map(|p| format!("{}: any", p)).collect();
                         param_names.join(", ")
                     })
                     .unwrap_or_default();
@@ -3971,7 +4226,11 @@ impl VueGenerator {
 
             let async_kw = if *is_async { "async " } else { "" };
             let return_type = if self.use_typescript {
-                if *is_async { ": Promise<void>" } else { ": void" }
+                if *is_async {
+                    ": Promise<void>"
+                } else {
+                    ": void"
+                }
             } else {
                 ""
             };
@@ -3993,12 +4252,21 @@ impl VueGenerator {
 
             if let Some(ref body) = auto_body {
                 let indented = Self::indent_body(body, "  ");
-                script.push_str(&format!("{}function {}({}){} {{\n{}\n}}\n\n", async_kw, handler_name, params_str, return_type, indented));
+                script.push_str(&format!(
+                    "{}function {}({}){} {{\n{}\n}}\n\n",
+                    async_kw, handler_name, params_str, return_type, indented
+                ));
             } else if handler_body.is_empty() {
-                script.push_str(&format!("{}function {}({}){} {{\n  // TODO\n}}\n\n", async_kw, handler_name, params_str, return_type));
+                script.push_str(&format!(
+                    "{}function {}({}){} {{\n  // TODO\n}}\n\n",
+                    async_kw, handler_name, params_str, return_type
+                ));
             } else {
                 let indented = Self::indent_body(handler_body, "  ");
-                script.push_str(&format!("{}function {}({}){} {{\n{}\n}}\n\n", async_kw, handler_name, params_str, return_type, indented));
+                script.push_str(&format!(
+                    "{}function {}({}){} {{\n{}\n}}\n\n",
+                    async_kw, handler_name, params_str, return_type, indented
+                ));
             }
         }
 
@@ -4010,88 +4278,101 @@ impl VueGenerator {
             let mut sorted_handlers: Vec<&String> = self.used_handlers.iter().collect();
             sorted_handlers.sort();
             for handler_name in sorted_handlers {
-            if generated_handlers.contains(handler_name) {
-                continue;
-            }
-            // Skip handleChildDelete — it's generated separately below
-            if handler_name == "handleChildDelete" && self.needs_child_delete_handler {
-                continue;
-            }
-            let return_type = if self.use_typescript { ": void" } else { "" };
-            // Plan 444 (ash-shell-057 ③): a template-referenced handler with
-            // NO on-block entry is the pass-through idiom — the widget wants
-            // the event re-emitted to the parent (e.g. Sort(int,int) called
-            // from a table header → store.SortTable). Bridge it explicitly:
-            // accept and forward the msg variant's payload arity instead of
-            // the old arg-less TODO stub (TS2554 at the call site).
-            // Loop-param handlers keep the loop-var param (the call site
-            // passes it) even when bridging — arity is 0 there by
-            // construction (payload variants bind $event instead).
-            let emit_event = self
-                .emit_events
-                .iter()
-                .find(|e| e.as_str() == handler_name.as_str() || Self::sanitize_ident(e.as_str()) == *handler_name)
-                .cloned();
-            let bridge_arity = emit_event
-                .as_ref()
-                .map(|_| {
+                if generated_handlers.contains(handler_name) {
+                    continue;
+                }
+                // Skip handleChildDelete — it's generated separately below
+                if handler_name == "handleChildDelete" && self.needs_child_delete_handler {
+                    continue;
+                }
+                let return_type = if self.use_typescript { ": void" } else { "" };
+                // Plan 444 (ash-shell-057 ③): a template-referenced handler with
+                // NO on-block entry is the pass-through idiom — the widget wants
+                // the event re-emitted to the parent (e.g. Sort(int,int) called
+                // from a table header → store.SortTable). Bridge it explicitly:
+                // accept and forward the msg variant's payload arity instead of
+                // the old arg-less TODO stub (TS2554 at the call site).
+                // Loop-param handlers keep the loop-var param (the call site
+                // passes it) even when bridging — arity is 0 there by
+                // construction (payload variants bind $event instead).
+                let emit_event = self
+                    .emit_events
+                    .iter()
+                    .find(|e| {
+                        e.as_str() == handler_name.as_str()
+                            || Self::sanitize_ident(e.as_str()) == *handler_name
+                    })
+                    .cloned();
+                let bridge_arity = emit_event.as_ref().map(|_| {
                     self.msg_payload_arities
                         .get(handler_name)
                         .cloned()
                         .unwrap_or(0)
                 });
-            let bridge_params = match (&bridge_arity, self.loop_param_handlers.get(handler_name)) {
-                (_, Some(loop_var)) => format!("{}: any", loop_var),
-                (Some(arity), None) => (0..*arity)
-                    .map(|i| format!("arg{}: any", i))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                (None, None) => String::new(),
-            };
-            let auto_body = if let (Some(arity), Some(event)) = (&bridge_arity, &emit_event) {
-                let args = (0..*arity)
-                    .map(|i| format!("arg{}", i))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                if args.is_empty() {
-                    Some(format!("emit('{}')", event))
-                } else {
-                    Some(format!("emit('{}', {})", event, args))
-                }
-            } else if let Some(loop_var) = self.loop_param_handlers.get(handler_name) {
-                if let Some(target_var) = self.find_active_id_var(handler_name) {
-                    Some(format!("{}.value = {}", target_var, loop_var))
+                let bridge_params =
+                    match (&bridge_arity, self.loop_param_handlers.get(handler_name)) {
+                        (_, Some(loop_var)) => format!("{}: any", loop_var),
+                        (Some(arity), None) => (0..*arity)
+                            .map(|i| format!("arg{}: any", i))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        (None, None) => String::new(),
+                    };
+                let auto_body = if let (Some(arity), Some(event)) = (&bridge_arity, &emit_event) {
+                    let args = (0..*arity)
+                        .map(|i| format!("arg{}", i))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    if args.is_empty() {
+                        Some(format!("emit('{}')", event))
+                    } else {
+                        Some(format!("emit('{}', {})", event, args))
+                    }
+                } else if let Some(loop_var) = self.loop_param_handlers.get(handler_name) {
+                    if let Some(target_var) = self.find_active_id_var(handler_name) {
+                        Some(format!("{}.value = {}", target_var, loop_var))
+                    } else {
+                        None
+                    }
                 } else {
                     None
+                };
+                if let Some(body) = auto_body {
+                    script.push_str(&format!(
+                        "function {}({}){} {{\n  {}\n}}\n\n",
+                        handler_name, bridge_params, return_type, body
+                    ));
+                } else {
+                    script.push_str(&format!(
+                        "function {}({}){} {{\n  // TODO: handler not defined in on-block\n}}\n\n",
+                        handler_name, bridge_params, return_type
+                    ));
                 }
-            } else {
-                None
-            };
-            if let Some(body) = auto_body {
-                script.push_str(&format!("function {}({}){} {{\n  {}\n}}\n\n", handler_name, bridge_params, return_type, body));
-            } else {
-                script.push_str(&format!("function {}({}){} {{\n  // TODO: handler not defined in on-block\n}}\n\n", handler_name, bridge_params, return_type));
             }
-        }
 
-        // Generate handleChildDelete for parent components with array state
-        // This handles the case where a sub-widget emits 'Delete' and the parent
-        // needs to remove the item from its array (e.g., notes list)
-        if self.needs_child_delete_handler {
-            // Find the active index variable name (active_id, active_index, or active_idx)
-            let active_var = self.state_names.iter()
-                .find(|n| n.starts_with("active"))
-                .cloned()
-                .unwrap_or_else(|| "active_id".to_string());
-            script.push_str("function handleChildDelete() {\n");
-            script.push_str(&format!("  if ({}.value < notes.value.length) notes.value.splice({}.value, 1)\n", active_var, active_var));
-            script.push_str(&format!("  if (notes.value.length > 0) {{\n"));
-            script.push_str(&format!("    {}.value = 0\n", active_var));
-            script.push_str("  }\n");
-            if self.state_names.iter().any(|n| n == "editing") {
-                script.push_str("  editing.value = false\n");
-            }
-            script.push_str("}\n\n");
+            // Generate handleChildDelete for parent components with array state
+            // This handles the case where a sub-widget emits 'Delete' and the parent
+            // needs to remove the item from its array (e.g., notes list)
+            if self.needs_child_delete_handler {
+                // Find the active index variable name (active_id, active_index, or active_idx)
+                let active_var = self
+                    .state_names
+                    .iter()
+                    .find(|n| n.starts_with("active"))
+                    .cloned()
+                    .unwrap_or_else(|| "active_id".to_string());
+                script.push_str("function handleChildDelete() {\n");
+                script.push_str(&format!(
+                    "  if ({}.value < notes.value.length) notes.value.splice({}.value, 1)\n",
+                    active_var, active_var
+                ));
+                script.push_str(&format!("  if (notes.value.length > 0) {{\n"));
+                script.push_str(&format!("    {}.value = 0\n", active_var));
+                script.push_str("  }\n");
+                if self.state_names.iter().any(|n| n == "editing") {
+                    script.push_str("  editing.value = false\n");
+                }
+                script.push_str("}\n\n");
             }
         }
 
@@ -4099,7 +4380,9 @@ impl VueGenerator {
         if !self.module_fns.is_empty() {
             let ctx = self.handler_ts_ctx();
             for mfn in &self.module_fns {
-                let param_list = mfn.params.iter()
+                let param_list = mfn
+                    .params
+                    .iter()
                     .map(|p| format!("{}: any", p))
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -4108,7 +4391,10 @@ impl VueGenerator {
                 } else {
                     format!(": {}", mfn.ret_ts)
                 };
-                script.push_str(&format!("function {}({}){} {{\n", mfn.name, param_list, ret_anno));
+                script.push_str(&format!(
+                    "function {}({}){} {{\n",
+                    mfn.name, param_list, ret_anno
+                ));
                 let body = crate::ui_gen::ts_adapter::transpile_handler_body(&mfn.body, &ctx);
                 let indented = Self::indent_body(&body, "  ");
                 script.push_str(&indented);
@@ -4127,7 +4413,9 @@ impl VueGenerator {
             // Plan 617 T-06: build the body first so an awaiting `.Init` (e.g. the
             // /api/media/scan fetch) is emitted `async` instead of producing
             // "Unexpected reserved word 'await'" from the SFC compiler.
-            let body = self.generate_handler_body(&init.payload).unwrap_or_default();
+            let body = self
+                .generate_handler_body(&init.payload)
+                .unwrap_or_default();
             let is_async = self.handler_has_api_calls(&init.payload) || body.contains("await");
             let async_kw = if is_async { "async " } else { "" };
             let indented = Self::indent_body(&body, "  ");
@@ -4143,15 +4431,27 @@ impl VueGenerator {
                     "watch(() => props, () => {\n  __autoReplayInit()\n}, { deep: true })\n\n",
                 );
             } else {
-                script.push_str(&format!("onMounted({}() => {{\n{}\n}})\n\n", async_kw, indented));
+                script.push_str(&format!(
+                    "onMounted({}() => {{\n{}\n}})\n\n",
+                    async_kw, indented
+                ));
             }
         }
         // .Destroy → onUnmounted
         if let Some(destroy) = widget.lifecycle.iter().find(|l| l.name == "Destroy") {
-            let body = self.generate_handler_body(&destroy.payload).unwrap_or_default();
+            let body = self
+                .generate_handler_body(&destroy.payload)
+                .unwrap_or_default();
             // Plan 408 P12 §10.7: .Destroy 含 await/API 调用时用 async。
-            let async_kw = if self.handler_has_api_calls(&destroy.payload) { "async " } else { "" };
-            script.push_str(&format!("onUnmounted({}() => {{\n  {}\n}})\n\n", async_kw, body));
+            let async_kw = if self.handler_has_api_calls(&destroy.payload) {
+                "async "
+            } else {
+                ""
+            };
+            script.push_str(&format!(
+                "onUnmounted({}() => {{\n  {}\n}})\n\n",
+                async_kw, body
+            ));
         }
 
         // Global (window/document-level) event listeners declared in the view
@@ -4202,10 +4502,7 @@ impl VueGenerator {
             } else {
                 ""
             };
-            script.push_str(&format!(
-                "const __autoActionsKeymap{} = {{\n",
-                keymap_ty
-            ));
+            script.push_str(&format!("const __autoActionsKeymap{} = {{\n", keymap_ty));
             for (key, handler) in &self.actions_key_bindings {
                 script.push_str(&format!("  '{}': {},\n", key, handler));
             }
@@ -4253,10 +4550,7 @@ impl VueGenerator {
             } else {
                 ""
             };
-            script.push_str(&format!(
-                "const __autoBindKeymap{} = {{\n",
-                keymap_ty
-            ));
+            script.push_str(&format!("const __autoBindKeymap{} = {{\n", keymap_ty));
             for (key, handler) in &self.bind_key_bindings {
                 script.push_str(&format!("  '{}': {},\n", key, handler));
             }
@@ -4310,7 +4604,9 @@ impl VueGenerator {
             }
 
             // Find the .Tick handler body
-            let tick_body = widget.handlers.get(".Tick")
+            let tick_body = widget
+                .handlers
+                .get(".Tick")
                 .map(|payload| self.generate_handler_body(payload).unwrap_or_default())
                 .unwrap_or_default();
 
@@ -4405,10 +4701,10 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 let show_var = format!("show{}Code", id_pascal);
                 let active_var = format!("active{}Tab", id_pascal);
                 if self.use_typescript {
-                    script.push_str(&format!("const {} = ref<boolean>(true)\n", show_var));  // expanded by default
+                    script.push_str(&format!("const {} = ref<boolean>(true)\n", show_var)); // expanded by default
                     script.push_str(&format!("const {} = ref<string>('auto')\n", active_var));
                 } else {
-                    script.push_str(&format!("const {} = ref(true)\n", show_var));  // expanded by default
+                    script.push_str(&format!("const {} = ref(true)\n", show_var)); // expanded by default
                     script.push_str(&format!("const {} = ref('auto')\n", active_var));
                 }
             }
@@ -4417,7 +4713,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             // Add copyCode function
             if self.use_typescript {
                 script.push_str("// Copy to clipboard function\n");
-                script.push_str("async function copyCode(code: string, id: string): Promise<void> {\n");
+                script.push_str(
+                    "async function copyCode(code: string, id: string): Promise<void> {\n",
+                );
                 script.push_str("  try {\n");
                 script.push_str("    await navigator.clipboard.writeText(code)\n");
                 script.push_str("    copiedCode.value = id\n");
@@ -4446,7 +4744,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             // Add code sample constants
             for pc in &self.previewcard_data {
                 // Convert PascalCase to camelCase (e.g., "CardBasic" -> "cardBasic")
-                let id_camel: String = pc.id.split('-')
+                let id_camel: String = pc
+                    .id
+                    .split('-')
                     .enumerate()
                     .map(|(i, part)| {
                         let mut chars = part.chars();
@@ -4464,14 +4764,24 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     .collect();
                 let auto_var = format!("{}AutoCode", id_camel);
                 let vue_var = format!("{}VueCode", id_camel);
-                script.push_str(&format!("const {} = `{}`\n", auto_var, sanitize_embedded_code(&pc.auto_code)));
-                script.push_str(&format!("const {} = `{}`\n", vue_var, sanitize_embedded_code(&pc.vue_code)));
+                script.push_str(&format!(
+                    "const {} = `{}`\n",
+                    auto_var,
+                    sanitize_embedded_code(&pc.auto_code)
+                ));
+                script.push_str(&format!(
+                    "const {} = `{}`\n",
+                    vue_var,
+                    sanitize_embedded_code(&pc.vue_code)
+                ));
             }
 
             // Add code constants for each codeblock
             for cb in &self.codeblock_data {
                 // Convert kebab-case to camelCase (e.g., "install-button" -> "installButton")
-                let id_camel: String = cb.id.split('-')
+                let id_camel: String = cb
+                    .id
+                    .split('-')
                     .enumerate()
                     .map(|(i, part)| {
                         let mut chars = part.chars();
@@ -4488,7 +4798,11 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     })
                     .collect();
                 let code_var = format!("{}Code", id_camel);
-                script.push_str(&format!("const {} = `{}`\n", code_var, sanitize_embedded_code(&cb.code)));
+                script.push_str(&format!(
+                    "const {} = `{}`\n",
+                    code_var,
+                    sanitize_embedded_code(&cb.code)
+                ));
             }
 
             // Plan 106: Add watchers for syntax highlighting when tabs change
@@ -4530,7 +4844,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             // Add code constants for each codeblock
             for cb in &self.codeblock_data {
                 // Convert kebab-case to camelCase (e.g., "install-button" -> "installButton")
-                let id_camel: String = cb.id.split('-')
+                let id_camel: String = cb
+                    .id
+                    .split('-')
                     .enumerate()
                     .map(|(i, part)| {
                         let mut chars = part.chars();
@@ -4547,7 +4863,11 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     })
                     .collect();
                 let code_var = format!("{}Code", id_camel);
-                script.push_str(&format!("const {} = `{}`\n", code_var, sanitize_embedded_code(&cb.code)));
+                script.push_str(&format!(
+                    "const {} = `{}`\n",
+                    code_var,
+                    sanitize_embedded_code(&cb.code)
+                ));
             }
             script.push('\n');
         }
@@ -4558,7 +4878,10 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         // state/template refs. Vue's expose proxy unwraps refs on access, so
         // exposing the ref object directly is correct.
         if !widget.exposes.is_empty() {
-            script.push_str(&format!("defineExpose({{ {} }})\n", widget.exposes.join(", ")));
+            script.push_str(&format!(
+                "defineExpose({{ {} }})\n",
+                widget.exposes.join(", ")
+            ));
         }
 
         // Plan 409 §8: widget-path accent color system. When the widget owns an
@@ -4586,7 +4909,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             // persisted choice exists (getSavedAccent returns '' otherwise).
             script.push_str("  if (saved) {\n");
             script.push_str("    accent_color.value = saved\n");
-            script.push_str("    applyAccent(saved, document.documentElement.classList.contains('dark'))\n");
+            script.push_str(
+                "    applyAccent(saved, document.documentElement.classList.contains('dark'))\n",
+            );
             script.push_str("  }\n");
             script.push_str("})\n");
             // Plan 458: re-apply the accent when the theme flips at runtime —
@@ -4617,10 +4942,12 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     /// M5/P5-6 factored this out so the debounced variant can layer the
     /// seq-guard on top of the same base context without duplicating it.
     fn handler_ts_ctx(&self) -> crate::ui_gen::ts_adapter::AuraTsContext {
-        let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
-            .with_props(self.prop_names.iter().cloned().collect())
-            .with_refs(self.template_refs.iter().cloned().collect())
-            .with_computed(self.computed_names.iter().cloned().collect());
+        let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(
+            self.state_names.iter().cloned().collect(),
+        )
+        .with_props(self.prop_names.iter().cloned().collect())
+        .with_refs(self.template_refs.iter().cloned().collect())
+        .with_computed(self.computed_names.iter().cloned().collect());
         if !self.project_api_functions.is_empty() {
             ctx = ctx.with_api_functions(self.project_api_functions.clone());
         }
@@ -4789,9 +5116,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 self.drain_ctx_warnings(&ctx);
                 Ok(body)
             }
-            LogicPayload::Bytecode(_) => {
-                Err(GenError::UnsupportedStmt("Bytecode not supported in Vue generator".to_string()))
-            }
+            LogicPayload::Bytecode(_) => Err(GenError::UnsupportedStmt(
+                "Bytecode not supported in Vue generator".to_string(),
+            )),
         }
     }
 
@@ -4805,7 +5132,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     fn generate_debounced_handler_body(&self, payload: &LogicPayload) -> GenResult<String> {
         match payload {
             LogicPayload::AstStmts(stmts) => {
-                let ctx = self.handler_ts_ctx().with_debounce_seq_var("__seq".to_string());
+                let ctx = self
+                    .handler_ts_ctx()
+                    .with_debounce_seq_var("__seq".to_string());
                 let inner = crate::ui_gen::ts_adapter::transpile_handler_body(stmts, &ctx);
                 self.drain_ctx_warnings(&ctx);
                 // setTimeout wrapper: clear any pending timer, bump the seq,
@@ -4816,9 +5145,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     "if (__completeTimer) clearTimeout(__completeTimer)\nconst __seq = ++__completeSeq\n__completeTimer = setTimeout(async () => {{\n{inner}\n}}, 80)"
                 ))
             }
-            LogicPayload::Bytecode(_) => {
-                Err(GenError::UnsupportedStmt("Bytecode not supported in Vue generator".to_string()))
-            }
+            LogicPayload::Bytecode(_) => Err(GenError::UnsupportedStmt(
+                "Bytecode not supported in Vue generator".to_string(),
+            )),
         }
     }
 
@@ -4826,7 +5155,10 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     /// array / string receivers for the ts_adapter method-mapping gate.
     fn typed_collection_names(
         &self,
-    ) -> (std::collections::HashSet<String>, std::collections::HashSet<String>) {
+    ) -> (
+        std::collections::HashSet<String>,
+        std::collections::HashSet<String>,
+    ) {
         let mut arrays = std::collections::HashSet::new();
         let mut strings = std::collections::HashSet::new();
         for (name, ty) in self.state_types.iter().chain(self.prop_types.iter()) {
@@ -4873,16 +5205,19 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     ) -> crate::ui_gen::ts_adapter::MethodMapDecision {
         use crate::ui_gen::ts_adapter::MethodMapDecision as D;
         let ty_of = |field: &str| {
-            self.state_types.get(field).or_else(|| self.prop_types.get(field))
+            self.state_types
+                .get(field)
+                .or_else(|| self.prop_types.get(field))
         };
         // `.field` / `self.field` receiver.
         if let crate::ast::Expr::Dot(obj, field) = object {
-            if matches!(obj.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "self" || n.as_str() == ".") {
+            if matches!(obj.as_ref(), crate::ast::Expr::Ident(n) if n.as_str() == "self" || n.as_str() == ".")
+            {
                 return match ty_of(field.as_str()) {
                     Some(ty) if ty.ends_with("[]") || ty == "string" => D::Map,
                     Some(_) => D::PassWarn, // typed non-array member (facade)
                     None if self.is_ext_composable_local(field.as_str()) => D::PassWarn,
-                    None => D::Map,         // unknown member — legacy behavior
+                    None => D::Map, // unknown member — legacy behavior
                 };
             }
         }
@@ -4905,7 +5240,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     /// local (a facade object, e.g. `recentFilesStore`)? Such receivers
     /// never get the `.remove → .splice` mapping.
     fn is_ext_composable_local(&self, name: &str) -> bool {
-        self.ext_composables.iter().any(|(local, _, _)| local == name)
+        self.ext_composables
+            .iter()
+            .any(|(local, _, _)| local == name)
     }
 
     /// Plan 012 Batch A (gap 19): local names of `use { composable: ... }`
@@ -4917,7 +5254,10 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         stmt: &crate::ast::Stmt,
         names: &std::collections::HashSet<&str>,
     ) -> Option<String> {
-        fn walk_expr(expr: &crate::ast::Expr, names: &std::collections::HashSet<&str>) -> Option<String> {
+        fn walk_expr(
+            expr: &crate::ast::Expr,
+            names: &std::collections::HashSet<&str>,
+        ) -> Option<String> {
             use crate::ast::Expr;
             match expr {
                 Expr::Ident(n) if names.contains(n.as_str()) => Some(n.as_str().to_string()),
@@ -4932,10 +5272,12 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                     }
                     walk_expr(obj, names)
                 }
-                Expr::Call(call) => {
-                    walk_expr(&call.name, names)
-                        .or_else(|| call.args.args.iter().find_map(|a| walk_expr(&a.get_expr(), names)))
-                }
+                Expr::Call(call) => walk_expr(&call.name, names).or_else(|| {
+                    call.args
+                        .args
+                        .iter()
+                        .find_map(|a| walk_expr(&a.get_expr(), names))
+                }),
                 Expr::Bina(l, _, r) => walk_expr(l, names).or_else(|| walk_expr(r, names)),
                 Expr::Unary(_, e) => walk_expr(e, names),
                 Expr::Array(items) => items.iter().find_map(|e| walk_expr(e, names)),
@@ -4950,8 +5292,11 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     }
 
     fn facade_local_names(&self) -> std::collections::HashSet<String> {
-        let mut names: std::collections::HashSet<String> =
-            self.ext_composables.iter().map(|(local, _, _)| local.clone()).collect();
+        let mut names: std::collections::HashSet<String> = self
+            .ext_composables
+            .iter()
+            .map(|(local, _, _)| local.clone())
+            .collect();
         // Plan 426: setup bindings share facade-local semantics.
         names.extend(self.setup_locals.iter().cloned());
         names
@@ -4959,7 +5304,9 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
 
     /// Plan 408 P12 §10.4: ref 字段标注的 flat map（local name → field set），
     /// 传给 AuraTsContext 让 ts_adapter 在字段访问时注入 `.value`。
-    fn facade_ref_fields_map(&self) -> std::collections::HashMap<String, std::collections::HashSet<String>> {
+    fn facade_ref_fields_map(
+        &self,
+    ) -> std::collections::HashMap<String, std::collections::HashSet<String>> {
         let mut map = self.facade_ref_fields.clone();
         for (binding, fields) in &self.setup_ref_fields {
             map.entry(binding.clone())
@@ -4986,7 +5333,11 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 // for a widget-local var crashes the render (`store` is not
                 // defined on the instance → blank page).
                 Some(var) if var == "dark_mode" => {
-                    if self.dark_mode_on_widget { "dark_mode" } else { "store.dark_mode" }
+                    if self.dark_mode_on_widget {
+                        "dark_mode"
+                    } else {
+                        "store.dark_mode"
+                    }
                 }
                 _ => "isDark",
             };
@@ -5006,7 +5357,8 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
                 match root_html[val_start..].find('"') {
                     Some(rel) => {
                         let val_end = val_start + rel;
-                        let mut merged = String::with_capacity(root_html.len() + dark_expr.len() + 8);
+                        let mut merged =
+                            String::with_capacity(root_html.len() + dark_expr.len() + 8);
                         merged.push_str(&root_html[..val_start]);
                         merged.push_str(&format!("[{{ dark: {} }}, ", dark_expr));
                         merged.push_str(&root_html[val_start..val_end]);
@@ -5041,7 +5393,8 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             && view_tree_has_tag(root, "sidebar")
             && !view_tree_has_tag(root, "sidebar_provider")
         {
-            self.shadcn_components_used.insert("SidebarProvider".to_string());
+            self.shadcn_components_used
+                .insert("SidebarProvider".to_string());
             let ind = "  ".repeat(2);
             template = format!("{ind}<SidebarProvider>\n{template}{ind}</SidebarProvider>\n");
         }
@@ -5103,16 +5456,14 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
             Some(AuraPropValue::Expr(crate::ast::Expr::Ident(name))) => {
                 name.trim_start_matches('.').to_string()
             }
-            Some(AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field))) => {
-                match obj.as_ref() {
-                    crate::ast::Expr::Ident(base)
-                        if base.as_str() == "self" || base.as_str() == "." =>
-                    {
-                        field.to_string()
-                    }
-                    _ => String::new(),
+            Some(AuraPropValue::Expr(crate::ast::Expr::Dot(obj, field))) => match obj.as_ref() {
+                crate::ast::Expr::Ident(base)
+                    if base.as_str() == "self" || base.as_str() == "." =>
+                {
+                    field.to_string()
                 }
-            }
+                _ => String::new(),
+            },
             _ => {
                 self.warn(
                     "R561",
@@ -5188,9 +5539,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         // PLAN-661 T-05：tap 命中走 pointer 事件（与 pen 的 mouse 事件
         // 互不占位——双通道并存零属性冲突）。
         let hit_attr = if has_hit {
-            format!(
-                " @pointerdown=\"__canvasHitDown_{idx}\" @pointerup=\"__canvasHitUp_{idx}\""
-            )
+            format!(" @pointerdown=\"__canvasHitDown_{idx}\" @pointerup=\"__canvasHitUp_{idx}\"")
         } else {
             String::new()
         };
@@ -5262,9 +5611,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         // 上行：契约事件键 → handler 函数名。事件键大小写不敏感（`ontimeupdate`
         // 与 `onTimeUpdate` 同义），与 auto_event_to_vue 的宽进一致。
         let mut up_call = |key: &str| -> Option<String> {
-            let ev = events
-                .iter()
-                .find(|(k, _)| k.to_ascii_lowercase() == key)?;
+            let ev = events.iter().find(|(k, _)| k.to_ascii_lowercase() == key)?;
             let name = self.handler_to_function_call(&ev.1.handler);
             self.used_handlers.insert(name.clone());
             Some(name)
@@ -5363,10 +5710,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
         }
 
         self.video_specs.push(spec);
-        Ok(Some(format!(
-            "{ind}<video {}></video>\n",
-            attrs.join(" ")
-        )))
+        Ok(Some(format!("{ind}<video {}></video>\n", attrs.join(" "))))
     }
 
     /// 受控 `video` 的 script 块：下行 apply + watchEffect 下行同步 + 上行
@@ -5382,7 +5726,7 @@ onUnmounted(() => {{ if ({var} !== null) {{ clearInterval({var}); {var} = null }
     ///    复算」能收敛，而不是互相打架。
     /// 4. **元素侧的状态变化必须能把下行重新推一次**（`__videoSync_{i}`）。
     ///    `watchEffect` 只会在**表达式值变化**时重跑，而元素自己会变：换源后
-    ///    浏览器把 `paused` 复位成 `true`，而作者状态 `is_playing` 没变 —— 
+    ///    浏览器把 `paused` 复位成 `true`，而作者状态 `is_playing` 没变 ——
     ///    没有这个重入点，表现就是「换了片子但再也不播」（实测：真实 Chrome
     ///    里点队列换片后 `paused` 恒 true、`currentTime` 恒 0）。
     ///    把最近一次的下行值缓存下来，`loadedmetadata` 时原样重推一遍即可；
@@ -5489,34 +5833,37 @@ onMounted(() => {{
                 .unwrap_or_default();
             let mut b = String::new();
             b.push_str(&format!(
-"function __videoTime_{i}(e: Event) {{
+                "function __videoTime_{i}(e: Event) {{
   const el = e.target as HTMLVideoElement
   {call}(el.currentTime)
 {audio_chain}}}
-"));
+"
+            ));
             s.push_str(&b);
         }
         if spec.up_playstate.is_some() {
             let call = spec.up_playstate.as_ref().unwrap();
             s.push_str(&format!(
-"function __videoState_{i}(e: Event) {{
+                "function __videoState_{i}(e: Event) {{
   const el = e.target as HTMLVideoElement
   {call}(!el.paused)
 }}
-"));
+"
+            ));
         }
         if spec.up_ended.is_some() {
             let call = spec.up_ended.as_ref().unwrap();
             s.push_str(&format!(
-"function __videoEnded_{i}(_e: Event) {{
+                "function __videoEnded_{i}(_e: Event) {{
   {call}()
 }}
-"));
+"
+            ));
         }
         if spec.up_error.is_some() {
             let call = spec.up_error.as_ref().unwrap();
             s.push_str(&format!(
-"function __videoError_{i}(e: Event) {{
+                "function __videoError_{i}(e: Event) {{
   const el = e.target as HTMLVideoElement
   const err = el.error
   let msg = '媒体加载失败'
@@ -5529,7 +5876,8 @@ onMounted(() => {{
   }}
   {call}(msg)
 }}
-"));
+"
+            ));
         }
         // PLAN-617 T-11 / AC-16(b)：音轨可用性探针。复用 timeupdate 节拍，
         // 条件是「实际播放超过 1s」——暂停/开头 1s 内音频字节数天然为 0，
@@ -5585,18 +5933,30 @@ onMounted(() => {{
         let mut inner: Vec<String> = Vec::new();
         if let Some(value) = props.get("value") {
             if let Some(model) = self.extract_state_ref(value) {
-                inner.push(format!(":model-value=\"{}\"", Self::escape_html_attr(&model)));
+                inner.push(format!(
+                    ":model-value=\"{}\"",
+                    Self::escape_html_attr(&model)
+                ));
             } else if let Some(i) = self.extract_int_value(value) {
-                inner.push(format!(":model-value=\"{}\"", Self::escape_html_attr(&i.to_string())));
+                inner.push(format!(
+                    ":model-value=\"{}\"",
+                    Self::escape_html_attr(&i.to_string())
+                ));
             } else if let AuraPropValue::Expr(expr) = value {
                 if let Ok(expr_str) = self.expr_to_vue_bound_value(expr) {
-                    inner.push(format!(":model-value=\"{}\"", Self::escape_html_attr(&format!("Number({expr_str})"))));
+                    inner.push(format!(
+                        ":model-value=\"{}\"",
+                        Self::escape_html_attr(&format!("Number({expr_str})"))
+                    ));
                 }
             }
         }
         if let Some(max) = props.get("max") {
             let m = self.extract_int_value(max).unwrap_or(100);
-            inner.push(format!(":max=\"{}\"", Self::escape_html_attr(&m.to_string())));
+            inner.push(format!(
+                ":max=\"{}\"",
+                Self::escape_html_attr(&m.to_string())
+            ));
         }
         let (classes, _dyn_c, _dyn_s) = self.extract_classes("progress", props);
         if !classes.is_empty() {
@@ -5672,12 +6032,14 @@ onMounted(() => {{
             None => "  const sx = 1, sy = 1\n".to_string(),
         };
         let clear_fill = match &spec.clear {
-            Some(c) => format!("  ctx.fillStyle = '{c}'\n  ctx.fillRect(0, 0, r.width, r.height)\n"),
+            Some(c) => {
+                format!("  ctx.fillStyle = '{c}'\n  ctx.fillRect(0, 0, r.width, r.height)\n")
+            }
             None => String::new(),
         };
         let eraser_color = spec.clear.clone().unwrap_or_else(|| "#ffffff".to_string());
         s.push_str(&format!(
-"function __canvasRedraw_{i}() {{
+            "function __canvasRedraw_{i}() {{
   const el = {refn}.value
   if (!el) return
   const r = el.getBoundingClientRect()
@@ -5772,9 +6134,9 @@ onMounted(() => {{
             };
             // 出界判定/clamp 需要 W/H 字面量(raw px 模式退化为 bounds 内恒真)。
             let bounds_check = match spec.extent {
-                Some((w, h)) => format!(
-                    "if (x < 0 || y < 0 || x > {w} || y > {h}) return true\n  return false"
-                ),
+                Some((w, h)) => {
+                    format!("if (x < 0 || y < 0 || x > {w} || y > {h}) return true\n  return false")
+                }
                 None => "return false".to_string(),
             };
             let clamp_decl = match spec.extent {
@@ -5783,8 +6145,16 @@ onMounted(() => {{
                 ),
                 None => "const cx = x, cy = y".to_string(),
             };
-            let start_invoke = spec.on_start.as_ref().map(|h| format!("  {h}(x, y)\n")).unwrap_or_default();
-            let move_invoke = spec.on_move.as_ref().map(|h| format!("  {h}(x, y)\n")).unwrap_or_default();
+            let start_invoke = spec
+                .on_start
+                .as_ref()
+                .map(|h| format!("  {h}(x, y)\n"))
+                .unwrap_or_default();
+            let move_invoke = spec
+                .on_move
+                .as_ref()
+                .map(|h| format!("  {h}(x, y)\n"))
+                .unwrap_or_default();
             let end_invoke_out = spec
                 .on_end
                 .as_ref()
@@ -5796,7 +6166,7 @@ onMounted(() => {{
                 .map(|h| format!("  {h}(cx, cy)\n"))
                 .unwrap_or_default();
             s.push_str(&format!(
-"let __canvas_down_{i} = false
+                "let __canvas_down_{i} = false
 let __canvas_last_{i} = 0
 function __canvasDown_{i}(e: MouseEvent) {{
   const el = {refn}.value
@@ -5883,7 +6253,7 @@ function __canvasUp_{i}(e: MouseEvent) {{
                 None => "const x = e.clientX - r.left, y = e.clientY - r.top".to_string(),
             };
             s.push_str(&format!(
-"let __canvas_hit_start_{i}: {{ x: number, y: number }} | null = null
+                "let __canvas_hit_start_{i}: {{ x: number, y: number }} | null = null
 function __canvasHitDown_{i}(e: PointerEvent) {{
   const el = {refn}.value
   if (!el) return
@@ -5936,7 +6306,7 @@ function __canvasHitUp_{i}(e: PointerEvent) {{
             watch_sources.push_str(&format!(", {labels_ref}"));
         }
         s.push_str(&format!(
-"watch([{watch_sources}], () => {{ nextTick(__canvasRedraw_{i}) }}, {{ deep: true }})
+            "watch([{watch_sources}], () => {{ nextTick(__canvasRedraw_{i}) }}, {{ deep: true }})
 onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 "
         ));
@@ -5988,60 +6358,61 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             let mut sorted_bind: Vec<(&String, &AuraPropValue)> = props.iter().collect();
             sorted_bind.sort_by(|a, b| a.0.cmp(b.0));
             for (key, value) in sorted_bind {
-            if key == "is" || key == "class" || key == "style" {
-                continue;
-            }
-            // Inline style object: style_obj: { top: expr } → :style="{...}"
-            if key == "style_obj" {
-                if let AuraPropValue::StyleBinding(bindings) = value {
-                    attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
+                if key == "is" || key == "class" || key == "style" {
+                    continue;
                 }
-                continue;
-            }
-            // v-show visibility directive: show: .cond → v-show="cond"
-            // (component stays mounted; only inline display toggles).
-            if key == "show" {
-                if let AuraPropValue::Expr(expr) = value {
-                    let cond = self.expr_to_vue_bound_value(expr)?;
-                    attrs.push(format!("v-show=\"{}\"", cond));
+                // Inline style object: style_obj: { top: expr } → :style="{...}"
+                if key == "style_obj" {
+                    if let AuraPropValue::StyleBinding(bindings) = value {
+                        attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
+                    }
+                    continue;
                 }
-                continue;
-            }
-            // NOTE: `html:` is deliberately NOT intercepted as v-html here.
-            // A dyn node targets an arbitrary component — v-html on a
-            // component would shadow its slot AND steal the `html` prop,
-            // breaking the ext functional-component pattern
-            // (`HtmlDiv = (props) => h('div', { innerHTML: props.html })`,
-            // jade's gap-22 escape hatch). It falls through to the generic
-            // `:html` binding below. Only plain HTML elements get v-html.
-            match value {
-                AuraPropValue::Expr(expr) => {
-                    // Plan 012 P0#13 follow-up: an unsupported expr form here
-                    // used to silently bind `null`; keep that fallback but
-                    // warn R013 (a hard error would break the whole widget
-                    // for one bad prop).
-                    let value_str = self.bound_value_or_warn(
-                        expr,
-                        &format!("dynamic-component prop `{}`", key),
-                        "null",
-                    );
-                    attrs.push(format!(":{}=\"{}\"", key, value_str));
+                // v-show visibility directive: show: .cond → v-show="cond"
+                // (component stays mounted; only inline display toggles).
+                if key == "show" {
+                    if let AuraPropValue::Expr(expr) = value {
+                        let cond = self.expr_to_vue_bound_value(expr)?;
+                        attrs.push(format!("v-show=\"{}\"", cond));
+                    }
+                    continue;
                 }
-                AuraPropValue::StyleBinding(_) => {}
-            }
+                // NOTE: `html:` is deliberately NOT intercepted as v-html here.
+                // A dyn node targets an arbitrary component — v-html on a
+                // component would shadow its slot AND steal the `html` prop,
+                // breaking the ext functional-component pattern
+                // (`HtmlDiv = (props) => h('div', { innerHTML: props.html })`,
+                // jade's gap-22 escape hatch). It falls through to the generic
+                // `:html` binding below. Only plain HTML elements get v-html.
+                match value {
+                    AuraPropValue::Expr(expr) => {
+                        // Plan 012 P0#13 follow-up: an unsupported expr form here
+                        // used to silently bind `null`; keep that fallback but
+                        // warn R013 (a hard error would break the whole widget
+                        // for one bad prop).
+                        let value_str = self.bound_value_or_warn(
+                            expr,
+                            &format!("dynamic-component prop `{}`", key),
+                            "null",
+                        );
+                        attrs.push(format!(":{}=\"{}\"", key, value_str));
+                    }
+                    AuraPropValue::StyleBinding(_) => {}
+                }
             }
         }
 
         // Event listeners (same conventions as plain elements)
         let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
-                    sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
-                    for (event, aura_event) in sorted_ev {
+        sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+        for (event, aura_event) in sorted_ev {
             // .window/.document modifiers → global listener, no template attr
             if self.try_register_global_listener(event, aura_event) {
                 continue;
             }
             let vue_event = self.auto_event_to_vue(event);
-            let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+            let mut handler_fn =
+                self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
             let handler_name = self.handler_to_function_call(&aura_event.handler);
             // Inside a for-loop, pass the loop variable when the handler
             // doesn't already have explicit params.
@@ -6059,7 +6430,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         handler_fn = format!("{}($event)", handler_fn);
                     } else {
                         handler_fn = format!("{}({})", handler_fn, loop_var);
-                        self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                        self.loop_param_handlers
+                            .insert(handler_name.clone(), loop_var.clone());
                     }
                 }
             }
@@ -6191,7 +6563,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// `slot { ... }` unwraps its children into the default slot.
     /// Anything else is emitted normally.
     fn slot_child_to_html(&mut self, child: &AuraNode, indent: usize) -> GenResult<String> {
-        if let AuraNode::Element { tag, props, children, .. } = child {
+        if let AuraNode::Element {
+            tag,
+            props,
+            children,
+            ..
+        } = child
+        {
             if tag == "slot" || tag == "Slot" {
                 let ind = "  ".repeat(indent);
                 if let Some(name) = props.get("name").and_then(|v| self.extract_string_value(v)) {
@@ -6224,8 +6602,19 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     ///
     /// `is_continuation` distinguishes the head (`v-if`) from arms deeper in
     /// the chain (`v-else-if`); a plain `else` arm closes the chain.
-    fn emit_conditional(&mut self, node: &AuraNode, indent: usize, is_continuation: bool) -> GenResult<String> {
-        let AuraNode::Conditional { condition, then_body, else_body, .. } = node else {
+    fn emit_conditional(
+        &mut self,
+        node: &AuraNode,
+        indent: usize,
+        is_continuation: bool,
+    ) -> GenResult<String> {
+        let AuraNode::Conditional {
+            condition,
+            then_body,
+            else_body,
+            ..
+        } = node
+        else {
             // Not a Conditional — fall back to ordinary rendering.
             return self.node_to_html(node, indent);
         };
@@ -6254,7 +6643,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 for child in nodes {
                     else_html.push_str(&self.node_to_html(child, indent + 1)?);
                 }
-                format!("{}<template v-else>\n{}{}</template>\n", ind, else_html, ind)
+                format!(
+                    "{}<template v-else>\n{}{}</template>\n",
+                    ind, else_html, ind
+                )
             }
             None => String::new(),
         };
@@ -6358,10 +6750,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         let handler = self.pattern_to_handler_name(&a.handler);
                         let mut attrs = vec![format!("@click=\"{}\"", handler)];
                         if let Some(cond) = a.enabled_if.as_deref() {
-                            attrs.push(format!(
-                                ":disabled=\"!({})\"",
-                                self.convert_condition(cond)
-                            ));
+                            attrs
+                                .push(format!(":disabled=\"!({})\"", self.convert_condition(cond)));
                         }
                         // 勾选槽：与 vm 同构（16px 槽 + lucide check）。
                         let check = match a.checked_if.as_deref() {
@@ -6419,10 +6809,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     ) -> GenResult<Option<String>> {
         // Element 路径 props 形态：HashMap<String, AuraPropValue>。
         // 嵌套 fn——闭包形式在返回借用时生命周期推不动。
-        fn prop_str<'a>(
-            props: &'a HashMap<String, AuraPropValue>,
-            name: &str,
-        ) -> Option<&'a str> {
+        fn prop_str<'a>(props: &'a HashMap<String, AuraPropValue>, name: &str) -> Option<&'a str> {
             props.get(name).and_then(|v| match v {
                 AuraPropValue::Expr(crate::ast::Expr::Str(s2)) => Some(s2.as_str()),
                 _ => None,
@@ -6473,7 +6860,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
         let html = match norm.as_str() {
             "menubar_menu" => {
-                self.shadcn_components_used.insert("MenubarMenu".to_string());
+                self.shadcn_components_used
+                    .insert("MenubarMenu".to_string());
                 let value_attr = match prop_str(props, "value") {
                     Some(v) => format!(" value=\"{}\"", Self::escape_html_attr(v)),
                     None => String::new(),
@@ -6518,7 +6906,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             // PLAN-695 T-03: 分组标签——muted 小字非可点（auto-edit "行尾"
             // 此前被白名单静默吞）。
             "menubar_label" => {
-                self.shadcn_components_used.insert("MenubarLabel".to_string());
+                self.shadcn_components_used
+                    .insert("MenubarLabel".to_string());
                 let inner = match prop_str(props, "text") {
                     Some(t) => Self::escape_html_text(t),
                     None => {
@@ -6626,7 +7015,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 out
             }
             "menubar_group" => {
-                self.shadcn_components_used.insert("MenubarGroup".to_string());
+                self.shadcn_components_used
+                    .insert("MenubarGroup".to_string());
                 let mut out = format!("{}<MenubarGroup>\n", ind);
                 for child in children {
                     out.push_str(&self.node_to_html(child, indent + 1)?);
@@ -6693,8 +7083,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         }
                     }
                 }
-                if let Some(v) = prop_str(props, "shortcut")
-                {
+                if let Some(v) = prop_str(props, "shortcut") {
                     // PLAN-695 浅色修正（Vue 侧）：硬编码 text-zinc-500 span
                     // → MenubarShortcut 组件（muted-foreground token，浅色
                     // 主题下自动适配）。
@@ -6756,10 +7145,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     let handler = self.pattern_to_handler_name(&a.handler);
                     let mut attrs = vec![format!("@click=\"{}\"", handler)];
                     if let Some(cond) = a.enabled_if.as_deref() {
-                        attrs.push(format!(
-                            ":disabled=\"!({})\"",
-                            self.convert_condition(cond)
-                        ));
+                        attrs.push(format!(":disabled=\"!({})\"", self.convert_condition(cond)));
                     }
                     let title = a.title.as_deref().unwrap_or("");
                     attrs.push(format!("title=\"{}\"", Self::escape_html_attr(title)));
@@ -6767,10 +7153,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         Some(icon) if !icon.is_empty() => {
                             let lucide = Self::lucide_component_name(icon);
                             self.lucide_icons.insert(lucide.clone());
-                            format!(
-                                "\n{}    <{} class=\"h-4 w-4\" />\n{}  ",
-                                ind, lucide, ind
-                            )
+                            format!("\n{}    <{} class=\"h-4 w-4\" />\n{}  ", ind, lucide, ind)
                         }
                         _ => format!("{{{{{}}}}}", Self::escape_html_text(title)),
                     };
@@ -6832,9 +7215,15 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             let Some(value) = value else { return Ok(None) };
             match value {
                 AuraPropValue::Expr(crate::ast::Expr::Str(s))
-                | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) if key == "src" => Ok(Some(
-                    format!(":{}=\"'{}'\"", key, Self::escape_js_string(s.as_str()))
-                )),
+                | AuraPropValue::Expr(crate::ast::Expr::CStr(s))
+                    if key == "src" =>
+                {
+                    Ok(Some(format!(
+                        ":{}=\"'{}'\"",
+                        key,
+                        Self::escape_js_string(s.as_str())
+                    )))
+                }
                 AuraPropValue::Expr(crate::ast::Expr::Str(s))
                 | AuraPropValue::Expr(crate::ast::Expr::CStr(s)) => Ok(Some(format!(
                     "{}=\"{}\"",
@@ -6906,8 +7295,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             // pointer 三绑定 + script 合成包装(buttons&1 门控,start/
             // move/end 相位,handler 收 (dx, dy, phase))。
             if matches!(base.to_ascii_lowercase().as_str(), "onpan" | "pan") {
-                let handler_fn =
-                    self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                let handler_fn = self
+                    .handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
                 self.used_handlers
                     .insert(self.handler_to_function_call(&aura_event.handler));
                 let idx = self.surface_pans.len();
@@ -6962,7 +7351,15 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         let ind = "  ".repeat(indent);
 
         match node {
-            AuraNode::Element { tag, props, events, children, span, debug_id, .. } => {
+            AuraNode::Element {
+                tag,
+                props,
+                events,
+                children,
+                span,
+                debug_id,
+                ..
+            } => {
                 // Plan 012 Batch A (gap 30): a stray comma between view children
                 // parses as an element with the literal tag "," and used to fall
                 // through to the unknown-tag `<div />` fallback — silently
@@ -7002,7 +7399,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
                 // Special handling for icon element - render as Lucide Vue component
                 if tag == "icon" || tag == "Icon" {
-                    let icon_name = props.get("name")
+                    let icon_name = props
+                        .get("name")
                         .and_then(|v| self.extract_string_value(v))
                         .unwrap_or("circle");
                     // PLAN-018：iconfile:<stem> → 双主题位图 <img> 对（浅表
@@ -7046,7 +7444,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     let lucide_component = Self::lucide_component_name(icon_name);
                     self.lucide_icons.insert(lucide_component.clone());
 
-                    let (mut static_classes, _dynamic_class, dynamic_style) = self.extract_classes(tag, props);
+                    let (mut static_classes, _dynamic_class, dynamic_style) =
+                        self.extract_classes(tag, props);
 
                     // 尺寸口径（**与 VM 端 `with_icon_size` 同一套**）：
                     //   显式 `w-*`/`h-*` 类 > `size` prop > 默认 20px。
@@ -7104,7 +7503,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // → 20 默认盒。
                     let mut state_attr = String::new();
                     if let Some(state_prop) = props.get("state") {
-                        let has_text_class = static_classes.split_whitespace().any(|c| c.starts_with("text-"))
+                        let has_text_class = static_classes
+                            .split_whitespace()
+                            .any(|c| c.starts_with("text-"))
                             || _dynamic_class
                                 .as_deref()
                                 .map(|d| d.contains("text-"))
@@ -7164,8 +7565,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             _ => {
                                 // bool/变量绑定 → 三元动态发射。
                                 let js = match state_prop {
-                                    AuraPropValue::Expr(expr) => self
-                                        .bound_value_or_warn(expr, "icon state", "false"),
+                                    AuraPropValue::Expr(expr) => {
+                                        self.bound_value_or_warn(expr, "icon state", "false")
+                                    }
                                     _ => "false".to_string(),
                                 };
                                 if !has_text_class {
@@ -7174,8 +7576,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                                         js
                                     );
                                 }
-                                state_attr
-                                    .push_str(&format!(" :stroke-width=\"{} ? {} : undefined\"", js, heavy));
+                                state_attr.push_str(&format!(
+                                    " :stroke-width=\"{} ? {} : undefined\"",
+                                    js, heavy
+                                ));
                             }
                         }
                     }
@@ -7186,9 +7590,15 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     };
 
                     if children.is_empty() {
-                        return Ok(format!("{}<{}{}{}{} />\n", ind, lucide_component, class_str, size_attr, state_attr));
+                        return Ok(format!(
+                            "{}<{}{}{}{} />\n",
+                            ind, lucide_component, class_str, size_attr, state_attr
+                        ));
                     } else {
-                        let mut html = format!("{}<{}{}{}{}>\n", ind, lucide_component, class_str, size_attr, state_attr);
+                        let mut html = format!(
+                            "{}<{}{}{}{}>\n",
+                            ind, lucide_component, class_str, size_attr, state_attr
+                        );
                         for child in children {
                             html.push_str(&self.node_to_html(child, indent + 1)?);
                         }
@@ -7282,9 +7692,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // to/active 扩展臂(as-child 路由多态 + $route 自动探测)。
                 // 仅 shadcn 模式拦截;非 shadcn 走通用路径。
                 if self.is_shadcn()
-                    && (fold_eq(tag, "sidebar_menu_button") || fold_eq(tag, "sidebar_menu_sub_button"))
+                    && (fold_eq(tag, "sidebar_menu_button")
+                        || fold_eq(tag, "sidebar_menu_sub_button"))
                 {
-                    return self.generate_sidebar_menu_button_html(tag, props, events, children, indent);
+                    return self
+                        .generate_sidebar_menu_button_html(tag, props, events, children, indent);
                 }
 
                 // Plan 482: nav 组件族 —— nav-item/nav-group 全量生成；
@@ -7308,7 +7720,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
 
                 if tag == "nav" {
-                    let search = props.get("search")
+                    let search = props
+                        .get("search")
                         .and_then(|v| match v {
                             AuraPropValue::Expr(crate::ast::Expr::Bool(b)) => Some(*b),
                             _ => None,
@@ -7366,10 +7779,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         .and_then(|v| self.extract_string_value(v))
                         .unwrap_or_default();
                     let xy = match (props.get("x"), props.get("y")) {
-                        (
-                            Some(AuraPropValue::Expr(xe)),
-                            Some(AuraPropValue::Expr(ye)),
-                        ) => {
+                        (Some(AuraPropValue::Expr(xe)), Some(AuraPropValue::Expr(ye))) => {
                             match (
                                 self.expr_to_vue_bound_value(xe),
                                 self.expr_to_vue_bound_value(ye),
@@ -7430,7 +7840,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // elements that need native HTML for their behavior (type attr,
                 // TodoMVC `class="toggle"` on a checkbox) stay here.
                 let force_native_elements = ["checkbox", "input", "textarea"];
-                let force_native = has_user_class && force_native_elements.contains(&tag_lower.as_str());
+                let force_native =
+                    has_user_class && force_native_elements.contains(&tag_lower.as_str());
 
                 // Plan 502 M1: svg 子树内 text → SVG <text> 直通(diagram 标签
                 // 机制)。html_tag 定为 "text"(map_tag 从不返回该值,无歧义),
@@ -7475,79 +7886,87 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // (RandomState); sorted keeps generated attribute order
                     // stable across builds (jade gap 56).
                     {
-                        let mut sorted_bind: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+                        let mut sorted_bind: Vec<(&String, &AuraPropValue)> =
+                            props.iter().collect();
                         sorted_bind.sort_by(|a, b| a.0.cmp(b.0));
                         for (key, value) in sorted_bind {
-                        // Template ref on a child component: `ref: "canvasRef"`
-                        // → static `ref="canvasRef"` attribute + a `ref<any>`
-                        // declaration in <script setup> (the child's
-                        // defineExpose surface is unknown to the parent).
-                        // Lets handlers call exposed methods via `.canvasRef`.
-                        if key == "ref" {
-                            let ref_name: String = match value {
-                                AuraPropValue::Expr(crate::ast::Expr::Str(name)) => name.to_string(),
-                                AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => name.to_string(),
-                                _ => continue,
-                            };
-                            if !ref_name.is_empty() {
-                                if !self.template_refs.contains(&ref_name) {
-                                    self.template_refs.push(ref_name.clone());
+                            // Template ref on a child component: `ref: "canvasRef"`
+                            // → static `ref="canvasRef"` attribute + a `ref<any>`
+                            // declaration in <script setup> (the child's
+                            // defineExpose surface is unknown to the parent).
+                            // Lets handlers call exposed methods via `.canvasRef`.
+                            if key == "ref" {
+                                let ref_name: String = match value {
+                                    AuraPropValue::Expr(crate::ast::Expr::Str(name)) => {
+                                        name.to_string()
+                                    }
+                                    AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
+                                        name.to_string()
+                                    }
+                                    _ => continue,
+                                };
+                                if !ref_name.is_empty() {
+                                    if !self.template_refs.contains(&ref_name) {
+                                        self.template_refs.push(ref_name.clone());
+                                    }
+                                    self.component_ref_names.insert(ref_name.clone());
+                                    attrs.push(format!("ref=\"{}\"", ref_name));
                                 }
-                                self.component_ref_names.insert(ref_name.clone());
-                                attrs.push(format!("ref=\"{}\"", ref_name));
-                            }
-                            continue;
-                        }
-                        // Inline style object on a component: style_obj → :style="{...}"
-                        if key == "style_obj" {
-                            if let AuraPropValue::StyleBinding(bindings) = value {
-                                attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
-                            }
-                            continue;
-                        }
-                        // v-show visibility directive on a component:
-                        // show: .cond → v-show="cond" (instance stays mounted).
-                        if key == "show" {
-                            if let AuraPropValue::Expr(expr) = value {
-                                let cond = self.expr_to_vue_bound_value(expr)?;
-                                attrs.push(format!("v-show=\"{}\"", cond));
-                            }
-                            continue;
-                        }
-                        // PLAN-037 T5: call-site model addressing — a prop
-                        // name matching the sub-widget's model var is a
-                        // two-way channel (v-model), never a plain :prop.
-                        if is_known_sub_widget {
-                            let slot = match value {
-                                AuraPropValue::Expr(expr) => self.model_channel_slot(expr),
-                                _ => None,
-                            };
-                            if let Some(attr) = self.try_model_channel_attr(tag, key, slot)? {
-                                attrs.push(attr);
                                 continue;
                             }
+                            // Inline style object on a component: style_obj → :style="{...}"
+                            if key == "style_obj" {
+                                if let AuraPropValue::StyleBinding(bindings) = value {
+                                    attrs.push(format!(
+                                        ":style=\"{}\"",
+                                        self.style_obj_to_vue(bindings)
+                                    ));
+                                }
+                                continue;
+                            }
+                            // v-show visibility directive on a component:
+                            // show: .cond → v-show="cond" (instance stays mounted).
+                            if key == "show" {
+                                if let AuraPropValue::Expr(expr) = value {
+                                    let cond = self.expr_to_vue_bound_value(expr)?;
+                                    attrs.push(format!("v-show=\"{}\"", cond));
+                                }
+                                continue;
+                            }
+                            // PLAN-037 T5: call-site model addressing — a prop
+                            // name matching the sub-widget's model var is a
+                            // two-way channel (v-model), never a plain :prop.
+                            if is_known_sub_widget {
+                                let slot = match value {
+                                    AuraPropValue::Expr(expr) => self.model_channel_slot(expr),
+                                    _ => None,
+                                };
+                                if let Some(attr) = self.try_model_channel_attr(tag, key, slot)? {
+                                    attrs.push(attr);
+                                    continue;
+                                }
+                            }
+                            // NOTE: `html:` is deliberately NOT intercepted as
+                            // v-html on components (same reason as the dyn path):
+                            // it must pass through as a plain `:html` prop so ext
+                            // functional components (innerHTML pattern) keep
+                            // receiving it. Only plain HTML elements get v-html.
+                            let value_str = match value {
+                                // Plan 012 P0#13 follow-up: warn R013 + keep the
+                                // old `null` fallback instead of failing the
+                                // whole widget for one unsupported prop expr.
+                                AuraPropValue::Expr(expr) => self.bound_value_or_warn(
+                                    expr,
+                                    &format!("component prop `{}`", key),
+                                    "null",
+                                ),
+                                AuraPropValue::StyleBinding(_) => "\"\"".to_string(),
+                            };
+                            if first_prop_expr.is_none() {
+                                first_prop_expr = Some(value_str.clone());
+                            }
+                            attrs.push(format!(":{}=\"{}\"", key, value_str));
                         }
-                        // NOTE: `html:` is deliberately NOT intercepted as
-                        // v-html on components (same reason as the dyn path):
-                        // it must pass through as a plain `:html` prop so ext
-                        // functional components (innerHTML pattern) keep
-                        // receiving it. Only plain HTML elements get v-html.
-                        let value_str = match value {
-                            // Plan 012 P0#13 follow-up: warn R013 + keep the
-                            // old `null` fallback instead of failing the
-                            // whole widget for one unsupported prop expr.
-                            AuraPropValue::Expr(expr) => self.bound_value_or_warn(
-                                expr,
-                                &format!("component prop `{}`", key),
-                                "null",
-                            ),
-                            AuraPropValue::StyleBinding(_) => "\"\"".to_string(),
-                        };
-                        if first_prop_expr.is_none() {
-                            first_prop_expr = Some(value_str.clone());
-                        }
-                        attrs.push(format!(":{}=\"{}\"", key, value_str));
-                    }
                     }
                     // Add :key binding for component reuse identity.
                     //
@@ -7574,9 +7993,15 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         if self.current_loop_var_is_index {
                             // Index var is a primitive int — `i?.id` is meaningless;
                             // use the index itself as the per-item key.
-                            attrs.push(format!(":key=\"'{}-{}-' + {}\"", html_tag, self.widget_key_counter, loop_var));
+                            attrs.push(format!(
+                                ":key=\"'{}-{}-' + {}\"",
+                                html_tag, self.widget_key_counter, loop_var
+                            ));
                         } else {
-                            attrs.push(format!(":key=\"'{}-{}-' + ((({} as any)?.id ?? {}))\"", html_tag, self.widget_key_counter, loop_var, loop_var));
+                            attrs.push(format!(
+                                ":key=\"'{}-{}-' + ((({} as any)?.id ?? {}))\"",
+                                html_tag, self.widget_key_counter, loop_var, loop_var
+                            ));
                         }
                     } else if let Some(ref expr) = first_prop_expr {
                         // Non-loop component: if the first prop looks like an object
@@ -7586,25 +8011,38 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         // Skip for primitive props (search: str, active_id: int) — those
                         // don't have .id and would cause TS errors.
                         if expr.contains('[') {
-                            attrs.push(format!(":key=\"'{}-{}-' + ({}?.id ?? 'new')\"", html_tag, self.widget_key_counter, expr));
+                            attrs.push(format!(
+                                ":key=\"'{}-{}-' + ({}?.id ?? 'new')\"",
+                                html_tag, self.widget_key_counter, expr
+                            ));
                         } else {
-                            attrs.push(format!(":key=\"'{}-{}'\"", html_tag, self.widget_key_counter));
+                            attrs.push(format!(
+                                ":key=\"'{}-{}'\"",
+                                html_tag, self.widget_key_counter
+                            ));
                         }
                     } else {
-                        attrs.push(format!(":key=\"'{}-{}'\"", html_tag, self.widget_key_counter));
+                        attrs.push(format!(
+                            ":key=\"'{}-{}'\"",
+                            html_tag, self.widget_key_counter
+                        ));
                     }
                     // Event handlers
                     let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
-                                sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
-                                for (event, aura_event) in sorted_ev {
+                    sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+                    for (event, aura_event) in sorted_ev {
                         // .window/.document modifiers → global listener, no template attr
                         if self.try_register_global_listener(event, aura_event) {
                             continue;
                         }
                         // Plan 444 (①b): resolve against the child's emit
                         // roster when available (pass-through fallback).
-                        let vue_event = self.sub_widget_callback_event_to_vue(tag, event, aura_event);
-                        let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                        let vue_event =
+                            self.sub_widget_callback_event_to_vue(tag, event, aura_event);
+                        let mut handler_fn = self.handler_to_function_call_with_params(
+                            &aura_event.handler,
+                            &aura_event.params,
+                        );
                         let handler_name = self.handler_to_function_call(&aura_event.handler);
                         // If inside a for-loop, pass the loop variable's .id as argument
                         // Only append if handler doesn't already have params from aura_event
@@ -7631,7 +8069,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                                     // actually auto-pass the loop var. A handler with explicit
                                     // args (e.g. .SelectNote(note.id)) must keep its declared
                                     // param name, not be renamed to the loop variable.
-                                    self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                                    self.loop_param_handlers
+                                        .insert(handler_name.clone(), loop_var.clone());
                                 }
                             }
                         }
@@ -7671,7 +8110,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 let mut consumed_text_child_idx: Option<usize> = None;
                 let (mut attrs, text_content, generated_children) = if is_shadcn_component {
                     // Use shadcn-specific attribute generation (includes event handling)
-                    let (shadcn_attrs, mut slot_content, slot_children) = self.generate_shadcn_attrs(tag, props, events);
+                    let (shadcn_attrs, mut slot_content, slot_children) =
+                        self.generate_shadcn_attrs(tag, props, events);
                     // Plan 354: if no slot content from props, check primary positional text.
                     // The view parser puts positional text (e.g. `badge t`) in props as "text"
                     // OR as a text child node. Check both.
@@ -7698,11 +8138,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                                             for binding in bindings {
                                                 vue_text = vue_text.replace(
                                                     &format!("${{{}.{}}}", ".", binding),
-                                                    &format!("{{{{ {} }}}}", binding)
+                                                    &format!("{{{{ {} }}}}", binding),
                                                 );
                                                 vue_text = vue_text.replace(
                                                     &format!("${{{}}}", binding),
-                                                    &format!("{{{{ {} }}}}", binding)
+                                                    &format!("{{{{ {} }}}}", binding),
                                                 );
                                             }
                                             slot_content = Some(vue_text);
@@ -7721,7 +8161,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     let mut text_content: Option<String> = None;
 
                     // Class attribute (both static and dynamic)
-                    let (static_classes, dynamic_class, dynamic_style) = self.extract_classes(tag, props);
+                    let (static_classes, dynamic_class, dynamic_style) =
+                        self.extract_classes(tag, props);
                     if !static_classes.is_empty() {
                         attrs.push(format!("class=\"{}\"", static_classes));
                     }
@@ -7751,7 +8192,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     }
                     if matches!(tag.as_str(), "scroll-test-content" | "scroll_test_content") {
                         let get_num = |key: &str, default: &'static str| -> String {
-                            props.get(key)
+                            props
+                                .get(key)
                                 .and_then(|v| self.extract_string_value(v))
                                 .unwrap_or(default)
                                 .to_string()
@@ -7786,128 +8228,146 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     let mut value_state_ref: Option<String> = None;
 
                     // Props as attributes
-                    { let mut sorted_pr: Vec<(&String, &AuraPropValue)> = props.iter().collect();
-                      // Plan 015 P0#3: sorted iteration (props is a HashMap, jade gap 56)
-                      sorted_pr.sort_by(|a, b| a.0.cmp(b.0));
-                      for (key, value) in sorted_pr {
-                        if key == "class" || key == "style" {
-                            continue; // Already handled in extract_classes
-                        }
-                        // Inline style object: style_obj: { top: f"${.y}px", "z-index": 50 }
-                        // → :style="{ top: `${y}px`, 'z-index': 50 }"
-                        if key == "style_obj" {
-                            if let AuraPropValue::StyleBinding(bindings) = value {
-                                attrs.push(format!(":style=\"{}\"", self.style_obj_to_vue(bindings)));
+                    {
+                        let mut sorted_pr: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+                        // Plan 015 P0#3: sorted iteration (props is a HashMap, jade gap 56)
+                        sorted_pr.sort_by(|a, b| a.0.cmp(b.0));
+                        for (key, value) in sorted_pr {
+                            if key == "class" || key == "style" {
+                                continue; // Already handled in extract_classes
                             }
-                            continue;
-                        }
-                        // v-show visibility directive: show: .cond → v-show="cond"
-                        // (element stays mounted; only inline display toggles).
-                        if key == "show" {
-                            if let AuraPropValue::Expr(expr) = value {
-                                let cond = self.expr_to_vue_bound_value(expr)?;
-                                attrs.push(format!("v-show=\"{}\"", cond));
-                            }
-                            continue;
-                        }
-                        // v-html content directive: html: .content → v-html="content"
-                        // (raw HTML injection; inner content is ignored by Vue).
-                        if key == "html" {
-                            if let AuraPropValue::Expr(expr) = value {
-                                let content = self.expr_to_vue_bound_value(expr)?;
-                                attrs.push(format!("v-html=\"{}\"", content));
-                            }
-                            continue;
-                        }
-                        // Template ref: `ref: "menuEl"` → static `ref="menuEl"`
-                        // attribute + a `const menuEl = ref<HTMLElement | null>(null)`
-                        // declaration in <script setup> (emitted later from
-                        // self.template_refs). Accessible in `on` handlers as
-                        // `.menuEl` (→ `menuEl.value!`). When the tag is a Vue
-                        // component (PascalCase), the ref is typed `any` — the
-                        // child's defineExpose surface is unknown here.
-                        if key == "ref" {
-                            let ref_name: String = match value {
-                                AuraPropValue::Expr(crate::ast::Expr::Str(name)) => name.to_string(),
-                                AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => name.to_string(),
-                                _ => continue,
-                            };
-                            if !ref_name.is_empty() && !self.template_refs.contains(&ref_name) {
-                                self.template_refs.push(ref_name.clone());
-                            }
-                            if html_tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
-                                self.component_ref_names.insert(ref_name.clone());
-                            }
-                            attrs.push(format!("ref=\"{}\"", ref_name));
-                            continue;
-                        }
-                        if key == "gap" {
-                            continue; // Handled in extract_classes for layout elements
-                        }
-                        // Plan 412 §4.3: square 的自有 props 已由 extract_classes
-                        // 转成 h-/w-/bg-… 类 —— 不透传为无效绑定属性。
-                        if tag == "square" && matches!(key.as_str(), "color" | "size" | "h" | "w") {
-                            continue;
-                        }
-                        if key == "text" {
-                            text_content = Some(self.prop_to_text_content(value)?);
-                            continue;
-                        }
-                        // Plan 481: selectable: true → 显式 user-select: text
-                        // (防应用级 none 吞掉;不 continue,保留下方通用
-                        // :selectable 绑定透传作 a2vue 金样锚点)。
-                        if key == "selectable" && self.extract_bool_value(value) {
-                            attrs.push("style=\"user-select: text\"".to_string());
-                        }
-                        // Special handling for codeblock's code prop - render as content
-                        if key == "code" && (tag == "codeblock" || tag == "code-block") {
-                            text_content = Some(self.prop_to_text_content(value)?);
-                            continue;
-                        }
-
-                        // Plan 057 续(富文本输入): textarea 的 highlight/ghost 由
-                        // 叠加层包裹消费(见 textarea_rich_overlay),不透传为无效属性。
-                        // PLAN-493: mentions/mention_class 同理由
-                        // textarea_mentions_overlay 消费;height 为 VM-only
-                        // 几何 prop(Plan 053 契约,浏览器轨道 CSS 几何自理),
-                        // 一并不透传。
-                        if tag == "textarea"
-                            && (key == "highlight"
-                                || key == "ghost"
-                                || key == "mentions"
-                                || key == "mention_class"
-                                || key == "height")
-                        {
-                            continue;
-                        }
-
-                        // PLAN-661 T-04：slider 数值属性面（原生 range 语义）
-                        //——value 状态引用绑定/字面量静态；min/max/step 静态
-                        // 数值（缺省 0/100/1），不走通用 v-bind 透传。
-                        if tag == "slider" && matches!(key.as_str(), "value" | "min" | "max" | "step") {
-                            if key == "value" {
-                                if let Some(model) = self.extract_state_ref(value) {
-                                    attrs.push(format!(":value=\"{}\"", model));
-                                } else if let Some(f) = self.extract_float_value(value) {
-                                    attrs.push(format!("value=\"{}\"", f));
+                            // Inline style object: style_obj: { top: f"${.y}px", "z-index": 50 }
+                            // → :style="{ top: `${y}px`, 'z-index': 50 }"
+                            if key == "style_obj" {
+                                if let AuraPropValue::StyleBinding(bindings) = value {
+                                    attrs.push(format!(
+                                        ":style=\"{}\"",
+                                        self.style_obj_to_vue(bindings)
+                                    ));
                                 }
-                            } else {
-                                let default = match key.as_str() {
-                                    "min" => 0.0,
-                                    "max" => 100.0,
-                                    _ => 1.0,
-                                };
-                                let v = self.extract_float_value(value).unwrap_or(default);
-                                attrs.push(format!("{}=\"{}\"", key, v));
+                                continue;
                             }
-                            continue;
-                        }
+                            // v-show visibility directive: show: .cond → v-show="cond"
+                            // (element stays mounted; only inline display toggles).
+                            if key == "show" {
+                                if let AuraPropValue::Expr(expr) = value {
+                                    let cond = self.expr_to_vue_bound_value(expr)?;
+                                    attrs.push(format!("v-show=\"{}\"", cond));
+                                }
+                                continue;
+                            }
+                            // v-html content directive: html: .content → v-html="content"
+                            // (raw HTML injection; inner content is ignored by Vue).
+                            if key == "html" {
+                                if let AuraPropValue::Expr(expr) = value {
+                                    let content = self.expr_to_vue_bound_value(expr)?;
+                                    attrs.push(format!("v-html=\"{}\"", content));
+                                }
+                                continue;
+                            }
+                            // Template ref: `ref: "menuEl"` → static `ref="menuEl"`
+                            // attribute + a `const menuEl = ref<HTMLElement | null>(null)`
+                            // declaration in <script setup> (emitted later from
+                            // self.template_refs). Accessible in `on` handlers as
+                            // `.menuEl` (→ `menuEl.value!`). When the tag is a Vue
+                            // component (PascalCase), the ref is typed `any` — the
+                            // child's defineExpose surface is unknown here.
+                            if key == "ref" {
+                                let ref_name: String = match value {
+                                    AuraPropValue::Expr(crate::ast::Expr::Str(name)) => {
+                                        name.to_string()
+                                    }
+                                    AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
+                                        name.to_string()
+                                    }
+                                    _ => continue,
+                                };
+                                if !ref_name.is_empty() && !self.template_refs.contains(&ref_name) {
+                                    self.template_refs.push(ref_name.clone());
+                                }
+                                if html_tag
+                                    .chars()
+                                    .next()
+                                    .map(|c| c.is_uppercase())
+                                    .unwrap_or(false)
+                                {
+                                    self.component_ref_names.insert(ref_name.clone());
+                                }
+                                attrs.push(format!("ref=\"{}\"", ref_name));
+                                continue;
+                            }
+                            if key == "gap" {
+                                continue; // Handled in extract_classes for layout elements
+                            }
+                            // Plan 412 §4.3: square 的自有 props 已由 extract_classes
+                            // 转成 h-/w-/bg-… 类 —— 不透传为无效绑定属性。
+                            if tag == "square"
+                                && matches!(key.as_str(), "color" | "size" | "h" | "w")
+                            {
+                                continue;
+                            }
+                            if key == "text" {
+                                text_content = Some(self.prop_to_text_content(value)?);
+                                continue;
+                            }
+                            // Plan 481: selectable: true → 显式 user-select: text
+                            // (防应用级 none 吞掉;不 continue,保留下方通用
+                            // :selectable 绑定透传作 a2vue 金样锚点)。
+                            if key == "selectable" && self.extract_bool_value(value) {
+                                attrs.push("style=\"user-select: text\"".to_string());
+                            }
+                            // Special handling for codeblock's code prop - render as content
+                            if key == "code" && (tag == "codeblock" || tag == "code-block") {
+                                text_content = Some(self.prop_to_text_content(value)?);
+                                continue;
+                            }
 
-                        // Checkbox: native <input type="checkbox"> uses :checked, not :model-value
-                        if tag == "checkbox" && key == "checked" {                            if let Some(model) = self.extract_state_ref(value) {
-                                attrs.push(format!(":checked=\"{}\"", model));
-                            } else if let AuraPropValue::Expr(expr) = value {
-                                match self.expr_to_vue_bound_value(expr) {
+                            // Plan 057 续(富文本输入): textarea 的 highlight/ghost 由
+                            // 叠加层包裹消费(见 textarea_rich_overlay),不透传为无效属性。
+                            // PLAN-493: mentions/mention_class 同理由
+                            // textarea_mentions_overlay 消费;height 为 VM-only
+                            // 几何 prop(Plan 053 契约,浏览器轨道 CSS 几何自理),
+                            // 一并不透传。
+                            if tag == "textarea"
+                                && (key == "highlight"
+                                    || key == "ghost"
+                                    || key == "mentions"
+                                    || key == "mention_class"
+                                    || key == "height")
+                            {
+                                continue;
+                            }
+
+                            // PLAN-661 T-04：slider 数值属性面（原生 range 语义）
+                            //——value 状态引用绑定/字面量静态；min/max/step 静态
+                            // 数值（缺省 0/100/1），不走通用 v-bind 透传。
+                            if tag == "slider"
+                                && matches!(key.as_str(), "value" | "min" | "max" | "step")
+                            {
+                                if key == "value" {
+                                    if let Some(model) = self.extract_state_ref(value) {
+                                        attrs.push(format!(":value=\"{}\"", model));
+                                    } else if let Some(f) = self.extract_float_value(value) {
+                                        attrs.push(format!("value=\"{}\"", f));
+                                    }
+                                } else {
+                                    let default = match key.as_str() {
+                                        "min" => 0.0,
+                                        "max" => 100.0,
+                                        _ => 1.0,
+                                    };
+                                    let v = self.extract_float_value(value).unwrap_or(default);
+                                    attrs.push(format!("{}=\"{}\"", key, v));
+                                }
+                                continue;
+                            }
+
+                            // Checkbox: native <input type="checkbox"> uses :checked, not :model-value
+                            if tag == "checkbox" && key == "checked" {
+                                if let Some(model) = self.extract_state_ref(value) {
+                                    attrs.push(format!(":checked=\"{}\"", model));
+                                } else if let AuraPropValue::Expr(expr) = value {
+                                    match self.expr_to_vue_bound_value(expr) {
                                     Ok(js_expr) => attrs.push(format!(":checked=\"{}\"", js_expr)),
                                     // Plan 012 P0#13 follow-up: was silently
                                     // dropped; warn R013 (no attr emitted).
@@ -7917,83 +8377,91 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                                         format!("checkbox `checked` binding: {}; binding not emitted", e),
                                     ),
                                 }
+                                }
+                                continue;
                             }
-                            continue;
-                        }
 
-                        // Plan 442 A4: SVG 元素的字面量属性按静态 attribute 发射
-                        // (viewBox="0 0 24 24" 而非 :viewBox="'0 0 24 24'"——
-                        // 绑定形式在 svg 子树上会被 Vue 求值,静态化才保住
-                        // SVG 语义;musk-038 T9 canary 的退化根因)。动态表达
-                        // 式仍走下方 v-bind。
-                        // Plan 502 M1: svg 子树内 text 同待遇(html_tag=="text"
-                        // 只可能来自 is_svg_text 分流,x/y/fill 静态化)。
-                        if Self::is_svg_element(html_tag.as_str()) || html_tag == "text" {
-                            if let AuraPropValue::Expr(expr) = value {
-                                if let Some(lit) = Self::svg_static_attr_value(expr) {
-                                    attrs.push(format!("{}=\"{}\"", key, lit));
-                                    continue;
+                            // Plan 442 A4: SVG 元素的字面量属性按静态 attribute 发射
+                            // (viewBox="0 0 24 24" 而非 :viewBox="'0 0 24 24'"——
+                            // 绑定形式在 svg 子树上会被 Vue 求值,静态化才保住
+                            // SVG 语义;musk-038 T9 canary 的退化根因)。动态表达
+                            // 式仍走下方 v-bind。
+                            // Plan 502 M1: svg 子树内 text 同待遇(html_tag=="text"
+                            // 只可能来自 is_svg_text 分流,x/y/fill 静态化)。
+                            if Self::is_svg_element(html_tag.as_str()) || html_tag == "text" {
+                                if let AuraPropValue::Expr(expr) = value {
+                                    if let Some(lit) = Self::svg_static_attr_value(expr) {
+                                        attrs.push(format!("{}=\"{}\"", key, lit));
+                                        continue;
+                                    }
                                 }
                             }
-                        }
 
-                        // Use v-bind (:attr) for dynamic values, static quotes for literals
-                        if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
-                            // Track value state ref for v-model optimization on input elements
-                            if key == "value" && (tag == "input" || tag == "textarea") {
-                                value_state_ref = Some(name.to_string());
-                            }
-                            attrs.push(format!(":{}=\"{}\"", key, name));
-                        } else if let AuraPropValue::Expr(expr) = value {
-                            // Plan 351: ALL expression prop values (FieldAccess,
-                            // Index, etc.) use v-bind with bound JS value (no {{ }}).
-                            // Plan 012 P0#13 follow-up: warn R013 + keep the
-                            // old `null` fallback rather than fail the widget.
-                            let value_str = self.bound_value_or_warn(
-                                expr,
-                                &format!("element `{}` prop `{}`", tag, key),
-                                "null",
-                            );
-                            // Also track value ref for v-model optimization
-                            if key == "value" && (tag == "input" || tag == "textarea") {
-                                // Handle both Expr::Ident(".xxx") and Expr::Dot(Ident("self"), "xxx")
-                                match expr {
-                                    crate::ast::Expr::Ident(name) => {
-                                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
-                                        value_state_ref = Some(resolved.to_string());
-                                    }
-                                    crate::ast::Expr::Dot(obj, field) => {
-                                        if let crate::ast::Expr::Ident(obj_name) = obj.as_ref() {
-                                            if obj_name == "self" {
-                                                value_state_ref = Some(field.to_string());
-                                            }
-                                        }
-                                    }
-                                    // Plan 028 F5: dynamic-key v-model —
-                                    // `value: .answers[q.id]` folds to
-                                    // `v-model="answers[q.id]"` (gap G8).
-                                    crate::ast::Expr::Index(target, index) => {
-                                        if let Some(t) = Self::index_target_name(target) {
-                                            if let Ok(idx_js) = self.expr_to_vue_bound_value(index) {
-                                                value_state_ref = Some(format!("{}[{}]", t, idx_js));
-                                            }
-                                        }
-                                    }
-                                    _ => {}
+                            // Use v-bind (:attr) for dynamic values, static quotes for literals
+                            if let AuraPropValue::Expr(crate::ast::Expr::Ident(name)) = value {
+                                // Track value state ref for v-model optimization on input elements
+                                if key == "value" && (tag == "input" || tag == "textarea") {
+                                    value_state_ref = Some(name.to_string());
                                 }
+                                attrs.push(format!(":{}=\"{}\"", key, name));
+                            } else if let AuraPropValue::Expr(expr) = value {
+                                // Plan 351: ALL expression prop values (FieldAccess,
+                                // Index, etc.) use v-bind with bound JS value (no {{ }}).
+                                // Plan 012 P0#13 follow-up: warn R013 + keep the
+                                // old `null` fallback rather than fail the widget.
+                                let value_str = self.bound_value_or_warn(
+                                    expr,
+                                    &format!("element `{}` prop `{}`", tag, key),
+                                    "null",
+                                );
+                                // Also track value ref for v-model optimization
+                                if key == "value" && (tag == "input" || tag == "textarea") {
+                                    // Handle both Expr::Ident(".xxx") and Expr::Dot(Ident("self"), "xxx")
+                                    match expr {
+                                        crate::ast::Expr::Ident(name) => {
+                                            let resolved = if name.starts_with('.') {
+                                                &name[1..]
+                                            } else {
+                                                name.as_str()
+                                            };
+                                            value_state_ref = Some(resolved.to_string());
+                                        }
+                                        crate::ast::Expr::Dot(obj, field) => {
+                                            if let crate::ast::Expr::Ident(obj_name) = obj.as_ref()
+                                            {
+                                                if obj_name == "self" {
+                                                    value_state_ref = Some(field.to_string());
+                                                }
+                                            }
+                                        }
+                                        // Plan 028 F5: dynamic-key v-model —
+                                        // `value: .answers[q.id]` folds to
+                                        // `v-model="answers[q.id]"` (gap G8).
+                                        crate::ast::Expr::Index(target, index) => {
+                                            if let Some(t) = Self::index_target_name(target) {
+                                                if let Ok(idx_js) =
+                                                    self.expr_to_vue_bound_value(index)
+                                                {
+                                                    value_state_ref =
+                                                        Some(format!("{}[{}]", t, idx_js));
+                                                }
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                attrs.push(format!(":{}=\"{}\"", key, value_str));
+                            } else {
+                                let value_str = self.prop_to_attr_value(value)?;
+                                attrs.push(format!("{}={}", key, value_str));
                             }
-                            attrs.push(format!(":{}=\"{}\"", key, value_str));
-                        } else {
-                            let value_str = self.prop_to_attr_value(value)?;
-                            attrs.push(format!("{}={}", key, value_str));
                         }
-                    }
-                } // plan-015 sorted-props block
+                    } // plan-015 sorted-props block
 
                     // Event handlers
                     let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
-                                sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
-                                for (event, aura_event) in sorted_ev {
+                    sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+                    for (event, aura_event) in sorted_ev {
                         // .window/.document modifiers → global listener, no template attr
                         if self.try_register_global_listener(event, aura_event) {
                             continue;
@@ -8008,11 +8476,15 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             .as_ref()
                             .map(|r| self.prop_names.iter().any(|p| p == r))
                             .unwrap_or(false);
-                        if (event == "oninput" || event == "onInput") && value_state_ref.is_some() && !model_target_is_prop {
+                        if (event == "oninput" || event == "onInput")
+                            && value_state_ref.is_some()
+                            && !model_target_is_prop
+                        {
                             // Replace the :value binding with v-model
                             let model_ref = value_state_ref.as_ref().unwrap();
                             // Remove the existing :value attribute and add v-model instead
-                            if let Some(pos) = attrs.iter().position(|a| a.starts_with(":value=\"")) {
+                            if let Some(pos) = attrs.iter().position(|a| a.starts_with(":value=\""))
+                            {
                                 attrs[pos] = format!("v-model=\"{}\"", model_ref);
                             } else {
                                 attrs.push(format!("v-model=\"{}\"", model_ref));
@@ -8032,21 +8504,37 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             let handler_fn = if matches!(html_tag.as_str(), "input" | "textarea")
                                 && self.input_text_handler_wants_text_arg(aura_event)
                             {
-                                format!("{}(($event.target as HTMLInputElement).value)", self.handler_to_function_call(&aura_event.handler))
+                                format!(
+                                    "{}(($event.target as HTMLInputElement).value)",
+                                    self.handler_to_function_call(&aura_event.handler)
+                                )
                             } else {
-                                self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params)
+                                self.handler_to_function_call_with_params(
+                                    &aura_event.handler,
+                                    &aura_event.params,
+                                )
                             };
                             // Plan 448 C: auto-sync mints have no side effects —
                             // v-model alone carries the sync, and registering
                             // the name would emit a stub fn + dead emits entry.
-                            if !aura_event.handler.trim_start_matches('.').starts_with("__bind_") {
-                                let handler_name = self.handler_to_function_call(&aura_event.handler);
+                            if !aura_event
+                                .handler
+                                .trim_start_matches('.')
+                                .starts_with("__bind_")
+                            {
+                                let handler_name =
+                                    self.handler_to_function_call(&aura_event.handler);
                                 self.used_handlers.insert(handler_name);
                                 attrs.push(format!("@input=\"{}\"", handler_fn));
                             }
                             continue;
                         }
-                        let vue_event = if html_tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                        let vue_event = if html_tag
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false)
+                        {
                             // PascalCase tag — a custom component rendered via
                             // map_tag's fallback (Phase 1 front files have no
                             // known_sub_widgets, so sibling sub-widgets land
@@ -8093,8 +8581,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                                 "onchange" | "change"
                             )
                         {
-                            let handler_name =
-                                self.handler_to_function_call(&aura_event.handler);
+                            let handler_name = self.handler_to_function_call(&aura_event.handler);
                             self.used_handlers.insert(handler_name.clone());
                             attrs.push(format!(
                                 "@input=\"{}(($event.target as HTMLInputElement).valueAsNumber)\"",
@@ -8119,9 +8606,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                                 AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
                                     s.split_once(['x', 'X']).and_then(|(w, h)| {
                                         match (w.trim().parse::<f32>(), h.trim().parse::<f32>()) {
-                                            (Ok(w), Ok(h)) if w > 0.0 && h > 0.0 => {
-                                                Some((w, h))
-                                            }
+                                            (Ok(w), Ok(h)) if w > 0.0 && h > 0.0 => Some((w, h)),
                                             _ => None,
                                         }
                                     })
@@ -8151,7 +8636,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             attrs.push(format!("@mousemove=\"{}\"", arrow));
                             continue;
                         }
-                        let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                        let mut handler_fn = self.handler_to_function_call_with_params(
+                            &aura_event.handler,
+                            &aura_event.params,
+                        );
                         // Track used handler (without params for matching)
                         let handler_name = self.handler_to_function_call(&aura_event.handler);
                         // If inside a for-loop and the handler doesn't already have params,
@@ -8179,7 +8667,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                                     // actually auto-pass the loop var. A handler with explicit
                                     // args (e.g. .SelectNote(note.id)) must keep its declared
                                     // param name, not be renamed to the loop variable.
-                                    self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                                    self.loop_param_handlers
+                                        .insert(handler_name.clone(), loop_var.clone());
                                 }
                             }
                         }
@@ -8191,18 +8680,30 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         // (0-param / explicit-$event / multi-arg / map bindings
                         // pass through untouched — DEBTS 引擎窗口 #6 root fix).
                         if matches!(html_tag.as_str(), "input" | "textarea")
-                            && matches!(event.as_str(), "oninput" | "input" | "onInput" | "onchange" | "change")
+                            && matches!(
+                                event.as_str(),
+                                "oninput" | "input" | "onInput" | "onchange" | "change"
+                            )
                             && self.input_text_handler_wants_text_arg(aura_event)
                         {
-                            handler_fn = format!("{}(($event.target as HTMLInputElement).value)", self.handler_to_function_call(&aura_event.handler));
+                            handler_fn = format!(
+                                "{}(($event.target as HTMLInputElement).value)",
+                                self.handler_to_function_call(&aura_event.handler)
+                            );
                         }
                         // Plan 448 C: an auto-sync mint on input/textarea is
                         // realized by the v-model fold below — emitting the
                         // @input attr for the empty handler would only add a
                         // no-op listener and force a stub function.
                         let is_auto_sync_mint = matches!(html_tag.as_str(), "input" | "textarea")
-                            && matches!(event.as_str(), "oninput" | "input" | "onInput" | "onchange" | "change")
-                            && aura_event.handler.trim_start_matches('.').starts_with("__bind_");
+                            && matches!(
+                                event.as_str(),
+                                "oninput" | "input" | "onInput" | "onchange" | "change"
+                            )
+                            && aura_event
+                                .handler
+                                .trim_start_matches('.')
+                                .starts_with("__bind_");
                         if !is_auto_sync_mint {
                             self.used_handlers.insert(handler_name);
                             attrs.push(format!("{}=\"{}\"", vue_event, handler_fn));
@@ -8232,7 +8733,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // v-html overrides inner content in Vue: warn when the
                     // element also carries a `text:` prop or child nodes
                     // (both still emitted; the Vue runtime ignores them).
-                    if props.contains_key("html") && (text_content.is_some() || !children.is_empty()) {
+                    if props.contains_key("html")
+                        && (text_content.is_some() || !children.is_empty())
+                    {
                         self.warn(
                             "R014",
                             crate::ui_gen::validators::Severity::Warning,
@@ -8297,19 +8800,32 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // mount semantics (e.g. Tiptap editor) fail to initialize.
                 // The key is stable across re-renders (counter-based, reset per SFC) so
                 // components are reused when only props change.
-                let is_vue_component = html_tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                let is_vue_component = html_tag
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false);
                 let attr_str = if is_vue_component && !attr_str.contains(":key=") {
                     self.widget_key_counter += 1;
                     if let Some(ref loop_var) = self.current_loop_var {
                         if self.current_loop_var_is_index {
                             // Index var is a primitive int — `i?.id` is meaningless;
                             // use the index itself as the per-item key.
-                            format!("{} :key=\"'{}-{}-' + {}\"", attr_str, html_tag, self.widget_key_counter, loop_var)
+                            format!(
+                                "{} :key=\"'{}-{}-' + {}\"",
+                                attr_str, html_tag, self.widget_key_counter, loop_var
+                            )
                         } else {
-                            format!("{} :key=\"'{}-{}-' + ((({} as any)?.id ?? {}))\"", attr_str, html_tag, self.widget_key_counter, loop_var, loop_var)
+                            format!(
+                                "{} :key=\"'{}-{}-' + ((({} as any)?.id ?? {}))\"",
+                                attr_str, html_tag, self.widget_key_counter, loop_var, loop_var
+                            )
                         }
                     } else {
-                        format!("{} :key=\"'{}-{}'\"", attr_str, html_tag, self.widget_key_counter)
+                        format!(
+                            "{} :key=\"'{}-{}'\"",
+                            attr_str, html_tag, self.widget_key_counter
+                        )
                     }
                 } else {
                     attr_str
@@ -8319,7 +8835,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // backdrop+透明 textarea 兄弟对(mention 高亮技法随 codegen
                 // 下沉,声明层不再出现叠加结构)。mentions 优先于 highlight/
                 // ghost 组合(与 VM 轨 convert_textarea 的优先级一致)。
-                if let Some(overlay) = self.textarea_mentions_overlay(tag, props, &attr_str, indent)? {
+                if let Some(overlay) =
+                    self.textarea_mentions_overlay(tag, props, &attr_str, indent)?
+                {
                     return Ok(overlay);
                 }
 
@@ -8346,7 +8864,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     if !has_other_children {
                         // <button @click="handler">text</button>
                         self.in_svg_subtree = svg_ctx_saved;
-                        Ok(format!("{}<{}{}>{}</{}>\n", ind, html_tag, attr_str, text, html_tag))
+                        Ok(format!(
+                            "{}<{}{}>{}</{}>\n",
+                            ind, html_tag, attr_str, text, html_tag
+                        ))
                     } else {
                         // Has both text and children - unusual but handle it
                         let mut html = format!("{}<{}{}>{}\n", ind, html_tag, attr_str, text);
@@ -8393,7 +8914,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // nextTick(scrollIntoView({block:'end'}))) emitted in
                     // generate_script. Placed last so it pins the view to bottom.
                     if let Some(ref_name) = &scroll_sentinel {
-                        html.push_str(&format!("{}<div ref=\"{}\"></div>\n", "  ".repeat(indent + 1), ref_name));
+                        html.push_str(&format!(
+                            "{}<div ref=\"{}\"></div>\n",
+                            "  ".repeat(indent + 1),
+                            ref_name
+                        ));
                     }
                     html.push_str(&format!("{}</{}>\n", ind, html_tag));
                     self.in_svg_subtree = svg_ctx_saved;
@@ -8416,17 +8941,17 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             // Replace ${.binding} with {{ binding }} (state reference)
                             vue_text = vue_text.replace(
                                 &format!("${{{}.{}}}", ".", binding),
-                                &format!("{{{{ {} }}}}", binding)
+                                &format!("{{{{ {} }}}}", binding),
                             );
                             // Replace ${binding} with {{ binding }} (variable reference)
                             vue_text = vue_text.replace(
                                 &format!("${{{}}}", binding),
-                                &format!("{{{{ {} }}}}", binding)
+                                &format!("{{{{ {} }}}}", binding),
                             );
                             // Also handle $binding format (without braces)
                             vue_text = vue_text.replace(
                                 &format!("${}", binding),
-                                &format!("{{{{ {} }}}}", binding)
+                                &format!("{{{{ {} }}}}", binding),
                             );
                         }
                         // Plan 351: strip `self.` prefix from Vue interpolations.
@@ -8439,7 +8964,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
             }
 
-            AuraNode::ForLoop { var, index, iterable, body, .. } => {
+            AuraNode::ForLoop {
+                var,
+                index,
+                iterable,
+                body,
+                ..
+            } => {
                 // Generate v-for directive
                 // Auto syntax: for idx, item in list (index first, value second)
                 // Vue syntax: v-for="(item, index) in list" (value first, index second)
@@ -8454,7 +8985,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // TableEditorBlock).
                 if iterable.starts_with('.')
                     && !iterable_name.contains('.')
-                    && iterable_name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    && iterable_name
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_')
                     && !iterable_name.is_empty()
                     && !self.prop_names.iter().any(|n| n == iterable_name)
                     && !self.state_names.iter().any(|n| n == iterable_name)
@@ -8471,7 +9004,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
                 // Auto-add search filter when widget has a 'search' state and iterates over an array
                 let v_for_iterable = if self.state_names.iter().any(|n| n == "search")
-                    && self.state_names.iter().any(|n| n == iterable_name) {
+                    && self.state_names.iter().any(|n| n == iterable_name)
+                {
                     format!("{}.filter((n: any) => !search || n.title?.toLowerCase().includes(search.toLowerCase()))", iterable_name)
                 } else {
                     iterable_name.to_string()
@@ -8501,11 +9035,12 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                                 let mut result = child_html;
                                 // Self-closing tag (<Foo />): insert before the
                                 // '/', not between '/' and '>'.
-                                let insert_pos = if gt_pos > 0 && result.as_bytes()[gt_pos - 1] == b'/' {
-                                    gt_pos - 1
-                                } else {
-                                    gt_pos
-                                };
+                                let insert_pos =
+                                    if gt_pos > 0 && result.as_bytes()[gt_pos - 1] == b'/' {
+                                        gt_pos - 1
+                                    } else {
+                                        gt_pos
+                                    };
                                 result.insert_str(insert_pos, &format!(" {}", v_for));
                                 // Plan 041a(musk 041 Phase 5 R006 收口): 快路径
                                 // (单元素直挂 v-for)无 :key 时补 id 回退键——
@@ -8513,15 +9048,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                                 let tag_end = find_tag_close(&result).unwrap();
                                 let head = &result[..tag_end];
                                 if !head.contains(":key=") {
-                                    let key_expr = format!(
-                                        " :key=\"((({} as any)?.id ?? {}))\"",
-                                        var, var
-                                    );
-                                    let insert_pos = if tag_end > 0 && result.as_bytes()[tag_end - 1] == b'/' {
-                                        tag_end - 1
-                                    } else {
-                                        tag_end
-                                    };
+                                    let key_expr =
+                                        format!(" :key=\"((({} as any)?.id ?? {}))\"", var, var);
+                                    let insert_pos =
+                                        if tag_end > 0 && result.as_bytes()[tag_end - 1] == b'/' {
+                                            tag_end - 1
+                                        } else {
+                                            tag_end
+                                        };
                                     result.insert_str(insert_pos, &key_expr);
                                 }
                                 Some(Ok(result))
@@ -8569,7 +9103,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         );
                         if with_idx == v_for {
                             // 带 index 形态(for i, x)已含两参——用既有 index 名
-                            (v_for.clone(), format!(" :key=\"{}\"", index.clone().unwrap_or_else(|| "__for_idx".into())))
+                            (
+                                v_for.clone(),
+                                format!(
+                                    " :key=\"{}\"",
+                                    index.clone().unwrap_or_else(|| "__for_idx".into())
+                                ),
+                            )
                         } else {
                             (with_idx, format!(" :key=\"{}\"", idx_var))
                         }
@@ -8593,7 +9133,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 } else {
                     (format!("<div {}{}>", v_for, key_attr), "</div>")
                 };
-                Ok(format!("{}{}\n{}{}{}\n", ind, wrap_open, body_html, ind, wrap_close))
+                Ok(format!(
+                    "{}{}\n{}{}{}\n",
+                    ind, wrap_open, body_html, ind, wrap_close
+                ))
             }
 
             AuraNode::Conditional { .. } => {
@@ -8606,7 +9149,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 self.emit_conditional(node, indent, false)
             }
 
-            AuraNode::Component { name, props, events, children, .. } => {
+            AuraNode::Component {
+                name,
+                props,
+                events,
+                children,
+                ..
+            } => {
                 // Build props as bindings
                 let mut attrs = Vec::new();
                 for (key, value) in props {
@@ -8647,11 +9196,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     let value_str = self.expr_to_vue_bound_value(value)?;
                     attrs.push(format!(":{}=\"{}\"", key, value_str));
                 }
-            
+
                 // Event handlers
                 let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
-                            sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
-                            for (event, aura_event) in sorted_ev {
+                sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+                for (event, aura_event) in sorted_ev {
                     let vue_event = self.auto_event_to_vue(event);
                     // Plan 408 P10: callback-prop short-circuit (consistency
                     // with the element/shadcn event paths).
@@ -8659,7 +9208,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         attrs.push(attr);
                         continue;
                     }
-                    let handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+                    let handler_fn = self.handler_to_function_call_with_params(
+                        &aura_event.handler,
+                        &aura_event.params,
+                    );
                     // Track used handler (without params for matching)
                     let handler_name = self.handler_to_function_call(&aura_event.handler);
                     self.used_handlers.insert(handler_name);
@@ -8706,7 +9258,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 Ok(out)
             }
 
-            AuraNode::Link { to, text, href, children, .. } => {
+            AuraNode::Link {
+                to,
+                text,
+                href,
+                children,
+                ..
+            } => {
                 // Handle different link types:
                 // 1. External link with href: <a href="...">
                 // 2. Router link with to: <router-link to="...">
@@ -8721,7 +9279,12 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     } else {
                         text.clone()
                     };
-                    Ok(format!("{}<a href=\"{}\">{}</a>\n", ind, href, text_content.trim()))
+                    Ok(format!(
+                        "{}<a href=\"{}\">{}</a>\n",
+                        ind,
+                        href,
+                        text_content.trim()
+                    ))
                 } else {
                     // Vue Router link
                     self.needs_router = true;
@@ -8752,17 +9315,25 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         children: &[AuraNode],
     ) -> (String, String) {
         let auto_code = if let Some(value) = props.get("auto") {
-            self.extract_string_value(value).unwrap_or_default().to_string()
+            self.extract_string_value(value)
+                .unwrap_or_default()
+                .to_string()
         } else {
             let mut parts = Vec::new();
             for child in children {
                 parts.push(self.node_to_auto_code(child, 0));
             }
             let g = parts.join("\n");
-            if g.is_empty() { "// Auto code not provided".to_string() } else { g }
+            if g.is_empty() {
+                "// Auto code not provided".to_string()
+            } else {
+                g
+            }
         };
         let vue_code = if let Some(value) = props.get("vue") {
-            self.extract_string_value(value).unwrap_or_default().to_string()
+            self.extract_string_value(value)
+                .unwrap_or_default()
+                .to_string()
         } else {
             let mut parts = Vec::new();
             for child in children {
@@ -8772,7 +9343,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
             }
             let g = parts.join("\n");
-            if g.is_empty() { "// Vue code not provided".to_string() } else { g }
+            if g.is_empty() {
+                "// Vue code not provided".to_string()
+            } else {
+                g
+            }
         };
         (auto_code, vue_code)
     }
@@ -8801,7 +9376,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
         // Capitalize first letter for variable names
         // Convert kebab-case to PascalCase (e.g., "card-basic" -> "CardBasic")
-        let id_cap = id.split('-')
+        let id_cap = id
+            .split('-')
             .map(|part| {
                 let mut chars = part.chars();
                 match chars.next() {
@@ -8812,7 +9388,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             .collect::<String>();
 
         // Also create a lowercase version for code variable names (still camelCase)
-        let id_lower = id.split('-')
+        let id_lower = id
+            .split('-')
             .enumerate()
             .map(|(i, part)| {
                 let mut chars = part.chars();
@@ -8831,7 +9408,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
         // Generate Auto code from children if not provided
         let auto_code = if let Some(value) = props.get("auto") {
-            self.extract_string_value(value).unwrap_or_default().to_string()
+            self.extract_string_value(value)
+                .unwrap_or_default()
+                .to_string()
         } else {
             // Auto-generate Auto code from children
             let mut auto_code_parts = Vec::new();
@@ -8848,7 +9427,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
         // Generate Vue code from children if not provided
         let vue_code = if let Some(value) = props.get("vue") {
-            self.extract_string_value(value).unwrap_or_default().to_string()
+            self.extract_string_value(value)
+                .unwrap_or_default()
+                .to_string()
         } else {
             // Auto-generate Vue code from children
             let mut vue_code_parts = Vec::new();
@@ -8971,7 +9552,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
         // Extract lang prop (default: "text")
         let lang = if let Some(value) = props.get("lang") {
-            self.extract_string_value(value).unwrap_or("text").to_string()
+            self.extract_string_value(value)
+                .unwrap_or("text")
+                .to_string()
         } else {
             "text".to_string()
         };
@@ -8988,7 +9571,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 if let AuraNode::Text(content) = child {
                     match content {
                         AuraTextContent::Literal(s) => code_parts.push(s.clone()),
-                        AuraTextContent::Interpolated { template, .. } => code_parts.push(template.clone()),
+                        AuraTextContent::Interpolated { template, .. } => {
+                            code_parts.push(template.clone())
+                        }
                     }
                 }
             }
@@ -8996,7 +9581,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         };
 
         // Convert kebab-case to camelCase for variable names (e.g., "install-button" -> "installButton")
-        let id_camel = id.split('-')
+        let id_camel = id
+            .split('-')
             .enumerate()
             .map(|(i, part)| {
                 let mut chars = part.chars();
@@ -9053,7 +9639,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         let ind = "    ".repeat(indent);
 
         match node {
-            AuraNode::Element { tag, props, events, children, .. } => {
+            AuraNode::Element {
+                tag,
+                props,
+                events,
+                children,
+                ..
+            } => {
                 let mut result = String::new();
 
                 // Plan 412 续: primary-prop 位置参数展示 —— text "X" (style: …) {}
@@ -9078,30 +9670,38 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
                 // Build props string
                 let mut props_parts = Vec::new();
-                { let mut sorted_pr: Vec<(&String, &AuraPropValue)> = props.iter().collect();
-                  // Plan 015 P0#3: sorted iteration (props is a HashMap, jade gap 56)
-                  sorted_pr.sort_by(|a, b| a.0.cmp(b.0));
-                  for (key, value) in sorted_pr {
-                    if has_primary && key == "text" {
-                        continue; // hoisted as the positional primary prop above
-                    }
-                    let value_str = match value {
-                        AuraPropValue::Expr(expr) => self.expr_to_auto_string(expr),
-                        AuraPropValue::StyleBinding(bindings) => {
-                            let binding_strs: Vec<String> = bindings.iter()
-                                .map(|b| format!("{}: {}", b.style_name, self.expr_to_auto_string(&b.condition)))
-                                .collect();
-                            format!("{{{}}}", binding_strs.join(", "))
+                {
+                    let mut sorted_pr: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+                    // Plan 015 P0#3: sorted iteration (props is a HashMap, jade gap 56)
+                    sorted_pr.sort_by(|a, b| a.0.cmp(b.0));
+                    for (key, value) in sorted_pr {
+                        if has_primary && key == "text" {
+                            continue; // hoisted as the positional primary prop above
                         }
-                    };
-                    props_parts.push(format!("{}: {}", key, value_str));
-                }
-            } // plan-015 sorted-props block
+                        let value_str = match value {
+                            AuraPropValue::Expr(expr) => self.expr_to_auto_string(expr),
+                            AuraPropValue::StyleBinding(bindings) => {
+                                let binding_strs: Vec<String> = bindings
+                                    .iter()
+                                    .map(|b| {
+                                        format!(
+                                            "{}: {}",
+                                            b.style_name,
+                                            self.expr_to_auto_string(&b.condition)
+                                        )
+                                    })
+                                    .collect();
+                                format!("{{{}}}", binding_strs.join(", "))
+                            }
+                        };
+                        props_parts.push(format!("{}: {}", key, value_str));
+                    }
+                } // plan-015 sorted-props block
 
                 // Build events string
                 let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
-                            sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
-                            for (event_name, event) in sorted_ev {
+                sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+                for (event_name, event) in sorted_ev {
                     let _params_str = if event.params.is_empty() {
                         String::new()
                     } else {
@@ -9154,14 +9754,22 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     AuraTextContent::Literal(s) => {
                         format!("{}\"{}\"\n", ind, s)
                     }
-                    AuraTextContent::Interpolated { template, bindings: _ } => {
+                    AuraTextContent::Interpolated {
+                        template,
+                        bindings: _,
+                    } => {
                         // Show the template with bindings
                         format!("{}\"{}\"\n", ind, template)
                     }
                 }
             }
 
-            AuraNode::Conditional { condition, then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
                 let mut result = String::new();
                 result.push_str(&format!("{}if {} {{\n", ind, condition));
                 for child in then_body {
@@ -9178,7 +9786,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 result
             }
 
-            AuraNode::ForLoop { var, index, iterable, body, .. } => {
+            AuraNode::ForLoop {
+                var,
+                index,
+                iterable,
+                body,
+                ..
+            } => {
                 let mut result = String::new();
                 let loop_header = if let Some(idx) = index {
                     format!("for ({}, {}) in {}", var, idx, iterable)
@@ -9193,7 +9807,12 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 result
             }
 
-            AuraNode::Component { name, props, events, .. } => {
+            AuraNode::Component {
+                name,
+                props,
+                events,
+                ..
+            } => {
                 let mut result = String::new();
 
                 let mut props_parts = Vec::new();
@@ -9203,8 +9822,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
 
                 let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
-                            sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
-                            for (event_name, event) in sorted_ev {
+                sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+                for (event_name, event) in sorted_ev {
                     // PLAN-528 W4: 同 node_to_auto_code——handler 已含前导点时不再补。
                     let handler_disp = if event.handler.starts_with('.') {
                         event.handler.clone()
@@ -9238,7 +9857,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 result
             }
 
-            AuraNode::Link { to, text, href, children, .. } => {
+            AuraNode::Link {
+                to,
+                text,
+                href,
+                children,
+                ..
+            } => {
                 let mut result = String::new();
                 // Generate appropriate link syntax based on which props are provided
                 if !href.is_empty() {
@@ -9250,11 +9875,17 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         }
                         result.push_str(&format!("{}}}\n", ind));
                     } else {
-                        result.push_str(&format!("{}link (text: \"{}\", href: \"{}\") {{}}\n", ind, text, href));
+                        result.push_str(&format!(
+                            "{}link (text: \"{}\", href: \"{}\") {{}}\n",
+                            ind, text, href
+                        ));
                     }
                 } else if !text.is_empty() && children.is_empty() {
                     // Shorthand form with just text and to
-                    result.push_str(&format!("{}link (to: \"{}\", text: \"{}\") {{}}\n", ind, to, text));
+                    result.push_str(&format!(
+                        "{}link (to: \"{}\", text: \"{}\") {{}}\n",
+                        ind, to, text
+                    ));
                 } else {
                     // Standard form with children
                     result.push_str(&format!("{}link (to: \"{}\") {{\n", ind, to));
@@ -9296,7 +9927,12 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     Op::Or => "||",
                     _ => "+",
                 };
-                format!("{} {} {}", self.expr_to_auto_string(left), op_str, self.expr_to_auto_string(right))
+                format!(
+                    "{} {} {}",
+                    self.expr_to_auto_string(left),
+                    op_str,
+                    self.expr_to_auto_string(right)
+                )
             }
             Expr::Unary(op, operand) => {
                 let op_str = match op {
@@ -9307,9 +9943,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             }
             Expr::Call(call) => {
                 if let Expr::Dot(object, method) = call.name.as_ref() {
-                    let args_str: Vec<String> = call.args.args.iter()
+                    let args_str: Vec<String> = call
+                        .args
+                        .args
+                        .iter()
                         .filter_map(|a| match a {
-                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => {
+                                Some(e.clone())
+                            }
                             _ => None,
                         })
                         .map(|a| self.expr_to_auto_string(&a))
@@ -9328,41 +9969,80 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     };
                     format!("{}.{}({})", receiver, method, args_str.join(", "))
                 } else {
-                    let args_str: Vec<String> = call.args.args.iter()
+                    let args_str: Vec<String> = call
+                        .args
+                        .args
+                        .iter()
                         .filter_map(|a| match a {
-                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => {
+                                Some(e.clone())
+                            }
                             _ => None,
                         })
                         .map(|a| self.expr_to_auto_string(&a))
                         .collect();
-                    format!("{}({})", self.expr_to_auto_string(&call.name), args_str.join(", "))
+                    format!(
+                        "{}({})",
+                        self.expr_to_auto_string(&call.name),
+                        args_str.join(", ")
+                    )
                 }
             }
             Expr::Array(elements) => {
-                let elements_str: Vec<String> = elements.iter().map(|e| self.expr_to_auto_string(e)).collect();
+                let elements_str: Vec<String> = elements
+                    .iter()
+                    .map(|e| self.expr_to_auto_string(e))
+                    .collect();
                 format!("[{}]", elements_str.join(", "))
             }
             Expr::Object(pairs) => {
-                let pairs: Vec<String> = pairs.iter()
-                    .map(|p| format!("{}: {}", p.key.to_astr(), self.expr_to_auto_string(&p.value)))
+                let pairs: Vec<String> = pairs
+                    .iter()
+                    .map(|p| {
+                        format!(
+                            "{}: {}",
+                            p.key.to_astr(),
+                            self.expr_to_auto_string(&p.value)
+                        )
+                    })
                     .collect();
                 format!("{{{}}}", pairs.join(", "))
             }
             Expr::Closure(closure) => {
-                let params_str: Vec<String> = closure.params.iter().map(|p| p.name.to_string()).collect();
-                format!("|{}| {}", params_str.join(", "), self.expr_to_auto_string(&closure.body))
+                let params_str: Vec<String> =
+                    closure.params.iter().map(|p| p.name.to_string()).collect();
+                format!(
+                    "|{}| {}",
+                    params_str.join(", "),
+                    self.expr_to_auto_string(&closure.body)
+                )
             }
             Expr::Dot(object, field) => {
                 format!("{}.{}", self.expr_to_auto_string(object), field)
             }
             Expr::NavCall { path, params } => {
-                let params_str: Vec<String> = params.iter()
-                    .map(|p| format!("{}: {}", p.key.to_astr(), self.expr_to_auto_string(&p.value)))
+                let params_str: Vec<String> = params
+                    .iter()
+                    .map(|p| {
+                        format!(
+                            "{}: {}",
+                            p.key.to_astr(),
+                            self.expr_to_auto_string(&p.value)
+                        )
+                    })
                     .collect();
-                format!("Nav.to(\"{}\", {{ {} }})", self.expr_to_auto_string(path), params_str.join(", "))
+                format!(
+                    "Nav.to(\"{}\", {{ {} }})",
+                    self.expr_to_auto_string(path),
+                    params_str.join(", ")
+                )
             }
             Expr::Index(target, index) => {
-                format!("{}[{}]", self.expr_to_auto_string(target), self.expr_to_auto_string(index))
+                format!(
+                    "{}[{}]",
+                    self.expr_to_auto_string(target),
+                    self.expr_to_auto_string(index)
+                )
             }
             _ => "/* unsupported expr */".to_string(),
         }
@@ -9492,9 +10172,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         let chars: Vec<char> = result.chars().collect();
         let mut i = 0;
         while i < chars.len() {
-            if chars[i] == '.' && (i == 0 || !chars[i-1].is_alphanumeric()) {
+            if chars[i] == '.' && (i == 0 || !chars[i - 1].is_alphanumeric()) {
                 // Check if this is a number (like 0.5)
-                if i + 1 < chars.len() && chars[i+1].is_ascii_digit() {
+                if i + 1 < chars.len() && chars[i + 1].is_ascii_digit() {
                     converted.push('.');
                     i += 1;
                     continue;
@@ -9514,10 +10194,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         for c in converted.chars() {
             if c == '"' {
                 if in_string {
-                    final_result.push('\'');  // End of string, use single quote
+                    final_result.push('\''); // End of string, use single quote
                     in_string = false;
                 } else {
-                    final_result.push('\'');  // Start of string, use single quote
+                    final_result.push('\''); // Start of string, use single quote
                     in_string = true;
                 }
             } else {
@@ -9598,7 +10278,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             // white-screens. Insert into shadcn_components_used so the import is
             // auto-generated from the registry (tooltip → @/components/ui/tooltip).
             if tag == "tooltip-provider" {
-                self.shadcn_components_used.insert("TooltipProvider".to_string());
+                self.shadcn_components_used
+                    .insert("TooltipProvider".to_string());
                 return "TooltipProvider".to_string();
             }
             // Plan 408: shadcn-vue deprecated the declarative toast components
@@ -9620,7 +10301,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             // the shadcn component via the sub-widget/ext-component path above.
             // Note: `col`/`caption`/`colgroup` are intentionally excluded —
             // `col` collides with the Auto layout `col` (→ div/flex column).
-            if matches!(tag, "table" | "thead" | "tbody" | "tfoot" | "tr" | "th" | "td") {
+            if matches!(
+                tag,
+                "table" | "thead" | "tbody" | "tfoot" | "tr" | "th" | "td"
+            ) {
                 return tag.to_string();
             }
             // PLAN-661 T-04（R-5 裁定）：slider 双模式统一原生
@@ -9691,7 +10375,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             // 类与 sidebar 令牌在此模式均为死类（os-config tailwind 令牌表无
             // sidebar-accent/accent 条目）。active/size 等 props 走通用属性
             // 透传（:active 落为原生属性，兼作测试锚）。
-            "sidebar_menu_button" | "sidebar-menu-button" | "sidebar_menu_sub_button" | "sidebar-menu-sub-button" => "button".to_string(),
+            "sidebar_menu_button"
+            | "sidebar-menu-button"
+            | "sidebar_menu_sub_button"
+            | "sidebar-menu-sub-button" => "button".to_string(),
             "select" | "Select" => "select".to_string(),
             "option" | "Option" => "option".to_string(),
             "link" | "Link" => "a".to_string(),
@@ -9757,20 +10444,37 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
             // Special
             "div" => "div".to_string(),
-            "+" => if self_closing { "span".to_string() } else { "span".to_string() },
-            "-" => if self_closing { "span".to_string() } else { "span".to_string() },
+            "+" => {
+                if self_closing {
+                    "span".to_string()
+                } else {
+                    "span".to_string()
+                }
+            }
+            "-" => {
+                if self_closing {
+                    "span".to_string()
+                } else {
+                    "span".to_string()
+                }
+            }
 
             // Plan 442 A4: SVG 元素按原名直通(此前 svg/path 退化成
             // <div :viewBox=...>,SVG 语义全丢——musk-038 T9 canary)。
             // 小写直通;PascalCase(如 Svg)仍走组件引用路径。text 不在此
             // 列(与 DSL text→span 冲突),SVG 文本节点暂不支持。
-            "svg" | "path" | "circle" | "rect" | "line" | "polyline" | "polygon"
-            | "ellipse" | "g" | "defs" | "use" | "stop" | "linearGradient"
-            | "radialGradient" | "clipPath" | "mask" => tag.to_string(),
+            "svg" | "path" | "circle" | "rect" | "line" | "polyline" | "polygon" | "ellipse"
+            | "g" | "defs" | "use" | "stop" | "linearGradient" | "radialGradient" | "clipPath"
+            | "mask" => tag.to_string(),
 
             _ => {
                 // Check if it's a PascalCase component name
-                if tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                if tag
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
+                {
                     self.component_refs.push(tag.to_string());
                     tag.to_string()
                 } else {
@@ -9784,9 +10488,22 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     fn is_svg_element(tag: &str) -> bool {
         matches!(
             tag,
-            "svg" | "path" | "circle" | "rect" | "line" | "polyline" | "polygon"
-                | "ellipse" | "g" | "defs" | "use" | "stop" | "linearGradient"
-                | "radialGradient" | "clipPath" | "mask"
+            "svg"
+                | "path"
+                | "circle"
+                | "rect"
+                | "line"
+                | "polyline"
+                | "polygon"
+                | "ellipse"
+                | "g"
+                | "defs"
+                | "use"
+                | "stop"
+                | "linearGradient"
+                | "radialGradient"
+                | "clipPath"
+                | "mask"
         )
     }
 
@@ -9829,8 +10546,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// names like `line-through`).
     fn js_obj_key(name: &str) -> String {
         let valid = !name.is_empty()
-            && name.chars().next().map(|c| c.is_ascii_alphabetic() || c == '_' || c == '$').unwrap_or(false)
-            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+            && name
+                .chars()
+                .next()
+                .map(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
+                .unwrap_or(false)
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
         if valid {
             name.to_string()
         } else {
@@ -9844,7 +10567,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// state var for `visibility`, whose CSS type is a literal union)
     /// assignable to Vue's `StyleValue`.
     fn style_obj_to_vue(&self, bindings: &[AuraStyleBinding]) -> String {
-        let parts: Vec<String> = bindings.iter()
+        let parts: Vec<String> = bindings
+            .iter()
             .map(|b| {
                 // Plan 012 P0#13 follow-up: was a silent `null` fallback;
                 // keep the fallback but warn R013 with the style key.
@@ -9885,7 +10609,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             let after = &rest[pos..];
             let end = after.find('}')?;
             let inner = &after[2..end];
-            let valid_ident = |n: &str| !n.is_empty() && n.chars().all(|c| c.is_alphanumeric() || c == '_');
+            let valid_ident =
+                |n: &str| !n.is_empty() && n.chars().all(|c| c.is_alphanumeric() || c == '_');
             let expr = if let Some(name) = inner.strip_prefix('.') {
                 if !valid_ident(name) {
                     return None;
@@ -9932,7 +10657,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             (inner, '`')
         } else if let Some(inner) = content.strip_prefix('"').and_then(|c| c.strip_suffix('"')) {
             (inner, '"')
-        } else if let Some(inner) = content.strip_prefix('\'').and_then(|c| c.strip_suffix('\'')) {
+        } else if let Some(inner) = content
+            .strip_prefix('\'')
+            .and_then(|c| c.strip_suffix('\''))
+        {
             (inner, '\'')
         } else {
             // 拼接/函数调用等非字面量形态不在此层处理。
@@ -10010,7 +10738,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         }
     }
 
-    fn extract_classes(&self, tag: &str, props: &HashMap<String, AuraPropValue>) -> (String, Option<String>, Option<String>) {
+    fn extract_classes(
+        &self,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+    ) -> (String, Option<String>, Option<String>) {
         let mut classes = Vec::new();
         let mut dynamic_class: Option<String> = None;
         let mut dynamic_style: Option<String> = None;
@@ -10022,9 +10754,21 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         // (shadcn components have their own styling).
         // However, layout primitives (row, col, etc.) always need their flex classes
         // regardless of mode — they map to <div> and have no shadcn styling of their own.
-        let layout_primitives = ["row", "col", "column", "grid", "scroll", "center", "container", "square", "spacer"];
+        let layout_primitives = [
+            "row",
+            "col",
+            "column",
+            "grid",
+            "scroll",
+            "center",
+            "container",
+            "square",
+            "spacer",
+        ];
         let is_layout_primitive = layout_primitives.contains(&normalized_tag);
-        let skip_defaults = !is_layout_primitive && self.is_shadcn() && self.widget_registry.is_backend_supported("vue", tag);
+        let skip_defaults = !is_layout_primitive
+            && self.is_shadcn()
+            && self.widget_registry.is_backend_supported("vue", tag);
 
         // pac.at `default_classes: off` (Plan 014): skip the doc-theme default
         // classes below for every non-layout-primitive tag. Stacks with the
@@ -10040,24 +10784,50 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         // that may need fully custom styling (e.g., TodoMVC uses todomvc-app-css).
         let user_class_skip_elements = [
             // Semantic HTML5
-            "header", "nav", "main", "aside", "footer", "article", "section",
+            "header",
+            "nav",
+            "main",
+            "aside",
+            "footer",
+            "article",
+            "section",
             // Typography
-            "h1", "h2", "h3", "h4", "h5", "h6", "text", "p",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "text",
+            "p",
             // Form
-            "button", "input", "checkbox", "link", "label", "textarea",
+            "button",
+            "input",
+            "checkbox",
+            "link",
+            "label",
+            "textarea",
             // Data
-            "tree", "tree_item", "tree-item",
+            "tree",
+            "tree_item",
+            "tree-item",
         ];
-        let skip_semantic_defaults = has_user_class && user_class_skip_elements.contains(&normalized_tag);
+        let skip_semantic_defaults =
+            has_user_class && user_class_skip_elements.contains(&normalized_tag);
 
         // Extract gap prop for layout elements
-        let user_style_has_gap = props.get("class").or_else(|| props.get("style")).map_or(false, |v| {
-            if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
-                s.split_whitespace().any(|tok| tok.starts_with("gap-") || tok == "gap")
-            } else {
-                false
-            }
-        });
+        let user_style_has_gap =
+            props
+                .get("class")
+                .or_else(|| props.get("style"))
+                .map_or(false, |v| {
+                    if let AuraPropValue::Expr(crate::ast::Expr::Str(s)) = v {
+                        s.split_whitespace()
+                            .any(|tok| tok.starts_with("gap-") || tok == "gap")
+                    } else {
+                        false
+                    }
+                });
         let gap_class = if let Some(value) = props.get("gap") {
             match value {
                 AuraPropValue::Expr(crate::ast::Expr::Str(s)) => format!(" gap-{}", s),
@@ -10226,7 +10996,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 AuraPropValue::StyleBinding(bindings) => {
                     // Generate dynamic class binding: { completed: todo.done, editing: todo.editing }
                     // Use expr_to_vue_bound_value (no .value suffix) because Vue templates auto-unwrap refs
-                    let binding_strs: Vec<String> = bindings.iter()
+                    let binding_strs: Vec<String> = bindings
+                        .iter()
                         .map(|b| {
                             // Plan 012 P0#13 follow-up: was a silent `false`
                             // fallback; keep it but warn R013.
@@ -10247,8 +11018,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     if let Some((statics, expr)) = Self::interpolated_class_parts(s) {
                         for c in statics {
                             if is_layout_primitive {
-                                let existing: Vec<&str> =
-                                    classes.iter().flat_map(|cl| cl.split_whitespace()).collect();
+                                let existing: Vec<&str> = classes
+                                    .iter()
+                                    .flat_map(|cl| cl.split_whitespace())
+                                    .collect();
                                 if !existing.contains(&c.as_str()) {
                                     classes.push(c);
                                 }
@@ -10263,7 +11036,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     } else if is_layout_primitive {
                         // Dedup: for layout primitives, split user classes and skip any already present
                         for c in s.split_whitespace() {
-                            let existing: Vec<&str> = classes.iter().flat_map(|cl| cl.split_whitespace()).collect();
+                            let existing: Vec<&str> = classes
+                                .iter()
+                                .flat_map(|cl| cl.split_whitespace())
+                                .collect();
                             if !existing.contains(&c) {
                                 classes.push(c.to_string());
                             }
@@ -10295,7 +11071,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         self.warn(
                             "R013",
                             crate::ui_gen::validators::Severity::Warning,
-                            "style: array with no renderable parts; binding not emitted".to_string(),
+                            "style: array with no renderable parts; binding not emitted"
+                                .to_string(),
                         );
                     } else {
                         let joined = format!("[{}].filter(Boolean).join(' ')", parts.join(", "));
@@ -10369,8 +11146,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     if let Some((statics, expr)) = Self::interpolated_class_parts(s) {
                         for c in statics {
                             if is_layout_primitive {
-                                let existing: Vec<&str> =
-                                    classes.iter().flat_map(|cl| cl.split_whitespace()).collect();
+                                let existing: Vec<&str> = classes
+                                    .iter()
+                                    .flat_map(|cl| cl.split_whitespace())
+                                    .collect();
                                 if !existing.contains(&c.as_str()) {
                                     classes.push(c);
                                 }
@@ -10384,7 +11163,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         });
                     } else if is_layout_primitive {
                         for c in s.split_whitespace() {
-                            let existing: Vec<&str> = classes.iter().flat_map(|cl| cl.split_whitespace()).collect();
+                            let existing: Vec<&str> = classes
+                                .iter()
+                                .flat_map(|cl| cl.split_whitespace())
+                                .collect();
                             if !existing.contains(&c) {
                                 classes.push(c.to_string());
                             }
@@ -10425,7 +11207,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         Err(e) => self.warn(
                             "R011",
                             crate::ui_gen::validators::Severity::Warning,
-                            format!("class: expression form is not supported and was not emitted: {}", e),
+                            format!(
+                                "class: expression form is not supported and was not emitted: {}",
+                                e
+                            ),
                         ),
                     }
                 }
@@ -10440,9 +11225,15 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     fn expr_to_ts_type(&self, expr: &crate::ast::Expr) -> String {
         use crate::ast::Expr;
         match expr {
-            Expr::Int(_) | Expr::I64(_) | Expr::Uint(_) | Expr::U64(_)
-            | Expr::I8(_) | Expr::U8(_) | Expr::Byte(_)
-            | Expr::Float(_, _) | Expr::Double(_, _) => "number".to_string(),
+            Expr::Int(_)
+            | Expr::I64(_)
+            | Expr::Uint(_)
+            | Expr::U64(_)
+            | Expr::I8(_)
+            | Expr::U8(_)
+            | Expr::Byte(_)
+            | Expr::Float(_, _)
+            | Expr::Double(_, _) => "number".to_string(),
             Expr::Bool(_) => "boolean".to_string(),
             Expr::Str(_) | Expr::CStr(_) => "string".to_string(),
             // Plan 448 H1: a block-bodied computed's type is its trailing
@@ -10453,21 +11244,30 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 _ => "any".to_string(),
             },
             Expr::Ident(name) => {
-                let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                let resolved = if name.starts_with('.') {
+                    &name[1..]
+                } else {
+                    name.as_str()
+                };
                 // Prefer declared prop/state types over name heuristics.
-                if let Some(ty) = self.prop_types.get(resolved).or_else(|| self.state_types.get(resolved)) {
+                if let Some(ty) = self
+                    .prop_types
+                    .get(resolved)
+                    .or_else(|| self.state_types.get(resolved))
+                {
                     return ty.clone();
                 }
                 // Try to infer type from state variable name
                 if name.starts_with("is_") || name.starts_with("has_") {
                     "boolean".to_string()
                 } else {
-                    "number".to_string()  // Default to number for state refs
+                    "number".to_string() // Default to number for state refs
                 }
             }
             // `.field` / `self.field` — resolve like the bare field name.
             Expr::Dot(object, field) => {
-                if matches!(object.as_ref(), Expr::Ident(n) if n.as_str() == "self" || n.as_str() == ".") {
+                if matches!(object.as_ref(), Expr::Ident(n) if n.as_str() == "self" || n.as_str() == ".")
+                {
                     return self.expr_to_ts_type(&Expr::Ident(field.clone()));
                 }
                 "any".to_string()
@@ -10518,9 +11318,12 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             // Plan 028 F1: uniform dict literals infer `Record<K, V>` —
             // mixed-value dicts stay `any` (no union inference yet).
             Expr::Object(pairs) => {
-                let all_str_keys = pairs.iter().all(|p| matches!(p.key, crate::ast::Key::StrKey(_)));
+                let all_str_keys = pairs
+                    .iter()
+                    .all(|p| matches!(p.key, crate::ast::Key::StrKey(_)));
                 if all_str_keys && !pairs.is_empty() {
-                    let value_types: Vec<String> = pairs.iter()
+                    let value_types: Vec<String> = pairs
+                        .iter()
                         .map(|p| self.expr_to_ts_type(&p.value))
                         .collect();
                     let first = &value_types[0];
@@ -10530,7 +11333,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
                 "any".to_string()
             }
-            _ => "any".to_string(),  // Default fallback
+            _ => "any".to_string(), // Default fallback
         }
     }
 
@@ -10592,7 +11395,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
     /// Plan 451 P2: escape for HTML text content.
     fn escape_html_text(s: &str) -> String {
-        s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
     }
 
     /// Plan 408 P9 / §7.2 缺陷 3: if a statement list is a single expression
@@ -10620,11 +11425,21 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// `ts_adapter::transpile_expr` (handler body) carry the same table
     /// (P5-3: the view paths used to skip it, emitting invalid JS like
     /// `.to_float()`).
-    fn map_method_to_js(&self, method: &str, object_js: &str, args_js: &[String]) -> Option<String> {
+    fn map_method_to_js(
+        &self,
+        method: &str,
+        object_js: &str,
+        args_js: &[String],
+    ) -> Option<String> {
         let a = args_js.join(", ");
         // Plan 028 M1: a CLOSURE argument means receiver semantics the string
         // table can't know — `.find(e => …)` is Array.find, never indexOf.
-        if args_js.iter().any(|x| x.contains("=>")) && matches!(method, "find" | "replace" | "contains" | "remove" | "slice" | "substr" | "sub") {
+        if args_js.iter().any(|x| x.contains("=>"))
+            && matches!(
+                method,
+                "find" | "replace" | "contains" | "remove" | "slice" | "substr" | "sub"
+            )
+        {
             return None;
         }
         Some(match method {
@@ -10706,7 +11521,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             Expr::Float(n, _) | Expr::Double(n, _) => Ok(n.to_string()),
             Expr::Bool(b) => Ok(b.to_string()),
             Expr::Ident(name) => {
-                let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                let resolved = if name.starts_with('.') {
+                    &name[1..]
+                } else {
+                    name.as_str()
+                };
                 if self.prop_names.contains(&resolved.to_string()) {
                     // Props: access via props.xxx (no .value, but need props. prefix in script)
                     Ok(format!("props.{}", resolved))
@@ -10730,9 +11549,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // (`!= null` covers both null and undefined). Strict `!== null`
                 // would let `undefined` through; `!== undefined` (the old output)
                 // flipped semantics when a parent explicitly passes null.
-                let nullish = |e: &crate::ast::Expr| {
-                    matches!(e, Expr::Null | Expr::Nil | Expr::None)
-                };
+                let nullish =
+                    |e: &crate::ast::Expr| matches!(e, Expr::Null | Expr::Nil | Expr::None);
                 if matches!(op, Op::Eq | Op::Neq) && (nullish(left) || nullish(right)) {
                     let other = if nullish(left) { right } else { left };
                     let other_js = self.expr_to_js(other)?;
@@ -10743,9 +11561,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // 不能翻译成严格 `!== ''` —— 后者对 undefined 字段（属性缺失）
                 // 误判为 true（`undefined !== ''`），导致 hasError/hasThinking 等
                 // 守卫永远成立（渲染空的 error/thinking 占位）。镜像 `!!x` 语义。
-                let empty_str = |e: &crate::ast::Expr| {
-                    matches!(e, Expr::Str(s) if s.is_empty())
-                };
+                let empty_str = |e: &crate::ast::Expr| matches!(e, Expr::Str(s) if s.is_empty());
                 if matches!(op, Op::Eq | Op::Neq) && (empty_str(left) || empty_str(right)) {
                     let other = if empty_str(left) { right } else { left };
                     let other_js = self.expr_to_js(other)?;
@@ -10829,7 +11645,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // 的 AST 是 Dot(Ident("."), "counter")，转译后才是裸 "counter"。
                 let object_js = self.expr_to_js(object)?;
                 if self.is_ext_composable_local(&object_js)
-                    && self.facade_ref_fields.get(&object_js)
+                    && self
+                        .facade_ref_fields
+                        .get(&object_js)
                         .map(|fields| fields.contains(field.as_str()))
                         .unwrap_or(false)
                 {
@@ -10846,7 +11664,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 } else {
                     object_js
                 };
-                if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
+                if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty()
+                {
                     Ok(format!("{}[{}]", object_js, field))
                 } else {
                     // Plan 408 P11 / §7.7: when the object is a function call
@@ -10854,7 +11673,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // separate invocations), use optional chaining so `fn().field`
                     // compiles even when `fn() != None` was just checked in a
                     // sibling expression. `?.` is a no-op for non-null values.
-                    let op = if matches!(object.as_ref(), Expr::Call(_)) { "?." } else { "." };
+                    let op = if matches!(object.as_ref(), Expr::Call(_)) {
+                        "?."
+                    } else {
+                        "."
+                    };
                     Ok(format!("{}{}{}", object_js, op, field))
                 }
             }
@@ -10866,7 +11689,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // 通用 Call 路径会丢掉 Pair 的 key,故在进入前特判。
                 let is_toast_call = match call.name.as_ref() {
                     Expr::Ident(n) => n.as_str() == "toast",
-                    Expr::Dot(obj, _) => matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "toast"),
+                    Expr::Dot(obj, _) => {
+                        matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "toast")
+                    }
                     _ => false,
                 };
                 if is_toast_call {
@@ -10892,9 +11717,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // The call's name may be a Dot(object, method) — a method call.
                 if let Expr::Dot(object, method) = call.name.as_ref() {
                     let method = method.clone();
-                    let args: Vec<crate::ast::Expr> = call.args.args.iter()
+                    let args: Vec<crate::ast::Expr> = call
+                        .args
+                        .args
+                        .iter()
                         .filter_map(|a| match a {
-                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => {
+                                Some(e.clone())
+                            }
                             _ => None,
                         })
                         .collect();
@@ -10902,9 +11732,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // Plan 132: Check if this is an API function call
                     // Case 1: Direct API call like listusers() - object is API name
                     if let Expr::Ident(name) = object.as_ref() {
-                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                        let resolved = if name.starts_with('.') {
+                            &name[1..]
+                        } else {
+                            name.as_str()
+                        };
                         if self.is_api_function(resolved) {
-                            let args_js: Vec<String> = args.iter()
+                            let args_js: Vec<String> = args
+                                .iter()
                                 .map(|a| self.expr_to_js(a))
                                 .collect::<Result<Vec<_>, _>>()?;
                             return Ok(format!("await {}({})", resolved, args_js.join(", ")));
@@ -10913,7 +11748,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // Case 2: self.<api_function>() - treat as direct API call
                     if let Expr::Ident(obj_name) = object.as_ref() {
                         if obj_name.as_str() == "self" && self.is_api_function(method.as_str()) {
-                            let args_js: Vec<String> = args.iter()
+                            let args_js: Vec<String> = args
+                                .iter()
                                 .map(|a| self.expr_to_js(a))
                                 .collect::<Result<Vec<_>, _>>()?;
                             return Ok(format!("await {}({})", method, args_js.join(", ")));
@@ -10921,7 +11757,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     }
                     // Case 3: Any method call where method name is an API function
                     if self.is_api_function(method.as_str()) {
-                        let args_js: Vec<String> = args.iter()
+                        let args_js: Vec<String> = args
+                            .iter()
                             .map(|a| self.expr_to_js(a))
                             .collect::<Result<Vec<_>, _>>()?;
                         return Ok(format!("await {}({})", method, args_js.join(", ")));
@@ -10936,7 +11773,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     } else {
                         object_js
                     };
-                    let args_js: Vec<String> = args.iter()
+                    let args_js: Vec<String> = args
+                        .iter()
                         .map(|a| self.expr_to_js(a))
                         .collect::<Result<Vec<_>, _>>()?;
                     // Plan 012 Batch A (gap 19 audit): gate `.contains →
@@ -10947,7 +11785,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         match self.method_map_decision_for_expr(object) {
                             crate::ui_gen::ts_adapter::MethodMapDecision::Map => {}
                             decision => {
-                                if matches!(decision, crate::ui_gen::ts_adapter::MethodMapDecision::PassWarn) {
+                                if matches!(
+                                    decision,
+                                    crate::ui_gen::ts_adapter::MethodMapDecision::PassWarn
+                                ) {
                                     self.warn(
                                         "R010",
                                         crate::ui_gen::validators::Severity::Info,
@@ -10957,7 +11798,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                                         ),
                                     );
                                 }
-                                return Ok(format!("{}.contains({})", object_js, args_js.join(", ")));
+                                return Ok(format!(
+                                    "{}.contains({})",
+                                    object_js,
+                                    args_js.join(", ")
+                                ));
                             }
                         }
                     }
@@ -11006,7 +11851,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             }
                             "replace" => {
                                 if let Some(re) = re_for(1, 3) {
-                                    let to = args_js.get(2).cloned().unwrap_or_else(|| "''".to_string());
+                                    let to =
+                                        args_js.get(2).cloned().unwrap_or_else(|| "''".to_string());
                                     return Ok(format!("{}.replace({}, {})", subject, re, to));
                                 }
                             }
@@ -11015,7 +11861,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     }
                     // Plan 053 M1/P5-3: 方法映射表收敛到 map_method_to_js 单源，
                     // 与 view 表达式路径共享同一张表。
-                    if let Some(mapped) = self.map_method_to_js(method.as_str(), &object_js, &args_js) {
+                    if let Some(mapped) =
+                        self.map_method_to_js(method.as_str(), &object_js, &args_js)
+                    {
                         return Ok(mapped);
                     }
                     // Plan 028 F3: `Date.format(ts, "HH:mm")` — 平台日期 API 的
@@ -11026,7 +11874,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // 自行 ×1000（VM int i32 回绕,musk msgTimeLabel 实录）。
                     if method.as_str() == "format" && object_js == "Date" {
                         let ts_arg = args_js.first().cloned().unwrap_or_else(|| "0".to_string());
-                        let pattern = args_js.get(1)
+                        let pattern = args_js
+                            .get(1)
                             .map(|p| p.trim_matches('\'').trim_matches('"'))
                             .unwrap_or("HH:mm");
                         let mut opts = vec!["hour: '2-digit'", "minute: '2-digit'"];
@@ -11047,9 +11896,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 } else {
                     // Plain function call: func(args)
                     let name_js = self.expr_to_js(&call.name)?;
-                    let args_js: Vec<String> = call.args.args.iter()
+                    let args_js: Vec<String> = call
+                        .args
+                        .args
+                        .iter()
                         .filter_map(|a| match a {
-                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => {
+                                Some(e.clone())
+                            }
                             _ => None,
                         })
                         .map(|a| self.expr_to_js(&a))
@@ -11058,7 +11912,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
             }
             Expr::Array(elems) => {
-                let elems_js: Vec<String> = elems.iter()
+                let elems_js: Vec<String> = elems
+                    .iter()
                     .map(|e| self.expr_to_js(e))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("[{}]", elems_js.join(", ")))
@@ -11066,7 +11921,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             Expr::Object(pairs) => {
                 // Plan 028 F1: StrKey needs quoting in JS — bare output broke
                 // non-identifier keys ("task-plan"). Mirrors ts_adapter's arm.
-                let pairs_js: Vec<String> = pairs.iter()
+                let pairs_js: Vec<String> = pairs
+                    .iter()
                     .map(|p| {
                         let v_js = self.expr_to_js(&p.value)?;
                         let key = match &p.key {
@@ -11081,9 +11937,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 Ok(format!("{{{}}}", pairs_js.join(", ")))
             }
             Expr::Closure(closure) => {
-                let params: Vec<String> = closure.params.iter()
-                    .map(|p| p.name.to_string())
-                    .collect();
+                let params: Vec<String> =
+                    closure.params.iter().map(|p| p.name.to_string()).collect();
                 let body_js = self.expr_to_js(&closure.body)?;
                 Ok(format!("({}) => {}", params.join(", "), body_js))
             }
@@ -11105,12 +11960,18 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 if params.is_empty() {
                     Ok(format!("router.push({})", path_js))
                 } else {
-                    let params_js: Vec<String> = params.iter()
+                    let params_js: Vec<String> = params
+                        .iter()
                         .map(|p| {
-                            self.expr_to_js(&p.value).map(|v_js| format!("{}: {}", p.key.to_astr(), v_js))
+                            self.expr_to_js(&p.value)
+                                .map(|v_js| format!("{}: {}", p.key.to_astr(), v_js))
                         })
                         .collect::<Result<Vec<_>, _>>()?;
-                    Ok(format!("router.push({{ path: {}, query: {{ {} }} }})", path_js, params_js.join(", ")))
+                    Ok(format!(
+                        "router.push({{ path: {}, query: {{ {} }} }})",
+                        path_js,
+                        params_js.join(", ")
+                    ))
                 }
             }
             // Plan 043 M5 #2: render a multi-statement computed body. The
@@ -11125,19 +11986,23 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             // the trailing expression statement into `return e;`; a block
             // that already ends in an explicit `return` renders unchanged.
             Expr::Block(body) => {
-                let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
-                    .with_props(self.prop_names.iter().cloned().collect())
-                    .with_refs(self.template_refs.iter().cloned().collect())
-                    .with_computed(self.computed_names.iter().cloned().collect());
+                let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(
+                    self.state_names.iter().cloned().collect(),
+                )
+                .with_props(self.prop_names.iter().cloned().collect())
+                .with_refs(self.template_refs.iter().cloned().collect())
+                .with_computed(self.computed_names.iter().cloned().collect());
                 if !self.project_api_functions.is_empty() {
                     ctx = ctx.with_api_functions(self.project_api_functions.clone());
                 }
                 let (arrays, strings) = self.typed_collection_names();
-                ctx = ctx.with_typed_collections(arrays, strings)
+                ctx = ctx
+                    .with_typed_collections(arrays, strings)
                     .with_typed_ints(self.int_names.iter().cloned().collect())
                     .with_facade_names(self.facade_local_names())
                     .with_facade_ref_fields(self.facade_ref_fields_map());
-                let body_js = crate::ui_gen::ts_adapter::transpile_body_as_return(&body.stmts, &ctx);
+                let body_js =
+                    crate::ui_gen::ts_adapter::transpile_body_as_return(&body.stmts, &ctx);
                 self.drain_ctx_warnings(&ctx);
                 Ok(format!("{{ {} }}", body_js.trim()))
             }
@@ -11150,18 +12015,26 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             Expr::If(if_expr) => {
                 // Try the ternary path: every branch + else must be a single
                 // Stmt::Expr so each side is a pure expression.
-                let branch_exprs: Vec<Option<String>> = if_expr.branches.iter()
+                let branch_exprs: Vec<Option<String>> = if_expr
+                    .branches
+                    .iter()
                     .map(|b| self.single_body_expr_js(&b.body.stmts))
                     .collect();
-                let else_expr = if_expr.else_.as_ref()
+                let else_expr = if_expr
+                    .else_
+                    .as_ref()
                     .and_then(|b| self.single_body_expr_js(&b.stmts));
                 let all_single = branch_exprs.iter().all(|e| e.is_some())
                     && (if_expr.else_.is_none() || else_expr.is_some());
                 if all_single {
                     // Build the ternary from the inside out (last branch first).
-                    let mut acc = else_expr.as_deref().map(|s| s.to_string())
+                    let mut acc = else_expr
+                        .as_deref()
+                        .map(|s| s.to_string())
                         .unwrap_or_else(|| "undefined".to_string());
-                    for (branch, then_expr) in if_expr.branches.iter().rev().zip(branch_exprs.iter().rev()) {
+                    for (branch, then_expr) in
+                        if_expr.branches.iter().rev().zip(branch_exprs.iter().rev())
+                    {
                         let cond = self.expr_to_js(&branch.cond)?;
                         let then_str = then_expr.clone().unwrap();
                         // Plan 054 M6: wrap the whole ternary in parens so it's
@@ -11174,15 +12047,18 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     return Ok(acc);
                 }
                 // Fallback: IIFE (multi-statement branches need a block + return).
-                let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(self.state_names.iter().cloned().collect())
-                    .with_props(self.prop_names.iter().cloned().collect())
-                    .with_refs(self.template_refs.iter().cloned().collect())
-                    .with_computed(self.computed_names.iter().cloned().collect());
+                let mut ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(
+                    self.state_names.iter().cloned().collect(),
+                )
+                .with_props(self.prop_names.iter().cloned().collect())
+                .with_refs(self.template_refs.iter().cloned().collect())
+                .with_computed(self.computed_names.iter().cloned().collect());
                 if !self.project_api_functions.is_empty() {
                     ctx = ctx.with_api_functions(self.project_api_functions.clone());
                 }
                 let (arrays, strings) = self.typed_collection_names();
-                ctx = ctx.with_typed_collections(arrays, strings)
+                ctx = ctx
+                    .with_typed_collections(arrays, strings)
                     .with_typed_ints(self.int_names.iter().cloned().collect())
                     .with_facade_names(self.facade_local_names())
                     .with_facade_ref_fields(self.facade_ref_fields_map());
@@ -11195,12 +12071,21 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // Plan 043 H1: branch bodies must RETURN their value so the
                     // IIFE evaluates to the expression (e.g. status_glyph '✓'),
                     // not undefined.
-                    out.push_str(crate::ui_gen::ts_adapter::transpile_body_as_return(&branch.body.stmts, &ctx).trim());
+                    out.push_str(
+                        crate::ui_gen::ts_adapter::transpile_body_as_return(
+                            &branch.body.stmts,
+                            &ctx,
+                        )
+                        .trim(),
+                    );
                     out.push_str(" }");
                 }
                 if let Some(else_body) = &if_expr.else_ {
                     out.push_str(" else { ");
-                    out.push_str(crate::ui_gen::ts_adapter::transpile_body_as_return(&else_body.stmts, &ctx).trim());
+                    out.push_str(
+                        crate::ui_gen::ts_adapter::transpile_body_as_return(&else_body.stmts, &ctx)
+                            .trim(),
+                    );
                     out.push_str(" }");
                 }
                 out.push_str(" })()");
@@ -11218,10 +12103,12 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     inner = format!("({})", inner);
                 }
                 match target_type {
-                    crate::ast::Type::Int | crate::ast::Type::I64
-                    | crate::ast::Type::Uint | crate::ast::Type::U64
-                    | crate::ast::Type::USize | crate::ast::Type::Byte =>
-                        Ok(format!("Math.trunc({})", inner)),
+                    crate::ast::Type::Int
+                    | crate::ast::Type::I64
+                    | crate::ast::Type::Uint
+                    | crate::ast::Type::U64
+                    | crate::ast::Type::USize
+                    | crate::ast::Type::Byte => Ok(format!("Math.trunc({})", inner)),
                     _ => Ok(inner),
                 }
             }
@@ -11283,7 +12170,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         fn walk_expr(expr: &Expr, api_fns: &[&str], used: &mut HashSet<String>) {
             match expr {
                 Expr::Call(call) => {
-                    let call_name = call.get_name_text_safe()
+                    let call_name = call
+                        .get_name_text_safe()
                         .map(|n| n.as_str().to_string())
                         .unwrap_or_default();
                     if !call_name.is_empty() {
@@ -11297,9 +12185,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         // this the module-form component references the
                         // client fn without importing it (TS2304).
                         if let Expr::Ident(obj_name) = obj.as_ref() {
-                            if obj_name.as_str() == "api"
-                                && api_fns.contains(&method.as_str())
-                            {
+                            if obj_name.as_str() == "api" && api_fns.contains(&method.as_str()) {
                                 used.insert(method.as_str().to_string());
                             }
                         }
@@ -11410,7 +12296,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         fn walk_expr(expr: &Expr) -> bool {
             match expr {
                 Expr::Call(call) => {
-                    if call.get_name_text_safe().map(|n| n.as_str() == "complete").unwrap_or(false) {
+                    if call
+                        .get_name_text_safe()
+                        .map(|n| n.as_str() == "complete")
+                        .unwrap_or(false)
+                    {
                         return true;
                     }
                     call.args.args.iter().any(|a| walk_expr(&a.get_expr()))
@@ -11427,13 +12317,17 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             match stmt {
                 Stmt::Expr(expr) => walk_expr(expr),
                 Stmt::Store(store) => walk_expr(&store.expr),
-                Stmt::If(if_stmt) => if_stmt.branches.iter().any(|b| {
+                Stmt::If(if_stmt) => {
+                    if_stmt.branches.iter().any(|b| {
                     walk_expr(&b.cond) || b.body.stmts.iter().any(|s| walk_stmt(s))
                 })
                 // Plan 444 (ash-shell-057 ④): else-branch bodies hide calls
                 // from complete()/toast() detection — walk them too.
-                || if_stmt.else_.as_ref().map(|e| e.stmts.iter().any(|s| walk_stmt(s))).unwrap_or(false),
-                Stmt::For(for_) => walk_expr(&for_.range) || for_.body.stmts.iter().any(|s| walk_stmt(s)),
+                || if_stmt.else_.as_ref().map(|e| e.stmts.iter().any(|s| walk_stmt(s))).unwrap_or(false)
+                }
+                Stmt::For(for_) => {
+                    walk_expr(&for_.range) || for_.body.stmts.iter().any(|s| walk_stmt(s))
+                }
                 Stmt::Block(body) => body.stmts.iter().any(|s| walk_stmt(s)),
                 _ => false,
             }
@@ -11455,7 +12349,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         // 白名单同表（单源 VM_ONLY_OBJECT_NATIVES：fs/File/
                         // image + Env/Process）——lifecycle 体在 stub 发射后
                         // 才转译，须从原始 AST 预检；漏名会落 TS2304。
-                        if matches!(obj.as_ref(), Expr::Ident(n) if crate::ui_gen::ts_adapter::VM_ONLY_OBJECT_NATIVES.contains(&n.as_str())) {
+                        if matches!(obj.as_ref(), Expr::Ident(n) if crate::ui_gen::ts_adapter::VM_ONLY_OBJECT_NATIVES.contains(&n.as_str()))
+                        {
                             return true;
                         }
                     }
@@ -11473,16 +12368,28 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             match stmt {
                 Stmt::Expr(expr) => walk_expr(expr),
                 Stmt::Store(store) => walk_expr(&store.expr),
-                Stmt::If(if_stmt) => if_stmt.branches.iter().any(|b| {
-                    walk_expr(&b.cond) || b.body.stmts.iter().any(|s| walk_stmt(s))
-                })
-                    || if_stmt.else_.as_ref().map(|e| e.stmts.iter().any(|s| walk_stmt(s))).unwrap_or(false),
-                Stmt::For(for_) => walk_expr(&for_.range) || for_.body.stmts.iter().any(|s| walk_stmt(s)),
+                Stmt::If(if_stmt) => {
+                    if_stmt
+                        .branches
+                        .iter()
+                        .any(|b| walk_expr(&b.cond) || b.body.stmts.iter().any(|s| walk_stmt(s)))
+                        || if_stmt
+                            .else_
+                            .as_ref()
+                            .map(|e| e.stmts.iter().any(|s| walk_stmt(s)))
+                            .unwrap_or(false)
+                }
+                Stmt::For(for_) => {
+                    walk_expr(&for_.range) || for_.body.stmts.iter().any(|s| walk_stmt(s))
+                }
                 Stmt::Block(body) => body.stmts.iter().any(|s| walk_stmt(s)),
                 Stmt::Try(t) => {
                     t.body.stmts.iter().any(|s| walk_stmt(s))
                         || t.catch_body.stmts.iter().any(|s| walk_stmt(s))
-                        || t.finally_body.as_ref().map(|fb| fb.stmts.iter().any(|s| walk_stmt(s))).unwrap_or(false)
+                        || t.finally_body
+                            .as_ref()
+                            .map(|fb| fb.stmts.iter().any(|s| walk_stmt(s)))
+                            .unwrap_or(false)
                 }
                 _ => false,
             }
@@ -11503,7 +12410,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     // (get_name_text_safe returns None for Dot, so check the Expr directly)
                     let is_toast = match call.name.as_ref() {
                         Expr::Ident(n) => n.as_str() == "toast",
-                        Expr::Dot(obj, _) => matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "toast"),
+                        Expr::Dot(obj, _) => {
+                            matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "toast")
+                        }
                         _ => false,
                     };
                     if is_toast {
@@ -11523,13 +12432,17 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             match stmt {
                 Stmt::Expr(expr) => walk_expr(expr),
                 Stmt::Store(store) => walk_expr(&store.expr),
-                Stmt::If(if_stmt) => if_stmt.branches.iter().any(|b| {
+                Stmt::If(if_stmt) => {
+                    if_stmt.branches.iter().any(|b| {
                     walk_expr(&b.cond) || b.body.stmts.iter().any(|s| walk_stmt(s))
                 })
                 // Plan 444 (ash-shell-057 ④): else-branch bodies hide calls
                 // from complete()/toast() detection — walk them too.
-                || if_stmt.else_.as_ref().map(|e| e.stmts.iter().any(|s| walk_stmt(s))).unwrap_or(false),
-                Stmt::For(for_) => walk_expr(&for_.range) || for_.body.stmts.iter().any(|s| walk_stmt(s)),
+                || if_stmt.else_.as_ref().map(|e| e.stmts.iter().any(|s| walk_stmt(s))).unwrap_or(false)
+                }
+                Stmt::For(for_) => {
+                    walk_expr(&for_.range) || for_.body.stmts.iter().any(|s| walk_stmt(s))
+                }
                 Stmt::Block(body) => body.stmts.iter().any(|s| walk_stmt(s)),
                 _ => false,
             }
@@ -11544,7 +12457,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 if self.project_api_functions.is_empty() {
                     crate::ui_gen::ts_adapter::stmts_contain_api_call(stmts)
                 } else {
-                    crate::ui_gen::ts_adapter::stmts_contain_api_call_with(stmts, &self.project_api_functions)
+                    crate::ui_gen::ts_adapter::stmts_contain_api_call_with(
+                        stmts,
+                        &self.project_api_functions,
+                    )
                 }
             }
             LogicPayload::Bytecode(_) => false,
@@ -11576,16 +12492,29 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     }
                 }
                 Expr::Dot(object, _) => scan_expr(object, out),
-                Expr::Bina(l, _, r) => { scan_expr(l, out); scan_expr(r, out); }
+                Expr::Bina(l, _, r) => {
+                    scan_expr(l, out);
+                    scan_expr(r, out);
+                }
                 Expr::Unary(_, e) => scan_expr(e, out),
                 Expr::Array(items) | Expr::Tuple(items) => {
-                    for item in items { scan_expr(item, out); }
+                    for item in items {
+                        scan_expr(item, out);
+                    }
                 }
-                Expr::Index(arr, idx) => { scan_expr(arr, out); scan_expr(idx, out); }
-                Expr::NullCoalesce(l, r) => { scan_expr(l, out); scan_expr(r, out); }
+                Expr::Index(arr, idx) => {
+                    scan_expr(arr, out);
+                    scan_expr(idx, out);
+                }
+                Expr::NullCoalesce(l, r) => {
+                    scan_expr(l, out);
+                    scan_expr(r, out);
+                }
                 Expr::Cast { expr, .. } | Expr::To { expr, .. } => scan_expr(expr, out),
                 Expr::Block(body) => {
-                    for s in &body.stmts { scan_stmt(s, out); }
+                    for s in &body.stmts {
+                        scan_stmt(s, out);
+                    }
                 }
                 Expr::If(if_stmt) => scan_if(if_stmt, out),
                 _ => {}
@@ -11594,10 +12523,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         fn scan_if(if_stmt: &crate::ast::If, out: &mut Vec<String>) {
             for branch in &if_stmt.branches {
                 scan_expr(&branch.cond, out);
-                for s in &branch.body.stmts { scan_stmt(s, out); }
+                for s in &branch.body.stmts {
+                    scan_stmt(s, out);
+                }
             }
             if let Some(else_body) = &if_stmt.else_ {
-                for s in &else_body.stmts { scan_stmt(s, out); }
+                for s in &else_body.stmts {
+                    scan_stmt(s, out);
+                }
             }
         }
         fn scan_stmt(stmt: &Stmt, out: &mut Vec<String>) {
@@ -11607,24 +12540,36 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 Stmt::If(if_stmt) => scan_if(if_stmt, out),
                 Stmt::For(for_) => {
                     scan_expr(&for_.range, out);
-                    for s in &for_.body.stmts { scan_stmt(s, out); }
+                    for s in &for_.body.stmts {
+                        scan_stmt(s, out);
+                    }
                 }
                 Stmt::Try(t) => {
-                    for s in &t.body.stmts { scan_stmt(s, out); }
-                    for s in &t.catch_body.stmts { scan_stmt(s, out); }
+                    for s in &t.body.stmts {
+                        scan_stmt(s, out);
+                    }
+                    for s in &t.catch_body.stmts {
+                        scan_stmt(s, out);
+                    }
                     if let Some(fb) = &t.finally_body {
-                        for s in &fb.stmts { scan_stmt(s, out); }
+                        for s in &fb.stmts {
+                            scan_stmt(s, out);
+                        }
                     }
                 }
                 Stmt::Block(body) => {
-                    for s in &body.stmts { scan_stmt(s, out); }
+                    for s in &body.stmts {
+                        scan_stmt(s, out);
+                    }
                 }
                 Stmt::Return(e) | Stmt::Reply(e) => scan_expr(e, out),
                 _ => {}
             }
         }
         let mut out = Vec::new();
-        for stmt in stmts { scan_stmt(stmt, &mut out); }
+        for stmt in stmts {
+            scan_stmt(stmt, &mut out);
+        }
         out
     }
 
@@ -11676,24 +12621,26 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             return Ok(format!("\"{}\"", state_ref));
         }
         match value {
-            AuraPropValue::Expr(expr) => {
-                match expr {
-                    Expr::Ident(name) => {
-                        let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
-                        Ok(format!("\"{}\"", resolved))
-                    }
-                    Expr::Dot(object, field) => {
-                        let obj_str = self.expr_to_vue_text(object)?;
-                        let clean_obj = obj_str.trim().trim_matches(|c| c == '{' || c == '}').trim();
-                        if clean_obj == "self" || clean_obj == "." || clean_obj.is_empty() {
-                            Ok(format!("\"{}\"", field))
-                        } else {
-                            Ok(format!("\"{}.{}\"", clean_obj, field))
-                        }
-                    }
-                    _ => Ok(format!("\"{}\"", self.expr_to_vue_text(expr)?)),
+            AuraPropValue::Expr(expr) => match expr {
+                Expr::Ident(name) => {
+                    let resolved = if name.starts_with('.') {
+                        &name[1..]
+                    } else {
+                        name.as_str()
+                    };
+                    Ok(format!("\"{}\"", resolved))
                 }
-            }
+                Expr::Dot(object, field) => {
+                    let obj_str = self.expr_to_vue_text(object)?;
+                    let clean_obj = obj_str.trim().trim_matches(|c| c == '{' || c == '}').trim();
+                    if clean_obj == "self" || clean_obj == "." || clean_obj.is_empty() {
+                        Ok(format!("\"{}\"", field))
+                    } else {
+                        Ok(format!("\"{}.{}\"", clean_obj, field))
+                    }
+                }
+                _ => Ok(format!("\"{}\"", self.expr_to_vue_text(expr)?)),
+            },
             AuraPropValue::StyleBinding(_) => {
                 // Class bindings are handled separately in extract_classes
                 Ok("\"\"".to_string())
@@ -11704,12 +12651,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// Convert prop value to text content (for rendering inside element)
     fn prop_to_text_content(&self, value: &AuraPropValue) -> GenResult<String> {
         match value {
-            AuraPropValue::Expr(expr) => {
-                self.expr_to_vue_text(expr)
-            }
-            AuraPropValue::StyleBinding(_) => {
-                Ok("".to_string())
-            }
+            AuraPropValue::Expr(expr) => self.expr_to_vue_text(expr),
+            AuraPropValue::StyleBinding(_) => Ok("".to_string()),
         }
     }
 
@@ -11745,7 +12688,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             Expr::Float(f, _) | Expr::Double(f, _) => Ok(f.to_string()),
             Expr::Bool(b) => Ok(b.to_string()),
             Expr::Ident(name) => {
-                let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                let resolved = if name.starts_with('.') {
+                    &name[1..]
+                } else {
+                    name.as_str()
+                };
                 Ok(resolved.to_string())
             }
             Expr::Dot(object, field) => {
@@ -11765,7 +12712,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 };
                 // Plan 043: numeric field (tuple index, e.g. `field.0`) → `field[0]`
                 // for valid TypeScript in Vue templates.
-                if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
+                if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty()
+                {
                     Ok(format!("{}[{}]", object_str, field))
                 } else {
                     Ok(format!("{}.{}", object_str, field))
@@ -11814,9 +12762,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         obj_str
                     };
                     let is_self = obj_str == "self";
-                    let args: Vec<crate::ast::Expr> = call.args.args.iter()
+                    let args: Vec<crate::ast::Expr> = call
+                        .args
+                        .args
+                        .iter()
                         .filter_map(|a| match a {
-                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => {
+                                Some(e.clone())
+                            }
                             _ => None,
                         })
                         .collect();
@@ -11827,15 +12780,31 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         // used to silently become `null`; keep that fallback
                         // but warn R013 instead of propagating a hard error
                         // out of a display-text position.
-                        "contains" => Ok(format!("{}.includes({})", obj_str, args.iter().map(|a| self.bound_value_or_warn(a, "contains() call arg", "null")).collect::<Vec<_>>().join(", "))),
+                        "contains" => Ok(format!(
+                            "{}.includes({})",
+                            obj_str,
+                            args.iter()
+                                .map(|a| self.bound_value_or_warn(a, "contains() call arg", "null"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )),
                         _ => {
-                            let args_str: Vec<String> = args.iter()
-                                .map(|a| self.bound_value_or_warn(a, "method-call arg in text position", "null"))
+                            let args_str: Vec<String> = args
+                                .iter()
+                                .map(|a| {
+                                    self.bound_value_or_warn(
+                                        a,
+                                        "method-call arg in text position",
+                                        "null",
+                                    )
+                                })
                                 .collect();
                             // Plan 053 P5-3: view 文本位置的字符串方法同样走
                             // method map（此前仅 to_string/len/contains 特判，
                             // 其余原样输出 `.to_float()` 等坏 JS）。
-                            if let Some(mapped) = self.map_method_to_js(method.as_str(), &obj_str, &args_str) {
+                            if let Some(mapped) =
+                                self.map_method_to_js(method.as_str(), &obj_str, &args_str)
+                            {
                                 return Ok(mapped);
                             }
                             if is_self {
@@ -11855,9 +12824,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     }
                 } else {
                     let name_str = self.expr_to_vue_text_raw(&call.name)?;
-                    let args_str: Vec<String> = call.args.args.iter()
+                    let args_str: Vec<String> = call
+                        .args
+                        .args
+                        .iter()
                         .filter_map(|a| match a {
-                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => {
+                                Some(e.clone())
+                            }
                             _ => None,
                         })
                         .map(|a| self.bound_value_or_warn(&a, "call arg in text position", "null"))
@@ -11904,7 +12878,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         // If the raw result already contains {{ (e.g., from convert_template_to_vue),
         // or is a plain literal string / f-string, return as-is.
         // Otherwise wrap in {{ }}.
-        let out = if raw.starts_with("{{") || matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_)) {
+        let out = if raw.starts_with("{{")
+            || matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+        {
             raw
         } else {
             format!("{{{{ {} }}}}", raw)
@@ -11930,7 +12906,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             Expr::Float(n, _) | Expr::Double(n, _) => Ok(n.to_string()),
             Expr::Bool(b) => Ok(b.to_string()),
             Expr::Ident(name) => {
-                let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
+                let resolved = if name.starts_with('.') {
+                    &name[1..]
+                } else {
+                    name.as_str()
+                };
                 Ok(resolved.to_string())
             }
             Expr::Dot(object, field) => {
@@ -11949,7 +12929,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     obj_str
                 };
                 // Plan 043: numeric field (tuple index) → bracket form for valid TS.
-                if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty() {
+                if field.as_str().chars().all(|c| c.is_ascii_digit()) && !field.as_str().is_empty()
+                {
                     Ok(format!("{}[{}]", obj_str, field))
                 } else {
                     Ok(format!("{}.{}", obj_str, field))
@@ -11961,13 +12942,15 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 Ok(format!("{}[{}]", target_str, index_str))
             }
             Expr::Array(elems) => {
-                let elems_vue: Vec<String> = elems.iter()
+                let elems_vue: Vec<String> = elems
+                    .iter()
                     .map(|e| self.expr_to_vue_bound_value(e))
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(format!("[{}]", elems_vue.join(", ")))
             }
             Expr::Object(pairs) => {
-                let pairs_vue: Vec<String> = pairs.iter()
+                let pairs_vue: Vec<String> = pairs
+                    .iter()
                     .map(|p| {
                         let v_vue = self.expr_to_vue_bound_value(&p.value)?;
                         // Plan 012 P0#13: quote keys that aren't valid JS
@@ -12025,10 +13008,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 for part in &fstr.parts {
                     match part {
                         Expr::Str(s) | Expr::CStr(s) => {
-                            out.push_str(&s
-                                .replace("\\", "\\\\")
-                                .replace("`", "\\`")
-                                .replace("${", "\\${"));
+                            out.push_str(
+                                &s.replace("\\", "\\\\")
+                                    .replace("`", "\\`")
+                                    .replace("${", "\\${"),
+                            );
                         }
                         other => {
                             let v = self.expr_to_vue_bound_value(other)?;
@@ -12057,14 +13041,21 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     } else {
                         object_js
                     };
-                    let args_js: Vec<String> = call.args.args.iter()
+                    let args_js: Vec<String> = call
+                        .args
+                        .args
+                        .iter()
                         .filter_map(|a| match a {
-                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
+                            crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => {
+                                Some(e.clone())
+                            }
                             _ => None,
                         })
                         .map(|a| self.expr_to_vue_bound_value(&a))
                         .collect::<Result<Vec<_>, _>>()?;
-                    if let Some(mapped) = self.map_method_to_js(method.as_str(), &object_js, &args_js) {
+                    if let Some(mapped) =
+                        self.map_method_to_js(method.as_str(), &object_js, &args_js)
+                    {
                         return Ok(mapped);
                     }
                     // 保留既有行为:自调用 `.Method()` → `Method()`(无 self 前缀);
@@ -12077,7 +13068,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // Plain function call (e.g. component prop: getList(.msg)) →
                 // emit as-is.
                 let name_str = self.expr_to_vue_bound_value(&call.name)?;
-                let args_str: Vec<String> = call.args.args.iter()
+                let args_str: Vec<String> = call
+                    .args
+                    .args
+                    .iter()
                     .filter_map(|a| match a {
                         crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Some(e.clone()),
                         _ => None,
@@ -12111,10 +13105,12 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     inner = format!("({})", inner);
                 }
                 match target_type {
-                    crate::ast::Type::Int | crate::ast::Type::I64
-                    | crate::ast::Type::Uint | crate::ast::Type::U64
-                    | crate::ast::Type::USize | crate::ast::Type::Byte =>
-                        Ok(format!("Math.trunc({})", inner)),
+                    crate::ast::Type::Int
+                    | crate::ast::Type::I64
+                    | crate::ast::Type::Uint
+                    | crate::ast::Type::U64
+                    | crate::ast::Type::USize
+                    | crate::ast::Type::Byte => Ok(format!("Math.trunc({})", inner)),
                     _ => Ok(inner),
                 }
             }
@@ -12134,7 +13130,12 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// expression form emit an R013 warning (with the expression's Debug
     /// shape and the calling context) and return the caller's fallback —
     /// the exact output the old silent `null` catch-all produced there.
-    fn bound_value_or_warn(&self, expr: &crate::ast::Expr, context: &str, fallback: &str) -> String {
+    fn bound_value_or_warn(
+        &self,
+        expr: &crate::ast::Expr,
+        context: &str,
+        fallback: &str,
+    ) -> String {
         match self.expr_to_vue_bound_value(expr) {
             Ok(v) => v,
             Err(e) => {
@@ -12270,41 +13271,53 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         attrs: &mut Vec<String>,
         props: &HashMap<String, AuraPropValue>,
     ) {
-        { let mut sorted_pr: Vec<(&String, &AuraPropValue)> = props.iter().collect();
-          // Plan 015 P0#3: sorted iteration (props is a HashMap, jade gap 56)
-          sorted_pr.sort_by(|a, b| a.0.cmp(b.0));
-          for (key, value) in sorted_pr {
-            if matches!(key.as_str(), "class" | "style" | "gap" | "text" | "style_obj" | "show" | "ref" | "html"
+        {
+            let mut sorted_pr: Vec<(&String, &AuraPropValue)> = props.iter().collect();
+            // Plan 015 P0#3: sorted iteration (props is a HashMap, jade gap 56)
+            sorted_pr.sort_by(|a, b| a.0.cmp(b.0));
+            for (key, value) in sorted_pr {
+                if matches!(
+                    key.as_str(),
+                    "class" | "style" | "gap" | "text" | "style_obj" | "show" | "ref" | "html"
                 // Plan 412 §4.3: square 的尺寸 props 已转成 h-/w- 类,且 h/w/size
                 // 不是有效 HTML 属性 —— 不透传。
-                | "h" | "w" | "size") {
-                continue;
-            }
-            // PLAN-682 F2：显式 `key:` 已在 generate_shadcn_attrs 顶部单点
-            // 转发为 `:key` 绑定；layout 臂（row/col）的透传不再重发——
-            // 同元素双 `:key` 属性会被 Vue 编译器 X_DUPLICATE_ATTRIBUTE
-            // 拒收（bps-gallery DataTableCrud 行 div 实证）。attrs 尚无
-            // `:key=` 时维持透传（兜住顶部转发失败的表情态）。
-            if key == "key" && attrs.iter().any(|a| a.starts_with(":key=")) {
-                continue;
-            }
-            match value {
-                AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
-                    attrs.push(format!("{}=\"{}\"", key, Self::escape_js_string(s.as_str())));
+                | "h" | "w" | "size"
+                ) {
+                    continue;
                 }
-                AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
-                    let resolved = if name.starts_with('.') { &name[1..] } else { name.as_str() };
-                    attrs.push(format!(":{}=\"{}\"", key, resolved));
+                // PLAN-682 F2：显式 `key:` 已在 generate_shadcn_attrs 顶部单点
+                // 转发为 `:key` 绑定；layout 臂（row/col）的透传不再重发——
+                // 同元素双 `:key` 属性会被 Vue 编译器 X_DUPLICATE_ATTRIBUTE
+                // 拒收（bps-gallery DataTableCrud 行 div 实证）。attrs 尚无
+                // `:key=` 时维持透传（兜住顶部转发失败的表情态）。
+                if key == "key" && attrs.iter().any(|a| a.starts_with(":key=")) {
+                    continue;
                 }
-                AuraPropValue::Expr(expr) => {
-                    if let Ok(value_str) = self.expr_to_vue_bound_value(expr) {
-                        attrs.push(format!(":{}=\"{}\"", key, value_str));
+                match value {
+                    AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                        attrs.push(format!(
+                            "{}=\"{}\"",
+                            key,
+                            Self::escape_js_string(s.as_str())
+                        ));
                     }
+                    AuraPropValue::Expr(crate::ast::Expr::Ident(name)) => {
+                        let resolved = if name.starts_with('.') {
+                            &name[1..]
+                        } else {
+                            name.as_str()
+                        };
+                        attrs.push(format!(":{}=\"{}\"", key, resolved));
+                    }
+                    AuraPropValue::Expr(expr) => {
+                        if let Ok(value_str) = self.expr_to_vue_bound_value(expr) {
+                            attrs.push(format!(":{}=\"{}\"", key, value_str));
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
-        }
-    } // plan-015 sorted-props block
+        } // plan-015 sorted-props block
     }
 
     /// Plan 057 续(富文本输入):textarea 带 highlight/ghost props 时生成叠加层
@@ -12321,10 +13334,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         if tag != "textarea" {
             return Ok(None);
         }
-        let hl_ref = props.get("highlight")
+        let hl_ref = props
+            .get("highlight")
             .and_then(|v| self.extract_state_ref(v));
-        let ghost_ref = props.get("ghost")
-            .and_then(|v| self.extract_state_ref(v));
+        let ghost_ref = props.get("ghost").and_then(|v| self.extract_state_ref(v));
         if hl_ref.is_none() && ghost_ref.is_none() {
             return Ok(None);
         }
@@ -12339,9 +13352,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         };
         // kind → Tailwind class 链 — 与旧 .at 手写 overlay 完全一致(Pixel 等价)。
         let span_class = "span.kind == 'Command' ? 'text-emerald-400 font-bold' : span.kind == 'ExternalCmd' ? 'text-sky-300' : span.kind == 'String' ? 'text-amber-300' : span.kind == 'Variable' ? 'text-red-400' : span.kind == 'Operator' ? 'text-pink-400 font-bold' : span.kind == 'Redirect' ? 'text-gray-400' : span.kind == 'Comment' ? 'text-gray-400 italic' : span.kind == 'Flag' ? 'text-purple-300' : 'text-gray-200'";
-        let mut html = format!(
-            "{ind}<div class=\"flex flex-row relative flex-1 items-center\">\n"
-        );
+        let mut html = format!("{ind}<div class=\"flex flex-row relative flex-1 items-center\">\n");
         html.push_str(&format!(
             "{ind1}<div class=\"flex flex-row pointer-events-none absolute inset-0 items-center text-sm font-mono-ash whitespace-pre overflow-hidden\">\n"
         ));
@@ -12381,7 +13392,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         if tag != "textarea" || !props.contains_key("mentions") {
             return Ok(None);
         }
-        let names = props.get("mentions").and_then(|v| self.extract_state_ref(v));
+        let names = props
+            .get("mentions")
+            .and_then(|v| self.extract_state_ref(v));
         let value = props.get("value").and_then(|v| self.extract_state_ref(v));
         let (names_ref, value_ref) = match (names.clone(), value.clone()) {
             (Some(n), Some(v)) => (n, v),
@@ -12583,7 +13596,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 self.push_style_class(&mut attrs, props);
                 // Build slot children for icon + text
                 let mut button_children = Vec::new();
-                if let Some(icon_name) = props.get("icon").and_then(|v| self.extract_string_value(v)) {
+                if let Some(icon_name) =
+                    props.get("icon").and_then(|v| self.extract_string_value(v))
+                {
                     let lucide_component = Self::lucide_component_name(icon_name);
                     self.lucide_icons.insert(lucide_component.clone());
                     button_children.push(format!(r#"<{} class="h-4 w-4" />"#, lucide_component));
@@ -12743,7 +13758,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         props
                             .get("axis")
                             .and_then(|v| self.extract_string_value(v).map(|s| s.to_string()))
-                            .map(|a| if a == "x" { "horizontal".to_string() } else { "vertical".to_string() })
+                            .map(|a| {
+                                if a == "x" {
+                                    "horizontal".to_string()
+                                } else {
+                                    "vertical".to_string()
+                                }
+                            })
                     });
                 if let Some(orientation) = orientation {
                     attrs.push(format!("orientation=\"{}\"", orientation));
@@ -12792,7 +13813,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         if !self.template_refs.contains(&ref_name) {
                             self.template_refs.push(ref_name.clone());
                         }
-                        self.scroll_auto_scroll.push((src.to_string(), ref_name.clone()));
+                        self.scroll_auto_scroll
+                            .push((src.to_string(), ref_name.clone()));
                         self.pending_scroll_sentinel = Some(ref_name);
                     }
                 }
@@ -12985,7 +14007,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     let to = self.extract_string_value(value).unwrap_or("#");
                     attrs.push(format!("to=\"{}\"", to));
                 }
-                if let Some(label) = props.get("label").and_then(|v| self.extract_string_value(v)) {
+                if let Some(label) = props
+                    .get("label")
+                    .and_then(|v| self.extract_string_value(v))
+                {
                     let icon_name = props.get("icon").and_then(|v| self.extract_string_value(v));
                     if let Some(icon) = icon_name {
                         let lucide_component = Self::lucide_component_name(icon);
@@ -13017,19 +14042,27 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             "previewcard" | "preview-card" => {
                 // title prop (default: "Preview")
                 let title = if let Some(value) = props.get("title") {
-                    self.extract_string_value(value).unwrap_or("Preview").to_string()
+                    self.extract_string_value(value)
+                        .unwrap_or("Preview")
+                        .to_string()
                 } else {
                     "Preview".to_string()
                 };
                 // auto and vue props are stored as data attributes for the code section
                 if let Some(value) = props.get("auto") {
                     if let Some(auto_code) = self.extract_string_value(value) {
-                        attrs.push(format!("data-auto=\"{}\"", auto_code.replace("\"", "&quot;").replace("<", "&lt;")));
+                        attrs.push(format!(
+                            "data-auto=\"{}\"",
+                            auto_code.replace("\"", "&quot;").replace("<", "&lt;")
+                        ));
                     }
                 }
                 if let Some(value) = props.get("vue") {
                     if let Some(vue_code) = self.extract_string_value(value) {
-                        attrs.push(format!("data-vue=\"{}\"", vue_code.replace("\"", "&quot;").replace("<", "&lt;")));
+                        attrs.push(format!(
+                            "data-vue=\"{}\"",
+                            vue_code.replace("\"", "&quot;").replace("<", "&lt;")
+                        ));
                     }
                 }
                 let _ = title; // Suppress unused variable warning
@@ -13065,16 +14098,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // placeholder → placeholder="..."（字面）/ :placeholder（绑定）
                 // —— plan 040 契约扩展（AutoDownEditor 空态提示文案）。
                 match props.get("placeholder") {
-                    Some(AuraPropValue::Expr(expr)) => {
-                        match self.expr_to_vue_bound_value(expr) {
-                            Ok(js_expr) => attrs.push(format!(":placeholder=\"{}\"", js_expr)),
-                            Err(e) => self.warn(
-                                "R013",
-                                crate::ui_gen::validators::Severity::Warning,
-                                format!("autodown_editor `placeholder`: {}; prop not emitted", e),
-                            ),
-                        }
-                    }
+                    Some(AuraPropValue::Expr(expr)) => match self.expr_to_vue_bound_value(expr) {
+                        Ok(js_expr) => attrs.push(format!(":placeholder=\"{}\"", js_expr)),
+                        Err(e) => self.warn(
+                            "R013",
+                            crate::ui_gen::validators::Severity::Warning,
+                            format!("autodown_editor `placeholder`: {}; prop not emitted", e),
+                        ),
+                    },
                     Some(value) => {
                         let placeholder = self.extract_string_value(value).unwrap_or("");
                         attrs.push(format!("placeholder=\"{}\"", placeholder));
@@ -13098,16 +14129,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
                         attrs.push(format!("accent=\"{}\"", s));
                     }
-                    Some(AuraPropValue::Expr(expr)) => {
-                        match self.expr_to_vue_bound_value(expr) {
-                            Ok(js_expr) => attrs.push(format!(":accent=\"{}\"", js_expr)),
-                            Err(e) => self.warn(
-                                "R013",
-                                crate::ui_gen::validators::Severity::Warning,
-                                format!("autodown_editor `accent`: {}; prop not emitted", e),
-                            ),
-                        }
-                    }
+                    Some(AuraPropValue::Expr(expr)) => match self.expr_to_vue_bound_value(expr) {
+                        Ok(js_expr) => attrs.push(format!(":accent=\"{}\"", js_expr)),
+                        Err(e) => self.warn(
+                            "R013",
+                            crate::ui_gen::validators::Severity::Warning,
+                            format!("autodown_editor `accent`: {}; prop not emitted", e),
+                        ),
+                    },
                     _ => {}
                 }
 
@@ -13207,16 +14236,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
                         attrs.push(format!("accent=\"{}\"", s));
                     }
-                    Some(AuraPropValue::Expr(expr)) => {
-                        match self.expr_to_vue_bound_value(expr) {
-                            Ok(js_expr) => attrs.push(format!(":accent=\"{}\"", js_expr)),
-                            Err(e) => self.warn(
-                                "R013",
-                                crate::ui_gen::validators::Severity::Warning,
-                                format!("autodown `accent`: {}; prop not emitted", e),
-                            ),
-                        }
-                    }
+                    Some(AuraPropValue::Expr(expr)) => match self.expr_to_vue_bound_value(expr) {
+                        Ok(js_expr) => attrs.push(format!(":accent=\"{}\"", js_expr)),
+                        Err(e) => self.warn(
+                            "R013",
+                            crate::ui_gen::validators::Severity::Warning,
+                            format!("autodown `accent`: {}; prop not emitted", e),
+                        ),
+                    },
                     _ => {}
                 }
                 // style/class (wrapper sizing).
@@ -13246,7 +14273,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 if let Some(value) = props.get("value") {
                     // Plan 028 F5: also fold Index-position values (dynamic
                     // keys, `.answers[q.id]`).
-                    if let Some(model) = self.extract_state_ref(value)
+                    if let Some(model) = self
+                        .extract_state_ref(value)
                         .or_else(|| self.extract_state_index_ref(value))
                     {
                         // Prop-backed value (v-model contract child widget):
@@ -13337,7 +14365,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             "code_editor" => {
                 // v-model for value (content: preferred, mirrors textarea).
                 if let Some(value) = props.get("content").or_else(|| props.get("value")) {
-                    if let Some(model) = self.extract_state_ref(value)
+                    if let Some(model) = self
+                        .extract_state_ref(value)
                         .or_else(|| self.extract_state_index_ref(value))
                     {
                         if self.prop_names.iter().any(|p| p == &model) {
@@ -13361,17 +14390,28 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         attrs.push(format!("lang=\"{}\"", lang));
                     }
                 }
-                let bool_attr = |attrs: &mut Vec<String>, key: &str, prop: &str, default: bool, props: &HashMap<String, AuraPropValue>| {
-                    let on = match props.get(key) {
-                        Some(AuraPropValue::Expr(crate::ast::Expr::Bool(b))) => *b,
-                        _ => default,
+                let bool_attr =
+                    |attrs: &mut Vec<String>,
+                     key: &str,
+                     prop: &str,
+                     default: bool,
+                     props: &HashMap<String, AuraPropValue>| {
+                        let on = match props.get(key) {
+                            Some(AuraPropValue::Expr(crate::ast::Expr::Bool(b))) => *b,
+                            _ => default,
+                        };
+                        attrs.push(format!(":{}=\"{}\"", prop, on));
                     };
-                    attrs.push(format!(":{}=\"{}\"", prop, on));
-                };
                 bool_attr(&mut attrs, "line_numbers", "line-numbers", true, props);
                 bool_attr(&mut attrs, "wrap", "wrap", false, props);
                 bool_attr(&mut attrs, "vi", "vi", false, props);
-                bool_attr(&mut attrs, "highlight_current_line", "highlight-current-line", true, props);
+                bool_attr(
+                    &mut attrs,
+                    "highlight_current_line",
+                    "highlight-current-line",
+                    true,
+                    props,
+                );
                 // PLAN-089(musk T-09): readonly viewer → CodeEditor.vue 的
                 // Codemirror editable/readOnly 扩展（壳同计划补位）。
                 bool_attr(&mut attrs, "readonly", "readonly", false, props);
@@ -13421,7 +14461,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 if let Some(value) = props.get("value") {
                     // Plan 028 F5: also fold Index-position values (dynamic
                     // keys, `.answers[q.id]`).
-                    if let Some(model) = self.extract_state_ref(value)
+                    if let Some(model) = self
+                        .extract_state_ref(value)
                         .or_else(|| self.extract_state_index_ref(value))
                     {
                         // Prop-backed value (v-model contract child widget):
@@ -13619,7 +14660,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         // satisfy vue-tsc and coerce at runtime.
                         if let AuraPropValue::Expr(expr) = value {
                             match self.expr_to_vue_bound_value(expr) {
-                                Ok(expr_str) => attrs.push(format!(":model-value=\"Number({})\"", expr_str)),
+                                Ok(expr_str) => {
+                                    attrs.push(format!(":model-value=\"Number({})\"", expr_str))
+                                }
                                 // Plan 012 P0#13 follow-up: was silently skipped.
                                 Err(e) => self.warn(
                                     "R013",
@@ -13664,7 +14707,6 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     slot_content = self.prop_to_text_content(value).ok();
                 }
             }
-
 
             // === Tabs ===
             "tabs" => {
@@ -13764,7 +14806,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // class for styling
                 self.push_style_class(&mut attrs, props);
             }
-            "alertdialogheader" | "alert-dialog-header" | "alertdialogfooter" | "alert-dialog-footer" => {
+            "alertdialogheader"
+            | "alert-dialog-header"
+            | "alertdialogfooter"
+            | "alert-dialog-footer" => {
                 // Container components - class handled by extract_classes
             }
             "alertdialogtitle" | "alert-dialog-title" => {
@@ -13802,7 +14847,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             "dialogcontent" | "dialog_content" | "dialog-content" => {
                 self.push_style_class(&mut attrs, props);
             }
-            "dialogheader" | "dialog_header" | "dialog-header" | "dialogfooter" | "dialog_footer" | "dialog-footer" => {
+            "dialogheader" | "dialog_header" | "dialog-header" | "dialogfooter"
+            | "dialog_footer" | "dialog-footer" => {
                 self.push_style_class(&mut attrs, props);
             }
             "dialogtitle" | "dialog_title" | "dialog-title" => {
@@ -13863,7 +14909,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 // Generate AvatarImage if src provided
                 if let Some(value) = props.get("src") {
                     let src = self.extract_string_value(value).unwrap_or("");
-                    let alt = props.get("alt")
+                    let alt = props
+                        .get("alt")
                         .and_then(|v| self.extract_string_value(v))
                         .unwrap_or("");
                     generated_children.push_str(&format!(
@@ -13871,7 +14918,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         src, alt, "\n"
                     ));
                     // Register AvatarImage component for imports
-                    self.shadcn_components_used.insert("AvatarImage".to_string());
+                    self.shadcn_components_used
+                        .insert("AvatarImage".to_string());
                 }
 
                 // Generate AvatarFallback if fallback provided
@@ -13882,7 +14930,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         fallback_text
                     ));
                     // Register AvatarFallback component for imports
-                    self.shadcn_components_used.insert("AvatarFallback".to_string());
+                    self.shadcn_components_used
+                        .insert("AvatarFallback".to_string());
                 }
 
                 // Set generated children if any were created
@@ -14455,7 +15504,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             "command_input" => {
                 // placeholder
                 if let Some(value) = props.get("placeholder") {
-                    let placeholder = self.extract_string_value(value).unwrap_or("Type a command...");
+                    let placeholder = self
+                        .extract_string_value(value)
+                        .unwrap_or("Type a command...");
                     attrs.push(format!("placeholder=\"{}\"", placeholder));
                 }
             }
@@ -15380,9 +16431,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     attrs.push(format!("value=\"{}\"", val));
                 }
                 // aria-label (PLAN-528 W7: 兼容 label 拼写)
-                let aria_label = props
-                    .get("aria-label")
-                    .or_else(|| props.get("label"));
+                let aria_label = props.get("aria-label").or_else(|| props.get("label"));
                 if let Some(value) = aria_label {
                     let label = self.extract_string_value(value).unwrap_or("");
                     if !label.is_empty() {
@@ -15592,7 +16641,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
                 // placeholder
                 if let Some(value) = props.get("placeholder") {
-                    let placeholder = self.extract_string_value(value).unwrap_or("Pick a date range");
+                    let placeholder = self
+                        .extract_string_value(value)
+                        .unwrap_or("Pick a date range");
                     attrs.push(format!("placeholder=\"{}\"", placeholder));
                 }
                 // class
@@ -15817,14 +16868,18 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
         // Add event handlers
         let mut sorted_ev: Vec<(&String, &AuraEvent)> = events.iter().collect();
-                    sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
-                    for (event, aura_event) in sorted_ev {
+        sorted_ev.sort_by(|a, b| a.0.cmp(b.0));
+        for (event, aura_event) in sorted_ev {
             // Parser-minted modal trigger toggles are needed by backends that
             // don't own overlay state. Vue's Reka/Vaul trigger components
             // already update the controlled `v-model:open` root; forwarding
             // this second toggle can immediately close the overlay again.
             // Keep explicit user handlers intact.
-            if aura_event.handler.trim_start_matches('.').starts_with("__dlg_toggle_") {
+            if aura_event
+                .handler
+                .trim_start_matches('.')
+                .starts_with("__dlg_toggle_")
+            {
                 continue;
             }
             // .window/.document modifiers → global listener, no template attr
@@ -15837,17 +16892,19 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 attrs.push(attr);
                 continue;
             }
-            let mut handler_fn = self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
+            let mut handler_fn =
+                self.handler_to_function_call_with_params(&aura_event.handler, &aura_event.params);
             // Plan 421: code_editor oncursor/oncontextmenu — forward the
             // scaffold shell's emit payload ({line, column} / {x, y}) when
             // the on-block handler declares params and the binding passes none.
-            let payload_forwarded = match self.code_editor_event_payload_call(tag, event, aura_event) {
-                Some(call) => {
-                    handler_fn = call;
-                    true
-                }
-                None => false,
-            };
+            let payload_forwarded =
+                match self.code_editor_event_payload_call(tag, event, aura_event) {
+                    Some(call) => {
+                        handler_fn = call;
+                        true
+                    }
+                    None => false,
+                };
             // Track used handler (without params for matching)
             let handler_name = self.handler_to_function_call(&aura_event.handler);
             // If inside a for-loop, pass the loop variable's .id as argument (e.g., SelectNote(note.id))
@@ -15855,7 +16912,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             if let Some(ref loop_var) = self.current_loop_var {
                 if aura_event.params.is_empty() && !payload_forwarded {
                     handler_fn = format!("{}({})", handler_fn, loop_var);
-                    self.loop_param_handlers.insert(handler_name.clone(), loop_var.clone());
+                    self.loop_param_handlers
+                        .insert(handler_name.clone(), loop_var.clone());
                 }
             }
             self.used_handlers.insert(handler_name);
@@ -16018,7 +17076,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             let is_explicit_class = props.contains_key("class") && !props.contains_key("style");
             match value {
                 AuraPropValue::Expr(crate::ast::Expr::If(if_stmt)) => {
-                    attrs.push(format!(":class=\"{}\"", self.if_expr_to_style_ternary(if_stmt)));
+                    attrs.push(format!(
+                        ":class=\"{}\"",
+                        self.if_expr_to_style_ternary(if_stmt)
+                    ));
                 }
                 // Plan 448 D: array-of-class-parts → :class join (same
                 // semantics as the plain-element path).
@@ -16037,7 +17098,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         self.warn(
                             "R013",
                             crate::ui_gen::validators::Severity::Warning,
-                            "style: array with no renderable parts; binding not emitted".to_string(),
+                            "style: array with no renderable parts; binding not emitted"
+                                .to_string(),
                         );
                     }
                 }
@@ -16074,7 +17136,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                             Err(e) => self.warn(
                                 "R011",
                                 crate::ui_gen::validators::Severity::Warning,
-                                format!("class expression could not be rendered and was dropped: {}", e),
+                                format!(
+                                    "class expression could not be rendered and was dropped: {}",
+                                    e
+                                ),
                             ),
                         }
                     } else {
@@ -16118,7 +17183,12 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// (`select`). Mirrors the plain-element path: static `class`, dynamic
     /// `:class` exprs (Batch A gap 20), conditional ternaries, and dynamic
     /// `:style` CSS-string expressions (independent channels, Plan 408 P12).
-    fn push_native_classes(&self, attrs: &mut Vec<String>, tag: &str, props: &HashMap<String, AuraPropValue>) {
+    fn push_native_classes(
+        &self,
+        attrs: &mut Vec<String>,
+        tag: &str,
+        props: &HashMap<String, AuraPropValue>,
+    ) {
         let (static_classes, dynamic_class, dynamic_style) = self.extract_classes(tag, props);
         if !static_classes.is_empty() {
             attrs.push(format!("class=\"{}\"", static_classes));
@@ -16280,7 +17350,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     Some(field.to_string())
                 }
                 crate::ast::Expr::Ident(obj_name) => {
-                    let stripped = obj_name.as_str().strip_prefix('.').unwrap_or(obj_name.as_str());
+                    let stripped = obj_name
+                        .as_str()
+                        .strip_prefix('.')
+                        .unwrap_or(obj_name.as_str());
                     if stripped.is_empty() {
                         Some(field.to_string())
                     } else {
@@ -16288,11 +17361,17 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     }
                 }
                 crate::ast::Expr::Dot(..) => {
-                    let s = self.expr_to_vue_bound_value(match value {
-                        AuraPropValue::Expr(e) => e,
-                        _ => unreachable!(),
-                    }).ok()?;
-                    if s.is_empty() { None } else { Some(s) }
+                    let s = self
+                        .expr_to_vue_bound_value(match value {
+                            AuraPropValue::Expr(e) => e,
+                            _ => unreachable!(),
+                        })
+                        .ok()?;
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(s)
+                    }
                 }
                 _ => None,
             },
@@ -16307,7 +17386,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         match target {
             crate::ast::Expr::Ident(name) => {
                 let stripped = name.as_str().strip_prefix('.').unwrap_or(name.as_str());
-                if stripped.is_empty() { None } else { Some(stripped.to_string()) }
+                if stripped.is_empty() {
+                    None
+                } else {
+                    Some(stripped.to_string())
+                }
             }
             crate::ast::Expr::Dot(obj, field) => match obj.as_ref() {
                 crate::ast::Expr::Ident(obj_name)
@@ -16334,7 +17417,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
     /// Get style or class prop value (style takes priority over class)
     /// This supports the transition from 'class' to 'style' prop naming
-    fn get_style_class<'a>(&self, props: &'a HashMap<String, AuraPropValue>) -> Option<&'a AuraPropValue> {
+    fn get_style_class<'a>(
+        &self,
+        props: &'a HashMap<String, AuraPropValue>,
+    ) -> Option<&'a AuraPropValue> {
         props.get("style").or_else(|| props.get("class"))
     }
 
@@ -16348,9 +17434,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     fn layout_dynamic_class_attr(&self, value: &AuraPropValue) -> Option<String> {
         use crate::ast::Expr;
         match value {
-            AuraPropValue::Expr(Expr::If(if_stmt)) => {
-                Some(format!(":class=\"{}\"", self.if_expr_to_style_ternary(if_stmt)))
-            }
+            AuraPropValue::Expr(Expr::If(if_stmt)) => Some(format!(
+                ":class=\"{}\"",
+                self.if_expr_to_style_ternary(if_stmt)
+            )),
             AuraPropValue::Expr(other) => match self.expr_to_vue_bound_value(other) {
                 Ok(s) if s != "null" => Some(format!(":class=\"{}\"", s)),
                 _ => None,
@@ -16376,9 +17463,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             // styles silent no-ops on layout primitives. Only free-form
             // dynamic expressions are CSS declaration strings (Plan 053,
             // e.g. "display:grid; " + n) and keep binding :style.
-            AuraPropValue::Expr(Expr::If(if_stmt)) => {
-                Some(format!(":class=\"{}\"", self.if_expr_to_style_ternary(if_stmt)))
-            }
+            AuraPropValue::Expr(Expr::If(if_stmt)) => Some(format!(
+                ":class=\"{}\"",
+                self.if_expr_to_style_ternary(if_stmt)
+            )),
             // Plan 448 D: array-of-class-parts joins into ONE :class — the
             // array form is explicitly class semantics, refs included
             // (same reasoning as Plan 458 above).
@@ -16463,7 +17551,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         self.warn(
                             "R013",
                             crate::ui_gen::validators::Severity::Warning,
-                            format!("bool prop `{}`: {}; fell back to `{}`", snake_key, e, default_val),
+                            format!(
+                                "bool prop `{}`: {}; fell back to `{}`",
+                                snake_key, e, default_val
+                            ),
                         );
                         format!(":{}=\"{}\"", kebab_attr, default_val)
                     }
@@ -16622,7 +17713,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             .trim_start_matches('.')
             .trim_matches('"');
         if !handler_name.is_empty()
-            && handler_name.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
+            && handler_name
+                .chars()
+                .next()
+                .map(|c| c.is_ascii_uppercase())
+                .unwrap_or(false)
             && emits.iter().any(|e| e == handler_name)
         {
             self.warn(
@@ -16654,7 +17749,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// `.window` / `.document` modifiers are NOT handled here — they mark
     /// global listeners and are intercepted by `try_register_global_listener`
     /// before this function is called.
-    fn auto_event_to_vue(&self, event: &str) -> String {        let (base, modifiers) = Self::split_event_key(event);
+    fn auto_event_to_vue(&self, event: &str) -> String {
+        let (base, modifiers) = Self::split_event_key(event);
         // Existing shorthands keep their historical expansion.
         let mut vue = match base {
             "onenter" | "onEnter" => "@keyup.enter".to_string(),
@@ -16696,7 +17792,13 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// which would otherwise produce an invalid wrapper function name.
     fn sanitize_ident(s: &str) -> String {
         s.chars()
-            .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect()
     }
 
@@ -16738,13 +17840,16 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         let call_args: Vec<String> = if aura_event.params.is_empty() {
             vec!["e".to_string()]
         } else {
-            aura_event.params
+            aura_event
+                .params
                 .iter()
                 .map(|p| {
                     // Same `this.` stripping as template event args
                     // (vue_event_param); addEventListener context additionally
                     // maps `$event` to the listener's argument `e`.
-                    Self::vue_event_param(p).replace("$event", "e").replace('"', "'")
+                    Self::vue_event_param(p)
+                        .replace("$event", "e")
+                        .replace('"', "'")
                 })
                 .collect()
         };
@@ -16755,7 +17860,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         // (the DOM passes the event object as first argument).
         let needs_wrapper = prevent || stop || !aura_event.params.is_empty();
         let (listener, wrapper) = if needs_wrapper {
-            let wrapper_fn = format!("__auto_gl_{}_{}", Self::sanitize_ident(&dom_event), handler_fn);
+            let wrapper_fn = format!(
+                "__auto_gl_{}_{}",
+                Self::sanitize_ident(&dom_event),
+                handler_fn
+            );
             let mut body = String::new();
             if stop {
                 body.push_str("  e.stopPropagation()\n");
@@ -16825,8 +17934,16 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     fn auto_type_to_ts_type(ty: &crate::ast::Type) -> String {
         use crate::ast::Type;
         match ty {
-            Type::StrSlice | Type::StrOwned | Type::StrFixed(_) | Type::CStrLit => "string".to_string(),
-            Type::Int | Type::I64 | Type::Uint | Type::U64 | Type::USize | Type::Float | Type::Double => "number".to_string(),
+            Type::StrSlice | Type::StrOwned | Type::StrFixed(_) | Type::CStrLit => {
+                "string".to_string()
+            }
+            Type::Int
+            | Type::I64
+            | Type::Uint
+            | Type::U64
+            | Type::USize
+            | Type::Float
+            | Type::Double => "number".to_string(),
             Type::Bool => "boolean".to_string(),
             Type::List(inner) => format!("{}[]", Self::auto_type_to_ts_type(inner)),
             Type::Slice(_) => "any[]".to_string(),
@@ -16872,7 +17989,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         match ty {
             Type::List(inner) => {
                 // Array of user/unknown type → any[] (can't import element yet).
-                if matches!(inner.as_ref(), Type::User(_) | Type::Array(_) | Type::Slice(_) | Type::List(_)) {
+                if matches!(
+                    inner.as_ref(),
+                    Type::User(_) | Type::Array(_) | Type::Slice(_) | Type::List(_)
+                ) {
                     "any[]".to_string()
                 } else {
                     format!("{}[]", Self::auto_type_to_ts_type(inner))
@@ -16889,10 +18009,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// Returns (name, ts_type) pairs; unmatched params fall back to `any`.
     /// Uses `store_ref_ts_type` so user-defined payload types stay `any`
     /// (avoiding "Cannot find name" until Phase E(e) imports land).
-    fn handler_param_types(
-        store: &crate::aura::AuraStore,
-        pattern: &str,
-    ) -> Vec<(String, String)> {
+    fn handler_param_types(store: &crate::aura::AuraStore, pattern: &str) -> Vec<(String, String)> {
         let after_dot = pattern.trim_start_matches('.');
         let action = after_dot.split('(').next().unwrap_or(after_dot);
         let names = match store.handler_params.get(pattern) {
@@ -16910,7 +18027,10 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                 }
             }
         }
-        names.iter().map(|n| (n.clone(), "any".to_string())).collect()
+        names
+            .iter()
+            .map(|n| (n.clone(), "any".to_string()))
+            .collect()
     }
 
     /// Strip a trailing param list from an on-block handler pattern key.
@@ -16931,11 +18051,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// the normal handler path (which would mangle it into `on<name>` and
     /// synthesize an empty stub). Returns None when the handler is not a
     /// callback prop.
-    fn try_callback_prop_attr(
-        &self,
-        aura_event: &AuraEvent,
-        vue_event: &str,
-    ) -> Option<String> {
+    fn try_callback_prop_attr(&self, aura_event: &AuraEvent, vue_event: &str) -> Option<String> {
         let bare = Self::base_pattern(&aura_event.handler);
         if !bare.is_empty()
             && !bare.starts_with('.')
@@ -16970,7 +18086,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                         if variant.payload.is_empty() {
                             return "() => void".to_string();
                         }
-                        let args: Vec<String> = variant.payload.iter()
+                        let args: Vec<String> = variant
+                            .payload
+                            .iter()
                             .enumerate()
                             .map(|(i, ty)| format!("arg{}: {}", i, Self::auto_type_to_ts_type(ty)))
                             .collect();
@@ -17017,11 +18135,17 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// `emit('<Pascal>', ...)` so the parent's `@<Pascal>` binding fires — the
     /// prop is never passed as `:on_xxx` by the parent (it binds `@Pascal`).
     fn real_callback_prop_snakes(widget: &AuraWidget) -> Vec<String> {
-        widget.props.iter()
+        widget
+            .props
+            .iter()
             .filter_map(|p| {
-                if !p.name.starts_with("on_") { return None; }
+                if !p.name.starts_with("on_") {
+                    return None;
+                }
                 // Only props that are NOT emitted-callbacks (i.e. they're in defineProps).
-                if Self::prop_is_emitted_callback(p, widget) { return None; }
+                if Self::prop_is_emitted_callback(p, widget) {
+                    return None;
+                }
                 p.name.strip_prefix("on_").map(|s| s.to_string())
             })
             .collect()
@@ -17033,10 +18157,16 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// must be rewritten to `emit('<Pascal>', ...)` — the prop does not exist
     /// at runtime, while the Pascal emit is declared via the msg variant.
     fn emitted_callback_prop_snakes(widget: &AuraWidget) -> Vec<String> {
-        widget.props.iter()
+        widget
+            .props
+            .iter()
             .filter_map(|p| {
-                if !p.name.starts_with("on_") { return None; }
-                if !Self::prop_is_emitted_callback(p, widget) { return None; }
+                if !p.name.starts_with("on_") {
+                    return None;
+                }
+                if !Self::prop_is_emitted_callback(p, widget) {
+                    return None;
+                }
                 p.name.strip_prefix("on_").map(|s| s.to_string())
             })
             .collect()
@@ -17056,8 +18186,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
                     out.push(name);
                 }
             }
-            Type::List(inner) | Type::Option(inner) | Type::Result(inner)
-            | Type::Reference(inner) | Type::Linear(inner) => {
+            Type::List(inner)
+            | Type::Option(inner)
+            | Type::Result(inner)
+            | Type::Reference(inner)
+            | Type::Linear(inner) => {
                 Self::collect_custom_types(inner, out);
             }
             Type::Map(k, v) => {
@@ -17097,7 +18230,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// Built-in / pseudo type names that have no api.ts interface (TS
     /// primitives, the `msg` callback pseudo-type, stdlib containers).
     fn is_builtin_type_name(name: &str) -> bool {
-        matches!(name,
+        matches!(
+            name,
             "msg" | "str" | "int" | "i64" | "uint" | "u64" | "usize" | "byte" | "char"
             | "float" | "double" | "bool"
             // PLAN-037 Phase 0: `Value` is Auto's dynamic builtin (dynamic
@@ -17108,7 +18242,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             // Plan 012 P2 (gap 43): lowercase `map` is the DSL map-literal
             // type — built-in, not an api.ts interface.
             | "map"
-            | "List" | "Array" | "Map" | "Option" | "Result" | "String")
+            | "List" | "Array" | "Map" | "Option" | "Result" | "String"
+        )
     }
 
     /// Convert snake_case to PascalCase for msg-variant lookup
@@ -17289,7 +18424,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             (_, "cursor") => "$event.line, $event.column".to_string(),
             _ => "$event.x, $event.y".to_string(),
         };
-        Some(format!("{}({})", self.handler_to_function_call(&aura_event.handler), args))
+        Some(format!(
+            "{}({})",
+            self.handler_to_function_call(&aura_event.handler),
+            args
+        ))
     }
 
     /// Adapt one event-arg param string for the Vue template.
@@ -17390,15 +18529,21 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         }
 
         // Collect all tags used and their imports
-        let mut imports_by_path: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+        let mut imports_by_path: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
 
         for component_name in &self.shadcn_components_used {
             // Find the widget spec that contains this component
             for (_, spec) in self.widget_registry.all_widgets().iter() {
                 if let Some(mapping) = spec.backend("vue") {
-                    if &mapping.component == component_name || mapping.extra_components.contains(component_name) {
+                    if &mapping.component == component_name
+                        || mapping.extra_components.contains(component_name)
+                    {
                         if let Some(ref import_path) = mapping.import {
-                            imports_by_path.entry(import_path.clone()).or_default().push(component_name.clone());
+                            imports_by_path
+                                .entry(import_path.clone())
+                                .or_default()
+                                .push(component_name.clone());
                         }
                     }
                 }
@@ -17410,7 +18555,11 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
         for (path, mut names) in imports_by_path {
             names.sort();
             names.dedup();
-            imports.push(format!("import {{ {} }} from '{}'\n", names.join(", "), path));
+            imports.push(format!(
+                "import {{ {} }} from '{}'\n",
+                names.join(", "),
+                path
+            ));
             // Plan 412 续:用到 <Toaster/>(toast-provider)的页面同样需要
             // vue-sonner v2 的样式表,否则 toaster 容器 static 定位会挤压
             // 页面(与 needs_toast_import 路径双保险)。
@@ -17455,12 +18604,14 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     "components": "@/components",
     "utils": "@/lib/utils"
   }
-}"#.to_string()
+}"#
+        .to_string()
     }
 
     /// Generate package.json for shadcn-vue project
     pub fn generate_package_json(project_name: &str) -> String {
-        format!(r#"{{
+        format!(
+            r#"{{
   "name": "{}",
   "version": "0.0.0",
   "private": true,
@@ -17497,7 +18648,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     "postcss": "^8.4.0",
     "@types/prismjs": "^1.26.0"
   }}
-}}"#, project_name)
+}}"#,
+            project_name
+        )
     }
 
     /// Generate vite.config.ts for shadcn-vue project
@@ -17523,7 +18676,8 @@ export default defineConfig({
     },
   },
 })
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate tailwind.config.js for shadcn-vue project
@@ -17615,7 +18769,8 @@ export default {
   },
   plugins: [require("tailwindcss-animate")],
 }
-"#.to_string()
+"#
+        .to_string()
     }
 
     /// Generate lib/utils.ts for shadcn-vue project
@@ -17626,9 +18781,9 @@ import { twMerge } from 'tailwind-merge'
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
-"#.to_string()
+"#
+        .to_string()
     }
-
 
     /// Generate a composable singleton `.ts` file for a shared store
     /// (Plan 351 / Design 18). Produces module-level `ref`s + an exported
@@ -17641,7 +18796,7 @@ export function cn(...inputs: ClassValue[]) {
     /// file's top-level `fn` declarations (e.g. forge_helpers.at). Each fn
     /// becomes an exported TS function — the single source for pure helpers
     /// shared by widgets (`use { fn: … from "src/front/x.at" }`).
-        pub fn generate_fn_module(fns: &[crate::aura::AuraModuleFn]) -> String {
+    pub fn generate_fn_module(fns: &[crate::aura::AuraModuleFn]) -> String {
         Self::generate_fn_module_full(fns, &[])
     }
 
@@ -17657,8 +18812,10 @@ export function cn(...inputs: ClassValue[]) {
         ext_imports: &[crate::ast::ui::ExtImport],
     ) -> String {
         let mut code = String::new();
-        code.push_str("// Auto-generated from .at fn module by AutoUI (Plan 028 M1).
-");
+        code.push_str(
+            "// Auto-generated from .at fn module by AutoUI (Plan 028 M1).
+",
+        );
         // Plan 424 收口补强:先转译 wrapper fn 体,fn-kind 的 import 行只发射
         // wrapper 实际引用的符号——纯转发端口(零 wrapper)不再产生 unused
         // import,产出对 noUnusedLocals: true 的工程同样成立。export 行恒发
@@ -17666,7 +18823,9 @@ export function cn(...inputs: ClassValue[]) {
         let ctx = crate::ui_gen::ts_adapter::AuraTsContext::new(Default::default());
         let mut wrapper_bodies = String::new();
         for mfn in fns {
-            wrapper_bodies.push_str(&crate::ui_gen::ts_adapter::transpile_handler_body(&mfn.body, &ctx));
+            wrapper_bodies.push_str(&crate::ui_gen::ts_adapter::transpile_handler_body(
+                &mfn.body, &ctx,
+            ));
         }
         for imp in ext_imports {
             let names: Vec<&str> = imp.symbols.iter().map(|s| s.as_str()).collect();
@@ -17708,10 +18867,8 @@ export function cn(...inputs: ClassValue[]) {
                 crate::ast::ui::ExtImportKind::Component
                     if imp.path.starts_with("platform:") || imp.path.ends_with(".vue") =>
                 {
-                    let aliased: Vec<String> = names
-                        .iter()
-                        .map(|n| format!("default as {}", n))
-                        .collect();
+                    let aliased: Vec<String> =
+                        names.iter().map(|n| format!("default as {}", n)).collect();
                     code.push_str(&format!(
                         "export {{ {} }} from '{}'
 ",
@@ -17734,7 +18891,9 @@ export function cn(...inputs: ClassValue[]) {
             code.push('\n');
         }
         for mfn in fns {
-            let param_list = mfn.params.iter()
+            let param_list = mfn
+                .params
+                .iter()
                 .map(|p| format!("{}: any", p))
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -17752,7 +18911,10 @@ export function cn(...inputs: ClassValue[]) {
                 format!(": {}", mfn.ret_ts)
             };
             let async_kw = if is_async { "async " } else { "" };
-            code.push_str(&format!("\nexport {}function {}({}){} {{\n", async_kw, mfn.name, param_list, ret_anno));
+            code.push_str(&format!(
+                "\nexport {}function {}({}){} {{\n",
+                async_kw, mfn.name, param_list, ret_anno
+            ));
             for line in body.lines() {
                 code.push_str("    ");
                 code.push_str(line);
@@ -17791,15 +18953,22 @@ export function cn(...inputs: ClassValue[]) {
         // Streaming endpoints (~Stream<T>) are consumed via SSE in this composable,
         // not via a fetch client, so api.ts does NOT export them — exclude their
         // names from the import to avoid a dangling TS2305. (Plan 043 stream phase.)
-        let stream_fn_names: std::collections::HashSet<&str> = store.stream_endpoints
+        let stream_fn_names: std::collections::HashSet<&str> = store
+            .stream_endpoints
             .iter()
             .map(|ep| ep.fn_name.as_str())
             .collect();
-        let importable_fns: Vec<&String> = store.api_imports.iter()
+        let importable_fns: Vec<&String> = store
+            .api_imports
+            .iter()
             .filter(|f| !stream_fn_names.contains(f.as_str()))
             .collect();
         if !importable_fns.is_empty() {
-            let fns = importable_fns.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
+            let fns = importable_fns
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
             code.push_str(&format!("import {{ {} }} from '@/lib/api'\n", fns));
         }
         // Plan 559 W2: sibling store facades. Each `use <other>_store: <Name>`
@@ -17862,8 +19031,7 @@ export function cn(...inputs: ClassValue[]) {
         // a composable has no `store` const; the sibling's action is a
         // local fn); sibling store heads map onto their reactive facade
         // consts (store_facades), matching the imports emitted above.
-        let mut sibling_facades: std::collections::HashMap<String, String> =
-            Default::default();
+        let mut sibling_facades: std::collections::HashMap<String, String> = Default::default();
         for sibling in &store.sibling_stores {
             sibling_facades.insert(sibling.clone(), facade_var_for(sibling));
         }
@@ -17912,7 +19080,10 @@ export function cn(...inputs: ClassValue[]) {
                 }
             };
             let indented = Self::indent_body(&body, "  ");
-            code.push_str(&format!("watch({}, () => {{\n{}\n}}{})\n\n", source, indented, opts));
+            code.push_str(&format!(
+                "watch({}, () => {{\n{}\n}}{})\n\n",
+                source, indented, opts
+            ));
         }
 
         // Plan 360: detect accent_color state so we can inject the palette
@@ -17949,7 +19120,8 @@ export function cn(...inputs: ClassValue[]) {
         // so without this filter EVERY store would get every stream's SSE wiring
         // (e.g. AuthStore picking up chat_stream's Delta/Thinking dispatchers).
         // Filter to endpoints whose fn_name appears in this store's api_imports.
-        let active_stream_eps: Vec<crate::aura::StreamEndpoint> = store.stream_endpoints
+        let active_stream_eps: Vec<crate::aura::StreamEndpoint> = store
+            .stream_endpoints
             .iter()
             .filter(|ep| store.api_imports.iter().any(|imp| imp == &ep.fn_name))
             .cloned()
@@ -17973,8 +19145,10 @@ export function cn(...inputs: ClassValue[]) {
         }
         // Plan 051 C7: store timer 单例旗标（模块级）。
         if !store.timers.is_empty() {
-            code.push_str("let __t51_timers_started = false
-");
+            code.push_str(
+                "let __t51_timers_started = false
+",
+            );
         }
         // Plan 028 F9: `on stream sse(url[, "event"])` subscriptions get the
         // same per-URL module-level guard.
@@ -18032,9 +19206,11 @@ export function cn(...inputs: ClassValue[]) {
         // composable 多次调用只建一条 interval（沿 stream_guard 先例）；
         // `when` 门控在回调内对模块级 ref 求值。
         if !store.timers.is_empty() {
-            code.push_str("        if (!__t51_timers_started) {
+            code.push_str(
+                "        if (!__t51_timers_started) {
             __t51_timers_started = true
-");
+",
+            );
             for t in &store.timers {
                 let guard = match t.when.as_deref() {
                     Some(c) => Self::timer_condition_to_js(c),
@@ -18048,8 +19224,10 @@ export function cn(...inputs: ClassValue[]) {
                     ms = t.every_ms,
                 ));
             }
-            code.push_str("        }
-");
+            code.push_str(
+                "        }
+",
+            );
         }
 
         // Plan 444 (ash-shell-057 ④): store actions with VM-only native
@@ -18078,7 +19256,10 @@ export function cn(...inputs: ClassValue[]) {
                 let guard = stream_guard_var(&ep.path);
                 code.push_str(&format!("    if (!{}) {{\n", guard));
                 code.push_str(&format!("        {} = true;\n", guard));
-                code.push_str(&format!("        const es = new EventSource('{}');\n", ep.path));
+                code.push_str(&format!(
+                    "        const es = new EventSource('{}');\n",
+                    ep.path
+                ));
                 code.push_str("        es.onmessage = (ev) => {\n");
                 code.push_str("            try {\n");
                 code.push_str("                const data = JSON.parse(ev.data);\n");
@@ -18089,21 +19270,58 @@ export function cn(...inputs: ClassValue[]) {
                 let chain: Vec<(String, String, String)> = if ep.variants.is_empty() {
                     // Legacy fallback: data.event discriminator + RunOutput/RunResult.
                     vec![
-                        ("event".to_string(), "command_output".to_string(), "RunOutput".to_string()),
-                        ("event".to_string(), "command_result".to_string(), "RunResult".to_string()),
+                        (
+                            "event".to_string(),
+                            "command_output".to_string(),
+                            "RunOutput".to_string(),
+                        ),
+                        (
+                            "event".to_string(),
+                            "command_result".to_string(),
+                            "RunResult".to_string(),
+                        ),
                         // Plan 055 Phase A.3: 作业控制事件(实时 jobs dispatch)。
-                        ("event".to_string(), "job_started".to_string(), "JobStarted".to_string()),
-                        ("event".to_string(), "job_done".to_string(), "JobDone".to_string()),
+                        (
+                            "event".to_string(),
+                            "job_started".to_string(),
+                            "JobStarted".to_string(),
+                        ),
+                        (
+                            "event".to_string(),
+                            "job_done".to_string(),
+                            "JobDone".to_string(),
+                        ),
                         // Plan 063 T4/T5: AI chat 抽屉事件族(无参 handler 读
                         // __ai_* 预置字段,VM 轨由 renderer 直写不经 handler)。
-                        ("event".to_string(), "ai_turn".to_string(), "AiTurn".to_string()),
-                        ("event".to_string(), "ai_chunk".to_string(), "AiChunk".to_string()),
-                        ("event".to_string(), "ai_tool_call".to_string(), "AiToolCall".to_string()),
-                        ("event".to_string(), "ai_tool_result".to_string(), "AiToolResult".to_string()),
-                        ("event".to_string(), "chat_cleared".to_string(), "ChatCleared".to_string()),
+                        (
+                            "event".to_string(),
+                            "ai_turn".to_string(),
+                            "AiTurn".to_string(),
+                        ),
+                        (
+                            "event".to_string(),
+                            "ai_chunk".to_string(),
+                            "AiChunk".to_string(),
+                        ),
+                        (
+                            "event".to_string(),
+                            "ai_tool_call".to_string(),
+                            "AiToolCall".to_string(),
+                        ),
+                        (
+                            "event".to_string(),
+                            "ai_tool_result".to_string(),
+                            "AiToolResult".to_string(),
+                        ),
+                        (
+                            "event".to_string(),
+                            "chat_cleared".to_string(),
+                            "ChatCleared".to_string(),
+                        ),
                     ]
                 } else {
-                    ep.variants.iter()
+                    ep.variants
+                        .iter()
                         .map(|(wire, action)| (disc.clone(), wire.clone(), action.clone()))
                         .collect()
                 };
@@ -18114,7 +19332,9 @@ export function cn(...inputs: ClassValue[]) {
                 // 检测信号:store 的 state_vars 含 __sse_ 前缀字段(__sse_ 是保留前缀)。
                 // 仅对 legacy fallback 的 RunOutput/RunResult 生效;带 variants 的
                 // 数据驱动流(如 forge)走原带参透传路径,不受影响。
-                let preset_mode = store.state_vars.iter()
+                let preset_mode = store
+                    .state_vars
+                    .iter()
                     .any(|s| s.name.starts_with("__sse_"));
                 // Plan 065:command_result 后跟随 RefreshContext —— VM 轨由
                 // 引擎侧触发(renderer.rs command_result 分支),vue 轨此前无人
@@ -18131,7 +19351,11 @@ export function cn(...inputs: ClassValue[]) {
                     let kw = if i == 0 { "if" } else { "else if" };
                     if preset_mode {
                         emit_preset_dispatch(
-                            &mut code, kw, disc_field, wire_value, action,
+                            &mut code,
+                            kw,
+                            disc_field,
+                            wire_value,
+                            action,
                             follow_refresh_ctx,
                         );
                     } else {
@@ -18174,7 +19398,10 @@ export function cn(...inputs: ClassValue[]) {
             };
             code.push_str(&format!("    if (!{}) {{\n", guard));
             code.push_str(&format!("        {} = true;\n", guard));
-            code.push_str(&format!("        const es = new EventSource('{}');\n", sh.url));
+            code.push_str(&format!(
+                "        const es = new EventSource('{}');\n",
+                sh.url
+            ));
             match &sh.event {
                 None => {
                     code.push_str(&format!(
@@ -18228,7 +19455,8 @@ export function cn(...inputs: ClassValue[]) {
             code.push_str(&format!("        get {}() {{\n", computed_prop.name));
             match &computed_prop.expr {
                 crate::ast::Expr::Block(body) => {
-                    let body_js = crate::ui_gen::ts_adapter::transpile_handler_body(&body.stmts, &ctx);
+                    let body_js =
+                        crate::ui_gen::ts_adapter::transpile_handler_body(&body.stmts, &ctx);
                     // indent each line of the already-transpiled body
                     for line in body_js.lines() {
                         code.push_str("            ");
@@ -18238,7 +19466,11 @@ export function cn(...inputs: ClassValue[]) {
                 }
                 _ => {
                     let mut buf = Vec::new();
-                    crate::ui_gen::ts_adapter::transpile_expr_pub(&computed_prop.expr, &ctx, &mut buf);
+                    crate::ui_gen::ts_adapter::transpile_expr_pub(
+                        &computed_prop.expr,
+                        &ctx,
+                        &mut buf,
+                    );
                     let expr_js = String::from_utf8_lossy(&buf);
                     code.push_str(&format!("            return {};\n", expr_js.trim()));
                 }
@@ -18255,7 +19487,9 @@ export function cn(...inputs: ClassValue[]) {
         // would throw `ReferenceError: <fn> is not defined` at runtime.
         if !store.module_fns.is_empty() {
             for mfn in &store.module_fns {
-                let param_list = mfn.params.iter()
+                let param_list = mfn
+                    .params
+                    .iter()
                     .map(|p| format!("{}: any", p))
                     .collect::<Vec<_>>()
                     .join(", ");
@@ -18264,7 +19498,10 @@ export function cn(...inputs: ClassValue[]) {
                 } else {
                     format!(": {}", mfn.ret_ts)
                 };
-                code.push_str(&format!("\nfunction {}({}){} {{\n", mfn.name, param_list, ret_anno));
+                code.push_str(&format!(
+                    "\nfunction {}({}){} {{\n",
+                    mfn.name, param_list, ret_anno
+                ));
                 let body = crate::ui_gen::ts_adapter::transpile_handler_body(&mfn.body, &ctx);
                 // Indent every body line for readability (cosmetic only).
                 for line in body.lines() {
@@ -18629,7 +19866,15 @@ function applyTheme(name: string, isDark = document.documentElement.classList.co
             // Unary(Sub, 字面量)——此前缺臂落 `_ => null`，typed int store
             // 变量变 ref<number>(null)，vue-tsc TS2345。
             Expr::Unary(op, inner) if matches!(*op, auto_val::Op::Sub | auto_val::Op::Add) => {
-                format!("{}{}", if matches!(*op, auto_val::Op::Sub) { "-" } else { "+" }, Self::store_init_to_js(inner))
+                format!(
+                    "{}{}",
+                    if matches!(*op, auto_val::Op::Sub) {
+                        "-"
+                    } else {
+                        "+"
+                    },
+                    Self::store_init_to_js(inner)
+                )
             }
             Expr::Float(f, _) | Expr::Double(f, _) => f.to_string(),
             Expr::Str(s) | Expr::CStr(s) => format!("'{}'", Self::escape_js_string(s.as_str())),
@@ -18677,7 +19922,11 @@ function applyTheme(name: string, isDark = document.documentElement.classList.co
                     Expr::Dot(_, method) => method.as_str(),
                     _ => "",
                 };
-                if callee == "new" { "[]".to_string() } else { "null".to_string() }
+                if callee == "new" {
+                    "[]".to_string()
+                } else {
+                    "null".to_string()
+                }
             }
             Expr::Nil | Expr::Null => "null".to_string(),
             _ => "null".to_string(),
@@ -18699,9 +19948,7 @@ function applyTheme(name: string, isDark = document.documentElement.classList.co
             if route.params.is_empty() {
                 route_defs.push(format!(
                     "  {{ path: '{}', name: '{}', component: () => import('@/pages/{}.vue') }}",
-                    path,
-                    module,
-                    module
+                    path, module, module
                 ));
             } else {
                 // Route with params - add props: true for dynamic segments
@@ -18808,7 +20055,9 @@ impl VueGenerator {
     /// `t == w` or `t.starts_with("{w}-")` (composite coverage — e.g. library
     /// `card` covers AURA `card-content`, `card-header`, …).
     pub fn covers_aura_tag(tag: &str) -> bool {
-        Self::LIBRARY_WIDGETS.iter().any(|w| tag == *w || tag.starts_with(&format!("{w}-")))
+        Self::LIBRARY_WIDGETS
+            .iter()
+            .any(|w| tag == *w || tag.starts_with(&format!("{w}-")))
     }
 }
 
@@ -18928,7 +20177,9 @@ fn emit_preset_dispatch(
             // Plan 063 T4: chat_cleared {event, block_id} —— 无载荷,纯清空信号。
             code.push_str(&format!(
                 "                {kw} (data.{disc} === '{wire}') {{ ChatCleared(); }}\n",
-                kw = kw, disc = disc_field, wire = wire_value,
+                kw = kw,
+                disc = disc_field,
+                wire = wire_value,
             ));
         }
         _ => {
@@ -19585,7 +20836,8 @@ widget TermView {
     /// 不得作为 variant 属性下发给 shadcn Button。
     #[test]
     fn test_form_submit_wiring_emits_keyup_enter() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget LoginPage {
     msg { Submit, UsernameChanged, PasswordChanged }
     model {
@@ -19605,7 +20857,8 @@ widget LoginPage {
         .PasswordChanged -> {}
     }
 }
-"#);
+"#,
+        );
         assert_eq!(
             sfc.matches("@keyup.enter=\"Submit\"").count(),
             2,
@@ -19627,7 +20880,8 @@ widget LoginPage {
     /// `style="user-select: text"`(防应用级 none 吞掉);缺省零改动。
     #[test]
     fn test_text_selectable_emits_user_select() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget SelText {
     view {
         col {
@@ -19637,7 +20891,8 @@ widget SelText {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("user-select: text"),
             "selectable: true must emit explicit user-select style:
@@ -19661,7 +20916,8 @@ widget SelText {
     /// 不作 attr 透传）。
     #[test]
     fn plan493_vue_mentions_emits_backdrop_pair() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget MentionComposer {
     model {
         var text str = ""
@@ -19678,14 +20934,20 @@ widget MentionComposer {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("v-html=\"__autoMentionHtml(text, mentionNames, 'text-[hsl(220_90%_56%)]"),
             "backdrop 必须以 v-html 调 helper:\n{sfc}"
         );
-        let backdrop_pos = sfc.find("v-html=\"__autoMentionHtml").expect("backdrop div");
+        let backdrop_pos = sfc
+            .find("v-html=\"__autoMentionHtml")
+            .expect("backdrop div");
         let ta_pos = sfc.find("text-transparent ").expect("textarea injected");
-        assert!(backdrop_pos < ta_pos, "backdrop 必须在 textarea 之前(兄弟对)");
+        assert!(
+            backdrop_pos < ta_pos,
+            "backdrop 必须在 textarea 之前(兄弟对)"
+        );
         // backdrop 类串推导：结构 token 在、输入面 token 不在。
         let backdrop_line = sfc
             .lines()
@@ -19701,10 +20963,22 @@ widget MentionComposer {
             "text-[15px]",
             "leading-[1.5]",
         ] {
-            assert!(backdrop_line.contains(present), "backdrop 类须含 {present}: {backdrop_line}");
+            assert!(
+                backdrop_line.contains(present),
+                "backdrop 类须含 {present}: {backdrop_line}"
+            );
         }
-        for absent in ["text-transparent", "caret-", "resize-", "focus:", "outline-none"] {
-            assert!(!backdrop_line.contains(absent), "backdrop 类不得含 {absent}: {backdrop_line}");
+        for absent in [
+            "text-transparent",
+            "caret-",
+            "resize-",
+            "focus:",
+            "outline-none",
+        ] {
+            assert!(
+                !backdrop_line.contains(absent),
+                "backdrop 类不得含 {absent}: {backdrop_line}"
+            );
         }
         // helper 随 script 恰一次。
         assert_eq!(sfc.matches("function __autoMentionHtml").count(), 1);
@@ -19714,8 +20988,14 @@ widget MentionComposer {
             sfc.contains("known.has(escaped.slice(i + 1, k).toLowerCase())"),
             "helper 必须 token 级小写匹配（最长匹配）"
         );
-        assert!(sfc.contains("isTokenChar"), "helper 必须含扩展 token 字符集判定");
-        assert!(sfc.contains("' mention-token'"), "引用 token 命中须附加 mention-token 类");
+        assert!(
+            sfc.contains("isTokenChar"),
+            "helper 必须含扩展 token 字符集判定"
+        );
+        assert!(
+            sfc.contains("' mention-token'"),
+            "引用 token 命中须附加 mention-token 类"
+        );
         // mentions/mention_class 不作 attr 透传。
         assert!(!sfc.contains("mentions="));
         assert!(!sfc.contains("mention_class="));
@@ -19725,7 +21005,8 @@ widget MentionComposer {
     /// 不发射 helper、textarea 保持普通形态。
     #[test]
     fn plan493_vue_textarea_without_mentions_unchanged() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget PlainComposer {
     model { var text str = "" }
     view {
@@ -19735,10 +21016,20 @@ widget PlainComposer {
         }
     }
 }
-"#);
-        assert!(!sfc.contains("__autoMentionHtml"), "无 mentions 不得发射 helper:\n{sfc}");
-        assert!(!sfc.contains("v-html="), "无 mentions 不得发射 backdrop:\n{sfc}");
-        assert!(!sfc.contains("text-transparent"), "无 mentions 不得注入透明:\n{sfc}");
+"#,
+        );
+        assert!(
+            !sfc.contains("__autoMentionHtml"),
+            "无 mentions 不得发射 helper:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("v-html="),
+            "无 mentions 不得发射 backdrop:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("text-transparent"),
+            "无 mentions 不得注入透明:\n{sfc}"
+        );
         assert!(sfc.contains("<textarea"), "普通 textarea 发射保持");
     }
 
@@ -19774,17 +21065,23 @@ widget PlainComposer {
         assert_eq!(got, derive_mention_backdrop_class(&got));
         // 无 text-transparent（.at 已删）且无其他颜色 token → 保底追加
         // text-foreground（musk 迁移后形态）。
-        let got2 = derive_mention_backdrop_class("chats-input absolute inset-0 py-2 px-3 text-[15px]");
+        let got2 =
+            derive_mention_backdrop_class("chats-input absolute inset-0 py-2 px-3 text-[15px]");
         assert!(got2.contains("text-foreground"), "保底着色: {got2}");
         // 已有显式颜色 token 时不重复追加。
         let got3 = derive_mention_backdrop_class("p-2 text-red-500 text-sm");
-        assert_eq!(got3.matches("text-foreground").count(), 0, "已有颜色不追加: {got3}");
+        assert_eq!(
+            got3.matches("text-foreground").count(),
+            0,
+            "已有颜色不追加: {got3}"
+        );
         assert!(got3.contains("text-red-500") && got3.contains("text-sm"));
     }
 
     #[test]
     fn test_code_editor_events_payload_threading() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget EditorDemo {
     model {
         var source str = "fn main() {}"
@@ -19808,7 +21105,8 @@ widget EditorDemo {
         .CursorPos(pos) -> { }
     }
 }
-"##);
+"##,
+        );
 
         // Two declared params → destructured position args, and the script
         // side declares the matching `(line: any, col: any)` signature.
@@ -19844,7 +21142,8 @@ widget EditorDemo {
     /// no payload is forced onto a handler that takes none.
     #[test]
     fn test_code_editor_events_no_params_plain_binding() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget EditorDemo {
     model {
         var source str = "fn main() {}"
@@ -19861,7 +21160,8 @@ widget EditorDemo {
         .CursorMoved -> { }
     }
 }
-"##);
+"##,
+        );
         assert!(
             sfc.contains("@cursor=\"CursorMoved\""),
             "param-less handler stays plain:\n{}",
@@ -19906,7 +21206,11 @@ widget EditorDemo {
             return Err("No widget declarations found in input file".into());
         }
 
-        let mut gen = if shadcn { VueGenerator::new_shadcn() } else { VueGenerator::new() };
+        let mut gen = if shadcn {
+            VueGenerator::new_shadcn()
+        } else {
+            VueGenerator::new()
+        };
         let output = gen.generate_sfc(&widgets[0])?;
 
         let exp_path = d.join(format!("test/a2vue/{}/input.expected.vue", case));
@@ -20119,10 +21423,7 @@ widget IconStateOff {
             off.contains("text-muted-foreground"),
             "state:off 应发射 muted dim:\n{off}"
         );
-        assert!(
-            !off.contains(":stroke-width"),
-            "state:off 不应加重:\n{off}"
-        );
+        assert!(!off.contains(":stroke-width"), "state:off 不应加重:\n{off}");
     }
 
     /// 显式 text-* 类在场：颜色归作者，描边加重照常（与 VM 同规则）。
@@ -20139,10 +21440,7 @@ widget IconStateExplicit {
 }
 "#,
         );
-        assert!(
-            sfc.contains("text-red-500"),
-            "作者色必须保留:\n{sfc}"
-        );
+        assert!(sfc.contains("text-red-500"), "作者色必须保留:\n{sfc}");
         assert!(
             !sfc.contains("text-primary"),
             "显式 text-* 在场时不得注入 state 色:\n{sfc}"
@@ -20194,7 +21492,8 @@ widget IconStateNone {
 "#,
         );
         assert!(
-            !none.contains(":stroke-width") && !none.contains("text-primary")
+            !none.contains(":stroke-width")
+                && !none.contains("text-primary")
                 && !none.contains("text-muted-foreground"),
             "未声明 state 时输出必须与既有形态逐字节一致:\n{none}"
         );
@@ -20230,7 +21529,11 @@ widget IconStateLarge {
 
         assert!(sfc.contains("<style scoped>"), "sfc:\n{}", sfc);
         // The CSS body is byte-for-byte identical inside the scoped block.
-        assert!(sfc.contains(css), "scoped css not verbatim in sfc:\n{}", sfc);
+        assert!(
+            sfc.contains(css),
+            "scoped css not verbatim in sfc:\n{}",
+            sfc
+        );
         assert!(sfc.contains(".autodown-editor:hover"));
         assert!(sfc.contains("@media (max-width: 768px) {"));
         // The plain generated <style> block is still present.
@@ -20275,7 +21578,11 @@ fn fetch_things() []Value {
             "awaiting fn must be async:\n{}",
             code
         );
-        assert!(!code.contains("fetch_things(): "), "async fn drops ret anno:\n{}", code);
+        assert!(
+            !code.contains("fetch_things(): "),
+            "async fn drops ret anno:\n{}",
+            code
+        );
     }
 
     /// Plan 424 T1: ports 符号转发——fn 模块混写三种 `use.web` kind 时,
@@ -20505,17 +21812,42 @@ fn new_session() {
             .collect();
         let code = VueGenerator::generate_fn_module(&fns);
         assert!(
-            code.contains("classList)['add' : 'remove'])('dark')") || code.contains("'add' : 'remove'"),
+            code.contains("classList)['add' : 'remove'])('dark')")
+                || code.contains("'add' : 'remove'"),
             "set_dark:
 {}",
             code
         );
-        assert!(code.contains("matchMedia('(prefers-color-scheme: dark)').matches"), "{}", code);
-        assert!(code.contains("document.documentElement.style.setProperty(name, val)"), "{}", code);
-        assert!(code.contains("(document.querySelector('.chats-search') as HTMLElement | null)?.focus()"), "{}", code);
+        assert!(
+            code.contains("matchMedia('(prefers-color-scheme: dark)').matches"),
+            "{}",
+            code
+        );
+        assert!(
+            code.contains("document.documentElement.style.setProperty(name, val)"),
+            "{}",
+            code
+        );
+        assert!(
+            code.contains(
+                "(document.querySelector('.chats-search') as HTMLElement | null)?.focus()"
+            ),
+            "{}",
+            code
+        );
         assert!(code.contains("window.open(url, '_blank')"), "{}", code);
-        assert!(code.contains("navigator.clipboard.writeText(id)"), "{}", code);
-        assert!(code.contains("(document.querySelector('.sidebar-new-btn') as HTMLElement | null)?.click()"), "{}", code);
+        assert!(
+            code.contains("navigator.clipboard.writeText(id)"),
+            "{}",
+            code
+        );
+        assert!(
+            code.contains(
+                "(document.querySelector('.sidebar-new-btn') as HTMLElement | null)?.click()"
+            ),
+            "{}",
+            code
+        );
     }
 
     /// Template ref escape hatch: a `ref` prop on a view element emits a
@@ -20565,7 +21897,8 @@ widget Plain {
     /// attribute and never ran.)
     #[test]
     fn test_code_editor_rendering() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget EditorDemo {
     msg Msg { SourceChanged }
     model {
@@ -20588,43 +21921,84 @@ widget EditorDemo {
         }
     }
 }
-"##);
+"##,
+        );
 
-        assert!(sfc.contains("<CodeEditor"), "component tag:
-{}", sfc);
+        assert!(
+            sfc.contains("<CodeEditor"),
+            "component tag:
+{}",
+            sfc
+        );
         assert!(
             sfc.contains("import CodeEditor from '@/components/CodeEditor.vue'"),
             "default-style import:
 {}",
             sfc
         );
-        assert!(sfc.contains("lang=\"rust\""), "static lang:
-{}", sfc);
-        assert!(sfc.contains(":wrap=\"true\""), "wrap prop:
-{}", sfc);
+        assert!(
+            sfc.contains("lang=\"rust\""),
+            "static lang:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(":wrap=\"true\""),
+            "wrap prop:
+{}",
+            sfc
+        );
         assert!(
             sfc.contains("v-model=\"source\"") || sfc.contains(":modelValue=\"source\""),
             "value binding:
 {}",
             sfc
         );
-        assert!(sfc.contains(":search=\"query\""), "search binding:
-{}", sfc);
+        assert!(
+            sfc.contains(":search=\"query\""),
+            "search binding:
+{}",
+            sfc
+        );
         // Plan 421: the five props all flow through the shell contract.
-        assert!(sfc.contains(":line-numbers=\"false\""), "line-numbers off:
-{}", sfc);
-        assert!(sfc.contains(":highlight-current-line=\"false\""), "highlight-current-line off:
-{}", sfc);
-        assert!(sfc.contains(":tab-width=\"2\""), "tab-width:
-{}", sfc);
-        assert!(sfc.contains(":font-size=\"16\""), "font-size:
-{}", sfc);
+        assert!(
+            sfc.contains(":line-numbers=\"false\""),
+            "line-numbers off:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(":highlight-current-line=\"false\""),
+            "highlight-current-line off:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(":tab-width=\"2\""),
+            "tab-width:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(":font-size=\"16\""),
+            "font-size:
+{}",
+            sfc
+        );
         // vi binding flows (the vue shell accepts-but-ignores it; iced consumes).
-        assert!(sfc.contains(":vi=\"true\""), "vi binding:
-{}", sfc);
+        assert!(
+            sfc.contains(":vi=\"true\""),
+            "vi binding:
+{}",
+            sfc
+        );
         // Defaults for the bool props stay explicit bindings.
-        assert!(sfc.contains(":line-numbers=\"true\""), "line-numbers default:
-{}", sfc);
+        assert!(
+            sfc.contains(":line-numbers=\"true\""),
+            "line-numbers default:
+{}",
+            sfc
+        );
         assert!(
             sfc.contains("@update:modelValue"),
             "oninput event mapping:
@@ -20641,7 +22015,8 @@ widget EditorDemo {
         // Real parse path (plan 012 batch C): the previous version hand-built
         // `Expr::Ident(".body")` — a shape the real parser never produces
         // (dot_item yields Dot(Ident("self"), name)).
-        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget NoteEditor {
     msg Msg { BodyChanged }
     model { var body str = "# Welcome" }
@@ -20654,10 +22029,15 @@ widget NoteEditor {
         }
     }
 }
-"##);
+"##,
+        );
 
         // Renders as PascalCase component, not <div> or <autodown_editor>.
-        assert!(sfc.contains("<AutoDownEditor"), "tag is AutoDownEditor:\n{}", sfc);
+        assert!(
+            sfc.contains("<AutoDownEditor"),
+            "tag is AutoDownEditor:\n{}",
+            sfc
+        );
         // content bound to the body state ref.
         assert!(
             sfc.contains(":content=\"body\""),
@@ -20665,8 +22045,16 @@ widget NoteEditor {
             sfc
         );
         // Defaults: can-edit and show-actions default to true.
-        assert!(sfc.contains(":can-edit=\"true\""), "can_edit defaults true:\n{}", sfc);
-        assert!(sfc.contains(":show-actions=\"true\""), "show_actions defaults true:\n{}", sfc);
+        assert!(
+            sfc.contains(":can-edit=\"true\""),
+            "can_edit defaults true:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(":show-actions=\"true\""),
+            "show_actions defaults true:\n{}",
+            sfc
+        );
         // Event: onupdate → @update with the dot-handler name.
         assert!(
             sfc.contains("@update=\"BodyChanged\""),
@@ -20687,7 +22075,8 @@ widget NoteEditor {
     /// - scroll_sync 缺省 true；编辑臂 placeholder 字面发射。
     #[test]
     fn test_autodown_streaming_props_and_editor_placeholder() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget DocStream {
     model {
         var body str = ""
@@ -20714,17 +22103,42 @@ widget DocStream {
         }
     }
 }
-"#);
+"#,
+        );
         // 显式 streaming 绑定优先。
-        assert!(sfc.contains(":streaming=\"done\""), "explicit streaming:\n{}", sfc);
-        assert!(sfc.contains(":placeholder-block-id=\"pid\""), "block id:\n{}", sfc);
-        assert!(sfc.contains(":placeholder-height=\"ph\""), "height:\n{}", sfc);
-        assert!(sfc.contains(":scroll-sync=\"true\""), "scroll sync default:\n{}", sfc);
+        assert!(
+            sfc.contains(":streaming=\"done\""),
+            "explicit streaming:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(":placeholder-block-id=\"pid\""),
+            "block id:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(":placeholder-height=\"ph\""),
+            "height:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(":scroll-sync=\"true\""),
+            "scroll sync default:\n{}",
+            sfc
+        );
         // final: false → :streaming="true"（反相）。
-        assert!(sfc.contains(":streaming=\"true\""), "final inversion:\n{}", sfc);
+        assert!(
+            sfc.contains(":streaming=\"true\""),
+            "final inversion:\n{}",
+            sfc
+        );
         // 编辑臂 placeholder：解析器字符串字面量走绑定分支（:placeholder=
         // "'...'"，与 content 字面同约定）。
-        assert!(sfc.contains(":placeholder=\"'Start typing...'\""), "editor placeholder:\n{}", sfc);
+        assert!(
+            sfc.contains(":placeholder=\"'Start typing...'\""),
+            "editor placeholder:\n{}",
+            sfc
+        );
         // 换绑超集组件（legacy markdown 别名路径由 002 golden 锁定）。
         // 多组件共用 import 源时合并为一条 import 语句。
         assert!(
@@ -20733,8 +22147,16 @@ widget DocStream {
             "import:\n{}",
             sfc
         );
-        assert!(sfc.contains("<StreamingRenderer"), "component tag:\n{}", sfc);
-        assert!(!sfc.contains("MarkdownRender"), "MarkdownRender fully rebound:\n{}", sfc);
+        assert!(
+            sfc.contains("<StreamingRenderer"),
+            "component tag:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("MarkdownRender"),
+            "MarkdownRender fully rebound:\n{}",
+            sfc
+        );
     }
 
     /// PLAN-051 T5：双轨组件主题声明入口——`dark_mode`/`accent` props 经
@@ -20743,7 +22165,8 @@ widget DocStream {
     /// 排查路径锚：demo app.at 声明 → 本发射 → 引擎 darkMode/accent props。
     #[test]
     fn test_autodown_theme_props_emit() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget Themed {
     model {
         var body str = "# Welcome"
@@ -20765,7 +22188,8 @@ widget Themed {
         }
     }
 }
-"##);
+"##,
+        );
 
         assert_eq!(
             sfc.matches(":dark-mode=\"dark_mode\"").count(),
@@ -20784,7 +22208,8 @@ widget Themed {
 
     #[test]
     fn test_autodown_theme_props_defaults() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget Plain {
     model { var body str = "# Welcome" }
     view {
@@ -20794,7 +22219,8 @@ widget Plain {
         }
     }
 }
-"##);
+"##,
+        );
 
         assert_eq!(
             sfc.matches(":dark-mode=\"false\"").count(),
@@ -20802,15 +22228,24 @@ widget Plain {
             "default light档 on both arms:\n{}",
             sfc
         );
-        assert!(!sfc.contains(":accent"), "no accent attr when omitted:\n{}", sfc);
-        assert!(!sfc.contains("accent=\""), "no literal accent either:\n{}", sfc);
+        assert!(
+            !sfc.contains(":accent"),
+            "no accent attr when omitted:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("accent=\""),
+            "no literal accent either:\n{}",
+            sfc
+        );
     }
 
     #[test]
     fn test_autodown_editor_props_camelcase_and_events() {
         // Real parse path (plan 012 batch C).
         // Verify bool literals map through and onsave/oncancel events resolve.
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget NoteEditor {
     msg Msg { Save, Cancel }
     model { var note_body str = "" }
@@ -20826,16 +22261,33 @@ widget NoteEditor {
         }
     }
 }
-"#);
+"#,
+        );
 
         // Field-access content binding: .note_body → note_body.
-        assert!(sfc.contains(":content=\"note_body\""), "field access content:\n{}", sfc);
+        assert!(
+            sfc.contains(":content=\"note_body\""),
+            "field access content:\n{}",
+            sfc
+        );
         // Bool literals propagate.
-        assert!(sfc.contains(":can-edit=\"false\""), "can_edit false:\n{}", sfc);
-        assert!(sfc.contains(":show-actions=\"true\""), "show_actions true:\n{}", sfc);
+        assert!(
+            sfc.contains(":can-edit=\"false\""),
+            "can_edit false:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains(":show-actions=\"true\""),
+            "show_actions true:\n{}",
+            sfc
+        );
         // onsave/oncancel → @save/@cancel.
         assert!(sfc.contains("@save=\"Save\""), "onsave → @save:\n{}", sfc);
-        assert!(sfc.contains("@cancel=\"Cancel\""), "oncancel → @cancel:\n{}", sfc);
+        assert!(
+            sfc.contains("@cancel=\"Cancel\""),
+            "oncancel → @cancel:\n{}",
+            sfc
+        );
     }
 
     /// Plan 043 M5 B-1/B-2: `on_*: msg` callback props are typed from the msg
@@ -20872,16 +22324,32 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
         );
 
         // R4: emitted-callback props dropped from defineProps.
-        assert!(!sfc.contains("on_pick"), "on_pick dropped from defineProps:\n{}", sfc);
-        assert!(!sfc.contains("on_stop"), "on_stop dropped from defineProps:\n{}", sfc);
+        assert!(
+            !sfc.contains("on_pick"),
+            "on_pick dropped from defineProps:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("on_stop"),
+            "on_stop dropped from defineProps:\n{}",
+            sfc
+        );
         // B-1 payload signature now lives on the emit.
-        assert!(sfc.contains("Pick: [string]"), "Pick emit payload:\n{}", sfc);
+        assert!(
+            sfc.contains("Pick: [string]"),
+            "Pick emit payload:\n{}",
+            sfc
+        );
         assert!(sfc.contains("Stop: []"), "Stop emit no payload:\n{}", sfc);
         // Standalone parse can't resolve `Block`, so the container type is
         // `any[]` here; the Block import is covered by
         // test_custom_type_import_in_define_props below.
         assert!(sfc.contains("blocks: any[]"), "blocks type:\n{}", sfc);
-        assert!(!sfc.contains("import type { msg }"), "msg must not be imported:\n{}", sfc);
+        assert!(
+            !sfc.contains("import type { msg }"),
+            "msg must not be imported:\n{}",
+            sfc
+        );
     }
 
     #[test]
@@ -20897,23 +22365,25 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
         // The `blocks: Block[]` assertion below locks the post-resolution
         // behavior, so the struct literal stays.
         use crate::ast::{Type, TypeDecl, TypeDeclKind};
-        let user = |name: &str| Type::User(TypeDecl {
-            consts: Vec::new(),
-            name: name.into(),
-            kind: TypeDeclKind::UserType,
-            parent: None,
-            has: Vec::new(),
-            specs: Vec::new(),
-            spec_impls: Vec::new(),
-            generic_params: Vec::new(),
-            members: Vec::new(),
-            delegations: Vec::new(),
-            methods: Vec::new(),
-            attrs: vec![],
-            impl_attrs: vec![],
-            doc: None,
-            is_pub: false,
-        });
+        let user = |name: &str| {
+            Type::User(TypeDecl {
+                consts: Vec::new(),
+                name: name.into(),
+                kind: TypeDeclKind::UserType,
+                parent: None,
+                has: Vec::new(),
+                specs: Vec::new(),
+                spec_impls: Vec::new(),
+                generic_params: Vec::new(),
+                members: Vec::new(),
+                delegations: Vec::new(),
+                methods: Vec::new(),
+                attrs: vec![],
+                impl_attrs: vec![],
+                doc: None,
+                is_pub: false,
+            })
+        };
         let widget = AuraWidget {
             named_views: Vec::new(),
             actions: None,
@@ -20946,7 +22416,11 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
         let mut gen = VueGenerator::new();
         let sfc = gen.generate(&widget).unwrap();
         assert!(sfc.contains("blocks: Block[]"), "blocks type:\n{}", sfc);
-        assert!(sfc.contains("import type { Block } from '@/lib/api'"), "Block import:\n{}", sfc);
+        assert!(
+            sfc.contains("import type { Block } from '@/lib/api'"),
+            "Block import:\n{}",
+            sfc
+        );
     }
 
     #[test]
@@ -20954,8 +22428,15 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
         let gen = VueGenerator::new();
 
         assert_eq!(gen.expr_to_js(&crate::ast::Expr::Int(42)).unwrap(), "42");
-        assert_eq!(gen.expr_to_js(&crate::ast::Expr::Bool(true)).unwrap(), "true");
-        assert_eq!(gen.expr_to_js(&crate::ast::Expr::Str("hello".into())).unwrap(), "'hello'");
+        assert_eq!(
+            gen.expr_to_js(&crate::ast::Expr::Bool(true)).unwrap(),
+            "true"
+        );
+        assert_eq!(
+            gen.expr_to_js(&crate::ast::Expr::Str("hello".into()))
+                .unwrap(),
+            "'hello'"
+        );
     }
 
     /// PLAN-604 T08 (KD-VM4/AC-06): `.as(int)` 的 vue 侧降级必须是
@@ -20968,14 +22449,27 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
             expr: Box::new(crate::ast::Expr::Float(3.7, "".into())),
             target_type: t,
         };
-        for t in [crate::ast::Type::Int, crate::ast::Type::I64, crate::ast::Type::Uint] {
-            assert_eq!(gen.expr_to_js(&cast(t.clone())).unwrap(), "Math.trunc(3.7)",
-                "as({t}) 必须降级 Math.trunc");
-            assert_eq!(gen.expr_to_vue_bound_value(&cast(t.clone())).unwrap(), "Math.trunc(3.7)",
-                "as({t}) 绑定位必须降级 Math.trunc");
+        for t in [
+            crate::ast::Type::Int,
+            crate::ast::Type::I64,
+            crate::ast::Type::Uint,
+        ] {
+            assert_eq!(
+                gen.expr_to_js(&cast(t.clone())).unwrap(),
+                "Math.trunc(3.7)",
+                "as({t}) 必须降级 Math.trunc"
+            );
+            assert_eq!(
+                gen.expr_to_vue_bound_value(&cast(t.clone())).unwrap(),
+                "Math.trunc(3.7)",
+                "as({t}) 绑定位必须降级 Math.trunc"
+            );
         }
         // 浮点目标:JS 原生 f64,直通不截断。
-        assert_eq!(gen.expr_to_js(&cast(crate::ast::Type::Double)).unwrap(), "3.7");
+        assert_eq!(
+            gen.expr_to_js(&cast(crate::ast::Type::Double)).unwrap(),
+            "3.7"
+        );
         // 二元内层保持括号:Math.trunc((a / b))。
         let bin = crate::ast::Expr::Cast {
             expr: Box::new(crate::ast::Expr::Bina(
@@ -21000,7 +22494,8 @@ widget Child(blocks: []Block, on_pick: msg, on_stop: msg) {
     /// 按 12px 画 —— 同一个 `.at` 两端不一样大。
     #[test]
     fn test_icon_size_precedence() {
-        let sfc = gen_sfc_from_widget_src(r##"
+        let sfc = gen_sfc_from_widget_src(
+            r##"
 widget Icons {
     model { var dummy bool = false }
     view {
@@ -21011,7 +22506,8 @@ widget Icons {
         }
     }
 }
-"##);
+"##,
+        );
         // ① 都没有 → 默认 20px（w-5 h-5）
         assert!(
             sfc.contains("<Play class=\"w-5 h-5\" />"),
@@ -21038,7 +22534,8 @@ widget Icons {
     /// 与改动前一致（兼容约束）。
     #[test]
     fn test_progress_onseek_wrapper() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget Bar {
     msg { SeekFraction(float) }
     model { var pct float = 25.0 }
@@ -21049,36 +22546,69 @@ widget Bar {
         }
     }
 }
-"##);
-        assert!(sfc.contains("@pointerdown=\"__seekDown_0($event)\""), "按下包装:
-{sfc}");
-        assert!(sfc.contains("@pointermove=\"__seekMove_0($event)\""), "拖动包装:
-{sfc}");
-        assert!(sfc.contains("@pointerup=\"__seekUp_0($event)\""), "抬起包装:
-{sfc}");
-        assert!(sfc.contains("function __seekFrac_0(e: PointerEvent, el: HTMLElement): number"), "比例换算:
-{sfc}");
-        assert!(sfc.contains("if (!__seekDrag_0) return"), "悬停不 scrub 的按下门控:
-{sfc}");
-        assert!(sfc.contains("SeekFraction(__seekFrac_0(e, el))"), "交比例而非像素:
-{sfc}");
-        assert!(sfc.contains("r.width"), "比例用条自身宽度:
-{sfc}");
+"##,
+        );
+        assert!(
+            sfc.contains("@pointerdown=\"__seekDown_0($event)\""),
+            "按下包装:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("@pointermove=\"__seekMove_0($event)\""),
+            "拖动包装:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("@pointerup=\"__seekUp_0($event)\""),
+            "抬起包装:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("function __seekFrac_0(e: PointerEvent, el: HTMLElement): number"),
+            "比例换算:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("if (!__seekDrag_0) return"),
+            "悬停不 scrub 的按下门控:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("SeekFraction(__seekFrac_0(e, el))"),
+            "交比例而非像素:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("r.width"),
+            "比例用条自身宽度:
+{sfc}"
+        );
         // 内层仍是普通 Progress 组件
-        assert!(sfc.contains("<Progress :model-value="), "内层 Progress 绑定:
-{sfc}");
+        assert!(
+            sfc.contains("<Progress :model-value="),
+            "内层 Progress 绑定:
+{sfc}"
+        );
 
         // 兼容性：不带 onseek 的 progress 不产生任何包装
-        let plain = gen_sfc_from_widget_src_shadcn(r##"
+        let plain = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget Plain {
     model { var pct float = 10.0 }
     view { progress (value: .pct, max: 100.0) }
 }
-"##);
-        assert!(!plain.contains("__seekDown_"), "未声明 onseek 不得多出指针包装:
-{plain}");
-        assert!(!plain.contains("__seekFrac_"), "未声明 onseek 不得多出比例函数:
-{plain}");
+"##,
+        );
+        assert!(
+            !plain.contains("__seekDown_"),
+            "未声明 onseek 不得多出指针包装:
+{plain}"
+        );
+        assert!(
+            !plain.contains("__seekFrac_"),
+            "未声明 onseek 不得多出比例函数:
+{plain}"
+        );
     }
 
     #[test]
@@ -21119,7 +22649,10 @@ widget Plain {
         assert_eq!(gen.map_tag("preview-card", true), "div");
 
         // Both previewcard and preview-card should map to the same thing
-        assert_eq!(gen.map_tag("previewcard", false), gen.map_tag("preview-card", false));
+        assert_eq!(
+            gen.map_tag("previewcard", false),
+            gen.map_tag("preview-card", false)
+        );
 
         // Other hyphenated tags (fallback to div for unknown)
         assert_eq!(gen.map_tag("my-custom-tag", false), "div");
@@ -21134,9 +22667,22 @@ widget Plain {
     fn test_map_tag_svg_passthrough() {
         let mut gen = VueGenerator::new();
         for tag in [
-            "svg", "path", "circle", "rect", "line", "polyline", "polygon",
-            "ellipse", "g", "defs", "use", "stop", "linearGradient",
-            "radialGradient", "clipPath", "mask",
+            "svg",
+            "path",
+            "circle",
+            "rect",
+            "line",
+            "polyline",
+            "polygon",
+            "ellipse",
+            "g",
+            "defs",
+            "use",
+            "stop",
+            "linearGradient",
+            "radialGradient",
+            "clipPath",
+            "mask",
         ] {
             assert_eq!(gen.map_tag(tag, false), tag, "svg family tag passthrough");
         }
@@ -21162,11 +22708,13 @@ widget W {
         assert!(sfc.contains("<svg"), "svg tag emitted verbatim:\n{}", sfc);
         assert!(
             sfc.contains("viewBox=\"0 0 24 24\""),
-            "viewBox as static attribute:\n{}", sfc
+            "viewBox as static attribute:\n{}",
+            sfc
         );
         assert!(
             sfc.contains("<path") && sfc.contains("d=\"M4 4h16v16h-16z\""),
-            "path with static d:\n{}", sfc
+            "path with static d:\n{}",
+            sfc
         );
         assert!(!sfc.contains(":viewBox"), "no bound viewBox:\n{}", sfc);
         assert!(!sfc.contains(":d="), "no bound d:\n{}", sfc);
@@ -21355,7 +22903,8 @@ widget W {
 
         assert_eq!(gen.pattern_to_handler_name("Msg::Inc"), "onInc");
         assert_eq!(gen.pattern_to_handler_name(".Inc"), "Inc");
-        assert_eq!(gen.pattern_to_handler_name(".openSidebar"), "openSidebar");        assert_eq!(gen.pattern_to_handler_name("Dec"), "onDec");
+        assert_eq!(gen.pattern_to_handler_name(".openSidebar"), "openSidebar");
+        assert_eq!(gen.pattern_to_handler_name("Dec"), "onDec");
     }
 
     #[test]
@@ -21386,7 +22935,10 @@ widget W {
         let sfc = gen.generate_widget_sfc("button").unwrap();
         assert!(sfc.contains("<template>"), "has template");
         assert!(sfc.contains("<script setup"), "has script setup");
-        assert!(!sfc.contains("@/components/ui/"), "must NOT import shadcn-vue");
+        assert!(
+            !sfc.contains("@/components/ui/"),
+            "must NOT import shadcn-vue"
+        );
         assert!(sfc.contains("reka-ui"), "uses reka-ui as backend");
     }
 
@@ -21395,7 +22947,11 @@ widget W {
         let gen = VueGenerator::new_library();
         let files = gen.generate_widget_support_files("button");
         let names: Vec<&str> = files.iter().map(|(p, _)| p.as_str()).collect();
-        assert!(names.contains(&"variants.ts"), "variants.ts present: {:?}", names);
+        assert!(
+            names.contains(&"variants.ts"),
+            "variants.ts present: {:?}",
+            names
+        );
         assert!(names.contains(&"index.ts"), "index.ts present: {:?}", names);
         let index = files.iter().find(|(p, _)| p == "index.ts").unwrap();
         assert!(index.1.contains("Button"), "index re-exports Button");
@@ -21407,7 +22963,10 @@ widget W {
         let sfc = gen.generate_widget_sfc("input").unwrap();
         assert!(sfc.contains("<template>"), "has template");
         assert!(sfc.contains("<script setup"), "has script setup");
-        assert!(!sfc.contains("@/components/ui/"), "must NOT import shadcn-vue");
+        assert!(
+            !sfc.contains("@/components/ui/"),
+            "must NOT import shadcn-vue"
+        );
     }
 
     #[test]
@@ -21417,7 +22976,10 @@ widget W {
         assert!(sfc.contains("<template>"), "has template");
         assert!(sfc.contains("<script setup"), "has script setup");
         assert!(sfc.contains("reka-ui"), "label uses reka-ui Label");
-        assert!(!sfc.contains("@/components/ui/"), "must NOT import shadcn-vue");
+        assert!(
+            !sfc.contains("@/components/ui/"),
+            "must NOT import shadcn-vue"
+        );
     }
 
     /// Plan 400 B-phase: ChatMessage library widget generates a self-contained
@@ -21450,7 +23012,10 @@ widget W {
             "must start with attribution header: {}",
             sfc.lines().next().unwrap_or("")
         );
-        assert!(sfc.contains("shadcn-vue (MIT)"), "must cite shadcn-vue (MIT)");
+        assert!(
+            sfc.contains("shadcn-vue (MIT)"),
+            "must cite shadcn-vue (MIT)"
+        );
         assert!(sfc.contains("NOTICES"), "must point to NOTICES");
     }
 
@@ -21458,7 +23023,9 @@ widget W {
     fn test_library_all_widgets_self_contained() {
         let mut gen = VueGenerator::new_library();
         for name in VueGenerator::LIBRARY_WIDGETS {
-            let sfc = gen.generate_widget_sfc(name).unwrap_or_else(|e| panic!("generate {name}: {e}"));
+            let sfc = gen
+                .generate_widget_sfc(name)
+                .unwrap_or_else(|e| panic!("generate {name}: {e}"));
             assert!(sfc.contains("<template>"), "{name}: has template");
             assert!(sfc.contains("<script setup"), "{name}: has script setup");
             assert!(!sfc.contains("@/components/ui/"), "{name}: self-contained");
@@ -21492,8 +23059,11 @@ widget W {
     fn test_library_composite_widget_support_files() {
         let gen = VueGenerator::new_library();
         // card ships 5 companion SFCs.
-        let card_files: Vec<String> =
-            gen.generate_widget_support_files("card").into_iter().map(|(n, _)| n).collect();
+        let card_files: Vec<String> = gen
+            .generate_widget_support_files("card")
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
         for companion in [
             "index.ts",
             "CardHeader.vue",
@@ -21502,13 +23072,27 @@ widget W {
             "CardContent.vue",
             "CardFooter.vue",
         ] {
-            assert!(card_files.contains(&companion.to_string()), "card missing {companion}");
+            assert!(
+                card_files.contains(&companion.to_string()),
+                "card missing {companion}"
+            );
         }
         // tabs ships 3 companion SFCs.
-        let tabs_files: Vec<String> =
-            gen.generate_widget_support_files("tabs").into_iter().map(|(n, _)| n).collect();
-        for companion in ["index.ts", "TabsList.vue", "TabsTrigger.vue", "TabsContent.vue"] {
-            assert!(tabs_files.contains(&companion.to_string()), "tabs missing {companion}");
+        let tabs_files: Vec<String> = gen
+            .generate_widget_support_files("tabs")
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        for companion in [
+            "index.ts",
+            "TabsList.vue",
+            "TabsTrigger.vue",
+            "TabsContent.vue",
+        ] {
+            assert!(
+                tabs_files.contains(&companion.to_string()),
+                "tabs missing {companion}"
+            );
         }
     }
 
@@ -21529,13 +23113,15 @@ widget W {
     fn test_library_widgets_list_is_self_consistent() {
         for name in VueGenerator::LIBRARY_WIDGETS {
             let mut gen = VueGenerator::new_library();
-            gen.generate_widget_sfc(name)
-                .unwrap_or_else(|e| panic!("LIBRARY_WIDGETS lists '{name}' but template is missing: {e}"));
+            gen.generate_widget_sfc(name).unwrap_or_else(|e| {
+                panic!("LIBRARY_WIDGETS lists '{name}' but template is missing: {e}")
+            });
         }
         let mut sorted = VueGenerator::LIBRARY_WIDGETS.to_vec();
         sorted.sort();
         assert_eq!(
-            VueGenerator::LIBRARY_WIDGETS.to_vec(), sorted,
+            VueGenerator::LIBRARY_WIDGETS.to_vec(),
+            sorted,
             "LIBRARY_WIDGETS must be sorted"
         );
     }
@@ -21548,8 +23134,8 @@ widget W {
         let aura_tags: std::collections::HashSet<&str> =
             reg.all_widgets().keys().map(|s| s.as_str()).collect();
         for w in VueGenerator::LIBRARY_WIDGETS {
-            let known = aura_tags.contains(*w)
-                || aura_tags.iter().any(|t| t.starts_with(&format!("{w}-")));
+            let known =
+                aura_tags.contains(*w) || aura_tags.iter().any(|t| t.starts_with(&format!("{w}-")));
             assert!(
                 known,
                 "LIBRARY_WIDGETS has '{w}' but AURA registry has no such widget"
@@ -21601,11 +23187,8 @@ widget W {
         // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
         // 活链路从未使用 —— 负断言存档。
         let registry = super::WidgetRegistry::with_defaults();
-        let has_component = |tag: &str| {
-            registry.get_primary_component("vue", tag).is_some()
-        };
-        let primary_component =
-            |tag: &str| registry.get_primary_component("vue", tag);
+        let has_component = |tag: &str| registry.get_primary_component("vue", tag).is_some();
+        let primary_component = |tag: &str| registry.get_primary_component("vue", tag);
 
         // 活映射存在
         for tag in ["button", "input", "checkbox", "tabs", "table", "card"] {
@@ -21644,29 +23227,72 @@ widget W {
         use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
         let result = generate_component_from_file(
             std::path::Path::new("../../examples/ui/024-charts/src/front/app.at"),
-            ComponentGenOptions { shadcn: Some(true), ..Default::default() },
+            ComponentGenOptions {
+                shadcn: Some(true),
+                ..Default::default()
+            },
         );
-        assert!(result.is_ok(), "charts gallery should compile: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "charts gallery should compile: {:?}",
+            result.err()
+        );
         let result = result.unwrap();
         let code = result.vue_code;
 
         // Bare-name chart fold: data-bound placeholder per chart branch
-        assert!(code.contains(":data="), "chart data binding missing: {code}");
-        assert!(code.contains("chartType == 'line'"), "line branch missing: {code}");
-        assert!(code.contains("chartType == 'bar'"), "bar branch missing: {code}");
-        assert!(code.contains("chartType == 'area'"), "area branch missing: {code}");
-        assert!(code.contains("chartType == 'donut'"), "donut branch missing: {code}");
+        assert!(
+            code.contains(":data="),
+            "chart data binding missing: {code}"
+        );
+        assert!(
+            code.contains("chartType == 'line'"),
+            "line branch missing: {code}"
+        );
+        assert!(
+            code.contains("chartType == 'bar'"),
+            "bar branch missing: {code}"
+        );
+        assert!(
+            code.contains("chartType == 'area'"),
+            "area branch missing: {code}"
+        );
+        assert!(
+            code.contains("chartType == 'donut'"),
+            "donut branch missing: {code}"
+        );
 
         // Retired shadcn/unovis chart family must NOT appear
-        assert!(!code.contains("chart-area"), "retired chart-area scaffold leaked");
-        assert!(!code.contains("unovis"), "retired @unovis dependency leaked");
-        assert!(!code.contains("CurveType"), "retired CurveType mapping leaked");
+        assert!(
+            !code.contains("chart-area"),
+            "retired chart-area scaffold leaked"
+        );
+        assert!(
+            !code.contains("unovis"),
+            "retired @unovis dependency leaked"
+        );
+        assert!(
+            !code.contains("CurveType"),
+            "retired CurveType mapping leaked"
+        );
 
         // Key props of the migrated (024-charts) demo data are emitted
-        assert!(code.contains(":data=\"monthly\""), "monthly data binding missing: {code}");
-        assert!(code.contains(":index=\"'m'\""), "index prop missing: {code}");
-        assert!(code.contains("'desktop', 'mobile', 'tablet'"), "series fields missing: {code}");
-        assert!(code.contains("windowLen"), "windowLen binding missing: {code}");
+        assert!(
+            code.contains(":data=\"monthly\""),
+            "monthly data binding missing: {code}"
+        );
+        assert!(
+            code.contains(":index=\"'m'\""),
+            "index prop missing: {code}"
+        );
+        assert!(
+            code.contains("'desktop', 'mobile', 'tablet'"),
+            "series fields missing: {code}"
+        );
+        assert!(
+            code.contains("windowLen"),
+            "windowLen binding missing: {code}"
+        );
     }
     #[test]
     fn test_generate_shadcn_attrs_button() {
@@ -21675,8 +23301,12 @@ widget W {
         let events = HashMap::new();
 
         // Test button with text
-        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Click me".into())));
-        let (attrs, _slot_content, slot_children) = gen.generate_shadcn_attrs("button", &props, &events);
+        props.insert(
+            "text".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Click me".into())),
+        );
+        let (attrs, _slot_content, slot_children) =
+            gen.generate_shadcn_attrs("button", &props, &events);
 
         assert!(slot_children.is_some());
         assert!(slot_children.unwrap().contains("Click me"));
@@ -21686,31 +23316,43 @@ widget W {
     fn test_generate_shadcn_attrs_input() {
         // Real parse path (plan 012 batch C): `value: .name` on a state field
         // must fold to v-model (Dot path, not the fake bare Ident).
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget W {
     model { var name str = "" }
     view {
         input(value: .name, placeholder: "Enter name")
     }
 }
-"#);
+"#,
+        );
         assert!(sfc.contains("v-model=\"name\""), "input v-model:\n{}", sfc);
-        assert!(sfc.contains("placeholder=\"Enter name\""), "placeholder:\n{}", sfc);
+        assert!(
+            sfc.contains("placeholder=\"Enter name\""),
+            "placeholder:\n{}",
+            sfc
+        );
     }
 
     #[test]
     fn test_generate_shadcn_attrs_checkbox() {
         // Real parse path (plan 012 batch C).
         // Test checkbox with v-model (reka-ui uses modelValue, not checked)
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget W {
     model { var done bool = false }
     view {
         checkbox(checked: .done)
     }
 }
-"#);
-        assert!(sfc.contains("v-model=\"done\""), "checkbox v-model:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("v-model=\"done\""),
+            "checkbox v-model:\n{}",
+            sfc
+        );
     }
 
     #[test]
@@ -21752,55 +23394,117 @@ widget W {
         let mut gen = VueGenerator::new();
         let cls = |axis: &str, sb: Option<&str>| {
             let mut props = HashMap::new();
-            props.insert("axis".to_string(), AuraPropValue::Expr(Expr::Str(axis.into())));
+            props.insert(
+                "axis".to_string(),
+                AuraPropValue::Expr(Expr::Str(axis.into())),
+            );
             if let Some(sb) = sb {
-                props.insert("scrollbar".to_string(), AuraPropValue::Expr(Expr::Str(sb.into())));
+                props.insert(
+                    "scrollbar".to_string(),
+                    AuraPropValue::Expr(Expr::Str(sb.into())),
+                );
             }
             gen.extract_classes("scroll-pane", &props).0
         };
-        assert!(cls("y", None).contains("overflow-y-auto"), "{}", cls("y", None));
-        assert!(cls("x", None).contains("overflow-x-auto"), "{}", cls("x", None));
-        assert!(cls("both", None).contains("overflow-auto"), "{}", cls("both", None));
+        assert!(
+            cls("y", None).contains("overflow-y-auto"),
+            "{}",
+            cls("y", None)
+        );
+        assert!(
+            cls("x", None).contains("overflow-x-auto"),
+            "{}",
+            cls("x", None)
+        );
+        assert!(
+            cls("both", None).contains("overflow-auto"),
+            "{}",
+            cls("both", None)
+        );
         assert!(cls("y", Some("always")).contains("overflow-y-scroll"));
         // legacy direction 映射（axis 缺席）。
         let mut props = HashMap::new();
-        props.insert("direction".to_string(), AuraPropValue::Expr(Expr::Str("horizontal".into())));
-        assert!(gen.extract_classes("scroll", &props).0.contains("overflow-x-auto"));
+        props.insert(
+            "direction".to_string(),
+            AuraPropValue::Expr(Expr::Str("horizontal".into())),
+        );
+        assert!(gen
+            .extract_classes("scroll", &props)
+            .0
+            .contains("overflow-x-auto"));
 
         // shadcn: axis → orientation；controller 锚 + helper 置位 + hidden。
         let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
-        props.insert("axis".to_string(), AuraPropValue::Expr(Expr::Str("x".into())));
+        props.insert(
+            "axis".to_string(),
+            AuraPropValue::Expr(Expr::Str("x".into())),
+        );
         let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &HashMap::new());
-        assert!(attrs.iter().any(|a| a.contains("orientation=\"horizontal\"")), "{:?}", attrs);
+        assert!(
+            attrs
+                .iter()
+                .any(|a| a.contains("orientation=\"horizontal\"")),
+            "{:?}",
+            attrs
+        );
         props.insert(
             "controller".to_string(),
             AuraPropValue::Expr(Expr::Ident("sc".into())),
         );
-        props.insert("scrollbar".to_string(), AuraPropValue::Expr(Expr::Str("hidden".into())));
+        props.insert(
+            "scrollbar".to_string(),
+            AuraPropValue::Expr(Expr::Str("hidden".into())),
+        );
         let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &HashMap::new());
-        assert!(attrs.iter().any(|a| a.contains(":data-scroll-ctl=\"sc\"")), "{:?}", attrs);
-        assert!(attrs.iter().any(|a| a.contains("scrollbar-width")), "{:?}", attrs);
-        assert!(gen.scroll_ctl_helpers_needed, "controller helper injection flag");
+        assert!(
+            attrs.iter().any(|a| a.contains(":data-scroll-ctl=\"sc\"")),
+            "{:?}",
+            attrs
+        );
+        assert!(
+            attrs.iter().any(|a| a.contains("scrollbar-width")),
+            "{:?}",
+            attrs
+        );
+        assert!(
+            gen.scroll_ctl_helpers_needed,
+            "controller helper injection flag"
+        );
 
         // PLAN-692: size prop → --sb-size 内联 CSS 变量（thumb 宽 px）。
         let mut gen = VueGenerator::new_shadcn();
         let mut props = HashMap::new();
         props.insert("size".to_string(), AuraPropValue::Expr(Expr::Int(16)));
         let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &HashMap::new());
-        assert!(attrs.iter().any(|a| a.contains("--sb-size: 16px")), "{:?}", attrs);
+        assert!(
+            attrs.iter().any(|a| a.contains("--sb-size: 16px")),
+            "{:?}",
+            attrs
+        );
         // size + scrollbar:hidden 合并进同一 style 属性。
-        props.insert("scrollbar".to_string(), AuraPropValue::Expr(Expr::Str("hidden".into())));
+        props.insert(
+            "scrollbar".to_string(),
+            AuraPropValue::Expr(Expr::Str("hidden".into())),
+        );
         let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &HashMap::new());
-        let joined = attrs.iter().find(|a| a.starts_with("style=")).expect("style attr");
-        assert!(joined.contains("--sb-size: 16px") && joined.contains("scrollbar-width: none"), "{}", joined);
+        let joined = attrs
+            .iter()
+            .find(|a| a.starts_with("style="))
+            .expect("style attr");
+        assert!(
+            joined.contains("--sb-size: 16px") && joined.contains("scrollbar-width: none"),
+            "{}",
+            joined
+        );
     }
 
     /// PLAN-692 W-2: command 家族子件（command_input 等）必须映射到
     /// shadcn 组件而非降级 stub div。
     #[test]
     fn p692_command_family_shadcn_mapping() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget Test {
     view {
         command (style: "x") {
@@ -21814,19 +23518,44 @@ widget Test {
         }
     }
 }
-"#);
-        assert!(sfc.contains("<Command "), "command root must map to <Command>:
-{}", sfc);
-        assert!(sfc.contains("<CommandInput"), "command_input must map to <CommandInput>:
-{}", sfc);
-        assert!(sfc.contains("<CommandEmpty"), "command_empty must map to <CommandEmpty>:
-{}", sfc);
-        assert!(sfc.contains("<CommandList"), "command_list must map to <CommandList>:
-{}", sfc);
-        assert!(sfc.contains("<CommandGroup"), "command_group must map to <CommandGroup>:
-{}", sfc);
-        assert!(sfc.contains("<CommandItem"), "command_item must map to <CommandItem>:
-{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("<Command "),
+            "command root must map to <Command>:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<CommandInput"),
+            "command_input must map to <CommandInput>:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<CommandEmpty"),
+            "command_empty must map to <CommandEmpty>:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<CommandList"),
+            "command_list must map to <CommandList>:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<CommandGroup"),
+            "command_group must map to <CommandGroup>:
+{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("<CommandItem"),
+            "command_item must map to <CommandItem>:
+{}",
+            sfc
+        );
     }
 
     /// PLAN-701 供⑤b: scroll controller helper 族在 TS 模式必须带类型
@@ -21834,7 +23563,8 @@ widget Test {
     /// （m1-supply §14/§15；auto-edit App.vue:23-28 实测）。
     #[test]
     fn p701_scroll_ctl_helpers_typed() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget Test {
     view {
         col {
@@ -21844,7 +23574,8 @@ widget Test {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("function scroll_to(k: string, a: string | number, b: number): void"),
             "scroll_to must carry TS annotations:
@@ -21879,7 +23610,8 @@ widget Test {
     #[test]
     fn p692_code_editor_literal_content() {
         // 字面串 content → :model-value 单向初始值（含换行/双引号转义）。
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget Test {
     view {
         code_editor (key: "ed", lang: "auto", style: "h-56 w-full") {
@@ -21887,14 +23619,28 @@ widget Test {
         }
     }
 }
-"#);
-        assert!(sfc.contains(":model-value="), "literal content must emit :model-value:\n{}", sfc);
-        assert!(sfc.contains("&quot;world&quot;"), "double quotes must be entity-escaped:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains(":model-value="),
+            "literal content must emit :model-value:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("&quot;world&quot;"),
+            "double quotes must be entity-escaped:\n{}",
+            sfc
+        );
         assert!(sfc.contains("\\n"), "newlines must be JS-escaped:\n{}", sfc);
-        assert!(!sfc.contains("v-model="), "literal content must not emit v-model:\n{}", sfc);
+        assert!(
+            !sfc.contains("v-model="),
+            "literal content must not emit v-model:\n{}",
+            sfc
+        );
 
         // 状态绑定 content → v-model（既有契约不回归）。
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget Test {
     model { source str = "" }
     view {
@@ -21903,8 +23649,13 @@ widget Test {
         }
     }
 }
-"#);
-        assert!(sfc.contains("v-model=\"source\""), "bound content must keep v-model:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("v-model=\"source\""),
+            "bound content must keep v-model:\n{}",
+            sfc
+        );
     }
 
     /// PLAN-692: utility 滚动路径（overflow-*-auto 类）统一原生滚动条皮肤——
@@ -21913,7 +23664,8 @@ widget Test {
     #[test]
     fn p692_utility_scroll_ash_scroll_class() {
         // div + overflow-y-auto → 挂 ash-scroll。
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget Test {
     view {
         div (style: "flex flex-col h-40 overflow-y-auto border rounded-md p-2") {
@@ -21921,11 +23673,17 @@ widget Test {
         }
     }
 }
-"#);
-        assert!(sfc.contains("ash-scroll"), "expected ash-scroll on overflow container:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("ash-scroll"),
+            "expected ash-scroll on overflow container:\n{}",
+            sfc
+        );
 
         // 无 overflow 的 div → 不挂。
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget Test {
     view {
         div (style: "flex flex-col gap-2 border rounded-md") {
@@ -21933,11 +23691,17 @@ widget Test {
         }
     }
 }
-"#);
-        assert!(!sfc.contains("ash-scroll"), "unexpected ash-scroll without overflow:\n{}", sfc);
+"#,
+        );
+        assert!(
+            !sfc.contains("ash-scroll"),
+            "unexpected ash-scroll without overflow:\n{}",
+            sfc
+        );
 
         // 语义 scroll 元素 → ScrollArea 组件，不挂 ash-scroll。
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget Test {
     view {
         scroll (style: "h-40 border rounded-md") {
@@ -21945,9 +23709,18 @@ widget Test {
         }
     }
 }
-"#);
-        assert!(sfc.contains("ScrollArea"), "expected ScrollArea component:\n{}", sfc);
-        assert!(!sfc.contains("ash-scroll"), "scroll element must not get ash-scroll:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("ScrollArea"),
+            "expected ScrollArea component:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("ash-scroll"),
+            "scroll element must not get ash-scroll:\n{}",
+            sfc
+        );
     }
 
     #[test]
@@ -21957,7 +23730,10 @@ widget Test {
         let events = HashMap::new();
 
         // Test scroll area with orientation
-        props.insert("orientation".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("vertical".into())));
+        props.insert(
+            "orientation".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("vertical".into())),
+        );
         let (attrs, _, _) = gen.generate_shadcn_attrs("scroll", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("orientation=\"vertical\"")));
@@ -21970,7 +23746,10 @@ widget Test {
         let events = HashMap::new();
 
         // Test tabs with default value
-        props.insert("default".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("tab1".into())));
+        props.insert(
+            "default".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("tab1".into())),
+        );
         let (attrs, _, _) = gen.generate_shadcn_attrs("tabs", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("default-value=\"tab1\"")));
@@ -21980,7 +23759,8 @@ widget Test {
     fn test_generate_shadcn_attrs_tabs_with_model() {
         // Real parse path (plan 012 batch C).
         // Test tabs with v-model
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget W {
     model { var activeTab str = "a" }
     view {
@@ -21989,8 +23769,13 @@ widget W {
         }
     }
 }
-"#);
-        assert!(sfc.contains("v-model=\"activeTab\""), "tabs v-model:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("v-model=\"activeTab\""),
+            "tabs v-model:\n{}",
+            sfc
+        );
     }
 
     #[test]
@@ -22000,8 +23785,14 @@ widget W {
         let events = HashMap::new();
 
         // Test tab trigger with value and text
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("tab1".into())));
-        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("First Tab".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("tab1".into())),
+        );
+        props.insert(
+            "text".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("First Tab".into())),
+        );
         let (attrs, slot_content, _) = gen.generate_shadcn_attrs("tab", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("value=\"tab1\"")));
@@ -22016,8 +23807,14 @@ widget W {
         let events = HashMap::new();
 
         // Test card with variant and title
-        props.insert("variant".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())));
-        props.insert("title".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Card Title".into())));
+        props.insert(
+            "variant".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("outline".into())),
+        );
+        props.insert(
+            "title".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Card Title".into())),
+        );
         let (attrs, slot_content, _) = gen.generate_shadcn_attrs("card", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("variant=\"outline\"")));
@@ -22032,7 +23829,10 @@ widget W {
         let events = HashMap::new();
 
         // Test separator with orientation
-        props.insert("orientation".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("vertical".into())));
+        props.insert(
+            "orientation".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("vertical".into())),
+        );
         let (attrs, _, _) = gen.generate_shadcn_attrs("divider", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("orientation=\"vertical\"")));
@@ -22045,7 +23845,10 @@ widget W {
         let events = HashMap::new();
 
         // Test decorative separator
-        props.insert("decorative".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
+        props.insert(
+            "decorative".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Bool(true)),
+        );
         let (attrs, _, _) = gen.generate_shadcn_attrs("divider", &props, &events);
 
         assert!(attrs.iter().any(|a| a == "decorative"));
@@ -22057,11 +23860,8 @@ widget W {
         // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
         // 活链路从未使用 —— 负断言存档。
         let registry = super::WidgetRegistry::with_defaults();
-        let has_component = |tag: &str| {
-            registry.get_primary_component("vue", tag).is_some()
-        };
-        let primary_component =
-            |tag: &str| registry.get_primary_component("vue", tag);
+        let has_component = |tag: &str| registry.get_primary_component("vue", tag).is_some();
+        let primary_component = |tag: &str| registry.get_primary_component("vue", tag);
 
         assert!(has_component("scroll"));
         assert!(has_component("tabs"));
@@ -22076,7 +23876,10 @@ widget W {
         assert!(m.import.as_deref().unwrap_or("").contains("scroll-area"));
         // Plan 484: chart 家族(ChartTooltip/ChartLegend/ChartStyle extras)
         // 已随 shadcn-vue chart 路线退役——裸名让位 official 包 Auto 组件。
-        assert!(registry.get("chart").is_none(), "shadcn chart family must be retired");
+        assert!(
+            registry.get("chart").is_none(),
+            "shadcn chart family must be retired"
+        );
     }
 
     // ========================================
@@ -22090,7 +23893,8 @@ widget W {
         // `Expr::Ident("showDialog")`, which no real `.state` ref ever produces
         // (dot_item yields Dot(Ident("self"), name)) — so the test stayed green
         // while v-model:open was silently dropped for real widgets.
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget ConfirmDialog {
     model { var showDialog bool = false }
     view {
@@ -22099,7 +23903,8 @@ widget ConfirmDialog {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("<Dialog v-model:open=\"showDialog\""),
             "modal routed to <Dialog> with v-model:open:\n{}",
@@ -22116,7 +23921,8 @@ widget ConfirmDialog {
     /// Dialog component keeps its v-model:open binding (real parse path).
     #[test]
     fn test_dialog_vmodel_open_real_dsl() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget App {
     model { var show bool = false }
     view {
@@ -22125,7 +23931,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("<Dialog v-model:open=\"show\""),
             "dialog → <Dialog v-model:open>:\n{}",
@@ -22135,7 +23942,8 @@ widget App {
 
     #[test]
     fn parser_minted_modal_toggle_is_not_forwarded_to_vue_trigger() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget App {
     view {
         dialog {
@@ -22144,18 +23952,23 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("<Dialog v-model:open=\"__dlg_open_1\""),
             "minted state remains bound:\n{sfc}"
         );
-        assert!(sfc.contains("<DialogTrigger"), "native Vue trigger remains:\n{sfc}");
+        assert!(
+            sfc.contains("<DialogTrigger"),
+            "native Vue trigger remains:\n{sfc}"
+        );
         assert!(
             !sfc.contains("DialogTrigger @click=\"__dlg_toggle_1\""),
             "Vue's trigger must own the open transition:\n{sfc}"
         );
 
-        let explicit = gen_sfc_from_widget_src_shadcn(r#"
+        let explicit = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget App {
     msg { OpenDialog }
     on { .OpenDialog -> { } }
@@ -22166,7 +23979,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             explicit.contains("DialogTrigger @click=\"OpenDialog\""),
             "explicit handler remains:\n{explicit}"
@@ -22177,7 +23991,8 @@ widget App {
     /// the original silent-drop: extract_state_ref only matched bare Ident).
     #[test]
     fn test_alertdialog_vmodel_open_real_dsl() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget App {
     model { var confirm_open bool = false }
     view {
@@ -22186,7 +24001,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("<AlertDialog v-model:open=\"confirm_open\""),
             "alertdialog → <AlertDialog v-model:open>:\n{}",
@@ -22196,7 +24012,8 @@ widget App {
 
     #[test]
     fn schema_snake_case_overlay_tags_use_shadcn_components() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget OverlayDemo {
     view {
         alert_dialog {
@@ -22218,7 +24035,8 @@ widget OverlayDemo {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(sfc.contains("<AlertDialog"), "root mapping missing:\n{sfc}");
         assert!(
             sfc.contains("<AlertDialogContent"),
@@ -22228,8 +24046,14 @@ widget OverlayDemo {
             sfc.contains("<AlertDialogTrigger"),
             "trigger mapping missing:\n{sfc}"
         );
-        assert!(sfc.contains("<SheetContent"), "sheet content mapping missing:\n{sfc}");
-        assert!(sfc.contains("<SheetTitle"), "sheet title mapping missing:\n{sfc}");
+        assert!(
+            sfc.contains("<SheetContent"),
+            "sheet content mapping missing:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("<SheetTitle"),
+            "sheet title mapping missing:\n{sfc}"
+        );
         assert!(
             !sfc.contains("<div data-auto-tag=\"alert_dialog\""),
             "snake_case root must not degrade to an HTML div:\n{sfc}"
@@ -22243,8 +24067,14 @@ widget OverlayDemo {
         let events = HashMap::new();
 
         // Test tooltip with content and side
-        props.insert("content".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Help text".into())));
-        props.insert("side".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("right".into())));
+        props.insert(
+            "content".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Help text".into())),
+        );
+        props.insert(
+            "side".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("right".into())),
+        );
         let (attrs, slot_content, _) = gen.generate_shadcn_attrs("tooltip", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("side=\"right\"")));
@@ -22259,7 +24089,10 @@ widget OverlayDemo {
         let events = HashMap::new();
 
         // Test spinner/skeleton
-        props.insert("class".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("w-10 h-10".into())));
+        props.insert(
+            "class".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("w-10 h-10".into())),
+        );
         let (attrs, _, _) = gen.generate_shadcn_attrs("spinner", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("class=\"w-10 h-10\"")));
@@ -22271,11 +24104,8 @@ widget OverlayDemo {
         // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
         // 活链路从未使用 —— 负断言存档。
         let registry = super::WidgetRegistry::with_defaults();
-        let has_component = |tag: &str| {
-            registry.get_primary_component("vue", tag).is_some()
-        };
-        let primary_component =
-            |tag: &str| registry.get_primary_component("vue", tag);
+        let has_component = |tag: &str| registry.get_primary_component("vue", tag).is_some();
+        let primary_component = |tag: &str| registry.get_primary_component("vue", tag);
 
         assert!(has_component("modal"));
         assert!(has_component("tooltip"));
@@ -22295,7 +24125,10 @@ widget OverlayDemo {
         let events = HashMap::new();
 
         // Test table
-        props.insert("class".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("w-full".into())));
+        props.insert(
+            "class".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("w-full".into())),
+        );
         let (attrs, _, _) = gen.generate_shadcn_attrs("table", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("class=\"w-full\"")));
@@ -22308,7 +24141,10 @@ widget OverlayDemo {
         let events = HashMap::new();
 
         // Test th with colspan
-        props.insert("colspan".to_string(), AuraPropValue::Expr(crate::ast::Expr::Int(2)));
+        props.insert(
+            "colspan".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Int(2)),
+        );
         let (attrs, _, _) = gen.generate_shadcn_attrs("th", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains(":colspan=\"2\"")));
@@ -22321,7 +24157,10 @@ widget OverlayDemo {
         let events = HashMap::new();
 
         // Test tree
-        props.insert("class".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("pl-4".into())));
+        props.insert(
+            "class".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("pl-4".into())),
+        );
         let (attrs, _, _) = gen.generate_shadcn_attrs("tree", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("class=\"pl-4\"")));
@@ -22334,7 +24173,10 @@ widget OverlayDemo {
         let events = HashMap::new();
 
         // Test tree_item with text
-        props.insert("text".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Node 1".into())));
+        props.insert(
+            "text".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Node 1".into())),
+        );
         let (attrs, slot_content, _) = gen.generate_shadcn_attrs("tree_item", &props, &events);
 
         assert!(slot_content.is_some());
@@ -22347,11 +24189,8 @@ widget OverlayDemo {
         // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
         // 活链路从未使用 —— 负断言存档。
         let registry = super::WidgetRegistry::with_defaults();
-        let has_component = |tag: &str| {
-            registry.get_primary_component("vue", tag).is_some()
-        };
-        let primary_component =
-            |tag: &str| registry.get_primary_component("vue", tag);
+        let has_component = |tag: &str| registry.get_primary_component("vue", tag).is_some();
+        let primary_component = |tag: &str| registry.get_primary_component("vue", tag);
 
         assert!(has_component("table"));
         // Plan 408 P8:table 家族原生 HTML 直通,不做 vue 映射(死表曾错误声明)
@@ -22368,7 +24207,8 @@ widget OverlayDemo {
     fn test_generate_shadcn_attrs_radiogroup() {
         // Real parse path (plan 012 batch C).
         // Test radiogroup with v-model
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget W {
     model { var selectedOption str = "" }
     view {
@@ -22377,8 +24217,13 @@ widget W {
         }
     }
 }
-"#);
-        assert!(sfc.contains("v-model=\"selectedOption\""), "radiogroup v-model:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("v-model=\"selectedOption\""),
+            "radiogroup v-model:\n{}",
+            sfc
+        );
         assert!(sfc.contains("name=\"options\""), "name attr:\n{}", sfc);
     }
 
@@ -22389,8 +24234,14 @@ widget W {
         let events = HashMap::new();
 
         // Test radio with value and label
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("option1".into())));
-        props.insert("label".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("Option 1".into())));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("option1".into())),
+        );
+        props.insert(
+            "label".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("Option 1".into())),
+        );
         let (attrs, slot_content, _) = gen.generate_shadcn_attrs("radio", &props, &events);
 
         assert!(attrs.iter().any(|a| a.contains("value=\"option1\"")));
@@ -22405,8 +24256,14 @@ widget W {
         let events = HashMap::new();
 
         // Test disabled radio
-        props.insert("value".to_string(), AuraPropValue::Expr(crate::ast::Expr::Str("option2".into())));
-        props.insert("disabled".to_string(), AuraPropValue::Expr(crate::ast::Expr::Bool(true)));
+        props.insert(
+            "value".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Str("option2".into())),
+        );
+        props.insert(
+            "disabled".to_string(),
+            AuraPropValue::Expr(crate::ast::Expr::Bool(true)),
+        );
         let (attrs, _, _) = gen.generate_shadcn_attrs("radio", &props, &events);
 
         assert!(attrs.iter().any(|a| a == "disabled"));
@@ -22418,18 +24275,18 @@ widget W {
         // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
         // 活链路从未使用 —— 负断言存档。
         let registry = super::WidgetRegistry::with_defaults();
-        let has_component = |tag: &str| {
-            registry.get_primary_component("vue", tag).is_some()
-        };
-        let primary_component =
-            |tag: &str| registry.get_primary_component("vue", tag);
+        let has_component = |tag: &str| registry.get_primary_component("vue", tag).is_some();
+        let primary_component = |tag: &str| registry.get_primary_component("vue", tag);
 
         // PLAN-661 T-04（R-5）：slider 组件映射随 aura.at vue 行退役——
         // DSL slider 恒走原生 input range，注册面不再持有 Slider 组件。
         assert!(!has_component("slider"));
         assert!(has_component("radiogroup"));
         assert_eq!(primary_component("slider"), None);
-        assert_eq!(primary_component("radiogroup"), Some("RadioGroup".to_string()));
+        assert_eq!(
+            primary_component("radiogroup"),
+            Some("RadioGroup".to_string())
+        );
         // radio 死表独有(a2ui/原生路径)
         assert!(!has_component("radio"));
     }
@@ -22500,18 +24357,28 @@ widget W {
         // produces (DSL tags are lowercase; "Button" would be a sub-widget
         // reference) — and had been FAILING on that unreachable input. The
         // DSL `button "Click Me"` routes to the shadcn <Button> component.
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget Test {
     view {
         button "Click Me"
     }
 }
-"#);
+"#,
+        );
 
         // Check that the button is NOT self-closing and has text content
-        assert!(sfc.contains("<Button") && sfc.contains("Click Me"), "sfc:\n{}", sfc);
+        assert!(
+            sfc.contains("<Button") && sfc.contains("Click Me"),
+            "sfc:\n{}",
+            sfc
+        );
         // Should NOT be self-closing (should have >Click Me< pattern)
-        assert!(sfc.contains("Click Me") && sfc.contains("</Button>"), "sfc:\n{}", sfc);
+        assert!(
+            sfc.contains("Click Me") && sfc.contains("</Button>"),
+            "sfc:\n{}",
+            sfc
+        );
     }
 
     // ------------------------------------------------------------------
@@ -22539,7 +24406,11 @@ widget Icon(language: str) {
             "computed prop must use props.language:\n{}",
             sfc
         );
-        assert!(!sfc.contains("self.language"), "no self. in output:\n{}", sfc);
+        assert!(
+            !sfc.contains("self.language"),
+            "no self. in output:\n{}",
+            sfc
+        );
     }
 
     /// Bug: string concatenation in a computed block was inferred as
@@ -22573,7 +24444,8 @@ widget Icon(language: str) {
     /// 018-book-reader NOTE).
     #[test]
     fn test_computed_block_body_returns_tail() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var w int = 3 }
     computed {
@@ -22587,7 +24459,8 @@ widget App {
     }
     view { col { text `d: ${.doubled}` } }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("return base + 1;"),
             "trailing expression becomes the return value:\n{}",
@@ -22636,8 +24509,16 @@ widget StatusIcon(status: Any) {
             "computed if chain must transpile to a nested ternary preserving each branch value:\n{}",
             sfc
         );
-        assert!(!sfc.contains("=> undefined"), "Expr::If must not fall through to undefined:\n{}", sfc);
-        assert!(!sfc.contains("(() => {"), "computed if must NOT use the legacy IIFE wrapper:\n{}", sfc);
+        assert!(
+            !sfc.contains("=> undefined"),
+            "Expr::If must not fall through to undefined:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("(() => {"),
+            "computed if must NOT use the legacy IIFE wrapper:\n{}",
+            sfc
+        );
     }
 
     /// Bug: bare identifiers (`lang => language`) and plain function calls
@@ -22662,12 +24543,18 @@ widget Icon(language: str) {
 "#;
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
-        let ast = parser.parse().expect("widget computed with bare ident/call must parse");
+        let ast = parser
+            .parse()
+            .expect("widget computed with bare ident/call must parse");
 
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
 
         let mut gen = VueGenerator::new();
@@ -22743,24 +24630,53 @@ widget Icon(language: str) {
         std::fs::write(&p2, plain_src).unwrap();
 
         let r1 = crate::ui_gen::generate_component_from_file(
-            &p1, crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("sugar spelling must compile");
+            &p1,
+            crate::ui_gen::ComponentGenOptions::default(),
+        )
+        .expect("sugar spelling must compile");
         let r2 = crate::ui_gen::generate_component_from_file(
-            &p2, crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("widget spelling must compile");
+            &p2,
+            crate::ui_gen::ComponentGenOptions::default(),
+        )
+        .expect("widget spelling must compile");
 
-        let card1 = r1.all_widget_codes.iter().find(|(n, _)| n == "Card").map(|(_, c)| c).unwrap();
-        let card2 = r2.all_widget_codes.iter().find(|(n, _)| n == "Card").map(|(_, c)| c).unwrap();
-        assert_eq!(normalize_vue_output(card1), normalize_vue_output(card2),
+        let card1 = r1
+            .all_widget_codes
+            .iter()
+            .find(|(n, _)| n == "Card")
+            .map(|(_, c)| c)
+            .unwrap();
+        let card2 = r2
+            .all_widget_codes
+            .iter()
+            .find(|(n, _)| n == "Card")
+            .map(|(_, c)| c)
+            .unwrap();
+        assert_eq!(
+            normalize_vue_output(card1),
+            normalize_vue_output(card2),
             "Card SFC must be byte-identical:\n--- component fn ---\n{}\n--- widget ---\n{}",
-            card1, card2);
-        assert_eq!(normalize_vue_output(&r1.vue_code), normalize_vue_output(&r2.vue_code),
+            card1,
+            card2
+        );
+        assert_eq!(
+            normalize_vue_output(&r1.vue_code),
+            normalize_vue_output(&r2.vue_code),
             "App SFC must be byte-identical:\n--- component fn ---\n{}\n--- widget ---\n{}",
-            r1.vue_code, r2.vue_code);
+            r1.vue_code,
+            r2.vue_code
+        );
         // The sugared declaration is a true WidgetDecl (single track).
-        assert!(r1.widgets.iter().any(|w| w.name == "Card"), "Card in widgets list");
+        assert!(
+            r1.widgets.iter().any(|w| w.name == "Card"),
+            "Card in widgets list"
+        );
         // App references it via the component path.
-        assert!(r1.vue_code.contains("<Card"), "App renders <Card>:\n{}", r1.vue_code);
+        assert!(
+            r1.vue_code.contains("<Card"),
+            "App renders <Card>:\n{}",
+            r1.vue_code
+        );
 
         let _ = std::fs::remove_dir_all(&tmp_sugar);
         let _ = std::fs::remove_dir_all(&tmp_plain);
@@ -22781,50 +24697,64 @@ widget Icon(language: str) {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");
-        std::fs::write(&at_path, concat!(
-            "widget App {
+        std::fs::write(
+            &at_path,
+            concat!(
+                "widget App {
 ",
-            "    model { var count int = 0 }
+                "    model { var count int = 0 }
 ",
-            "    view {
+                "    view {
 ",
-            "        CollapseBtn(label: \"go\", ontogglecollapse: .Bump)
+                "        CollapseBtn(label: \"go\", ontogglecollapse: .Bump)
 ",
-            "    }
+                "    }
 ",
-            "    on { .Bump -> { .count = .count + 1 } }
+                "    on { .Bump -> { .count = .count + 1 } }
 ",
-            "}
+                "}
 ",
-            "
+                "
 ",
-            "component fn CollapseBtn(label: str) {
+                "component fn CollapseBtn(label: str) {
 ",
-            "    msg Msg { ToggleCollapse }
+                "    msg Msg { ToggleCollapse }
 ",
-            "    model { var collapsed bool = false }
+                "    model { var collapsed bool = false }
 ",
-            "    on { .ToggleCollapse -> { .collapsed = !.collapsed } }
+                "    on { .ToggleCollapse -> { .collapsed = !.collapsed } }
 ",
-            "    button {
+                "    button {
 ",
-            "        text .label
+                "        text .label
 ",
-            "        onclick: .ToggleCollapse
+                "        onclick: .ToggleCollapse
 ",
-            "    }
+                "    }
 ",
-            "}
+                "}
 ",
-        )).unwrap();
+            ),
+        )
+        .unwrap();
         let result = crate::ui_gen::generate_component_from_file(
-            &at_path, crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("must compile");
+            &at_path,
+            crate::ui_gen::ComponentGenOptions::default(),
+        )
+        .expect("must compile");
         let app = result.vue_code.clone();
-        assert!(app.contains("@togglecollapse"), "legacy event spelling works:
-{}", app);
-        assert!(!app.contains(":ontogglecollapse"), "not a plain prop:
-{}", app);
+        assert!(
+            app.contains("@togglecollapse"),
+            "legacy event spelling works:
+{}",
+            app
+        );
+        assert!(
+            !app.contains(":ontogglecollapse"),
+            "not a plain prop:
+{}",
+            app
+        );
     }
 
     /// Plan 426 T2: setup statements land at <script setup> top level BEFORE
@@ -22832,7 +24762,8 @@ widget Icon(language: str) {
     /// the template and in on handlers.
     #[test]
     fn test_plan426_setup_preamble_position_and_bindings() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     setup {
         let greeting = "hello"
@@ -22849,13 +24780,17 @@ widget App {
         .Bump -> { .count = .count + 1 }
     }
 }
-"#);
+"#,
+        );
         let setup_pos = sfc.find("const greeting");
         let state_pos = sfc.find("const count = ref<number>(0)");
         assert!(setup_pos.is_some(), "setup statement emitted:\n{}", sfc);
         assert!(state_pos.is_some(), "state emitted:\n{}", sfc);
-        assert!(setup_pos.unwrap() < state_pos.unwrap(),
-            "setup statements BEFORE state/computed:\n{}", sfc);
+        assert!(
+            setup_pos.unwrap() < state_pos.unwrap(),
+            "setup statements BEFORE state/computed:\n{}",
+            sfc
+        );
         // Template binding visible (script-setup top-level const).
         assert!(sfc.contains("greeting"), "template sees binding:\n{}", sfc);
     }
@@ -22865,7 +24800,8 @@ widget App {
     /// (same mechanism as the composable kind's facade_ref_fields).
     #[test]
     fn test_plan426_setup_refs_annotation() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     setup {
         let i18n = useI18n()
@@ -22884,10 +24820,19 @@ widget App {
         .Pick -> { .chosen = i18n.locale }
     }
 }
-"#);
-        assert!(sfc.contains("const i18n = useI18n()"), "setup binding emits const:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("const i18n = useI18n()"),
+            "setup binding emits const:\n{}",
+            sfc
+        );
         assert!(!sfc.contains("let i18n"), "no let leakage:\n{}", sfc);
-        assert!(sfc.contains("i18n.locale.value"), "refs field gains .value:\n{}", sfc);
+        assert!(
+            sfc.contains("i18n.locale.value"),
+            "refs field gains .value:\n{}",
+            sfc
+        );
     }
 
     /// Plan 426 收口补强:setup 语句引用 model 变量/computed/prop 在发射
@@ -22895,7 +24840,8 @@ widget App {
     #[test]
     fn test_plan426_setup_rejects_state_reference() {
         let result = std::panic::catch_unwind(|| {
-            gen_sfc_from_widget_src(r#"
+            gen_sfc_from_widget_src(
+                r#"
 widget App {
     setup {
         let label = .count
@@ -22903,9 +24849,13 @@ widget App {
     model { var count int = 0 }
     view { col { text .count } }
 }
-"#)
+"#,
+            )
         });
-        assert!(result.is_err(), "setup referencing a model var must be a compile error");
+        assert!(
+            result.is_err(),
+            "setup referencing a model var must be a compile error"
+        );
     }
 
     /// Plan 426 T2 MVP: `await` inside a setup block is a hard parse error
@@ -22915,10 +24865,16 @@ widget App {
         let session = crate::session::CompilerSession::ui();
         let src = "widget App {\n    setup {\n        let x = load().await\n    }\n    view { col { text \"x\" } }\n}\n";
         let mut parser = crate::parser::Parser::from(src).with_session(session);
-        let err = parser.parse().err().expect("await in setup must fail to parse");
+        let err = parser
+            .parse()
+            .err()
+            .expect("await in setup must fail to parse");
         let msg = format!("{:?}", err);
-        assert!(msg.contains("await") || msg.contains("Suspense"),
-            "error mentions await/Suspense: {}", msg);
+        assert!(
+            msg.contains("await") || msg.contains("Suspense"),
+            "error mentions await/Suspense: {}",
+            msg
+        );
     }
 
     /// Plan 426 T2: a setup binding colliding with a model var / prop is a
@@ -22926,7 +24882,8 @@ widget App {
     #[test]
     fn test_plan426_setup_name_collision() {
         let result = std::panic::catch_unwind(|| {
-            gen_sfc_from_widget_src(r#"
+            gen_sfc_from_widget_src(
+                r#"
 widget App {
     setup {
         let count = 1
@@ -22934,7 +24891,8 @@ widget App {
     model { var count int = 0 }
     view { col { text .count } }
 }
-"#)
+"#,
+            )
         });
         assert!(result.is_err(), "collision with model var must error");
     }
@@ -22944,7 +24902,8 @@ widget App {
     /// (model 后跟裸元素)同样合法。
     #[test]
     fn test_plan425_widget_view_optional() {
-        let with_view = gen_sfc_from_widget_src(r#"
+        let with_view = gen_sfc_from_widget_src(
+            r#"
 widget Counter {
     model { var count int = 0 }
     view {
@@ -22953,15 +24912,18 @@ widget Counter {
         }
     }
 }
-"#);
-        let body_as_view = gen_sfc_from_widget_src(r#"
+"#,
+        );
+        let body_as_view = gen_sfc_from_widget_src(
+            r#"
 widget Counter {
     model { var count int = 0 }
     col {
         text .count
     }
 }
-"#);
+"#,
+        );
         assert_eq!(
             normalize_vue_output(&with_view),
             normalize_vue_output(&body_as_view),
@@ -22971,14 +24933,22 @@ widget Counter {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(
             "widget W {\n    model { var x int = 0 }\n    button { text \"go\" }\n}\n",
-        ).with_session(session);
+        )
+        .with_session(session);
         let ast = parser.parse().expect("mixed order must parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         assert!(decl.view.is_some(), "body-as-view wraps into a view block");
-        assert!(decl.model.is_some(), "model block still parsed before the body");
+        assert!(
+            decl.model.is_some(),
+            "model block still parsed before the body"
+        );
     }
 
     // ====================================================================
@@ -22991,7 +24961,8 @@ widget Counter {
     /// branch-first texts — the fallback v-for wrapper must hoist one.
     #[test]
     fn test_plan008_loop_wrapper_hoists_child_key() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Rows {
     msg Msg { Go(str) }
     model { var items Array<str> = [] }
@@ -23016,7 +24987,8 @@ widget Rows {
         .Go(k) -> { }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("v-for=\"e in"),
             "loop must emit v-for:
@@ -23058,11 +25030,16 @@ store S {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::StoreDecl(d) => Some(d.clone()),
-            _ => None,
-        }).expect("store decl");
-        let mut store = crate::aura::extract::extract_store_from_decl(&decl).expect("extract store");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::StoreDecl(d) => Some(d.clone()),
+                _ => None,
+            })
+            .expect("store decl");
+        let mut store =
+            crate::aura::extract::extract_store_from_decl(&decl).expect("extract store");
         // 文件级 use back.api 由真实管线注入 api_imports；本测试直填。
         store.api_imports = vec!["tree".to_string()];
         let out = crate::ui_gen::vue::VueGenerator::generate_store_composable(&store);
@@ -23085,7 +25062,8 @@ store S {
     /// data-editor-key 既有契约。
     #[test]
     fn test_plan677_code_editor_emits_dynamic_editor_key() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget Ed {
     msg M { }
     model {
@@ -23105,14 +25083,16 @@ widget Ed {
     }
     on { .X -> { } }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(":editor-key="),
             "dynamic key must emit :editor-key binding:
 {}",
             sfc
         );
-        let sfc2 = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc2 = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget Ed2 {
     msg M { }
     model { var doc str = "" }
@@ -23125,7 +25105,8 @@ widget Ed2 {
     }
     on { .X -> { } }
 }
-"#);
+"#,
+        );
         assert!(
             sfc2.contains("data-editor-key=\"tab-main\""),
             "literal key keeps data-editor-key contract:
@@ -23139,7 +25120,8 @@ widget Ed2 {
         // PLAN-677 T-01: 单 Conditional 体循环的 fallback 包装必须透明
         // (<template v-for>)——div 包装盒斩断 flex 高度链(auto-edit
         // 编辑器循环实测塌缩)。多语句体维持 div 包装(块级布局语义)。
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Ed {
     msg M { }
     model {
@@ -23157,7 +25139,8 @@ widget Ed {
     }
     on { .X -> { } }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("<template v-for=\"(t, i) in"),
             "single-if loop must emit transparent <template v-for>:\n{}",
@@ -23170,7 +25153,8 @@ widget Ed {
         );
 
         // 负例:多语句体(two ifs)维持 div 包装——Plan 008 既有语义。
-        let sfc2 = gen_sfc_from_widget_src(r#"
+        let sfc2 = gen_sfc_from_widget_src(
+            r#"
 widget Rows {
     msg Msg { Go(str) }
     model { var items Array<str> = [] }
@@ -23190,7 +25174,8 @@ widget Rows {
         .Go(k) -> { }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc2.contains("<div v-for=\"e in"),
             "multi-statement body must keep the div wrapper:\n{}",
@@ -23205,29 +25190,53 @@ widget Rows {
         // Rust paths. On Vue the v-model fold already realizes the sync, so
         // the mint must leave NO trace: no @input attr, no stub function,
         // no defineEmits entry, no trailing emit.
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var value str = "" }
     view { col { input { placeholder: "search", value: .value } } }
 }
-"#);
-        assert!(sfc.contains("v-model=\"value\""), "bare value folds to v-model:\n{}", sfc);
-        assert!(!sfc.contains("__bind_"), "auto-sync mint must be invisible on Vue:\n{}", sfc);
-        assert!(!sfc.contains("@input"), "no redundant input listener:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("v-model=\"value\""),
+            "bare value folds to v-model:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("__bind_"),
+            "auto-sync mint must be invisible on Vue:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("@input"),
+            "no redundant input listener:\n{}",
+            sfc
+        );
         assert!(!sfc.contains("defineEmits"), "nothing to emit:\n{}", sfc);
         assert!(!sfc.contains("TODO"), "no empty stub fn:\n{}", sfc);
 
         // Explicit oninput keeps its handler attr (and still v-model folds).
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     msg { Changed }
     model { var value str = "" }
     view { col { input { value: .value, oninput: .Changed } } }
     on { .Changed -> { .value = .value } }
 }
-"#);
-        assert!(sfc.contains("v-model=\"value\""), "explicit path still folds:\n{}", sfc);
-        assert!(sfc.contains("@input=\"Changed\""), "explicit handler attr kept:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("v-model=\"value\""),
+            "explicit path still folds:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@input=\"Changed\""),
+            "explicit handler attr kept:\n{}",
+            sfc
+        );
     }
 
     #[test]
@@ -23239,7 +25248,8 @@ widget App {
         // The real app path (`auto build` → shadcn generator) owns the grid
         // arm; the plain generator passes cols through as a dead attr
         // (pre-existing, see §I 边界).
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget App {
     model {
         var cols int = 3
@@ -23252,7 +25262,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("grid-cols-7"),
             "literal cols keep the static class:\n{}",
@@ -23283,7 +25294,8 @@ widget App {
         // parts filtered). A manual concat of literals/conditionals is
         // class-safe by structure → :class. A concat carrying refs keeps the
         // Plan 043 H5 inline-CSS reading → :style.
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var dark bool = true, cls str = "extra", red str = "34" }
     view {
@@ -23296,7 +25308,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         // Array form: joined :class with filter(Boolean).
         assert!(
             sfc.contains(".filter(Boolean).join(' ')"),
@@ -23340,7 +25353,7 @@ widget App {
         );
     }
 
-        fn gen_sfc_from_widget_src(src: &str) -> String {
+    fn gen_sfc_from_widget_src(src: &str) -> String {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("widget source must parse");
@@ -23382,7 +25395,8 @@ widget App {
     /// 纯 lucide 名照旧推导组件不受影响。
     #[test]
     fn plan018_iconfile_dual_theme_bitmap() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget IconProbe {
     view {
         col {
@@ -23391,9 +25405,16 @@ widget IconProbe {
         }
     }
 }
-"#);
-        assert!(sfc.contains("src=\"/icons/light/system-monitor.png\""), "浅表 img: {sfc}");
-        assert!(sfc.contains("src=\"/icons/dark/system-monitor.png\""), "深表 img: {sfc}");
+"#,
+        );
+        assert!(
+            sfc.contains("src=\"/icons/light/system-monitor.png\""),
+            "浅表 img: {sfc}"
+        );
+        assert!(
+            sfc.contains("src=\"/icons/dark/system-monitor.png\""),
+            "深表 img: {sfc}"
+        );
         assert!(
             sfc.contains("app-icon-light") && sfc.contains("app-icon-dark"),
             "主题切换类: {sfc}"
@@ -23430,28 +25451,44 @@ widget SelectMarkers {
 }
 "#,
         );
-        assert!(sfc.contains("data-auto-tag=\"col\""), "col tag marker:
-{sfc}");
-        assert!(sfc.contains("data-auto-id=\"aura_"), "debug_id marker:
-{sfc}");
-        assert!(sfc.contains("data-auto-src=\"app\""), "source stem marker:
-{sfc}");
+        assert!(
+            sfc.contains("data-auto-tag=\"col\""),
+            "col tag marker:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("data-auto-id=\"aura_"),
+            "debug_id marker:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("data-auto-src=\"app\""),
+            "source stem marker:
+{sfc}"
+        );
         // span 形态 off:len（数字:数字）
         let span_vals: Vec<String> = sfc
             .split("data-auto-span=\"")
             .skip(1)
             .filter_map(|rest| rest.split('"').next().map(str::to_string))
             .collect();
-        assert!(!span_vals.is_empty(), "span marker 存在:
-{sfc}");
+        assert!(
+            !span_vals.is_empty(),
+            "span marker 存在:
+{sfc}"
+        );
         for v in &span_vals {
             let (off, len) = v.split_once(':').unwrap_or_else(|| {
-                panic!("span 必须为 off:len 形态, got {v}:
-{{sfc}}")
+                panic!(
+                    "span 必须为 off:len 形态, got {v}:
+{{sfc}}"
+                )
             });
             assert!(
-                !off.is_empty() && off.bytes().all(|b| b.is_ascii_digit())
-                    && !len.is_empty() && len.bytes().all(|b| b.is_ascii_digit()),
+                !off.is_empty()
+                    && off.bytes().all(|b| b.is_ascii_digit())
+                    && !len.is_empty()
+                    && len.bytes().all(|b| b.is_ascii_digit()),
                 "span off:len 必须全数字, got {v}"
             );
         }
@@ -23488,7 +25525,8 @@ widget SelectMarkers {
     /// nav(search:) 内联搜索行 + 契约 import。
     #[test]
     fn test_nav_family_shadcn_sfc() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget NavDemo {
     model {
         var cur str = "chats"
@@ -23507,31 +25545,68 @@ widget NavDemo {
         .ShowPlans -> { }
     }
 }
-"##);
-        assert!(sfc.contains("<NavItem"), "NavItem 组件发射:
-{sfc}");
-        assert!(sfc.contains("<NavGroup"), "NavGroup 组件发射:
-{sfc}");
-        assert!(sfc.contains("from '@/components/ui/nav'"), "契约 import:
-{sfc}");
-        assert!(sfc.contains("NavItem"), "NavItem named import:
-{sfc}");
-        assert!(sfc.contains(":icon-comp=\"MessageSquare\""), "lucide 图标组件:
-{sfc}");
-        assert!(sfc.contains("to=\"/chats\""), "路由 to:
-{sfc}");
-        assert!(sfc.contains(":active="), "active 绑定:
-{sfc}");
-        assert!(sfc.contains("nav-search"), "搜索行:
-{sfc}");
-        assert!(sfc.contains(":value=\"q\""), "搜索 :value 绑定:
-{sfc}");
-        assert!(sfc.contains("@input="), "onsearch 处理器:
-{sfc}");
-        assert!(sfc.contains(":collapsible=\"true\""), "NavGroup 可折叠:
-{sfc}");
-        assert!(sfc.contains("MessageSquare"), "lucide import 收集:
-{sfc}");
+"##,
+        );
+        assert!(
+            sfc.contains("<NavItem"),
+            "NavItem 组件发射:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("<NavGroup"),
+            "NavGroup 组件发射:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("from '@/components/ui/nav'"),
+            "契约 import:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("NavItem"),
+            "NavItem named import:
+{sfc}"
+        );
+        assert!(
+            sfc.contains(":icon-comp=\"MessageSquare\""),
+            "lucide 图标组件:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("to=\"/chats\""),
+            "路由 to:
+{sfc}"
+        );
+        assert!(
+            sfc.contains(":active="),
+            "active 绑定:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("nav-search"),
+            "搜索行:
+{sfc}"
+        );
+        assert!(
+            sfc.contains(":value=\"q\""),
+            "搜索 :value 绑定:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("@input="),
+            "onsearch 处理器:
+{sfc}"
+        );
+        assert!(
+            sfc.contains(":collapsible=\"true\""),
+            "NavGroup 可折叠:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("MessageSquare"),
+            "lucide import 收集:
+{sfc}"
+        );
     }
 
     /// Plan 563 T6: canvas 元素生成 —— `<canvas ref>` + pen 三包装
@@ -23539,7 +25614,8 @@ widget NavDemo {
     /// deep + onMounted)+ 坐标换算(coords 逻辑幅面)。
     #[test]
     fn plan563_canvas_element_sfc() {
-        let sfc = gen_sfc_from_widget_src(r##"
+        let sfc = gen_sfc_from_widget_src(
+            r##"
 widget Sketch {
     msg { PenStart(float, float), PenMove(float, float), PenEnd(float, float) }
     model {
@@ -23557,13 +25633,32 @@ widget Sketch {
         }
     }
 }
-"##);
-        assert!(sfc.contains("<canvas ref=\"__canvas_ref_0\""), "<canvas ref> 模板:\n{sfc}");
-        assert!(sfc.contains("@mousedown=\"__canvasDown_0\""), "mousedown 内联起笔:\n{sfc}");
-        assert!(sfc.contains("function __canvasRedraw_0()"), "redraw 函数:\n{sfc}");
-        assert!(sfc.contains("strokes_pts.value"), "redraw 读 pts 双表:\n{sfc}");
-        assert!(sfc.contains("/ r.width * 400"), "coords 逻辑换算(400x300):\n{sfc}");
-        assert!(sfc.contains("ctx.lineCap = 'round'"), "round 线帽规约:\n{sfc}");
+"##,
+        );
+        assert!(
+            sfc.contains("<canvas ref=\"__canvas_ref_0\""),
+            "<canvas ref> 模板:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("@mousedown=\"__canvasDown_0\""),
+            "mousedown 内联起笔:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("function __canvasRedraw_0()"),
+            "redraw 函数:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("strokes_pts.value"),
+            "redraw 读 pts 双表:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("/ r.width * 400"),
+            "coords 逻辑换算(400x300):\n{sfc}"
+        );
+        assert!(
+            sfc.contains("ctx.lineCap = 'round'"),
+            "round 线帽规约:\n{sfc}"
+        );
         assert!(sfc.contains("__canvasIsOut_0"), "出界即收笔检查:\n{sfc}");
         assert!(sfc.contains("e.buttons & 1"), "buttons&1 按下门控:\n{sfc}");
         assert!(
@@ -23578,8 +25673,14 @@ widget Sketch {
             sfc.contains("watch([strokes_pts, strokes_meta],"),
             "watch deep 双表(T1b 先例):\n{sfc}"
         );
-        assert!(sfc.contains("PenStart(x, y)"), "penstart 坐标实参调用:\n{sfc}");
-        assert!(sfc.contains("ref<HTMLCanvasElement | null>"), "canvas ref 真类型:\n{sfc}");
+        assert!(
+            sfc.contains("PenStart(x, y)"),
+            "penstart 坐标实参调用:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("ref<HTMLCanvasElement | null>"),
+            "canvas ref 真类型:\n{sfc}"
+        );
     }
 
     /// PLAN-617 T-07（AC-05..AC-09、AC-12 的生成器侧）：声明了受控下行 prop 的
@@ -23588,7 +25689,8 @@ widget Sketch {
     /// `position` 秒且「目标变化才 seek」）。
     #[test]
     fn test_controlled_video_contract_sfc() {
-        let sfc = gen_sfc_from_widget_src(r##"
+        let sfc = gen_sfc_from_widget_src(
+            r##"
 widget Player {
     msg { OnTime(float), OnDuration(float), OnPlayState(bool), OnEnded, OnMediaError(str), TogglePlay }
     model {
@@ -23625,16 +25727,38 @@ widget Player {
         }
     }
 }
-"##);
+"##,
+        );
         // 模板：ref + 透传属性在位，受控下行 prop **不得**作为元素属性出现
-        assert!(sfc.contains("<video ref=\"__video_ref_0\""), "受控 video ref:\n{sfc}");
-        assert!(sfc.contains(":src=\"current_url\""), "src 仍为透传绑定:\n{sfc}");
-        assert!(sfc.contains(":controls=\"false\""), "controls 仍为透传绑定:\n{sfc}");
-        assert!(!sfc.contains(":paused="), "受控 prop 不得打到只读 DOM 属性:\n{sfc}");
-        assert!(!sfc.contains(":volume="), "受控 prop 不得打到单位不同的属性:\n{sfc}");
+        assert!(
+            sfc.contains("<video ref=\"__video_ref_0\""),
+            "受控 video ref:\n{sfc}"
+        );
+        assert!(
+            sfc.contains(":src=\"current_url\""),
+            "src 仍为透传绑定:\n{sfc}"
+        );
+        assert!(
+            sfc.contains(":controls=\"false\""),
+            "controls 仍为透传绑定:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains(":paused="),
+            "受控 prop 不得打到只读 DOM 属性:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains(":volume="),
+            "受控 prop 不得打到单位不同的属性:\n{sfc}"
+        );
         // 上行：契约事件换成生成器发射的原生监听包装
-        assert!(sfc.contains("@timeupdate=\"__videoTime_0\""), "timeupdate 包装:\n{sfc}");
-        assert!(sfc.contains("@loadedmetadata=\"__videoMeta_0\""), "loadedmetadata 包装:\n{sfc}");
+        assert!(
+            sfc.contains("@timeupdate=\"__videoTime_0\""),
+            "timeupdate 包装:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("@loadedmetadata=\"__videoMeta_0\""),
+            "loadedmetadata 包装:\n{sfc}"
+        );
         assert!(
             sfc.contains("function __videoSync_0()"),
             "元素侧重入点（换源后元素自行 paused=true，必须有重推通道）:\n{sfc}"
@@ -23643,18 +25767,39 @@ widget Player {
             sfc.contains("__videoSync_0()") && sfc.contains("__videoLast_0 = ["),
             "loadedmetadata 里重推最近一次下行值:\n{sfc}"
         );
-        assert!(sfc.contains("@play=\"__videoState_0\""), "play 包装:\n{sfc}");
-        assert!(sfc.contains("@pause=\"__videoState_0\""), "pause 包装:\n{sfc}");
-        assert!(sfc.contains("@ended=\"__videoEnded_0\""), "ended 包装:\n{sfc}");
-        assert!(sfc.contains("@error=\"__videoError_0\""), "error 包装:\n{sfc}");
-        // 契约键之外的事件保留通用映射
-        assert!(sfc.contains("@click=\"TogglePlay\""), "onclick 走通用映射:\n{sfc}");
-        // script：ref 真类型 + watchEffect 下行 + 单位换算 + seek 目标语义
-        assert!(sfc.contains("ref<HTMLVideoElement | null>"), "video ref 真类型:\n{sfc}");
-        assert!(sfc.contains("watchEffect(() =>"), "下行 watchEffect:\n{sfc}");
         assert!(
-            sfc.contains("onMounted(() => {") && sfc.find("onMounted(() => {").unwrap()
-                < sfc.find("watchEffect(() =>").unwrap(),
+            sfc.contains("@play=\"__videoState_0\""),
+            "play 包装:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("@pause=\"__videoState_0\""),
+            "pause 包装:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("@ended=\"__videoEnded_0\""),
+            "ended 包装:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("@error=\"__videoError_0\""),
+            "error 包装:\n{sfc}"
+        );
+        // 契约键之外的事件保留通用映射
+        assert!(
+            sfc.contains("@click=\"TogglePlay\""),
+            "onclick 走通用映射:\n{sfc}"
+        );
+        // script：ref 真类型 + watchEffect 下行 + 单位换算 + seek 目标语义
+        assert!(
+            sfc.contains("ref<HTMLVideoElement | null>"),
+            "video ref 真类型:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("watchEffect(() =>"),
+            "下行 watchEffect:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("onMounted(() => {")
+                && sfc.find("onMounted(() => {").unwrap() < sfc.find("watchEffect(() =>").unwrap(),
             "watchEffect 必须包在 onMounted 内（避开 store facade TDZ）:\n{sfc}"
         );
         assert!(
@@ -23662,15 +25807,39 @@ widget Player {
             "下行实参取脚本域值:\n{sfc}"
         );
         assert!(sfc.contains("/ 100"), "volume 0..100 → 0..1:\n{sfc}");
-        assert!(sfc.contains("__videoSeek_0"), "position 走「目标变化才 seek」latch:\n{sfc}");
-        assert!(sfc.contains("el.currentTime = position"), "seek 落到元素:\n{sfc}");
-        assert!(sfc.contains("OnTime(el.currentTime)"), "上行取真实 currentTime:\n{sfc}");
-        assert!(sfc.contains("OnDuration(el.duration)"), "上行取真实 duration:\n{sfc}");
-        assert!(sfc.contains("OnPlayState(!el.paused)"), "playstate 由元素合成:\n{sfc}");
-        assert!(sfc.contains("OnMediaError(msg)"), "mediaerror 带真实文案:\n{sfc}");
+        assert!(
+            sfc.contains("__videoSeek_0"),
+            "position 走「目标变化才 seek」latch:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("el.currentTime = position"),
+            "seek 落到元素:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("OnTime(el.currentTime)"),
+            "上行取真实 currentTime:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("OnDuration(el.duration)"),
+            "上行取真实 duration:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("OnPlayState(!el.paused)"),
+            "playstate 由元素合成:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("OnMediaError(msg)"),
+            "mediaerror 带真实文案:\n{sfc}"
+        );
         // 未声明 onaudiotrack → 音轨探针一行都不发射（AC-16b 的兼容面）
-        assert!(!sfc.contains("__videoAudio_0"), "未声明 onaudiotrack 不得有探针包装:\n{sfc}");
-        assert!(!sfc.contains("__videoAudioDone_0"), "未声明 onaudiotrack 不得有探针状态:\n{sfc}");
+        assert!(
+            !sfc.contains("__videoAudio_0"),
+            "未声明 onaudiotrack 不得有探针包装:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("__videoAudioDone_0"),
+            "未声明 onaudiotrack 不得有探针状态:\n{sfc}"
+        );
     }
 
     /// PLAN-617 T-11 / AC-16(b)：声明 `onaudiotrack` 的受控 video → 音轨可用性
@@ -23678,7 +25847,8 @@ widget Player {
     /// 不调用 handler；换片复位一次性标志）。
     #[test]
     fn test_controlled_video_audio_probe_sfc() {
-        let sfc = gen_sfc_from_widget_src(r##"
+        let sfc = gen_sfc_from_widget_src(
+            r##"
 widget Player {
     msg { OnAudioTrack(bool), TogglePlay }
     model {
@@ -23699,7 +25869,8 @@ widget Player {
         }
     }
 }
-"##);
+"##,
+        );
         assert!(
             sfc.contains("@timeupdate=\"__videoAudio_0\""),
             "探针挂到 timeupdate 节拍:\n{sfc}"
@@ -23731,7 +25902,8 @@ widget Player {
     /// 模板只挂 `__videoTime_`，探针由其链尾调用。
     #[test]
     fn test_controlled_video_audio_probe_chains_with_time() {
-        let sfc = gen_sfc_from_widget_src(r##"
+        let sfc = gen_sfc_from_widget_src(
+            r##"
 widget Player {
     msg { OnTime(float), OnAudioTrack(bool) }
     model {
@@ -23753,7 +25925,8 @@ widget Player {
         }
     }
 }
-"##);
+"##,
+        );
         assert_eq!(
             sfc.matches("@timeupdate=").count(),
             1,
@@ -23783,7 +25956,8 @@ widget Player {
     /// 断言防回归。
     #[test]
     fn test_uncontrolled_video_is_byte_identical() {
-        let sfc = gen_sfc_from_widget_src(r##"
+        let sfc = gen_sfc_from_widget_src(
+            r##"
 widget Bare {
     model {
         var current_url str = "https://example.invalid/a.mp4"
@@ -23799,21 +25973,29 @@ widget Bare {
         }
     }
 }
-"##);
+"##,
+        );
         assert!(
             sfc.contains("<video class=\"w-full\" :controls=\"true\" :src=\"current_url\" />"),
             "裸 video 模板:\n{sfc}"
         );
         assert!(!sfc.contains("__video_ref_"), "不得凭空多出 ref:\n{sfc}");
-        assert!(!sfc.contains("__videoApply_"), "不得凭空多出下行控制器:\n{sfc}");
-        assert!(!sfc.contains("watchEffect"), "不得凭空多出 watchEffect:\n{sfc}");
+        assert!(
+            !sfc.contains("__videoApply_"),
+            "不得凭空多出下行控制器:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("watchEffect"),
+            "不得凭空多出 watchEffect:\n{sfc}"
+        );
     }
 
     /// Plan 482: 非 shadcn 模式（os-config 形态）—— 内联契约标记 + active
     /// 三元 + emoji icon + desc 行 + 折叠组绑定 open/ontoggle。
     #[test]
     fn test_nav_family_inline_sfc() {
-        let sfc = gen_sfc_from_widget_src(r##"
+        let sfc = gen_sfc_from_widget_src(
+            r##"
 widget NavPlain {
     model {
         var active_id str = ""
@@ -23833,28 +26015,61 @@ widget NavPlain {
         .Select(id) -> { }
     }
 }
-"##);
+"##,
+        );
         assert!(!sfc.contains("<NavItem"), "非 shadcn 不用脚手架组件");
-        assert!(sfc.contains("nav-item flex w-full"), "契约基类内联:
-{sfc}");
-        assert!(sfc.contains(":class="), "active 三元:
-{sfc}");
-        assert!(sfc.contains("bg-primary/10"), "active 块:
-{sfc}");
-        assert!(sfc.contains("hover:bg-accent"), "hover 块:
-{sfc}");
-        assert!(sfc.contains("@click=\"Select('net')\"") || sfc.contains("@click=\"Select(\"net\")\"") || sfc.contains("@click=\"Select("), "click 处理器:
-{sfc}");
-        assert!(sfc.contains("🔌"), "emoji icon:
-{sfc}");
-        assert!(sfc.contains("text-xs text-muted-foreground"), "desc 次行:
-{sfc}");
-        assert!(sfc.contains("v-show="), "折叠组 v-show:
-{sfc}");
-        assert!(sfc.contains("▾"), "折叠 chevron 文本字形:
-{sfc}");
-        assert!(sfc.contains("nav-search"), "搜索行:
-{sfc}");
+        assert!(
+            sfc.contains("nav-item flex w-full"),
+            "契约基类内联:
+{sfc}"
+        );
+        assert!(
+            sfc.contains(":class="),
+            "active 三元:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("bg-primary/10"),
+            "active 块:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("hover:bg-accent"),
+            "hover 块:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("@click=\"Select('net')\"")
+                || sfc.contains("@click=\"Select(\"net\")\"")
+                || sfc.contains("@click=\"Select("),
+            "click 处理器:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("🔌"),
+            "emoji icon:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("text-xs text-muted-foreground"),
+            "desc 次行:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("v-show="),
+            "折叠组 v-show:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("▾"),
+            "折叠 chevron 文本字形:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("nav-search"),
+            "搜索行:
+{sfc}"
+        );
     }
 
     // ====================================================================
@@ -23868,7 +26083,8 @@ widget NavPlain {
     /// the verbatim event name.
     #[test]
     fn test_vmodel_contract_child_quoted_emit() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget TextField(modelValue: str) {
     msg Msg { "update:modelValue"(str) }
     view {
@@ -23880,7 +26096,8 @@ widget TextField(modelValue: str) {
         ."update:modelValue"(v) -> { }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("modelValue: string"),
             "modelValue prop declared:\n{}",
@@ -23925,7 +26142,8 @@ widget TextField(modelValue: str) {
     /// `on "update:modelValue":` (Plan-367 quoted event names).
     #[test]
     fn test_vmodel_contract_parent_manual_wiring() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     msg Msg { NameChanged(str) }
     model { var name str = "" }
@@ -23940,7 +26158,8 @@ widget App {
         .NameChanged(v) -> { .name = v }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(":modelValue=\"name\""),
             "modelValue prop down:\n{}",
@@ -23960,7 +26179,8 @@ widget App {
     /// the jade editor_tab migration off the prop-callback channel.
     #[test]
     fn test_quoted_component_event_multi_arg_handler() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget EditorTab {
     msg Msg { OpenWikiLink }
     model { var tabsStore list = [] }
@@ -23978,7 +26198,8 @@ widget EditorTab {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("@open-wiki-link=\"OpenWikiLink\""),
             "quoted event wires a bare handler ref (all emit args flow):\n{}",
@@ -23999,7 +26220,8 @@ widget EditorTab {
     /// <component :is="(item.icon) as any" :size="16" class="..." />.
     #[test]
     fn test_dyn_component_in_for_loop() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget SlashMenu {
     model { var items list = [] }
     view {
@@ -24010,7 +26232,8 @@ widget SlashMenu {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#":is="(item.icon) as any""#),
             "dyn :is binding:\n{}",
@@ -24037,7 +26260,8 @@ widget SlashMenu {
     /// dyn without parentheses: is as a plain prop; model-field source.
     #[test]
     fn test_dyn_component_is_prop_model_field() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget IconBox {
     model { var current_icon str = "x" }
     view {
@@ -24046,7 +26270,8 @@ widget IconBox {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"<component :is="(current_icon) as any" />"#),
             "is prop form:\n{}",
@@ -24058,7 +26283,8 @@ widget IconBox {
     /// on-handler body conventions (.field = state access via .value).
     #[test]
     fn test_watch_computed_source() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget SlashMenu {
     model {
         var query str = ""
@@ -24072,7 +26298,8 @@ widget SlashMenu {
         .filtered -> { .selected_index = 0 }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("import { ref, computed, watch } from 'vue'"),
             "watch imported (defineModel is a macro, never imported — plan 015):\n{}",
@@ -24094,7 +26321,8 @@ widget SlashMenu {
     /// multiple sources become an array.
     #[test]
     fn test_watch_prop_source_and_modifiers() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Scrollbar(ratio: int, viewport_h: int) {
     model { var thumb_h int = 0 }
     view { col { text "hi" } }
@@ -24103,7 +26331,8 @@ widget Scrollbar(ratio: int, viewport_h: int) {
         .ratio.deep -> { .thumb_h = 0 }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("watch([() => props.ratio, () => props.viewport_h], () => {"),
             "multi-source prop getters:\n{}",
@@ -24114,11 +26343,7 @@ widget Scrollbar(ratio: int, viewport_h: int) {
             "immediate option:\n{}",
             sfc
         );
-        assert!(
-            sfc.contains("{ deep: true }"),
-            "deep option:\n{}",
-            sfc
-        );
+        assert!(sfc.contains("{ deep: true }"), "deep option:\n{}", sfc);
         assert!(
             sfc.contains("thumb_h.value = props.viewport_h"),
             "prop read in body:\n{}",
@@ -24134,7 +26359,8 @@ widget Scrollbar(ratio: int, viewport_h: int) {
     /// defineExpose({ fit }) in <script setup>.
     #[test]
     fn test_expose_single_imported_fn() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget GraphView {
     use {
         fn: fitGraph from "src/front/utils/graph.ts"
@@ -24145,7 +26371,8 @@ widget GraphView {
         .fitGraph
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("defineExpose({ fitGraph })"),
             "defineExpose with imported fn:\n{}",
@@ -24157,7 +26384,8 @@ widget GraphView {
     /// handler is emitted even though the template never references it.
     #[test]
     fn test_expose_multiple_members_and_handler() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget GraphView {
     msg Msg { Fit, Relayout }
     model { var zoom int = 1 }
@@ -24172,7 +26400,8 @@ widget GraphView {
         .doubled
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("defineExpose({ Fit, Relayout, doubled })"),
             "defineExpose with handler + computed names:\n{}",
@@ -24195,7 +26424,8 @@ widget GraphView {
     /// objects (Vue's expose proxy unwraps them on parent access).
     #[test]
     fn test_expose_state_and_template_ref() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Editor {
     model { var content str = "" }
     view {
@@ -24208,7 +26438,8 @@ widget Editor {
         .content, .rootEl
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("const content = ref<string>('')"),
             "state ref exists:\n{}",
@@ -24229,12 +26460,14 @@ widget Editor {
     /// A widget without an expose block emits no defineExpose.
     #[test]
     fn test_no_expose_block_unchanged() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Plain {
     model { var count int = 0 }
     view { col { text "hi" } }
 }
-"#);
+"#,
+        );
         assert!(
             !sfc.contains("defineExpose"),
             "no defineExpose without expose block:\n{}",
@@ -24247,7 +26480,8 @@ widget Plain {
     /// call the child's exposed methods via `.canvasRef.method()`.
     #[test]
     fn test_component_template_ref() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     msg Msg { DoFit }
     model { var n int = 0 }
@@ -24261,7 +26495,8 @@ widget App {
         .DoFit -> { .canvasRef.Fit() }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"<GraphView ref="canvasRef""#),
             "static ref attr on child component:\n{}",
@@ -24282,7 +26517,8 @@ widget App {
     /// Element-level generic events: keyboard, mouse, wheel, contextmenu.
     #[test]
     fn test_generic_dom_events() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Menu {
     msg Msg { Key, Down, Move, Up, Wheel, Ctx }
     model { var x int = 0 }
@@ -24305,13 +26541,34 @@ widget Menu {
         .Ctx -> { .x = 6 }
     }
 }
-"#);
-        assert!(sfc.contains("@keydown=\"Key\""), "@keydown emitted:\n{}", sfc);
-        assert!(sfc.contains("@mousedown=\"Down\""), "@mousedown emitted:\n{}", sfc);
-        assert!(sfc.contains("@mousemove=\"Move\""), "@mousemove emitted:\n{}", sfc);
-        assert!(sfc.contains("@mouseup=\"Up\""), "@mouseup emitted:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("@keydown=\"Key\""),
+            "@keydown emitted:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@mousedown=\"Down\""),
+            "@mousedown emitted:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@mousemove=\"Move\""),
+            "@mousemove emitted:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@mouseup=\"Up\""),
+            "@mouseup emitted:\n{}",
+            sfc
+        );
         assert!(sfc.contains("@wheel=\"Wheel\""), "@wheel emitted:\n{}", sfc);
-        assert!(sfc.contains("@contextmenu=\"Ctx\""), "@contextmenu emitted:\n{}", sfc);
+        assert!(
+            sfc.contains("@contextmenu=\"Ctx\""),
+            "@contextmenu emitted:\n{}",
+            sfc
+        );
     }
 
     /// Plan 499 M2: mouse-area onmousemove + coords → 内联箭头换算逻辑坐标
@@ -24319,7 +26576,8 @@ widget Menu {
     /// 缺省 coords → raw px 形态。
     #[test]
     fn test_mouse_area_onmousemove_logical_coords() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Chart {
     msg Msg { PointerMove, RawMove }
     model { var x int = 0 }
@@ -24334,7 +26592,8 @@ widget Chart {
         .RawMove -> { .x = 2 }
     }
 }
-"#);
+"#,
+        );
         // PLAN-043 T9: 箭头改 currentTarget 矩形相对坐标（e.offsetX/Y 相对
         // 事件 target——mouse-area 带子元素时拖拽期退化为子元素局部坐标）。
         assert!(
@@ -24406,7 +26665,8 @@ widget App {
     /// 打字（镜像 vm Captured 语义）。
     #[test]
     fn test_bind_block_keydown_layer() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget L {
     msg Msg { MoveUp, MoveDown, Pick, Dismiss, Open }
     model { var n int = 0 }
@@ -24426,7 +26686,8 @@ widget L {
         .Open -> { .n = 5 }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("'ArrowDown': MoveDown"),
             "named key entry:\n{}",
@@ -24526,11 +26787,7 @@ widget L {
             "checkbox item title present:\n{}",
             sfc
         );
-        assert!(
-            sfc.contains("全选"),
-            "plain item title present:\n{}",
-            sfc
-        );
+        assert!(sfc.contains("全选"), "plain item title present:\n{}", sfc);
         assert!(
             sfc.contains("ActConsole") && sfc.contains("ActSelectAll"),
             "onclick handlers wired:\n{}",
@@ -24746,7 +27003,8 @@ widget L {
             sfc
         );
         assert!(
-            sfc.contains("<MenubarSub>") && sfc.contains("<MenubarSubTrigger>更多</MenubarSubTrigger>")
+            sfc.contains("<MenubarSub>")
+                && sfc.contains("<MenubarSubTrigger>更多</MenubarSubTrigger>")
                 && sfc.contains("<MenubarSubContent>"),
             "sub triad nests:
 {}",
@@ -24821,7 +27079,8 @@ widget L {
             sfc
         );
         assert!(
-            sfc.contains("@click=\"ActNew\" title=\"新建\"") || sfc.contains("title=\"新建\" @click=\"ActNew\""),
+            sfc.contains("@click=\"ActNew\" title=\"新建\"")
+                || sfc.contains("title=\"新建\" @click=\"ActNew\""),
             "icon button with title tooltip:\n{}",
             sfc
         );
@@ -24846,7 +27105,8 @@ widget L {
     /// 等价——AST 里同为规范条件串。
     #[test]
     fn test_actions_condition_bare_expression_spelling() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget App {
     msg Msg { ActSave, ActUndo }
     model { var n int = 0 }
@@ -24864,7 +27124,8 @@ widget App {
         .ActUndo -> { .n = 0 }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(":disabled=\"!(n > 0)\""),
             "bare enabled_if compiles to the same condition:\n{}",
@@ -24880,14 +27141,16 @@ widget App {
     /// 无 actions 块时占位标签不合成（保持既有空行为），也不发射 keymap。
     #[test]
     fn test_actions_placeholder_without_block_untouched() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget App {
     msg Msg { Go }
     model { var n int = 0 }
     view { col { menubar {} } }
     on { .Go -> { .n = 1 } }
 }
-"#);
+"#,
+        );
         assert!(
             !sfc.contains("__autoActionsKeymap"),
             "no keymap without actions:\n{}",
@@ -24903,7 +27166,8 @@ widget App {
     /// Event modifiers: key modifiers (up/escape), prevent, stop.
     #[test]
     fn test_event_modifiers() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Menu {
     msg Msg { MoveUp, Close, Ctx, Tap }
     model { var x int = 0 }
@@ -24922,15 +27186,28 @@ widget Menu {
         .Tap -> { .x = 4 }
     }
 }
-"#);
-        assert!(sfc.contains("@keydown.up=\"MoveUp\""), "key modifier up:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("@keydown.up=\"MoveUp\""),
+            "key modifier up:\n{}",
+            sfc
+        );
         assert!(
             sfc.contains("@keydown.esc.prevent=\"Close\""),
             "escape normalizes to esc, prevent appended:\n{}",
             sfc
         );
-        assert!(sfc.contains("@contextmenu.prevent=\"Ctx\""), "prevent modifier:\n{}", sfc);
-        assert!(sfc.contains("@click.stop=\"Tap\""), "stop modifier:\n{}", sfc);
+        assert!(
+            sfc.contains("@contextmenu.prevent=\"Ctx\""),
+            "prevent modifier:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@click.stop=\"Tap\""),
+            "stop modifier:\n{}",
+            sfc
+        );
     }
 
     /// Regression lock (plan 402 follow-up): modifier-carrying event keys must
@@ -24939,7 +27216,8 @@ widget Menu {
     /// (`onkeydown.enter/down/up` → a single `@keydown`).
     #[test]
     fn test_event_modifiers_same_base_no_overwrite() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Nav {
     msg Msg { X, A, B, C }
     model { var n int = 0 }
@@ -24958,8 +27236,13 @@ widget Nav {
         .C -> { .n = 4 }
     }
 }
-"#);
-        assert!(sfc.contains("@click.self=\"X\""), "self modifier kept:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("@click.self=\"X\""),
+            "self modifier kept:\n{}",
+            sfc
+        );
         assert!(
             sfc.contains("@keydown.enter.prevent=\"A\""),
             "enter handler kept:\n{}",
@@ -24976,15 +27259,24 @@ widget Nav {
             sfc
         );
         // The regressed form: base-only key with the last writer winning.
-        assert!(!sfc.contains("@click=\"X\""), "no collapsed @click:\n{}", sfc);
-        assert!(!sfc.contains("@keydown=\"C\""), "no collapsed @keydown:\n{}", sfc);
+        assert!(
+            !sfc.contains("@click=\"X\""),
+            "no collapsed @click:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("@keydown=\"C\""),
+            "no collapsed @keydown:\n{}",
+            sfc
+        );
     }
 
     /// The $event object flows into the template handler call, with field
     /// access ($event.key, $event.clientY) preserved.
     #[test]
     fn test_event_object_param() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Menu {
     msg Msg { Key, Drag }
     model { var x int = 0 }
@@ -24999,7 +27291,8 @@ widget Menu {
         .Drag(y) -> { .x = 2 }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("@keydown=\"Key($event)\""),
             "$event passed to handler:\n{}",
@@ -25012,7 +27305,11 @@ widget Menu {
         );
         // Handler functions keep their declared params.
         assert!(sfc.contains("function Key(e: any)"), "Key param:\n{}", sfc);
-        assert!(sfc.contains("function Drag(y: any)"), "Drag param:\n{}", sfc);
+        assert!(
+            sfc.contains("function Drag(y: any)"),
+            "Drag param:\n{}",
+            sfc
+        );
     }
 
     /// P0#12: a STATE field reference inside a map-literal event argument
@@ -25022,7 +27319,8 @@ widget Menu {
     /// runtime. Loop variables in the same position pass through untouched.
     #[test]
     fn test_map_literal_event_arg_state_field_no_this() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget SearchBar {
     msg Msg { Search }
     model { var query str = "" }
@@ -25037,7 +27335,8 @@ widget SearchBar {
         .Search(payload) -> { .query = "" }
     }
 }
-"#);
+"#,
+        );
         assert!(
             !sfc.contains("this."),
             "template event args must never reference `this` (invalid in Vue 3 templates):\n{}",
@@ -25059,7 +27358,8 @@ widget SearchBar {
     /// (`.Draft(v str)`) keeps the wrap.
     #[test]
     fn test_input_text_arg_follows_declared_handler_arity() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget QueryProbe {
     model { var query str = "" }
     view {
@@ -25078,14 +27378,16 @@ widget QueryProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("@input=\"OnQuery\""),
             "0-param handler must stay a bare call (typed-text arg is TS2554):\n{}",
             sfc
         );
 
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget DraftProbe {
     model { var draft str = "" }
     view {
@@ -25101,7 +27403,8 @@ widget DraftProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("@input=\"Draft(($event.target as HTMLInputElement).value)\""),
             "single-param handler receives the typed text (plan-008 contract):\n{}",
@@ -25113,7 +27416,8 @@ widget DraftProbe {
     /// param string — nested inside a call argument and inside a nested map.
     #[test]
     fn test_nested_event_arg_state_field_no_this() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget NestedArgProbe {
     msg Msg { Apply, Store }
     model { var raw str = "" }
@@ -25128,7 +27432,8 @@ widget NestedArgProbe {
         .Store(p) -> { .raw = "" }
     }
 }
-"#);
+"#,
+        );
         assert!(
             !sfc.contains("this."),
             "nested event args must never reference `this`:\n{}",
@@ -25154,7 +27459,8 @@ widget NestedArgProbe {
     /// arg flows through `vue_event_param`, so the narrowing lives there.
     #[test]
     fn test_event_arg_target_payload_narrowed() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget TargetPayloadProbe {
     msg Msg { ApplyEntry, MsToggle }
     model { var active str = "" }
@@ -25173,7 +27479,8 @@ widget TargetPayloadProbe {
         .MsToggle(k, c) -> { .active = k }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("ApplyEntry((.active), ($event.target as HTMLInputElement).value)")
                 || sfc.contains("ApplyEntry(.active, ($event.target as HTMLInputElement).value)")
@@ -25197,7 +27504,8 @@ widget TargetPayloadProbe {
     /// path (`try_register_global_listener`) — same `this.` constraint applies.
     #[test]
     fn test_global_listener_map_arg_state_field_no_this() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget GlobalArgProbe {
     msg Msg { Track }
     model { var origin str = "" }
@@ -25210,7 +27518,8 @@ widget GlobalArgProbe {
         .Track(p) -> { .origin = "" }
     }
 }
-"#);
+"#,
+        );
         assert!(
             !sfc.contains("this."),
             "global listener args must never reference `this`:\n{}",
@@ -25228,7 +27537,8 @@ widget GlobalArgProbe {
     /// - without params → bare function reference
     #[test]
     fn test_global_window_mouse_listeners() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Scrollbar {
     msg Msg { DragMove, DragEnd }
     model { var y int = 0 }
@@ -25243,7 +27553,8 @@ widget Scrollbar {
         .DragEnd -> { .y = 1 }
     }
 }
-"#);
+"#,
+        );
         // No template attribute for global listeners.
         assert!(!sfc.contains("@mousemove"), "no @mousemove attr:\n{}", sfc);
         assert!(!sfc.contains("@mouseup"), "no @mouseup attr:\n{}", sfc);
@@ -25286,7 +27597,8 @@ widget Scrollbar {
     /// passive: false (required by Chrome for document-level wheel listeners).
     #[test]
     fn test_global_document_wheel_capture_prevent() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget CodeMenu {
     msg Msg { LockWheel }
     model { var locked int = 0 }
@@ -25299,7 +27611,8 @@ widget CodeMenu {
         .LockWheel(e) -> { .locked = 1 }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(
                 "document.addEventListener('wheel', __auto_gl_wheel_LockWheel, { capture: true, passive: false })"
@@ -25358,13 +27671,25 @@ widget Icon(language: str) {
         assert_eq!(decl.ext_imports.len(), 5, "all five entries parse");
         assert_eq!(decl.ext_imports[0].kind, crate::ast::ExtImportKind::Fn);
         assert_eq!(decl.ext_imports[0].symbols.len(), 1);
-        assert_eq!(decl.ext_imports[0].symbols[0].as_str(), "getLanguageIconUrl");
-        assert_eq!(decl.ext_imports[0].path.as_str(), "src/front/utils/codeBlockLanguage.ts");
+        assert_eq!(
+            decl.ext_imports[0].symbols[0].as_str(),
+            "getLanguageIconUrl"
+        );
+        assert_eq!(
+            decl.ext_imports[0].path.as_str(),
+            "src/front/utils/codeBlockLanguage.ts"
+        );
         // Comma-separated symbol list
         assert_eq!(decl.ext_imports[1].symbols.len(), 2);
         assert_eq!(decl.ext_imports[1].symbols[1].as_str(), "purify");
-        assert_eq!(decl.ext_imports[2].kind, crate::ast::ExtImportKind::Component);
-        assert_eq!(decl.ext_imports[4].kind, crate::ast::ExtImportKind::Composable);
+        assert_eq!(
+            decl.ext_imports[2].kind,
+            crate::ast::ExtImportKind::Component
+        );
+        assert_eq!(
+            decl.ext_imports[4].kind,
+            crate::ast::ExtImportKind::Composable
+        );
     }
 
     /// `fn:` imports become named ES imports; npm specifiers pass through,
@@ -25372,7 +27697,8 @@ widget Icon(language: str) {
     /// symbol is callable from `on` handlers and `computed`.
     #[test]
     fn test_ext_fn_import_and_call_sites() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Icon(language: str) {
     use {
         fn: getLanguageIconUrl from "src/front/utils/codeBlockLanguage.ts"
@@ -25392,10 +27718,13 @@ widget Icon(language: str) {
         .Render -> { .url = getLanguageIconUrl(.language) }
     }
 }
-"#);
+"#,
+        );
         // Local path → @/ext alias, .ts extension dropped.
         assert!(
-            sfc.contains("import { getLanguageIconUrl } from '@/ext/src/front/utils/codeBlockLanguage'"),
+            sfc.contains(
+                "import { getLanguageIconUrl } from '@/ext/src/front/utils/codeBlockLanguage'"
+            ),
             "local fn import via @/ext alias:\n{}",
             sfc
         );
@@ -25424,7 +27753,8 @@ widget Icon(language: str) {
     /// and `@event` listeners.
     #[test]
     fn test_ext_component_local_vue() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     use {
         component: FancyBadge from "src/front/components/FancyBadge.vue"
@@ -25446,7 +27776,8 @@ widget App {
         .Picked -> { .label = "picked" }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("import FancyBadge from '@/ext/src/front/components/FancyBadge.vue'"),
             "default import for local .vue component:\n{}",
@@ -25454,10 +27785,18 @@ widget App {
         );
         // Both tag spellings render as the PascalCase component.
         let count = sfc.matches("<FancyBadge").count();
-        assert_eq!(count, 2, "both tag spellings instantiate FancyBadge:\n{}", sfc);
+        assert_eq!(
+            count, 2,
+            "both tag spellings instantiate FancyBadge:\n{}",
+            sfc
+        );
         // Generic prop binding + event listener.
         assert!(sfc.contains(":label=\"label\""), "prop v-bind:\n{}", sfc);
-        assert!(sfc.contains("@selected=\"Picked\""), "event listener:\n{}", sfc);
+        assert!(
+            sfc.contains("@selected=\"Picked\""),
+            "event listener:\n{}",
+            sfc
+        );
         // No fallback `@/components/FancyBadge.vue` import (registry path).
         assert!(
             !sfc.contains("from '@/components/FancyBadge.vue'"),
@@ -25469,7 +27808,8 @@ widget App {
     /// `component:` from an npm package → named import (lucide-style).
     #[test]
     fn test_ext_component_npm_named_import() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     use {
         component: Smile from "lucide-vue-next"
@@ -25480,7 +27820,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("import { Smile } from 'lucide-vue-next'"),
             "named npm component import:\n{}",
@@ -25493,7 +27834,8 @@ widget App {
     /// top level, return value bound to a derived local const.
     #[test]
     fn test_ext_composable_setup_call() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     use {
         composable: useMenuBounds from "src/front/composables/useMenuBounds.ts"
@@ -25509,9 +27851,12 @@ widget App {
         .Open -> { .x = 1 }
     }
 }
-"#);
+"#,
+        );
         assert!(
-            sfc.contains("import { useMenuBounds } from '@/ext/src/front/composables/useMenuBounds'"),
+            sfc.contains(
+                "import { useMenuBounds } from '@/ext/src/front/composables/useMenuBounds'"
+            ),
             "composable import:\n{}",
             sfc
         );
@@ -25527,7 +27872,8 @@ widget App {
     /// same import + PascalCase tag as the hardcoded registry path.
     #[test]
     fn test_ext_component_expresses_autodown_editor_case() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     use {
         component: AutoDownEditor from "@autodown/editor"
@@ -25541,7 +27887,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             // DSL 显式 use.web component from 走声明包（应用作者自选，存量
             // vendor 仍 @autodown/editor）；registry 路径才默认 engine（plan
@@ -25597,10 +27944,18 @@ widget AppShell {
             .lines()
             .filter(|l| l.starts_with("import") && l.contains("CommandPalette"))
             .count();
-        assert_eq!(import_lines, 1, "single CommandPalette import (no TS2300):\n{}", sfc);
+        assert_eq!(
+            import_lines, 1,
+            "single CommandPalette import (no TS2300):\n{}",
+            sfc
+        );
         // Template resolution is untouched: the tag still renders as the
         // component (registration/resolution logic unchanged).
-        assert!(sfc.contains("<CommandPalette"), "component tag rendered:\n{}", sfc);
+        assert!(
+            sfc.contains("<CommandPalette"),
+            "component tag rendered:\n{}",
+            sfc
+        );
     }
 
     /// Regression guard: without an ext declaration, the plan-408 auto
@@ -25624,7 +27979,11 @@ widget BlockList {
             "auto sub-widget import still emitted:\n{}",
             sfc
         );
-        assert!(sfc.contains("<BlockItem"), "sub-widget tag rendered:\n{}", sfc);
+        assert!(
+            sfc.contains("<BlockItem"),
+            "sub-widget tag rendered:\n{}",
+            sfc
+        );
     }
 
     /// The same name-based dedup applies when an ext `fn:` (or composable)
@@ -25669,7 +28028,8 @@ widget App {
     /// `autodown:slash-open` etc. on document).
     #[test]
     fn test_global_custom_event_listeners() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget SlashMenu {
     msg Msg { OnOpen, OnClose }
     model { var query str = "" }
@@ -25684,9 +28044,14 @@ widget SlashMenu {
         .OnClose -> { .query = "" }
     }
 }
-"#);
+"#,
+        );
         // No template attribute for global listeners.
-        assert!(!sfc.contains("@autodown:slash-open"), "no template attr:\n{}", sfc);
+        assert!(
+            !sfc.contains("@autodown:slash-open"),
+            "no template attr:\n{}",
+            sfc
+        );
         // add/remove pairs carry the raw custom event name.
         assert!(
             sfc.contains("document.addEventListener('autodown:slash-open', __auto_gl_autodown_slash_open_OnOpen)"),
@@ -25718,7 +28083,8 @@ widget SlashMenu {
     /// addEventListener('autodown:slash-open').
     #[test]
     fn test_element_custom_event_listener() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Menu {
     msg Msg { Poked }
     model { var x int = 0 }
@@ -25731,7 +28097,8 @@ widget Menu {
         .Poked(e) -> { .x = 1 }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("@demo:poke=\"Poked($event)\""),
             "element-level custom event binding:\n{}",
@@ -25749,7 +28116,8 @@ widget Menu {
     /// property names are quoted.
     #[test]
     fn test_style_obj_inline_style_binding() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Popover {
     msg Msg { Nop }
     model {
@@ -25766,14 +28134,19 @@ widget Popover {
         .Nop -> { .menu_x = 0 }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(":style=\"({ top: `${menu_y}px`, left: `${menu_x}px`, 'z-index': 50, visibility: menu_vis } as any)\""),
             ":style object binding:\n{}",
             sfc
         );
         // Must NOT be emitted as a class binding.
-        assert!(!sfc.contains(":class=\"{ top:"), "not a class binding:\n{}", sfc);
+        assert!(
+            !sfc.contains(":class=\"{ top:"),
+            "not a class binding:\n{}",
+            sfc
+        );
     }
 
     /// The classic style: { class: cond } map stays a dynamic class binding;
@@ -25781,7 +28154,8 @@ widget Popover {
     /// invalid JS key).
     #[test]
     fn test_style_class_binding_quotes_hyphenated_keys() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Todo {
     msg Msg { Nop }
     model { var done int = 0 }
@@ -25794,7 +28168,8 @@ widget Todo {
         .Nop -> { .done = 1 }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(":class=\"{ completed: done, 'line-through': done }\""),
             "hyphenated class key quoted:\n{}",
@@ -25811,7 +28186,8 @@ widget Todo {
     /// (previously swallowed by the unknown-tag div fallback).
     #[test]
     fn test_slot_outlet_default() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Panel {
     model { var n int = 0 }
     view {
@@ -25821,7 +28197,8 @@ widget Panel {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(sfc.contains("<slot />"), "default slot outlet:\n{}", sfc);
         assert!(
             !sfc.contains("<div>\n</div>") && !sfc.contains("<div />"),
@@ -25834,7 +28211,8 @@ widget Panel {
     /// `<slot name="header" />`.
     #[test]
     fn test_slot_outlet_named() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Panel {
     model { var n int = 0 }
     view {
@@ -25844,20 +28222,26 @@ widget Panel {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("<slot name=\"header\" />"),
             "named slot outlet:\n{}",
             sfc
         );
-        assert!(sfc.contains("<slot />"), "default slot outlet too:\n{}", sfc);
+        assert!(
+            sfc.contains("<slot />"),
+            "default slot outlet too:\n{}",
+            sfc
+        );
     }
 
     /// Parent side: `slot(name: "header") { ... }` inside a component
     /// instantiation's children block → `<template #header>...</template>`.
     #[test]
     fn test_slot_named_template_parent_side() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var n int = 0 }
     view {
@@ -25871,7 +28255,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("<template #header>"),
             "named slot template in parent:\n{}",
@@ -25893,7 +28278,8 @@ widget App {
     /// unchanged (no <template> wrapping, no slot outlet interference).
     #[test]
     fn test_slot_default_children_unchanged() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var n int = 0 }
     view {
@@ -25904,7 +28290,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(">plain child</span>"),
             "default children unchanged:\n{}",
@@ -25937,13 +28324,16 @@ widget App {
             crate::aura::extract_widget_from_decl(decl).expect("extract widget")
         };
 
-        let outletless = parse_widget(r#"
+        let outletless = parse_widget(
+            r#"
 widget Panel {
     model { var n int = 0 }
     view { col { text "no outlets" } }
 }
-"#);
-        let with_outlets = parse_widget(r#"
+"#,
+        );
+        let with_outlets = parse_widget(
+            r#"
 widget Panel {
     model { var n int = 0 }
     view {
@@ -25953,12 +28343,16 @@ widget Panel {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(with_outlets.slot_outlet_names().contains(&String::new()));
-        assert!(with_outlets.slot_outlet_names().contains(&"header".to_string()));
+        assert!(with_outlets
+            .slot_outlet_names()
+            .contains(&"header".to_string()));
         assert!(outletless.slot_outlet_names().is_empty());
 
-        let app = parse_widget(r#"
+        let app = parse_widget(
+            r#"
 widget App {
     model { var n int = 0 }
     view {
@@ -25972,21 +28366,33 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
 
         // Outlet-less target: both the named template and the default
         // children must warn.
         let mut outlets = std::collections::HashMap::new();
         outlets.insert("Panel".to_string(), outletless.slot_outlet_names());
         let warnings = app.slot_children_warnings(&outlets);
-        assert_eq!(warnings.len(), 2, "named + default warnings:\n{:?}", warnings);
+        assert_eq!(
+            warnings.len(),
+            2,
+            "named + default warnings:\n{:?}",
+            warnings
+        );
         assert!(warnings.iter().any(|w| w.contains("'header' slot outlet")));
-        assert!(warnings.iter().any(|w| w.contains("no default slot outlet")));
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("no default slot outlet")));
 
         // Target with matching outlets: no warnings.
         outlets.insert("Panel".to_string(), with_outlets.slot_outlet_names());
         let warnings = app.slot_children_warnings(&outlets);
-        assert!(warnings.is_empty(), "no warnings when outlets match:\n{:?}", warnings);
+        assert!(
+            warnings.is_empty(),
+            "no warnings when outlets match:\n{:?}",
+            warnings
+        );
     }
 
     // ====================================================================
@@ -26014,7 +28420,9 @@ widget App { view { col { text "x" { } } } }
 "#;
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let entries: Vec<&crate::ast::ui::ExtImport> = ast.stmts.iter()
+        let entries: Vec<&crate::ast::ui::ExtImport> = ast
+            .stmts
+            .iter()
             .filter_map(|s| match s {
                 Stmt::UseWeb(v) => v.first(),
                 _ => None,
@@ -26024,9 +28432,15 @@ widget App { view { col { text "x" { } } } }
         assert!(matches!(entries[0].kind, crate::ast::ui::ExtImportKind::Fn));
         assert_eq!(entries[0].symbols.len(), 1);
         assert!(entries[0].symbols[0].as_str() == "agentAvatarData");
-        assert!(matches!(entries[1].kind, crate::ast::ui::ExtImportKind::Component));
+        assert!(matches!(
+            entries[1].kind,
+            crate::ast::ui::ExtImportKind::Component
+        ));
         assert_eq!(entries[1].symbols.len(), 2);
-        assert!(matches!(entries[2].kind, crate::ast::ui::ExtImportKind::Composable));
+        assert!(matches!(
+            entries[2].kind,
+            crate::ast::ui::ExtImportKind::Composable
+        ));
         assert!(entries[3].ref_fields.len() == 1);
         assert!(entries[3].ref_fields[0].as_str() == "locale");
         assert!(entries[3].path.as_str() == "vue-i18n");
@@ -26046,10 +28460,14 @@ widget App {
 "#;
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract");
         let mut models = std::collections::HashMap::new();
         models.insert("BindChild".to_string(), vec!["value".to_string()]);
@@ -26057,8 +28475,12 @@ widget App {
             .with_sub_widgets(vec!["BindChild".to_string()])
             .with_sub_widget_models(models);
         let sfc = gen.generate_sfc(&widget).expect("generate");
-        assert!(sfc.contains("v-model:value=\"draft\""), "channel folds to v-model:
-{}", sfc);
+        assert!(
+            sfc.contains("v-model:value=\"draft\""),
+            "channel folds to v-model:
+{}",
+            sfc
+        );
 
         // Non-slot target on the same channel must fail generation.
         let session2 = crate::session::CompilerSession::ui();
@@ -26070,10 +28492,14 @@ widget App {
 "#;
         let mut parser2 = crate::parser::Parser::from(src2).with_session(session2);
         let ast2 = parser2.parse().expect("parse");
-        let decl2 = ast2.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl2 = ast2
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget2 = crate::aura::extract_widget_from_decl(decl2).expect("extract");
         let mut models2 = std::collections::HashMap::new();
         models2.insert("BindChild".to_string(), vec!["value".to_string()]);
@@ -26084,12 +28510,14 @@ widget App {
         // (值流入子件 defineModel),R016 Info 告警提示非双向。
         let sfc2 = gen2.generate_sfc(&widget2).expect("degrade, not fail");
         assert!(
-            sfc2.contains(":value=") ,
+            sfc2.contains(":value="),
             "one-way :value binding should be emitted: {}",
             sfc2
         );
         assert!(
-            gen2.last_validation_warnings.iter().any(|w| w.rule == "R016"),
+            gen2.last_validation_warnings
+                .iter()
+                .any(|w| w.rule == "R016"),
             "R016 advisory should be raised"
         );
     }
@@ -26107,8 +28535,8 @@ widget App {
             })
             .expect("widget decl");
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
-        let mut gen = VueGenerator::new()
-            .with_sub_widgets(subs.iter().map(|s| s.to_string()).collect());
+        let mut gen =
+            VueGenerator::new().with_sub_widgets(subs.iter().map(|s| s.to_string()).collect());
         gen.generate(&widget).expect("generate SFC")
     }
 
@@ -26116,7 +28544,8 @@ widget App {
     /// wins over the auto-key: exactly one :key, bound to the given expr.
     #[test]
     fn test_vfor_explicit_key_on_sub_widget() {
-        let sfc = gen_sfc_with_sub_widgets(r#"
+        let sfc = gen_sfc_with_sub_widgets(
+            r#"
 use tab: EditorTab
 
 widget App {
@@ -26129,7 +28558,9 @@ widget App {
         }
     }
 }
-"#, &["EditorTab"]);
+"#,
+            &["EditorTab"],
+        );
         assert!(
             sfc.contains(r#":key="tab.path""#),
             "explicit key emitted:\n{}",
@@ -26151,7 +28582,8 @@ widget App {
     /// Explicit `key:` on a plain element in a loop is emitted as :key.
     #[test]
     fn test_vfor_explicit_key_on_plain_element() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var names list = [] }
     view {
@@ -26162,7 +28594,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"<span :key="name" v-for="name in names">"#),
             "explicit key on plain element:\n{}",
@@ -26179,7 +28612,8 @@ widget App {
     /// 走 plain 臂不经过此路径）。
     #[test]
     fn test_vfor_explicit_key_on_layout_widget_single_emission() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget App {
     model { var rows list = [] }
     view {
@@ -26188,7 +28622,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         let head = sfc
             .lines()
             .find(|l| l.contains("v-for="))
@@ -26205,7 +28640,8 @@ widget App {
     /// unchanged (`'Tag-N-' + (item?.id ?? item)`).
     #[test]
     fn test_vfor_auto_key_unchanged_without_explicit_key() {
-        let sfc = gen_sfc_with_sub_widgets(r#"
+        let sfc = gen_sfc_with_sub_widgets(
+            r#"
 use tab: EditorTab
 
 widget App {
@@ -26218,7 +28654,9 @@ widget App {
         }
     }
 }
-"#, &["EditorTab"]);
+"#,
+            &["EditorTab"],
+        );
         assert!(
             // Plan 028: 键表达式演进为 `(tab as any)?.id ?? tab` —— 对未声明
             // .id 的具类型循环变量加 as-any 断言，避免 vue-tsc 报错。
@@ -26233,7 +28671,8 @@ widget App {
     #[test]
     fn test_vfor_indexed_loop_key_uses_index() {
         // Sub-widget path (known sibling widget).
-        let sfc = gen_sfc_with_sub_widgets(r#"
+        let sfc = gen_sfc_with_sub_widgets(
+            r#"
 use tab: EditorTab
 
 widget App {
@@ -26246,16 +28685,23 @@ widget App {
         }
     }
 }
-"#, &["EditorTab"]);
+"#,
+            &["EditorTab"],
+        );
         assert!(
             sfc.contains(r#":key="'EditorTab-1-' + i""#),
             "index var used as key:\n{}",
             sfc
         );
-        assert!(!sfc.contains("i?.id"), "no ?.id on primitive index:\n{}", sfc);
+        assert!(
+            !sfc.contains("i?.id"),
+            "no ?.id on primitive index:\n{}",
+            sfc
+        );
 
         // Generic Vue-component path (Plan 360 fallback).
-        let sfc2 = gen_sfc_from_widget_src(r#"
+        let sfc2 = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var tabs list = [] }
     view {
@@ -26266,13 +28712,18 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc2.contains(r#":key="'EditorTab-1-' + i""#),
             "index var used as key (generic path):\n{}",
             sfc2
         );
-        assert!(!sfc2.contains("i?.id"), "no ?.id on primitive index (generic path):\n{}", sfc2);
+        assert!(
+            !sfc2.contains("i?.id"),
+            "no ?.id on primitive index (generic path):\n{}",
+            sfc2
+        );
     }
 
     // ====================================================================
@@ -26284,7 +28735,8 @@ widget App {
     /// Dynamic condition on a plain element (brace prop form).
     #[test]
     fn test_vshow_plain_element_dynamic() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var active_path str = "" }
     view {
@@ -26293,7 +28745,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"v-show="active_path == 'graph'""#),
             "v-show emitted with bound condition:\n{}",
@@ -26305,7 +28758,8 @@ widget App {
     /// Static-ish model ref on a plain element, block prop form.
     #[test]
     fn test_vshow_plain_element_model_ref() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var visible bool = true }
     view {
@@ -26317,7 +28771,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"v-show="visible""#),
             "v-show with bare model ref:\n{}",
@@ -26330,7 +28785,8 @@ widget App {
     /// components in Vue — the directive lands on the component root).
     #[test]
     fn test_vshow_on_sub_widget_component() {
-        let sfc = gen_sfc_with_sub_widgets(r#"
+        let sfc = gen_sfc_with_sub_widgets(
+            r#"
 use tab: EditorTab
 
 widget App {
@@ -26344,7 +28800,9 @@ widget App {
         }
     }
 }
-"#, &["EditorTab"]);
+"#,
+            &["EditorTab"],
+        );
         assert!(
             sfc.contains(r#"v-show="tab.path == active_path""#),
             "v-show on component:\n{}",
@@ -26356,7 +28814,8 @@ widget App {
     /// v-show on a dyn (`<component :is>`) node.
     #[test]
     fn test_vshow_on_dyn_component() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var open bool = false }
     view {
@@ -26368,7 +28827,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"v-show="open""#),
             "v-show on dyn component:\n{}",
@@ -26393,7 +28853,8 @@ widget App {
     /// Dynamic content on a plain element (brace prop form).
     #[test]
     fn test_vhtml_plain_element_dynamic() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var content str = "" }
     view {
@@ -26402,7 +28863,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"v-html="content""#),
             "v-html emitted with bound expr:\n{}",
@@ -26416,7 +28878,8 @@ widget App {
     /// (the `h('div', { innerHTML: props.html })` pattern) keep receiving it.
     #[test]
     fn test_vhtml_on_dyn_component() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var content str = "" }
     view {
@@ -26427,13 +28890,18 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#":html="content""#),
             "html passes through as :html prop on dyn:\n{}",
             sfc
         );
-        assert!(!sfc.contains("v-html="), "no v-html on dyn component:\n{}", sfc);
+        assert!(
+            !sfc.contains("v-html="),
+            "no v-html on dyn component:\n{}",
+            sfc
+        );
     }
 
     /// `html:` on a sub-widget component instantiation is NOT intercepted:
@@ -26441,7 +28909,8 @@ widget App {
     /// slot and steal the prop).
     #[test]
     fn test_vhtml_on_sub_widget_component() {
-        let sfc = gen_sfc_with_sub_widgets(r#"
+        let sfc = gen_sfc_with_sub_widgets(
+            r#"
 use tab: EditorTab
 
 widget App {
@@ -26455,7 +28924,9 @@ widget App {
         }
     }
 }
-"#, &["EditorTab"]);
+"#,
+            &["EditorTab"],
+        );
         assert!(
             sfc.contains(r#":html="content""#),
             "html passes through as :html prop on component:\n{}",
@@ -26471,7 +28942,8 @@ widget App {
     /// its `:html="r.html"` prop channel.
     #[test]
     fn test_vhtml_dyn_passthrough_ext_component_pattern() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var rows list = [] }
     view {
@@ -26485,13 +28957,18 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#":html="r.html""#),
             "ext component receives the html prop:\n{}",
             sfc
         );
-        assert!(!sfc.contains("v-html="), "no v-html interception on dyn:\n{}", sfc);
+        assert!(
+            !sfc.contains("v-html="),
+            "no v-html interception on dyn:\n{}",
+            sfc
+        );
     }
 
     /// Conflict: html: + child nodes → R014 warning. v-html is still
@@ -26499,7 +28976,8 @@ widget App {
     /// at runtime).
     #[test]
     fn test_vhtml_conflicting_children_warns_r014() {
-        let (sfc, warnings) = gen_sfc_and_warnings(r#"
+        let (sfc, warnings) = gen_sfc_and_warnings(
+            r#"
 widget VHtmlConflictProbe {
     model { var content str = "" }
     view {
@@ -26510,13 +28988,18 @@ widget VHtmlConflictProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"v-html="content""#),
             "v-html still emitted despite children:\n{sfc}"
         );
         let r014 = warnings_for_rule(&warnings, "R014");
-        assert_eq!(r014.len(), 1, "one R014 conflict warning, got: {warnings:?}");
+        assert_eq!(
+            r014.len(),
+            1,
+            "one R014 conflict warning, got: {warnings:?}"
+        );
         assert!(
             r014[0].message.contains("div"),
             "warning names the element tag: {}",
@@ -26532,7 +29015,8 @@ widget VHtmlConflictProbe {
     /// Conflict via the `text:` prop form also warns R014.
     #[test]
     fn test_vhtml_conflicting_text_prop_warns_r014() {
-        let (sfc, warnings) = gen_sfc_and_warnings(r#"
+        let (sfc, warnings) = gen_sfc_and_warnings(
+            r#"
 widget VHtmlTextConflictProbe {
     model { var content str = "" }
     view {
@@ -26541,13 +29025,18 @@ widget VHtmlTextConflictProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"v-html="content""#),
             "v-html still emitted despite text prop:\n{sfc}"
         );
         let r014 = warnings_for_rule(&warnings, "R014");
-        assert_eq!(r014.len(), 1, "one R014 conflict warning, got: {warnings:?}");
+        assert_eq!(
+            r014.len(),
+            1,
+            "one R014 conflict warning, got: {warnings:?}"
+        );
         assert!(
             r014[0].message.contains("children ignored"),
             "warning explains the conflict: {}",
@@ -26560,7 +29049,8 @@ widget VHtmlTextConflictProbe {
     #[test]
     fn test_p013_catchall_vhtml_is_hard_error() {
         let session = crate::session::CompilerSession::ui();
-        let mut parser = crate::parser::Parser::from(r#"
+        let mut parser = crate::parser::Parser::from(
+            r#"
 widget VHtmlCatchAllProbe {
     model {
         var a str = "x"
@@ -26574,7 +29064,9 @@ widget VHtmlCatchAllProbe {
         }
     }
 }
-"#).with_session(session);
+"#,
+        )
+        .with_session(session);
         let ast = parser.parse().expect("widget source must parse");
         let decl = ast
             .stmts
@@ -26605,7 +29097,8 @@ widget VHtmlCatchAllProbe {
     /// Static string target: to: "body" → to="body", children recursed.
     #[test]
     fn test_teleport_static_to() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     view {
         teleport (to: "body") {
@@ -26613,7 +29106,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"<Teleport to="body">"#),
             "Teleport with static to:\n{}",
@@ -26631,7 +29125,8 @@ widget App {
     /// Expression target: to: .target → :to="target".
     #[test]
     fn test_teleport_expr_to() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var target str = "body" }
     view {
@@ -26640,7 +29135,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"<Teleport :to="target">"#),
             "Teleport with bound to:\n{}",
@@ -26651,7 +29147,8 @@ widget App {
     /// Optional disabled toggle: disabled: .off → :disabled="off".
     #[test]
     fn test_teleport_disabled_expr() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     model { var off bool = false }
     view {
@@ -26660,7 +29157,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"<Teleport to="body" :disabled="off">"#),
             "Teleport with bound disabled:\n{}",
@@ -26671,7 +29169,8 @@ widget App {
     /// teleport nested inside layout containers works normally.
     #[test]
     fn test_teleport_nested_in_containers() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     view {
         col {
@@ -26683,7 +29182,8 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(r#"<Teleport to="body">"#),
             "Teleport nested in col/row:\n{}",
@@ -26700,7 +29200,8 @@ widget App {
     /// Missing `to` prop warns R015 (Vue's <Teleport> is a no-op without it).
     #[test]
     fn test_teleport_missing_to_warns_r015() {
-        let (_sfc, warnings) = gen_sfc_and_warnings(r#"
+        let (_sfc, warnings) = gen_sfc_and_warnings(
+            r#"
 widget TeleportNoToProbe {
     view {
         teleport {
@@ -26708,7 +29209,8 @@ widget TeleportNoToProbe {
         }
     }
 }
-"#);
+"#,
+        );
         let r015 = warnings_for_rule(&warnings, "R015");
         assert_eq!(r015.len(), 1, "one R015 warning, got: {warnings:?}");
         assert!(
@@ -26729,7 +29231,8 @@ widget TeleportNoToProbe {
     /// bodies (state refs → .value) in all three clauses.
     #[test]
     fn test_try_catch_finally_in_widget_handler() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget App {
     msg Msg { Save }
     model {
@@ -26750,13 +29253,26 @@ widget App {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(sfc.contains("try {"), "try emitted:\n{}", sfc);
         assert!(sfc.contains("catch (e) {"), "catch with binding:\n{}", sfc);
         assert!(sfc.contains("finally {"), "finally emitted:\n{}", sfc);
-        assert!(sfc.contains("error.value = ''"), "state ref in try body:\n{}", sfc);
-        assert!(sfc.contains("error.value = 'failed'"), "state ref in catch body:\n{}", sfc);
-        assert!(sfc.contains("busy.value = false"), "state ref in finally body:\n{}", sfc);
+        assert!(
+            sfc.contains("error.value = ''"),
+            "state ref in try body:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("error.value = 'failed'"),
+            "state ref in catch body:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("busy.value = false"),
+            "state ref in finally body:\n{}",
+            sfc
+        );
     }
 
     /// Store handler (jade's actual gap-4 site): try/catch in an on-block
@@ -26781,8 +29297,16 @@ store Docs {
 "#,
         ));
         assert!(code.contains("try {"), "store try emitted:\n{}", code);
-        assert!(code.contains("catch (e) {"), "store catch emitted:\n{}", code);
-        assert!(code.contains("error.value = 'failed'"), "state ref in catch:\n{}", code);
+        assert!(
+            code.contains("catch (e) {"),
+            "store catch emitted:\n{}",
+            code
+        );
+        assert!(
+            code.contains("error.value = 'failed'"),
+            "state ref in catch:\n{}",
+            code
+        );
     }
 
     /// Plan 043 M5 #3: an `if / else if / else if / else` chain must flatten
@@ -26790,7 +29314,8 @@ store Docs {
     /// `v-else`), not nest as `<template v-else><template v-if>`.
     #[test]
     fn test_else_if_chain_flattens_to_v_else_if() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Dispatch {
     model { var kind str = "Table" }
     view {
@@ -26805,7 +29330,8 @@ widget Dispatch {
         }
     }
 }
-"#);
+"#,
+        );
         // Head of the chain.
         assert!(
             sfc.contains(r#"<template v-if="kind == 'Table'">"#),
@@ -26843,7 +29369,8 @@ widget Dispatch {
     #[test]
     fn test_view_else_if_three_branch_loading_error_content() {
         // Real parse path.
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Triple {
     model {
         var loading bool = false
@@ -26859,21 +29386,23 @@ widget Triple {
         }
     }
 }
-"#);
+"#,
+        );
         let pos_if = sfc
             .find(r#"<template v-if="loading">"#)
             .expect("v-if arm present:\n");
         let pos_elseif = sfc
             .find(r#"<template v-else-if="error != ''">"#)
             .expect("v-else-if arm present");
-        let pos_else = sfc
-            .find("<template v-else>")
-            .expect("v-else arm present");
+        let pos_else = sfc.find("<template v-else>").expect("v-else arm present");
         // Chain arms emitted in source order (adjacent siblings).
         assert!(
             pos_if < pos_elseif && pos_elseif < pos_else,
             "arms in source order: if={} elseif={} else={}\n{}",
-            pos_if, pos_elseif, pos_else, sfc
+            pos_if,
+            pos_elseif,
+            pos_else,
+            sfc
         );
         // Exactly one chain: the else-if arm is a continuation, not a fresh v-if.
         assert_eq!(
@@ -26893,7 +29422,8 @@ widget Triple {
     #[test]
     fn test_view_if_else_single_else() {
         // Real parse path.
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget LoadState {
     model { var loading bool = true }
     view {
@@ -26904,13 +29434,12 @@ widget LoadState {
         }
     }
 }
-"#);
+"#,
+        );
         let pos_if = sfc
             .find(r#"<template v-if="loading">"#)
             .expect("v-if arm present");
-        let pos_else = sfc
-            .find("<template v-else>")
-            .expect("v-else arm present");
+        let pos_else = sfc.find("<template v-else>").expect("v-else arm present");
         assert!(pos_if < pos_else, "if before else:\n{}", sfc);
         assert!(
             !sfc.contains("v-else-if"),
@@ -26925,7 +29454,8 @@ widget LoadState {
     #[test]
     fn test_view_else_if_chain_composes_loop_and_props() {
         // Real parse path.
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Mixed {
     model {
         var kind str = "list"
@@ -26944,7 +29474,8 @@ widget Mixed {
         }
     }
 }
-"#);
+"#,
+        );
         // Chain shape.
         assert!(
             sfc.contains(r#"<template v-if="kind == 'list'">"#),
@@ -26978,7 +29509,8 @@ widget Mixed {
     /// so `x => { ...; return y }` emitted `computed(() => undefined)`.
     #[test]
     fn test_computed_multiline_body_renders_js() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget Counter {
     model { count int = 0 }
     computed {
@@ -26989,7 +29521,8 @@ widget Counter {
     }
     view { col { text "hi" } }
 }
-"#);
+"#,
+        );
         // The computed body must keep its logic — the `return label` and the
         // local binding must survive, not be replaced by `undefined`.
         assert!(
@@ -27086,8 +29619,16 @@ store Graph {
         );
         // Existing literal kinds keep working unchanged. (Plan 055 E(a): a
         // str-typed state ref is now typed `ref<string>`, not `ref<any>`.)
-        assert!(code.contains("const blocks = ref<any>([])"), "array init:\n{}", code);
-        assert!(code.contains("const cwd = ref<string>('')"), "str init:\n{}", code);
+        assert!(
+            code.contains("const blocks = ref<any>([])"),
+            "array init:\n{}",
+            code
+        );
+        assert!(
+            code.contains("const cwd = ref<string>('')"),
+            "str init:\n{}",
+            code
+        );
         // No state var may degrade to null anymore.
         assert!(
             !code.contains("ref<any>(null)"),
@@ -27191,14 +29732,15 @@ store Tabs {
         // Watch calls are module-level: they must appear BEFORE the
         // composable export function.
         let watch_pos = code.find("watch(active_id").expect("watch call");
-        let fn_pos = code.find("export function useTabsStore()").expect("export fn");
+        let fn_pos = code
+            .find("export function useTabsStore()")
+            .expect("export fn");
         assert!(
             watch_pos < fn_pos,
             "module-level watch must precede the composable fn, got:\n{}",
             code
         );
     }
-
 
     /// multi-type payload (`Open(str, str)`) must parse, and the handler
     /// `.Open(a, b) ->` must bind both payload slots as action parameters.
@@ -27289,8 +29831,8 @@ store Files {
         // `stream_endpoints` + `api_imports` populated, which the standalone
         // parse path cannot do (extract_store_from_decl leaves both empty;
         // the full build fills them from project type info).
-        use crate::aura::{AuraStore, AuraStateDef};
         use crate::ast::Expr;
+        use crate::aura::{AuraStateDef, AuraStore};
         use std::collections::HashMap;
 
         let store = AuraStore {
@@ -27304,8 +29846,14 @@ store Files {
             messages: vec![],
             timers: Vec::new(),
             handlers: std::collections::BTreeMap::from([
-                (".RunOutput(output)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
-                (".RunResult(result)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+                (
+                    ".RunOutput(output)".to_string(),
+                    crate::aura::LogicPayload::AstStmts(vec![]),
+                ),
+                (
+                    ".RunResult(result)".to_string(),
+                    crate::aura::LogicPayload::AstStmts(vec![]),
+                ),
             ]),
             handler_params: HashMap::from([
                 (".RunOutput(output)".to_string(), vec!["output".to_string()]),
@@ -27331,11 +29879,20 @@ store Files {
         // Module-level single-connection guard (Plan musk-022: per-path name).
         assert!(
             code.contains("let __streamConnected_api_stream = false;"),
-            "module guard:\n{}", code
+            "module guard:\n{}",
+            code
         );
         // The connection is opened inside the composable, guarded, before return.
-        assert!(code.contains("if (!__streamConnected_api_stream) {"), "guard check:\n{}", code);
-        assert!(code.contains("new EventSource('/api/stream')"), "EventSource:\n{}", code);
+        assert!(
+            code.contains("if (!__streamConnected_api_stream) {"),
+            "guard check:\n{}",
+            code
+        );
+        assert!(
+            code.contains("new EventSource('/api/stream')"),
+            "EventSource:\n{}",
+            code
+        );
         // Dispatch into the store's actions (legacy fallback: empty variants →
         // command_output/RunOutput + command_result/RunResult via data.event).
         assert!(
@@ -27357,8 +29914,8 @@ store Files {
     /// auto-musk forge stream contract.
     #[test]
     fn test_store_composable_sse_multi_variant_data_driven() {
-        use crate::aura::{AuraStore, AuraStateDef};
         use crate::ast::Expr;
+        use crate::aura::{AuraStateDef, AuraStore};
         use std::collections::HashMap;
 
         let store = AuraStore {
@@ -27372,9 +29929,18 @@ store Files {
             messages: vec![],
             timers: Vec::new(),
             handlers: std::collections::BTreeMap::from([
-                (".Delta(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
-                (".ToolCall(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
-                (".Done(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+                (
+                    ".Delta(data)".to_string(),
+                    crate::aura::LogicPayload::AstStmts(vec![]),
+                ),
+                (
+                    ".ToolCall(data)".to_string(),
+                    crate::aura::LogicPayload::AstStmts(vec![]),
+                ),
+                (
+                    ".Done(data)".to_string(),
+                    crate::aura::LogicPayload::AstStmts(vec![]),
+                ),
             ]),
             handler_params: HashMap::from([
                 (".Delta(data)".to_string(), vec!["data".to_string()]),
@@ -27405,24 +29971,29 @@ store Files {
         // Per-path guard (slashes/braces collapse to _; {id} → _id_).
         assert!(
             code.contains("let __streamConnected_api_chats_session__id__stream = false;"),
-            "guard var:\n{}", code
+            "guard var:\n{}",
+            code
         );
         assert!(
             code.contains("new EventSource('/api/chats/session/{id}/stream')"),
-            "EventSource:\n{}", code
+            "EventSource:\n{}",
+            code
         );
         // Data-driven dispatch keyed on data.type (NOT data.event).
         assert!(
             code.contains("if (data.type === 'delta') Delta(data);"),
-            "delta dispatch:\n{}", code
+            "delta dispatch:\n{}",
+            code
         );
         assert!(
             code.contains("else if (data.type === 'tool_call') ToolCall(data);"),
-            "tool_call dispatch:\n{}", code
+            "tool_call dispatch:\n{}",
+            code
         );
         assert!(
             code.contains("else if (data.type === 'done') Done(data);"),
-            "done dispatch:\n{}", code
+            "done dispatch:\n{}",
+            code
         );
         // The legacy command_output/command_result must NOT appear here.
         assert!(!code.contains("command_output"), "legacy leak:\n{}", code);
@@ -27432,7 +30003,7 @@ store Files {
     /// per endpoint, each with its own per-path guard.
     #[test]
     fn test_store_composable_sse_multi_endpoint() {
-        use crate::aura::{AuraStore};
+        use crate::aura::AuraStore;
         use std::collections::HashMap;
 
         let store = AuraStore {
@@ -27441,8 +30012,14 @@ store Files {
             messages: vec![],
             timers: Vec::new(),
             handlers: std::collections::BTreeMap::from([
-                (".RunOutput(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
-                (".RunResult(data)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+                (
+                    ".RunOutput(data)".to_string(),
+                    crate::aura::LogicPayload::AstStmts(vec![]),
+                ),
+                (
+                    ".RunResult(data)".to_string(),
+                    crate::aura::LogicPayload::AstStmts(vec![]),
+                ),
             ]),
             handler_params: HashMap::from([
                 (".RunOutput(data)".to_string(), vec!["data".to_string()]),
@@ -27478,13 +30055,28 @@ store Files {
 
         let code = VueGenerator::generate_store_composable(&store);
         // Two distinct per-path guards.
-        assert!(code.contains("let __streamConnected_api_stream = false;"), "guard 1:\n{}", code);
-        assert!(code.contains("let __streamConnected_api_events = false;"), "guard 2:\n{}", code);
+        assert!(
+            code.contains("let __streamConnected_api_stream = false;"),
+            "guard 1:\n{}",
+            code
+        );
+        assert!(
+            code.contains("let __streamConnected_api_events = false;"),
+            "guard 2:\n{}",
+            code
+        );
         // Two EventSource openings.
-        assert!(code.contains("new EventSource('/api/stream')"), "es 1:\n{}", code);
-        assert!(code.contains("new EventSource('/api/events')"), "es 2:\n{}", code);
+        assert!(
+            code.contains("new EventSource('/api/stream')"),
+            "es 1:\n{}",
+            code
+        );
+        assert!(
+            code.contains("new EventSource('/api/events')"),
+            "es 2:\n{}",
+            code
+        );
     }
-
 
     /// Plan 043 M5 G1 negative: without the `stream` api import, no
     /// EventSource wiring is generated (a store with RunOutput/RunResult but
@@ -27508,8 +30100,16 @@ store PlainStore {
 "#,
         ));
 
-        assert!(!code.contains("EventSource"), "no EventSource without stream api:\n{}", code);
-        assert!(!code.contains("__streamConnected"), "no guard without stream api:\n{}", code);
+        assert!(
+            !code.contains("EventSource"),
+            "no EventSource without stream api:\n{}",
+            code
+        );
+        assert!(
+            !code.contains("__streamConnected"),
+            "no guard without stream api:\n{}",
+            code
+        );
     }
 
     /// Plan 043 stream phase: SSE wiring is TYPE-DRIVEN via `stream_endpoints`,
@@ -27530,8 +30130,14 @@ store PlainStore {
             messages: vec![],
             timers: Vec::new(),
             handlers: std::collections::BTreeMap::from([
-                (".RunOutput(output)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
-                (".RunResult(result)".to_string(), crate::aura::LogicPayload::AstStmts(vec![])),
+                (
+                    ".RunOutput(output)".to_string(),
+                    crate::aura::LogicPayload::AstStmts(vec![]),
+                ),
+                (
+                    ".RunResult(result)".to_string(),
+                    crate::aura::LogicPayload::AstStmts(vec![]),
+                ),
             ]),
             handler_params: HashMap::new(),
             // NOTE: import name is "subscribe" (NOT "stream") — old heuristic
@@ -27555,15 +30161,31 @@ store PlainStore {
 
         // Wiring fires because a stream endpoint is declared, regardless of name.
         // (Plan musk-022: guard is now per-path, so __streamConnected_events.)
-        assert!(code.contains("let __streamConnected_events = false;"), "module guard:\n{}", code);
+        assert!(
+            code.contains("let __streamConnected_events = false;"),
+            "module guard:\n{}",
+            code
+        );
         // Path comes from the endpoint, not a hardcoded "/api/stream".
-        assert!(code.contains("new EventSource('/events')"), "custom path:\n{}", code);
-        assert!(!code.contains("'/api/stream'"), "must not use hardcoded path:\n{}", code);
+        assert!(
+            code.contains("new EventSource('/events')"),
+            "custom path:\n{}",
+            code
+        );
+        assert!(
+            !code.contains("'/api/stream'"),
+            "must not use hardcoded path:\n{}",
+            code
+        );
         // Dispatch unchanged (legacy discriminator-route on data.event).
         assert!(code.contains("RunOutput(data);"), "dispatch:\n{}", code);
         // The streaming fn ("subscribe") is consumed via SSE, so it must NOT appear
         // in the api import line (api.ts does not export it).
-        assert!(!code.contains("import { subscribe"), "stream fn excluded from import:\n{}", code);
+        assert!(
+            !code.contains("import { subscribe"),
+            "stream fn excluded from import:\n{}",
+            code
+        );
     }
 
     // ====================================================================
@@ -27813,7 +30435,8 @@ widget CodeView {
 
     #[test]
     fn test_gap30_stray_comma_warns_and_emits_nothing() {
-        let (sfc, warnings) = gen_sfc_and_warnings(r#"
+        let (sfc, warnings) = gen_sfc_and_warnings(
+            r#"
 widget CommaProbe {
     view {
         col {
@@ -27823,7 +30446,8 @@ widget CommaProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             !sfc.contains("<div />"),
             "stray commas must not emit junk spacer divs:\n{sfc}"
@@ -27846,7 +30470,8 @@ widget CommaProbe {
 
     #[test]
     fn test_gap20_dynamic_class_ref_is_bound() {
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget ClassProbe {
     model { var cls str = "x" }
     view {
@@ -27858,7 +30483,8 @@ widget ClassProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(":class=\"cls\""),
             "dynamic class: .cls must emit a :class binding (template auto-unwraps refs):\n{sfc}"
@@ -27867,7 +30493,8 @@ widget ClassProbe {
 
     #[test]
     fn test_gap20_dynamic_class_if_emits_ternary() {
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget ClassIfProbe {
     model { var done bool = false }
     view {
@@ -27879,11 +30506,10 @@ widget ClassIfProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
-            sfc.contains(":class=")
-                && sfc.contains("line-through")
-                && sfc.contains("text-muted"),
+            sfc.contains(":class=") && sfc.contains("line-through") && sfc.contains("text-muted"),
             "class: if-expr must emit a :class ternary keeping both branches:\n{sfc}"
         );
     }
@@ -27896,7 +30522,8 @@ widget ClassIfProbe {
     /// expr). Vue semantics union them; dropping either is silent data loss.
     #[test]
     fn test_p013_duplicate_class_props_merge() {
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget DupClassProbe {
     model { var busy bool = false }
     view {
@@ -27909,7 +30536,8 @@ widget DupClassProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("static-a"),
             "static class from the first `class:` prop must survive:\n{sfc}"
@@ -27924,7 +30552,8 @@ widget DupClassProbe {
     /// identifiers (`line-through`), mirroring the `style:` StyleBinding path.
     #[test]
     fn test_p013_class_map_form_quotes_keys() {
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget MapClassProbe {
     model { var done bool = false }
     view {
@@ -27936,7 +30565,8 @@ widget MapClassProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("'line-through': done"),
             "class: map form must quote non-identifier keys:\n{sfc}"
@@ -27950,7 +30580,8 @@ widget MapClassProbe {
     /// Form 3a: array form with a ternary element used to emit literal `null`.
     #[test]
     fn test_p013_class_array_ternary_no_null() {
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget ArrClassProbe {
     model { var busy bool = false }
     view {
@@ -27962,7 +30593,8 @@ widget ArrClassProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             !sfc.contains("null"),
             "class: array form must never emit literal null:\n{sfc}"
@@ -27976,7 +30608,8 @@ widget ArrClassProbe {
     /// Form 3b: string concat `class: "a" + .cls` used to emit literal `null`.
     #[test]
     fn test_p013_class_concat_no_null() {
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget ConcatClassProbe {
     model { var cls str = "x" }
     view {
@@ -27988,7 +30621,8 @@ widget ConcatClassProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             !sfc.contains("null"),
             "class: concat must never emit literal null:\n{sfc}"
@@ -28003,7 +30637,8 @@ widget ConcatClassProbe {
     /// extract_classes — the array form must be fixed there too.
     #[test]
     fn test_p013_class_array_shadcn_choke_point() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget ArrShadcnProbe {
     model { var busy bool = false }
     view {
@@ -28014,7 +30649,8 @@ widget ArrShadcnProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             !sfc.contains("null"),
             "shadcn choke point must not emit literal null for class arrays:\n{sfc}"
@@ -28036,7 +30672,8 @@ widget ArrShadcnProbe {
     /// After: `false` fallback + a loud R013.
     #[test]
     fn test_p013_catchall_style_binding_warns_r013() {
-        let (sfc, warnings) = gen_sfc_and_warnings(r#"
+        let (sfc, warnings) = gen_sfc_and_warnings(
+            r#"
 widget StyleCatchAllProbe {
     model {
         var a str = "x"
@@ -28051,7 +30688,8 @@ widget StyleCatchAllProbe {
         }
     }
 }
-"#);
+"#,
+        );
         let r013 = warnings_for_rule(&warnings, "R013");
         assert!(
             !r013.is_empty(),
@@ -28072,7 +30710,8 @@ widget StyleCatchAllProbe {
     /// literal-"null" string compare.
     #[test]
     fn test_p013_catchall_class_expr_warns_r011() {
-        let (sfc, warnings) = gen_sfc_and_warnings(r#"
+        let (sfc, warnings) = gen_sfc_and_warnings(
+            r#"
 widget ClassCatchAllProbe {
     model {
         var a str = "x"
@@ -28087,7 +30726,8 @@ widget ClassCatchAllProbe {
         }
     }
 }
-"#);
+"#,
+        );
         let r011 = warnings_for_rule(&warnings, "R011");
         assert!(
             !r011.is_empty(),
@@ -28108,7 +30748,8 @@ widget ClassCatchAllProbe {
     #[test]
     fn test_p013_catchall_vshow_is_hard_error() {
         let session = crate::session::CompilerSession::ui();
-        let mut parser = crate::parser::Parser::from(r#"
+        let mut parser = crate::parser::Parser::from(
+            r#"
 widget VShowCatchAllProbe {
     model {
         var a str = "x"
@@ -28122,7 +30763,9 @@ widget VShowCatchAllProbe {
         }
     }
 }
-"#).with_session(session);
+"#,
+        )
+        .with_session(session);
         let ast = parser.parse().expect("widget source must parse");
         let decl = ast
             .stmts
@@ -28147,7 +30790,8 @@ widget VShowCatchAllProbe {
     /// fallback but must warn R013.
     #[test]
     fn test_p013_catchall_style_obj_warns_r013() {
-        let (sfc, warnings) = gen_sfc_and_warnings(r#"
+        let (sfc, warnings) = gen_sfc_and_warnings(
+            r#"
 widget StyleObjCatchAllProbe {
     model {
         var a int = 1
@@ -28162,7 +30806,8 @@ widget StyleObjCatchAllProbe {
         }
     }
 }
-"#);
+"#,
+        );
         let r013 = warnings_for_rule(&warnings, "R013");
         assert!(
             !r013.is_empty(),
@@ -28186,7 +30831,8 @@ widget StyleObjCatchAllProbe {
 
     #[test]
     fn test_label_keeps_static_class_shadcn() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget LabelProbe {
     view {
         col {
@@ -28197,7 +30843,8 @@ widget LabelProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("<label class=\"slider-row\">"),
             "label must keep its static class on the shadcn path (native <label>):\n{sfc}"
@@ -28206,7 +30853,8 @@ widget LabelProbe {
 
     #[test]
     fn test_label_keeps_dynamic_class_shadcn() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget LabelDynProbe {
     model { var cls str = "x" }
     view {
@@ -28217,7 +30865,8 @@ widget LabelDynProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(":class=\"cls\""),
             "label must bind a dynamic class expr as :class (Batch A gap 20):\n{sfc}"
@@ -28228,7 +30877,8 @@ widget LabelDynProbe {
     /// shadcn Select component — its arm had the same silent class drop.
     #[test]
     fn test_select_keeps_static_class_shadcn() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget SelectProbe {
     view {
         col {
@@ -28237,7 +30887,8 @@ widget SelectProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("class=\"control-row\""),
             "select must forward its static class on the shadcn path:\n{sfc}"
@@ -28259,7 +30910,8 @@ widget SelectProbe {
 
     #[test]
     fn test_dialogtitle_forwards_class_shadcn() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget DialogTitleProbe {
     view {
         col {
@@ -28270,7 +30922,8 @@ widget DialogTitleProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("<DialogTitle") && sfc.contains("class=\"text-lg\""),
             "DialogTitle (overlay family) must forward its static class via attr fallthrough:\n{sfc}"
@@ -28279,7 +30932,8 @@ widget DialogTitleProbe {
 
     #[test]
     fn test_sidebar_forwards_class_shadcn() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget SidebarProbe {
     view {
         col {
@@ -28289,7 +30943,8 @@ widget SidebarProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("<Sidebar") && sfc.contains("class=\"w-64 border-r\""),
             "Sidebar (sidebar family) must forward its static class:\n{sfc}"
@@ -28301,7 +30956,8 @@ widget SidebarProbe {
     /// isActive prop(模板 kebab 形 is-active),variant/size 透传。
     #[test]
     fn test_sidebar_menu_button_to_active_shadcn() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget SidebarMenuButtonProbe {
     model { var flag bool = true }
     view {
@@ -28318,10 +30974,20 @@ widget SidebarMenuButtonProbe {
         }
     }
 }
-"##);
-        assert!(sfc.contains("<SidebarMenuButton as-child"), "as-child 多态:\n{sfc}");
-        assert!(sfc.contains("<RouterLink to=\"/dash\">"), "内嵌 RouterLink:\n{sfc}");
-        assert!(sfc.contains(":is-active=\"flag\""), "active → :is-active:\n{sfc}");
+"##,
+        );
+        assert!(
+            sfc.contains("<SidebarMenuButton as-child"),
+            "as-child 多态:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("<RouterLink to=\"/dash\">"),
+            "内嵌 RouterLink:\n{sfc}"
+        );
+        assert!(
+            sfc.contains(":is-active=\"flag\""),
+            "active → :is-active:\n{sfc}"
+        );
         assert!(sfc.contains("variant=\"outline\""), "variant 透传:\n{sfc}");
         assert!(sfc.contains("size=\"lg\""), "size 透传:\n{sfc}");
         assert!(sfc.contains("Dashboard"), "text slot 内容:\n{sfc}");
@@ -28336,7 +31002,8 @@ widget SidebarMenuButtonProbe {
     /// 前缀段匹配);sidebar_menu_sub_button 同款。
     #[test]
     fn test_sidebar_menu_button_route_autodetect_shadcn() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget SidebarAutoActiveProbe {
     view {
         col {
@@ -28359,7 +31026,8 @@ widget SidebarAutoActiveProbe {
         }
     }
 }
-"##);
+"##,
+        );
         assert!(
             sfc.contains(":is-active=\"$route.path === '/settings' || $route.path.startsWith('/settings' + '/')\""),
             "静态 to 自动探测:\n{sfc}"
@@ -28378,7 +31046,8 @@ widget SidebarAutoActiveProbe {
     /// 原生 <button>（不坍缩 div），active/class/事件经通用属性透传。
     #[test]
     fn test_sidebar_menu_button_plain_mode_button_semantics() {
-        let sfc = gen_sfc_from_widget_src(r##"
+        let sfc = gen_sfc_from_widget_src(
+            r##"
 widget SidebarPlainProbe {
     model { var flag bool = true }
     view {
@@ -28395,11 +31064,18 @@ widget SidebarPlainProbe {
         }
     }
 }
-"##);
+"##,
+        );
         assert!(sfc.contains("<button"), "Plain 模式保 button 语义:\n{sfc}");
-        assert!(!sfc.contains("SidebarMenuButton"), "Plain 模式不引 shadcn 组件:\n{sfc}");
+        assert!(
+            !sfc.contains("SidebarMenuButton"),
+            "Plain 模式不引 shadcn 组件:\n{sfc}"
+        );
         assert!(sfc.contains("my-item"), "用户 class 透传:\n{sfc}");
-        assert!(sfc.contains(":active="), "active 通用属性透传（测试锚）:\n{sfc}");
+        assert!(
+            sfc.contains(":active="),
+            "active 通用属性透传（测试锚）:\n{sfc}"
+        );
     }
 
     /// Plan 548 T7: 含 sidebar 且无 sidebar_provider → 模板根自动包
@@ -28407,7 +31083,8 @@ widget SidebarPlainProbe {
     /// 教训);显式写了 provider 的不重复包裹;非 shadcn 模式不动。
     #[test]
     fn test_sidebar_provider_autowrap_shadcn() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r##"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget SidebarAutowrapProbe {
     view {
         col {
@@ -28417,7 +31094,8 @@ widget SidebarAutowrapProbe {
         }
     }
 }
-"##);
+"##,
+        );
         assert!(sfc.contains("<SidebarProvider>"), "模板根自动包裹:\n{sfc}");
         assert!(sfc.contains("</SidebarProvider>"), "包裹闭合:\n{sfc}");
         assert!(
@@ -28425,7 +31103,8 @@ widget SidebarAutowrapProbe {
             "SidebarProvider import 生成:\n{sfc}"
         );
 
-        let explicit = gen_sfc_from_widget_src_shadcn(r##"
+        let explicit = gen_sfc_from_widget_src_shadcn(
+            r##"
 widget SidebarExplicitProbe {
     view {
         sidebar_provider {
@@ -28435,14 +31114,16 @@ widget SidebarExplicitProbe {
         }
     }
 }
-"##);
+"##,
+        );
         assert_eq!(
             explicit.matches("<SidebarProvider").count(),
             1,
             "显式 sidebar_provider 不重复包裹:\n{explicit}"
         );
 
-        let plain = gen_sfc_from_widget_src(r##"
+        let plain = gen_sfc_from_widget_src(
+            r##"
 widget SidebarPlainProbe {
     view {
         col {
@@ -28450,19 +31131,26 @@ widget SidebarPlainProbe {
         }
     }
 }
-"##);
-        assert!(!plain.contains("SidebarProvider"), "非 shadcn 模式不包裹:\n{plain}");
+"##,
+        );
+        assert!(
+            !plain.contains("SidebarProvider"),
+            "非 shadcn 模式不包裹:\n{plain}"
+        );
     }
 
     /// T7 断言辅助:SFC 的 import 段含 sidebar 契约路径且点名组件。
     fn sfc2_check_import(sfc: &str, component: &str) -> bool {
         sfc.contains("@/components/ui/sidebar")
-            && sfc.lines().any(|l| l.contains("@/components/ui/sidebar") && l.contains(component))
+            && sfc
+                .lines()
+                .any(|l| l.contains("@/components/ui/sidebar") && l.contains(component))
     }
 
     #[test]
     fn test_slider_forwards_class_shadcn() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget SliderProbe {
     model { var vol int = 0 }
     view {
@@ -28471,7 +31159,8 @@ widget SliderProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("<input") && sfc.contains("type=\"range\"") && sfc.contains("w-48"),
             "slider (native range, PLAN-661 R-5) must forward its static class:\n{sfc}"
@@ -28483,7 +31172,8 @@ widget SliderProbe {
     /// （f32 语义对齐 a2r/VM 轨 .SetVol(v float)）。
     #[test]
     fn test_slider_native_range_attrs_and_payload() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget SliderProbe {
     msg { SetVol(float) }
     model { var vol float = 30.0 }
@@ -28496,23 +31186,37 @@ widget SliderProbe {
         .SetVol(v float) -> { .vol = v }
     }
 }
-"#);
-        assert!(sfc.contains("type=\"range\""), "range type injected:\n{sfc}");
+"#,
+        );
+        assert!(
+            sfc.contains("type=\"range\""),
+            "range type injected:\n{sfc}"
+        );
         assert!(sfc.contains("min=\"0"), "min static:\n{sfc}");
         assert!(sfc.contains("max=\"100"), "max static:\n{sfc}");
         assert!(sfc.contains("step=\"1"), "step static:\n{sfc}");
-        assert!(sfc.contains(":value=\"vol\""), "value reactive binding:\n{sfc}");
+        assert!(
+            sfc.contains(":value=\"vol\""),
+            "value reactive binding:\n{sfc}"
+        );
         assert!(
             sfc.contains("@input=\"SetVol(($event.target as HTMLInputElement).valueAsNumber)\""),
             "onchange → @input valueAsNumber payload dispatch:\n{sfc}"
         );
-        assert!(!sfc.contains("<Slider"), "shadcn Slider component path retired:\n{sfc}");
-        assert!(!sfc.contains("default-value"), "Plan 408 :default-value array form retired:\n{sfc}");
+        assert!(
+            !sfc.contains("<Slider"),
+            "shadcn Slider component path retired:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains("default-value"),
+            "Plan 408 :default-value array form retired:\n{sfc}"
+        );
     }
 
     #[test]
     fn test_card_forwards_dynamic_class_shadcn() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget CardProbe {
     model { var cls str = "x" }
     view {
@@ -28523,7 +31227,8 @@ widget CardProbe {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("<Card") && sfc.contains(":class=\"cls\""),
             "Card (layout family) must bind a dynamic class expr as :class:\n{sfc}"
@@ -28535,7 +31240,8 @@ widget CardProbe {
     /// from the choke point.
     #[test]
     fn test_button_class_not_duplicated_shadcn() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget ButtonProbe {
     view {
         col {
@@ -28545,7 +31251,8 @@ widget ButtonProbe {
         }
     }
 }
-"#);
+"#,
+        );
         let occurrences = sfc.matches("class=\"px-8\"").count();
         assert_eq!(
             occurrences, 1,
@@ -28557,7 +31264,8 @@ widget ButtonProbe {
 
     #[test]
     fn test_gap44_computed_ref_unwrapped_in_computed() {
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget ComputedProbe {
     model { var open bool = false }
     computed {
@@ -28566,7 +31274,8 @@ widget ComputedProbe {
     }
     view { col { text "x" } }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("is_expanded.value"),
             "computed referencing another computed must use .value:\n{sfc}"
@@ -28582,7 +31291,8 @@ widget ComputedProbe {
     fn test_gap44_explicit_value_suffix_not_doubled() {
         // The pre-fix workaround (writing `.c.value` by hand) must keep
         // compiling to `c.value`, not degrade to `c.value.value`.
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget ComputedWorkaroundProbe {
     model { var open bool = false }
     computed {
@@ -28591,7 +31301,8 @@ widget ComputedWorkaroundProbe {
     }
     view { col { text "x" } }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("is_expanded.value"),
             "explicit .value workaround must still resolve:\n{sfc}"
@@ -28606,7 +31317,8 @@ widget ComputedWorkaroundProbe {
 
     #[test]
     fn test_gap45_exposed_parameterized_handler_generated() {
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget ExposeProbe {
     msg Msg { Open(str) }
     view { col { text "x" } }
@@ -28617,7 +31329,8 @@ widget ExposeProbe {
         .Open
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("function Open(entry"),
             "exposed parameterized handler must be generated as a local fn:\n{sfc}"
@@ -28681,10 +31394,14 @@ widget A1Probe {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(A1_STORE_QUAL_SRC).with_session(session);
         let ast = parser.parse().expect("widget source must parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
         let mut gen = VueGenerator::new().with_store_deps(vec!["AuthStore".to_string()]);
         let sfc = gen.generate(&widget).expect("generate SFC");
@@ -28713,15 +31430,21 @@ widget A1Probe {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(A1_STORE_QUAL_SRC).with_session(session);
         let ast = parser.parse().expect("widget source must parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
 
         // 默认前缀不变（回归守卫）
         let mut gen_default = VueGenerator::new().with_store_deps(vec!["AuthStore".to_string()]);
-        let sfc_default = gen_default.generate(&widget).expect("generate SFC (default)");
+        let sfc_default = gen_default
+            .generate(&widget)
+            .expect("generate SFC (default)");
         assert!(
             sfc_default.contains("from '@/stores/useAuthStore'"),
             "default prefix must stay @/stores:\n{sfc_default}"
@@ -28731,7 +31454,9 @@ widget A1Probe {
         let mut gen_cfg = VueGenerator::new()
             .with_store_deps(vec!["AuthStore".to_string()])
             .with_store_import_prefix("@/stores/auto");
-        let sfc_cfg = gen_cfg.generate(&widget).expect("generate SFC (configured)");
+        let sfc_cfg = gen_cfg
+            .generate(&widget)
+            .expect("generate SFC (configured)");
         assert!(
             sfc_cfg.contains("from '@/stores/auto/useAuthStore'"),
             "configured prefix must reach the import line:\n{sfc_cfg}"
@@ -28818,7 +31543,8 @@ widget A1Probe {
     #[test]
     fn test_plan053_string_mapping_handler_body() {
         // handler body → ts_adapter::transpile_handler_body 路径
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget Plan053Str {
     model {
         var s str = "Hello"
@@ -28843,22 +31569,41 @@ widget Plan053Str {
     }
     view { col { button "run" { onclick: .Run } text .sink } }
 }
-"#);
-        assert!(sfc.contains(".toLowerCase()"), "to_lower/lower→toLowerCase:\n{sfc}");
-        assert!(sfc.contains(".toUpperCase()"), "to_upper→toUpperCase:\n{sfc}");
-        assert!(sfc.contains(".startsWith("), "starts_with→startsWith:\n{sfc}");
+"#,
+        );
+        assert!(
+            sfc.contains(".toLowerCase()"),
+            "to_lower/lower→toLowerCase:\n{sfc}"
+        );
+        assert!(
+            sfc.contains(".toUpperCase()"),
+            "to_upper→toUpperCase:\n{sfc}"
+        );
+        assert!(
+            sfc.contains(".startsWith("),
+            "starts_with→startsWith:\n{sfc}"
+        );
         assert!(sfc.contains(".endsWith("), "ends_with→endsWith:\n{sfc}");
         assert!(sfc.contains(".charAt("), "char_at→charAt:\n{sfc}");
         assert!(sfc.contains(".indexOf("), "find→indexOf:\n{sfc}");
-        assert!(sfc.contains(".substring("), "substr/sub/slice→substring:\n{sfc}");
+        assert!(
+            sfc.contains(".substring("),
+            "substr/sub/slice→substring:\n{sfc}"
+        );
         assert!(sfc.contains(".replaceAll("), "replace→replaceAll:\n{sfc}");
         assert!(sfc.contains(".repeat("), "repeat→repeat:\n{sfc}");
         assert!(sfc.contains(".trimStart()"), "trim_left→trimStart:\n{sfc}");
         assert!(sfc.contains(".trimEnd()"), "trim_right→trimEnd:\n{sfc}");
         // 关键回归：坏 JS（原样输出）不得再出现
-        assert!(!sfc.contains(".to_lower("), "to_lower must map, not pass through:\n{sfc}");
+        assert!(
+            !sfc.contains(".to_lower("),
+            "to_lower must map, not pass through:\n{sfc}"
+        );
         assert!(!sfc.contains(".lower("), "lower must map:\n{sfc}");
-        assert!(!sfc.contains(".starts_with("), "starts_with must map:\n{sfc}");
+        assert!(
+            !sfc.contains(".starts_with("),
+            "starts_with must map:\n{sfc}"
+        );
         assert!(!sfc.contains(".char_at("), "char_at must map:\n{sfc}");
         assert!(!sfc.contains(".substr("), "substr must map:\n{sfc}");
     }
@@ -28867,7 +31612,8 @@ widget Plan053Str {
     fn test_plan053_string_mapping_computed_expr() {
         // computed 单表达式 → vue.rs expr_to_js 路径（与 handler body 的
         // ts_adapter 路径相对，覆盖第一处 codegen 改动）
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget Plan053Tmpl {
     model { var s str = "hi" }
     computed {
@@ -28879,14 +31625,21 @@ widget Plan053Tmpl {
     }
     view { col { text .upper } }
 }
-"#);
+"#,
+        );
         assert!(sfc.contains(".toUpperCase()"), "computed to_upper:\n{sfc}");
         assert!(sfc.contains(".toLowerCase()"), "computed lower:\n{sfc}");
         assert!(sfc.contains(".startsWith("), "computed starts_with:\n{sfc}");
         assert!(sfc.contains(".charAt("), "computed char_at:\n{sfc}");
         assert!(sfc.contains(".length === 0"), "computed is_empty:\n{sfc}");
-        assert!(!sfc.contains(".to_upper("), "computed to_upper must map:\n{sfc}");
-        assert!(!sfc.contains(".starts_with("), "computed starts_with must map:\n{sfc}");
+        assert!(
+            !sfc.contains(".to_upper("),
+            "computed to_upper must map:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains(".starts_with("),
+            "computed starts_with must map:\n{sfc}"
+        );
     }
 
     #[test]
@@ -28895,7 +31648,8 @@ widget Plan053Tmpl {
         // map，字符串方法原样输出坏 JS（实测 BlockBody 产物
         // `field[1].Text.to_float()` 触发 vue-tsc 报错）。修复后与
         // expr_to_js / handler body 共享 map_method_to_js 单源。
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget Plan053ViewMap {
     model { var s str = "75%" }
     view {
@@ -28910,13 +31664,26 @@ widget Plan053ViewMap {
         }
     }
 }
-"#);
+"#,
+        );
         // progress value → bound 位置：to_float → parseFloat
-        assert!(sfc.contains("parseFloat(s)"), "bound to_float → parseFloat:\n{sfc}");
-        assert!(!sfc.contains(".to_float("), "bound to_float must map:\n{sfc}");
+        assert!(
+            sfc.contains("parseFloat(s)"),
+            "bound to_float → parseFloat:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains(".to_float("),
+            "bound to_float must map:\n{sfc}"
+        );
         // view if 条件（同样走 bound 位置）：starts_with → startsWith
-        assert!(sfc.contains(".startsWith("), "bound starts_with → startsWith:\n{sfc}");
-        assert!(!sfc.contains(".starts_with("), "bound starts_with must map:\n{sfc}");
+        assert!(
+            sfc.contains(".startsWith("),
+            "bound starts_with → startsWith:\n{sfc}"
+        );
+        assert!(
+            !sfc.contains(".starts_with("),
+            "bound starts_with must map:\n{sfc}"
+        );
     }
 
     // --- find 双语义守卫：数组 find(λ) 不得映射 indexOf ------------------
@@ -28930,7 +31697,8 @@ widget Plan053ViewMap {
     #[test]
     fn test_find_lambda_handler_body_keeps_find() {
         // handler body → ts_adapter::transpile_expr 路径
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget FindLambdaHandler {
     model {
         var tabs Array<str> = []
@@ -28943,7 +31711,8 @@ widget FindLambdaHandler {
     }
     view { col { button "go" { onclick: .Go } text .found } }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(".find("),
             "array find(λ) in handler body must keep .find():\n{sfc}"
@@ -28957,7 +31726,8 @@ widget FindLambdaHandler {
     #[test]
     fn test_find_lambda_computed_keeps_find() {
         // computed 单表达式 → vue.rs expr_to_js / map_method_to_js 路径
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget FindLambdaComputed {
     model { var tabs Array<str> = [] }
     computed {
@@ -28965,7 +31735,8 @@ widget FindLambdaComputed {
     }
     view { col { text .hit } }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(".find(("),
             "array find(λ) in computed must keep .find():\n{sfc}"
@@ -29017,7 +31788,8 @@ store FindTabs {
     fn test_find_string_arg_still_maps_to_index_of() {
         // 回归保护：字符串 str::find 语义（非 lambda 实参）仍映射 indexOf。
         // handler body 与 view 条件两条路径都查。
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget FindStrRegress {
     model {
         var s str = "Hello"
@@ -29037,7 +31809,8 @@ widget FindStrRegress {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains(".indexOf("),
             "string find must still map to .indexOf():\n{sfc}"
@@ -29083,7 +31856,8 @@ widget FindStrRegress {
     fn test_plan053_p57_self_called_handler_is_emitted() {
         // P5-7: handler 被 OnInput/AcceptGhost/Word 自调用，无模板绑定，不 expose。
         // mark_self_called_handlers 应把它标 used → 生成 function（否则 TS2304）。
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget Plan053SelfCall {
     model { var x str = "" }
     on {
@@ -29096,7 +31870,8 @@ widget Plan053SelfCall {
     }
     view { col { button "go" { onclick: .Run } text .x } }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("function Helper"),
             "Helper (called via .Helper() from Run, no template binding, no expose) must be emitted:\n{sfc}"
@@ -29113,7 +31888,8 @@ widget Plan053SelfCall {
         // handlers — must NOT be marked used (no false "function save" etc).
         // (They emit as method calls regardless; this test just ensures the
         // scanner doesn't crash on them or pollute used_handlers.)
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget Plan053Gate {
     model { var items []str = [] }
     on {
@@ -29123,7 +31899,8 @@ widget Plan053Gate {
     }
     view { col { button "go" { onclick: .Run } } }
 }
-"#);
+"#,
+        );
         assert!(
             !sfc.contains("function push"),
             ".push() is a store method, must NOT be emitted as a handler function:\n{sfc}"
@@ -29140,7 +31917,8 @@ widget Plan053Gate {
         // (complete's `await`/import come from `use back.api` in real code;
         // here we only exercise the debounce wrapping, which keys off the
         // bare call name, so the use-decl is unnecessary in the fixture.)
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget Plan053Debounce {
     model {
         var input str = ""
@@ -29165,12 +31943,19 @@ widget Plan053Debounce {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(sfc.contains("let __completeTimer"), "timer decl:\n{sfc}");
         assert!(sfc.contains("let __completeSeq = 0"), "seq decl:\n{sfc}");
-        assert!(sfc.contains("clearTimeout(__completeTimer)"), "clear pending timer:\n{sfc}");
+        assert!(
+            sfc.contains("clearTimeout(__completeTimer)"),
+            "clear pending timer:\n{sfc}"
+        );
         assert!(sfc.contains("++__completeSeq"), "bump seq:\n{sfc}");
-        assert!(sfc.contains("setTimeout(async () => {"), "setTimeout wrapper:\n{sfc}");
+        assert!(
+            sfc.contains("setTimeout(async () => {"),
+            "setTimeout wrapper:\n{sfc}"
+        );
         assert!(sfc.contains("}, 80)"), "80ms delay:\n{sfc}");
     }
 
@@ -29179,7 +31964,8 @@ widget Plan053Debounce {
         // P5-6: inside the debounced body, state-ref assignments
         // (`.suggestions =`) get a seq guard so a stale complete result can't
         // clobber the newest suggestions. Local `var items` is NOT guarded.
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget Plan053DebounceGuard {
     model {
         var input str = ""
@@ -29204,7 +31990,8 @@ widget Plan053DebounceGuard {
         }
     }
 }
-"#);
+"#,
+        );
         // Both branches' `.suggestions =` are guarded; `let items` is not.
         assert!(
             sfc.contains("if (__seq === __completeSeq) { suggestions.value ="),
@@ -29220,7 +32007,8 @@ widget Plan053DebounceGuard {
     fn test_plan053_p56_non_complete_handler_not_debounced() {
         // P5-6 gate: handlers that DON'T call complete stay eager — no timer,
         // no setTimeout wrapper, no seq infrastructure emitted at all.
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget Plan053NoDebounce {
     model {
         var input str = ""
@@ -29243,11 +32031,21 @@ widget Plan053NoDebounce {
         }
     }
 }
-"#);
-        assert!(!sfc.contains("__completeTimer"), "no timer for non-complete handler:\n{sfc}");
+"#,
+        );
+        assert!(
+            !sfc.contains("__completeTimer"),
+            "no timer for non-complete handler:\n{sfc}"
+        );
         assert!(!sfc.contains("setTimeout"), "no setTimeout wrapper:\n{sfc}");
-        assert!(!sfc.contains("__completeSeq"), "no seq for non-complete handler:\n{sfc}");
-        assert!(sfc.contains("function OnInput"), "handler still emitted:\n{sfc}");
+        assert!(
+            !sfc.contains("__completeSeq"),
+            "no seq for non-complete handler:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("function OnInput"),
+            "handler still emitted:\n{sfc}"
+        );
     }
 
     #[test]
@@ -29255,7 +32053,8 @@ widget Plan053NoDebounce {
         // P5-5: textarea was missing from user_class_skip_elements → user
         // style still got the default `border rounded px-2 py-1` forced in.
         // With user class present, defaults must be skipped (mirrors `input`).
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget Plan053Textarea {
     model { var s str = "" }
     view {
@@ -29268,7 +32067,8 @@ widget Plan053Textarea {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(sfc.contains("<textarea"), "textarea tag:\n{sfc}");
         assert!(sfc.contains("resize-none"), "user class kept:\n{sfc}");
         assert!(
@@ -29285,7 +32085,8 @@ widget Plan053Textarea {
         // type (built from template-bound handlers before
         // mark_self_called_handlers), so emitting would be TS2769
         // (observed on DoTokenize).
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget Plan053NoEmit {
     msg Msg { Run, Helper }
     model { var x str = "" }
@@ -29299,8 +32100,12 @@ widget Plan053NoEmit {
     }
     view { col { button "go" { onclick: .Run } text .x } }
 }
-"#);
-        assert!(sfc.contains("function Helper"), "self-called handler emitted:\n{sfc}");
+"#,
+        );
+        assert!(
+            sfc.contains("function Helper"),
+            "self-called handler emitted:\n{sfc}"
+        );
         assert!(
             !sfc.contains("emit('Helper')"),
             "self-called-only handler must not emit (not in defineEmits type):\n{sfc}"
@@ -29315,7 +32120,8 @@ widget Plan053NoEmit {
 
     #[test]
     fn test_gap47_null_checks_are_loose() {
-        let (sfc, _) = gen_sfc_and_warnings(r#"
+        let (sfc, _) = gen_sfc_and_warnings(
+            r#"
 widget NullProbe {
     model { var x str = "" }
     computed {
@@ -29324,7 +32130,8 @@ widget NullProbe {
     }
     view { col { text "x" } }
 }
-"#);
+"#,
+        );
         assert!(
             sfc.contains("x.value != null"),
             "`.x != null` must compile to a loose null check (covers undefined):\n{sfc}"
@@ -29427,7 +32234,10 @@ widget NullProbe {
         );
         // 关键接缝标记：双击/右键/布局件点击三事件面在 vue 产物可见。
         assert!(output.contains("@dblclick"), "ondblclick → @dblclick");
-        assert!(output.contains("@contextmenu"), "oncontextmenu → @contextmenu");
+        assert!(
+            output.contains("@contextmenu"),
+            "oncontextmenu → @contextmenu"
+        );
     }
 
     /// Plan 498 M0：mouse-area onclick → vue `@click` 生成断言（与 496
@@ -29437,7 +32247,8 @@ widget NullProbe {
     /// container with an interactive transform and normalized DOM events.
     #[test]
     fn image_surface_vue_codegen() {
-        let sfc = gen_sfc_from_widget_src_shadcn(r#"
+        let sfc = gen_sfc_from_widget_src_shadcn(
+            r#"
 widget ImageViewer {
     model {
         var asset_src str = "/api/__auto/media/demo/1"
@@ -29472,31 +32283,82 @@ widget ImageViewer {
         .ToggleFit -> { }
     }
 }
-"#);
-        assert!(sfc.contains("class=\"relative overflow-hidden\""), "crop wrapper:\n{sfc}");
-        assert!(sfc.contains(":src=\"asset_src\""), "URI source binding:\n{sfc}");
-        assert!(sfc.contains(":style=\"'transform:' +"), "interactive transform (string style):\n{sfc}");
-        assert!(sfc.contains("object-fit:' + (fit_mode)"), "fit binding (string style):\n{sfc}");
-        assert!(sfc.contains("@load=\"ImageLoaded\""), "onload normalization:\n{sfc}");
-        assert!(sfc.contains("@error=\"ImageFailed\""), "onerror normalization:\n{sfc}");
-        assert!(sfc.contains("@wheel=\"ZoomAt\""), "onwheel normalization:\n{sfc}");
+"#,
+        );
+        assert!(
+            sfc.contains("class=\"relative overflow-hidden\""),
+            "crop wrapper:\n{sfc}"
+        );
+        assert!(
+            sfc.contains(":src=\"asset_src\""),
+            "URI source binding:\n{sfc}"
+        );
+        assert!(
+            sfc.contains(":style=\"'transform:' +"),
+            "interactive transform (string style):\n{sfc}"
+        );
+        assert!(
+            sfc.contains("object-fit:' + (fit_mode)"),
+            "fit binding (string style):\n{sfc}"
+        );
+        assert!(
+            sfc.contains("@load=\"ImageLoaded\""),
+            "onload normalization:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("@error=\"ImageFailed\""),
+            "onerror normalization:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("@wheel=\"ZoomAt\""),
+            "onwheel normalization:\n{sfc}"
+        );
         // Plan 547: onpan -> pointer 三绑定 + script 合成包装(DOM 无 pan 事件)
-        assert!(sfc.contains("@pointerdown=\"__surfPanD_0\""), "onpan pointer down:\n{sfc}");
-        assert!(sfc.contains("@pointermove=\"__surfPanM_0\""), "onpan pointer move:\n{sfc}");
-        assert!(sfc.contains("@pointerup=\"__surfPanU_0\""), "onpan pointer up:\n{sfc}");
-        assert!(sfc.contains("function __surfPanM_0(e: PointerEvent)"), "pan wrapper fn:\n{sfc}");
+        assert!(
+            sfc.contains("@pointerdown=\"__surfPanD_0\""),
+            "onpan pointer down:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("@pointermove=\"__surfPanM_0\""),
+            "onpan pointer move:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("@pointerup=\"__surfPanU_0\""),
+            "onpan pointer up:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("function __surfPanM_0(e: PointerEvent)"),
+            "pan wrapper fn:\n{sfc}"
+        );
         assert!(sfc.contains("e.buttons & 1"), "pan buttons gate:\n{sfc}");
-        assert!(sfc.contains("PanBy()"), "pan handler arity-0 call:
-{sfc}");
-        assert!(sfc.contains("@dblclick=\"ToggleFit\""), "ondblclick normalization:\n{sfc}");
-        for forbidden in ["FileReader", "decodeImage", "prefetch", "imageCache", "cache.put"] {
-            assert!(!sfc.to_ascii_lowercase().contains(&forbidden.to_ascii_lowercase()), "forbidden browser-side media implementation {forbidden}:\n{sfc}");
+        assert!(
+            sfc.contains("PanBy()"),
+            "pan handler arity-0 call:
+{sfc}"
+        );
+        assert!(
+            sfc.contains("@dblclick=\"ToggleFit\""),
+            "ondblclick normalization:\n{sfc}"
+        );
+        for forbidden in [
+            "FileReader",
+            "decodeImage",
+            "prefetch",
+            "imageCache",
+            "cache.put",
+        ] {
+            assert!(
+                !sfc.to_ascii_lowercase()
+                    .contains(&forbidden.to_ascii_lowercase()),
+                "forbidden browser-side media implementation {forbidden}:\n{sfc}"
+            );
         }
     }
 
     #[test]
     fn test_a2vue_mouse_area_onclick() {
-        let sfc = gen_sfc_from_widget_src(r#"
+        let sfc = gen_sfc_from_widget_src(
+            r#"
 widget ClickZone {
     msg { Ping }
     model { var n int = 0 }
@@ -29510,9 +32372,18 @@ widget ClickZone {
         .Ping -> { .n = .n + 1 }
     }
 }
-"#);
-        assert!(sfc.contains("@click=\"Ping\""), "onclick → @click:\n{}", sfc);
-        assert!(sfc.contains("@mouseenter=\"Ping\""), "onmouseenter 共存:\n{}", sfc);
+"#,
+        );
+        assert!(
+            sfc.contains("@click=\"Ping\""),
+            "onclick → @click:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("@mouseenter=\"Ping\""),
+            "onmouseenter 共存:\n{}",
+            sfc
+        );
     }
 
     /// PLAN-026 缺陷②: component fn 的 `style { }` 块必须 emit 到 SFC `<style
@@ -29524,9 +32395,12 @@ widget ClickZone {
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("010_component_fn_style generation failed");
+        )
+        .expect("010_component_fn_style generation failed");
 
-        let code = result.all_widget_codes.iter()
+        let code = result
+            .all_widget_codes
+            .iter()
             .find(|(name, _)| name == "StyledCard")
             .map(|(_, code)| code)
             .expect("StyledCard component fn not synthesized");
@@ -29541,8 +32415,16 @@ widget ClickZone {
                 expected, actual
             );
         }
-        assert!(code.contains("<style scoped>"), "component fn SFC must have <style scoped>: {}", code);
-        assert!(code.contains(".card-title"), "<style> must contain the CSS rule: {}", code);
+        assert!(
+            code.contains("<style scoped>"),
+            "component fn SFC must have <style scoped>: {}",
+            code
+        );
+        assert!(
+            code.contains(".card-title"),
+            "<style> must contain the CSS rule: {}",
+            code
+        );
     }
 
     /// Plan 041a⑤(musk 041 Phase 5 T22): 表单 value 绑定目标是 prop 时
@@ -29569,25 +32451,45 @@ widget ClickZone {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().unwrap();
-        let widget = ast.stmts.iter().find_map(|s| {
-            if let crate::ast::Stmt::WidgetDecl(w) = s {
-                crate::aura::extract_widget_from_decl(w).ok()
-            } else {
-                None
-            }
-        }).expect("widget");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| {
+                if let crate::ast::Stmt::WidgetDecl(w) = s {
+                    crate::aura::extract_widget_from_decl(w).ok()
+                } else {
+                    None
+                }
+            })
+            .expect("widget");
         let mut gen = VueGenerator::new_shadcn();
         let out = gen.generate_sfc(&widget).unwrap();
         let vmodels: Vec<&str> = out.lines().filter(|l| l.contains("v-model")).collect();
-        assert_eq!(vmodels.len(), 1, "only the model-var input folds; got {:?}
-{}", vmodels, out);
-        assert!(vmodels[0].contains("draft"), "fold targets the state var: {}", vmodels[0]);
-        assert!(out.contains(":modelValue=\"content\""),
+        assert_eq!(
+            vmodels.len(),
+            1,
+            "only the model-var input folds; got {:?}
+{}",
+            vmodels,
+            out
+        );
+        assert!(
+            vmodels[0].contains("draft"),
+            "fold targets the state var: {}",
+            vmodels[0]
+        );
+        assert!(
+            out.contains(":modelValue=\"content\""),
             "prop-bound inputs stay one-way (:modelValue):
-{}", out);
-        assert!(!out.contains("v-model=\"content\""),
+{}",
+            out
+        );
+        assert!(
+            !out.contains("v-model=\"content\""),
             "prop target must never fold to v-model:
-{}", out);
+{}",
+            out
+        );
     }
 
     /// Plan 022 Phase 7c: markdown content prop binding (fixes §10).
@@ -29601,13 +32503,17 @@ widget ClickZone {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src.as_str()).with_session(session);
         let ast = parser.parse().unwrap();
-        let widget = ast.stmts.iter().find_map(|s| {
-            if let crate::ast::Stmt::WidgetDecl(w) = s {
-                crate::aura::extract_widget_from_decl(w).ok()
-            } else {
-                None
-            }
-        }).expect("no widget in 002_markdown input");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| {
+                if let crate::ast::Stmt::WidgetDecl(w) = s {
+                    crate::aura::extract_widget_from_decl(w).ok()
+                } else {
+                    None
+                }
+            })
+            .expect("no widget in 002_markdown input");
         let mut gen = VueGenerator::new_shadcn();
         let output = gen.generate_sfc(&widget).unwrap();
         let exp_path = d.join("test/a2vue/002_markdown/input.expected.vue");
@@ -29634,13 +32540,17 @@ widget ClickZone {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src.as_str()).with_session(session);
         let ast = parser.parse().unwrap();
-        let widget = ast.stmts.iter().find_map(|s| {
-            if let crate::ast::Stmt::WidgetDecl(w) = s {
-                crate::aura::extract_widget_from_decl(w).ok()
-            } else {
-                None
-            }
-        }).expect("no widget in 003_fn_call_prop input");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| {
+                if let crate::ast::Stmt::WidgetDecl(w) = s {
+                    crate::aura::extract_widget_from_decl(w).ok()
+                } else {
+                    None
+                }
+            })
+            .expect("no widget in 003_fn_call_prop input");
         let mut gen = VueGenerator::new();
         let output = gen.generate_sfc(&widget).unwrap();
         let exp_path = d.join("test/a2vue/003_fn_call_prop/input.expected.vue");
@@ -29709,14 +32619,19 @@ widget ClickZone {
         let result = crate::ui_gen::generate_component_from_file(
             &at_path,
             crate::ui_gen::ComponentGenOptions::default(),
-        ).expect("007_component_fn generation failed");
+        )
+        .expect("007_component_fn generation failed");
 
         // App is the first widget; Card is synthesized after it.
-        let app_code = result.all_widget_codes.iter()
+        let app_code = result
+            .all_widget_codes
+            .iter()
             .find(|(name, _)| name == "App")
             .map(|(_, code)| code)
             .expect("App widget not in all_widget_codes");
-        let card_code = result.all_widget_codes.iter()
+        let card_code = result
+            .all_widget_codes
+            .iter()
             .find(|(name, _)| name == "Card")
             .map(|(_, code)| code)
             .expect("Card component fn not synthesized into all_widget_codes");
@@ -29728,12 +32643,10 @@ widget ClickZone {
         // Write golden files (created on first run / updated intentionally).
         let app_golden = d.join("test/a2vue/007_component_fn/App.expected.vue");
         let card_golden = d.join("test/a2vue/007_component_fn/Card.expected.vue");
-        let app_expected = normalize_vue_output(
-            &std::fs::read_to_string(&app_golden).unwrap_or_default()
-        );
-        let card_expected = normalize_vue_output(
-            &std::fs::read_to_string(&card_golden).unwrap_or_default()
-        );
+        let app_expected =
+            normalize_vue_output(&std::fs::read_to_string(&app_golden).unwrap_or_default());
+        let card_expected =
+            normalize_vue_output(&std::fs::read_to_string(&card_golden).unwrap_or_default());
 
         if app_n != app_expected {
             let wrong = d.join("test/a2vue/007_component_fn/App.wrong.vue");
@@ -29753,16 +32666,31 @@ widget ClickZone {
         }
 
         // Structural assertions: the key Plan 408 invariants.
-        assert!(app_code.contains("import Card from '@/components/Card.vue'"),
-            "App must import Card component: {}", app_code);
-        assert!(app_code.contains("<Card"),
-            "App must reference Card via a component tag: {}", app_code);
-        assert!(!app_code.contains("text-muted-foreground"),
-            "App must NOT inline Card's body DOM (no text-muted-foreground): {}", app_code);
-        assert!(card_code.contains("defineProps"),
-            "Card SFC must define props: {}", card_code);
-        assert!(card_code.contains("title"),
-            "Card SFC must declare the title prop: {}", card_code);
+        assert!(
+            app_code.contains("import Card from '@/components/Card.vue'"),
+            "App must import Card component: {}",
+            app_code
+        );
+        assert!(
+            app_code.contains("<Card"),
+            "App must reference Card via a component tag: {}",
+            app_code
+        );
+        assert!(
+            !app_code.contains("text-muted-foreground"),
+            "App must NOT inline Card's body DOM (no text-muted-foreground): {}",
+            app_code
+        );
+        assert!(
+            card_code.contains("defineProps"),
+            "Card SFC must define props: {}",
+            card_code
+        );
+        assert!(
+            card_code.contains("title"),
+            "Card SFC must declare the title prop: {}",
+            card_code
+        );
     }
 
     /// Plan 022 限制2: composable 带参调用。验证
@@ -29785,24 +32713,30 @@ widget CompWithComposable {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().unwrap();
-        let widget = ast.stmts.iter().find_map(|s| {
-            if let crate::ast::Stmt::WidgetDecl(w) = s {
-                crate::aura::extract_widget_from_decl(w).ok()
-            } else {
-                None
-            }
-        }).expect("no widget");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| {
+                if let crate::ast::Stmt::WidgetDecl(w) = s {
+                    crate::aura::extract_widget_from_decl(w).ok()
+                } else {
+                    None
+                }
+            })
+            .expect("no widget");
         let mut gen = VueGenerator::new();
         let output = gen.generate_sfc(&widget).unwrap();
         // 带参：useStreamingDocument(source)
         assert!(
             output.contains("const streamingDocument = useStreamingDocument(source)"),
-            "带参 composable 应生成 useStreamingDocument(source)，实际:\n{}", output
+            "带参 composable 应生成 useStreamingDocument(source)，实际:\n{}",
+            output
         );
         // 无参默认：useClock()（向后兼容）
         assert!(
             output.contains("const clock = useClock()"),
-            "无参 composable 应仍是 useClock()，实际:\n{}", output
+            "无参 composable 应仍是 useClock()，实际:\n{}",
+            output
         );
     }
 
@@ -29873,8 +32807,16 @@ widget Counter {
             "minted handler function emitted:\n{}",
             sfc
         );
-        assert!(sfc.contains("count.value -= 1;"), "body transpiled:\n{}", sfc);
-        assert!(sfc.contains("count.value += 1;"), "second body transpiled:\n{}", sfc);
+        assert!(
+            sfc.contains("count.value -= 1;"),
+            "body transpiled:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("count.value += 1;"),
+            "second body transpiled:\n{}",
+            sfc
+        );
         assert!(
             !sfc.contains("emit('__evt_"),
             "no trailing emit for synthetic events:\n{}",
@@ -30108,16 +33050,24 @@ widget TestSpacer {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().unwrap();
-        let widget = ast.stmts.iter().find_map(|s| {
-            if let crate::ast::Stmt::WidgetDecl(w) = s {
-                crate::aura::extract_widget_from_decl(w).ok()
-            } else {
-                None
-            }
-        }).expect("no widget");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| {
+                if let crate::ast::Stmt::WidgetDecl(w) = s {
+                    crate::aura::extract_widget_from_decl(w).ok()
+                } else {
+                    None
+                }
+            })
+            .expect("no widget");
         let mut gen_sfc = VueGenerator::new_shadcn();
         let sfc = gen_sfc.generate_sfc(&widget).unwrap();
-        assert!(sfc.contains("<div class=\"flex-1\" />"), "SFC should contain <div class=\"flex-1\" />, got:\n{}", sfc);
+        assert!(
+            sfc.contains("<div class=\"flex-1\" />"),
+            "SFC should contain <div class=\"flex-1\" />, got:\n{}",
+            sfc
+        );
     }
 
     #[test]
@@ -30136,17 +33086,29 @@ widget TestGap {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().unwrap();
-        let widget = ast.stmts.iter().find_map(|s| {
-            if let crate::ast::Stmt::WidgetDecl(w) = s {
-                crate::aura::extract_widget_from_decl(w).ok()
-            } else {
-                None
-            }
-        }).expect("no widget");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| {
+                if let crate::ast::Stmt::WidgetDecl(w) = s {
+                    crate::aura::extract_widget_from_decl(w).ok()
+                } else {
+                    None
+                }
+            })
+            .expect("no widget");
         let mut gen_sfc = VueGenerator::new_shadcn();
         let sfc = gen_sfc.generate_sfc(&widget).unwrap();
-        assert!(sfc.contains("<div class=\"flex flex-col gap-1\">"), "SFC should contain <div class=\"flex flex-col gap-1\">, got:\n{}", sfc);
-        assert!(!sfc.contains("gap-4"), "SFC should NOT contain gap-4, got:\n{}", sfc);
+        assert!(
+            sfc.contains("<div class=\"flex flex-col gap-1\">"),
+            "SFC should contain <div class=\"flex flex-col gap-1\">, got:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("gap-4"),
+            "SFC should NOT contain gap-4, got:\n{}",
+            sfc
+        );
     }
 
     // ====================================================================
@@ -30157,11 +33119,7 @@ widget TestGap {
     // ====================================================================
 
     /// Plan 522: widget 源 + 模块源 + 显式导入的裸名集合 → SFC。
-    fn gen_sfc_with_use_fns(
-        widget_src: &str,
-        module_src: &str,
-        imported: &[&str],
-    ) -> String {
+    fn gen_sfc_with_use_fns(widget_src: &str, module_src: &str, imported: &[&str]) -> String {
         gen_sfc_with_use_fns_and_warnings(widget_src, module_src, imported).0
     }
 
@@ -30183,8 +33141,8 @@ widget TestGap {
             .expect("widget decl");
         let widget = crate::aura::extract_widget_from_decl(decl).expect("extract widget");
 
-        let mut mparser =
-            crate::parser::Parser::from(module_src).with_session(crate::session::CompilerSession::ui());
+        let mut mparser = crate::parser::Parser::from(module_src)
+            .with_session(crate::session::CompilerSession::ui());
         let mast = mparser.parse().expect("module source must parse");
         let pool: Vec<crate::aura::AuraModuleFn> = mast
             .stmts
@@ -30198,10 +33156,8 @@ widget TestGap {
             })
             .collect();
 
-        let mut gen = VueGenerator::new().with_use_module_fns(
-            pool,
-            imported.iter().map(|s| s.to_string()).collect(),
-        );
+        let mut gen = VueGenerator::new()
+            .with_use_module_fns(pool, imported.iter().map(|s| s.to_string()).collect());
         let sfc = gen.generate(&widget).expect("generate SFC");
         (sfc, gen.last_validation_warnings.clone())
     }
@@ -30297,10 +33253,26 @@ pub fn unrelated(x int) int {
 "#,
             &["square", "label_it", "triple", "unrelated"],
         );
-        assert!(sfc.contains("function square(x: any): number {"), "entry fn emitted:\n{}", sfc);
-        assert!(sfc.contains("function triple(x: any): number {"), "intra-module closure dep emitted (square -> triple):\n{}", sfc);
-        assert!(sfc.contains("function label_it(x: any): string {"), "second entry fn emitted:\n{}", sfc);
-        assert!(!sfc.contains("unrelated"), "non-referenced pool fn not emitted:\n{}", sfc);
+        assert!(
+            sfc.contains("function square(x: any): number {"),
+            "entry fn emitted:\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("function triple(x: any): number {"),
+            "intra-module closure dep emitted (square -> triple):\n{}",
+            sfc
+        );
+        assert!(
+            sfc.contains("function label_it(x: any): string {"),
+            "second entry fn emitted:\n{}",
+            sfc
+        );
+        assert!(
+            !sfc.contains("unrelated"),
+            "non-referenced pool fn not emitted:\n{}",
+            sfc
+        );
     }
 
     #[test]
@@ -30552,7 +33524,9 @@ pub fn is_even(x int) bool {
             "month_label computed keeps the bare-name call:\n{sfc}"
         );
         assert!(
-            sfc.contains("build_month_grid(store.year, store.month, store.today, store.selected_date)"),
+            sfc.contains(
+                "build_month_grid(store.year, store.month, store.today, store.selected_date)"
+            ),
             "days computed keeps the bare-name call:\n{sfc}"
         );
     }
@@ -30636,7 +33610,11 @@ fn facade_var_for(dep: &str) -> String {
     let stem = dep.strip_suffix("Store").unwrap_or(dep);
     let mut c = stem.chars();
     match c.next() {
-        Some(f) => format!("{}{}Store", f.to_lowercase().collect::<String>(), c.as_str()),
+        Some(f) => format!(
+            "{}{}Store",
+            f.to_lowercase().collect::<String>(),
+            c.as_str()
+        ),
         None => format!("{}Store", stem),
     }
 }
@@ -30732,10 +33710,7 @@ pub(crate) fn collect_called_bare_names_expr(
     }
 }
 
-fn collect_if_called_names(
-    if_expr: &crate::ast::If,
-    out: &mut std::collections::HashSet<String>,
-) {
+fn collect_if_called_names(if_expr: &crate::ast::If, out: &mut std::collections::HashSet<String>) {
     for branch in &if_expr.branches {
         collect_called_bare_names_expr(&branch.cond, out);
         collect_called_bare_names_stmts(&branch.body.stmts, out);
@@ -30816,7 +33791,10 @@ fn use_fn_body_unsupported(stmts: &[crate::ast::Stmt]) -> Option<&'static str> {
                 Some("borrow/ownership semantics")
             }
             Expr::Call(call) => expr_unsupported(&call.name).or_else(|| {
-                call.args.args.iter().find_map(|a| expr_unsupported(&a.get_expr()))
+                call.args
+                    .args
+                    .iter()
+                    .find_map(|a| expr_unsupported(&a.get_expr()))
             }),
             Expr::Bina(l, _, r) => expr_unsupported(l).or_else(|| expr_unsupported(r)),
             Expr::Unary(_, e) => expr_unsupported(e),
@@ -30950,5 +33928,4 @@ mod plan571_variants_cva_interlock_tests {
             "button cva 不应再有 defaultVariants（PLAN-080 缺省 chromeless）"
         );
     }
-
 }

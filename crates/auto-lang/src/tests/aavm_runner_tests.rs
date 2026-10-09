@@ -33,7 +33,9 @@ static AUTO_LIB_CACHE: OnceLock<String> = OnceLock::new();
 /// Read and concatenate all auto/lib-legacy/*.at files (cached)
 fn read_auto_lib() -> AutoResult<&'static str> {
     let lib_code = AUTO_LIB_CACHE.get_or_init(|| {
-        let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+        let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..");
         let mut code = String::new();
         for file in AUTO_LIB_FILES {
             let path = d.join(file);
@@ -52,8 +54,10 @@ fn read_auto_lib() -> AutoResult<&'static str> {
 /// AAVM test runner: merges auto/lib code with test case, runs through VM
 fn test_aavm(case: &str) -> AutoResult<()> {
     // Use cached test data for the source code
-    let data = get_cached_test(case)
-        .expect(&format!("AAVM test case '{}' not found in cache. Check test/vm/ directory.", case));
+    let data = get_cached_test(case).expect(&format!(
+        "AAVM test case '{}' not found in cache. Check test/vm/ directory.",
+        case
+    ));
 
     // Merge: auto/lib code first, then test case (which may override main())
     let lib_code = read_auto_lib()?;
@@ -62,11 +66,7 @@ fn test_aavm(case: &str) -> AutoResult<()> {
     // Check .expected.error — expect runtime error
     if data.expected_error {
         let result = run(&merged);
-        assert!(
-            result.is_err(),
-            "Expected error but got: {:?}",
-            result
-        );
+        assert!(result.is_err(), "Expected error but got: {:?}", result);
         return Ok(());
     }
 
@@ -117,7 +117,9 @@ static AUTO_LIB_V2_CACHE: OnceLock<String> = OnceLock::new();
 
 fn read_auto_lib_v2() -> AutoResult<&'static str> {
     Ok(AUTO_LIB_V2_CACHE.get_or_init(|| {
-        let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+        let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..");
         // Plan 517 W2 双轨剥离:经 aavm2_lib_source 剥 use auto.lib.* 行
         crate::aavm2_lib_source(&d).unwrap_or_default()
     }))
@@ -125,11 +127,13 @@ fn read_auto_lib_v2() -> AutoResult<&'static str> {
 
 /// AAVM v2 runner:合并 v2 lib 后走 VM。
 fn test_aavm2(case: &str) -> AutoResult<()> {
-    let data = get_cached_test(case)
-        .expect(&format!("aavm2 test case '{}' not found", case));
+    let data = get_cached_test(case).expect(&format!("aavm2 test case '{}' not found", case));
     let lib_code = read_auto_lib_v2()?;
-    let merged = format!("{}
-{}", lib_code, data.source);
+    let merged = format!(
+        "{}
+{}",
+        lib_code, data.source
+    );
     if data.expected_error {
         assert!(run(&merged).is_err(), "expected error for {}", case);
         return Ok(());
@@ -150,7 +154,11 @@ fn test_aavm2_compile(case: &str) -> AutoResult<()> {
     let case_dir = d.join(format!("test/vm/aavm2/{}", case));
     // 目录名 002_hello_compile → 语料名 hello_compile(与 vm_file_tests 全库约定一致)
     let dir_name = case.rsplit('/').next().unwrap_or(case);
-    let name = dir_name.splitn(2, '_').nth(1).unwrap_or(dir_name).to_string();
+    let name = dir_name
+        .splitn(2, '_')
+        .nth(1)
+        .unwrap_or(dir_name)
+        .to_string();
     let src = read_to_string(case_dir.join(format!("{}.at", name)))?;
     let expected = read_to_string(case_dir.join(format!("{}.expected.out", name)))?;
 
@@ -161,8 +169,10 @@ fn test_aavm2_compile(case: &str) -> AutoResult<()> {
     let proj = std::env::temp_dir().join(format!("aavm2-{}", name));
     let src_dir = proj.join("src");
     std::fs::create_dir_all(&src_dir)?;
-    std::fs::write(proj.join("Cargo.toml"), format!(
-        "[package]
+    std::fs::write(
+        proj.join("Cargo.toml"),
+        format!(
+            "[package]
 name = \"aavm2_{name}\"
 version = \"0.1.0\"
 edition = \"2021\"
@@ -171,7 +181,8 @@ edition = \"2021\"
 
 [dependencies]
 "
-    ))?;
+        ),
+    )?;
     std::fs::write(src_dir.join("main.rs"), rs_code)?;
 
     let build = Command::new("cargo")
@@ -186,16 +197,25 @@ edition = \"2021\"
         String::from_utf8_lossy(&build.stderr)
     );
 
-    let exe = proj.join("target/release").join(format!("aavm2_{}", name.replace('-', "_")));
+    let exe = proj
+        .join("target/release")
+        .join(format!("aavm2_{}", name.replace('-', "_")));
     let run_out = Command::new(&exe).output().expect("run compiled bin");
     assert!(run_out.status.success(), "compiled bin failed");
     let stdout = String::from_utf8_lossy(&run_out.stdout).to_string();
-    assert_eq!(stdout, expected, "aavm2 compile-compare mismatch for {}", case);
+    assert_eq!(
+        stdout, expected,
+        "aavm2 compile-compare mismatch for {}",
+        case
+    );
     Ok(())
 }
 
 #[test]
-#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
+#[cfg_attr(
+    windows,
+    ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量"
+)]
 fn test_aavm2_001_smoke() {
     // Plan 564: 重内存测试守门(755MB/LG)——裸 cargo test 秒退,详见 test-mem-weights.md。
     if !crate::tests::heavy_gate::heavy_gate("test_aavm2_001_smoke") {
@@ -204,8 +224,11 @@ fn test_aavm2_001_smoke() {
     test_aavm2("aavm2/001_smoke").unwrap();
 }
 
-#[test] #[ignore]
-fn test_aavm2_002_hello_compile() { test_aavm2_compile("002_hello_compile").unwrap(); }
+#[test]
+#[ignore]
+fn test_aavm2_002_hello_compile() {
+    test_aavm2_compile("002_hello_compile").unwrap();
+}
 
 // =============================================================================
 // Plan 433 B: AAVM-Rust(②)— auto/lib v2 经 a2r --merge 转译编译出的
@@ -217,7 +240,9 @@ fn test_aavm2_002_hello_compile() { test_aavm2_compile("002_hello_compile").unwr
 /// 返回 exe 路径。产物按转译内容 hash 缓存,重跑不重建。
 fn build_aavm_rust_bin() -> PathBuf {
     use std::process::Command;
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
     // Plan 434 追记:242 #18 修复后 ② 回归整目录(含 a2r.at)。
     // Plan 517 W2 双轨剥离:merge 输入为剥除 use 行的临时目录副本
     // (use 发射的 crate:: 路径在单文件平铺 merge 产物中不可解析,剥离后
@@ -226,10 +251,8 @@ fn build_aavm_rust_bin() -> PathBuf {
         let src_dir = &root;
         // Plan 523 复审修复:剥离目录按进程隔离——固定共享路径在两 corpus 腿
         // 并发首建时互删(remove_dir_all 打架,199KB/400KB 残缺 merge 实证)。
-        let stripped = std::env::temp_dir().join(format!(
-            "aavm2-merge-lib-stripped-p{}",
-            std::process::id()
-        ));
+        let stripped =
+            std::env::temp_dir().join(format!("aavm2-merge-lib-stripped-p{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&stripped);
         std::fs::create_dir_all(&stripped).expect("mkdir merge-lib-stripped");
         for file in AUTO_LIB_FILES_V2 {
@@ -243,13 +266,18 @@ fn build_aavm_rust_bin() -> PathBuf {
                 out.push('\n');
             }
             let name = std::path::Path::new(file)
-                .file_name().unwrap().to_str().unwrap().to_string();
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string();
             std::fs::write(stripped.join(name), out).expect("write stripped lib");
         }
         stripped
     };
-    let merged = crate::trans::rust::transpile_rust_project_merged(
-        lib_dir.to_str().expect("utf8 path")).expect("a2r merge transpile auto/lib");
+    let merged =
+        crate::trans::rust::transpile_rust_project_merged(lib_dir.to_str().expect("utf8 path"))
+            .expect("a2r merge transpile auto/lib");
 
     // 内容寻址缓存:同产物不重复 cargo build
     // Plan 511 W3 前导 shim:aavm lib 的 File.read_text(W3 模块解析原语)
@@ -447,8 +475,7 @@ fn test_aavm2_compile_corpus() {
         return;
     }
     let exe = build_aavm_rust_bin();
-    let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("test/vm/aavm2/corpus_m4");
+    let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/vm/aavm2/corpus_m4");
     // Plan 511 待澄清①缺省处置的欠账(b34–b43 十前缀跳过)于 Plan 523 W2
     // 摘除——中阶发射面已补全(主 a2r H1–H5/H7 洞清偿 + AA2R 镜像 +
     // H6 T3 通道),a2r 运行闸全量覆盖中阶语料。留痕:原
@@ -473,20 +500,28 @@ fn test_aavm2_compile_corpus() {
             .arg(path)
             .output()
             .expect("run aavm2 bin");
-        assert!(out.status.success(), "aavm2 bin failed on {}", path.display());
+        assert!(
+            out.status.success(),
+            "aavm2 bin failed on {}",
+            path.display()
+        );
         let stdout = String::from_utf8_lossy(&out.stdout).to_string();
         checked += 1;
         if stdout.trim_end() != expected.trim_end() {
             mismatches.push(format!(
                 "{}\n--- rust ---\n{}\n--- aavm-rust ---\n{}",
-                path.display(), expected, stdout
+                path.display(),
+                expected,
+                stdout
             ));
         }
     }
     assert!(
         mismatches.is_empty(),
         "AAVM-Rust corpus mismatches ({} of {}):\n{}",
-        mismatches.len(), checked, mismatches.join("\n====\n")
+        mismatches.len(),
+        checked,
+        mismatches.join("\n====\n")
     );
     eprintln!("AAVM-Rust corpus: {checked} files, outputs identical to Rust reference");
 }
@@ -502,14 +537,18 @@ fn test_aavm2_compile_use_corpus() {
         return;
     }
     let exe = build_aavm_rust_bin();
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("test/vm/aavm2/corpus_use");
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/vm/aavm2/corpus_use");
     let mut cases: Vec<_> = std::fs::read_dir(&dir)
         .unwrap_or_else(|e| panic!("corpus_use dir {}: {e}", dir.display()))
         .filter_map(|e| e.ok())
         .map(|e| e.path())
         .filter(|p| p.is_dir())
-        .filter(|p| p.file_name().and_then(|n| n.to_str()).map(|n| n != "errors").unwrap_or(true))
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n != "errors")
+                .unwrap_or(true)
+        })
         .collect();
     cases.sort();
     assert!(!cases.is_empty(), "no corpus_use cases");
@@ -519,14 +558,19 @@ fn test_aavm2_compile_use_corpus() {
         let main_path = case.join("main.at");
         let code = std::fs::read_to_string(&main_path)
             .unwrap_or_else(|e| panic!("read {}: {e}", main_path.display()));
-        let (_r, expected) = crate::run_with_capture_and_path(&code, &main_path.display().to_string())
-            .unwrap_or_else(|e| panic!("rust reference failed on {}: {e}", case.display()));
+        let (_r, expected) =
+            crate::run_with_capture_and_path(&code, &main_path.display().to_string())
+                .unwrap_or_else(|e| panic!("rust reference failed on {}: {e}", case.display()));
         let out = std::process::Command::new(&exe)
             .arg("--files")
             .arg(&main_path)
             .output()
             .unwrap_or_else(|e| panic!("run aavm2 bin on {}", case.display()));
-        assert!(out.status.success(), "aavm2 bin --files failed on {}", case.display());
+        assert!(
+            out.status.success(),
+            "aavm2 bin --files failed on {}",
+            case.display()
+        );
         let stdout = String::from_utf8_lossy(&out.stdout).to_string();
         checked += 1;
         if stdout.trim_end() != expected.trim_end() {
@@ -536,7 +580,9 @@ fn test_aavm2_compile_use_corpus() {
 {}
 --- aavm-rust ---
 {}",
-                case.display(), expected, stdout
+                case.display(),
+                expected,
+                stdout
             ));
         }
     }
@@ -544,117 +590,525 @@ fn test_aavm2_compile_use_corpus() {
         mismatches.is_empty(),
         "AAVM-Rust use-corpus mismatches ({} of {}):
 {}",
-        mismatches.len(), checked, mismatches.join("
+        mismatches.len(),
+        checked,
+        mismatches.join(
+            "
 ====
-")
+"
+        )
     );
     eprintln!("AAVM-Rust use corpus: {checked} cases, outputs identical to Rust reference");
 }
 
 // Plan 233: AAVM Parser tests
-#[test] #[ignore] fn test_99_bootstrap_008_parser_hello() { test_aavm("99_bootstrap/008_parser_hello").unwrap(); }
+#[test]
+#[ignore]
+fn test_99_bootstrap_008_parser_hello() {
+    test_aavm("99_bootstrap/008_parser_hello").unwrap();
+}
 
 // Plan 233: AAVM v1 Parser 测试(ignored,自 vm_file_tests 配对区迁入)
-#[test] #[ignore] fn test_aavm_99_bootstrap_009_parser_arithmetic() { test_aavm("99_bootstrap/009_parser_arithmetic").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_010_parser_precedence() { test_aavm("99_bootstrap/010_parser_precedence").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_011_parser_unary() { test_aavm("99_bootstrap/011_parser_unary").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_012_parser_not() { test_aavm("99_bootstrap/012_parser_not").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_013_parser_comparison() { test_aavm("99_bootstrap/013_parser_comparison").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_014_parser_equality() { test_aavm("99_bootstrap/014_parser_equality").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_015_parser_logical() { test_aavm("99_bootstrap/015_parser_logical").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_016_parser_let() { test_aavm("99_bootstrap/016_parser_let").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_017_parser_var() { test_aavm("99_bootstrap/017_parser_var").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_018_parser_fn_decl() { test_aavm("99_bootstrap/018_parser_fn_decl").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_019_parser_fn_call() { test_aavm("99_bootstrap/019_parser_fn_call").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_020_parser_if_else() { test_aavm("99_bootstrap/020_parser_if_else").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_021_parser_for_in() { test_aavm("99_bootstrap/021_parser_for_in").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_022_parser_return() { test_aavm("99_bootstrap/022_parser_return").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_023_parser_dot() { test_aavm("99_bootstrap/023_parser_dot").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_024_parser_assign() { test_aavm("99_bootstrap/024_parser_assign").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_025_parser_range() { test_aavm("99_bootstrap/025_parser_range").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_026_parser_string() { test_aavm("99_bootstrap/026_parser_string").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_027_parser_multi() { test_aavm("99_bootstrap/027_parser_multi").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_028_parser_alias() { test_aavm("99_bootstrap/028_parser_alias").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_029_parser_enum() { test_aavm("99_bootstrap/029_parser_enum").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_030_parser_use() { test_aavm("99_bootstrap/030_parser_use").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_031_parser_spec() { test_aavm("99_bootstrap/031_parser_spec").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_032_parser_ext() { test_aavm("99_bootstrap/032_parser_ext").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_033_parser_closure() { test_aavm("99_bootstrap/033_parser_closure").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_034_parser_closure_multi() { test_aavm("99_bootstrap/034_parser_closure_multi").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_035_parser_fstr() { test_aavm("99_bootstrap/035_parser_fstr").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_036_parser_is() { test_aavm("99_bootstrap/036_parser_is").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_037_parser_object() { test_aavm("99_bootstrap/037_parser_object").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_038_eval_arithmetic() { test_aavm("99_bootstrap/038_eval_arithmetic").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_039_eval_variable() { test_aavm("99_bootstrap/039_eval_variable").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_040_eval_fn_call() { test_aavm("99_bootstrap/040_eval_fn_call").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_041_eval_if_else() { test_aavm("99_bootstrap/041_eval_if_else").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_042_eval_for_loop() { test_aavm("99_bootstrap/042_eval_for_loop").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_043_eval_recursion() { test_aavm("99_bootstrap/043_eval_recursion").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_044_eval_string() { test_aavm("99_bootstrap/044_eval_string").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_045_eval_list() { test_aavm("99_bootstrap/045_eval_list").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_046_eval_closure() { test_aavm("99_bootstrap/046_eval_closure").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_047_eval_multi_fn() { test_aavm("99_bootstrap/047_eval_multi_fn").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_048_eval_str_print() { test_aavm("99_bootstrap/048_eval_str_print").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_049_eval_str_var() { test_aavm("99_bootstrap/049_eval_str_var").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_050_eval_str_concat() { test_aavm("99_bootstrap/050_eval_str_concat").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_051_eval_str_fn_arg() { test_aavm("99_bootstrap/051_eval_str_fn_arg").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_051a_eval_str_fn_arg_simple() { test_aavm("99_bootstrap/051a_eval_str_fn_arg_simple").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_052_eval_str_return() { test_aavm("99_bootstrap/052_eval_str_return").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_053_eval_str_literal() { test_aavm("99_bootstrap/053_eval_str_literal").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_054_type_infer_basic() { test_aavm("99_bootstrap/054_type_infer_basic").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_055_type_infer_fn() { test_aavm("99_bootstrap/055_type_infer_fn").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_060_bytecode_int() { test_aavm("99_bootstrap/060_bytecode_int").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_061_bytecode_var() { test_aavm("99_bootstrap/061_bytecode_var").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_062_bytecode_fn() { test_aavm("99_bootstrap/062_bytecode_fn").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_063_bytecode_if() { test_aavm("99_bootstrap/063_bytecode_if").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_064_bytecode_for() { test_aavm("99_bootstrap/064_bytecode_for").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_065_bytecode_str() { test_aavm("99_bootstrap/065_bytecode_str").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_066_bytecode_list() { test_aavm("99_bootstrap/066_bytecode_list").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_067_bytecode_map() { test_aavm("99_bootstrap/067_bytecode_map").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_068_bytecode_list_fn() { test_aavm("99_bootstrap/068_bytecode_list_fn").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_069_bvm_str_len() { test_aavm("99_bootstrap/069_bvm_str_len").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_070_bvm_str_methods() { test_aavm("99_bootstrap/070_bvm_str_methods").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_071_bvm_map_str() { test_aavm("99_bootstrap/071_bvm_map_str").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_072_bvm_list_set() { test_aavm("99_bootstrap/072_bvm_list_set").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_073_bvm_list_pop() { test_aavm("99_bootstrap/073_bvm_list_pop").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_074_bvm_str_ops() { test_aavm("99_bootstrap/074_bvm_str_ops").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_075_list_str_push_get() { test_aavm("99_bootstrap/075_list_str_push_get").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_076_list_str_set() { test_aavm("99_bootstrap/076_list_str_set").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_077_list_str_pop() { test_aavm("99_bootstrap/077_list_str_pop").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_078_list_mixed_types() { test_aavm("99_bootstrap/078_list_mixed_types").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_079_list_str_fn_arg() { test_aavm("99_bootstrap/079_list_str_fn_arg").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_080_list_str_loop() { test_aavm("99_bootstrap/080_list_str_loop").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_081_a2r_hello() { test_aavm("99_bootstrap/081_a2r_hello").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_082_a2r_fn() { test_aavm("99_bootstrap/082_a2r_fn").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_083_a2r_var() { test_aavm("99_bootstrap/083_a2r_var").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_084_a2r_if() { test_aavm("99_bootstrap/084_a2r_if").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_085_a2r_for() { test_aavm("99_bootstrap/085_a2r_for").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_086_a2r_str() { test_aavm("99_bootstrap/086_a2r_str").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_087_a2r_use() { test_aavm("99_bootstrap/087_a2r_use").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_088_a2r_type() { test_aavm("99_bootstrap/088_a2r_type").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_089_a2r_enum() { test_aavm("99_bootstrap/089_a2r_enum").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_090_a2r_is() { test_aavm("99_bootstrap/090_a2r_is").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_091_a2r_ext() { test_aavm("99_bootstrap/091_a2r_ext").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_092_a2r_fstr() { test_aavm("99_bootstrap/092_a2r_fstr").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_093_a2r_spec() { test_aavm("99_bootstrap/093_a2r_spec").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_094_a2r_closure() { test_aavm("99_bootstrap/094_a2r_closure").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_095_a2r_alias() { test_aavm("99_bootstrap/095_a2r_alias").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_096_a2r_object() { test_aavm("99_bootstrap/096_a2r_object").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_097_a2r_array() { test_aavm("99_bootstrap/097_a2r_array").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_098_a2r_error_prop() { test_aavm("99_bootstrap/098_a2r_error_prop").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_099_a2r_self_field() { test_aavm("99_bootstrap/099_a2r_self_field").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_100_a2r_use_ffi() { test_aavm("99_bootstrap/100_a2r_use_ffi").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_101_a2r_is_multi() { test_aavm("99_bootstrap/101_a2r_is_multi").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_102_a2r_struct_ctor() { test_aavm("99_bootstrap/102_a2r_struct_ctor").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_103_a2r_generic_type() { test_aavm("99_bootstrap/103_a2r_generic_type").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_104_a2r_generic_vec() { test_aavm("99_bootstrap/104_a2r_generic_vec").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_105_a2r_generic_map() { test_aavm("99_bootstrap/105_a2r_generic_map").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_106_a2r_generic_enum() { test_aavm("99_bootstrap/106_a2r_generic_enum").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_107_a2r_option_match() { test_aavm("99_bootstrap/107_a2r_option_match").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_108_a2r_ownership() { test_aavm("99_bootstrap/108_a2r_ownership").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_110_a2r_phase3() { test_aavm("99_bootstrap/110_a2r_phase3").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_111_a2r_real_source() { test_aavm("99_bootstrap/111_a2r_real_source").unwrap(); }
-#[test] #[ignore] fn test_aavm_99_bootstrap_112_a2r_generic_registry() { test_aavm("99_bootstrap/112_a2r_generic_registry").unwrap(); }
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_009_parser_arithmetic() {
+    test_aavm("99_bootstrap/009_parser_arithmetic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_010_parser_precedence() {
+    test_aavm("99_bootstrap/010_parser_precedence").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_011_parser_unary() {
+    test_aavm("99_bootstrap/011_parser_unary").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_012_parser_not() {
+    test_aavm("99_bootstrap/012_parser_not").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_013_parser_comparison() {
+    test_aavm("99_bootstrap/013_parser_comparison").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_014_parser_equality() {
+    test_aavm("99_bootstrap/014_parser_equality").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_015_parser_logical() {
+    test_aavm("99_bootstrap/015_parser_logical").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_016_parser_let() {
+    test_aavm("99_bootstrap/016_parser_let").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_017_parser_var() {
+    test_aavm("99_bootstrap/017_parser_var").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_018_parser_fn_decl() {
+    test_aavm("99_bootstrap/018_parser_fn_decl").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_019_parser_fn_call() {
+    test_aavm("99_bootstrap/019_parser_fn_call").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_020_parser_if_else() {
+    test_aavm("99_bootstrap/020_parser_if_else").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_021_parser_for_in() {
+    test_aavm("99_bootstrap/021_parser_for_in").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_022_parser_return() {
+    test_aavm("99_bootstrap/022_parser_return").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_023_parser_dot() {
+    test_aavm("99_bootstrap/023_parser_dot").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_024_parser_assign() {
+    test_aavm("99_bootstrap/024_parser_assign").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_025_parser_range() {
+    test_aavm("99_bootstrap/025_parser_range").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_026_parser_string() {
+    test_aavm("99_bootstrap/026_parser_string").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_027_parser_multi() {
+    test_aavm("99_bootstrap/027_parser_multi").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_028_parser_alias() {
+    test_aavm("99_bootstrap/028_parser_alias").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_029_parser_enum() {
+    test_aavm("99_bootstrap/029_parser_enum").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_030_parser_use() {
+    test_aavm("99_bootstrap/030_parser_use").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_031_parser_spec() {
+    test_aavm("99_bootstrap/031_parser_spec").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_032_parser_ext() {
+    test_aavm("99_bootstrap/032_parser_ext").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_033_parser_closure() {
+    test_aavm("99_bootstrap/033_parser_closure").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_034_parser_closure_multi() {
+    test_aavm("99_bootstrap/034_parser_closure_multi").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_035_parser_fstr() {
+    test_aavm("99_bootstrap/035_parser_fstr").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_036_parser_is() {
+    test_aavm("99_bootstrap/036_parser_is").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_037_parser_object() {
+    test_aavm("99_bootstrap/037_parser_object").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_038_eval_arithmetic() {
+    test_aavm("99_bootstrap/038_eval_arithmetic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_039_eval_variable() {
+    test_aavm("99_bootstrap/039_eval_variable").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_040_eval_fn_call() {
+    test_aavm("99_bootstrap/040_eval_fn_call").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_041_eval_if_else() {
+    test_aavm("99_bootstrap/041_eval_if_else").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_042_eval_for_loop() {
+    test_aavm("99_bootstrap/042_eval_for_loop").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_043_eval_recursion() {
+    test_aavm("99_bootstrap/043_eval_recursion").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_044_eval_string() {
+    test_aavm("99_bootstrap/044_eval_string").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_045_eval_list() {
+    test_aavm("99_bootstrap/045_eval_list").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_046_eval_closure() {
+    test_aavm("99_bootstrap/046_eval_closure").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_047_eval_multi_fn() {
+    test_aavm("99_bootstrap/047_eval_multi_fn").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_048_eval_str_print() {
+    test_aavm("99_bootstrap/048_eval_str_print").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_049_eval_str_var() {
+    test_aavm("99_bootstrap/049_eval_str_var").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_050_eval_str_concat() {
+    test_aavm("99_bootstrap/050_eval_str_concat").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_051_eval_str_fn_arg() {
+    test_aavm("99_bootstrap/051_eval_str_fn_arg").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_051a_eval_str_fn_arg_simple() {
+    test_aavm("99_bootstrap/051a_eval_str_fn_arg_simple").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_052_eval_str_return() {
+    test_aavm("99_bootstrap/052_eval_str_return").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_053_eval_str_literal() {
+    test_aavm("99_bootstrap/053_eval_str_literal").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_054_type_infer_basic() {
+    test_aavm("99_bootstrap/054_type_infer_basic").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_055_type_infer_fn() {
+    test_aavm("99_bootstrap/055_type_infer_fn").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_060_bytecode_int() {
+    test_aavm("99_bootstrap/060_bytecode_int").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_061_bytecode_var() {
+    test_aavm("99_bootstrap/061_bytecode_var").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_062_bytecode_fn() {
+    test_aavm("99_bootstrap/062_bytecode_fn").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_063_bytecode_if() {
+    test_aavm("99_bootstrap/063_bytecode_if").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_064_bytecode_for() {
+    test_aavm("99_bootstrap/064_bytecode_for").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_065_bytecode_str() {
+    test_aavm("99_bootstrap/065_bytecode_str").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_066_bytecode_list() {
+    test_aavm("99_bootstrap/066_bytecode_list").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_067_bytecode_map() {
+    test_aavm("99_bootstrap/067_bytecode_map").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_068_bytecode_list_fn() {
+    test_aavm("99_bootstrap/068_bytecode_list_fn").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_069_bvm_str_len() {
+    test_aavm("99_bootstrap/069_bvm_str_len").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_070_bvm_str_methods() {
+    test_aavm("99_bootstrap/070_bvm_str_methods").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_071_bvm_map_str() {
+    test_aavm("99_bootstrap/071_bvm_map_str").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_072_bvm_list_set() {
+    test_aavm("99_bootstrap/072_bvm_list_set").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_073_bvm_list_pop() {
+    test_aavm("99_bootstrap/073_bvm_list_pop").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_074_bvm_str_ops() {
+    test_aavm("99_bootstrap/074_bvm_str_ops").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_075_list_str_push_get() {
+    test_aavm("99_bootstrap/075_list_str_push_get").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_076_list_str_set() {
+    test_aavm("99_bootstrap/076_list_str_set").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_077_list_str_pop() {
+    test_aavm("99_bootstrap/077_list_str_pop").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_078_list_mixed_types() {
+    test_aavm("99_bootstrap/078_list_mixed_types").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_079_list_str_fn_arg() {
+    test_aavm("99_bootstrap/079_list_str_fn_arg").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_080_list_str_loop() {
+    test_aavm("99_bootstrap/080_list_str_loop").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_081_a2r_hello() {
+    test_aavm("99_bootstrap/081_a2r_hello").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_082_a2r_fn() {
+    test_aavm("99_bootstrap/082_a2r_fn").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_083_a2r_var() {
+    test_aavm("99_bootstrap/083_a2r_var").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_084_a2r_if() {
+    test_aavm("99_bootstrap/084_a2r_if").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_085_a2r_for() {
+    test_aavm("99_bootstrap/085_a2r_for").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_086_a2r_str() {
+    test_aavm("99_bootstrap/086_a2r_str").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_087_a2r_use() {
+    test_aavm("99_bootstrap/087_a2r_use").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_088_a2r_type() {
+    test_aavm("99_bootstrap/088_a2r_type").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_089_a2r_enum() {
+    test_aavm("99_bootstrap/089_a2r_enum").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_090_a2r_is() {
+    test_aavm("99_bootstrap/090_a2r_is").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_091_a2r_ext() {
+    test_aavm("99_bootstrap/091_a2r_ext").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_092_a2r_fstr() {
+    test_aavm("99_bootstrap/092_a2r_fstr").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_093_a2r_spec() {
+    test_aavm("99_bootstrap/093_a2r_spec").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_094_a2r_closure() {
+    test_aavm("99_bootstrap/094_a2r_closure").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_095_a2r_alias() {
+    test_aavm("99_bootstrap/095_a2r_alias").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_096_a2r_object() {
+    test_aavm("99_bootstrap/096_a2r_object").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_097_a2r_array() {
+    test_aavm("99_bootstrap/097_a2r_array").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_098_a2r_error_prop() {
+    test_aavm("99_bootstrap/098_a2r_error_prop").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_099_a2r_self_field() {
+    test_aavm("99_bootstrap/099_a2r_self_field").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_100_a2r_use_ffi() {
+    test_aavm("99_bootstrap/100_a2r_use_ffi").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_101_a2r_is_multi() {
+    test_aavm("99_bootstrap/101_a2r_is_multi").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_102_a2r_struct_ctor() {
+    test_aavm("99_bootstrap/102_a2r_struct_ctor").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_103_a2r_generic_type() {
+    test_aavm("99_bootstrap/103_a2r_generic_type").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_104_a2r_generic_vec() {
+    test_aavm("99_bootstrap/104_a2r_generic_vec").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_105_a2r_generic_map() {
+    test_aavm("99_bootstrap/105_a2r_generic_map").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_106_a2r_generic_enum() {
+    test_aavm("99_bootstrap/106_a2r_generic_enum").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_107_a2r_option_match() {
+    test_aavm("99_bootstrap/107_a2r_option_match").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_108_a2r_ownership() {
+    test_aavm("99_bootstrap/108_a2r_ownership").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_110_a2r_phase3() {
+    test_aavm("99_bootstrap/110_a2r_phase3").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_111_a2r_real_source() {
+    test_aavm("99_bootstrap/111_a2r_real_source").unwrap();
+}
+#[test]
+#[ignore]
+fn test_aavm_99_bootstrap_112_a2r_generic_registry() {
+    test_aavm("99_bootstrap/112_a2r_generic_registry").unwrap();
+}
 
 /// Plan 523 W3:build_aavm_rust_bin 的 four-path runner 复用入口(内容寻址
 /// 缓存同源;aavm2_a2r::test_aavm2_fourpath_runner 消费)。

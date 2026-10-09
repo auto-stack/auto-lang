@@ -182,7 +182,9 @@ pub enum A2UIComponentBody {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum A2UIValue {
-    Path { path: String },
+    Path {
+        path: String,
+    },
     LiteralString {
         #[serde(rename = "literalString")]
         literal_string: String,
@@ -350,8 +352,8 @@ mod tests {
 
     #[test]
     fn test_serialize_surface_update() {
-        let msg = A2UIMessage::SurfaceUpdate(
-            A2UISurfaceUpdate::new("booking").with_components(vec![
+        let msg =
+            A2UIMessage::SurfaceUpdate(A2UISurfaceUpdate::new("booking").with_components(vec![
                 A2UIComponent::new(
                     "title",
                     A2UIComponentBody::Text {
@@ -371,8 +373,7 @@ mod tests {
                         action: Some(A2UIAction::new("confirm_booking")),
                     },
                 ),
-            ]),
-        );
+            ]));
 
         let json = serde_json::to_string_pretty(&msg).unwrap();
         assert!(json.contains("\"type\": \"surfaceUpdate\""));
@@ -414,24 +415,21 @@ mod tests {
 
     #[test]
     fn test_roundtrip_complex() {
-        let original = A2UIMessage::SurfaceUpdate(
-            A2UISurfaceUpdate::new("test").with_components(vec![
+        let original =
+            A2UIMessage::SurfaceUpdate(A2UISurfaceUpdate::new("test").with_components(vec![
                 A2UIComponent::new(
                     "col1",
                     A2UIComponentBody::Column {
-                        children: vec![
-                            A2UIComponent::new(
-                                "btn1",
-                                A2UIComponentBody::Button {
-                                    child: A2UIValue::string("Click"),
-                                    action: Some(A2UIAction::new("click_me")),
-                                },
-                            ),
-                        ],
+                        children: vec![A2UIComponent::new(
+                            "btn1",
+                            A2UIComponentBody::Button {
+                                child: A2UIValue::string("Click"),
+                                action: Some(A2UIAction::new("click_me")),
+                            },
+                        )],
                     },
                 ),
-            ]),
-        );
+            ]));
 
         let json = serde_json::to_string(&original).unwrap();
         let restored: A2UIMessage = serde_json::from_str(&json).unwrap();
@@ -441,15 +439,16 @@ mod tests {
     /// PLAN-641 AC-05：Tabs variant round-trip 保真。
     #[test]
     fn test_tabs_variant_roundtrip() {
-        let original = A2UIMessage::SurfaceUpdate(
-            A2UISurfaceUpdate::new("tabs-demo").with_components(vec![A2UIComponent::new(
-                "tabs1",
-                A2UIComponentBody::Tabs {
-                    tabs: vec![],
-                    variant: Some("enclosed".to_string()),
-                },
-            )]),
-        );
+        let original =
+            A2UIMessage::SurfaceUpdate(A2UISurfaceUpdate::new("tabs-demo").with_components(vec![
+                A2UIComponent::new(
+                    "tabs1",
+                    A2UIComponentBody::Tabs {
+                        tabs: vec![],
+                        variant: Some("enclosed".to_string()),
+                    },
+                ),
+            ]));
 
         let json = serde_json::to_string(&original).unwrap();
         assert!(json.contains(r#""variant":"enclosed""#));
@@ -486,7 +485,10 @@ mod tests {
         }
 
         // None → 序列化省略 variant 字段。
-        let bare = A2UIComponentBody::Tabs { tabs: vec![], variant: None };
+        let bare = A2UIComponentBody::Tabs {
+            tabs: vec![],
+            variant: None,
+        };
         let json = serde_json::to_string(&bare).unwrap();
         assert!(!json.contains("variant"));
     }

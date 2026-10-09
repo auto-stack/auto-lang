@@ -24,12 +24,12 @@
 use crate::ui::iced::renderer::IntoIcedElement;
 use crate::ui::terminal::{
     terminal, terminal_feed, terminal_selection_begin, terminal_selection_clear,
-    terminal_selection_extend, terminal_selection_finish, terminal_set_cursor,
-    TermCursorShape, TermSelectionType,
+    terminal_selection_extend, terminal_selection_finish, terminal_set_cursor, TermCursorShape,
+    TermSelectionType,
 };
 use crate::ui::view::View;
-use iced_test::simulator;
 use iced_test::selector::{Candidate, Selector};
+use iced_test::simulator;
 
 const KEY: &str = "t8px";
 const COLS: u16 = 40;
@@ -99,10 +99,7 @@ impl Selector for BoundsCollector {
     type Output = ();
     fn select(&mut self, candidate: Candidate<'_>) -> Option<()> {
         if let Candidate::Container { bounds, .. } = candidate {
-            self.0
-                .lock()
-                .unwrap()
-                .push((bounds.width, bounds.height));
+            self.0.lock().unwrap().push((bounds.width, bounds.height));
         }
         None
     }
@@ -116,7 +113,7 @@ impl Selector for BoundsCollector {
 /// find 看到的 bounds 与 want_w 不同源)。
 #[test]
 fn terminal_pixel_bounds_nonzero_and_exact() {
-    use crate::ui::terminal::iced::{CELL_H, PAD, cell_w};
+    use crate::ui::terminal::iced::{cell_w, CELL_H, PAD};
     let want_w = COLS as f32 * cell_w() + 2.0 * PAD;
     let want_h = ROWS as f32 * CELL_H + 2.0 * PAD;
     feed_baseline();
@@ -125,7 +122,9 @@ fn terminal_pixel_bounds_nonzero_and_exact() {
     let _ = ui.find(BoundsCollector(store.clone()));
     let bounds = store.lock().unwrap().clone();
     assert!(
-        bounds.iter().any(|&(w, h)| (w - want_w).abs() < 0.6 && (h - want_h).abs() < 0.6),
+        bounds
+            .iter()
+            .any(|&(w, h)| (w - want_w).abs() < 0.6 && (h - want_h).abs() < 0.6),
         "terminal 组件 bounds 必须命中 {want_w}x{want_h}(±0.6),实际 {bounds:?}"
     );
 }
@@ -184,9 +183,9 @@ fn diff_fraction(a: &Frame, b: &Frame) -> f64 {
     let px = a.rgba.len() / 4;
     let diff = (0..px)
         .filter(|&i| {
-            [0, 1, 2].iter().any(|&c| {
-                (a.rgba[i * 4 + c] as i32 - b.rgba[i * 4 + c] as i32).abs() > CHANNEL_TOL
-            })
+            [0, 1, 2]
+                .iter()
+                .any(|&c| (a.rgba[i * 4 + c] as i32 - b.rgba[i * 4 + c] as i32).abs() > CHANNEL_TOL)
         })
         .count();
     diff as f64 / px as f64
@@ -230,7 +229,9 @@ fn resolve_golden(name: &str, kind: &str) -> Option<std::path::PathBuf> {
 /// 2 红的根因(环境态翻转,非代码回归),语义门禁由墨水/差分断言承担。
 fn golden_audit(snap: &iced_test::simulator::Snapshot, name: &str, kind: &str) {
     if resolve_golden(name, kind).is_none() {
-        let created = snap.matches_image(golden_path(name, kind)).expect("golden 自建");
+        let created = snap
+            .matches_image(golden_path(name, kind))
+            .expect("golden 自建");
         assert!(created, "金样首跑自建必须成功: {name}/{kind}");
         return;
     }
@@ -257,8 +258,12 @@ fn baseline_frame(tag: &str) -> Frame {
     let _ = crate::ui::terminal::iced::cell_w();
     feed_baseline();
     let mut ui = simulator(terminal_view().into_iced());
-    let snap1 = ui.snapshot(&iced::Theme::Light).expect("baseline snapshot 1");
-    let snap2 = ui.snapshot(&iced::Theme::Light).expect("baseline snapshot 2");
+    let snap1 = ui
+        .snapshot(&iced::Theme::Light)
+        .expect("baseline snapshot 1");
+    let snap2 = ui
+        .snapshot(&iced::Theme::Light)
+        .expect("baseline snapshot 2");
 
     let frame = write_frame(&snap1, &format!("{tag}_base1"));
     let f2 = temp_png(&format!("{tag}_base2"));
@@ -273,10 +278,7 @@ fn baseline_frame(tag: &str) -> Frame {
     );
     // 同进程两次渲染必须逐字节一致(snap1 vs snap2 的落盘产物)。
     let identical = snap1.matches_image(&f2).expect("determinism matches_image");
-    assert!(
-        identical,
-        "同进程两次渲染不一致——渲染不确定,像素断言不可靠"
-    );
+    assert!(identical, "同进程两次渲染不一致——渲染不确定,像素断言不可靠");
 
     golden_audit(&snap1, tag, "base");
     frame
@@ -295,7 +297,9 @@ fn terminal_pixel_selection_changes_pixels() {
     terminal_selection_finish(core);
 
     let mut ui = simulator(terminal_view().into_iced());
-    let snap = ui.snapshot(&iced::Theme::Light).expect("selection snapshot");
+    let snap = ui
+        .snapshot(&iced::Theme::Light)
+        .expect("selection snapshot");
     let frame = write_frame(&snap, "selection_frame");
 
     // 关键断言:选中帧必须偏离基线(不然选中高亮没进渲染产物)。
@@ -367,7 +371,7 @@ fn ink_in_rect(f: &Frame, x0: u32, y0: u32, x1: u32, y1: u32) -> usize {
 /// 显著非零(修复前只有 pal_bg 底色块,近黑底近黑块,亮像素≈0)。
 #[test]
 fn terminal_pixel_badge_text_reaches_pixels() {
-    use crate::ui::terminal::iced::{CELL_H, PAD, cell_w};
+    use crate::ui::terminal::iced::{cell_w, CELL_H, PAD};
 
     let _ = crate::ui::terminal::iced::cell_w();
     feed_baseline();
@@ -401,7 +405,7 @@ fn terminal_pixel_badge_text_reaches_pixels() {
 /// ≈0 亮像素;修复前蓝底 quad 盖场但文字被丢弃,亮像素仍≈0。
 #[test]
 fn terminal_pixel_preedit_text_reaches_pixels() {
-    use crate::ui::terminal::iced::{CELL_H, PAD, cell_w};
+    use crate::ui::terminal::iced::{cell_w, CELL_H, PAD};
 
     let _ = crate::ui::terminal::iced::cell_w();
     feed_baseline();
@@ -447,7 +451,12 @@ fn terminal_pixel_dump_golden_stats() {
         "[stats] 实测帧墨水占比 {:.2}%",
         ink_fraction(&actual) * 100.0
     );
-    for (name, kind) in [("selection", "base"), ("selection", "frame"), ("cursor", "base"), ("cursor", "frame")] {
+    for (name, kind) in [
+        ("selection", "base"),
+        ("selection", "frame"),
+        ("cursor", "base"),
+        ("cursor", "frame"),
+    ] {
         match resolve_golden(name, kind) {
             Some(p) => {
                 let g = decode_rgba(&p);

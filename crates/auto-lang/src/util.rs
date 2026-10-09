@@ -12,9 +12,7 @@ pub fn find_std_lib() -> AutoResult<AutoStr> {
     // Check if we're in a Cargo build (CARGO_MANIFEST_DIR is set)
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
         // From crates/auto-lang/, go up to project root (../../../)
-        let project_root = PathBuf::from(manifest_dir)
-            .join("../../../")
-            .canonicalize();
+        let project_root = PathBuf::from(manifest_dir).join("../../../").canonicalize();
         if let Ok(root) = project_root {
             let local_stdlib = root.join("stdlib");
             if let Some(path) = local_stdlib.to_str() {
@@ -115,7 +113,8 @@ pub fn find_module_file(module_path: &str, extensions: &[&str]) -> AutoResult<Pa
         "Module '{}' not found. Searched in:\n  {}",
         module_path,
         searched_paths.join("\n  ")
-    ).into())
+    )
+    .into())
 }
 
 /// Get the file name from a path.

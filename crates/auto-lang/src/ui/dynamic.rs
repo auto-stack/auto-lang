@@ -318,7 +318,9 @@ impl MountPathSinkRef<'_> {
     }
 }
 
-fn instance_paths_for_types(types: &std::collections::HashSet<String>) -> std::collections::HashSet<InstancePath> {
+fn instance_paths_for_types(
+    types: &std::collections::HashSet<String>,
+) -> std::collections::HashSet<InstancePath> {
     types.iter().map(|w| InstancePath::of_type(w)).collect()
 }
 
@@ -362,10 +364,13 @@ pub(crate) struct PreviewCardUiState {
 // Plan 409 §10 续 21: preview-card 的代码默认展开(对齐 vue 首屏可见代码)。
 impl Default for PreviewCardUiState {
     fn default() -> Self {
-        Self { show: true, tab: PreviewTab::default(), copied: false }
+        Self {
+            show: true,
+            tab: PreviewTab::default(),
+            copied: false,
+        }
     }
 }
-
 
 impl fmt::Debug for DynamicComponent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -408,7 +413,9 @@ impl DynamicComponent {
         Ok(Self {
             bridge,
             view_template,
-            named_templates: widget.named_views.iter()
+            named_templates: widget
+                .named_views
+                .iter()
                 .map(|(n, v)| (n.clone(), v.clone()))
                 .collect(),
             widget_name: widget_name.clone(),
@@ -461,7 +468,13 @@ impl DynamicComponent {
         widget: &AuraWidget,
         registry: crate::ui::widget_registry::WidgetRegistry,
     ) -> Result<Self, String> {
-        Self::with_registry_and_imports(widget, registry, Vec::new(), &std::collections::HashMap::new(), false)
+        Self::with_registry_and_imports(
+            widget,
+            registry,
+            Vec::new(),
+            &std::collections::HashMap::new(),
+            false,
+        )
     }
 
     /// Create a DynamicComponent with a widget registry AND imported symbols.
@@ -488,8 +501,14 @@ impl DynamicComponent {
         //    Plan 320: single VM — child widgets' handlers compiled into the
         //    same module so they can be called when events fire.
         let child_widgets: Vec<crate::aura::AuraWidget> = registry.all().collect();
-        let bridge = VmBridge::new_with_children(widget, &child_widgets, import_stmts.clone(), import_aliases, api_over_http)
-            .map_err(|e| format!("VmBridge init failed for '{}': {}", _logic.name, e))?;
+        let bridge = VmBridge::new_with_children(
+            widget,
+            &child_widgets,
+            import_stmts.clone(),
+            import_aliases,
+            api_over_http,
+        )
+        .map_err(|e| format!("VmBridge init failed for '{}': {}", _logic.name, e))?;
 
         // ── 视图部分（渲染模板 + 元数据）──
         // AuraViewBuilder 和 DynamicComponent 只需要 view_data 部分。
@@ -504,14 +523,18 @@ impl DynamicComponent {
 
         // EDGE-01: merge element-attribute onkeydown.* bindings into key_bindings.
         let mut key_bindings = view.key_bindings.clone();
-        for (k, v) in collect_onkeydown_bindings_with_registry(view.view_tree, &registry, &widget_name) {
+        for (k, v) in
+            collect_onkeydown_bindings_with_registry(view.view_tree, &registry, &widget_name)
+        {
             key_bindings.entry(k).or_insert(v);
         }
 
         Ok(Self {
             bridge,
             view_template,
-            named_templates: widget.named_views.iter()
+            named_templates: widget
+                .named_views
+                .iter()
                 .map(|(n, v)| (n.clone(), v.clone()))
                 .collect(),
             widget_name: widget_name.clone(),
@@ -631,7 +654,9 @@ impl DynamicComponent {
 
         // EDGE-01: merge element-attribute onkeydown.* bindings into key_bindings.
         let mut key_bindings = view.key_bindings.clone();
-        for (k, v) in collect_onkeydown_bindings_with_registry(view.view_tree, &registry, &widget_name) {
+        for (k, v) in
+            collect_onkeydown_bindings_with_registry(view.view_tree, &registry, &widget_name)
+        {
             key_bindings.entry(k).or_insert(v);
         }
 
@@ -639,7 +664,8 @@ impl DynamicComponent {
         // The current-route state (__current_route) is seeded lazily by
         // render_outlet (it falls back to the first route when unset), so no
         // eager state init is needed here.
-        let routes: Vec<crate::aura::AuraRoute> = view_widget.routes
+        let routes: Vec<crate::aura::AuraRoute> = view_widget
+            .routes
             .as_ref()
             .map(|r| r.routes.clone())
             .unwrap_or_default();
@@ -681,8 +707,7 @@ impl DynamicComponent {
         let mut always_mounted: std::collections::HashSet<String> = Default::default();
         {
             always_mounted.insert(root_decl.name.to_string());
-            if let Some(ms) =
-                crate::ui::handler_codegen::extract_tick_interval_from_decl(root_decl)
+            if let Some(ms) = crate::ui::handler_codegen::extract_tick_interval_from_decl(root_decl)
             {
                 timesources.push(TimeSourceRuntime {
                     kind: TimeSourceKind::Tick,
@@ -697,9 +722,7 @@ impl DynamicComponent {
                 if always {
                     always_mounted.insert(d.name.to_string());
                 }
-                if let Some(ms) =
-                    crate::ui::handler_codegen::extract_tick_interval_from_decl(d)
-                {
+                if let Some(ms) = crate::ui::handler_codegen::extract_tick_interval_from_decl(d) {
                     timesources.push(TimeSourceRuntime {
                         kind: TimeSourceKind::Tick,
                         widget: d.name.to_string(),
@@ -733,7 +756,9 @@ impl DynamicComponent {
         Ok(Self {
             bridge,
             view_template,
-            named_templates: view_widget.named_views.iter()
+            named_templates: view_widget
+                .named_views
+                .iter()
                 .map(|(n, v)| (n.clone(), v.clone()))
                 .collect(),
             widget_name,
@@ -772,10 +797,7 @@ impl DynamicComponent {
     ///
     /// * `vm` - Pre-configured AutoVM instance
     /// * `widget` - The AuraWidget to create a component for
-    pub fn new_with_vm(
-        vm: crate::vm::engine::AutoVM,
-        widget: &AuraWidget,
-    ) -> Result<Self, String> {
+    pub fn new_with_vm(vm: crate::vm::engine::AutoVM, widget: &AuraWidget) -> Result<Self, String> {
         let bridge = VmBridge::new_with_vm(vm, widget)
             .map_err(|e| format!("VmBridge init failed for '{}': {}", widget.name, e))?;
 
@@ -786,7 +808,9 @@ impl DynamicComponent {
         Ok(Self {
             bridge,
             view_template,
-            named_templates: widget.named_views.iter()
+            named_templates: widget
+                .named_views
+                .iter()
                 .map(|(n, v)| (n.clone(), v.clone()))
                 .collect(),
             widget_name: widget_name.clone(),
@@ -858,7 +882,9 @@ impl DynamicComponent {
     /// PLAN-654: `widget` 可为 path 装饰名。
     pub fn is_timer_entry(&self, widget: &str, event: &str) -> bool {
         let widget_type = widget.split('@').next().unwrap_or(widget);
-        self.timers.iter().any(|t| t.widget == widget_type && t.event == event)
+        self.timers
+            .iter()
+            .any(|t| t.widget == widget_type && t.event == event)
     }
 
     /// Plan 051 C7: timer 条目表（renderer 建订阅用）。
@@ -1050,7 +1076,18 @@ impl DynamicComponent {
 
     /// PLAN-654 AC-A6: 可观测 TimeSource 表（candidates / mounted / subscribable）。
     /// 每行：`(path, widget, event, kind, every_ms, when, mounted, subscribable)`。
-    pub fn timesource_debug_rows(&self) -> Vec<(String, String, String, String, u64, Option<String>, bool, bool)> {
+    pub fn timesource_debug_rows(
+        &self,
+    ) -> Vec<(
+        String,
+        String,
+        String,
+        String,
+        u64,
+        Option<String>,
+        bool,
+        bool,
+    )> {
         let mounted_types = self.mounted_types.borrow();
         let mounted_paths = self.mounted_paths.borrow();
         let subs: std::collections::HashSet<String> = self
@@ -1213,8 +1250,7 @@ impl DynamicComponent {
             for i in 0..self.timesources.len() {
                 let every_ms = {
                     let src = &self.timesources[i];
-                    if !self.always_mounted.contains(&src.widget)
-                        && !mounted.contains(&src.widget)
+                    if !self.always_mounted.contains(&src.widget) && !mounted.contains(&src.widget)
                     {
                         continue;
                     }
@@ -1234,8 +1270,7 @@ impl DynamicComponent {
                 let src = &self.timesources[i];
                 (src.widget.clone(), src.event.clone(), src.every_ms)
             };
-            self.timesource_next[i] =
-                Some(now + std::time::Duration::from_millis(every_ms.max(1)));
+            self.timesource_next[i] = Some(now + std::time::Duration::from_millis(every_ms.max(1)));
             let dispatched = match kind {
                 TimeSourceKind::Timer => self.fire_timer(&widget, &event),
                 TimeSourceKind::Tick => {
@@ -1375,7 +1410,11 @@ impl DynamicComponent {
     /// Write a Vec<Value> back to a state field that holds an array reference.
     /// Handles both Value::Array and Value::Int(array_id) from [...] literals.
     /// Plan 289: Mirror of read_state_as_vec for write operations.
-    pub fn write_state_vec(&mut self, field_name: &str, values: Vec<auto_val::Value>) -> Result<(), String> {
+    pub fn write_state_vec(
+        &mut self,
+        field_name: &str,
+        values: Vec<auto_val::Value>,
+    ) -> Result<(), String> {
         self.bridge
             .write_state_vec(field_name, values)
             .map_err(|e| e.to_string())?;
@@ -1520,16 +1559,13 @@ impl DynamicComponent {
             let init = self.bridge.dispatch_pending_inits(budget);
             let io = self.bridge.resume_ready_parked();
             let cpu = self.bridge.resume_cpu_slices(budget);
-            let progressed = init.dispatched > 0
-                || init.completed > 0
-                || cpu.completed > 0
-                || io.completed > 0;
+            let progressed =
+                init.dispatched > 0 || init.completed > 0 || cpu.completed > 0 || io.completed > 0;
             if init.completed > 0 || cpu.completed > 0 {
                 // 完成失效 memo（与生产 poll_frame_pump 同语义）。
                 crate::ui::memo_deps::bump_ui_epoch();
             }
-            let busy =
-                self.bridge.has_pending_init_work() || self.bridge.has_cpu_continuations();
+            let busy = self.bridge.has_pending_init_work() || self.bridge.has_cpu_continuations();
             if !busy {
                 break;
             }
@@ -1621,8 +1657,10 @@ impl DynamicComponent {
                 format!("vm:{face}")
             };
             crate::syslog!(
-                crate::ui::syslog::SyslogLevel::Error, syslog_face,
-                "[VM-HANDLER] {widget}.Init failed (dispatch): {}", err
+                crate::ui::syslog::SyslogLevel::Error,
+                syslog_face,
+                "[VM-HANDLER] {widget}.Init failed (dispatch): {}",
+                err
             );
         }
         for (fn_name, err) in &cpu_report.failed {
@@ -1639,8 +1677,11 @@ impl DynamicComponent {
                 format!("vm:{face}")
             };
             crate::syslog!(
-                crate::ui::syslog::SyslogLevel::Error, syslog_face,
-                "[VM-HANDLER] {} failed (cpu-resume): {}", fn_name, err
+                crate::ui::syslog::SyslogLevel::Error,
+                syslog_face,
+                "[VM-HANDLER] {} failed (cpu-resume): {}",
+                fn_name,
+                err
             );
         }
     }
@@ -1674,8 +1715,11 @@ impl DynamicComponent {
                 format!("vm:{face}")
             };
             crate::syslog!(
-                crate::ui::syslog::SyslogLevel::Error, syslog_face,
-                "[VM-HANDLER] {} failed (resume): {}", fn_name, err
+                crate::ui::syslog::SyslogLevel::Error,
+                syslog_face,
+                "[VM-HANDLER] {} failed (resume): {}",
+                fn_name,
+                err
             );
         }
     }
@@ -1683,7 +1727,11 @@ impl DynamicComponent {
     /// Find the source span for a specific element by kind and occurrence index.
     /// Traverses the AuraNode tree in DFS order, counting Element nodes by tag name.
     /// Returns the span of the `target_index`-th occurrence of `target_kind`.
-    pub fn find_element_span(&self, target_kind: &str, target_index: usize) -> Option<(usize, usize)> {
+    pub fn find_element_span(
+        &self,
+        target_kind: &str,
+        target_index: usize,
+    ) -> Option<(usize, usize)> {
         let mut counter = 0;
         find_span_dfs(&self.view_template, target_kind, target_index, &mut counter)
     }
@@ -1694,14 +1742,25 @@ impl DynamicComponent {
     /// The probe is **enabled** (records normally). For F12-off / MCP
     /// zero-overhead capture bypass (Plan 307 Task 18), use
     /// [`view_with_debug_gated`] with `capture_probe = false`.
-    pub fn view_with_debug(&self) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
+    pub fn view_with_debug(
+        &self,
+    ) -> (
+        View<DynamicMessage>,
+        DebugIdMap,
+        crate::ui::debug::BuildProbe,
+    ) {
         let prev = self.view_mount_frame_prepare();
-        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts)
-            .with_routes(&self.routes)
-            .with_preview_states(&self.preview_states)
-            .with_nav_group_states(&self.nav_group_states)
-            .with_mounted_sink(&self.mounted_types)
-            .with_mount_path_sink(self.mount_path_sink());
+        let builder = AuraViewBuilder::with_registry_and_imports(
+            &self.bridge,
+            &self.widget_name,
+            &self.widget_registry,
+            &self.import_stmts,
+        )
+        .with_routes(&self.routes)
+        .with_preview_states(&self.preview_states)
+        .with_nav_group_states(&self.nav_group_states)
+        .with_mounted_sink(&self.mounted_types)
+        .with_mount_path_sink(self.mount_path_sink());
         let out = builder.build_with_debug(&self.view_template);
         self.view_mount_frame_finish(prev);
         out
@@ -1716,20 +1775,33 @@ impl DynamicComponent {
     pub fn view_with_debug_gated(
         &self,
         capture_probe: bool,
-    ) -> (View<DynamicMessage>, DebugIdMap, crate::ui::debug::BuildProbe) {
+    ) -> (
+        View<DynamicMessage>,
+        DebugIdMap,
+        crate::ui::debug::BuildProbe,
+    ) {
         // PLAN-045 T-07：帧构建计时打点（AUTO_MEMO_DIAG=1 门控）——主线程
         // 阻塞 = 本函数时长（VM 整树重解释在此），替代易受心跳污染的
         // stderr 静默窗口径。
         let memo_diag = std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1");
-        let __diag_t0 = if memo_diag { Some(std::time::Instant::now()) } else { None };
+        let __diag_t0 = if memo_diag {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
         let prev = self.view_mount_frame_prepare();
-        let builder = AuraViewBuilder::with_registry_and_imports(&self.bridge, &self.widget_name, &self.widget_registry, &self.import_stmts)
-            .with_routes(&self.routes)
-            .with_computed(&self.computed)
-            .with_preview_states(&self.preview_states)
-            .with_nav_group_states(&self.nav_group_states)
-            .with_mounted_sink(&self.mounted_types)
-            .with_mount_path_sink(self.mount_path_sink());
+        let builder = AuraViewBuilder::with_registry_and_imports(
+            &self.bridge,
+            &self.widget_name,
+            &self.widget_registry,
+            &self.import_stmts,
+        )
+        .with_routes(&self.routes)
+        .with_computed(&self.computed)
+        .with_preview_states(&self.preview_states)
+        .with_nav_group_states(&self.nav_group_states)
+        .with_mounted_sink(&self.mounted_types)
+        .with_mount_path_sink(self.mount_path_sink());
         let out = builder.build_with_debug_gated(&self.view_template, capture_probe);
         self.view_mount_frame_finish(prev);
         if let Some(t0) = __diag_t0 {
@@ -1765,9 +1837,10 @@ impl DynamicComponent {
             &self.widget_name,
             &self.widget_registry,
             &self.import_stmts,
-        ).with_routes(&self.routes)
-            .with_mounted_sink(&self.mounted_types)
-            .with_mount_path_sink(self.mount_path_sink());
+        )
+        .with_routes(&self.routes)
+        .with_mounted_sink(&self.mounted_types)
+        .with_mount_path_sink(self.mount_path_sink());
         Some(builder.build(template))
     }
 
@@ -1794,7 +1867,9 @@ impl DynamicComponent {
                 }
             }
         }
-        let _ = self.bridge.write_state("__current_route", auto_val::Value::str(path));
+        let _ = self
+            .bridge
+            .write_state("__current_route", auto_val::Value::str(path));
         self.sync_route_params();
         self.dirty = true;
     }
@@ -1806,7 +1881,9 @@ impl DynamicComponent {
         let Some(prev) = self.route_history.pop() else {
             return false;
         };
-        let _ = self.bridge.write_state("__current_route", auto_val::Value::str(&prev));
+        let _ = self
+            .bridge
+            .write_state("__current_route", auto_val::Value::str(&prev));
         self.sync_route_params();
         self.dirty = true;
         true
@@ -1833,7 +1910,9 @@ impl DynamicComponent {
             Ok(v) if v.as_bool()
         );
         if pending {
-            let _ = self.bridge.write_state("__nav_back_pending", auto_val::Value::Bool(false));
+            let _ = self
+                .bridge
+                .write_state("__nav_back_pending", auto_val::Value::Bool(false));
             self.navigate_back();
         }
     }
@@ -1850,11 +1929,24 @@ impl DynamicComponent {
         }
         let current = match self.bridge.read_state("__current_route") {
             Ok(auto_val::Value::Str(s)) if !s.is_empty() => s.to_string(),
-            _ => self.routes.first().map(|r| r.path.clone()).unwrap_or_else(|| "/".to_string()),
+            _ => self
+                .routes
+                .first()
+                .map(|r| r.path.clone())
+                .unwrap_or_else(|| "/".to_string()),
         };
-        let cur_segs: Vec<&str> = current.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+        let cur_segs: Vec<&str> = current
+            .trim_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
         for route in &self.routes {
-            let pat_segs: Vec<&str> = route.path.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+            let pat_segs: Vec<&str> = route
+                .path
+                .trim_matches('/')
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .collect();
             if pat_segs.len() != cur_segs.len() {
                 continue;
             }
@@ -1944,26 +2036,29 @@ impl DynamicComponent {
         len: usize,
         new_content: &str,
     ) -> Result<String, String> {
-        let path = self.source_path()
+        let path = self
+            .source_path()
             .ok_or_else(|| "No source path set".to_string())?;
 
-        let code = std::fs::read_to_string(path)
-            .map_err(|e| format!("Cannot read source: {}", e))?;
+        let code =
+            std::fs::read_to_string(path).map_err(|e| format!("Cannot read source: {}", e))?;
 
         if offset + len > code.len() {
             return Err("Span range out of bounds (source may have changed)".to_string());
         }
 
-        let new_code = format!("{}{}{}", &code[..offset], new_content, &code[offset + len..]);
+        let new_code = format!(
+            "{}{}{}",
+            &code[..offset],
+            new_content,
+            &code[offset + len..]
+        );
 
-        std::fs::write(path, &new_code)
-            .map_err(|e| format!("Cannot write source: {}", e))?;
+        std::fs::write(path, &new_code).map_err(|e| format!("Cannot write source: {}", e))?;
 
         // Update last_modified to reflect the write we just did,
         // so the next hot-reload tick won't re-trigger unnecessarily
-        self.last_modified = std::fs::metadata(path)
-            .ok()
-            .and_then(|m| m.modified().ok());
+        self.last_modified = std::fs::metadata(path).ok().and_then(|m| m.modified().ok());
 
         Ok(new_code)
     }
@@ -1980,7 +2075,9 @@ impl DynamicComponent {
     /// [`VmBridge::read_all_state_materialized`]. Use this (not
     /// [`read_all_state`]) when feeding snapshot/inspect tools that have no VM
     /// heap access and need to expand `for` loops over store arrays.
-    pub fn read_all_state_materialized(&self) -> std::collections::HashMap<String, auto_val::Value> {
+    pub fn read_all_state_materialized(
+        &self,
+    ) -> std::collections::HashMap<String, auto_val::Value> {
         self.bridge.read_all_state_materialized()
     }
 
@@ -2019,15 +2116,16 @@ impl DynamicComponent {
         let old_field_defs: Vec<crate::aura::AuraStateDef> = vec![];
 
         // 2. Create a new VmBridge from the new widget
-        let new_bridge = VmBridge::new(new_widget)
-            .map_err(|e| format!("Failed to create new VmBridge for '{}': {}", new_widget.name, e))?;
+        let new_bridge = VmBridge::new(new_widget).map_err(|e| {
+            format!(
+                "Failed to create new VmBridge for '{}': {}",
+                new_widget.name, e
+            )
+        })?;
 
         // 3. Migrate state
-        let (migrated_state, report) = state_migration::migrate_state(
-            &old_state,
-            &old_field_defs,
-            &new_widget.state_vars,
-        );
+        let (migrated_state, report) =
+            state_migration::migrate_state(&old_state, &old_field_defs, &new_widget.state_vars);
 
         // 4. Apply migrated state to the new bridge
         let mut new_bridge = new_bridge;
@@ -2038,11 +2136,14 @@ impl DynamicComponent {
         // 5. Update self
         self.bridge = new_bridge;
         self.view_template = new_widget.view_tree.clone();
-        self.named_templates = new_widget.named_views.iter()
+        self.named_templates = new_widget
+            .named_views
+            .iter()
             .map(|(n, v)| (n.clone(), v.clone()))
             .collect();
         self.widget_name = new_widget.name.clone();
-        self.input_state_map = extract_input_state_map_with_registry(&new_widget.view_tree, &self.widget_registry);
+        self.input_state_map =
+            extract_input_state_map_with_registry(&new_widget.view_tree, &self.widget_registry);
         self.tick_interval = new_widget.tick_interval;
         self.span_map = new_widget.span_map.clone();
         self.dirty = true;
@@ -2082,8 +2183,13 @@ impl DynamicComponent {
         let metadata = std::fs::metadata(&path)
             .map_err(|e| format!("Cannot read metadata for '{}': {}", path.display(), e))?;
 
-        let current_modified = metadata.modified()
-            .map_err(|e| format!("Cannot read modification time for '{}': {}", path.display(), e))?;
+        let current_modified = metadata.modified().map_err(|e| {
+            format!(
+                "Cannot read modification time for '{}': {}",
+                path.display(),
+                e
+            )
+        })?;
 
         let changed = match self.last_modified {
             Some(last) => current_modified > last,
@@ -2120,7 +2226,9 @@ impl Component for DynamicComponent {
         // Extract event name + any payload args the view builder resolved from
         // loop bindings (e.g. the `cell.date` in `onclick: .SelectDay(cell.date)`).
         let (event_name, mut args) = match &msg {
-            DynamicMessage::Typed { event_name, args, .. } => (event_name.clone(), args.clone()),
+            DynamicMessage::Typed {
+                event_name, args, ..
+            } => (event_name.clone(), args.clone()),
             DynamicMessage::String(name) => (name.clone(), Vec::new()),
         };
 
@@ -2137,8 +2245,7 @@ impl Component for DynamicComponent {
         // 事件恰好走其一、各写一次，无同事件双写路径。
         if !channel_text.is_empty() {
             if let Some(state_field) = self.input_state_map.get(&event_name).cloned() {
-                let value =
-                    parse_input_value_for_field(&channel_text, &state_field, &self.bridge);
+                let value = parse_input_value_for_field(&channel_text, &state_field, &self.bridge);
                 let _ = self.bridge.write_state(&state_field, value);
                 self.dirty = true;
             }
@@ -2150,7 +2257,10 @@ impl Component for DynamicComponent {
         // 实参 + 通道非空"三条件同时成立才注入，其余调用零影响。
         if args.is_empty() {
             if !channel_text.is_empty()
-                && self.bridge.handler_param_count(&self.widget_name, &event_name) == Some(1)
+                && self
+                    .bridge
+                    .handler_param_count(&self.widget_name, &event_name)
+                    == Some(1)
             {
                 args.push(auto_val::Value::Str(channel_text.into()));
             }
@@ -2163,7 +2273,9 @@ impl Component for DynamicComponent {
         // PLAN-536 T2: 执行中崩(≠HandlerNotFound)= 副作用可能已落盘,失效
         // 广播照常(与 on_with_input_for Err 臂同规)。
         match self.bridge.call_handler(&event_name, &args) {
-            Ok(()) => { self.dirty = true; }
+            Ok(()) => {
+                self.dirty = true;
+            }
             Err(e) => {
                 // PLAN-042 T-03：路由派发失败同规入环（face 归因同上）。
                 let syslog_face = {
@@ -2179,8 +2291,12 @@ impl Component for DynamicComponent {
                     format!("vm:{face}")
                 };
                 crate::syslog!(
-                    crate::ui::syslog::SyslogLevel::Error, syslog_face,
-                    "[VM-HANDLER] {}.{} failed: {}", self.widget_name, event_name, e
+                    crate::ui::syslog::SyslogLevel::Error,
+                    syslog_face,
+                    "[VM-HANDLER] {}.{} failed: {}",
+                    self.widget_name,
+                    event_name,
+                    e
                 );
                 if !matches!(e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) {
                     self.dirty = true;
@@ -2226,9 +2342,10 @@ impl Component for DynamicComponent {
             &self.widget_name,
             &self.widget_registry,
             &self.import_stmts,
-        ).with_routes(&self.routes)
-            .with_mounted_sink(&self.mounted_types)
-            .with_mount_path_sink(self.mount_path_sink());
+        )
+        .with_routes(&self.routes)
+        .with_mounted_sink(&self.mounted_types)
+        .with_mount_path_sink(self.mount_path_sink());
         let view = builder.build(&self.view_template);
         self.view_mount_frame_finish(prev);
 
@@ -2261,7 +2378,9 @@ impl DynamicComponent {
         // 首个字段写按错位帧解 self 即崩（B12(b) 同款「Invalid object
         // ID: 0」）。按父 handler 声明参数数对齐帧;未知 arity 保持
         // legacy（塞载荷）。
-        let declared_params = self.bridge.handler_param_count(&route.parent_widget, &route.handler);
+        let declared_params = self
+            .bridge
+            .handler_param_count(&route.parent_widget, &route.handler);
         // PLAN-576 G4 (D4): 参数数对齐升级——0 形参不塞载荷（T9 语义保留）、
         // 1 形参塞载荷、**≥2 形参此前也只塞 1 载荷**（调用帧错位、函数体不
         // 执行——043②③「合成派发 0 参/少参」病灶）→ 现响亮告警 + 跳过；
@@ -2280,7 +2399,10 @@ impl DynamicComponent {
             }
             None => vec![payload],
         };
-        match self.bridge.call_handler_for(&route.parent_widget, &route.handler, state_id, &args) {
+        match self
+            .bridge
+            .call_handler_for(&route.parent_widget, &route.handler, state_id, &args)
+        {
             Ok(()) => {
                 self.dirty = true;
             }
@@ -2294,8 +2416,14 @@ impl DynamicComponent {
     }
 
     /// PLAN-051 T8 诊断辅助：暴露 bridge 的 VM fn 调用与列表展开。
-    pub fn bridge_call_for_test(&self, name: &str, args: &[auto_val::Value]) -> Result<auto_val::Value, String> {
-        self.bridge.call_vm_fn(name, args).map_err(|e| e.to_string())
+    pub fn bridge_call_for_test(
+        &self,
+        name: &str,
+        args: &[auto_val::Value],
+    ) -> Result<auto_val::Value, String> {
+        self.bridge
+            .call_vm_fn(name, args)
+            .map_err(|e| e.to_string())
     }
     pub fn bridge_index_list_all_for_test(&self, id: usize) -> Vec<auto_val::Value> {
         self.bridge.index_list_all(id)
@@ -2318,7 +2446,10 @@ impl DynamicComponent {
             // 只针对声明了却真失败的形态（下方保留 stderr）；未声明形态在
             // 真桌面 boot 每 app 一条噪声行（App.Init failed 实录）。
             Err(e) if matches!(e, crate::ui::vm_bridge::VmBridgeError::HandlerNotFound(_)) => {
-                log::debug!("[VM-HANDLER] {}.Init absent (no state seeding)", self.widget_name);
+                log::debug!(
+                    "[VM-HANDLER] {}.Init absent (no state seeding)",
+                    self.widget_name
+                );
             }
             // Plan 446 批一 (F1): Init 失败从 log::warn 升级为无条件 stderr ——
             // Init 失败 = 状态未填充,整屏静默空白,必须醒目。
@@ -2353,7 +2484,11 @@ impl DynamicComponent {
     /// PLAN-659 T-05：handler 名录（裸名，handler_ 前缀已剥）——未命中
     /// 报错的可用名提示。
     pub fn msg_handler_names(&self) -> Vec<String> {
-        self.bridge.handler_names().into_iter().map(String::from).collect()
+        self.bridge
+            .handler_names()
+            .into_iter()
+            .map(String::from)
+            .collect()
     }
 
     /// PLAN-626 T-03: fire CloseRequest——语义同 fire_init 的 handler 直调
@@ -2399,7 +2534,12 @@ impl DynamicComponent {
     /// namespaced handler fn (handler_<Widget>_<Event>).
     /// PLAN-654: `widget_name` 可为 InstancePath 串（`Demo@1`）——解析出
     /// 类型名走同一 handler；path 不分裂状态槽（单 VM 根态，见 plan §9）。
-    pub fn on_with_input_for(&mut self, widget_name: &str, event_name: &str, input_value: Option<String>) {
+    pub fn on_with_input_for(
+        &mut self,
+        widget_name: &str,
+        event_name: &str,
+        input_value: Option<String>,
+    ) {
         // PLAN-654: path 装饰名 → 类型名（`Widget@seq` / `Widget`）。
         let widget_name_owned;
         let widget_name: &str = match widget_name.split_once('@') {
@@ -2416,13 +2556,18 @@ impl DynamicComponent {
         // 从键入队列 drain 全量作载荷(split 形态键入跨进程通道;组件
         // 消息本体无载荷,publish→dispatch 同线程配对)。
         let input_value = if input_value.is_none()
-            && payload.iter().any(|a| matches!(a, auto_val::Value::Str(s)
-                if s.as_str().starts_with("$event")))
-        {
+            && payload.iter().any(|a| {
+                matches!(a, auto_val::Value::Str(s)
+                if s.as_str().starts_with("$event"))
+            }) {
             // PLAN-026 needs_fix: 复用既有广播排空(terminal_drain_all_
             // inputs → Vec<String>);空 = None,非空 = 拼接串载荷。
             let keys = crate::ui::terminal::terminal_drain_all_inputs();
-            if keys.is_empty() { None } else { Some(keys.concat()) }
+            if keys.is_empty() {
+                None
+            } else {
+                Some(keys.concat())
+            }
         } else {
             input_value
         };
@@ -2492,9 +2637,7 @@ impl DynamicComponent {
                 // no-param handler (e.g. 013-todo's `onenter: .AddTodo`) shifts
                 // the VM call frame — the handler's later state writes land on
                 // a garbage object id. Unknown arity keeps the legacy behavior.
-                let param_count = self
-                    .bridge
-                    .handler_param_count(widget_name, &clean_name);
+                let param_count = self.bridge.handler_param_count(widget_name, &clean_name);
                 let declares_param = param_count.map(|n| n > 0).unwrap_or(true);
                 // Plan 446 批四 B3: 多参 handler 的输入分发显式化。输入文本
                 // 只能作为第一实参，其余参数（循环变量/$event 等）无从取得——
@@ -2518,16 +2661,27 @@ impl DynamicComponent {
                 }
             }
         }
-        let is_trace = clean_name == "DeleteNote" || clean_name == "SaveNote" || clean_name == "NewNote" || clean_name == "SelectNote";
+        let is_trace = clean_name == "DeleteNote"
+            || clean_name == "SaveNote"
+            || clean_name == "NewNote"
+            || clean_name == "SelectNote";
         if is_trace {
-            let _pre_notes = self.bridge.read_state_as_vec("notes").map(|v| v.len()).unwrap_or(999);
+            let _pre_notes = self
+                .bridge
+                .read_state_as_vec("notes")
+                .map(|v| v.len())
+                .unwrap_or(999);
             let _pre_idx = self.bridge.read_state("active_index").ok();
         }
         // PLAN-051 C2: 子→父回调两形态。
         // 体内式实参快照必须发生在子 handler 执行**前**——源序里
         // `on_send(.draft)` 先于 `.draft = ""`，剥离改造后调用移到 handler
         // 之后回放，读 state 会拿到清空值。
-        let emit_widget = if widget_name.is_empty() { self.widget_name.clone() } else { widget_name.to_string() };
+        let emit_widget = if widget_name.is_empty() {
+            self.widget_name.clone()
+        } else {
+            widget_name.to_string()
+        };
         let stripped_calls = crate::ui::child_emit::lookup_stripped(&emit_widget, &clean_name);
         // PLAN-685 G1: 剥离实参文本的求值域此前只有 root state——handler
         // 形参（如 `.Select(id) -> { on_select(id) }` 的 id）不可见，查名
@@ -2539,14 +2693,18 @@ impl DynamicComponent {
             .handler_param_names(&emit_widget, &clean_name)
             .map(|names| names.into_iter().zip(args.iter().cloned()).collect())
             .unwrap_or_default();
-        let mut stripped_payloads: Vec<(String, auto_val::Value)> = Vec::with_capacity(stripped_calls.len());
+        let mut stripped_payloads: Vec<(String, auto_val::Value)> =
+            Vec::with_capacity(stripped_calls.len());
         for sc in &stripped_calls {
             let payload = eval_stripped_arg(&self.bridge, sc.arg.as_deref(), &param_bindings);
             stripped_payloads.push((sc.callback.clone(), payload));
         }
         if !clean_name.starts_with("__") {
             if crate::is_vm_hot_trace() {
-                eprintln!("[VM_HANDLER_CALL] widget={} event={} args={:?}", widget_name, clean_name, args);
+                eprintln!(
+                    "[VM_HANDLER_CALL] widget={} event={} args={:?}",
+                    widget_name, clean_name, args
+                );
             }
         }
         // PLAN-576 G4 (D4): 派发实参数与 handler 形参数失配诊断——此前静默
@@ -2556,8 +2714,11 @@ impl DynamicComponent {
         // 未知 arity（无声明记录）保持 legacy 不拦。
         if let Some(declared) = self.bridge.handler_param_count(widget_name, &clean_name) {
             if declared != args.len() {
-                let disp_widget =
-                    if widget_name.is_empty() { self.widget_name.clone() } else { widget_name.to_string() };
+                let disp_widget = if widget_name.is_empty() {
+                    self.widget_name.clone()
+                } else {
+                    widget_name.to_string()
+                };
                 let msg = format!(
                     "[VM-ARITY] {}.{} declares {} param(s) but dispatch supplies {} — skipping dispatch (plan-576 D4)",
                     disp_widget, clean_name, declared, args.len()
@@ -2578,7 +2739,9 @@ impl DynamicComponent {
             let t0 = crate::ui::dynamic::sched_diag_t0();
             eprintln!(
                 "[SCHED-DIAG] cpu_probe dispatch {}::{} t={}ms",
-                emit_widget, clean_name, t0.elapsed().as_millis()
+                emit_widget,
+                clean_name,
+                t0.elapsed().as_millis()
             );
             let _ = self.bridge.call_handler_for_cpu_slice(
                 &emit_widget,
@@ -2590,15 +2753,25 @@ impl DynamicComponent {
             self.dirty = true;
             return;
         }
-        match self.bridge.call_handler_for(widget_name, &clean_name, state_obj_id, &args) {
+        match self
+            .bridge
+            .call_handler_for(widget_name, &clean_name, state_obj_id, &args)
+        {
             Ok(()) => {
                 if !clean_name.starts_with("__") {
                     if crate::is_vm_hot_trace() {
-                        eprintln!("[VM_HANDLER_OK] widget={} event={}", widget_name, clean_name);
+                        eprintln!(
+                            "[VM_HANDLER_OK] widget={} event={}",
+                            widget_name, clean_name
+                        );
                     }
                 }
                 if is_trace {
-                    let _post_notes = self.bridge.read_state_as_vec("notes").map(|v| v.len()).unwrap_or(999);
+                    let _post_notes = self
+                        .bridge
+                        .read_state_as_vec("notes")
+                        .map(|v| v.len())
+                        .unwrap_or(999);
                     let _post_idx = self.bridge.read_state("active_index").ok();
                 }
                 self.dirty = true;
@@ -2611,26 +2784,37 @@ impl DynamicComponent {
                 // 对子件自身 handler 的内联直调，父侧 on<msg> 路由不触发
                 // （043②②）。v1 限度：单 pending 槽（同 handler 多次 emit
                 // 末次生效）；多实参取首个位置实参（桥函数侧截取）。
-                if let Ok(auto_val::Value::Str(pending_msg)) = self.bridge.read_state("__emit_msg") {
+                if let Ok(auto_val::Value::Str(pending_msg)) = self.bridge.read_state("__emit_msg")
+                {
                     if !pending_msg.is_empty() {
                         let payload = self
                             .bridge
                             .read_state("__emit_payload")
                             .unwrap_or(auto_val::Value::Nil);
-                        let _ = self.bridge.write_state("__emit_msg", auto_val::Value::str(""));
+                        let _ = self
+                            .bridge
+                            .write_state("__emit_msg", auto_val::Value::str(""));
                         let emit_key = format!("on{}", pending_msg);
                         match crate::ui::child_emit::lookup_route(&emit_widget, &emit_key) {
                             Some(route) => {
                                 if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
                                     eprintln!(
                                         "[VM-EMIT] {}.{} -> {}.{} (quoted, in-body) payload={:?}",
-                                        emit_widget, pending_msg, route.parent_widget, route.handler, payload
+                                        emit_widget,
+                                        pending_msg,
+                                        route.parent_widget,
+                                        route.handler,
+                                        payload
                                     );
                                 }
-                                self.dispatch_parent_route(&emit_widget, &pending_msg, &route, payload);
+                                self.dispatch_parent_route(
+                                    &emit_widget,
+                                    &pending_msg,
+                                    &route,
+                                    payload,
+                                );
                             }
-                            None => {
-                            }
+                            None => {}
                         }
                     }
                 }
@@ -2643,7 +2827,12 @@ impl DynamicComponent {
                         if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
                             eprintln!(
                                 "[VM-EMIT] {}.{} -> {}.{} (declarative) args={:?} input={:?}",
-                                emit_widget, clean_name, route.parent_widget, route.handler, args, input_value
+                                emit_widget,
+                                clean_name,
+                                route.parent_widget,
+                                route.handler,
+                                args,
+                                input_value
                             );
                         }
                         let payload = args
@@ -2721,15 +2910,23 @@ impl DynamicComponent {
                         format!("vm:{face}")
                     };
                     crate::syslog!(
-                        crate::ui::syslog::SyslogLevel::Error, syslog_face,
+                        crate::ui::syslog::SyslogLevel::Error,
+                        syslog_face,
                         "[VM-HANDLER] {}.{} failed: {}",
-                        if widget_name.is_empty() { &self.widget_name } else { widget_name },
-                        clean_name, _e
+                        if widget_name.is_empty() {
+                            &self.widget_name
+                        } else {
+                            widget_name
+                        },
+                        clean_name,
+                        _e
                     );
                 } else {
                     log::debug!(
                         "[VM-HANDLER] {}.{} probe absent: {}",
-                        self.widget_name, clean_name, _e
+                        self.widget_name,
+                        clean_name,
+                        _e
                     );
                 }
                 // PLAN-536 T2(题1 根修): handler **执行中崩**(≠HandlerNotFound)
@@ -2751,9 +2948,7 @@ impl DynamicComponent {
                         let payload = args
                             .first()
                             .cloned()
-                            .or_else(|| {
-                                input_value.clone().map(|t| auto_val::Value::Str(t.into()))
-                            })
+                            .or_else(|| input_value.clone().map(|t| auto_val::Value::Str(t.into())))
                             .unwrap_or(auto_val::Value::Nil);
                         if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
                             eprintln!(
@@ -2772,7 +2967,9 @@ impl DynamicComponent {
                 // → store.RunCommand 再次 POST,命令双执行)。
                 if widget_name == self.widget_name || widget_name.is_empty() {
                     match self.bridge.call_handler(&clean_name, &args) {
-                        Ok(()) => { self.dirty = true; }
+                        Ok(()) => {
+                            self.dirty = true;
+                        }
                         Err(_e2) => {
                             // PLAN-041 T-12：同主臂——框架探测事件
                             // HandlerNotFound 降 debug（否则 legacy 回退臂
@@ -2811,7 +3008,9 @@ fn eval_stripped_arg(
     arg: Option<&str>,
     param_bindings: &std::collections::HashMap<String, auto_val::Value>,
 ) -> auto_val::Value {
-    let Some(t) = arg else { return auto_val::Value::Nil };
+    let Some(t) = arg else {
+        return auto_val::Value::Nil;
+    };
     let t = t.trim();
     if (t.starts_with('"') && t.ends_with('"') && t.len() >= 2)
         || (t.starts_with('\'') && t.ends_with('\'') && t.len() >= 2)
@@ -2971,7 +3170,10 @@ fn parse_input_value_for_field(
     // f32 and f64 operands in nanbox arithmetic causes the fallback path to
     // decode f32 bits as i32, producing garbage like -2147483647.
     if let Ok(current) = bridge.read_state(field_name) {
-        if matches!(current, auto_val::Value::Float(_) | auto_val::Value::Double(_)) {
+        if matches!(
+            current,
+            auto_val::Value::Float(_) | auto_val::Value::Double(_)
+        ) {
             match parsed {
                 auto_val::Value::Int(_) | auto_val::Value::Float(_) => {
                     if let Ok(f) = text.parse::<f64>() {
@@ -3093,9 +3295,15 @@ fn onkeydown_suffix(event_key: &str) -> Option<&str> {
     Some(rest.split('.').next()?)
 }
 
-fn scan_node_for_onkeydown(node: &crate::aura::AuraNode, widget_name: &str, map: &mut HashMap<String, String>) {
+fn scan_node_for_onkeydown(
+    node: &crate::aura::AuraNode,
+    widget_name: &str,
+    map: &mut HashMap<String, String>,
+) {
     match node {
-        crate::aura::AuraNode::Element { events, children, .. } => {
+        crate::aura::AuraNode::Element {
+            events, children, ..
+        } => {
             for (key, ev) in events {
                 if let Some(rest) = key.strip_prefix("onkeydown.") {
                     let parts: Vec<&str> = rest.split('.').collect();
@@ -3108,7 +3316,8 @@ fn scan_node_for_onkeydown(node: &crate::aura::AuraNode, widget_name: &str, map:
                         let handler = ev.handler.trim_start_matches('.').to_string();
                         // Store as "WidgetName.HandlerName" so tool_keyboard can
                         // dispatch to the correct widget (e.g. PromptBar.ToggleHistorySearch).
-                        map.entry(norm).or_insert(format!("{}.{}", widget_name, handler));
+                        map.entry(norm)
+                            .or_insert(format!("{}.{}", widget_name, handler));
                     }
                 }
             }
@@ -3121,7 +3330,11 @@ fn scan_node_for_onkeydown(node: &crate::aura::AuraNode, widget_name: &str, map:
                 scan_node_for_onkeydown(child, widget_name, map);
             }
         }
-        crate::aura::AuraNode::Conditional { then_body, else_body, .. } => {
+        crate::aura::AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             for child in then_body {
                 scan_node_for_onkeydown(child, widget_name, map);
             }
@@ -3135,13 +3348,17 @@ fn scan_node_for_onkeydown(node: &crate::aura::AuraNode, widget_name: &str, map:
     }
 }
 
-
-
 fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, String>) {
     use crate::ast::Expr;
     use crate::aura::{AuraNode, AuraPropValue};
     match node {
-        AuraNode::Element { tag, props, events, children, .. } => {
+        AuraNode::Element {
+            tag,
+            props,
+            events,
+            children,
+            ..
+        } => {
             if tag == "input" || tag == "textarea" || tag == "Input" {
                 // Find value prop that is a StateRef. `.input` parses as
                 // Expr::Dot(Ident("self"), "input") (ash-gui PromptBar pattern),
@@ -3191,7 +3408,11 @@ fn scan_node_for_inputs(node: &crate::aura::AuraNode, map: &mut HashMap<String, 
                 scan_node_for_inputs(child, map);
             }
         }
-        AuraNode::Conditional { then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             for child in then_body {
                 scan_node_for_inputs(child, map);
             }
@@ -3215,11 +3436,19 @@ pub fn sched_diag_t0() -> std::time::Instant {
 /// DFS traversal to find the span of the N-th Element node with matching tag.
 /// Returns the span when found, or None.
 fn find_span_dfs(
-    node: &crate::aura::AuraNode, target_kind: &str, target_index: usize, counter: &mut usize,
+    node: &crate::aura::AuraNode,
+    target_kind: &str,
+    target_index: usize,
+    counter: &mut usize,
 ) -> Option<(usize, usize)> {
     use crate::aura::AuraNode;
     match node {
-        AuraNode::Element { tag, children, span, .. } => {
+        AuraNode::Element {
+            tag,
+            children,
+            span,
+            ..
+        } => {
             if tag == target_kind {
                 let idx = *counter;
                 *counter += 1;
@@ -3242,7 +3471,11 @@ fn find_span_dfs(
             }
             None
         }
-        AuraNode::Conditional { then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             for child in then_body {
                 if let Some(s) = find_span_dfs(child, target_kind, target_index, counter) {
                     return Some(s);
@@ -3277,8 +3510,8 @@ fn find_span_dfs(
 mod tests {
     use super::*;
     use crate::ast::Expr;
-    use crate::aura::{AuraNode, AuraStateDef, AuraEvent, AuraPropValue, AuraTextContent};
     use crate::ast::Type;
+    use crate::aura::{AuraEvent, AuraNode, AuraPropValue, AuraStateDef, AuraTextContent};
     use std::collections::HashMap;
 
     /// PLAN-725 T-02：on_change 载荷静态消费判定——三消费点逐点断言 +
@@ -3374,7 +3607,8 @@ mod tests {
         // The minted auto-sync event registered and mapped to the field.
         let map = comp.input_state_map();
         assert!(
-            map.iter().any(|(ev, field)| ev.starts_with("__bind_App_oninput_") && field == "email"),
+            map.iter()
+                .any(|(ev, field)| ev.starts_with("__bind_App_oninput_") && field == "email"),
             "auto-sync mint must map to the bound field, got: {:?}",
             map
         );
@@ -3432,7 +3666,8 @@ mod tests {
         .expect("component");
         // view() 一次以记录回调路由（render_child_widget → child_emit::ROUTES）。
         let _ = comp.view();
-        comp.write_state("draft", auto_val::Value::str("hello plan051")).unwrap();
+        comp.write_state("draft", auto_val::Value::str("hello plan051"))
+            .unwrap();
         comp.on_with_input_for("Composer51a", "DoSend", None);
         assert_eq!(
             comp.read_state("sent").expect("sent 字段"),
@@ -3485,7 +3720,8 @@ mod tests {
         )
         .expect("component");
         let _ = comp.view();
-        comp.write_state("text", auto_val::Value::str("musk roundtrip")).unwrap();
+        comp.write_state("text", auto_val::Value::str("musk roundtrip"))
+            .unwrap();
         // 模拟按钮/Enter 派发：.send(mention_trim(.text)) → 编码载荷 send␟s␟…
         comp.on_with_input_for("MI51b", "send\u{1F}s\u{1F}musk roundtrip", None);
         assert_eq!(
@@ -3711,19 +3947,28 @@ mod tests {
         // 三条消息入 state（heap ListData 形态，与生产 var x = []; push 一致）。
         comp.write_state_vec(
             "messages",
-            vec![auto_val::Value::str("m1"), auto_val::Value::str("m2"), auto_val::Value::str("m3")],
+            vec![
+                auto_val::Value::str("m1"),
+                auto_val::Value::str("m2"),
+                auto_val::Value::str("m3"),
+            ],
         )
         .unwrap();
         let (view, _, _) = comp.view_with_debug_gated(false);
         let rows = count_text_nodes(&view, "row");
-        assert_eq!(rows, 3, "computed for 源必须解出 3 行（链式 fn 调用经 VM 执行）");
+        assert_eq!(
+            rows, 3,
+            "computed for 源必须解出 3 行（链式 fn 调用经 VM 执行）"
+        );
     }
 
     /// PLAN-051 T4 测试辅助：统计 View 树中内容等于 label 的 Text 节点数。
     fn count_text_nodes(view: &View<DynamicMessage>, label: &str) -> usize {
         match view {
             View::Text { content, .. } => usize::from(content == label),
-            View::Column { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            View::Column { children, .. } => {
+                children.iter().map(|c| count_text_nodes(c, label)).sum()
+            }
             View::Row { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
             _ => 0,
         }
@@ -3786,15 +4031,26 @@ mod tests {
         let root_decl = root.expect("root");
         let widget = crate::aura::extract_widget_from_decl(&root_decl).unwrap();
         let comp = DynamicComponent::with_registry_and_imports_from_decls(
-            &root_decl, &[], &widget,
+            &root_decl,
+            &[],
+            &widget,
             crate::ui::widget_registry::WidgetRegistry::new(),
-            import_stmts, &std::collections::HashMap::new(), false,
-        ).expect("comp");
-        let msgv = auto_val::Value::Obj(Box::new(auto_val::Obj::new().with("content", auto_val::Value::str("nihao-body"))));
-        let v = comp.bridge_call_for_test("mk51e", &[msgv, auto_val::Value::Bool(false)]).expect("call");
+            import_stmts,
+            &std::collections::HashMap::new(),
+            false,
+        )
+        .expect("comp");
+        let msgv = auto_val::Value::Obj(Box::new(
+            auto_val::Obj::new().with("content", auto_val::Value::str("nihao-body")),
+        ));
+        let v = comp
+            .bridge_call_for_test("mk51e", &[msgv, auto_val::Value::Bool(false)])
+            .expect("call");
         eprintln!("[DBG51E] mk51e -> {:?}", v);
         let rows = match &v {
-            auto_val::Value::Int(id) if *id >= 4_000_000 => comp.bridge_index_list_all_for_test(*id as usize),
+            auto_val::Value::Int(id) if *id >= 4_000_000 => {
+                comp.bridge_index_list_all_for_test(*id as usize)
+            }
             auto_val::Value::VmRef(r) => comp.bridge_index_list_all_for_test(r.id),
             _ => vec![],
         };
@@ -3870,12 +4126,15 @@ mod tests {
     // ── Plan 482: 路由历史栈 / nav-group 内置态 ──────────────────────────
 
     fn nav_test_widget() -> crate::aura::AuraWidget {
-        make_test_widget("NavApp", vec![AuraStateDef {
-            name: "__current_route".to_string(),
-            type_info: Type::StrOwned,
-            initial: Expr::Str("/".into()),
-            decorators: vec![],
-        }])
+        make_test_widget(
+            "NavApp",
+            vec![AuraStateDef {
+                name: "__current_route".to_string(),
+                type_info: Type::StrOwned,
+                initial: Expr::Str("/".into()),
+                decorators: vec![],
+            }],
+        )
     }
 
     #[test]
@@ -3886,21 +4145,36 @@ mod tests {
         // "/" → "/a" → "/b"：历史栈 ["/", "/a"]。
         comp.set_route("/a");
         comp.set_route("/b");
-        assert_eq!(comp.bridge.read_state("__current_route").unwrap().as_str(), "/b");
+        assert_eq!(
+            comp.bridge.read_state("__current_route").unwrap().as_str(),
+            "/b"
+        );
 
         // back → "/a"，再 back → "/"，空栈 back 为 no-op。
         assert!(comp.navigate_back());
-        assert_eq!(comp.bridge.read_state("__current_route").unwrap().as_str(), "/a");
+        assert_eq!(
+            comp.bridge.read_state("__current_route").unwrap().as_str(),
+            "/a"
+        );
         assert!(comp.navigate_back());
-        assert_eq!(comp.bridge.read_state("__current_route").unwrap().as_str(), "/");
+        assert_eq!(
+            comp.bridge.read_state("__current_route").unwrap().as_str(),
+            "/"
+        );
         assert!(!comp.navigate_back(), "空栈 no-op");
-        assert_eq!(comp.bridge.read_state("__current_route").unwrap().as_str(), "/");
+        assert_eq!(
+            comp.bridge.read_state("__current_route").unwrap().as_str(),
+            "/"
+        );
 
         // 重复路由不压栈。
         comp.set_route("/x");
         comp.set_route("/x");
         comp.navigate_back();
-        assert_eq!(comp.bridge.read_state("__current_route").unwrap().as_str(), "/");
+        assert_eq!(
+            comp.bridge.read_state("__current_route").unwrap().as_str(),
+            "/"
+        );
     }
 
     #[test]
@@ -3916,14 +4190,15 @@ mod tests {
 
     #[test]
     fn test_dynamic_component_creation() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let comp = DynamicComponent::new(&widget).unwrap();
 
@@ -3944,14 +4219,15 @@ mod tests {
 
     #[test]
     fn test_read_state() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(42),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let comp = DynamicComponent::new(&widget).unwrap();
 
@@ -3961,14 +4237,15 @@ mod tests {
 
     #[test]
     fn test_write_state() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let mut comp = DynamicComponent::new(&widget).unwrap();
 
@@ -4024,11 +4301,10 @@ mod tests {
             messages: vec![],
             view_tree: AuraNode::Element {
                 tag: "text".to_string(),
-                props: HashMap::from([
-                    ("text".to_string(), crate::aura::AuraPropValue::Expr(
-                        Expr::Ident("count".into()),
-                    )),
-                ]),
+                props: HashMap::from([(
+                    "text".to_string(),
+                    crate::aura::AuraPropValue::Expr(Expr::Ident("count".into())),
+                )]),
                 events: HashMap::new(),
                 children: vec![],
                 span: None,
@@ -4063,14 +4339,15 @@ mod tests {
 
     #[test]
     fn test_on_with_string_message() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let mut comp = DynamicComponent::new(&widget).unwrap();
         let _ = comp.view(); // Clear dirty
@@ -4083,14 +4360,15 @@ mod tests {
 
     #[test]
     fn test_on_with_typed_message() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let mut comp = DynamicComponent::new(&widget).unwrap();
         let _ = comp.view(); // Clear dirty
@@ -4117,14 +4395,15 @@ mod tests {
 
     #[test]
     fn test_debug_format() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let comp = DynamicComponent::new(&widget).unwrap();
         let debug_str = format!("{:?}", comp);
@@ -4151,33 +4430,39 @@ mod tests {
 
     #[test]
     fn test_multiple_state_reads_and_writes() {
-        let widget = make_test_widget("Multi", vec![
-            AuraStateDef {
-                name: "x".to_string(),
-                type_info: Type::Int,
-                initial: Expr::Int(1),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "y".to_string(),
-                type_info: Type::Int,
-                initial: Expr::Int(2),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "label".to_string(),
-                type_info: Type::StrFixed(0),
-                initial: Expr::Str("hello".into()),
-                decorators: vec![],
-            },
-        ]);
+        let widget = make_test_widget(
+            "Multi",
+            vec![
+                AuraStateDef {
+                    name: "x".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(1),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "y".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(2),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "label".to_string(),
+                    type_info: Type::StrFixed(0),
+                    initial: Expr::Str("hello".into()),
+                    decorators: vec![],
+                },
+            ],
+        );
 
         let mut comp = DynamicComponent::new(&widget).unwrap();
 
         // Read initial state
         assert_eq!(comp.read_state("x").unwrap(), auto_val::Value::Int(1));
         assert_eq!(comp.read_state("y").unwrap(), auto_val::Value::Int(2));
-        assert_eq!(comp.read_state("label").unwrap(), auto_val::Value::str("hello"));
+        assert_eq!(
+            comp.read_state("label").unwrap(),
+            auto_val::Value::str("hello")
+        );
 
         // Write new values
         comp.write_state("x", auto_val::Value::Int(10)).unwrap();
@@ -4186,7 +4471,10 @@ mod tests {
         // Read back
         assert_eq!(comp.read_state("x").unwrap(), auto_val::Value::Int(10));
         assert_eq!(comp.read_state("y").unwrap(), auto_val::Value::Int(20));
-        assert_eq!(comp.read_state("label").unwrap(), auto_val::Value::str("hello"));
+        assert_eq!(
+            comp.read_state("label").unwrap(),
+            auto_val::Value::str("hello")
+        );
     }
 
     #[test]
@@ -4215,17 +4503,17 @@ mod tests {
                     }),
                     AuraNode::Element {
                         tag: "button".to_string(),
-                        props: HashMap::from([
-                            ("text".to_string(), crate::aura::AuraPropValue::Expr(
-                                Expr::Str("Increment".into()),
-                            )),
-                        ]),
-                        events: HashMap::from([
-                            ("onclick".to_string(), AuraEvent {
+                        props: HashMap::from([(
+                            "text".to_string(),
+                            crate::aura::AuraPropValue::Expr(Expr::Str("Increment".into())),
+                        )]),
+                        events: HashMap::from([(
+                            "onclick".to_string(),
+                            AuraEvent {
                                 handler: ".Inc".to_string(),
                                 params: vec![],
-                            }),
-                        ]),
+                            },
+                        )]),
                         children: vec![],
                         span: None,
                         debug_id: None,
@@ -4270,7 +4558,11 @@ mod tests {
                     View::Button { label, onclick, .. } => {
                         assert_eq!(label, "Increment");
                         match onclick {
-                            DynamicMessage::Typed { widget_name, event_name, args } => {
+                            DynamicMessage::Typed {
+                                widget_name,
+                                event_name,
+                                args,
+                            } => {
                                 assert_eq!(widget_name, "Counter");
                                 assert_eq!(event_name, "Inc");
                                 assert!(args.is_empty());
@@ -4302,11 +4594,10 @@ mod tests {
             messages: vec![],
             view_tree: AuraNode::Element {
                 tag: "text".to_string(),
-                props: HashMap::from([
-                    ("text".to_string(), crate::aura::AuraPropValue::Expr(
-                        Expr::Ident("count".into()),
-                    )),
-                ]),
+                props: HashMap::from([(
+                    "text".to_string(),
+                    crate::aura::AuraPropValue::Expr(Expr::Ident("count".into())),
+                )]),
                 events: HashMap::new(),
                 children: vec![],
                 span: None,
@@ -4354,14 +4645,15 @@ mod tests {
 
     #[test]
     fn test_reload_preserves_state() {
-        let old_widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let old_widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let mut comp = DynamicComponent::new(&old_widget).unwrap();
 
@@ -4370,14 +4662,15 @@ mod tests {
         assert_eq!(comp.read_state("count").unwrap(), auto_val::Value::Int(42));
 
         // Reload with same widget definition (state should be preserved)
-        let new_widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let new_widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let report = comp.reload(&new_widget).unwrap();
 
@@ -4390,72 +4683,83 @@ mod tests {
 
     #[test]
     fn test_reload_adds_new_fields() {
-        let old_widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let old_widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let mut comp = DynamicComponent::new(&old_widget).unwrap();
         comp.write_state("count", auto_val::Value::Int(99)).unwrap();
 
         // Reload with additional field
-        let new_widget = make_test_widget("Counter", vec![
-            AuraStateDef {
-                name: "count".to_string(),
-                type_info: Type::Int,
-                initial: Expr::Int(0),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "enabled".to_string(),
-                type_info: Type::Bool,
-                initial: Expr::Bool(true),
-                decorators: vec![],
-            },
-        ]);
+        let new_widget = make_test_widget(
+            "Counter",
+            vec![
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(0),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "enabled".to_string(),
+                    type_info: Type::Bool,
+                    initial: Expr::Bool(true),
+                    decorators: vec![],
+                },
+            ],
+        );
 
         let report = comp.reload(&new_widget).unwrap();
 
         // Old field preserved, new field has default
         assert_eq!(comp.read_state("count").unwrap(), auto_val::Value::Int(99));
-        assert_eq!(comp.read_state("enabled").unwrap(), auto_val::Value::Bool(true));
+        assert_eq!(
+            comp.read_state("enabled").unwrap(),
+            auto_val::Value::Bool(true)
+        );
         assert_eq!(report.preserved, 1);
         assert_eq!(report.added, 1);
     }
 
     #[test]
     fn test_reload_drops_removed_fields() {
-        let old_widget = make_test_widget("Counter", vec![
-            AuraStateDef {
-                name: "count".to_string(),
-                type_info: Type::Int,
-                initial: Expr::Int(5),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "legacy".to_string(),
-                type_info: Type::StrFixed(0),
-                initial: Expr::Str("old".into()),
-                decorators: vec![],
-            },
-        ]);
+        let old_widget = make_test_widget(
+            "Counter",
+            vec![
+                AuraStateDef {
+                    name: "count".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(5),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "legacy".to_string(),
+                    type_info: Type::StrFixed(0),
+                    initial: Expr::Str("old".into()),
+                    decorators: vec![],
+                },
+            ],
+        );
 
         let mut comp = DynamicComponent::new(&old_widget).unwrap();
         comp.write_state("count", auto_val::Value::Int(10)).unwrap();
 
         // Reload without the "legacy" field
-        let new_widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let new_widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let report = comp.reload(&new_widget).unwrap();
 
@@ -4468,14 +4772,15 @@ mod tests {
 
     #[test]
     fn test_reload_updates_view_template() {
-        let old_widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let old_widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         let mut comp = DynamicComponent::new(&old_widget).unwrap();
 
@@ -4499,11 +4804,10 @@ mod tests {
             messages: vec![],
             view_tree: AuraNode::Element {
                 tag: "text".to_string(),
-                props: HashMap::from([
-                    ("text".to_string(), crate::aura::AuraPropValue::Expr(
-                        Expr::Ident("count".into()),
-                    )),
-                ]),
+                props: HashMap::from([(
+                    "text".to_string(),
+                    crate::aura::AuraPropValue::Expr(Expr::Ident("count".into())),
+                )]),
                 events: HashMap::new(),
                 children: vec![],
                 span: None,
@@ -4539,14 +4843,15 @@ mod tests {
 
     #[test]
     fn test_reload_marks_dirty() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(0),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
 
         // Component starts dirty from creation
         let mut comp = DynamicComponent::new(&widget).unwrap();
@@ -4567,7 +4872,10 @@ mod tests {
 
         // Setting a non-existent path should not panic (mod time will be None)
         comp.set_source_path("/tmp/nonexistent_test_file.at");
-        assert_eq!(comp.source_path().unwrap().to_str().unwrap(), "/tmp/nonexistent_test_file.at");
+        assert_eq!(
+            comp.source_path().unwrap().to_str().unwrap(),
+            "/tmp/nonexistent_test_file.at"
+        );
 
         // check_file_changed should return Ok(None) since file doesn't exist metadata
         // Actually it will error since the file doesn't exist.
@@ -4576,20 +4884,23 @@ mod tests {
 
     #[test]
     fn test_read_all_state() {
-        let widget = make_test_widget("Multi", vec![
-            AuraStateDef {
-                name: "x".to_string(),
-                type_info: Type::Int,
-                initial: Expr::Int(1),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "y".to_string(),
-                type_info: Type::Int,
-                initial: Expr::Int(2),
-                decorators: vec![],
-            },
-        ]);
+        let widget = make_test_widget(
+            "Multi",
+            vec![
+                AuraStateDef {
+                    name: "x".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(1),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "y".to_string(),
+                    type_info: Type::Int,
+                    initial: Expr::Int(2),
+                    decorators: vec![],
+                },
+            ],
+        );
 
         let comp = DynamicComponent::new(&widget).unwrap();
         let state = comp.read_all_state();
@@ -4599,83 +4910,83 @@ mod tests {
         assert_eq!(state.get("y"), Some(&auto_val::Value::Int(2)));
     }
 
-        // ── PLAN-062 T1: timer 空转拍不应置脏 ─────────────────────────────
-        //
-        // 现场（2026-09-05 实机定罪）：musk PollStream when 门摘除后每 500ms
-        // 空转拍经 call_handler Ok → dirty=true 无条件置脏 → 整树重建 ×
-        // retain 泄漏。本测钉死"零状态写的拍不得失效视图"。
+    // ── PLAN-062 T1: timer 空转拍不应置脏 ─────────────────────────────
+    //
+    // 现场（2026-09-05 实机定罪）：musk PollStream when 门摘除后每 500ms
+    // 空转拍经 call_handler Ok → dirty=true 无条件置脏 → 整树重建 ×
+    // retain 泄漏。本测钉死"零状态写的拍不得失效视图"。
 
-        #[cfg(feature = "ui-interpreter")]
-        fn locate_plan062_corpus() -> Option<std::path::PathBuf> {
-            let rel = "test/ui/plan062_memleak/src/front/app.at";
-            [
-                std::env::var("CARGO_MANIFEST_DIR")
-                    .ok()
-                    .map(|d| std::path::PathBuf::from(d).join(rel)),
-                Some(std::path::PathBuf::from(rel)),
-                Some(std::path::PathBuf::from(format!("../../{}", rel))),
-            ]
-            .into_iter()
-            .flatten()
-            .find(|p| p.exists())
+    #[cfg(feature = "ui-interpreter")]
+    fn locate_plan062_corpus() -> Option<std::path::PathBuf> {
+        let rel = "test/ui/plan062_memleak/src/front/app.at";
+        [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(rel)),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists())
+    }
+
+    /// PLAN-650 E-1：订阅层 when 门谓词。
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn plan650_timer_when_subscription_gate() {
+        let Some(path) = locate_plan062_corpus() else {
+            eprintln!("plan650: SKIPPED — corpus not found");
+            return;
+        };
+        let mut dc = crate::plan370_test_support::build_component_from_app(&path)
+            .expect("plan062 corpus builds");
+
+        assert!(
+            dc.timer_when_allows_subscription("NoSuch", "NoEvent"),
+            "unknown timer entry must default to subscribe"
+        );
+
+        // 无 when → 恒订阅。
+        for t in dc.timer_entries() {
+            if t.when.is_none() {
+                assert!(
+                    dc.timer_when_allows_subscription(&t.widget, &t.event),
+                    "{}::{} no when → subscribe",
+                    t.widget,
+                    t.event
+                );
+            }
         }
 
-        /// PLAN-650 E-1：订阅层 when 门谓词。
-        #[cfg(feature = "ui-interpreter")]
-        #[test]
-        fn plan650_timer_when_subscription_gate() {
-            let Some(path) = locate_plan062_corpus() else {
-                eprintln!("plan650: SKIPPED — corpus not found");
-                return;
-            };
-            let mut dc = crate::plan370_test_support::build_component_from_app(&path)
-                .expect("plan062 corpus builds");
-
+        // 显式对照：running 翻转驱动订阅门（与 fire_timer 同源 timer_guard_passes）。
+        let gated = dc
+            .timer_entries()
+            .iter()
+            .find(|t| {
+                t.when
+                    .as_deref()
+                    .map(|w| w.trim().trim_start_matches('.') == "running")
+                    .unwrap_or(false)
+            })
+            .map(|t| (t.widget.clone(), t.event.clone()));
+        if let Some((widget, event)) = gated {
+            let _ = dc.write_state("running", auto_val::Value::str("false"));
             assert!(
-                dc.timer_when_allows_subscription("NoSuch", "NoEvent"),
-                "unknown timer entry must default to subscribe"
+                !dc.timer_when_allows_subscription(&widget, &event),
+                "when=.running + running=false → must not subscribe"
             );
-
-            // 无 when → 恒订阅。
-            for t in dc.timer_entries() {
-                if t.when.is_none() {
-                    assert!(
-                        dc.timer_when_allows_subscription(&t.widget, &t.event),
-                        "{}::{} no when → subscribe",
-                        t.widget,
-                        t.event
-                    );
-                }
-            }
-
-            // 显式对照：running 翻转驱动订阅门（与 fire_timer 同源 timer_guard_passes）。
-            let gated = dc
-                .timer_entries()
-                .iter()
-                .find(|t| {
-                    t.when
-                        .as_deref()
-                        .map(|w| w.trim().trim_start_matches('.') == "running")
-                        .unwrap_or(false)
-                })
-                .map(|t| (t.widget.clone(), t.event.clone()));
-            if let Some((widget, event)) = gated {
-                let _ = dc.write_state("running", auto_val::Value::str("false"));
-                assert!(
-                    !dc.timer_when_allows_subscription(&widget, &event),
-                    "when=.running + running=false → must not subscribe"
-                );
-                let _ = dc.write_state("running", auto_val::Value::str("true"));
-                assert!(
-                    dc.timer_when_allows_subscription(&widget, &event),
-                    "when=.running + running=true → must subscribe"
-                );
-            }
+            let _ = dc.write_state("running", auto_val::Value::str("true"));
+            assert!(
+                dc.timer_when_allows_subscription(&widget, &event),
+                "when=.running + running=true → must subscribe"
+            );
         }
+    }
 
-        #[cfg(feature = "ui-interpreter")]
-        #[test]
-        fn fire_timer_noop_does_not_dirty() {
+    #[cfg(feature = "ui-interpreter")]
+    #[test]
+    fn fire_timer_noop_does_not_dirty() {
         let Some(path) = locate_plan062_corpus() else {
             eprintln!("plan062: SKIPPED — corpus not found");
             return;
@@ -4736,12 +5047,20 @@ mod tests {
         // musk PollStream 早退形态（let 绑定 + .length + 索引读）也不 bump。
         let _ = dc.on_with_input_for("App", "MuskTick", None);
         let s2b = dc.state_mutation_seq();
-        assert_eq!(s2, s2b, "musk-shaped no-op tick (let + .length + index read) must not bump");
+        assert_eq!(
+            s2, s2b,
+            "musk-shaped no-op tick (let + .length + index read) must not bump"
+        );
 
         // 状态写拍：bump。
         let _ = dc.on_with_input_for("App", "BeatTick", None);
         let s3 = dc.state_mutation_seq();
-        assert!(s3 > s2, "state-writing tick must bump mutation seq ({} -> {})", s2, s3);
+        assert!(
+            s3 > s2,
+            "state-writing tick must bump mutation seq ({} -> {})",
+            s2,
+            s3
+        );
     }
 
     /// PLAN-576 G1 定向测试（TDD 红）：nanbox 整值 float 位型保真——
@@ -4800,49 +5119,104 @@ mod tests {
         };
 
         // ① 实参绑定恒等（钉契约：整值/零值/分数/负值 float 原样落 state）
-        for (sent, want) in [("240.0", 240.0), ("0.0", 0.0), ("240.5", 240.5), ("-1.5", -1.5)] {
+        for (sent, want) in [
+            ("240.0", 240.0),
+            ("0.0", 0.0),
+            ("240.5", 240.5),
+            ("-1.5", -1.5),
+        ] {
             dispatch_f(&mut comp, "Bind", sent);
             let got = read_f(&comp, "top");
-            assert!((got - want).abs() < 1e-6, "实参绑定 {} -> top = {}，期望 {}", sent, got, want);
+            assert!(
+                (got - want).abs() < 1e-6,
+                "实参绑定 {} -> top = {}，期望 {}",
+                sent,
+                got,
+                want
+            );
         }
 
         // ② 混合类型算术：float 实参 × int 字面量，按值运算（红点）
         for (sent, want) in [("240.0", 241.0), ("240.5", 241.5), ("0.0", 1.0)] {
             dispatch_f(&mut comp, "MixInt", sent);
             let got = read_f(&comp, "acc");
-            assert!((got - want).abs() < 1e-4, "{} + 1 = {}，期望 {}", sent, got, want);
+            assert!(
+                (got - want).abs() < 1e-4,
+                "{} + 1 = {}，期望 {}",
+                sent,
+                got,
+                want
+            );
         }
         dispatch_f(&mut comp, "MixSub", "240.0");
-        assert!((read_f(&comp, "acc") - 239.0).abs() < 1e-4, "240.0 - 1 应为 239.0");
+        assert!(
+            (read_f(&comp, "acc") - 239.0).abs() < 1e-4,
+            "240.0 - 1 应为 239.0"
+        );
         dispatch_f(&mut comp, "MixMul", "240.0");
-        assert!((read_f(&comp, "acc") - 480.0).abs() < 1e-4, "240.0 * 2 应为 480.0");
+        assert!(
+            (read_f(&comp, "acc") - 480.0).abs() < 1e-4,
+            "240.0 * 2 应为 480.0"
+        );
         dispatch_f(&mut comp, "MixDiv", "240.0");
-        assert!((read_f(&comp, "acc") - 120.0).abs() < 1e-4, "240.0 / 2 应为 120.0");
+        assert!(
+            (read_f(&comp, "acc") - 120.0).abs() < 1e-4,
+            "240.0 / 2 应为 120.0"
+        );
 
         // ③ 混合类型比较：float 实参 vs int 字面量，按值比较（红点）
         dispatch_f(&mut comp, "CmpGt", "240.0");
-        assert!((read_f(&comp, "flag") - 1.0).abs() < 1e-6, "240.0 > 100 应走真分支");
+        assert!(
+            (read_f(&comp, "flag") - 1.0).abs() < 1e-6,
+            "240.0 > 100 应走真分支"
+        );
         dispatch_f(&mut comp, "CmpGt", "50.0");
-        assert!((read_f(&comp, "flag") - 2.0).abs() < 1e-6, "50.0 > 100 应走假分支");
+        assert!(
+            (read_f(&comp, "flag") - 2.0).abs() < 1e-6,
+            "50.0 > 100 应走假分支"
+        );
         dispatch_f(&mut comp, "CmpLt", "240.0");
-        assert!((read_f(&comp, "flag") - 2.0).abs() < 1e-6, "240.0 < 100 应走假分支");
+        assert!(
+            (read_f(&comp, "flag") - 2.0).abs() < 1e-6,
+            "240.0 < 100 应走假分支"
+        );
         dispatch_f(&mut comp, "CmpLt", "50.0");
-        assert!((read_f(&comp, "flag") - 1.0).abs() < 1e-6, "50.0 < 100 应走真分支");
+        assert!(
+            (read_f(&comp, "flag") - 1.0).abs() < 1e-6,
+            "50.0 < 100 应走真分支"
+        );
         dispatch_f(&mut comp, "CmpGe", "240.0");
-        assert!((read_f(&comp, "flag") - 1.0).abs() < 1e-6, "240.0 >= 240 应走真分支");
+        assert!(
+            (read_f(&comp, "flag") - 1.0).abs() < 1e-6,
+            "240.0 >= 240 应走真分支"
+        );
         dispatch_f(&mut comp, "CmpGe", "239.5");
-        assert!((read_f(&comp, "flag") - 2.0).abs() < 1e-6, "239.5 >= 240 应走假分支");
+        assert!(
+            (read_f(&comp, "flag") - 2.0).abs() < 1e-6,
+            "239.5 >= 240 应走假分支"
+        );
         dispatch_f(&mut comp, "CmpLe", "240.0");
-        assert!((read_f(&comp, "flag") - 2.0).abs() < 1e-6, "240.0 <= 239 应走假分支");
+        assert!(
+            (read_f(&comp, "flag") - 2.0).abs() < 1e-6,
+            "240.0 <= 239 应走假分支"
+        );
         dispatch_f(&mut comp, "CmpLe", "239.0");
-        assert!((read_f(&comp, "flag") - 1.0).abs() < 1e-6, "239.0 <= 239 应走真分支");
+        assert!(
+            (read_f(&comp, "flag") - 1.0).abs() < 1e-6,
+            "239.0 <= 239 应走真分支"
+        );
 
         // ④ write_state 写读回（钉契约：Rust 侧 Double 直写 → script 读）
         for v in [240.0f64, 240.5, 0.0] {
             comp.write_state("top", auto_val::Value::Double(v)).unwrap();
             comp.on_with_input_for("P576", "ReadBack", None);
             let got = read_f(&comp, "acc");
-            assert!((got - v).abs() < 1e-6, "write_state Double({}) 读回 {} 失真", v, got);
+            assert!(
+                (got - v).abs() < 1e-6,
+                "write_state Double({}) 读回 {} 失真",
+                v,
+                got
+            );
         }
     }
 
@@ -4907,7 +5281,11 @@ mod tests {
             other => panic!("out 应为 float，实得 {:?}", other),
         };
         // half_h = 240.0*0.5 = 120 > 100 → 真分支；quarter_h = 120*0.5 = 60
-        assert!((got - 60.0).abs() < 1e-4, "子件 computed 引用应解析（half=120 守卫真，quarter=60），实得 {}", got);
+        assert!(
+            (got - 60.0).abs() < 1e-4,
+            "子件 computed 引用应解析（half=120 守卫真，quarter=60），实得 {}",
+            got
+        );
     }
 
     /// PLAN-576 G3 定向测试（TDD 红）：子件体内引号 emit（带计算实参）的
@@ -4960,8 +5338,11 @@ mod tests {
             auto_val::Value::Float(f) | auto_val::Value::Double(f) => f,
             other => panic!("got 应为 float，实得 {:?}", other),
         };
-        assert!((got - 120.0).abs() < 1e-4,
-            "引号 emit 应携带计算实参经派发器路由到父 onmoved（v=track_h*0.5=120），实得 {}", got);
+        assert!(
+            (got - 120.0).abs() < 1e-4,
+            "引号 emit 应携带计算实参经派发器路由到父 onmoved（v=track_h*0.5=120），实得 {}",
+            got
+        );
     }
 
     /// PLAN-576 G4 定向测试（TDD 红）：派发实参数与 handler 形参数失配的
@@ -5016,7 +5397,11 @@ mod tests {
             auto_val::Value::Float(f) | auto_val::Value::Double(f) => f,
             other => panic!("touched 应为 float，实得 {:?}", other),
         };
-        assert!((touched - 2.0).abs() < 1e-6, "吻合派发应执行，实得 {}", touched);
+        assert!(
+            (touched - 2.0).abs() < 1e-6,
+            "吻合派发应执行，实得 {}",
+            touched
+        );
     }
 }
 
@@ -5071,7 +5456,9 @@ widget Demo002Counter {
     fn count_text_nodes(view: &View<crate::ui::interpreter::DynamicMessage>, label: &str) -> usize {
         match view {
             View::Text { content, .. } => usize::from(content == label),
-            View::Column { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            View::Column { children, .. } => {
+                children.iter().map(|c| count_text_nodes(c, label)).sum()
+            }
             View::Row { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
             View::Container { child, .. } => count_text_nodes(child, label),
             _ => 0,
@@ -5118,18 +5505,33 @@ widget Demo002Counter {
         // 子 widget model 默认值渲染出初始计数文案。
         let (view, _, _) = comp.view_with_debug_gated(false);
         let hits = count_text_nodes(&view, "Counter: 0");
-        assert!(hits > 0, "demo child must render its initial state (Counter: 0)");
+        assert!(
+            hits > 0,
+            "demo child must render its initial state (Counter: 0)"
+        );
         // 宿主 chrome 与子 widget 内容同树共存。
-        assert!(count_text_nodes(&view, "GALLERY-CHROME") > 0, "host chrome intact");
+        assert!(
+            count_text_nodes(&view, "GALLERY-CHROME") > 0,
+            "host chrome intact"
+        );
 
         // 切换 selected_id → 条件分支翻转，demo 分支卸载。
         let _ = comp.write_state("selected_id", auto_val::Value::str("015-notes"));
         let (view2, _, _) = comp.view_with_debug_gated(false);
-        assert!(count_text_nodes(&view2, "Counter: 0") == 0, "demo branch unloaded after switch");
-        assert!(count_text_nodes(&view2, "no-demo") > 0, "else branch rendered");
+        assert!(
+            count_text_nodes(&view2, "Counter: 0") == 0,
+            "demo branch unloaded after switch"
+        );
+        assert!(
+            count_text_nodes(&view2, "no-demo") > 0,
+            "else branch rendered"
+        );
         let _ = comp.write_state("selected_id", auto_val::Value::str("002-counter"));
         let (view3, _, _) = comp.view_with_debug_gated(false);
-        assert!(count_text_nodes(&view3, "Counter: 0") > 0, "demo branch re-instantiates on switch-back");
+        assert!(
+            count_text_nodes(&view3, "Counter: 0") > 0,
+            "demo branch re-instantiates on switch-back"
+        );
     }
 }
 
@@ -5272,7 +5674,9 @@ widget TimerChild652 {
             .filter(|s| s.kind == TimeSourceKind::Tick)
             .collect();
         assert!(
-            ticks.iter().any(|s| s.widget == "DemoClock652" && s.every_ms == 250),
+            ticks
+                .iter()
+                .any(|s| s.widget == "DemoClock652" && s.every_ms == 250),
             "child Tick must enter timesources with interval=250; got {:?}",
             ticks
         );
@@ -5335,7 +5739,9 @@ widget TimerChild652 {
         );
         let after = comp.subscribable_timesources();
         assert!(
-            after.iter().any(|s| s.widget == "DemoClock652" && s.event == "Tick"),
+            after
+                .iter()
+                .any(|s| s.widget == "DemoClock652" && s.event == "Tick"),
             "mounted child Tick must be subscribable; got {:?}",
             after
         );
@@ -5379,8 +5785,9 @@ widget TimerChild652 {
         // root timer 无条件 → 恒可订阅（always_mounted）。
         let subs = comp.subscribable_timesources();
         assert!(
-            subs.iter()
-                .any(|s| s.widget == "TimerHost652" && s.event == "Beat" && s.kind == TimeSourceKind::Timer),
+            subs.iter().any(|s| s.widget == "TimerHost652"
+                && s.event == "Beat"
+                && s.kind == TimeSourceKind::Timer),
             "root timer always subscribable; got {:?}",
             subs
         );
@@ -5408,10 +5815,26 @@ widget TimerChild652 {
 
         let w0 = comp.read_state("w_tick").expect("w_tick").as_int();
         comp.on_with_input_for("DemoClock652", "Tick", None);
-        let w1 = comp.read_state("w_tick").expect("w_tick after Tick").as_int();
-        assert!(w1 == w0 + 1, "child Tick handler must run in single VM ({} -> {})", w0, w1);
-        let local = comp.read_state("w_local").expect("w_local").as_str().to_string();
-        assert!(local.starts_with('T'), "w_local updated by Tick; got {:?}", local);
+        let w1 = comp
+            .read_state("w_tick")
+            .expect("w_tick after Tick")
+            .as_int();
+        assert!(
+            w1 == w0 + 1,
+            "child Tick handler must run in single VM ({} -> {})",
+            w0,
+            w1
+        );
+        let local = comp
+            .read_state("w_local")
+            .expect("w_local")
+            .as_str()
+            .to_string();
+        assert!(
+            local.starts_with('T'),
+            "w_local updated by Tick; got {:?}",
+            local
+        );
     }
 
     /// 静止不劣化：未装配的 child Tick 源不得进入订阅（禁止全量 child 常订）。
@@ -5555,7 +5978,9 @@ widget IfHost654 {
             sink.register("DemoClock654");
             sink.register("DemoClock654");
             sink.register("DemoClock654");
-            comp.mounted_sink().borrow_mut().insert("DemoClock654".into());
+            comp.mounted_sink()
+                .borrow_mut()
+                .insert("DemoClock654".into());
         }
         let inst = comp.subscribable_instance_timesources();
         let mut clocks: Vec<_> = inst
@@ -5575,8 +6000,16 @@ widget IfHost654 {
             clocks
         );
         let types = comp.subscribable_timesources();
-        let type_clocks: Vec<_> = types.iter().filter(|s| s.widget == "DemoClock654").collect();
-        assert_eq!(type_clocks.len(), 1, "type-level aggregates to one; got {:?}", type_clocks);
+        let type_clocks: Vec<_> = types
+            .iter()
+            .filter(|s| s.widget == "DemoClock654")
+            .collect();
+        assert_eq!(
+            type_clocks.len(),
+            1,
+            "type-level aggregates to one; got {:?}",
+            type_clocks
+        );
     }
 
     /// AC-A2: path 退订——实例消失后仅剩存活 path。
@@ -5590,7 +6023,9 @@ widget IfHost654 {
             sink.register("DemoClock654");
             sink.register("DemoClock654");
             sink.register("DemoClock654");
-            comp.mounted_sink().borrow_mut().insert("DemoClock654".into());
+            comp.mounted_sink()
+                .borrow_mut()
+                .insert("DemoClock654".into());
         }
         assert_eq!(comp.subscribable_instance_timesources().len(), 3);
         comp.begin_mount_frame();
@@ -5598,7 +6033,9 @@ widget IfHost654 {
             let sink = comp.mount_path_sink();
             sink.register("DemoClock654");
             sink.register("DemoClock654");
-            comp.mounted_sink().borrow_mut().insert("DemoClock654".into());
+            comp.mounted_sink()
+                .borrow_mut()
+                .insert("DemoClock654".into());
         }
         let after = comp.subscribable_instance_timesources();
         let mut clocks: Vec<_> = after
@@ -5651,14 +6088,16 @@ widget Plain654 {
         let mut comp = build(&src);
         let inst = comp.subscribable_instance_timesources();
         assert!(
-            inst.iter().any(|s| s.widget == "TimerHost654" && s.event == "Beat"),
+            inst.iter()
+                .any(|s| s.widget == "TimerHost654" && s.event == "Beat"),
             "root timer path-level always on when=true; got {:?}",
             inst
         );
         let _ = comp.write_state("on", auto_val::Value::str("false"));
         let off = comp.subscribable_instance_timesources();
         assert!(
-            !off.iter().any(|s| s.widget == "TimerHost654" && s.event == "Beat"),
+            !off.iter()
+                .any(|s| s.widget == "TimerHost654" && s.event == "Beat"),
             "when=false must drop path-level timer; got {:?}",
             off
         );
@@ -5677,7 +6116,10 @@ widget Plain654 {
         let clocks: Vec<_> = inst.iter().filter(|s| s.widget == "DemoClock654").collect();
         assert_eq!(clocks.len(), 1);
         assert_eq!(clocks[0].path.as_str(), "DemoClock654");
-        assert!(comp.subscribable_timesources().iter().any(|s| s.widget == "DemoClock654"));
+        assert!(comp
+            .subscribable_timesources()
+            .iter()
+            .any(|s| s.widget == "DemoClock654"));
     }
 
     /// AC-A6 前置：debug 行含 path / mounted / subscribable。
@@ -5690,13 +6132,24 @@ widget Plain654 {
             let sink = comp.mount_path_sink();
             sink.register("DemoClock654");
             sink.register("DemoClock654");
-            comp.mounted_sink().borrow_mut().insert("DemoClock654".into());
+            comp.mounted_sink()
+                .borrow_mut()
+                .insert("DemoClock654".into());
         }
         let rows = comp.timesource_debug_rows();
         assert!(!rows.is_empty());
-        let mut clock_rows: Vec<_> = rows.iter().filter(|r| r.1 == "DemoClock654").cloned().collect();
+        let mut clock_rows: Vec<_> = rows
+            .iter()
+            .filter(|r| r.1 == "DemoClock654")
+            .cloned()
+            .collect();
         clock_rows.sort_by(|a, b| a.0.cmp(&b.0));
-        assert_eq!(clock_rows.len(), 2, "debug rows per mounted path; got {:?}", rows);
+        assert_eq!(
+            clock_rows.len(),
+            2,
+            "debug rows per mounted path; got {:?}",
+            rows
+        );
         assert_eq!(clock_rows[0].0, "DemoClock654@0");
         assert!(clock_rows[0].6, "mounted flag");
         assert!(clock_rows[0].7, "subscribable flag");
@@ -5761,7 +6214,9 @@ widget Plain654 {
             sink.register("DemoClock654");
             sink.register("DemoClock654");
             sink.register("DemoClock654");
-            comp.mounted_sink().borrow_mut().insert("DemoClock654".into());
+            comp.mounted_sink()
+                .borrow_mut()
+                .insert("DemoClock654".into());
         }
         let inst = comp.subscribable_instance_timesources();
         let n = inst.iter().filter(|s| s.widget == "DemoClock654").count();
@@ -5776,11 +6231,22 @@ widget Plain654 {
         let _ = comp.view_with_debug_gated(false);
         let w0 = comp.read_state("w_tick").expect("w_tick").as_int();
         comp.on_with_input_for("DemoClock654@0", "Tick", None);
-        let w1 = comp.read_state("w_tick").expect("w_tick after path Tick").as_int();
-        assert_eq!(w1, w0 + 1, "path-decorated widget name must reach type-level handler");
+        let w1 = comp
+            .read_state("w_tick")
+            .expect("w_tick after path Tick")
+            .as_int();
+        assert_eq!(
+            w1,
+            w0 + 1,
+            "path-decorated widget name must reach type-level handler"
+        );
         comp.on_with_input_for("DemoClock654@1", "Tick", None);
         let w2 = comp.read_state("w_tick").expect("w_tick after @1").as_int();
-        assert_eq!(w2, w1 + 1, "second instance shares type-level state (documented stage-A limit)");
+        assert_eq!(
+            w2,
+            w1 + 1,
+            "second instance shares type-level state (documented stage-A limit)"
+        );
     }
 
     /// AC-B1: 框架墙钟字段可写可读；wants 门控正确。
@@ -5811,10 +6277,17 @@ widget Helper654 {
 "#;
         let src = format!("{CLOCK_VIEW}\n{HELPER}");
         let mut comp = build(&src);
-        assert!(comp.wants_framework_clock(), "view references __clock_ → wants gate");
+        assert!(
+            comp.wants_framework_clock(),
+            "view references __clock_ → wants gate"
+        );
         assert!(comp.write_framework_clock(), "first write changes fields");
-        let sec = comp.read_state(DynamicComponent::CLOCK_SEC_FIELD).expect("clock sec");
-        let hhmm = comp.read_state(DynamicComponent::CLOCK_HHMM_FIELD).expect("clock hhmm");
+        let sec = comp
+            .read_state(DynamicComponent::CLOCK_SEC_FIELD)
+            .expect("clock sec");
+        let hhmm = comp
+            .read_state(DynamicComponent::CLOCK_HHMM_FIELD)
+            .expect("clock hhmm");
         match sec {
             auto_val::Value::Int(v) => assert!(v > 1_600_000_000, "unix sec plausible; got {v}"),
             other => panic!("clock sec should be int; got {other:?}"),

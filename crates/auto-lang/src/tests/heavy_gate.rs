@@ -283,7 +283,10 @@ mod machine_gate_tests {
     fn machine_gate_stale_lock_taken_over() {
         let dir = fresh_dir("stale");
         let mut exit_now = if cfg!(windows) {
-            std::process::Command::new("cmd").args(["/C", "exit", "0"]).spawn().unwrap()
+            std::process::Command::new("cmd")
+                .args(["/C", "exit", "0"])
+                .spawn()
+                .unwrap()
         } else {
             std::process::Command::new("true").spawn().unwrap()
         };

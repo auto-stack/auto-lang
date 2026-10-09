@@ -67,7 +67,9 @@ pub(crate) fn collect_useweb_imports(stmts: &[Stmt]) -> Vec<ExtImportRef> {
 }
 
 /// Collect ext imports from widget-level `use { ... }` blocks.
-pub(crate) fn collect_widget_ext_imports(decls: &[crate::ast::ui::WidgetDecl]) -> Vec<ExtImportRef> {
+pub(crate) fn collect_widget_ext_imports(
+    decls: &[crate::ast::ui::WidgetDecl],
+) -> Vec<ExtImportRef> {
     let mut out = Vec::new();
     for decl in decls {
         for imp in &decl.ext_imports {
@@ -87,7 +89,11 @@ pub(crate) fn collect_widget_ext_imports(decls: &[crate::ast::ui::WidgetDecl]) -
 fn resolve_ext_source(base_dir: &Path, path: &str) -> Option<PathBuf> {
     let p = Path::new(path);
     if p.is_absolute() {
-        return if p.is_file() { Some(p.to_path_buf()) } else { None };
+        return if p.is_file() {
+            Some(p.to_path_buf())
+        } else {
+            None
+        };
     }
     let mut dir = Some(base_dir);
     for _ in 0..3 {
@@ -102,7 +108,10 @@ fn resolve_ext_source(base_dir: &Path, path: &str) -> Option<PathBuf> {
     // disk (`X.web.at`; the bare `X.at` is a use.web-path convention resolved
     // by auto-man's target gating). Probe the web-adapter sibling so the
     // VM chain below can then pick `X.vm.at` when it exists.
-    if let Some(web_variant) = path.strip_suffix(".at").map(|stem| format!("{stem}.web.at")) {
+    if let Some(web_variant) = path
+        .strip_suffix(".at")
+        .map(|stem| format!("{stem}.web.at"))
+    {
         let mut dir = Some(base_dir);
         for _ in 0..3 {
             let Some(d) = dir else { break };
@@ -193,9 +202,7 @@ pub(crate) fn load_at_ext_imports(
                                                 .iter_mut()
                                                 .find(|(p, _)| *p == resolved_nested)
                                             {
-                                                entry.1.extend(
-                                                    nested_imp.symbols.iter().cloned(),
-                                                );
+                                                entry.1.extend(nested_imp.symbols.iter().cloned());
                                             } else {
                                                 loaded.push((
                                                     resolved_nested,
@@ -291,7 +298,9 @@ fn note_call(call: &crate::ast::Call, targets: &HashSet<String>, out: &mut HashM
         let name = name.to_string();
         if targets.contains(&name) {
             let arity = call.args.args.len();
-            out.entry(name).and_modify(|n| *n = (*n).max(arity)).or_insert(arity);
+            out.entry(name)
+                .and_modify(|n| *n = (*n).max(arity))
+                .or_insert(arity);
         }
     }
 }
@@ -388,8 +397,14 @@ fn scan_expr(e: &Expr, targets: &HashSet<String>, out: &mut HashMap<String, usiz
         Expr::Pair(p) => scan_expr(&p.value, targets, out),
         Expr::Block(b) => scan_body(b, targets, out),
         Expr::Some(a) | Expr::Ok(a) | Expr::Err(a) => scan_expr(a, targets, out),
-        Expr::View(a) | Expr::Mut(a) | Expr::Move(a) | Expr::Take(a) | Expr::ErrorPropagate(a)
-        | Expr::BoxExpr(a) | Expr::ArcExpr(a) | Expr::Yield(a) => scan_expr(a, targets, out),
+        Expr::View(a)
+        | Expr::Mut(a)
+        | Expr::Move(a)
+        | Expr::Take(a)
+        | Expr::ErrorPropagate(a)
+        | Expr::BoxExpr(a)
+        | Expr::ArcExpr(a)
+        | Expr::Yield(a) => scan_expr(a, targets, out),
         Expr::Await { expr } => scan_expr(expr, targets, out),
         Expr::NullCoalesce(a, b) => {
             scan_expr(a, targets, out);

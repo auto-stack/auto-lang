@@ -9,9 +9,9 @@
 
 #![cfg(test)]
 
-use crate::ui::view::View;
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::style::StyleClass;
+use crate::ui::view::View;
 
 /// Collect every View::Grid in the tree (any depth), with its cols/gap.
 fn collect_grids<'a>(
@@ -19,13 +19,19 @@ fn collect_grids<'a>(
     out: &mut Vec<(usize, u16, &'a Vec<View<DynamicMessage>>)>,
 ) {
     match view {
-        View::Grid { cols, gap, cells, .. } => {
+        View::Grid {
+            cols, gap, cells, ..
+        } => {
             out.push((*cols, *gap, cells));
             for cell in cells {
                 collect_grids(cell, out);
             }
         }
-        View::Row { children, .. } | View::Column { children, .. } | View::List { items: children, .. } => {
+        View::Row { children, .. }
+        | View::Column { children, .. }
+        | View::List {
+            items: children, ..
+        } => {
             for child in children {
                 collect_grids(child, out);
             }
@@ -50,10 +56,12 @@ fn collect_grids<'a>(
 /// Extract the style of a view node (the variants layout pages produce).
 fn view_style(v: &View<DynamicMessage>) -> Option<&crate::ui::style::Style> {
     match v {
-        View::Row { style, .. } | View::Column { style, .. } | View::Container { style, .. }
-        | View::Grid { style, .. } | View::Text { style, .. } | View::Image { style, .. } => {
-            style.as_ref()
-        }
+        View::Row { style, .. }
+        | View::Column { style, .. }
+        | View::Container { style, .. }
+        | View::Grid { style, .. }
+        | View::Text { style, .. }
+        | View::Image { style, .. } => style.as_ref(),
         _ => None,
     }
 }
@@ -68,10 +76,18 @@ fn build_gallery_page(page_file: &str, widget_name: &str) -> Option<View<Dynamic
     let candidates = [
         std::env::var("CARGO_MANIFEST_DIR")
             .ok()
-            .map(|d| std::path::PathBuf::from(d).join(format!("../../examples/widgets-gallery/src/front/pages/{}", page_file)))
+            .map(|d| {
+                std::path::PathBuf::from(d).join(format!(
+                    "../../examples/widgets-gallery/src/front/pages/{}",
+                    page_file
+                ))
+            })
             .filter(|p| p.exists()),
-        Some(std::path::PathBuf::from(format!("examples/widgets-gallery/src/front/pages/{}", page_file)))
-            .filter(|p| p.exists()),
+        Some(std::path::PathBuf::from(format!(
+            "examples/widgets-gallery/src/front/pages/{}",
+            page_file
+        )))
+        .filter(|p| p.exists()),
         // PLAN-590:画廊迁 auto-os 顶层后的新家(解析序定位)。
         crate::plan370_test_support::locate_gallery_file(
             "widgets-gallery",
@@ -121,11 +137,19 @@ fn plan412_all_layout_pages_build() {
     for (file, widget) in pages {
         match build_gallery_page(file, widget) {
             Some(View::Column { .. }) => built += 1,
-            Some(other) => panic!("{} built to non-column root {:?}", file, std::mem::discriminant(&other)),
+            Some(other) => panic!(
+                "{} built to non-column root {:?}",
+                file,
+                std::mem::discriminant(&other)
+            ),
             None => eprintln!("plan412: SKIPPED — {} not found", file),
         }
     }
-    assert_eq!(built, 12, "all 12 layout pages must build (built {})", built);
+    assert_eq!(
+        built, 12,
+        "all 12 layout pages must build (built {})",
+        built
+    );
 }
 
 #[cfg(feature = "ui-iced")]
@@ -141,15 +165,23 @@ fn plan412_grid_page_style_classes_rederive_to_grid() {
     let mut grids = Vec::new();
     collect_grids(&view, &mut grids);
     assert!(
-        grids.iter().any(|(cols, gap, cells)| *cols == 3 && *gap == 16 && cells.len() >= 6),
+        grids
+            .iter()
+            .any(|(cols, gap, cells)| *cols == 3 && *gap == 16 && cells.len() >= 6),
         "expected a 3-col 16px-gap grid with 6+ cells, found {:?}",
-        grids.iter().map(|(c, g, n)| (*c, *g, n.len())).collect::<Vec<_>>()
+        grids
+            .iter()
+            .map(|(c, g, n)| (*c, *g, n.len()))
+            .collect::<Vec<_>>()
     );
     // 响应式 demo:md:grid-cols-2 lg:grid-cols-4 → 剥离后取最后 → cols=4。
     assert!(
         grids.iter().any(|(cols, _, _)| *cols == 4),
         "responsive demo should rederive to 4 columns, found {:?}",
-        grids.iter().map(|(c, g, n)| (*c, *g, n.len())).collect::<Vec<_>>()
+        grids
+            .iter()
+            .map(|(c, g, n)| (*c, *g, n.len()))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -164,7 +196,10 @@ fn plan412_grid_span_page_carries_span_metadata() {
     };
     let mut grids = Vec::new();
     collect_grids(&view, &mut grids);
-    assert!(!grids.is_empty(), "grid-span page must contain View::Grid nodes");
+    assert!(
+        !grids.is_empty(),
+        "grid-span page must contain View::Grid nodes"
+    );
     let mut spans_found = Vec::new();
     for (_, _, cells) in &grids {
         for cell in cells.iter() {
@@ -194,16 +229,19 @@ fn plan412_layout_pages_generate_vue_sfc() {
     let manifest = std::env::var("CARGO_MANIFEST_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
-    let base = if let Some(g) = crate::os_paths::resolve_os_top_dir(
-        &manifest.join("../../.."),
-        "widgets-gallery",
-    ) {
+    let base = if let Some(g) =
+        crate::os_paths::resolve_os_top_dir(&manifest.join("../../.."), "widgets-gallery")
+    {
         // PLAN-590:画廊迁 auto-os 顶层后的新家(解析序定位)。
         g.join("src/front/pages")
     } else {
         manifest.join("../../examples/widgets-gallery/src/front/pages")
     };
-    let base = if base.exists() { base } else { std::path::PathBuf::from("examples/widgets-gallery/src/front/pages") };
+    let base = if base.exists() {
+        base
+    } else {
+        std::path::PathBuf::from("examples/widgets-gallery/src/front/pages")
+    };
     if !base.exists() {
         eprintln!("plan412: SKIPPED — pages dir not found");
         return;
@@ -227,7 +265,9 @@ fn plan412_layout_pages_generate_vue_sfc() {
             .unwrap_or_else(|e| panic!("read {}: {}", file, e));
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(code.as_str()).with_session(session);
-        let ast = parser.parse().unwrap_or_else(|e| panic!("parse {}: {:?}", file, e));
+        let ast = parser
+            .parse()
+            .unwrap_or_else(|e| panic!("parse {}: {:?}", file, e));
         let decl = ast
             .stmts
             .iter()
@@ -295,21 +335,48 @@ widget Sq {
     };
     let square = children.first().expect("square child");
     match square {
-        View::Container { center_x, center_y, style, child, .. } => {
+        View::Container {
+            center_x,
+            center_y,
+            style,
+            child,
+            ..
+        } => {
             assert!(*center_x, "square 双轴居中(center_x)");
             assert!(*center_y, "square 双轴居中(center_y)");
             let s = style.as_ref().expect("square carries style");
             let has = |pred: &dyn Fn(&StyleClass) -> bool| s.classes.iter().any(pred);
-            assert!(has(&|c| matches!(c, StyleClass::BackgroundColor(_))), "bg color class present");
-            assert!(has(&|c| matches!(c, StyleClass::Width(crate::ui::style::SizeValue::Full))), "w-full");
-            assert!(has(&|c| matches!(c, StyleClass::Height(crate::ui::style::SizeValue::Fixed(10)))), "h-10");
-            assert!(has(&|c| matches!(c, StyleClass::ColSpan(2))), "class prop 附加 col-span-2");
+            assert!(
+                has(&|c| matches!(c, StyleClass::BackgroundColor(_))),
+                "bg color class present"
+            );
+            assert!(
+                has(&|c| matches!(c, StyleClass::Width(crate::ui::style::SizeValue::Full))),
+                "w-full"
+            );
+            assert!(
+                has(&|c| matches!(
+                    c,
+                    StyleClass::Height(crate::ui::style::SizeValue::Fixed(10))
+                )),
+                "h-10"
+            );
+            assert!(
+                has(&|c| matches!(c, StyleClass::ColSpan(2))),
+                "class prop 附加 col-span-2"
+            );
             match &**child {
                 View::Text { content, .. } => assert_eq!(content, "span-2"),
-                other => panic!("square text prop → Text child, got {:?}", std::mem::discriminant(other)),
+                other => panic!(
+                    "square text prop → Text child, got {:?}",
+                    std::mem::discriminant(other)
+                ),
             }
         }
-        other => panic!("square → Container, got {:?}", std::mem::discriminant(other)),
+        other => panic!(
+            "square → Container, got {:?}",
+            std::mem::discriminant(other)
+        ),
     }
 }
 
@@ -331,25 +398,46 @@ widget Sq {
     let session = crate::session::CompilerSession::ui();
     let mut parser = crate::Parser::from(src).with_session(session);
     let ast = parser.parse().expect("parse");
-    let decl = ast.stmts.iter().find_map(|s| match s {
-        crate::ast::Stmt::WidgetDecl(d) => Some(d),
-        _ => None,
-    }).expect("decl");
+    let decl = ast
+        .stmts
+        .iter()
+        .find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("decl");
     let widget = crate::aura::extract_widget_from_decl(decl).expect("extract");
     let sfc = VueGenerator::new().generate(&widget).expect("generate");
     for needle in [
-        "h-8", "w-8", "bg-blue-500/40", "border-blue-500", "text-blue-600",
-        "flex", "items-center", "justify-center", ">1</div>",
-        "h-12", "w-full", "col-span-2", ">wide</div>",
+        "h-8",
+        "w-8",
+        "bg-blue-500/40",
+        "border-blue-500",
+        "text-blue-600",
+        "flex",
+        "items-center",
+        "justify-center",
+        ">1</div>",
+        "h-12",
+        "w-full",
+        "col-span-2",
+        ">wide</div>",
     ] {
         if !sfc.contains(needle) {
-            panic!("square SFC must contain `{}`. SFC:
-{}", needle, sfc);
+            panic!(
+                "square SFC must contain `{}`. SFC:
+{}",
+                needle, sfc
+            );
         }
     }
     // 尺寸/颜色 props 已转为类,不再透传为无效绑定属性。
     for banned in [":size", ":h=", ":w=", ":color"] {
-        assert!(!sfc.contains(banned), "square SFC must not pass through `{}`", banned);
+        assert!(
+            !sfc.contains(banned),
+            "square SFC must not pass through `{}`",
+            banned
+        );
     }
 }
 
@@ -364,19 +452,18 @@ fn plan412_toast_call_rewrites_to_state_assign() {
 
     let mk = |method: Option<&str>| -> Expr {
         let name = match method {
-            Some(m) => Expr::Dot(
-                Box::new(Expr::Ident(Name::from("toast"))),
-                Name::from(m),
-            ),
+            Some(m) => Expr::Dot(Box::new(Expr::Ident(Name::from("toast"))), Name::from(m)),
             None => Expr::Ident(Name::from("toast")),
         };
         let mut args = Args::new();
-        args.args.push(Arg::Pos(Expr::Str("msg".to_string().into())));
+        args.args
+            .push(Arg::Pos(Expr::Str("msg".to_string().into())));
         args.args.push(Arg::Pair(
             Name::from("position"),
             Expr::Str("top-left".to_string().into()),
         ));
-        args.args.push(Arg::Pair(Name::from("duration"), Expr::Int(2000)));
+        args.args
+            .push(Arg::Pair(Name::from("duration"), Expr::Int(2000)));
         Expr::Call(Call {
             name: Box::new(name),
             args,
@@ -453,7 +540,10 @@ fn plan412_toast_page_builds_with_provider() {
         eprintln!("plan412: SKIPPED — toast.at not found");
         return;
     };
-    assert!(matches!(view, View::Column { .. }), "ToastPage root must be Column");
+    assert!(
+        matches!(view, View::Column { .. }),
+        "ToastPage root must be Column"
+    );
 }
 
 #[cfg(feature = "ui-iced")]
@@ -464,15 +554,16 @@ fn plan412_routes_registered() {
     let candidates = [
         std::env::var("CARGO_MANIFEST_DIR")
             .ok()
-            .map(|d| std::path::PathBuf::from(d).join("../../examples/widgets-gallery/src/front/app.at"))
+            .map(|d| {
+                std::path::PathBuf::from(d).join("../../examples/widgets-gallery/src/front/app.at")
+            })
             .filter(|p| p.exists()),
-        Some(std::path::PathBuf::from("examples/widgets-gallery/src/front/app.at"))
-            .filter(|p| p.exists()),
+        Some(std::path::PathBuf::from(
+            "examples/widgets-gallery/src/front/app.at",
+        ))
+        .filter(|p| p.exists()),
         // PLAN-590:画廊迁 auto-os 顶层后的新家(解析序定位)。
-        crate::plan370_test_support::locate_gallery_file(
-            "widgets-gallery",
-            "src/front/app.at",
-        ),
+        crate::plan370_test_support::locate_gallery_file("widgets-gallery", "src/front/app.at"),
     ];
     let Some(path) = candidates.into_iter().flatten().next() else {
         eprintln!("plan412: SKIPPED — widgets-gallery app.at not found");
@@ -493,8 +584,18 @@ fn plan412_routes_registered() {
     }
     assert!(!paths.is_empty(), "app.at must declare routes");
     for expected in [
-        "/row", "/col", "/center", "/flex", "/alignment", "/spacing",
-        "/sizing", "/scroll", "/position", "/responsive", "/grid", "/grid-span",
+        "/row",
+        "/col",
+        "/center",
+        "/flex",
+        "/alignment",
+        "/spacing",
+        "/sizing",
+        "/scroll",
+        "/position",
+        "/responsive",
+        "/grid",
+        "/grid-span",
     ] {
         assert!(
             paths.iter().any(|p| p == expected),

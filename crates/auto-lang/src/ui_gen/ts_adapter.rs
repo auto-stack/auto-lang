@@ -21,11 +21,12 @@
 /// `use auto.process` 的调用面——027 语料实证：VM 分支的 file.exists/
 /// process.spawn 裸发射落 vue-tsc TS2304/TS2552，dev 轨不查类型故先潜伏；
 /// 大写 File/Process 为宿主内建对象形态，此前已在表）。
-pub const VM_ONLY_OBJECT_NATIVES: &[&str] = &["fs", "File", "image", "Env", "Process", "file", "process"];
+pub const VM_ONLY_OBJECT_NATIVES: &[&str] =
+    &["fs", "File", "image", "Env", "Process", "file", "process"];
 
 use crate::ast::*;
-use crate::trans::Sink;
 use crate::trans::typescript::TypeScriptTrans;
+use crate::trans::Sink;
 use std::collections::HashSet;
 use std::io::Write;
 
@@ -127,7 +128,10 @@ impl AuraTsContext {
             store_facade_from: None,
             store_facades: Default::default(),
             store_bare_heads: Default::default(),
-            api_functions: DEFAULT_API_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
+            api_functions: DEFAULT_API_FUNCTIONS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             typed_arrays: HashSet::new(),
             typed_strings: HashSet::new(),
             facade_names: HashSet::new(),
@@ -258,7 +262,10 @@ impl AuraTsContext {
 
     /// Plan 408 P12 §10.4: composable ref 字段标注。ts_adapter 的 Dot 分支对
     /// 命中字段注入 `.value`。
-    pub fn with_facade_ref_fields(mut self, fields: std::collections::HashMap<String, HashSet<String>>) -> Self {
+    pub fn with_facade_ref_fields(
+        mut self,
+        fields: std::collections::HashMap<String, HashSet<String>>,
+    ) -> Self {
         self.facade_ref_fields = fields;
         self
     }
@@ -398,8 +405,14 @@ fn expr_brief(expr: &Expr, ctx: &AuraTsContext) -> String {
 ///   is a silent correctness bug, see demo CustomScrollbar thumb math)
 fn expr_proven_int(expr: &Expr, ctx: &AuraTsContext) -> bool {
     match expr {
-        Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_) | Expr::I64(_)
-        | Expr::U64(_) | Expr::Byte(_) | Expr::Char(_) => true,
+        Expr::Int(_)
+        | Expr::Uint(_)
+        | Expr::I8(_)
+        | Expr::U8(_)
+        | Expr::I64(_)
+        | Expr::U64(_)
+        | Expr::Byte(_)
+        | Expr::Char(_) => true,
         Expr::Ident(n) | Expr::GenName(n) => {
             ctx.is_typed_int(n.as_str()) || ctx.is_local_int(n.as_str())
         }
@@ -434,7 +447,11 @@ pub(crate) fn binop_js_prec(op: &auto_val::Op) -> u8 {
 /// Whether a `Bina` child must be parenthesized under `parent_op` to keep
 /// the AST grouping. Extra parens are semantically harmless; missing ones
 /// silently change semantics, so this errs on the side of wrapping.
-pub(crate) fn bina_child_needs_parens(parent_op: &auto_val::Op, child: &Expr, is_right: bool) -> bool {
+pub(crate) fn bina_child_needs_parens(
+    parent_op: &auto_val::Op,
+    child: &Expr,
+    is_right: bool,
+) -> bool {
     use auto_val::Op;
     if let Expr::Bina(_, child_op, _) = child {
         let (p, c) = (binop_js_prec(parent_op), binop_js_prec(child_op));
@@ -742,7 +759,13 @@ fn transpile_stmt(stmt: &Stmt, ctx: &AuraTsContext, out: &mut Vec<u8>) {
 /// idents, so ordinary field/method names are unaffected.
 fn sanitize_ident(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -779,7 +802,13 @@ fn transpile_for(for_loop: &For, ctx: &AuraTsContext, out: &mut Vec<u8>) {
         Iter::Indexed(index_name, iter_name) => {
             // for i, item in range { ... } → range.forEach((item, i) => { ... })
             transpile_expr(&for_loop.range, ctx, out);
-            write!(out, ".forEach(({}, {}) => {{", iter_name.as_str(), index_name.as_str()).ok();
+            write!(
+                out,
+                ".forEach(({}, {}) => {{",
+                iter_name.as_str(),
+                index_name.as_str()
+            )
+            .ok();
             transpile_body(&for_loop.body, ctx, out);
             writeln!(out, "}});").ok();
         }
@@ -811,7 +840,13 @@ fn transpile_for(for_loop: &For, ctx: &AuraTsContext, out: &mut Vec<u8>) {
         }
         Iter::Destructured(key, val) => {
             // for (k, v) in map -> for (const [k, v] of Object.entries(map))
-            write!(out, "for (const [{}, {}] of Object.entries(", key.as_str(), val.as_str()).ok();
+            write!(
+                out,
+                "for (const [{}, {}] of Object.entries(",
+                key.as_str(),
+                val.as_str()
+            )
+            .ok();
             transpile_expr(&for_loop.range, ctx, out);
             write!(out, ")) {{").ok();
             transpile_body(&for_loop.body, ctx, out);
@@ -911,7 +946,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             };
             if let Some(local) = facade_local {
                 if ctx.is_facade(&local)
-                    && ctx.facade_ref_fields.get(&local)
+                    && ctx
+                        .facade_ref_fields
+                        .get(&local)
                         .map(|fields| fields.contains(field.as_str()))
                         .unwrap_or(false)
                 {
@@ -991,7 +1028,9 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
             // key,故在方法调用分发前特判(与 vue.rs expr_to_js 的特判一致)。
             let is_toast_call = match call.name.as_ref() {
                 Expr::Ident(n) => n.as_str() == "toast",
-                Expr::Dot(obj, _) => matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "toast"),
+                Expr::Dot(obj, _) => {
+                    matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "toast")
+                }
                 _ => false,
             };
             if is_toast_call {
@@ -1126,7 +1165,8 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     let is_self = matches!(object.as_ref(), Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self");
                     if is_self {
                         // Check if it's a known builtin first
-                        if try_transpile_builtin_call(object, method.as_str(), &call.args, ctx, out) {
+                        if try_transpile_builtin_call(object, method.as_str(), &call.args, ctx, out)
+                        {
                             return;
                         }
                         // Generate as bare function call (store sibling action)
@@ -1149,7 +1189,13 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     // as the store name instead of `.`/`self`.
                     if let crate::ast::Expr::Ident(head) = object.as_ref() {
                         if ctx.store_bare_heads.contains(head.as_str()) {
-                            if try_transpile_builtin_call(object, method.as_str(), &call.args, ctx, out) {
+                            if try_transpile_builtin_call(
+                                object,
+                                method.as_str(),
+                                &call.args,
+                                ctx,
+                                out,
+                            ) {
                                 return;
                             }
                             write!(out, "{}(", sanitize_ident(method.as_str())).ok();
@@ -1176,10 +1222,14 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         if let Some(pat) = pat {
                             // flags 位置：test/match/split 第 3 参；replace 第 4 参
                             let flag_idx = if method.as_str() == "replace" { 3 } else { 2 };
-                            let flags = call.args.args.get(flag_idx).and_then(|a| match a.get_expr() {
-                                Expr::Str(s) => Some(s.as_str().to_string()),
-                                _ => None,
-                            });
+                            let flags =
+                                call.args
+                                    .args
+                                    .get(flag_idx)
+                                    .and_then(|a| match a.get_expr() {
+                                        Expr::Str(s) => Some(s.as_str().to_string()),
+                                        _ => None,
+                                    });
                             // Plan 028 T11 对拍缺陷修复：模式嵌入 TS 字符串前必须
                             // 转义反斜杠（`\s` 直插 `'\s'` 会被 JS 求值成 `s`）。
                             let js_pat = pat
@@ -1190,7 +1240,8 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                                 Some(f) => format!("new RegExp('{}', '{}')", js_pat, f),
                                 None => format!("new RegExp('{}')", js_pat),
                             };
-                            let subject: Option<Expr> = call.args.args.first().map(|a| a.get_expr());
+                            let subject: Option<Expr> =
+                                call.args.args.first().map(|a| a.get_expr());
                             let emit_subject = |out: &mut Vec<u8>| {
                                 if let Some(sub) = subject.as_ref() {
                                     transpile_expr(sub, ctx, out);
@@ -1239,10 +1290,14 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             // new RegExp(无字面量层的反斜杠二次转译)。
                             // flags 位与字面量分支一致:replace 第 4 参,其余第 3 参。
                             let flag_idx = if method.as_str() == "replace" { 3 } else { 2 };
-                            let flags = call.args.args.get(flag_idx).and_then(|a| match a.get_expr() {
-                                Expr::Str(f) => Some(f.as_str().to_string()),
-                                _ => None,
-                            });
+                            let flags =
+                                call.args
+                                    .args
+                                    .get(flag_idx)
+                                    .and_then(|a| match a.get_expr() {
+                                        Expr::Str(f) => Some(f.as_str().to_string()),
+                                        _ => None,
+                                    });
                             let mut re = String::new();
                             re.push_str("new RegExp(");
                             {
@@ -1254,7 +1309,8 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                                 re.push_str(&format!(", '{}'", f));
                             }
                             re.push(')');
-                            let subject: Option<Expr> = call.args.args.first().map(|a| a.get_expr());
+                            let subject: Option<Expr> =
+                                call.args.args.first().map(|a| a.get_expr());
                             let emit_subject = |out: &mut Vec<u8>| {
                                 if let Some(sub) = subject.as_ref() {
                                     transpile_expr(sub, ctx, out);
@@ -1305,18 +1361,21 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         if method.as_str() == "open" {
                             let url_arg = call.args.args.first().map(|a| a.get_expr());
                             // 第二参数形态：.Handler（Dot(Ident("."), name)）
-                            let handler_name = call.args.args.get(1).and_then(|a| match a.get_expr() {
-                                Expr::Dot(obj, field) => match obj.as_ref() {
-                                    Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self" => {
-                                        Some(field.as_str().to_string())
+                            let handler_name =
+                                call.args.args.get(1).and_then(|a| match a.get_expr() {
+                                    Expr::Dot(obj, field) => match obj.as_ref() {
+                                        Expr::Ident(n)
+                                            if n.as_str() == "." || n.as_str() == "self" =>
+                                        {
+                                            Some(field.as_str().to_string())
+                                        }
+                                        _ => None,
+                                    },
+                                    Expr::Ident(n) if n.as_str().starts_with('.') => {
+                                        Some(n.as_str().trim_start_matches('.').to_string())
                                     }
                                     _ => None,
-                                },
-                                Expr::Ident(n) if n.as_str().starts_with('.') => {
-                                    Some(n.as_str().trim_start_matches('.').to_string())
-                                }
-                                _ => None,
-                            });
+                                });
                             if let (Some(url_arg), Some(handler)) = (url_arg, handler_name) {
                                 // Plan 028 T16：可选第三参 ctx —— 注入为分发事件的
                                 // `__ctx` 字段（订阅方据此定位 per-run 状态键）。
@@ -1372,10 +1431,15 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             write!(out, "0").ok();
                         }
                         write!(out, ")))").ok();
-                        let pattern = call.args.args.get(1).and_then(|a| match a.get_expr() {
-                            Expr::Str(s) => Some(s.as_str().to_string()),
-                            _ => None,
-                        }).unwrap_or_else(|| "HH:mm".to_string());
+                        let pattern = call
+                            .args
+                            .args
+                            .get(1)
+                            .and_then(|a| match a.get_expr() {
+                                Expr::Str(s) => Some(s.as_str().to_string()),
+                                _ => None,
+                            })
+                            .unwrap_or_else(|| "HH:mm".to_string());
                         let mut opts = vec!["hour: '2-digit'", "minute: '2-digit'"];
                         if pattern.contains("ss") {
                             opts.push("second: '2-digit'");
@@ -1388,7 +1452,10 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                     // The emitted `await` makes the enclosing action fn async
                     // (store codegen detects it in the transpiled body).
                     if matches!(object.as_ref(), Expr::Ident(n) if n.as_str() == "Http") {
-                        let pos_args: Vec<crate::ast::Expr> = call.args.args.iter()
+                        let pos_args: Vec<crate::ast::Expr> = call
+                            .args
+                            .args
+                            .iter()
                             .map(|a| a.get_expr().clone())
                             .collect();
                         match method.as_str() {
@@ -1417,11 +1484,8 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                                         Some((_, h)) if !h.is_empty() => h.to_string(),
                                         _ => ev.as_str().to_string(),
                                     };
-                                    write!(
-                                        out,
-                                        "((async () => {{ try {{ const r = await fetch("
-                                    )
-                                    .ok();
+                                    write!(out, "((async () => {{ try {{ const r = await fetch(")
+                                        .ok();
                                     transpile_expr(&pos_args[0], ctx, out);
                                     write!(
                                         out,
@@ -1567,7 +1631,11 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                             }
                             let dflt = recv_root(object)
                                 .and_then(|n| {
-                                    if ctx.typed_strings.contains(n) { Some("''") } else { None }
+                                    if ctx.typed_strings.contains(n) {
+                                        Some("''")
+                                    } else {
+                                        None
+                                    }
                                 })
                                 .unwrap_or("0");
                             write!(out, "(").ok();
@@ -1606,7 +1674,8 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         // `.{method}()` 原样输出，生成无效 JS）。语义对照
                         // libs/string.rs。
                         // 无参 — 大小写 + trim 方向：
-                        "to_lower" | "lower" | "to_upper" | "upper" | "trim_left" | "trim_right" => {
+                        "to_lower" | "lower" | "to_upper" | "upper" | "trim_left"
+                        | "trim_right" => {
                             let js_method = match method.as_str() {
                                 "to_lower" | "lower" => "toLowerCase",
                                 "to_upper" | "upper" => "toUpperCase",
@@ -1622,15 +1691,21 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                         // 说明 receiver 是数组（Array.find 谓词语义，JS 同名），
                         // 不映射成字符串 str::find 的 indexOf —— 空 arm 落到
                         // match 之后的 pass-through，原样输出 `.find(λ)`。
-                        "find" if call.args.args.first().map_or(false, |a| {
-                            matches!(a.get_expr(), Expr::Closure(_) | Expr::Lambda(_))
-                        }) => {}
+                        "find"
+                            if call.args.args.first().map_or(false, |a| {
+                                matches!(a.get_expr(), Expr::Closure(_) | Expr::Lambda(_))
+                            }) => {}
                         // 有参 — 前后缀 / 字符 / 查找 / 子串 / 替换 / 重复：
                         // Plan 028 M1: 带闭包参数时不走字符串映射表 ——
                         // `.find(e => …)` 是 Array.find，不是 indexOf。
                         "starts_with" | "ends_with" | "char_at" | "char_code_at" | "find"
                         | "substr" | "sub" | "slice" | "replace" | "repeat"
-                            if !call.args.args.iter().any(|a| matches!(a.get_expr(), Expr::Closure(_))) => {
+                            if !call
+                                .args
+                                .args
+                                .iter()
+                                .any(|a| matches!(a.get_expr(), Expr::Closure(_))) =>
+                        {
                             let js_method = match method.as_str() {
                                 "starts_with" => "startsWith",
                                 "ends_with" => "endsWith",
@@ -1931,12 +2006,22 @@ fn transpile_expr(expr: &Expr, ctx: &AuraTsContext, out: &mut Vec<u8>) {
                 write!(out, "if (").ok();
                 transpile_expr(&first.cond, ctx, out);
                 write!(out, ") {{ ").ok();
-                write!(out, "{}", transpile_body_as_return(&first.body.stmts, ctx).trim()).ok();
+                write!(
+                    out,
+                    "{}",
+                    transpile_body_as_return(&first.body.stmts, ctx).trim()
+                )
+                .ok();
                 write!(out, " }}").ok();
             }
             if let Some(else_body) = &if_expr.else_ {
                 write!(out, " else {{ ").ok();
-                write!(out, "{}", transpile_body_as_return(&else_body.stmts, ctx).trim()).ok();
+                write!(
+                    out,
+                    "{}",
+                    transpile_body_as_return(&else_body.stmts, ctx).trim()
+                )
+                .ok();
                 write!(out, " }}").ok();
             }
             write!(out, " }})()").ok();
@@ -2098,11 +2183,19 @@ fn assign_target_is_state_ref(expr: &Expr, ctx: &AuraTsContext) -> bool {
 /// (e.g. `Block`) would be a `Cannot find name` error.
 fn builtin_type_annotation(ty: &Type) -> Option<String> {
     match ty {
-        Type::Int | Type::I64 | Type::Byte | Type::Char
-        | Type::Uint | Type::U64 | Type::USize
-        | Type::Float | Type::Double => Some("number".into()),
+        Type::Int
+        | Type::I64
+        | Type::Byte
+        | Type::Char
+        | Type::Uint
+        | Type::U64
+        | Type::USize
+        | Type::Float
+        | Type::Double => Some("number".into()),
         Type::Bool => Some("boolean".into()),
-        Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned => Some("string".into()),
+        Type::StrFixed(_) | Type::CStrLit | Type::StrSlice | Type::StrOwned => {
+            Some("string".into())
+        }
         Type::Array(arr) => builtin_type_annotation(&arr.elem).map(|e| format!("{}[]", e)),
         Type::RuntimeArray(rta) => builtin_type_annotation(&rta.elem).map(|e| format!("{}[]", e)),
         Type::List(elem) => builtin_type_annotation(elem)
@@ -2238,77 +2331,73 @@ fn try_transpile_builtin_call(
         //   dom.prefers_dark()    → matchMedia('(prefers-color-scheme: dark)').matches
         //   dom.set_css_var(n, v) → documentElement.style.setProperty(n, v)
         //   dom.focus_first(sel)  → document.querySelector(sel)?.focus()
-//   dom.click_first(sel)  → document.querySelector(sel)?.click()
+        //   dom.click_first(sel)  → document.querySelector(sel)?.click()
         //   dom.open_url(url)     → window.open(url, '_blank')
         //   dom.copy_text(text)   → navigator.clipboard.writeText(text)
-        "dom" => {
-            match method {
-                "set_dark" => {
-                    write!(out, "((document.documentElement.classList)[(").ok();
-                    transpile_expr(&args.args[0].get_expr(), ctx, out);
-                    write!(out, ") ? 'add' : 'remove'])('dark')").ok();
-                    true
-                }
-                "prefers_dark" => {
-                    write!(
-                        out,
-                        "window.matchMedia('(prefers-color-scheme: dark)').matches"
-                    )
-                    .ok();
-                    true
-                }
-                "set_css_var" => {
-                    write!(out, "document.documentElement.style.setProperty(").ok();
-                    for (i, arg) in args.args.iter().enumerate() {
-                        if i > 0 {
-                            write!(out, ", ").ok();
-                        }
-                        transpile_expr(&arg.get_expr(), ctx, out);
-                    }
-                    write!(out, ")").ok();
-                    true
-                }
-                "focus_first" => {
-                    write!(out, "(document.querySelector(").ok();
-                    transpile_expr(&args.args[0].get_expr(), ctx, out);
-                    write!(out, ") as HTMLElement | null)?.focus()").ok();
-                    true
-                }
-                "click_first" => {
-                    write!(out, "(document.querySelector(").ok();
-                    transpile_expr(&args.args[0].get_expr(), ctx, out);
-                    write!(out, ") as HTMLElement | null)?.click()").ok();
-                    true
-                }
-                "open_url" => {
-                    write!(out, "window.open(").ok();
-                    transpile_expr(&args.args[0].get_expr(), ctx, out);
-                    write!(out, ", '_blank')").ok();
-                    true
-                }
-                "copy_text" => {
-                    write!(out, "navigator.clipboard.writeText(").ok();
-                    transpile_expr(&args.args[0].get_expr(), ctx, out);
-                    write!(out, ")").ok();
-                    true
-                }
-                _ => false,
+        "dom" => match method {
+            "set_dark" => {
+                write!(out, "((document.documentElement.classList)[(").ok();
+                transpile_expr(&args.args[0].get_expr(), ctx, out);
+                write!(out, ") ? 'add' : 'remove'])('dark')").ok();
+                true
             }
-        }
+            "prefers_dark" => {
+                write!(
+                    out,
+                    "window.matchMedia('(prefers-color-scheme: dark)').matches"
+                )
+                .ok();
+                true
+            }
+            "set_css_var" => {
+                write!(out, "document.documentElement.style.setProperty(").ok();
+                for (i, arg) in args.args.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ").ok();
+                    }
+                    transpile_expr(&arg.get_expr(), ctx, out);
+                }
+                write!(out, ")").ok();
+                true
+            }
+            "focus_first" => {
+                write!(out, "(document.querySelector(").ok();
+                transpile_expr(&args.args[0].get_expr(), ctx, out);
+                write!(out, ") as HTMLElement | null)?.focus()").ok();
+                true
+            }
+            "click_first" => {
+                write!(out, "(document.querySelector(").ok();
+                transpile_expr(&args.args[0].get_expr(), ctx, out);
+                write!(out, ") as HTMLElement | null)?.click()").ok();
+                true
+            }
+            "open_url" => {
+                write!(out, "window.open(").ok();
+                transpile_expr(&args.args[0].get_expr(), ctx, out);
+                write!(out, ", '_blank')").ok();
+                true
+            }
+            "copy_text" => {
+                write!(out, "navigator.clipboard.writeText(").ok();
+                transpile_expr(&args.args[0].get_expr(), ctx, out);
+                write!(out, ")").ok();
+                true
+            }
+            _ => false,
+        },
         // PLAN-095 T-04: ui.focus(sel) web 轨 = dom.focus_first 同义直译
         // （桌面真实现走 auto.ui.focus native → iced focus 任务；目标键
         // web 形即 CSS 选择器，musk 平台端口保留既有 TS 逃生舱不强制迁移）。
-        "ui" => {
-            match method {
-                "focus" => {
-                    write!(out, "(document.querySelector(").ok();
-                    transpile_expr(&args.args[0].get_expr(), ctx, out);
-                    write!(out, ") as HTMLElement | null)?.focus()").ok();
-                    true
-                }
-                _ => false,
+        "ui" => match method {
+            "focus" => {
+                write!(out, "(document.querySelector(").ok();
+                transpile_expr(&args.args[0].get_expr(), ctx, out);
+                write!(out, ") as HTMLElement | null)?.focus()").ok();
+                true
             }
-        }
+            _ => false,
+        },
         // event.dispatch(name) → window.dispatchEvent(new CustomEvent(name))
         // event.dispatch(name, detail) → window.dispatchEvent(new CustomEvent(name, detail))
         "event" => {
@@ -2341,49 +2430,45 @@ fn try_transpile_builtin_call(
         }
         // router.param("id") → (useRoute().params as any)["id"]
         // router.query("q") → (useRoute().query as any)["q"]
-        "router" => {
-            match method {
-                "param" => {
-                    write!(out, "(useRoute().params as any)[").ok();
-                    for (i, arg) in args.args.iter().enumerate() {
-                        if i > 0 {
-                            write!(out, ", ").ok();
-                        }
-                        transpile_expr(&arg.get_expr(), ctx, out);
+        "router" => match method {
+            "param" => {
+                write!(out, "(useRoute().params as any)[").ok();
+                for (i, arg) in args.args.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ").ok();
                     }
-                    write!(out, "]").ok();
-                    true
+                    transpile_expr(&arg.get_expr(), ctx, out);
                 }
-                "query" => {
-                    write!(out, "(useRoute().query as any)[").ok();
-                    for (i, arg) in args.args.iter().enumerate() {
-                        if i > 0 {
-                            write!(out, ", ").ok();
-                        }
-                        transpile_expr(&arg.get_expr(), ctx, out);
-                    }
-                    write!(out, "]").ok();
-                    true
-                }
-                _ => false,
+                write!(out, "]").ok();
+                true
             }
-        }
+            "query" => {
+                write!(out, "(useRoute().query as any)[").ok();
+                for (i, arg) in args.args.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, ", ").ok();
+                    }
+                    transpile_expr(&arg.get_expr(), ctx, out);
+                }
+                write!(out, "]").ok();
+                true
+            }
+            _ => false,
+        },
         // Time.now_ms()/Time.now_sec() → Date.now()（os-003 执行期补：VM 侧
         // stdlib 实存而 vue 轨无桥——时间类 app（时钟/闹钟/倒计时族）双端
         // 能力缺口；now_sec 取整与 VM shim 的 as i64 秒语义对齐）。
-        "Time" => {
-            match method {
-                "now_ms" => {
-                    write!(out, "Date.now()").ok();
-                    true
-                }
-                "now_sec" => {
-                    write!(out, "Math.floor(Date.now()/1000)").ok();
-                    true
-                }
-                _ => false,
+        "Time" => match method {
+            "now_ms" => {
+                write!(out, "Date.now()").ok();
+                true
             }
-        }
+            "now_sec" => {
+                write!(out, "Math.floor(Date.now()/1000)").ok();
+                true
+            }
+            _ => false,
+        },
         // math.random() → Math.random(); math.floor(x) → Math.floor(x)
         "math" => {
             write!(out, "Math.{}(", method).ok();
@@ -2426,15 +2511,13 @@ fn try_transpile_builtin_field(
     };
 
     match module {
-        "router" => {
-            match field {
-                "path" => {
-                    write!(out, "useRoute().path").ok();
-                    true
-                }
-                _ => false,
+        "router" => match field {
+            "path" => {
+                write!(out, "useRoute().path").ok();
+                true
             }
-        }
+            _ => false,
+        },
         _ => false,
     }
 }
@@ -2445,7 +2528,10 @@ fn try_transpile_builtin_field(
 
 /// Check if any statement in the list contains an API function call.
 pub fn stmts_contain_api_call(stmts: &[Stmt]) -> bool {
-    let default_fns: Vec<String> = DEFAULT_API_FUNCTIONS.iter().map(|s| s.to_string()).collect();
+    let default_fns: Vec<String> = DEFAULT_API_FUNCTIONS
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     stmts_contain_api_call_with(stmts, &default_fns)
 }
 
@@ -2456,10 +2542,16 @@ pub fn stmts_contain_api_call_with(stmts: &[Stmt], api_fns: &[String]) -> bool {
             Expr::Call(call) => {
                 // Only simple identifier calls can be API functions;
                 // method calls (Dot names) are never API calls.
-                let is_api = call.get_name_text_safe()
+                let is_api = call
+                    .get_name_text_safe()
                     .map(|name| api_fns.iter().any(|f| f == name.as_str()))
                     .unwrap_or(false);
-                is_api || call.args.args.iter().any(|a| walk_expr(&a.get_expr(), api_fns))
+                is_api
+                    || call
+                        .args
+                        .args
+                        .iter()
+                        .any(|a| walk_expr(&a.get_expr(), api_fns))
             }
             Expr::Bina(l, _, r) => walk_expr(l, api_fns) || walk_expr(r, api_fns),
             Expr::Unary(_, e) => walk_expr(e, api_fns),
@@ -2599,7 +2691,9 @@ pub fn stmts_have_router_nav(stmts: &[Stmt]) -> bool {
                 if let Expr::Dot(object, method) = call.name.as_ref() {
                     if let Expr::Ident(name) = object.as_ref() {
                         if name.as_str() == "router"
-                            && (method.as_str() == "push" || method.as_str() == "replace" || method.as_str() == "back")
+                            && (method.as_str() == "push"
+                                || method.as_str() == "replace"
+                                || method.as_str() == "back")
                         {
                             return true;
                         }
@@ -2719,7 +2813,11 @@ mod tests {
             Stmt::Expr(self_method_call("RefreshTags")),
         ];
         let out = transpile_handler_body(&stmts, &test_ctx());
-        assert!(out.contains("notes.value = list_notes();"), "output:\n{}", out);
+        assert!(
+            out.contains("notes.value = list_notes();"),
+            "output:\n{}",
+            out
+        );
         assert!(out.contains("RefreshTags();"), "output:\n{}", out);
         assert!(
             !out.contains("list_notes().RefreshTags()"),
@@ -2812,13 +2910,18 @@ mod tests {
         let mut args = Args::new();
         args.args.push(Arg::Pos(Expr::Str("PATH".into())));
         let js = transpile_one(env_call("get", args));
-        let expected = std::env::var("PATH").unwrap_or_default()
+        let expected = std::env::var("PATH")
+            .unwrap_or_default()
             .replace("\\", "\\\\")
             .replace("'", "\\'")
             .replace("\n", "\\n")
             .replace("\r", "\\r")
             .replace("\t", "\\t");
-        assert_eq!(js.trim_end().trim_end_matches(';'), format!("'{expected}'"), "output: {js}");
+        assert_eq!(
+            js.trim_end().trim_end_matches(';'),
+            format!("'{expected}'"),
+            "output: {js}"
+        );
         assert!(!js.contains("__vmOnly"), "output: {js}");
     }
 
@@ -2826,7 +2929,8 @@ mod tests {
     #[test]
     fn env_get_unset_literal_key_folds_to_empty() {
         let mut args = Args::new();
-        args.args.push(Arg::Pos(Expr::Str("PLAN680 surely unset key".into())));
+        args.args
+            .push(Arg::Pos(Expr::Str("PLAN680 surely unset key".into())));
         let js = transpile_one(env_call("get", args));
         assert!(js.contains("''"), "output: {js}");
         assert!(!js.contains("__vmOnly"), "output: {js}");
@@ -2921,9 +3025,16 @@ mod tests {
     /// `.scrollEl.clientHeight` (property read) → `scrollEl.value!.clientHeight`
     #[test]
     fn template_ref_property_read() {
-        let stmt = Stmt::Expr(Expr::Dot(Box::new(self_dot("scrollEl")), "clientHeight".into()));
+        let stmt = Stmt::Expr(Expr::Dot(
+            Box::new(self_dot("scrollEl")),
+            "clientHeight".into(),
+        ));
         let out = transpile_handler_body(&[stmt], &test_ctx_with_refs());
-        assert!(out.contains("scrollEl.value!.clientHeight;"), "output:\n{}", out);
+        assert!(
+            out.contains("scrollEl.value!.clientHeight;"),
+            "output:\n{}",
+            out
+        );
     }
 
     /// `.scrollEl.scrollTop = .scrollEl.scrollTop + 10` (property write)
@@ -2996,10 +3107,7 @@ mod tests {
             generic_args: Vec::new(),
             pos: None,
         });
-        let out = transpile_handler_body(
-            &[Stmt::Return(Box::new(call))],
-            &test_ctx(),
-        );
+        let out = transpile_handler_body(&[Stmt::Return(Box::new(call))], &test_ctx());
         assert!(
             out.contains("new Date(((Date.now()) < 100000000000 ? (Date.now()) * 1000 : (Date.now()))).toLocaleTimeString"),
             "Date.format must emit balanced new Date(...).toLocaleTimeString(...):\n{}",
@@ -3056,7 +3164,9 @@ mod tests {
                 Box::new(Expr::GenName("List<Block>".into())),
                 "new".into(),
             )),
-            args: Args { args: vec![Arg::Pos(Expr::Array(vec![]))] },
+            args: Args {
+                args: vec![Arg::Pos(Expr::Array(vec![]))],
+            },
             ret: Type::Unknown,
             type_args: vec![],
             generic_args: Vec::new(),
@@ -3088,7 +3198,9 @@ mod tests {
         let store_array = Stmt::Store(crate::ast::Store {
             kind: crate::ast::StoreKind::Var,
             name: "result".into(),
-            ty: Type::Slice(SliceType { elem: Box::new(Type::StrSlice) }),
+            ty: Type::Slice(SliceType {
+                elem: Box::new(Type::StrSlice),
+            }),
             expr: Expr::Array(vec![]),
             attrs: vec![],
             is_pub: false,
@@ -3150,7 +3262,9 @@ fn stamp() int {
             code
         );
         assert!(
-            code.contains("Date.now()") && !code.contains("Time.now_sec") && !code.contains("Time.now_ms"),
+            code.contains("Date.now()")
+                && !code.contains("Time.now_sec")
+                && !code.contains("Time.now_ms"),
             "no verbatim Time.* may remain: 
 {}",
             code
@@ -3261,15 +3375,25 @@ fn stamp() int {
 
         // Emission: real JS try/catch/finally, AURA-aware bodies.
         let ctx = AuraTsContext::new(
-            ["error".to_string(), "busy".to_string()].into_iter().collect(),
+            ["error".to_string(), "busy".to_string()]
+                .into_iter()
+                .collect(),
         )
         .with_api_functions(vec!["saveWiki".to_string()]);
         let out = transpile_handler_body(std::slice::from_ref(&try_stmt), &ctx);
         assert!(out.contains("try {"), "try emitted:\n{}", out);
         assert!(out.contains("catch (e) {"), "catch emitted:\n{}", out);
         assert!(out.contains("finally {"), "finally emitted:\n{}", out);
-        assert!(out.contains("error.value = 'failed'"), "catch body aura-aware:\n{}", out);
-        assert!(out.contains("busy.value = false"), "finally body aura-aware:\n{}", out);
+        assert!(
+            out.contains("error.value = 'failed'"),
+            "catch body aura-aware:\n{}",
+            out
+        );
+        assert!(
+            out.contains("busy.value = false"),
+            "finally body aura-aware:\n{}",
+            out
+        );
 
         // Walker: api call inside try marks the handler async.
         assert!(

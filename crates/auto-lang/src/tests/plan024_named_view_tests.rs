@@ -92,7 +92,10 @@ widget Clock {
         let w = widget_decl(&code);
         match &w.named_views[0].1.root {
             ViewNode::Element { tag, .. } => assert_eq!(tag, "col"),
-            other => panic!("expected element root, got {:?}", std::mem::discriminant(other)),
+            other => panic!(
+                "expected element root, got {:?}",
+                std::mem::discriminant(other)
+            ),
         }
     }
 
@@ -189,7 +192,12 @@ widget Nav {
         .expect("parse");
         let w = widget_decl(&code);
         match &w.view.as_ref().expect("main view").root {
-            ViewNode::Element { tag, events, children, .. } => {
+            ViewNode::Element {
+                tag,
+                events,
+                children,
+                ..
+            } => {
                 assert_eq!(tag, "col", "single root must not be wrapped");
                 assert!(
                     events.iter().any(|e| e.name == "onclick.self"),
@@ -268,10 +276,9 @@ widget App {
 #[test]
 fn dashboard_panel_classes_parse() {
     use crate::ui::style::Style;
-    let s = Style::parse(
-        "bg-card/80 border rounded-xl shadow-xl overflow-hidden w-[920px] h-[212px]",
-    )
-    .expect("panel style parses");
+    let s =
+        Style::parse("bg-card/80 border rounded-xl shadow-xl overflow-hidden w-[920px] h-[212px]")
+            .expect("panel style parses");
     let dbg = format!("{s:?}");
     assert!(dbg.contains("920"), "width arbitrary class applied: {dbg}");
 }

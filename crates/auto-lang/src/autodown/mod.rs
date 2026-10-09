@@ -40,13 +40,13 @@ pub mod error;
 pub mod lexer;
 pub mod parser;
 
-pub mod trans;
 pub mod math;
+pub mod trans;
 
 // Re-export main types for convenience
 pub use ast::{AdocBlock, AdocDocument, AdocExpr, AdocInline, AdocMath, AdocSection};
-pub use cell::{CellDirective, CellDirectiveError, CellRegion, CellType};
 pub use cell::{extract_cell_directives, split_into_cells, try_extract_cell_directives};
+pub use cell::{CellDirective, CellDirectiveError, CellRegion, CellType};
 pub use error::{AdocError, AdocResult};
 pub use lexer::{AdocLexer, LexerMode};
 pub use parser::AdocParser;

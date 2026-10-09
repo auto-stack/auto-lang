@@ -4,8 +4,8 @@
 //! that the backend should draw as highlights on top of the normal UI. This is **not**
 //! a renderer -- backends consume `OverlayInfo` and draw using their own primitives.
 
-use crate::ui::vnode::VNodeId;
 use super::Rect;
+use crate::ui::vnode::VNodeId;
 
 /// Describes the visual overlay state for a single frame.
 ///

@@ -290,7 +290,11 @@ pub fn push_extractor_args(
                 n += 1;
             }
             ExtractorKind::Json | ExtractorKind::Query => {
-                let raw = if *kind == ExtractorKind::Json { body_json } else { query_json };
+                let raw = if *kind == ExtractorKind::Json {
+                    body_json
+                } else {
+                    query_json
+                };
                 let parsed: serde_json::Value =
                     serde_json::from_str(raw).unwrap_or(serde_json::Value::Null);
                 // Marshal failure degrades to null — the handler's field
@@ -373,9 +377,9 @@ pub(crate) fn shim_method_chain(
         closure_id,
         params: resolve_params(vm, closure_id),
     };
-    let obj = vm
-        .get_heap_object(handle)
-        .ok_or_else(|| VMError::RuntimeError(format!("axum {method}: bad MethodRouter handle {handle}")))?;
+    let obj = vm.get_heap_object(handle).ok_or_else(|| {
+        VMError::RuntimeError(format!("axum {method}: bad MethodRouter handle {handle}"))
+    })?;
     let mut guard = obj.write().unwrap();
     let rust_obj = guard
         .as_any_mut()
@@ -432,7 +436,9 @@ pub(crate) fn shim_router_route(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         Some(bucket) => bucket.1.handlers.extend(handlers.clone()),
         None => builder.entries.push((
             path.clone(),
-            MethodRouter { handlers: handlers.clone() },
+            MethodRouter {
+                handlers: handlers.clone(),
+            },
         )),
     }
     drop(guard);
@@ -506,11 +512,26 @@ mod tests {
 
     #[test]
     fn extractor_kinds() {
-        assert_eq!(ExtractorKind::from_type_name("State<AppState>"), ExtractorKind::State);
-        assert_eq!(ExtractorKind::from_type_name("Json<LoginRequest>"), ExtractorKind::Json);
-        assert_eq!(ExtractorKind::from_type_name("Query<WorkspaceQuery>"), ExtractorKind::Query);
-        assert_eq!(ExtractorKind::from_type_name("Path<(str, str)>"), ExtractorKind::Path);
-        assert_eq!(ExtractorKind::from_type_name("HeaderMap"), ExtractorKind::Headers);
+        assert_eq!(
+            ExtractorKind::from_type_name("State<AppState>"),
+            ExtractorKind::State
+        );
+        assert_eq!(
+            ExtractorKind::from_type_name("Json<LoginRequest>"),
+            ExtractorKind::Json
+        );
+        assert_eq!(
+            ExtractorKind::from_type_name("Query<WorkspaceQuery>"),
+            ExtractorKind::Query
+        );
+        assert_eq!(
+            ExtractorKind::from_type_name("Path<(str, str)>"),
+            ExtractorKind::Path
+        );
+        assert_eq!(
+            ExtractorKind::from_type_name("HeaderMap"),
+            ExtractorKind::Headers
+        );
         assert_eq!(ExtractorKind::from_type_name("str"), ExtractorKind::Plain);
     }
 }
@@ -523,7 +544,10 @@ mod plan093_param_sig_tests {
     /// `#` 形态永远 miss → 路由 handler 0 参入栈）。
     #[test]
     fn hash_qualified_key_resolves_decl_name() {
-        assert_eq!(param_sig_decl_name("canvas_vm#canvas_vm_stop"), "canvas_vm_stop");
+        assert_eq!(
+            param_sig_decl_name("canvas_vm#canvas_vm_stop"),
+            "canvas_vm_stop"
+        );
         assert_eq!(param_sig_decl_name("server#auth_login"), "auth_login");
     }
 

@@ -14,8 +14,8 @@
 use crate::ui::iced::renderer::IntoIcedElement;
 use crate::ui::style::Style;
 use crate::ui::view::{PopoverAnchor, PopoverPlacement, View};
-use iced_test::simulator;
 use iced_test::selector::Bounded;
+use iced_test::simulator;
 
 fn styled_view(style: &str) -> View<()> {
     View::Text {
@@ -25,7 +25,10 @@ fn styled_view(style: &str) -> View<()> {
     }
 }
 
-fn bounds_of<M: Clone + std::fmt::Debug>(ui: &mut iced_test::Simulator<'_, M, iced::Theme, iced::Renderer>, needle: &str) -> (f32, f32, f32, f32) {
+fn bounds_of<M: Clone + std::fmt::Debug>(
+    ui: &mut iced_test::Simulator<'_, M, iced::Theme, iced::Renderer>,
+    needle: &str,
+) -> (f32, f32, f32, f32) {
     let t = ui.find(needle).expect("text not found");
     let b = t.bounds();
     (b.x, b.y, b.width, b.height)
@@ -50,8 +53,9 @@ fn w7_icon_lucide_container_constrained_between_texts() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None, on_right_click: None,
-            };
+        onclick: None,
+        on_right_click: None,
+    };
     let mut ui = simulator(view.into_iced());
     let (lx, _ly, lw, _lh) = bounds_of(&mut ui, "L");
     let (rx, _ry, _rw, _rh) = bounds_of(&mut ui, "R");
@@ -151,7 +155,10 @@ fn w7_icon_taskbar_button_glyph_centered() {
                 Candidate::Custom { bounds, .. } => ("x", *bounds),
                 _ => return None,
             };
-            self.0.lock().unwrap().push((kind, bounds.x, bounds.y, bounds.width, bounds.height));
+            self.0
+                .lock()
+                .unwrap()
+                .push((kind, bounds.x, bounds.y, bounds.width, bounds.height));
             None
         }
         fn description(&self) -> String {
@@ -173,10 +180,7 @@ fn w7_icon_taskbar_button_glyph_centered() {
         .filter(|(k, _, _, w, h)| *k != "f" && *h < 38.0 && (*w - *h).abs() < 4.0)
         .copied()
         .collect::<Vec<_>>();
-    assert!(
-        !icon.is_empty(),
-        "应存在图标尺寸盒（实际 {boxes:?}）"
-    );
+    assert!(!icon.is_empty(), "应存在图标尺寸盒（实际 {boxes:?}）");
     for (k, x, y, w, h) in icon {
         let cx = x + w / 2.0;
         let cy = y + h / 2.0;
@@ -201,10 +205,14 @@ fn w2_anchor_variant_diagnosis() {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src.as_str()).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
         let (view, _ids, _probe) = comp.view_with_debug_gated(false);
@@ -264,10 +272,14 @@ fn w2_notification_panel_anchor_bottom_right() {
     let session = crate::session::CompilerSession::ui();
     let mut parser = crate::Parser::from(src).with_session(session);
     let ast = parser.parse().expect("parse");
-    let decl = ast.stmts.iter().find_map(|s| match s {
-        crate::ast::Stmt::WidgetDecl(d) => Some(d),
-        _ => None,
-    }).expect("decl");
+    let decl = ast
+        .stmts
+        .iter()
+        .find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("decl");
     let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
     let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
     let (view, _ids, _probe) = comp.view_with_debug_gated(false);
@@ -314,11 +326,7 @@ fn p012_o3_notification_layer_in_stack_anchor() {
         on_right_click: None,
     };
     let push = View::Row {
-        children: vec![
-            styled_view("flex-1 w-full"),
-            card,
-            styled_view("w-3 h-12"),
-        ],
+        children: vec![styled_view("flex-1 w-full"), card, styled_view("w-3 h-12")],
         spacing: 0,
         padding: 0,
         style: Style::parse("w-full items-end").ok(),
@@ -338,10 +346,7 @@ fn p012_o3_notification_layer_in_stack_anchor() {
         on_right_click: None,
     };
     // desktop_root 同型装配：container Fill×Fill > Stack[底, …, 顶]。
-    let stack = iced::widget::Stack::with_children(vec![
-        bottom.into_iced(),
-        panel_col.into_iced(),
-    ]);
+    let stack = iced::widget::Stack::with_children(vec![bottom.into_iced(), panel_col.into_iced()]);
     let root: iced::Element<'static, (), iced::Theme, iced::Renderer> =
         iced::widget::container(stack)
             .width(Length::Fill)
@@ -390,12 +395,8 @@ fn p012_o3_notification_real_component_assembly_anchor() {
     };
     let measure = |comp: &crate::ui::dynamic::DynamicComponent| {
         let (view, _ids, _probe) = comp.view_with_debug_gated(false);
-        let root: iced::Element<
-            'static,
-            DynamicMessage,
-            iced::Theme,
-            iced::Renderer,
-        > = view.into_iced();
+        let root: iced::Element<'static, DynamicMessage, iced::Theme, iced::Renderer> =
+            view.into_iced();
         let mut ui = simulator(root);
         bounds_of(&mut ui, "CARDCARD")
     };
@@ -407,7 +408,11 @@ fn p012_o3_notification_real_component_assembly_anchor() {
     let (x, y, w, h) = measure(&build_comp(8));
     eprintln!("[p012-o3-B] card=({x},{y},{w},{h})");
     assert!(h < 560.0, "多条目卡片应被 max-h 约束（实际 h={h}）");
-    assert!(y + h <= 744.0, "卡片不得越过 dock 线 744（实际 y+h={}）", y + h);
+    assert!(
+        y + h <= 744.0,
+        "卡片不得越过 dock 线 744（实际 y+h={}）",
+        y + h
+    );
 }
 
 /// Smoke: a plain row lays out both texts with non-zero bounds and no
@@ -420,12 +425,16 @@ fn row_smoke_two_texts() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None, on_right_click: None,
-            };
+        onclick: None,
+        on_right_click: None,
+    };
     let mut ui = simulator(view.into_iced());
     let (x1, _y1, w1, _h1) = bounds_of(&mut ui, "L");
     let (x2, _y2, w2, _h2) = bounds_of(&mut ui, "R");
-    assert!(w1 > 0.0 && w2 > 0.0, "both texts must have width: {w1} {w2}");
+    assert!(
+        w1 > 0.0 && w2 > 0.0,
+        "both texts must have width: {w1} {w2}"
+    );
     assert!(x2 >= x1 + w1, "R must start after L: {x1}+{w1} vs {x2}");
 }
 
@@ -445,11 +454,15 @@ fn row_fill_child_keeps_sibling_visible() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None, on_right_click: None,
-            };
+        onclick: None,
+        on_right_click: None,
+    };
     let mut ui = simulator(view.into_iced());
     let (x, _y, w, _h) = bounds_of(&mut ui, "SURVIVOR");
-    assert!(w > 0.0, "sibling after a Fill child must keep width, got {w}");
+    assert!(
+        w > 0.0,
+        "sibling after a Fill child must keep width, got {w}"
+    );
     assert!(x >= 0.0);
 }
 
@@ -490,10 +503,14 @@ fn center_parity_002_counter_end_to_end() {
     let session = crate::session::CompilerSession::ui();
     let mut parser = crate::Parser::from(src).with_session(session);
     let ast = parser.parse().expect("parse");
-    let decl = ast.stmts.iter().find_map(|s| match s {
-        crate::ast::Stmt::WidgetDecl(d) => Some(d),
-        _ => None,
-    }).expect("decl");
+    let decl = ast
+        .stmts
+        .iter()
+        .find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("decl");
     let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
     let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
     let (view, _ids, _probe) = comp.view_with_debug_gated(false);
@@ -534,14 +551,16 @@ fn center_column_items_center_centers_narrow_child() {
                 spacing: 0,
                 padding: 0,
                 style: None,
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             },
         ],
         spacing: 0,
         padding: 0,
         style: Some(Style::default().add(StyleClass::ItemsCenter)),
-                onclick: None, on_right_click: None,
-            };
+        onclick: None,
+        on_right_click: None,
+    };
     let view = View::container(inner)
         .center_x()
         .center_y()
@@ -575,14 +594,16 @@ fn row_ml_auto_pushes_right() {
                 spacing: 0,
                 padding: 0,
                 style: Style::parse("ml-auto").ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             },
         ],
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("w-full").ok().unwrap()),
-                onclick: None, on_right_click: None,
-            };
+        onclick: None,
+        on_right_click: None,
+    };
     let mut ui = simulator(view.into_iced());
     let (lx, _ly, lw, _lh) = bounds_of(&mut ui, "LEFT");
     let (rx, _ry, rw, _rh) = bounds_of(&mut ui, "RIGHT");
@@ -593,7 +614,10 @@ fn row_ml_auto_pushes_right() {
     );
     // Right group should hug the right edge of the ~1024px default viewport
     // (a few px of tolerance for the text baseline box).
-    assert!(rx + rw > 900.0, "ml-auto group must reach the right edge: {rx}+{rw}");
+    assert!(
+        rx + rw > 900.0,
+        "ml-auto group must reach the right edge: {rx}+{rw}"
+    );
 }
 
 /// Plan 414 §8.1 partial: a button inside a NESTED row must keep bounds
@@ -614,25 +638,27 @@ fn nested_row_button_keeps_bounds() {
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("items-center bg-[#1C1D24]").ok().unwrap()),
-                onclick: None, on_right_click: None,
-            };
+        onclick: None,
+        on_right_click: None,
+    };
     let view = View::Row {
-        children: vec![
-            inner,
-            styled_view("OUTER"),
-        ],
+        children: vec![inner, styled_view("OUTER")],
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None, on_right_click: None,
-            };
+        onclick: None,
+        on_right_click: None,
+    };
     let mut ui = simulator(view.into_iced());
     let (ox, _oy, ow, _oh) = bounds_of(&mut ui, "OUTER");
     assert!(ow > 0.0, "outer sibling must keep width");
     // The button's text label participates in layout — it must exist too
     // (if the nested-row bug resurfaces the label stops being found).
     let (_bx, _by, bw, bh) = bounds_of(&mut ui, "NESTEDBTN");
-    assert!(bw > 0.0 && bh > 0.0, "nested button must have bounds: {bw}x{bh}");
+    assert!(
+        bw > 0.0 && bh > 0.0,
+        "nested button must have bounds: {bw}x{bh}"
+    );
 }
 
 // ── Plan 414 §8.1: nested-row icon-button disappearance ─────────────────
@@ -662,7 +688,10 @@ impl Selector for FocusableCollector {
                     Candidate::Focusable { .. } => 0u8,
                     _ => 1u8,
                 };
-                self.0.lock().unwrap().push((kind as f32, bounds.width, bounds.height));
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((kind as f32, bounds.width, bounds.height));
             }
             _ => {}
         }
@@ -675,7 +704,8 @@ impl Selector for FocusableCollector {
 
 fn all_button_bounds(view: View<()>) -> Vec<(f32, f32, f32)> {
     let mut ui = simulator(view.into_iced());
-    let store: std::sync::Arc<std::sync::Mutex<Vec<(f32, f32, f32)>>> = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let store: std::sync::Arc<std::sync::Mutex<Vec<(f32, f32, f32)>>> =
+        std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     // SelectorNotFound is the expected terminal state (see struct doc).
     let _ = ui.find(FocusableCollector(store.clone()));
     let out = store.lock().unwrap().clone();
@@ -711,21 +741,35 @@ fn nested_row_icon_button_keeps_bounds() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None, on_right_click: None,
-            };
+        onclick: None,
+        on_right_click: None,
+    };
     let view = View::Row {
         children: vec![inner, icon_btn("\u{EE01}save\u{EE02}")],
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None, on_right_click: None,
-            };
+        onclick: None,
+        on_right_click: None,
+    };
     let sizes = all_button_bounds(view);
-    assert!(sizes.len() >= 5, "expected rows+3 buttons in the tree: {sizes:?}");
-    let buttons: Vec<_> = sizes.iter().filter(|(k, w, _)| *k == 1.0 && *w <= 60.0).collect();
-    assert!(buttons.len() >= 3, "three button-sized containers expected: {sizes:?}");
+    assert!(
+        sizes.len() >= 5,
+        "expected rows+3 buttons in the tree: {sizes:?}"
+    );
+    let buttons: Vec<_> = sizes
+        .iter()
+        .filter(|(k, w, _)| *k == 1.0 && *w <= 60.0)
+        .collect();
+    assert!(
+        buttons.len() >= 3,
+        "three button-sized containers expected: {sizes:?}"
+    );
     for (i, (_, w, h)) in buttons.iter().enumerate() {
-        assert!(*w > 0.0 && *h > 0.0, "button {i} collapsed to {w}x{h} (414 §8.1 regression)");
+        assert!(
+            *w > 0.0 && *h > 0.0,
+            "button {i} collapsed to {w}x{h} (414 §8.1 regression)"
+        );
     }
 }
 
@@ -752,7 +796,8 @@ fn popover_view(placement: PopoverPlacement, anchor_style: &str, panel_width: u1
                 height: None,
                 center_x: false,
                 center_y: false,
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
                 style: None,
             }),
             placement,
@@ -762,8 +807,9 @@ fn popover_view(placement: PopoverPlacement, anchor_style: &str, panel_width: u1
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None, on_right_click: None,
-            }
+        onclick: None,
+        on_right_click: None,
+    }
 }
 
 /// BottomStart:面板左缘对齐锚左缘、顶缘在锚正下方 —— menubar 下拉的
@@ -774,9 +820,18 @@ fn popover_bottom_start_aligns_under_anchor() {
     let mut ui = simulator(view.into_iced());
     let (ax, ay, aw, ah) = bounds_of(&mut ui, "ANCHORBTN");
     let (px, py, pw, ph) = bounds_of(&mut ui, "PANELTEXT");
-    assert!(aw > 0.0 && ah > 0.0, "anchor button must keep bounds: {aw}x{ah}");
-    assert!(pw > 0.0 && ph > 0.0, "panel must be visible through overlay operate: {pw}x{ph}");
-    assert!(py >= ay + ah, "panel must start below anchor bottom: panel y {py} vs anchor {ay}+{ah}");
+    assert!(
+        aw > 0.0 && ah > 0.0,
+        "anchor button must keep bounds: {aw}x{ah}"
+    );
+    assert!(
+        pw > 0.0 && ph > 0.0,
+        "panel must be visible through overlay operate: {pw}x{ph}"
+    );
+    assert!(
+        py >= ay + ah,
+        "panel must start below anchor bottom: panel y {py} vs anchor {ay}+{ah}"
+    );
     // 容器给了固定宽 160;文字在其中。BottomStart = 面板左缘对齐锚按钮
     // 左缘 —— 文字选择器看到的是按钮内文字(px-3 内缩 12px),面板文字
     // 贴容器左缘,故面板文字 x 应落在 [按钮左缘, 按钮文字] 区间内。
@@ -799,17 +854,30 @@ fn popover_snaps_within_viewport_right_edge() {
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("w-full").ok().unwrap()),
-                onclick: None, on_right_click: None,
-            };
+        onclick: None,
+        on_right_click: None,
+    };
     let mut ui = simulator(view.into_iced());
     let (ax, _ay, _aw, ah) = bounds_of(&mut ui, "ANCHORBTN");
     let (px, py, pw, _ph) = bounds_of(&mut ui, "PANELTEXT");
-    assert!(ax > 600.0, "anchor should sit near the right edge, got x {ax}");
-    assert!(py >= ah, "panel below the 28px-tall anchor row: {py} vs {ah}");
+    assert!(
+        ax > 600.0,
+        "anchor should sit near the right edge, got x {ax}"
+    );
+    assert!(
+        py >= ah,
+        "panel below the 28px-tall anchor row: {py} vs {ah}"
+    );
     // snap 后:面板整体在视口内(1024 宽 + 0.5 容差),且左缘被推回
     // (否则 px ≈ ax > 700 且 px + 320 > 1024)。
-    assert!(px + pw <= 1024.5, "panel right edge must stay in viewport: {px}+{pw}");
-    assert!(px <= 1024.0 - 320.0 + 0.5, "panel must be snapped left: {px}");
+    assert!(
+        px + pw <= 1024.5,
+        "panel right edge must stay in viewport: {px}+{pw}"
+    );
+    assert!(
+        px <= 1024.0 - 320.0 + 0.5,
+        "panel must be snapped left: {px}"
+    );
 }
 
 /// 坐标锚(contextmenu 变体):面板左上角对齐 (x, y) 落点,不受布局影响。
@@ -825,8 +893,9 @@ fn popover_point_anchor_places_panel_at_coordinate() {
             center_x: false,
             center_y: false,
             style: None,
-                onclick: None, on_right_click: None,
-            }),
+            onclick: None,
+            on_right_click: None,
+        }),
         placement: PopoverPlacement::BottomStart,
         open: true,
         on_dismiss: None,
@@ -834,8 +903,14 @@ fn popover_point_anchor_places_panel_at_coordinate() {
     let mut ui = simulator(view.into_iced());
     let (px, py, pw, _ph) = bounds_of(&mut ui, "CTXITEM");
     assert!(pw > 0.0, "context panel must be visible: {pw}");
-    assert!((px - 300.0).abs() <= 8.0, "panel left at point x=300 (+text padding), got {px}");
-    assert!((py - 200.0).abs() <= 8.0, "panel top at point y=200, got {py}");
+    assert!(
+        (px - 300.0).abs() <= 8.0,
+        "panel left at point x=300 (+text padding), got {px}"
+    );
+    assert!(
+        (py - 200.0).abs() <= 8.0,
+        "panel top at point y=200, got {py}"
+    );
 }
 
 /// 关闭态:面板内容不可见(open=false → overlay 不产出)。
@@ -859,12 +934,19 @@ fn popover_closed_hides_panel() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None, on_right_click: None,
-            };
+        onclick: None,
+        on_right_click: None,
+    };
     let mut ui = simulator(view.into_iced());
     let (_bx, _by, bw, bh) = bounds_of(&mut ui, "CLOSEDBTN");
-    assert!(bw > 0.0 && bh > 0.0, "anchor button must render when closed: {bw}x{bh}");
-    assert!(ui.find("HIDDENPANEL").is_err(), "panel content must NOT be reachable when closed");
+    assert!(
+        bw > 0.0 && bh > 0.0,
+        "anchor button must render when closed: {bw}x{bh}"
+    );
+    assert!(
+        ui.find("HIDDENPANEL").is_err(),
+        "panel content must NOT be reachable when closed"
+    );
 }
 
 // ── PLAN-002 A1: 开合翻转后首帧定位（526 KNOWN-DEBT 🟢 首开横向偏左）─────
@@ -898,7 +980,8 @@ fn dock_menu_popover_view(open: bool) -> View<()> {
             spacing: 0,
             padding: 0,
             style: Some(Style::parse("w-36 gap-1").ok().unwrap()),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }),
         placement: PopoverPlacement::Top,
         open,
@@ -909,7 +992,8 @@ fn dock_menu_popover_view(open: bool) -> View<()> {
         spacing: 0,
         padding: 0,
         style: None,
-        onclick: None, on_right_click: None,
+        onclick: None,
+        on_right_click: None,
     }
 }
 
@@ -934,7 +1018,8 @@ fn dock_swap_popover_view(open: bool) -> View<()> {
         spacing: 0,
         padding: 0,
         style: Some(Style::parse("w-36 gap-1").ok().unwrap()),
-        onclick: None, on_right_click: None,
+        onclick: None,
+        on_right_click: None,
     };
     let popover = View::Popover {
         anchor: PopoverAnchor::Widget(Box::new(View::Button {
@@ -955,7 +1040,8 @@ fn dock_swap_popover_view(open: bool) -> View<()> {
         spacing: 0,
         padding: 0,
         style: None,
-        onclick: None, on_right_click: None,
+        onclick: None,
+        on_right_click: None,
     }
 }
 
@@ -969,9 +1055,12 @@ fn popover_first_open_after_content_swap_matches_second_open() {
     use iced_test::renderer::Renderer;
     use iced_test::runtime::user_interface::Cache;
 
-    let mut renderer =
-        block_on(Renderer::new(Font::with_name("Fira Sans"), Pixels(16.0), None))
-            .expect("headless renderer");
+    let mut renderer = block_on(Renderer::new(
+        Font::with_name("Fira Sans"),
+        Pixels(16.0),
+        None,
+    ))
+    .expect("headless renderer");
 
     let (cache, _anchor, _none) = flip_frame(
         dock_swap_popover_view(false).into_iced(),
@@ -1046,7 +1135,12 @@ fn flip_frame(
         &mut iced_test::core::clipboard::Null,
         &mut Vec::new(),
     );
-    let grab = |ui: &mut iced_test::runtime::UserInterface<'_, (), iced::Theme, iced_test::renderer::Renderer>,
+    let grab = |ui: &mut iced_test::runtime::UserInterface<
+        '_,
+        (),
+        iced::Theme,
+        iced_test::renderer::Renderer,
+    >,
                 needle: &str,
                 renderer: &iced_test::renderer::Renderer|
      -> (f32, f32, f32, f32) {
@@ -1076,9 +1170,12 @@ fn popover_first_open_after_flip_matches_second_open() {
     use iced_test::renderer::Renderer;
     use iced_test::runtime::user_interface::Cache;
 
-    let mut renderer =
-        block_on(Renderer::new(Font::with_name("Fira Sans"), Pixels(16.0), None))
-            .expect("headless renderer");
+    let mut renderer = block_on(Renderer::new(
+        Font::with_name("Fira Sans"),
+        Pixels(16.0),
+        None,
+    ))
+    .expect("headless renderer");
 
     // 帧1：开机后曾处于关闭态（锚可见，面板内容树建立但未测量）。
     let (cache, _anchor, _none) = flip_frame(
@@ -1174,7 +1271,8 @@ fn popover_semantics_view() -> View<PopMsg> {
                 spacing: 0,
                 padding: 0,
                 style: None,
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }),
             placement: PopoverPlacement::BottomStart,
             open: true,
@@ -1183,8 +1281,9 @@ fn popover_semantics_view() -> View<PopMsg> {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None, on_right_click: None,
-            }
+        onclick: None,
+        on_right_click: None,
+    }
 }
 
 #[test]
@@ -1192,8 +1291,14 @@ fn popover_panel_item_click_publishes_item() {
     let mut ui = simulator(popover_semantics_view().into_iced());
     ui.click("PANELITEM").expect("panel item clickable");
     let msgs: Vec<PopMsg> = ui.into_messages().collect();
-    assert!(msgs.contains(&PopMsg::Item), "panel item message must publish: {msgs:?}");
-    assert!(!msgs.contains(&PopMsg::Dismiss), "in-panel click must not dismiss: {msgs:?}");
+    assert!(
+        msgs.contains(&PopMsg::Item),
+        "panel item message must publish: {msgs:?}"
+    );
+    assert!(
+        !msgs.contains(&PopMsg::Dismiss),
+        "in-panel click must not dismiss: {msgs:?}"
+    );
 }
 
 #[test]
@@ -1203,9 +1308,18 @@ fn popover_outside_click_dismisses() {
     ui.point_at(iced::Point::new(900.0, 700.0));
     let _ = ui.simulate(iced_test::simulator::click());
     let msgs: Vec<PopMsg> = ui.into_messages().collect();
-    assert!(msgs.contains(&PopMsg::Dismiss), "outside click must publish dismiss: {msgs:?}");
-    assert!(!msgs.contains(&PopMsg::Item), "no item message on outside click: {msgs:?}");
-    assert!(!msgs.contains(&PopMsg::Trig), "no trigger leak on outside click: {msgs:?}");
+    assert!(
+        msgs.contains(&PopMsg::Dismiss),
+        "outside click must publish dismiss: {msgs:?}"
+    );
+    assert!(
+        !msgs.contains(&PopMsg::Item),
+        "no item message on outside click: {msgs:?}"
+    );
+    assert!(
+        !msgs.contains(&PopMsg::Trig),
+        "no trigger leak on outside click: {msgs:?}"
+    );
 }
 
 #[test]
@@ -1225,9 +1339,16 @@ fn popover_escape_dismisses() {
     let status = ui.tap_key(iced::keyboard::Key::Named(
         iced::keyboard::key::Named::Escape,
     ));
-    assert_eq!(status, iced::event::Status::Captured, "Esc must be captured by the popover");
+    assert_eq!(
+        status,
+        iced::event::Status::Captured,
+        "Esc must be captured by the popover"
+    );
     let msgs: Vec<PopMsg> = ui.into_messages().collect();
-    assert!(msgs.contains(&PopMsg::Dismiss), "Esc must publish dismiss: {msgs:?}");
+    assert!(
+        msgs.contains(&PopMsg::Dismiss),
+        "Esc must publish dismiss: {msgs:?}"
+    );
 }
 
 // ── PLAN-533 T2: Modal 形态断言（居中/遮罩整吞/ESC）──────────────────────
@@ -1255,7 +1376,8 @@ fn popover_modal_places_panel_centered() {
                 height: None,
                 center_x: false,
                 center_y: false,
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
                 style: None,
             }),
             placement: PopoverPlacement::Modal,
@@ -1265,11 +1387,15 @@ fn popover_modal_places_panel_centered() {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None, on_right_click: None,
-            };
+        onclick: None,
+        on_right_click: None,
+    };
     let mut ui = simulator(view.into_iced());
     let (px, py, pw, ph) = bounds_of(&mut ui, "MODALBODY");
-    assert!(pw > 0.0 && ph > 0.0, "modal panel body must be visible: {pw}x{ph}");
+    assert!(
+        pw > 0.0 && ph > 0.0,
+        "modal panel body must be visible: {pw}x{ph}"
+    );
     // 面板宽 200、文字贴容器左缘：面板左缘 ≈ 512 - 100 = 412。
     assert!(
         (px - 312.0).abs() <= 110.0,
@@ -1281,7 +1407,10 @@ fn popover_modal_places_panel_centered() {
         "modal panel must center vertically in 768 viewport: y {py}"
     );
     // 反证 anchored 语义：面板顶不在锚（高 28px 的按钮）正下方。
-    assert!(py > 60.0, "modal panel must NOT anchor under the trigger: y {py}");
+    assert!(
+        py > 60.0,
+        "modal panel must NOT anchor under the trigger: y {py}"
+    );
 }
 
 /// Modal 外点：dismiss 发布且事件被整吞（Captured）——遮罩语义，
@@ -1297,8 +1426,14 @@ fn popover_modal_outside_click_captures() {
         "modal outside click must be captured (scrim swallows it): {statuses:?}"
     );
     let msgs: Vec<PopMsg> = ui.into_messages().collect();
-    assert!(msgs.contains(&PopMsg::Dismiss), "modal outside click must publish dismiss: {msgs:?}");
-    assert!(!msgs.contains(&PopMsg::Trig), "no trigger leak through scrim: {msgs:?}");
+    assert!(
+        msgs.contains(&PopMsg::Dismiss),
+        "modal outside click must publish dismiss: {msgs:?}"
+    );
+    assert!(
+        !msgs.contains(&PopMsg::Trig),
+        "no trigger leak through scrim: {msgs:?}"
+    );
 }
 
 /// Modal Esc：dismiss 发布并捕获（关闭路径之一，T6 的事件回流源头）。
@@ -1308,9 +1443,16 @@ fn popover_modal_escape_dismisses_and_captures() {
     let status = ui.tap_key(iced::keyboard::Key::Named(
         iced::keyboard::key::Named::Escape,
     ));
-    assert_eq!(status, iced::event::Status::Captured, "modal Esc must be captured");
+    assert_eq!(
+        status,
+        iced::event::Status::Captured,
+        "modal Esc must be captured"
+    );
     let msgs: Vec<PopMsg> = ui.into_messages().collect();
-    assert!(msgs.contains(&PopMsg::Dismiss), "modal Esc must publish dismiss: {msgs:?}");
+    assert!(
+        msgs.contains(&PopMsg::Dismiss),
+        "modal Esc must publish dismiss: {msgs:?}"
+    );
 }
 
 /// Modal 面板内点击不受遮罩影响：项消息正常发布。
@@ -1319,8 +1461,14 @@ fn popover_modal_panel_item_click_publishes_item() {
     let mut ui = simulator(popover_modal_view().into_iced());
     ui.click("PANELITEM").expect("modal panel item clickable");
     let msgs: Vec<PopMsg> = ui.into_messages().collect();
-    assert!(msgs.contains(&PopMsg::Item), "modal panel item must publish: {msgs:?}");
-    assert!(!msgs.contains(&PopMsg::Dismiss), "in-panel click must not dismiss: {msgs:?}");
+    assert!(
+        msgs.contains(&PopMsg::Item),
+        "modal panel item must publish: {msgs:?}"
+    );
+    assert!(
+        !msgs.contains(&PopMsg::Dismiss),
+        "in-panel click must not dismiss: {msgs:?}"
+    );
 }
 
 /// Modal inside a clipped host (virtual-window client / scrollable) must
@@ -1408,9 +1556,18 @@ fn popover_modal_empty_anchor_places_panel_centered() {
     };
     let mut ui = simulator(view.into_iced());
     let (px, py, pw, ph) = bounds_of(&mut ui, "EMPTYMODAL");
-    assert!(pw > 0.0 && ph > 0.0, "empty-anchor modal panel must be visible: {pw}x{ph}");
-    assert!((px - 312.0).abs() <= 110.0, "empty-anchor modal must center horizontally: x {px}");
-    assert!((py - 384.0).abs() <= 40.0, "empty-anchor modal must center vertically: y {py}");
+    assert!(
+        pw > 0.0 && ph > 0.0,
+        "empty-anchor modal panel must be visible: {pw}x{ph}"
+    );
+    assert!(
+        (px - 312.0).abs() <= 110.0,
+        "empty-anchor modal must center horizontally: x {px}"
+    );
+    assert!(
+        (py - 384.0).abs() <= 40.0,
+        "empty-anchor modal must center vertically: y {py}"
+    );
 }
 
 /// Modal 语义视图：与 popover_semantics_view 同构，仅 placement 换 Modal。
@@ -1438,7 +1595,8 @@ fn popover_modal_view() -> View<PopMsg> {
                 spacing: 0,
                 padding: 0,
                 style: None,
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }),
             placement: PopoverPlacement::Modal,
             open: true,
@@ -1447,8 +1605,9 @@ fn popover_modal_view() -> View<PopMsg> {
         spacing: 0,
         padding: 0,
         style: None,
-                onclick: None, on_right_click: None,
-            }
+        onclick: None,
+        on_right_click: None,
+    }
 }
 
 // ── PLAN-534 T3: Edge 贴边族几何断言（sheet/drawer 底座）──────────────────
@@ -1462,8 +1621,9 @@ fn edge_popover_ui(
     placement: PopoverPlacement,
 ) -> iced_test::Simulator<'static, PopMsg, iced::Theme, iced::Renderer> {
     use crate::ui::iced::popover::Popover as PopoverWidget;
-    let anchor: iced::Element<'static, PopMsg> =
-        iced::widget::button("TRIGBTN").on_press(PopMsg::Trig).into();
+    let anchor: iced::Element<'static, PopMsg> = iced::widget::button("TRIGBTN")
+        .on_press(PopMsg::Trig)
+        .into();
     let content: iced::Element<'static, PopMsg> = iced::widget::text("EDGEPANEL").into();
     let pop = PopoverWidget::new(anchor, content)
         .placement(placement)
@@ -1475,7 +1635,12 @@ fn edge_popover_ui(
 
 /// 面板矩形内、内容之外的点击必被捕获（面板覆盖到该点 = 全高/全宽证据），
 /// 且不发布 dismiss。
-fn assert_panel_hit(ui: &mut iced_test::Simulator<'_, PopMsg, iced::Theme, iced::Renderer>, x: f32, y: f32, what: &str) {
+fn assert_panel_hit(
+    ui: &mut iced_test::Simulator<'_, PopMsg, iced::Theme, iced::Renderer>,
+    x: f32,
+    y: f32,
+    what: &str,
+) {
     ui.point_at(iced::Point::new(x, y));
     let statuses = ui.simulate(iced_test::simulator::click());
     assert!(
@@ -1508,8 +1673,14 @@ fn assert_outside_passes_through(
 fn popover_edge_left_snaps_and_spans_full_height() {
     let mut ui = edge_popover_ui(PopoverPlacement::EdgeLeft);
     let (tx, ty, tw, _th) = bounds_of(&mut ui, "EDGEPANEL");
-    assert!(tx <= 1.0, "EdgeLeft must snap to viewport left edge: x {tx}");
-    assert!(ty <= 1.0, "EdgeLeft panel must start at viewport top: y {ty}");
+    assert!(
+        tx <= 1.0,
+        "EdgeLeft must snap to viewport left edge: x {tx}"
+    );
+    assert!(
+        ty <= 1.0,
+        "EdgeLeft panel must start at viewport top: y {ty}"
+    );
     assert_panel_hit(&mut ui, tx + tw / 2.0, 700.0, "EdgeLeft full-height");
     assert_outside_passes_through(ui, 512.0, 700.0, "EdgeLeft no-scrim");
 }
@@ -1522,7 +1693,10 @@ fn popover_edge_right_snaps_and_spans_full_height() {
         (tx + tw - 1024.0).abs() <= 1.0,
         "EdgeRight must snap to viewport right edge (anchor is top-left, no flip): x+w {tx}+{tw}"
     );
-    assert!(ty <= 1.0, "EdgeRight panel must start at viewport top: y {ty}");
+    assert!(
+        ty <= 1.0,
+        "EdgeRight panel must start at viewport top: y {ty}"
+    );
     assert_panel_hit(&mut ui, tx + tw / 2.0, 700.0, "EdgeRight full-height");
     assert_outside_passes_through(ui, 512.0, 700.0, "EdgeRight no-scrim");
 }
@@ -1531,7 +1705,10 @@ fn popover_edge_right_snaps_and_spans_full_height() {
 fn popover_edge_top_snaps_and_spans_full_width() {
     let mut ui = edge_popover_ui(PopoverPlacement::EdgeTop);
     let (tx, ty, _tw, th) = bounds_of(&mut ui, "EDGEPANEL");
-    assert!(tx <= 1.0, "EdgeTop panel must start at viewport left: x {tx}");
+    assert!(
+        tx <= 1.0,
+        "EdgeTop panel must start at viewport left: x {tx}"
+    );
     assert!(ty <= 1.0, "EdgeTop must snap to viewport top edge: y {ty}");
     // 内容右缘之外、内容高度带内的点击 → 全宽证据。
     assert_panel_hit(&mut ui, 512.0, ty + th / 2.0, "EdgeTop full-width");
@@ -1542,7 +1719,10 @@ fn popover_edge_top_snaps_and_spans_full_width() {
 fn popover_edge_bottom_snaps_and_spans_full_width() {
     let mut ui = edge_popover_ui(PopoverPlacement::EdgeBottom);
     let (tx, ty, _tw, th) = bounds_of(&mut ui, "EDGEPANEL");
-    assert!(tx <= 1.0, "EdgeBottom panel must start at viewport left: x {tx}");
+    assert!(
+        tx <= 1.0,
+        "EdgeBottom panel must start at viewport left: x {tx}"
+    );
     assert!(
         (ty + th - 768.0).abs() <= 1.0,
         "EdgeBottom must snap to viewport bottom edge (anchor is top-left, no flip): y+h {ty}+{th}"
@@ -1579,11 +1759,13 @@ fn desktop_surface_z_slot_window_covers_icons() {
     // 会话 wm_add_win 落（字段全、与实机同源）。
     let mut ds = crate::ui::session::DesktopSession::__test_session();
     ds.open_desktop(iced::window::Id::unique());
-    let app = ds.allocate_app(crate::build_dynamic_component(
-        "widget T3Stub {\n    model { var n int = 0 }\n    view { text \"WINCLIENT\" }\n}\n",
-        None,
-    )
-    .unwrap());
+    let app = ds.allocate_app(
+        crate::build_dynamic_component(
+            "widget T3Stub {\n    model { var n int = 0 }\n    view { text \"WINCLIENT\" }\n}\n",
+            None,
+        )
+        .unwrap(),
+    );
     let wid = ds.wm_add_win(
         app,
         "T3W".to_string(),
@@ -1600,8 +1782,10 @@ fn desktop_surface_z_slot_window_covers_icons() {
             .map(|_| ());
 
     // Stack push 序 = view() 装配序（surface 先于虚拟窗 = 底序）。
-    let stack: iced::Element<'static, ()> =
-        iced::widget::Stack::new().push(surface_el).push(win_el).into();
+    let stack: iced::Element<'static, ()> = iced::widget::Stack::new()
+        .push(surface_el)
+        .push(win_el)
+        .into();
     let mut ui = simulator(stack);
     let (ix, iy, iw, ih) = bounds_of(&mut ui, "011-calculator");
     assert!(iw > 0.0 && ih > 0.0, "图标 label 可见: {iw}x{ih}");
@@ -1740,7 +1924,9 @@ fn t20_drive(defer_raise: bool) -> (Vec<&'static str>, Vec<usize>, Vec<usize>) {
     {
         let mut ui = UserInterface::build(t20_view(&wm), bounds, cache, &mut renderer);
         ui.update(
-            &[Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))],
+            &[Event::Mouse(mouse::Event::ButtonPressed(
+                mouse::Button::Left,
+            ))],
             mouse::Cursor::Available(over_hit1),
             &mut renderer,
             &mut Null,
@@ -1762,7 +1948,9 @@ fn t20_drive(defer_raise: bool) -> (Vec<&'static str>, Vec<usize>, Vec<usize>) {
     {
         let mut ui = UserInterface::build(t20_view(&wm), bounds, cache, &mut renderer);
         ui.update(
-            &[Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))],
+            &[Event::Mouse(mouse::Event::ButtonReleased(
+                mouse::Button::Left,
+            ))],
             mouse::Cursor::Available(over_hit1),
             &mut renderer,
             &mut Null,
@@ -1782,7 +1970,11 @@ fn t20_drive(defer_raise: bool) -> (Vec<&'static str>, Vec<usize>, Vec<usize>) {
 #[test]
 fn t20_naive_raise_on_press_loses_first_click() {
     let (clicks, z_after_press, _) = t20_drive(false);
-    assert_eq!(z_after_press, vec![0, 1], "修复前语义：press 即置顶重排（win1 顶）");
+    assert_eq!(
+        z_after_press,
+        vec![0, 1],
+        "修复前语义：press 即置顶重排（win1 顶）"
+    );
     assert!(
         clicks.is_empty(),
         "bug 复现：press→release 之间重排层序必须吞掉首击: {clicks:?}"
@@ -1826,7 +2018,10 @@ fn plan045_table_fixed_col_widths_layout() {
     let (bx2, _by2, _bw2, _bh2) = bounds_of(&mut ui, "bbb");
     assert!((ax - 16.0).abs() < 0.5, "col0 文本起于左 padding: {ax}");
     assert!((bx - 224.0).abs() < 0.5, "col1 文本起于 200+8+16: {bx}");
-    assert!((ax2 - ax).abs() < 0.5 && (bx2 - bx).abs() < 0.5, "体列与表头列同源");
+    assert!(
+        (ax2 - ax).abs() < 0.5 && (bx2 - bx).abs() < 0.5,
+        "体列与表头列同源"
+    );
     assert!(ay2 > ay + 4.0 && ay > 0.0, "两行纵向分离: {ay} vs {ay2}");
 }
 
@@ -1881,7 +2076,9 @@ fn plan045_table_resize_drag_chain_publishes_on_release() {
     // 按下 + 拖 +50 → 临时宽 250（尚未发布）。
     ui.simulate([
         Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
-        Event::Mouse(mouse::Event::CursorMoved { position: Point::new(250.0, 8.0) }),
+        Event::Mouse(mouse::Event::CursorMoved {
+            position: Point::new(250.0, 8.0),
+        }),
     ]);
     let (_, _, _, _) = (0.0f32, 0.0, 0.0, 0.0);
     // 临时宽实时进布局：col1 起点从 200+8+16=224 移到 250+8+16=274。
@@ -1891,7 +2088,9 @@ fn plan045_table_resize_drag_chain_publishes_on_release() {
         "拖拽中临时宽应实时生效（BBB 起点≈274，实测 {bx}）"
     );
     // 松手 → 落定消息（col 0, width 250）。
-    ui.simulate([Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))]);
+    ui.simulate([Event::Mouse(mouse::Event::ButtonReleased(
+        mouse::Button::Left,
+    ))]);
     let msgs: Vec<Plan045ResizeMsg> = ui.into_messages().collect();
     assert_eq!(msgs, vec![Plan045ResizeMsg::Resized(0, 250.0)]);
 }
@@ -1908,8 +2107,8 @@ fn layout_hover_flag_tracks_cursor_over() {
     use std::sync::atomic::Ordering;
 
     let style = Style::parse("w-32 h-8 bg-transparent hover:bg-primary/10").unwrap();
-    let flag = crate::ui::iced::renderer::layout_hover_flag(Some(&style))
-        .expect("hover: 类应构造标志");
+    let flag =
+        crate::ui::iced::renderer::layout_hover_flag(Some(&style)).expect("hover: 类应构造标志");
     let child: iced::Element<'static, ()> = iced::widget::text("HOVERTARGET").into();
     let el = crate::ui::iced::renderer::build_column(
         vec![child],
@@ -1924,17 +2123,23 @@ fn layout_hover_flag_tracks_cursor_over() {
 
     // 界外：标志保持 false。
     ui.point_at(Point::new(500.0, 500.0));
-    ui.simulate([Event::Mouse(mouse::Event::CursorMoved { position: Point::new(500.0, 500.0) })]);
+    ui.simulate([Event::Mouse(mouse::Event::CursorMoved {
+        position: Point::new(500.0, 500.0),
+    })]);
     assert!(!flag.load(Ordering::Relaxed), "界外不应置位");
 
     // 进入 bounds（w-32 h-8 → 左上角内 4,4）：置位。
     ui.point_at(Point::new(4.0, 4.0));
-    ui.simulate([Event::Mouse(mouse::Event::CursorMoved { position: Point::new(4.0, 4.0) })]);
+    ui.simulate([Event::Mouse(mouse::Event::CursorMoved {
+        position: Point::new(4.0, 4.0),
+    })]);
     assert!(flag.load(Ordering::Relaxed), "游标进入 bounds 应置位");
 
     // 离开：清位。
     ui.point_at(Point::new(500.0, 500.0));
-    ui.simulate([Event::Mouse(mouse::Event::CursorMoved { position: Point::new(500.0, 500.0) })]);
+    ui.simulate([Event::Mouse(mouse::Event::CursorMoved {
+        position: Point::new(500.0, 500.0),
+    })]);
     assert!(!flag.load(Ordering::Relaxed), "游标离开应清位");
 }
 
@@ -1950,7 +2155,9 @@ fn plan045_table_resize_drag_clamps_to_min_width() {
     ui.point_at(Point::new(200.0, 8.0));
     ui.simulate([
         Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
-        Event::Mouse(mouse::Event::CursorMoved { position: Point::new(-500.0, 8.0) }),
+        Event::Mouse(mouse::Event::CursorMoved {
+            position: Point::new(-500.0, 8.0),
+        }),
         Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
     ]);
     let msgs: Vec<Plan045ResizeMsg> = ui.into_messages().collect();
@@ -1971,7 +2178,9 @@ fn plan045_table_resize_out_of_band_press_is_inert() {
     ui.point_at(Point::new(100.0, 8.0));
     ui.simulate([
         Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
-        Event::Mouse(mouse::Event::CursorMoved { position: Point::new(150.0, 8.0) }),
+        Event::Mouse(mouse::Event::CursorMoved {
+            position: Point::new(150.0, 8.0),
+        }),
         Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
     ]);
     let msgs: Vec<Plan045ResizeMsg> = ui.into_messages().collect();
@@ -1992,7 +2201,9 @@ fn plan045_table_resize_body_row_press_is_inert() {
     ui.point_at(Point::new(200.0, 60.0));
     ui.simulate([
         Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
-        Event::Mouse(mouse::Event::CursorMoved { position: Point::new(250.0, 60.0) }),
+        Event::Mouse(mouse::Event::CursorMoved {
+            position: Point::new(250.0, 60.0),
+        }),
         Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
     ]);
     let msgs: Vec<Plan045ResizeMsg> = ui.into_messages().collect();
@@ -2009,15 +2220,21 @@ fn n6d_card_view(mouse_wrap_scrim: bool, guard_wrap_card: bool) -> View<()> {
         spacing: 0,
         padding: 0,
         style: Style::parse("w-full max-w-xl bg-card").ok(),
-        onclick: None, on_right_click: None,
+        onclick: None,
+        on_right_click: None,
     };
     let guard = |child: View<()>| {
         if guard_wrap_card {
             View::MouseArea {
                 content: Box::new(child),
-                on_enter: None, on_exit: None, on_double_click: None,
-                on_click: Some(()), on_context_menu: None, on_release: None,
-                on_move: None, logical_extent: None,
+                on_enter: None,
+                on_exit: None,
+                on_double_click: None,
+                on_click: Some(()),
+                on_context_menu: None,
+                on_release: None,
+                on_move: None,
+                logical_extent: None,
                 // N6d 修复形态：守卫容器与卡片同 footprint（宽度归守卫）。
                 style: Style::parse("w-full max-w-xl").ok(),
             }
@@ -2029,23 +2246,32 @@ fn n6d_card_view(mouse_wrap_scrim: bool, guard_wrap_card: bool) -> View<()> {
         children: vec![
             View::Column {
                 children: vec![styled_view("w-full h-24")],
-                spacing: 0, padding: 0,
+                spacing: 0,
+                padding: 0,
                 style: Style::parse("h-24 w-full").ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             },
             guard(card()),
         ],
         spacing: 0,
         padding: 0,
         style: Style::parse("w-full h-full flex flex-col items-center").ok(),
-        onclick: None, on_right_click: None,
+        onclick: None,
+        on_right_click: None,
     };
     if mouse_wrap_scrim {
         View::MouseArea {
             content: Box::new(scrim),
-            on_enter: None, on_exit: None, on_double_click: None,
-            on_click: Some(()), on_context_menu: None, on_release: None,
-            on_move: None, logical_extent: None, style: None,
+            on_enter: None,
+            on_exit: None,
+            on_double_click: None,
+            on_click: Some(()),
+            on_context_menu: None,
+            on_release: None,
+            on_move: None,
+            logical_extent: None,
+            style: None,
         }
     } else {
         scrim
@@ -2073,7 +2299,10 @@ fn n6d_card_bounds(
     );
     use iced_test::core::widget::Operation as _;
     let mut op = iced_test::selector::Selector::find("N6D_CARD");
-    ui.operate(renderer, &mut iced_test::core::widget::operation::black_box(&mut op));
+    ui.operate(
+        renderer,
+        &mut iced_test::core::widget::operation::black_box(&mut op),
+    );
     match iced_test::core::widget::operation::Operation::finish(&op) {
         iced_test::core::widget::operation::Outcome::Some(Some(t)) => {
             let b = t.bounds();
@@ -2112,14 +2341,20 @@ fn button_label_line_box_clamped_to_font_size() {
         label: "7".to_string(),
         onclick: (),
         disabled: false,
-        style: crate::ui::style::Style::parse("w-full bg-zinc-700 text-white rounded-lg p-4 text-lg").ok(),
+        style: crate::ui::style::Style::parse(
+            "w-full bg-zinc-700 text-white rounded-lg p-4 text-lg",
+        )
+        .ok(),
         on_right_click: None,
         content: None,
     };
     let mut ui = simulator(view.into_iced());
     let (_x, _y, _w, h) = bounds_of(&mut ui, "7");
     // text-lg = 18px：钳后行盒 ≈ 18px（615 前为 18 × 1.3 = 23.4px）。
-    assert!(h <= 18.0 * 1.1, "label line box must hug glyphs (~18px), got {h}");
+    assert!(
+        h <= 18.0 * 1.1,
+        "label line box must hug glyphs (~18px), got {h}"
+    );
     assert!(h >= 10.0, "label must still render, got {h}");
 }
 
@@ -2172,7 +2407,10 @@ fn plan619_axis_padding_overrides_uniform() {
         ("R2_UNIFORM", "p-2", 8.0, 8.0),
         ("R2_SIDE", "p-2 pt-1 pb-3", 8.0, 4.0), // pt-1 = 4px（赢过 p-2 的 8px）
     ] {
-        let view = col(vec![col(vec![styled_view(needle)], style)], "w-80 h-full flex flex-col bg-card");
+        let view = col(
+            vec![col(vec![styled_view(needle)], style)],
+            "w-80 h-full flex flex-col bg-card",
+        );
         let mut ui = simulator(view.into_iced());
         let (x, y, _w, _h) = bounds_of(&mut ui, needle);
         assert_eq!(
@@ -2189,15 +2427,13 @@ fn plan619_axis_padding_overrides_uniform() {
 /// Vue 基准（同链 DOM）：label 文本 24、便签标题 24、label 盒高 32。
 #[test]
 fn plan619_sidebar_chain_insets_match_vue() {
-    let label = || {
-        View::Text {
-            content: "GROUPLABEL".to_string(),
-            style: crate::ui::style::Style::parse(
-                "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium",
-            )
-            .ok(),
-            selectable: false,
-        }
+    let label = || View::Text {
+        content: "GROUPLABEL".to_string(),
+        style: crate::ui::style::Style::parse(
+            "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium",
+        )
+        .ok(),
+        selectable: false,
     };
     let note_row = |needle: &str| {
         // 标题自带 `w-full`（015-notes sidebar.at:47 的 `text-sm truncate w-full`）
@@ -2241,7 +2477,7 @@ fn plan619_sidebar_chain_insets_match_vue() {
             .ok(),
             auto_scroll: false,
             offset: None,
-on_scroll: None,
+            on_scroll: None,
             axes: crate::ui::scroll::ScrollAxes::Y,
             scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
             controller: None,
@@ -2345,9 +2581,7 @@ fn f2_sidebar_scroll_probe() {
     };
     // 真实形态：15 长项（含描述双行 ≈80px/项）+ 组，总高远超短根。
     let scroll_items: Vec<View<()>> = (0..15)
-        .map(|i| {
-            nav_btn(&format!("NAV{} LONG LABEL DESCRIPTION", i * 57 % 100))
-        })
+        .map(|i| nav_btn(&format!("NAV{} LONG LABEL DESCRIPTION", i * 57 % 100)))
         .collect();
     let aside: View<()> = View::Column {
         children: vec![
@@ -2388,16 +2622,20 @@ fn f2_sidebar_scroll_probe() {
                             children: scroll_items,
                             spacing: 0,
                             padding: 0,
-                            style: Style::parse("nav-list flex-1 overflow-auto px-2 pt-2 flex flex-col").ok(),
+                            style: Style::parse(
+                                "nav-list flex-1 overflow-auto px-2 pt-2 flex flex-col",
+                            )
+                            .ok(),
                             onclick: None,
                             on_right_click: None,
                         }),
                         width: None,
                         height: None,
-                        style: Style::parse("flex min-h-0 flex-1 flex-col gap-2 overflow-auto").ok(),
+                        style: Style::parse("flex min-h-0 flex-1 flex-col gap-2 overflow-auto")
+                            .ok(),
                         auto_scroll: false,
                         offset: None,
-on_scroll: None,
+                        on_scroll: None,
                         axes: crate::ui::scroll::ScrollAxes::Y,
                         scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
                         controller: None,
@@ -2417,7 +2655,10 @@ on_scroll: None,
         ],
         spacing: 0,
         padding: 0,
-        style: Style::parse("flex flex-col w-[280px] h-full shrink-0 bg-card border-r border-border").ok(),
+        style: Style::parse(
+            "flex flex-col w-[280px] h-full shrink-0 bg-card border-r border-border",
+        )
+        .ok(),
         onclick: None,
         on_right_click: None,
     };
@@ -2444,7 +2685,10 @@ on_scroll: None,
     assert!(dy > hy && dy < 150.0, "NAV0 应贴顶可见（y={dy}）");
     // 模拟器根 = 1024×768：PICKER 尾件应贴根底（≤768）——provider 被
     // h-full 有界（无界形态 = 内容尾 ~1100 超根）。
-    assert!(py <= 760.0, "PICKER 尾件应在根内（y={py}）——provider 未有界");
+    assert!(
+        py <= 760.0,
+        "PICKER 尾件应在根内（y={py}）——provider 未有界"
+    );
 }
 
 /// PLAN-625 T-04 复现探针：ui-gallery 侧栏链（aside `w-72 …` **无显式高度类**
@@ -2554,7 +2798,10 @@ on_scroll: None,
     let mut ui = simulator(root_with(aside_with("h-full")).into_iced());
     let (x, y, w, h) = bounds_of(&mut ui, "全部");
     eprintln!("[p625][h-full] pill 全部 bounds=({x},{y},{w},{h})");
-    assert!(w > 0.0 && h > 0.0, "h-full 形态 pill 必须可见（实测 {w}x{h}）");
+    assert!(
+        w > 0.0 && h > 0.0,
+        "h-full 形态 pill 必须可见（实测 {w}x{h}）"
+    );
 
     // 缺陷形态（无高度类）钉住渲染器缺口：provider h-full 塌缩 → 0×0
     // （Row 交叉轴无 CSS stretch 语义;若未来渲染器补 stretch 语义,本断言
@@ -2562,7 +2809,11 @@ on_scroll: None,
     let mut ui = simulator(root_with(aside_with("")).into_iced());
     let (x2, _y2, w2, h2) = bounds_of(&mut ui, "全部");
     eprintln!("[p625][no-height] pill 全部 bounds=({x2},,{w2}x{h2})");
-    assert_eq!((w2, h2), (0.0, 0.0), "无高度类形态应保持 0×0（渲染器缺口哨兵）");
+    assert_eq!(
+        (w2, h2),
+        (0.0, 0.0),
+        "无高度类形态应保持 0×0（渲染器缺口哨兵）"
+    );
 }
 
 /// PLAN-021 T-05 回归钉(线 B 根修):iced 0.14 mouse_area layout 直通子件,
@@ -2642,13 +2893,22 @@ fn p642_t11_008_feat_rows_visible_in_distributed_cards() {
     fn feat_row(text: String) -> View<()> {
         View::Row {
             children: vec![
-                View::Text { content: "✓".to_string(), style: Style::parse("text-primary font-bold mr-2.5 text-sm").ok(), selectable: false },
-                View::Text { content: text, style: Style::parse("text-sm text-foreground").ok(), selectable: false },
+                View::Text {
+                    content: "✓".to_string(),
+                    style: Style::parse("text-primary font-bold mr-2.5 text-sm").ok(),
+                    selectable: false,
+                },
+                View::Text {
+                    content: text,
+                    style: Style::parse("text-sm text-foreground").ok(),
+                    selectable: false,
+                },
             ],
             spacing: 0,
             padding: 0,
             style: Style::parse("items-center").ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
     fn card(idx: usize, feat_style: &str, card_style: &str) -> View<()> {
@@ -2657,20 +2917,44 @@ fn p642_t11_008_feat_rows_visible_in_distributed_cards() {
             spacing: 0,
             padding: 0,
             style: Style::parse(feat_style).ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         View::Column {
             children: vec![
-                View::Text { content: format!("name{idx}"), style: Style::parse("text-lg font-bold text-foreground").ok(), selectable: false },
-                View::Text { content: format!("sub{idx}"), style: Style::parse("text-xs text-muted-foreground").ok(), selectable: false },
-                View::Text { content: format!("price{idx}"), style: Style::parse("text-4xl font-extrabold text-foreground mt-2").ok(), selectable: false },
+                View::Text {
+                    content: format!("name{idx}"),
+                    style: Style::parse("text-lg font-bold text-foreground").ok(),
+                    selectable: false,
+                },
+                View::Text {
+                    content: format!("sub{idx}"),
+                    style: Style::parse("text-xs text-muted-foreground").ok(),
+                    selectable: false,
+                },
+                View::Text {
+                    content: format!("price{idx}"),
+                    style: Style::parse("text-4xl font-extrabold text-foreground mt-2").ok(),
+                    selectable: false,
+                },
                 feat_list,
-                View::Button { label: format!("buy{idx}"), onclick: (), style: Style::parse("w-full py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold").ok(), on_right_click: None, content: None, disabled: false },
+                View::Button {
+                    label: format!("buy{idx}"),
+                    onclick: (),
+                    style: Style::parse(
+                        "w-full py-2.5 bg-primary text-primary-foreground rounded-xl font-semibold",
+                    )
+                    .ok(),
+                    on_right_click: None,
+                    content: None,
+                    disabled: false,
+                },
             ],
             spacing: 0,
             padding: 0,
             style: Style::parse(card_style).ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
     fn root_of(feat_style: &str, card_style: &str) -> View<()> {
@@ -2683,28 +2967,39 @@ fn p642_t11_008_feat_rows_visible_in_distributed_cards() {
             spacing: 0,
             padding: 0,
             style: Style::parse("gap-6 max-w-5xl w-full items-stretch").ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         let content = View::Column {
             children: vec![
-                View::Text { content: "Pricing Plans".to_string(), style: Style::parse("text-3xl font-extrabold text-primary text-center").ok(), selectable: false },
+                View::Text {
+                    content: "Pricing Plans".to_string(),
+                    style: Style::parse("text-3xl font-extrabold text-primary text-center").ok(),
+                    selectable: false,
+                },
                 cards_row,
             ],
             spacing: 0,
             padding: 0,
-            style: Style::parse("w-full flex-1 px-8 py-6 gap-4 items-center justify-center max-w-6xl mx-auto").ok(),
-            onclick: None, on_right_click: None,
+            style: Style::parse(
+                "w-full flex-1 px-8 py-6 gap-4 items-center justify-center max-w-6xl mx-auto",
+            )
+            .ok(),
+            onclick: None,
+            on_right_click: None,
         };
         View::Column {
             children: vec![content],
             spacing: 0,
             padding: 0,
             style: Style::parse("w-full min-h-screen bg-background text-foreground").ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
     let between = "bg-card rounded-2xl border border-border p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg justify-between";
-    let plain = "bg-card rounded-2xl border border-border p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg";
+    let plain =
+        "bg-card rounded-2xl border border-border p-6 flex-1 max-w-[340px] min-w-[260px] shadow-lg";
     // 修复面:distributed 卡片 + flex-1 特性列(margin 变体在案)——18 行全出。
     for (tag, feat_style, card_style) in [
         ("between", "gap-3.5 my-5 flex-1", between),
@@ -2733,7 +3028,8 @@ fn p642_t11_008_feat_rows_visible_in_distributed_cards() {
             let b = bounds_of(&mut ui, &format!("c{idx}f{f}"));
             assert!(
                 b.2 > 0.0 && b.3 > 0.0,
-                "[nobetween] flex-1 特性列必须保持撑满语义（c{idx}f{f} = {:?}）", b
+                "[nobetween] flex-1 特性列必须保持撑满语义（c{idx}f{f} = {:?}）",
+                b
             );
         }
     }
@@ -2747,7 +3043,17 @@ fn p642_t11_008_feat_rows_visible_in_distributed_cards() {
 /// 布局（可滚达）+ 短内容变体垂直居中。
 #[test]
 fn p642_t12_overflow_frame_scrolls_and_centers() {
-    fn build_sim(vmode: &str, rows: usize, w: f32, h: f32) -> iced_test::Simulator<'static, crate::ui::interpreter::DynamicMessage, iced::Theme, iced::Renderer> {
+    fn build_sim(
+        vmode: &str,
+        rows: usize,
+        w: f32,
+        h: f32,
+    ) -> iced_test::Simulator<
+        'static,
+        crate::ui::interpreter::DynamicMessage,
+        iced::Theme,
+        iced::Renderer,
+    > {
         let mut src = String::from("widget Host {
     model { var vmode str = \"desktop\" }
     view {
@@ -2761,19 +3067,25 @@ fn p642_t12_overflow_frame_scrolls_and_centers() {
     }
 }
 ");
-        src.push_str("widget DemoProbe {
+        src.push_str(
+            "widget DemoProbe {
     view {
         col {
             style: \"w-full min-h-screen bg-background text-foreground\"
-");
+",
+        );
         for i in 0..rows {
-            src.push_str(&format!("            text `ROW{i:02}` {{ style: \"h-[24px] w-full\" }}
-"));
+            src.push_str(&format!(
+                "            text `ROW{i:02}` {{ style: \"h-[24px] w-full\" }}
+"
+            ));
         }
-        src.push_str("        }
+        src.push_str(
+            "        }
     }
 }
-");
+",
+        );
         let _ = vmode;
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(src.as_str()).with_session(session);
@@ -2785,7 +3097,8 @@ fn p642_t12_overflow_frame_scrolls_and_centers() {
                 if d.name == "Host" {
                     host_decl = Some(d.clone());
                 } else {
-                    let w = crate::aura::extract::extract_widget_from_decl(d).expect("child extract");
+                    let w =
+                        crate::aura::extract::extract_widget_from_decl(d).expect("child extract");
                     registry.register(w);
                 }
             }
@@ -2794,7 +3107,11 @@ fn p642_t12_overflow_frame_scrolls_and_centers() {
         let widget = crate::aura::extract::extract_widget_from_decl(&decl).expect("extract");
         let comp = crate::ui::dynamic::DynamicComponent::with_registry(&widget, registry).unwrap();
         let (view, _ids, _probe) = comp.view_with_debug_gated(false);
-        iced_test::Simulator::with_size(<iced_test::core::Settings as Default>::default(), (w, h), view.into_iced())
+        iced_test::Simulator::with_size(
+            <iced_test::core::Settings as Default>::default(),
+            (w, h),
+            view.into_iced(),
+        )
     }
     // 长内容(40 行=960 逻辑高 > 300 frame):全部行完整布局(修复前行 13+ 塌缩 0×0)。
     {
@@ -2803,13 +3120,21 @@ fn p642_t12_overflow_frame_scrolls_and_centers() {
             let mut ui = build_sim("desktop", 40, w, h);
             for row in ["ROW00", "ROW12", "ROW20", "ROW39"] {
                 let b = bounds_of(&mut ui, row);
-                assert!(b.3 > 0.0, "[{w}x{h}] {row} 必须完整布局(scroll 兜底防配给塌缩), 实际 {:?}", b);
+                assert!(
+                    b.3 > 0.0,
+                    "[{w}x{h}] {row} 必须完整布局(scroll 兜底防配给塌缩), 实际 {:?}",
+                    b
+                );
             }
         }
         let mut ui = build_sim("desktop", 40, 1024.0, 800.0);
         for row in ["ROW00", "ROW12", "ROW20", "ROW39"] {
             let b = bounds_of(&mut ui, row);
-            assert!(b.3 > 0.0, "[长内容] {row} 必须完整布局(scroll 兜底防配给塌缩), 实际 {:?}", b);
+            assert!(
+                b.3 > 0.0,
+                "[长内容] {row} 必须完整布局(scroll 兜底防配给塌缩), 实际 {:?}",
+                b
+            );
         }
         let r0 = bounds_of(&mut ui, "ROW00");
         let r39 = bounds_of(&mut ui, "ROW39");
@@ -2823,7 +3148,8 @@ fn p642_t12_overflow_frame_scrolls_and_centers() {
         // 300 高 frame,3 行(24+行高≈20×3≈60-72)居中 → 首行 y ≈ (300-72)/2 ≈ 114 ± 40
         assert!(
             r0.1 > 40.0 && r0.1 < 200.0,
-            "[短内容] 内容应被垂直居中(首行 y={:.1},期望 40..200)", r0.1
+            "[短内容] 内容应被垂直居中(首行 y={:.1},期望 40..200)",
+            r0.1
         );
     }
 }
@@ -2839,10 +3165,14 @@ fn p655_real_008_corpus_cards_visible_and_equal_height() {
     let session = crate::session::CompilerSession::ui();
     let mut parser = crate::Parser::from(src.as_str()).with_session(session);
     let ast = parser.parse().expect("parse");
-    let decl = ast.stmts.iter().find_map(|s| match s {
-        crate::ast::Stmt::WidgetDecl(d) => Some(d),
-        _ => None,
-    }).expect("decl");
+    let decl = ast
+        .stmts
+        .iter()
+        .find_map(|s| match s {
+            crate::ast::Stmt::WidgetDecl(d) => Some(d),
+            _ => None,
+        })
+        .expect("decl");
     let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
     let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
     let (view, _ids, _probe) = comp.view_with_debug_gated(false);
@@ -2854,11 +3184,20 @@ fn p655_real_008_corpus_cards_visible_and_equal_height() {
         (1024.0, 720.0),
         view.into_iced(),
     );
-    for probe in ["Pricing Plans", "Single Developer", "$39", "Buy Now", "Figma UI Kit"] {
+    for probe in [
+        "Pricing Plans",
+        "Single Developer",
+        "$39",
+        "Buy Now",
+        "Figma UI Kit",
+    ] {
         match ui.find(probe) {
             Ok(t) => {
                 let b = t.bounds();
-                eprintln!("T12D {probe}: x={:.1} y={:.1} w={:.1} h={:.1}", b.x, b.y, b.width, b.height);
+                eprintln!(
+                    "T12D {probe}: x={:.1} y={:.1} w={:.1} h={:.1}",
+                    b.x, b.y, b.width, b.height
+                );
                 assert!(
                     b.width > 0.0 && b.height > 0.0,
                     "008 卡片文本 {probe} 必须可见(P642-D12 塌缩形态 = 0×0),实测 {:.1}x{:.1}",
@@ -2877,7 +3216,10 @@ fn p655_real_008_corpus_cards_visible_and_equal_height() {
     impl iced_test::selector::Selector for CtaSink {
         type Output = ();
         fn select(&mut self, candidate: Candidate<'_>) -> Option<()> {
-            if let Candidate::Text { content, bounds, .. } = candidate {
+            if let Candidate::Text {
+                content, bounds, ..
+            } = candidate
+            {
                 if content.contains("Buy Now") || content.contains("Contact Us") {
                     self.0.lock().unwrap().push((
                         content.to_string(),
@@ -2896,7 +3238,12 @@ fn p655_real_008_corpus_cards_visible_and_equal_height() {
     let _ = ui.find(CtaSink(store.clone()));
     let ctas = store.lock().unwrap().clone();
     eprintln!("[p655-008] CTA bounds: {ctas:?}");
-    assert_eq!(ctas.len(), 3, "008 必须有三张定价卡的卡底 CTA,实测 {}", ctas.len());
+    assert_eq!(
+        ctas.len(),
+        3,
+        "008 必须有三张定价卡的卡底 CTA,实测 {}",
+        ctas.len()
+    );
     let ys: Vec<f32> = ctas.iter().map(|(_, y, _, _)| *y).collect();
     assert!(
         (ys[0] - ys[1]).abs() < 1.5 && (ys[1] - ys[2]).abs() < 1.5,
@@ -2948,7 +3295,10 @@ fn p655_cards_row() -> View<()> {
     }
 }
 
-fn p655_foot_bounds(ui: &mut iced_test::Simulator<'static, (), iced::Theme, iced::Renderer>, idx: usize) -> (f32, f32, f32, f32) {
+fn p655_foot_bounds(
+    ui: &mut iced_test::Simulator<'static, (), iced::Theme, iced::Renderer>,
+    idx: usize,
+) -> (f32, f32, f32, f32) {
     let t = ui.find(format!("foot{idx}")).expect("foot text not found");
     let b = t.bounds();
     (b.x, b.y, b.width, b.height)
@@ -3068,7 +3418,10 @@ fn p035_taskbar_right_group_right_aligned() {
         label: label.to_string(),
         onclick: (),
         disabled: false,
-        style: Style::parse(&format!("h-11 w-11 px-0 text-4xl rounded-xl bg-transparent {extra}")).ok(),
+        style: Style::parse(&format!(
+            "h-11 w-11 px-0 text-4xl rounded-xl bg-transparent {extra}"
+        ))
+        .ok(),
         on_right_click: None,
         content: None,
     };
@@ -3126,8 +3479,19 @@ fn p035_taskbar_right_group_right_aligned() {
             // 与 spacer 平分主轴 = 右组居中 bug 根因，见 attribution #1）。
             View::Column {
                 children: vec![
-                    View::Text { content: "11:03".into(), style: Style::parse("text-xs text-muted-foreground tabular-nums leading-tight").ok(), selectable: false },
-                    View::Text { content: "9月20日 周日".into(), style: Style::parse("text-[10px] text-muted-foreground leading-tight").ok(), selectable: false },
+                    View::Text {
+                        content: "11:03".into(),
+                        style: Style::parse(
+                            "text-xs text-muted-foreground tabular-nums leading-tight",
+                        )
+                        .ok(),
+                        selectable: false,
+                    },
+                    View::Text {
+                        content: "9月20日 周日".into(),
+                        style: Style::parse("text-[10px] text-muted-foreground leading-tight").ok(),
+                        selectable: false,
+                    },
                 ],
                 spacing: 0,
                 padding: 0,
@@ -3177,11 +3541,16 @@ fn p035_taskbar_right_group_right_aligned() {
         type Output = ();
         fn select(&mut self, candidate: Candidate<'_>) -> Option<()> {
             if let Candidate::Container { bounds, .. } = candidate {
-                self.0.lock().unwrap().push((bounds.x, bounds.y, bounds.width, bounds.height));
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((bounds.x, bounds.y, bounds.width, bounds.height));
             }
             None
         }
-        fn description(&self) -> String { "p035-sink".into() }
+        fn description(&self) -> String {
+            "p035-sink".into()
+        }
     }
     let _ = ui.find(Sink2(store.clone()));
     let mut boxes = store.lock().unwrap().clone();
@@ -3381,7 +3750,10 @@ widget App {
         "[p712-header] title_right={:.1} btn1=x{b1_x:.1} w{b1_w:.1} btn2=x{b2_x:.1} w{b2_w:.1}",
         t_x + 120.0
     );
-    assert!(b1_w > 0.0 && b2_w > 0.0, "头部按钮必须有非零宽度（BTN1 w={b1_w:.1} BTN2 w={b2_w:.1}）");
+    assert!(
+        b1_w > 0.0 && b2_w > 0.0,
+        "头部按钮必须有非零宽度（BTN1 w={b1_w:.1} BTN2 w={b2_w:.1}）"
+    );
     assert!(
         b1_x < 1024.0 && b2_x < 1024.0,
         "头部按钮必须落在窗口内（BTN1 x={b1_x:.1} BTN2 x={b2_x:.1}，窗宽 1024）"
@@ -3542,7 +3914,6 @@ widget App {
     );
 }
 
-
 /// PLAN-712 T-17 第三层探针（用户复验反证：三本书点开内容恒第一本，fetch
 /// 恒 /api/books/1；构建期实参烘焙已洗清——Go(7)/Go(8) 逐实例正确）。剩余
 /// 嫌疑 = **grid 子元素的命中/布局 bounds 塌缩**：三卡 bounds 若重叠/恒卡 1
@@ -3583,9 +3954,7 @@ widget App {
     let (x1, _y1, w1, h1) = bounds_of(&mut ui, "B1");
     let (x2, _y2, w2, _h2) = bounds_of(&mut ui, "B2");
     let (x3, _y3, w3, _h3) = bounds_of(&mut ui, "B3");
-    eprintln!(
-        "[p712-grid] B1=({x1:.1},{w1:.1}) B2=({x2:.1},{w2:.1}) B3=({x3:.1},{w3:.1})"
-    );
+    eprintln!("[p712-grid] B1=({x1:.1},{w1:.1}) B2=({x2:.1},{w2:.1}) B3=({x3:.1},{w3:.1})");
     assert!(w1 > 0.0 && w2 > 0.0 && w3 > 0.0, "三卡宽度必须非零");
     assert!(
         x2 > x1 + 10.0 && x3 > x2 + 10.0,

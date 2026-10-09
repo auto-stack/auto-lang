@@ -26,12 +26,12 @@ mod class;
 mod color;
 mod layout_extract;
 mod parser;
-pub use class::{ObjectFit, GradientDir, RoundedSize, SizeValue, StyleClass};
+pub use crate::design_tokens::recipe;
+pub use crate::design_tokens::recipe::*;
+pub use class::{GradientDir, ObjectFit, RoundedSize, SizeValue, StyleClass};
 pub use color::Color;
 pub use layout_extract::BoxLayout;
 pub use parser::StyleParser;
-pub use crate::design_tokens::recipe;
-pub use crate::design_tokens::recipe::*;
 
 /// PLAN-631 T-01：转换剖析计数面——`Style::parse_reported` 调用数/累计耗时
 /// 的进程级累计器。`P631_PROFILE=1` 时启用（否则单次 relaxed 读，恒零采集
@@ -251,8 +251,9 @@ pub struct Style {
 }
 
 impl Style {
-/// 取指定变体的类列表(按声明序)。
-    pub fn variant_slice(&self, variant: Variant) -> Vec<StyleClass> {        self.variant_classes
+    /// 取指定变体的类列表(按声明序)。
+    pub fn variant_slice(&self, variant: Variant) -> Vec<StyleClass> {
+        self.variant_classes
             .iter()
             .filter(|(v, _)| *v == variant)
             .map(|(_, c)| c.clone())
@@ -372,7 +373,14 @@ impl Style {
                 Err(_) => unmapped.push(token.to_string()),
             }
         }
-        (Self { classes, hover_classes, variant_classes }, unmapped)
+        (
+            Self {
+                classes,
+                hover_classes,
+                variant_classes,
+            },
+            unmapped,
+        )
     }
 
     /// Create an empty style
@@ -394,15 +402,17 @@ impl Style {
         if !has_hidden {
             return false;
         }
-        let has_display = self.classes.iter().any(|c| matches!(
-            c,
-            StyleClass::Flex
-                | StyleClass::Grid
-                | StyleClass::Block
-                | StyleClass::Inline
-                | StyleClass::InlineBlock
-                | StyleClass::InlineFlex
-        ));
+        let has_display = self.classes.iter().any(|c| {
+            matches!(
+                c,
+                StyleClass::Flex
+                    | StyleClass::Grid
+                    | StyleClass::Block
+                    | StyleClass::Inline
+                    | StyleClass::InlineBlock
+                    | StyleClass::InlineFlex
+            )
+        });
         !has_display
     }
 }
@@ -431,12 +441,23 @@ mod tests {
 
     #[test]
     fn test_hover_classes_split_from_base() {
-        let s = Style::parse("h-6 w-6 bg-transparent hover:bg-muted/60 hover:text-foreground")
-            .unwrap();
+        let s =
+            Style::parse("h-6 w-6 bg-transparent hover:bg-muted/60 hover:text-foreground").unwrap();
         assert_eq!(s.classes.len(), 3, "base classes: {:?}", s.classes);
-        assert_eq!(s.hover_classes.len(), 2, "hover classes: {:?}", s.hover_classes);
-        assert!(s.hover_classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))));
-        assert!(s.hover_classes.iter().any(|c| matches!(c, StyleClass::TextColor(_))));
+        assert_eq!(
+            s.hover_classes.len(),
+            2,
+            "hover classes: {:?}",
+            s.hover_classes
+        );
+        assert!(s
+            .hover_classes
+            .iter()
+            .any(|c| matches!(c, StyleClass::BackgroundColor(_))));
+        assert!(s
+            .hover_classes
+            .iter()
+            .any(|c| matches!(c, StyleClass::TextColor(_))));
     }
 
     #[test]
@@ -492,7 +513,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(s.classes.len(), 1, "base: {:?}", s.classes);
-        assert_eq!(s.variant_classes.len(), 4, "variants: {:?}", s.variant_classes);
+        assert_eq!(
+            s.variant_classes.len(),
+            4,
+            "variants: {:?}",
+            s.variant_classes
+        );
         assert!(s.has_variant(super::Variant::Hover));
         assert!(s.has_variant(super::Variant::Focus));
         assert!(s.has_variant(super::Variant::Active));
@@ -505,8 +531,7 @@ mod tests {
 
     #[test]
     fn test_variant_unknown_prefix_reported_unmapped() {
-        let (s, unmapped) =
-            Style::parse_reported("p-4 group-hover:bg-red-500 focus:bg-blue-500");
+        let (s, unmapped) = Style::parse_reported("p-4 group-hover:bg-red-500 focus:bg-blue-500");
         assert_eq!(s.classes.len(), 1);
         assert_eq!(s.variant_classes.len(), 1, "focus 应进变体管道");
         assert_eq!(
@@ -519,13 +544,14 @@ mod tests {
     #[test]
     fn test_variant_hover_legacy_behavior_zero_regression() {
         // 既有 hover 行为零回归:类收集与旧字段完全一致
-        let s = Style::parse("h-6 w-6 bg-transparent hover:bg-muted/60 hover:text-foreground")
-            .unwrap();
+        let s =
+            Style::parse("h-6 w-6 bg-transparent hover:bg-muted/60 hover:text-foreground").unwrap();
         assert_eq!(s.hover_classes.len(), 2);
         assert_eq!(s.variant_slice(super::Variant::Hover).len(), 2);
-        assert!(s.hover_classes.iter().all(|c| s
-            .variant_slice(super::Variant::Hover)
-            .contains(c)));
+        assert!(s
+            .hover_classes
+            .iter()
+            .all(|c| s.variant_slice(super::Variant::Hover).contains(c)));
     }
 
     // ========== Plan 527 T7: responsive 断点 ==========
@@ -555,7 +581,10 @@ mod tests {
         theme::set_window_width(1024.0);
         let s = Style::parse("hidden md:flex xl:grid 2xl:block").unwrap();
         assert!(s.classes.iter().any(|c| matches!(c, StyleClass::Hidden)));
-        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::Flex)), "md@1024 命中");
+        assert!(
+            s.classes.iter().any(|c| matches!(c, StyleClass::Flex)),
+            "md@1024 命中"
+        );
         assert!(
             !s.classes.iter().any(|c| matches!(c, StyleClass::Grid)),
             "xl@1280 不应命中 1024 窗"
@@ -574,9 +603,17 @@ mod tests {
         assert!(!s.is_hidden(), "md@800 命中 → flex 覆盖 hidden");
         // 边界:恰好 768 命中,767.99 不命中
         theme::set_window_width(768.0);
-        assert!(Style::parse("md:flex").unwrap().classes.iter().any(|c| matches!(c, StyleClass::Flex)));
+        assert!(Style::parse("md:flex")
+            .unwrap()
+            .classes
+            .iter()
+            .any(|c| matches!(c, StyleClass::Flex)));
         theme::set_window_width(767.9);
-        assert!(!Style::parse("md:flex").unwrap().classes.iter().any(|c| matches!(c, StyleClass::Flex)));
+        assert!(!Style::parse("md:flex")
+            .unwrap()
+            .classes
+            .iter()
+            .any(|c| matches!(c, StyleClass::Flex)));
         // 还原默认,防污染其他用例
         theme::set_window_width(1024.0);
     }
@@ -597,17 +634,30 @@ mod tests {
         assert!(!s.is_hidden(), "1280 label 面 flex 覆盖 hidden");
         // 宽度级联:lg 命中时后声明的 lg:w-56 覆盖先声明的 w-14
         let widths = |s: &Style| -> Vec<_> {
-            s.classes.iter().filter_map(|c| match c {
-                StyleClass::Width(SizeValue::Fixed(v)) => Some(*v),
-                _ => None,
-            }).collect()
+            s.classes
+                .iter()
+                .filter_map(|c| match c {
+                    StyleClass::Width(SizeValue::Fixed(v)) => Some(*v),
+                    _ => None,
+                })
+                .collect()
         };
         theme::set_window_width(1280.0);
         let s = Style::parse("w-14 items-center lg:w-56").unwrap();
-        assert_eq!(widths(&s).last(), Some(&56), "≥1024 时最终宽度应为 w-56, got {:?}", widths(&s));
+        assert_eq!(
+            widths(&s).last(),
+            Some(&56),
+            "≥1024 时最终宽度应为 w-56, got {:?}",
+            widths(&s)
+        );
         theme::set_window_width(768.0);
         let s = Style::parse("w-14 items-center lg:w-56").unwrap();
-        assert_eq!(widths(&s).last(), Some(&14), "<1024 时最终宽度应为 w-14, got {:?}", widths(&s));
+        assert_eq!(
+            widths(&s).last(),
+            Some(&14),
+            "<1024 时最终宽度应为 w-14, got {:?}",
+            widths(&s)
+        );
         // 还原默认
         theme::set_window_width(1024.0);
     }
@@ -620,23 +670,38 @@ mod tests {
         // dark 态:dark: 类命中进 base(后应用胜出)
         theme::set_dark_mode(true);
         let s = Style::parse("bg-card dark:bg-slate-900").unwrap();
-        let has_slate = s
-            .classes
-            .iter()
-            .any(|c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Slate(_))));
-        assert!(has_slate, "dark 态 dark:bg-slate-900 应进 base: {:?}", s.classes);
-        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Surface))));
+        let has_slate = s.classes.iter().any(|c| {
+            matches!(
+                c,
+                StyleClass::BackgroundColor(crate::ui::style::Color::Slate(_))
+            )
+        });
+        assert!(
+            has_slate,
+            "dark 态 dark:bg-slate-900 应进 base: {:?}",
+            s.classes
+        );
+        assert!(s.classes.iter().any(|c| matches!(
+            c,
+            StyleClass::BackgroundColor(crate::ui::style::Color::Surface)
+        )));
         assert_eq!(s.variant_classes.len(), 1);
 
         // light 态:dark: 类不进 base(仅登记),同一样本只有底色
         theme::set_dark_mode(false);
         let s = Style::parse("bg-card dark:bg-slate-900").unwrap();
         assert!(
-            !s.classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Slate(_)))),
+            !s.classes.iter().any(|c| matches!(
+                c,
+                StyleClass::BackgroundColor(crate::ui::style::Color::Slate(_))
+            )),
             "light 态 dark: 类不进 base: {:?}",
             s.classes
         );
-        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Surface))));
+        assert!(s.classes.iter().any(|c| matches!(
+            c,
+            StyleClass::BackgroundColor(crate::ui::style::Color::Surface)
+        )));
         assert_eq!(s.variant_classes.len(), 1, "light 态登记可见不静默");
 
         // 还原默认,防污染其他用例(Plan 408 默认 dark)
@@ -666,7 +731,10 @@ mod plan411_tests {
         // so this ladder must parse to three size classes with the LAST one
         // (lg:text-7xl) winning in sequential adapter application.
         let s = Style::parse("text-4xl md:text-5xl lg:text-7xl").unwrap();
-        let has_4xl = s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::Text4Xl));
+        let has_4xl = s
+            .classes
+            .iter()
+            .any(|c| matches!(c, crate::ui::style::StyleClass::Text4Xl));
         assert!(has_4xl, "ladder parse: {:?}", s.classes);
     }
 
@@ -689,12 +757,20 @@ mod plan411_tests {
         // Plan 411 P0-B: hero ladder needs text-5xl..text-9xl to exist so
         // "text-4xl md:text-5xl lg:text-7xl" resolves to 72px (last wins).
         use crate::ui::style::StyleClass;
-        assert!(matches!(StyleClass::parse_single("text-5xl"), Ok(StyleClass::Text5Xl)));
-        assert!(matches!(StyleClass::parse_single("lg:text-7xl"), Ok(StyleClass::Text7Xl)));
-        assert!(matches!(StyleClass::parse_single("text-9xl"), Ok(StyleClass::Text9Xl)));
+        assert!(matches!(
+            StyleClass::parse_single("text-5xl"),
+            Ok(StyleClass::Text5Xl)
+        ));
+        assert!(matches!(
+            StyleClass::parse_single("lg:text-7xl"),
+            Ok(StyleClass::Text7Xl)
+        ));
+        assert!(matches!(
+            StyleClass::parse_single("text-9xl"),
+            Ok(StyleClass::Text9Xl)
+        ));
     }
 }
-
 
 /// PLAN-095 T-03: CSS 声明段直推（`position:absolute;left:40%;…` 族，
 /// musk canvas 框样式的生产形态）。返回 (直推类, 未映射段, 余下 token 串)。
@@ -702,8 +778,20 @@ mod plan411_tests {
 /// （hover:/dark:/断点: 等）不属声明面，交还 token 管线。
 fn split_css_declarations(input: &str) -> (Vec<StyleClass>, Vec<String>, String) {
     const KNOWN_PROPS: &[&str] = &[
-        "position", "pointer-events", "z-index", "left", "top", "right", "bottom",
-        "width", "height", "max-width", "max-height", "border", "background", "overflow",
+        "position",
+        "pointer-events",
+        "z-index",
+        "left",
+        "top",
+        "right",
+        "bottom",
+        "width",
+        "height",
+        "max-width",
+        "max-height",
+        "border",
+        "background",
+        "overflow",
     ];
     if !input.contains(';') {
         return (Vec::new(), Vec::new(), input.to_string());
@@ -752,7 +840,11 @@ fn split_css_declarations(input: &str) -> (Vec<StyleClass>, Vec<String>, String)
             remainder.push(' ');
         }
         let after_prop = &chunk[at + prop.len()..];
-        let value = after_prop.trim_start().strip_prefix(':').map(|v| v.trim()).unwrap_or("");
+        let value = after_prop
+            .trim_start()
+            .strip_prefix(':')
+            .map(|v| v.trim())
+            .unwrap_or("");
         let segment = format!("{prop}:{value}");
         match (*prop, value) {
             ("position", "absolute") => classes.push(StyleClass::Absolute),
@@ -872,7 +964,6 @@ fn parse_css_border(value: &str) -> Option<(Option<f32>, Option<crate::ui::style
     Some((width, color))
 }
 
-
 #[cfg(test)]
 mod plan095_tests {
     use super::*;
@@ -884,32 +975,73 @@ mod plan095_tests {
         let (style, unmapped) = Style::parse_reported(
             "position:absolute;left:25%;top:25%;width:50%;height:50%;border:2px solid rgb(59,130,246);background:rgba(59,130,246,0.12);pointer-events:none;border-radius:2px;z-index:10",
         );
-        let has = |c: &StyleClass| style.classes.iter().any(|x| std::mem::discriminant(x) == std::mem::discriminant(c));
-        assert!(has(&StyleClass::Absolute), "position:absolute must map; unmapped={unmapped:?}");
+        let has = |c: &StyleClass| {
+            style
+                .classes
+                .iter()
+                .any(|x| std::mem::discriminant(x) == std::mem::discriminant(c))
+        };
+        assert!(
+            has(&StyleClass::Absolute),
+            "position:absolute must map; unmapped={unmapped:?}"
+        );
         assert!(has(&StyleClass::LeftPercent(25.0)));
         assert!(has(&StyleClass::TopPercent(25.0)));
         assert!(has(&StyleClass::WidthPercent(50.0)));
         assert!(has(&StyleClass::HeightPercent(50.0)));
-        assert!(has(&StyleClass::PointerEventsNone), "pointer-events:none must map");
+        assert!(
+            has(&StyleClass::PointerEventsNone),
+            "pointer-events:none must map"
+        );
         assert!(has(&StyleClass::ZIndex(10)));
-        assert!(style.classes.iter().any(|c| matches!(c, StyleClass::BorderColor(_))), "border rgb color must map");
-        assert!(style.classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))), "background rgba must map");
+        assert!(
+            style
+                .classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::BorderColor(_))),
+            "border rgb color must map"
+        );
+        assert!(
+            style
+                .classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::BackgroundColor(_))),
+            "background rgba must map"
+        );
         // 未知声明（aspect-ratio 族）维持 unmapped 不静默造语义。
-        assert!(unmapped.iter().any(|u| u.starts_with("border-radius") || u.starts_with("aspect-ratio") || u.starts_with("margin")));
+        assert!(unmapped.iter().any(|u| u.starts_with("border-radius")
+            || u.starts_with("aspect-ratio")
+            || u.starts_with("margin")));
     }
 
     #[test]
     fn css_declarations_mixed_with_tailwind_tokens() {
         let (style, _) = Style::parse_reported("flex items-center position:absolute;left:10px");
-        assert!(style.classes.iter().any(|c| matches!(c, StyleClass::Absolute)));
-        assert!(style.classes.len() >= 2, "tailwind tokens still parse alongside declarations");
+        assert!(style
+            .classes
+            .iter()
+            .any(|c| matches!(c, StyleClass::Absolute)));
+        assert!(
+            style.classes.len() >= 2,
+            "tailwind tokens still parse alongside declarations"
+        );
     }
 
     #[test]
     fn css_color_from_css_rgb_rgba_hex() {
         use super::Color;
         assert_eq!(Color::from_css("#6CB0DD"), Color::from_hex("#6CB0DD"));
-        assert!(matches!(Color::from_css("rgb(59, 130, 246)"), Ok(Color::Rgba { r: 59, g: 130, b: 246, a: 255 })));
-        assert!(matches!(Color::from_css("rgba(59,130,246,0.12)"), Ok(Color::Rgba { a, .. } ) if a > 0 && a < 40));
+        assert!(matches!(
+            Color::from_css("rgb(59, 130, 246)"),
+            Ok(Color::Rgba {
+                r: 59,
+                g: 130,
+                b: 246,
+                a: 255
+            })
+        ));
+        assert!(
+            matches!(Color::from_css("rgba(59,130,246,0.12)"), Ok(Color::Rgba { a, .. } ) if a > 0 && a < 40)
+        );
     }
 }

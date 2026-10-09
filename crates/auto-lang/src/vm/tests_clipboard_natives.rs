@@ -42,8 +42,12 @@ fn clipboard_files_and_image_via_vm_shims() {
 
     // ── 1. files_set(["C:\...\一.txt", "C:\...\二.png"]) -> true ──
     let mut list = crate::vm::types::ListData::<auto_val::Value>::new();
-    list.push(auto_val::Value::Str(auto_val::AutoStr::from("C:\\plan485-vm\\示例 一.txt")));
-    list.push(auto_val::Value::Str(auto_val::AutoStr::from("C:\\plan485-vm\\second.png")));
+    list.push(auto_val::Value::Str(auto_val::AutoStr::from(
+        "C:\\plan485-vm\\示例 一.txt",
+    )));
+    list.push(auto_val::Value::Str(auto_val::AutoStr::from(
+        "C:\\plan485-vm\\second.png",
+    )));
     let list_id = vm.insert_heap_object(list);
     vm.rc_push_id(&mut task, list_id as u64);
     shim_clipboard_files_set(&mut task, &vm).unwrap();
@@ -101,11 +105,17 @@ fn clipboard_files_and_image_via_vm_shims() {
         .as_any()
         .downcast_ref::<crate::vm::types::ObjectData>()
         .expect("ObjectData record");
-    let field = |k: &str| rec.get(&auto_val::ValueKey::Str(auto_val::AutoStr::from(k))).cloned();
+    let field = |k: &str| {
+        rec.get(&auto_val::ValueKey::Str(auto_val::AutoStr::from(k)))
+            .cloned()
+    };
     match field("path") {
         Some(auto_val::Value::Str(p)) => {
             assert!(p.as_str().ends_with(".png"));
-            assert!(std::path::Path::new(p.as_str()).is_file(), "temp png exists");
+            assert!(
+                std::path::Path::new(p.as_str()).is_file(),
+                "temp png exists"
+            );
             let _ = std::fs::remove_file(p.as_str());
         }
         other => panic!("path field wrong: {other:?}"),

@@ -2,8 +2,8 @@
 //!
 //! Plan 102 Phase 5.2: Generate Axum HTTP routes from API definitions
 
-use crate::api::{ApiEndpoint, ApiModule, ApiParam};
 use super::TargetGenerator;
+use crate::api::{ApiEndpoint, ApiModule, ApiParam};
 
 /// Axum route generator
 pub struct AxumGenerator {
@@ -26,7 +26,6 @@ impl Default for AxumGenerator {
 }
 
 impl AxumGenerator {
-
     /// Convert Auto type to Rust type
     fn to_rust_type(&self, auto_type: &str) -> String {
         let trimmed = auto_type.trim();
@@ -42,13 +41,13 @@ impl AxumGenerator {
         // These are detected in generate_handler for Sse response; here we
         // map the inner element type.
         if base_type.starts_with("~Iter<") || base_type.starts_with("~Stream<") {
-            let inner = &base_type[6..base_type.len()-1];
+            let inner = &base_type[6..base_type.len() - 1];
             return self.to_rust_type(inner);
         }
 
         // Handle array types
         let rust_type = if base_type.starts_with('[') && base_type.ends_with(']') {
-            let inner = &base_type[1..base_type.len()-1];
+            let inner = &base_type[1..base_type.len() - 1];
             if let Some(rest) = inner.strip_prefix(']') {
                 let inner_type = self.to_rust_type(rest);
                 format!("Vec<{}>", inner_type)
@@ -120,7 +119,8 @@ impl AxumGenerator {
             lines.push("#[derive(serde::Deserialize)]".to_string());
             lines.push(format!("struct {} {{", path_struct));
             for param in &path_params {
-                let rust_type = endpoint.params
+                let rust_type = endpoint
+                    .params
                     .iter()
                     .find(|p| p.name == *param)
                     .map(|p| self.to_rust_type(&p.ty))
@@ -129,11 +129,16 @@ impl AxumGenerator {
             }
             lines.push("}".to_string());
             lines.push("".to_string());
-            handler_params.push(format!("Path({{{}}}): Path<{}>", path_params.join(", "), path_struct));
+            handler_params.push(format!(
+                "Path({{{}}}): Path<{}>",
+                path_params.join(", "),
+                path_struct
+            ));
         }
 
         // Query parameters (GET/DELETE with non-path params)
-        let query_params: Vec<&ApiParam> = endpoint.params
+        let query_params: Vec<&ApiParam> = endpoint
+            .params
             .iter()
             .filter(|p| !path_params.contains(&p.name))
             .filter(|_| method == "get" || method == "delete")
@@ -148,7 +153,10 @@ impl AxumGenerator {
                 let rust_type = self.to_rust_type(&param.ty);
                 let optional_marker = if param.optional { "Option<" } else { "" };
                 let optional_end = if param.optional { ">" } else { "" };
-                lines.push(format!("{}{}: {}{}{},", self.indent, param.name, optional_marker, rust_type, optional_end));
+                lines.push(format!(
+                    "{}{}: {}{}{},",
+                    self.indent, param.name, optional_marker, rust_type, optional_end
+                ));
             }
             lines.push("}".to_string());
             lines.push("".to_string());
@@ -156,7 +164,8 @@ impl AxumGenerator {
         }
 
         // Body parameters (POST/PUT/PATCH)
-        let body_params: Vec<&ApiParam> = endpoint.params
+        let body_params: Vec<&ApiParam> = endpoint
+            .params
             .iter()
             .filter(|p| !path_params.contains(&p.name))
             .filter(|_| method != "get" && method != "delete")
@@ -188,7 +197,9 @@ impl AxumGenerator {
         // shared host serve（版本无关 FileReply → 本地 axum Response；成功体
         // 不经 Json）。文件端点仅 GET/HEAD——其他注解方法在签名处给 405 诊断
         // handler（决策报告 §6）。
-        if crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type) == crate::api::contract::ResponseKind::File {
+        if crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
+            == crate::api::contract::ResponseKind::File
+        {
             let method = endpoint.method().to_lowercase();
             let path = endpoint.path();
             let path_params: Vec<&String> = endpoint
@@ -205,10 +216,7 @@ impl AxumGenerator {
                 "headers: axum::http::HeaderMap".to_string(),
             ];
             if !path_params.is_empty() {
-                sig.push(format!(
-                    "Path({}): Path<String>",
-                    path_params[0]
-                ));
+                sig.push(format!("Path({}): Path<String>", path_params[0]));
             }
             for (i, param) in sig.iter().enumerate() {
                 lines.push(format!("{}{}", self.indent, param));
@@ -218,19 +226,13 @@ impl AxumGenerator {
             }
             lines.push(format!("{}) -> axum::response::Response {{", self.indent));
             if !is_get_family {
-                lines.push(format!(
-                    "{}let _ = (method, headers);",
-                    self.indent
-                ));
+                lines.push(format!("{}let _ = (method, headers);", self.indent));
                 lines.push(format!(
                     "{}axum::response::Response::builder().status(axum::http::StatusCode::METHOD_NOT_ALLOWED).header(\"allow\", \"GET, HEAD\").body(axum::body::Body::empty()).unwrap()",
                     self.indent
                 ));
             } else {
-                let arg = path_params
-                    .first()
-                    .map(|n| n.as_str())
-                    .unwrap_or_default();
+                let arg = path_params.first().map(|n| n.as_str()).unwrap_or_default();
                 lines.push(format!(
                     "{}let descriptor = api::{}({});",
                     self.indent, endpoint.fn_name, arg
@@ -282,16 +284,16 @@ impl AxumGenerator {
             }
             lines.push(format!("{}) -> axum::response::Response {{", self.indent));
             if !is_post_family {
-                lines.push(format!("{}let _ = (method, headers, request);", self.indent));
+                lines.push(format!(
+                    "{}let _ = (method, headers, request);",
+                    self.indent
+                ));
                 lines.push(format!(
                     "{}axum::response::Response::builder().status(axum::http::StatusCode::METHOD_NOT_ALLOWED).header(\"allow\", \"POST, PUT\").body(axum::body::Body::empty()).unwrap()",
                     self.indent
                 ));
             } else {
-                let arg = path_params
-                    .first()
-                    .map(|n| n.as_str())
-                    .unwrap_or_default();
+                let arg = path_params.first().map(|n| n.as_str()).unwrap_or_default();
                 lines.push(format!(
                     "{}let {}: a2r_std::http::UploadRequest = __plan730_upload_request(&method, &headers, request);",
                     self.indent, up_param.name
@@ -300,10 +302,7 @@ impl AxumGenerator {
                     "{}let receipt = api::{}({}, {}).await;",
                     self.indent, endpoint.fn_name, arg, up_param.name
                 ));
-                lines.push(format!(
-                    "{}__plan730_upload_reply(receipt)",
-                    self.indent
-                ));
+                lines.push(format!("{}__plan730_upload_reply(receipt)", self.indent));
             }
             lines.push("}".to_string());
             lines.push("".to_string());
@@ -315,7 +314,8 @@ impl AxumGenerator {
         // []T → Json<Vec<T>>
         // ?T → Json<Option<T>>
         // void → StatusCode
-        let is_sse = crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type) == crate::api::contract::ResponseKind::Stream;
+        let is_sse = crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
+            == crate::api::contract::ResponseKind::Stream;
 
         let (return_type, is_sse_handler) = if is_sse {
             // SSE handler: returns Sse<impl Stream<Item = Result<Event, Infallible>>>
@@ -354,16 +354,40 @@ impl AxumGenerator {
 
         if is_sse_handler {
             // SSE: wrap the generator stream in Sse with Event mapping
-            lines.push(format!("{}let stream = api::{}({});", self.indent, endpoint.fn_name, call_args.join(", ")));
-            lines.push(format!("{}let sse_stream = stream.map(|item| {{", self.indent));
-            lines.push(format!("{}{}Ok(axum::response::sse::Event::default().data(item.to_string()))", self.indent, self.indent));
+            lines.push(format!(
+                "{}let stream = api::{}({});",
+                self.indent,
+                endpoint.fn_name,
+                call_args.join(", ")
+            ));
+            lines.push(format!(
+                "{}let sse_stream = stream.map(|item| {{",
+                self.indent
+            ));
+            lines.push(format!(
+                "{}{}Ok(axum::response::sse::Event::default().data(item.to_string()))",
+                self.indent, self.indent
+            ));
             lines.push(format!("{}}});", self.indent));
-            lines.push(format!("{}axum::response::Sse::new(sse_stream)", self.indent));
+            lines.push(format!(
+                "{}axum::response::Sse::new(sse_stream)",
+                self.indent
+            ));
         } else if return_type == "axum::response::StatusCode" {
-            lines.push(format!("{}api::{}({});", self.indent, endpoint.fn_name, call_args.join(", ")));
+            lines.push(format!(
+                "{}api::{}({});",
+                self.indent,
+                endpoint.fn_name,
+                call_args.join(", ")
+            ));
             lines.push(format!("{}axum::response::StatusCode::OK", self.indent));
         } else {
-            lines.push(format!("{}let result = api::{}({});", self.indent, endpoint.fn_name, call_args.join(", ")));
+            lines.push(format!(
+                "{}let result = api::{}({});",
+                self.indent,
+                endpoint.fn_name,
+                call_args.join(", ")
+            ));
             lines.push(format!("{}Json(result)", self.indent));
         }
         lines.push("}".to_string());
@@ -393,10 +417,19 @@ impl AxumGenerator {
 
             let route_call = match method.as_str() {
                 "get" => format!("{}.route(\"{}\", get({}))", self.indent, path, handler_name),
-                "post" => format!("{}.route(\"{}\", post({}))", self.indent, path, handler_name),
+                "post" => format!(
+                    "{}.route(\"{}\", post({}))",
+                    self.indent, path, handler_name
+                ),
                 "put" => format!("{}.route(\"{}\", put({}))", self.indent, path, handler_name),
-                "delete" => format!("{}.route(\"{}\", delete({}))", self.indent, path, handler_name),
-                _ => format!("{}.route(\"{}\", post({}))", self.indent, path, handler_name),
+                "delete" => format!(
+                    "{}.route(\"{}\", delete({}))",
+                    self.indent, path, handler_name
+                ),
+                _ => format!(
+                    "{}.route(\"{}\", post({}))",
+                    self.indent, path, handler_name
+                ),
             };
             lines.push(route_call);
         }
@@ -419,7 +452,9 @@ impl AxumGenerator {
         lines.push("    let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")".to_string());
         lines.push("        .ok().and_then(|s| s.parse().ok()).unwrap_or(8080);".to_string());
         lines.push("    let addr = format!(\"0.0.0.0:{}\", port);".to_string());
-        lines.push("    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();".to_string());
+        lines.push(
+            "    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();".to_string(),
+        );
         lines.push("    println!(\"[a2r] Server listening on {}\", addr);".to_string());
         lines.push("    let app = create_api_router();".to_string());
         lines.push("    axum::serve(listener, app).await.unwrap();".to_string());
@@ -440,7 +475,10 @@ impl AxumGenerator {
 
         // PLAN-729 T-05: 文件端点 glue（method/headers → 共享宿主 serve →
         // 本地 axum Response）。
-        if module.endpoints.iter().any(|e| crate::api::contract::ResponseKind::from_return_string(&e.return_type) == crate::api::contract::ResponseKind::File) {
+        if module.endpoints.iter().any(|e| {
+            crate::api::contract::ResponseKind::from_return_string(&e.return_type)
+                == crate::api::contract::ResponseKind::File
+        }) {
             for line in PLAN729_FILE_GLUE.lines() {
                 output.push(line.to_string());
             }
@@ -449,11 +487,11 @@ impl AxumGenerator {
 
         // PLAN-730 T-06: 上传端点 glue（Request → UploadRequest 投影 + 收据
         // → 真实 status/JSON）。
-        if module
-            .endpoints
-            .iter()
-            .any(|e| e.params.iter().any(|p| crate::api::contract::is_upload_param(&p.ty)))
-        {
+        if module.endpoints.iter().any(|e| {
+            e.params
+                .iter()
+                .any(|p| crate::api::contract::is_upload_param(&p.ty))
+        }) {
             for line in PLAN730_UPLOAD_GLUE.lines() {
                 output.push(line.to_string());
             }
@@ -471,11 +509,17 @@ impl AxumGenerator {
         output.push("    Router::new()".to_string());
         for endpoint in &module.endpoints {
             let handler_name = format!("{}_handler", endpoint.fn_name);
-            let method = endpoint.attrs.method.as_deref().unwrap_or("get").to_lowercase();
+            let method = endpoint
+                .attrs
+                .method
+                .as_deref()
+                .unwrap_or("get")
+                .to_lowercase();
             let path = endpoint.attrs.path.as_deref().unwrap_or("/");
             // PLAN-729 T-05: GET 文件端点自动具备 HEAD。
             let is_file_get = method == "get"
-                && crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type) == crate::api::contract::ResponseKind::File
+                && crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
+                    == crate::api::contract::ResponseKind::File
                 && !module.endpoints.iter().any(|other| {
                     other.method().eq_ignore_ascii_case("HEAD") && other.path() == path
                 });
@@ -660,7 +704,10 @@ mod tests {
         let gen = AxumGenerator::new();
 
         assert_eq!(gen.extract_path_params("/users/:id"), vec!["id"]);
-        assert_eq!(gen.extract_path_params("/users/:user_id/posts/:post_id"), vec!["user_id", "post_id"]);
+        assert_eq!(
+            gen.extract_path_params("/users/:user_id/posts/:post_id"),
+            vec!["user_id", "post_id"]
+        );
         assert_eq!(gen.extract_path_params("/users"), Vec::<String>::new());
     }
 

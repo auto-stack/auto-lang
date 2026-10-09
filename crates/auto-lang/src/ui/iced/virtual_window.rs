@@ -20,8 +20,8 @@
 //! 位置/尺寸的唯一事实源是 `VWinState.rect`（R9：排布是 WM 策略）；
 //! 本模块只做"读 WM state → 组 Element"，不持有任何窗口几何。
 
-use iced::widget::{container, column, mouse_area, row, text};
 use iced::widget::container::Style;
+use iced::widget::{column, container, mouse_area, row, text};
 use iced::{Alignment, Border, Color, Element, Length, Padding, Shadow, Vector};
 
 use crate::ui::session::{DesktopMessage, ResizeEdge, VWinState, WmCommand};
@@ -81,7 +81,6 @@ fn window_radius(maximized: bool) -> iced::border::Radius {
     }
 }
 
-
 /// PLAN-526 T37：标题栏右键菜单面板（窗口 Stack 顶层）。
 /// 项：最大化/还原、最小化、关闭（chrome 既有命令）；发送到下/上一分区
 /// （SendFocusedTo 既有热键臂复用）。左键任意按压经 GlobalPress 关菜单。
@@ -96,32 +95,33 @@ fn title_menu_panel(
     let surface = token(crate::ui::style::Color::Surface);
     let border_c = token(crate::ui::style::Color::Border);
     let fg = token(crate::ui::style::Color::OnSurface);
-    let item = |label: &'static str, msg: DesktopMessage| -> iced::Element<'static, DesktopMessage> {
-        iced::widget::button(
-            iced::widget::container(iced::widget::text(label).size(12))
-                .width(Length::Fill)
-                .height(Length::Fixed(28.0))
-                .align_y(Alignment::Center)
-                .align_x(Alignment::Start),
-        )
-        .padding(Padding {
-            top: 0.0,
-            right: 10.0,
-            bottom: 0.0,
-            left: 10.0,
-        })
-        .style(move |_t, _st| iced::widget::button::Style {
-            background: Some(Color::TRANSPARENT.into()),
-            border: Border {
-                radius: 6.0.into(),
+    let item =
+        |label: &'static str, msg: DesktopMessage| -> iced::Element<'static, DesktopMessage> {
+            iced::widget::button(
+                iced::widget::container(iced::widget::text(label).size(12))
+                    .width(Length::Fill)
+                    .height(Length::Fixed(28.0))
+                    .align_y(Alignment::Center)
+                    .align_x(Alignment::Start),
+            )
+            .padding(Padding {
+                top: 0.0,
+                right: 10.0,
+                bottom: 0.0,
+                left: 10.0,
+            })
+            .style(move |_t, _st| iced::widget::button::Style {
+                background: Some(Color::TRANSPARENT.into()),
+                border: Border {
+                    radius: 6.0.into(),
+                    ..Default::default()
+                },
+                text_color: fg,
                 ..Default::default()
-            },
-            text_color: fg,
-            ..Default::default()
-        })
-        .on_press(msg)
-        .into()
-    };
+            })
+            .on_press(msg)
+            .into()
+        };
     let divider = || -> iced::Element<'static, DesktopMessage> {
         iced::widget::container(iced::widget::Space::new().height(Length::Fixed(0.0)))
             .width(Length::Fill)
@@ -163,12 +163,7 @@ fn title_menu_panel(
     let panel = iced::widget::container(menu)
         .width(Length::Fixed(180.0))
         .style(move |_t| Style {
-            background: Some(Color::from_rgba(
-                surface.r,
-                surface.g,
-                surface.b,
-                0.98,
-            ).into()),
+            background: Some(Color::from_rgba(surface.r, surface.g, surface.b, 0.98).into()),
             border: Border {
                 color: border_c,
                 width: 1.0,
@@ -207,14 +202,7 @@ const TITLE_MENU_MARGIN: f32 = 8.0;
 /// 标）。x/y 跟随光标；面板尺寸 + 8px 边距做右/下缘钳制（窗过小
 /// 时不越界），y 不低于标题条底（右键点在标题条上，菜单即其下方展开，
 /// 不遮标题条）。纯函数供单测。
-pub fn title_menu_spot(
-    cx: f32,
-    cy: f32,
-    rx: f32,
-    ry: f32,
-    rw: f32,
-    rh: f32,
-) -> (f32, f32) {
+pub fn title_menu_spot(cx: f32, cy: f32, rx: f32, ry: f32, rw: f32, rh: f32) -> (f32, f32) {
     let lx = cx - rx;
     let ly = cy - ry;
     let x = lx.clamp(
@@ -235,7 +223,10 @@ mod title_menu_spot_tests {
     #[test]
     fn p012_spot_follows_cursor_inside_window() {
         // 窗 rect (100, 80) 800×600；落点在窗中部——原样跟随（相对化）。
-        assert_eq!(title_menu_spot(300.0, 200.0, 100.0, 80.0, 800.0, 600.0), (200.0, 120.0));
+        assert_eq!(
+            title_menu_spot(300.0, 200.0, 100.0, 80.0, 800.0, 600.0),
+            (200.0, 120.0)
+        );
     }
 
     #[test]
@@ -284,9 +275,7 @@ pub(crate) fn transparency_alpha_for(level: &str) -> f32 {
 }
 
 /// 桌面根：背景层 + 虚拟窗口 z-stack（back → front，调用方保证顺序）。
-pub fn desktop_root(
-    layers: Vec<Element<'_, DesktopMessage>>,
-) -> Element<'_, DesktopMessage> {
+pub fn desktop_root(layers: Vec<Element<'_, DesktopMessage>>) -> Element<'_, DesktopMessage> {
     if layers.is_empty() {
         return container(text(""))
             .width(Length::Fill)
@@ -319,9 +308,17 @@ pub fn desktop_root(
 /// PLAN-526 T28：button 显式 `.padding(0)`——T22 只收了内容盒，iced
 /// button 主题默认 padding（水平更宽）仍让 hover 提亮盒呈宽体长方
 /// （用户七轮截图实录）；padding=0 后 hover 盒=内容盒=24×24 正方形。
-fn title_button(glyph: &'static str, size: f32, msg: DesktopMessage) -> Element<'static, DesktopMessage> {
+fn title_button(
+    glyph: &'static str,
+    size: f32,
+    msg: DesktopMessage,
+) -> Element<'static, DesktopMessage> {
     let fg = token(crate::ui::style::Color::OnSurface);
-    let hover_tint = if crate::ui::style::theme::dark_mode() { 1.0 } else { 0.0 };
+    let hover_tint = if crate::ui::style::theme::dark_mode() {
+        1.0
+    } else {
+        0.0
+    };
     iced::widget::button(
         container(text(glyph).size(size))
             .width(Length::Fixed(24.0))
@@ -369,7 +366,11 @@ pub fn virtual_window_element<'a>(
     // 形态不变）。行内垂直居中由容器 center_y 承载（T3 一轮修复保留）。
     let win_buttons = row![
         title_button("–", 13.0, DesktopMessage::Wm(WmCommand::Minimize(wid))),
-        title_button("□", 10.0, DesktopMessage::Wm(WmCommand::ToggleMaximize(wid))),
+        title_button(
+            "□",
+            10.0,
+            DesktopMessage::Wm(WmCommand::ToggleMaximize(wid))
+        ),
         title_button("×", 13.0, DesktopMessage::Wm(WmCommand::Close(wid))),
     ]
     .spacing(2.0);
@@ -476,25 +477,71 @@ pub fn virtual_window_element<'a>(
     // --- 八向缩放把手（stack 顶层；边 6px、角 14px）---
     let mut layers: Vec<Element<'a, DesktopMessage>> = Vec::with_capacity(9);
     layers.push(win_box.into());
-    let resize_msg = |edge: ResizeEdge| {
-        DesktopMessage::Wm(WmCommand::StartResize { wid, edge })
-    };
-    layers.push(handle(0.0, 0.0,
-        Length::Fill, Length::Fixed(EDGE), ResizeEdge::North, resize_msg(ResizeEdge::North)));
-    layers.push(handle(rect.height - EDGE, 0.0,
-        Length::Fill, Length::Fill, ResizeEdge::South, resize_msg(ResizeEdge::South)));
-    layers.push(handle(0.0, 0.0,
-        Length::Fixed(EDGE), Length::Fill, ResizeEdge::West, resize_msg(ResizeEdge::West)));
-    layers.push(handle(0.0, rect.width - EDGE,
-        Length::Fill, Length::Fill, ResizeEdge::East, resize_msg(ResizeEdge::East)));
-    layers.push(handle(0.0, 0.0,
-        Length::Fixed(CORNER), Length::Fixed(CORNER), ResizeEdge::NorthWest, resize_msg(ResizeEdge::NorthWest)));
-    layers.push(handle(0.0, rect.width - CORNER,
-        Length::Fill, Length::Fixed(CORNER), ResizeEdge::NorthEast, resize_msg(ResizeEdge::NorthEast)));
-    layers.push(handle(rect.height - CORNER, 0.0,
-        Length::Fixed(CORNER), Length::Fill, ResizeEdge::SouthWest, resize_msg(ResizeEdge::SouthWest)));
-    layers.push(handle(rect.height - CORNER, rect.width - CORNER,
-        Length::Fill, Length::Fill, ResizeEdge::SouthEast, resize_msg(ResizeEdge::SouthEast)));
+    let resize_msg = |edge: ResizeEdge| DesktopMessage::Wm(WmCommand::StartResize { wid, edge });
+    layers.push(handle(
+        0.0,
+        0.0,
+        Length::Fill,
+        Length::Fixed(EDGE),
+        ResizeEdge::North,
+        resize_msg(ResizeEdge::North),
+    ));
+    layers.push(handle(
+        rect.height - EDGE,
+        0.0,
+        Length::Fill,
+        Length::Fill,
+        ResizeEdge::South,
+        resize_msg(ResizeEdge::South),
+    ));
+    layers.push(handle(
+        0.0,
+        0.0,
+        Length::Fixed(EDGE),
+        Length::Fill,
+        ResizeEdge::West,
+        resize_msg(ResizeEdge::West),
+    ));
+    layers.push(handle(
+        0.0,
+        rect.width - EDGE,
+        Length::Fill,
+        Length::Fill,
+        ResizeEdge::East,
+        resize_msg(ResizeEdge::East),
+    ));
+    layers.push(handle(
+        0.0,
+        0.0,
+        Length::Fixed(CORNER),
+        Length::Fixed(CORNER),
+        ResizeEdge::NorthWest,
+        resize_msg(ResizeEdge::NorthWest),
+    ));
+    layers.push(handle(
+        0.0,
+        rect.width - CORNER,
+        Length::Fill,
+        Length::Fixed(CORNER),
+        ResizeEdge::NorthEast,
+        resize_msg(ResizeEdge::NorthEast),
+    ));
+    layers.push(handle(
+        rect.height - CORNER,
+        0.0,
+        Length::Fixed(CORNER),
+        Length::Fill,
+        ResizeEdge::SouthWest,
+        resize_msg(ResizeEdge::SouthWest),
+    ));
+    layers.push(handle(
+        rect.height - CORNER,
+        rect.width - CORNER,
+        Length::Fill,
+        Length::Fill,
+        ResizeEdge::SouthEast,
+        resize_msg(ResizeEdge::SouthEast),
+    ));
 
     // --- 焦点环 overlay（PLAN-526 T4；Stack 最顶层）---
     // 聚焦 accent 2px 环：非捕获空层事件穿透到下层把手，且永不被客户区
@@ -559,15 +606,18 @@ fn handle<'a>(
     on_press: DesktopMessage,
 ) -> Element<'a, DesktopMessage> {
     container(
-        mouse_area(
-            container(text("")).width(w).height(h),
-        )
-        .interaction(resize_cursor(edge))
-        .on_press(on_press),
+        mouse_area(container(text("")).width(w).height(h))
+            .interaction(resize_cursor(edge))
+            .on_press(on_press),
     )
     .width(Length::Fill)
     .height(Length::Fill)
-    .padding(Padding { top: pad_top.max(0.0), left: pad_left.max(0.0), right: 0.0, bottom: 0.0 })
+    .padding(Padding {
+        top: pad_top.max(0.0),
+        left: pad_left.max(0.0),
+        right: 0.0,
+        bottom: 0.0,
+    })
     .align_x(Alignment::Start)
     .align_y(Alignment::Start)
     .into()
@@ -622,7 +672,12 @@ pub fn native_slot_element<'a>(
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .center_y(Length::Fill)
-                .padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 8.0 }),
+                .padding(Padding {
+                    top: 0.0,
+                    right: 0.0,
+                    bottom: 0.0,
+                    left: 8.0
+                }),
             min_btn,
             close_btn,
         ]
@@ -631,7 +686,9 @@ pub fn native_slot_element<'a>(
         .height(Length::Fixed(TITLEBAR_H)),
     )
     .interaction(iced::mouse::Interaction::Move)
-    .on_press(DesktopMessage::Wm(WmCommand::NativeSlotStartDrag { slot_id }));
+    .on_press(DesktopMessage::Wm(WmCommand::NativeSlotStartDrag {
+        slot_id,
+    }));
 
     // 标题条 + 透明客户区（槽位洞：原生窗口从桌面窗 z 上方露出）。
     let body = column![
@@ -663,27 +720,74 @@ pub fn native_slot_element<'a>(
         });
 
     // 八向缩放把手（vwin 同款 stack 顶层几何；槽位命令域）。
-    let resize_msg = |edge: ResizeEdge| {
-        DesktopMessage::Wm(WmCommand::NativeSlotStartResize { slot_id, edge })
-    };
+    let resize_msg =
+        |edge: ResizeEdge| DesktopMessage::Wm(WmCommand::NativeSlotStartResize { slot_id, edge });
     let mut layers: Vec<Element<'a, DesktopMessage>> = Vec::with_capacity(9);
     layers.push(slot_box.into());
-    layers.push(handle(0.0, 0.0,
-        Length::Fill, Length::Fixed(EDGE), ResizeEdge::North, resize_msg(ResizeEdge::North)));
-    layers.push(handle(rect.height - EDGE, 0.0,
-        Length::Fill, Length::Fill, ResizeEdge::South, resize_msg(ResizeEdge::South)));
-    layers.push(handle(0.0, 0.0,
-        Length::Fixed(EDGE), Length::Fill, ResizeEdge::West, resize_msg(ResizeEdge::West)));
-    layers.push(handle(0.0, rect.width - EDGE,
-        Length::Fill, Length::Fill, ResizeEdge::East, resize_msg(ResizeEdge::East)));
-    layers.push(handle(0.0, 0.0,
-        Length::Fixed(CORNER), Length::Fixed(CORNER), ResizeEdge::NorthWest, resize_msg(ResizeEdge::NorthWest)));
-    layers.push(handle(0.0, rect.width - CORNER,
-        Length::Fill, Length::Fixed(CORNER), ResizeEdge::NorthEast, resize_msg(ResizeEdge::NorthEast)));
-    layers.push(handle(rect.height - CORNER, 0.0,
-        Length::Fixed(CORNER), Length::Fill, ResizeEdge::SouthWest, resize_msg(ResizeEdge::SouthWest)));
-    layers.push(handle(rect.height - CORNER, rect.width - CORNER,
-        Length::Fill, Length::Fill, ResizeEdge::SouthEast, resize_msg(ResizeEdge::SouthEast)));
+    layers.push(handle(
+        0.0,
+        0.0,
+        Length::Fill,
+        Length::Fixed(EDGE),
+        ResizeEdge::North,
+        resize_msg(ResizeEdge::North),
+    ));
+    layers.push(handle(
+        rect.height - EDGE,
+        0.0,
+        Length::Fill,
+        Length::Fill,
+        ResizeEdge::South,
+        resize_msg(ResizeEdge::South),
+    ));
+    layers.push(handle(
+        0.0,
+        0.0,
+        Length::Fixed(EDGE),
+        Length::Fill,
+        ResizeEdge::West,
+        resize_msg(ResizeEdge::West),
+    ));
+    layers.push(handle(
+        0.0,
+        rect.width - EDGE,
+        Length::Fill,
+        Length::Fill,
+        ResizeEdge::East,
+        resize_msg(ResizeEdge::East),
+    ));
+    layers.push(handle(
+        0.0,
+        0.0,
+        Length::Fixed(CORNER),
+        Length::Fixed(CORNER),
+        ResizeEdge::NorthWest,
+        resize_msg(ResizeEdge::NorthWest),
+    ));
+    layers.push(handle(
+        0.0,
+        rect.width - CORNER,
+        Length::Fill,
+        Length::Fixed(CORNER),
+        ResizeEdge::NorthEast,
+        resize_msg(ResizeEdge::NorthEast),
+    ));
+    layers.push(handle(
+        rect.height - CORNER,
+        0.0,
+        Length::Fixed(CORNER),
+        Length::Fill,
+        ResizeEdge::SouthWest,
+        resize_msg(ResizeEdge::SouthWest),
+    ));
+    layers.push(handle(
+        rect.height - CORNER,
+        rect.width - CORNER,
+        Length::Fill,
+        Length::Fill,
+        ResizeEdge::SouthEast,
+        resize_msg(ResizeEdge::SouthEast),
+    ));
 
     let slot_stack = iced::widget::Stack::with_children(layers)
         .width(Length::Fixed(rect.width))
@@ -692,7 +796,12 @@ pub fn native_slot_element<'a>(
     container(slot_stack)
         .width(Length::Fill)
         .height(Length::Fill)
-        .padding(Padding { top: rect.y, left: rect.x, right: 0.0, bottom: 0.0 })
+        .padding(Padding {
+            top: rect.y,
+            left: rect.x,
+            right: 0.0,
+            bottom: 0.0,
+        })
         .align_x(Alignment::Start)
         .align_y(Alignment::Start)
         .into()
@@ -718,7 +827,12 @@ pub fn native_drag_over_element<'a>(rect: iced::Rectangle) -> Element<'a, Deskto
     container(hint_box)
         .width(Length::Fixed(rect.width))
         .height(Length::Fixed(rect.height))
-        .padding(Padding { top: rect.y, left: rect.x, right: 0.0, bottom: 0.0 })
+        .padding(Padding {
+            top: rect.y,
+            left: rect.x,
+            right: 0.0,
+            bottom: 0.0,
+        })
         .align_x(Alignment::Start)
         .align_y(Alignment::Start)
         .into()

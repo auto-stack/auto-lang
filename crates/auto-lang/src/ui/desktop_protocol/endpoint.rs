@@ -17,16 +17,19 @@
 // ```
 
 use super::codec::CodecError;
-use super::transport::TransportError;
 use super::message::{
     ControlMsg, DrawList, FrameMode, HandshakeMsg, InputMsg, ObserveMsg, ProtocolMsg, WRect,
 };
+use super::transport::TransportError;
 
 /// 协议状态机错误（方向错 / 时序错 / 非 Active 操作）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProtocolError {
     /// 当前状态不接受该消息（携带状态名与消息描述）。
-    WrongState { state: &'static str, msg: &'static str },
+    WrongState {
+        state: &'static str,
+        msg: &'static str,
+    },
     /// 载荷编解码失败（透传）。
     Codec(CodecError),
     /// 需要 Active 状态的操作（如产帧）。
@@ -295,14 +298,16 @@ impl<S: FrameSource> AppEndpoint<S> {
         payload.encode(&mut encoded);
         shm.write_slot(slot, &encoded).map_err(ProtocolError::Shm)?;
         let len = encoded.len() as u32;
-        Ok(ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyShared {
-            wid: self.wid.expect("Active 即有 wid"),
-            frame_id: self.next_frame_id,
-            slot,
-            damage,
-            revision: self.session.revision(),
-            len,
-        }))
+        Ok(ProtocolMsg::Frame(
+            super::message::FrameMsg::FrameReadyShared {
+                wid: self.wid.expect("Active 即有 wid"),
+                frame_id: self.next_frame_id,
+                slot,
+                damage,
+                revision: self.session.revision(),
+                len,
+            },
+        ))
     }
 
     /// 产一帧 v2（PLAN-683 remote 模式）：DisplayList 内嵌帧（信封 =
@@ -353,14 +358,16 @@ impl<S: FrameSource> AppEndpoint<S> {
         payload.encode(&mut encoded);
         shm.write_slot(slot, &encoded).map_err(ProtocolError::Shm)?;
         let len = encoded.len() as u32;
-        Ok(ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyShared {
-            wid: self.wid.expect("Active 即有 wid"),
-            frame_id: self.next_frame_id,
-            slot,
-            damage,
-            revision: self.session.revision(),
-            len,
-        }))
+        Ok(ProtocolMsg::Frame(
+            super::message::FrameMsg::FrameReadyShared {
+                wid: self.wid.expect("Active 即有 wid"),
+                frame_id: self.next_frame_id,
+                slot,
+                damage,
+                revision: self.session.revision(),
+                len,
+            },
+        ))
     }
 
     /// PLAN-034 T-05（D3）：位图上传产信——RGBA 写位图段 `slot` 槽
@@ -414,17 +421,19 @@ impl<S: FrameSource> AppEndpoint<S> {
         self.last_slot = slot;
         self.next_frame_id += 1;
         shm.write_slot(slot, rgba).map_err(ProtocolError::Shm)?;
-        Ok(ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyPixels {
-            wid: self.wid.expect("Active 即有 wid"),
-            frame_id: self.next_frame_id,
-            slot,
-            damage: None, // v1.3：damage 作提示（全帧有效）
-            revision: self.session.revision(),
-            w,
-            h,
-            stride,
-            format: super::message::PixelFormat::Rgba8,
-        }))
+        Ok(ProtocolMsg::Frame(
+            super::message::FrameMsg::FrameReadyPixels {
+                wid: self.wid.expect("Active 即有 wid"),
+                frame_id: self.next_frame_id,
+                slot,
+                damage: None, // v1.3：damage 作提示（全帧有效）
+                revision: self.session.revision(),
+                w,
+                h,
+                stride,
+                format: super::message::PixelFormat::Rgba8,
+            },
+        ))
     }
 
     /// app 主动请求退出：Active → Closing，产出 ExitRequest。
@@ -446,7 +455,17 @@ impl<S: FrameSource> AppEndpoint<S> {
         use AppState::*;
         match (&self.state, msg) {
             // --- 握手 ---
-            (Handshaking, ProtocolMsg::Handshake(HandshakeMsg::Welcome { app_id, wid, surface, rect, frame_mode, extra_surfaces })) => {
+            (
+                Handshaking,
+                ProtocolMsg::Handshake(HandshakeMsg::Welcome {
+                    app_id,
+                    wid,
+                    surface,
+                    rect,
+                    frame_mode,
+                    extra_surfaces,
+                }),
+            ) => {
                 self.app_id = Some(app_id);
                 self.wid = Some(wid);
                 self.surface = Some(surface);
@@ -573,9 +592,23 @@ pub enum HostAction {
     },
     /// 帧合成：写入 surface 的 slot（双缓冲翻面）；适配层随合成回 FrameAck
     /// （frame_id 原样回带）。
-    ComposeFrame { surface: u64, wid: u64, frame_id: u64, slot: u8, revision: u64, payload: DrawList },
+    ComposeFrame {
+        surface: u64,
+        wid: u64,
+        frame_id: u64,
+        slot: u8,
+        revision: u64,
+        payload: DrawList,
+    },
     /// 共享内存变体（S9）：适配层从 shm 槽读载荷解码后合成。
-    ComposeFrameShared { surface: u64, wid: u64, frame_id: u64, slot: u8, revision: u64, len: u32 },
+    ComposeFrameShared {
+        surface: u64,
+        wid: u64,
+        frame_id: u64,
+        slot: u8,
+        revision: u64,
+        len: u32,
+    },
     /// v2 内嵌帧（PLAN-683 remote 模式）：DisplayList 载荷直达（无 shm），
     /// 适配层入 v2 槽合成 + 回 FrameAck。
     ComposeFrameV2 {
@@ -620,7 +653,10 @@ pub enum HostAction {
     /// app→host IME 请求下行（PLAN-690 T-02，remote 模式）：daemon 对
     /// wid 窗执行 IME enable/disable + 候选窗定位（Windows IMM——
     /// `window::run` → HWND 路径；非 Windows 观测行降级）。
-    ImeRequest { wid: u64, enabled: Option<super::message::ImeReq> },
+    ImeRequest {
+        wid: u64,
+        enabled: Option<super::message::ImeReq>,
+    },
     /// app→host 光标形状下行（PLAN-690 T-05）：daemon view 态应用
     ///（mouse_area interaction，跨平台；0 default / 1 pointer / 2 text）。
     SetCursor { wid: u64, kind: u8 },
@@ -659,7 +695,10 @@ impl HostEndpoint {
         if self.wid == Some(wid) {
             self.surface
         } else {
-            self.extra_surfaces.iter().find(|(w, _)| *w == wid).map(|(_, s)| *s)
+            self.extra_surfaces
+                .iter()
+                .find(|(w, _)| *w == wid)
+                .map(|(_, s)| *s)
         }
     }
 
@@ -684,9 +723,20 @@ impl HostEndpoint {
                     return Err(ProtocolError::VersionMismatch(version));
                 }
                 if app_name.is_empty() {
-                    return Err(ProtocolError::WrongState { state: "Listening", msg: "empty app_name" });
+                    return Err(ProtocolError::WrongState {
+                        state: "Listening",
+                        msg: "empty app_name",
+                    });
                 }
-                Ok(vec![HostAction::ResolveAndAttach { version, app_name, title, width, height, fonts, surfaces }])
+                Ok(vec![HostAction::ResolveAndAttach {
+                    version,
+                    app_name,
+                    title,
+                    width,
+                    height,
+                    fonts,
+                    surfaces,
+                }])
             }
             // --- Active：帧/输入确认/控制/观测 ---
             (
@@ -795,7 +845,16 @@ impl HostEndpoint {
                 }),
             ) => {
                 let surface = self.surface_for(wid).expect("Active 即有 surface");
-                Ok(vec![HostAction::BitmapReady { surface, wid, id, w, h, stride, slot, len }])
+                Ok(vec![HostAction::BitmapReady {
+                    surface,
+                    wid,
+                    id,
+                    w,
+                    h,
+                    stride,
+                    slot,
+                    len,
+                }])
             }
             // 握手确认（app 的 Ready）：Active 后的例行收尾，无动作。
             (HostState::Active, ProtocolMsg::Handshake(HandshakeMsg::Ready)) => Ok(vec![]),
@@ -851,7 +910,12 @@ impl HostEndpoint {
                 }
                 _ => unreachable!("上方模式已限定两变体"),
             },
-            (HostState::Active, ProtocolMsg::Control(control @ (ControlMsg::TitleChanged { .. } | ControlMsg::Notify { .. }))) => {
+            (
+                HostState::Active,
+                ProtocolMsg::Control(
+                    control @ (ControlMsg::TitleChanged { .. } | ControlMsg::Notify { .. }),
+                ),
+            ) => {
                 // 控制上行在此端点只做透传记录；落点在适配层（title→chrome、
                 // notify→通知中心）。
                 let _ = control;
@@ -1030,7 +1094,11 @@ mod tests {
 
     impl StubSource {
         fn new() -> Self {
-            Self { count: 0, rev: 1, last_input: None }
+            Self {
+                count: 0,
+                rev: 1,
+                last_input: None,
+            }
         }
     }
 
@@ -1054,7 +1122,13 @@ mod tests {
         }
 
         fn on_input(&mut self, input: &InputMsg) {
-            if matches!(input, InputMsg::PointerPressed { button: MouseButton::Left, .. }) {
+            if matches!(
+                input,
+                InputMsg::PointerPressed {
+                    button: MouseButton::Left,
+                    ..
+                }
+            ) {
                 self.count += 1;
                 self.rev += 1;
             }
@@ -1073,7 +1147,13 @@ mod tests {
         let actions = host.on_message(hello).unwrap();
         assert!(matches!(actions[0], HostAction::ResolveAndAttach { .. }));
         let welcome = host
-            .activate(1, 3, 42, WRect::new(16.0, 16.0, 480.0, 320.0), FrameMode::Commands)
+            .activate(
+                1,
+                3,
+                42,
+                WRect::new(16.0, 16.0, 480.0, 320.0),
+                FrameMode::Commands,
+            )
             .unwrap();
         let replies = app.on_message(welcome).unwrap();
         assert_eq!(replies, vec![ProtocolMsg::Handshake(HandshakeMsg::Ready)]);
@@ -1094,8 +1174,13 @@ mod tests {
         ));
 
         let actions = host.on_message(hello).unwrap();
-        let HostAction::ResolveAndAttach { app_name, title, width, height, .. } =
-            &actions[0]
+        let HostAction::ResolveAndAttach {
+            app_name,
+            title,
+            width,
+            height,
+            ..
+        } = &actions[0]
         else {
             panic!("期待 ResolveAndAttach");
         };
@@ -1104,16 +1189,28 @@ mod tests {
         assert_eq!((*width, *height), (480.0, 320.0));
 
         let welcome = host
-            .activate(1, 3, 42, WRect::new(16.0, 16.0, 480.0, 320.0), FrameMode::Commands)
+            .activate(
+                1,
+                3,
+                42,
+                WRect::new(16.0, 16.0, 480.0, 320.0),
+                FrameMode::Commands,
+            )
             .unwrap();
         assert_eq!(host.state, HostState::Active);
-        assert_eq!((host.app_id, host.wid, host.surface), (Some(1), Some(3), Some(42)));
+        assert_eq!(
+            (host.app_id, host.wid, host.surface),
+            (Some(1), Some(3), Some(42))
+        );
 
         let replies = app.on_message(welcome).unwrap();
         assert_eq!(replies.len(), 1);
         assert_eq!(replies[0], ProtocolMsg::Handshake(HandshakeMsg::Ready));
         assert_eq!(app.state, AppState::Active);
-        assert_eq!((app.app_id, app.wid, app.surface), (Some(1), Some(3), Some(42)));
+        assert_eq!(
+            (app.app_id, app.wid, app.surface),
+            (Some(1), Some(3), Some(42))
+        );
     }
 
     #[test]
@@ -1125,8 +1222,14 @@ mod tests {
 
         // 帧 0：无空闲槽 → 翻转出槽 1（last_slot=0）。
         let f0 = app.produce_frame(None).unwrap();
-        let ProtocolMsg::Frame(FrameMsg::FrameReady { wid, frame_id, slot, revision, payload, .. }) =
-            &f0
+        let ProtocolMsg::Frame(FrameMsg::FrameReady {
+            wid,
+            frame_id,
+            slot,
+            revision,
+            payload,
+            ..
+        }) = &f0
         else {
             panic!("期待 FrameReady");
         };
@@ -1135,8 +1238,19 @@ mod tests {
 
         // 宿主合成 + 归还槽 1。
         let actions = host.on_message(f0).unwrap();
-        assert!(matches!(actions[0], HostAction::ComposeFrame { surface: 42, slot: 1, .. }));
-        let ack = ProtocolMsg::Frame(FrameMsg::FrameAck { wid: 3, frame_id: 1, slot: 1 });
+        assert!(matches!(
+            actions[0],
+            HostAction::ComposeFrame {
+                surface: 42,
+                slot: 1,
+                ..
+            }
+        ));
+        let ack = ProtocolMsg::Frame(FrameMsg::FrameAck {
+            wid: 3,
+            frame_id: 1,
+            slot: 1,
+        });
         app.on_message(ack).unwrap();
         assert_eq!(app.free_slots, vec![1], "槽归还空闲池");
 
@@ -1174,10 +1288,16 @@ mod tests {
 
         // 宿主主动 Close → app 转 Closing + 回 ExitRequest。
         let close = host.close().unwrap();
-        assert!(matches!(close, ProtocolMsg::Control(ControlMsg::Close { wid: 3 })));
+        assert!(matches!(
+            close,
+            ProtocolMsg::Control(ControlMsg::Close { wid: 3 })
+        ));
         let replies = app.on_message(close).unwrap();
         assert_eq!(app.state, AppState::Closing);
-        assert_eq!(replies, vec![ProtocolMsg::Control(ControlMsg::ExitRequest { wid: 3 })]);
+        assert_eq!(
+            replies,
+            vec![ProtocolMsg::Control(ControlMsg::ExitRequest { wid: 3 })]
+        );
 
         // 宿主收 ExitRequest → ReclaimWindow + 回 Listening。
         let actions = host.on_message(replies[0].clone()).unwrap();
@@ -1186,7 +1306,8 @@ mod tests {
         assert_eq!(host.wid, None);
 
         // 回收确认（BufferRelease）→ app 回 Detached，可再 connect。
-        app.on_message(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface: 42 })).unwrap();
+        app.on_message(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface: 42 }))
+            .unwrap();
         assert_eq!(app.state, AppState::Detached);
         assert!(app.connect().is_ok(), "回收后可重新孵化");
     }
@@ -1214,7 +1335,11 @@ mod tests {
         assert_eq!(
             actions,
             vec![HostAction::ObserveUp {
-                msg: ObserveMsg::Log { wid: 3, level: super::super::message::LogLevel::Info, message: "ready".into() }
+                msg: ObserveMsg::Log {
+                    wid: 3,
+                    level: super::super::message::LogLevel::Info,
+                    message: "ready".into()
+                }
             }]
         );
     }
@@ -1262,7 +1387,13 @@ mod tests {
         assert!(matches!(actions[0], HostAction::ResolveAndAttach { .. }));
         // 新 wid/surface（宿主重新分配）。
         let welcome = host
-            .activate(1, 9, 77, WRect::new(16.0, 16.0, 480.0, 320.0), FrameMode::Commands)
+            .activate(
+                1,
+                9,
+                77,
+                WRect::new(16.0, 16.0, 480.0, 320.0),
+                FrameMode::Commands,
+            )
             .unwrap();
         app.on_message(welcome).unwrap();
         assert_eq!(app.state, AppState::Active);
@@ -1270,7 +1401,11 @@ mod tests {
         assert_eq!(app.app_id, Some(1));
 
         // revision 连续 = 状态未动的协议级证据。
-        assert_eq!(app.session.revision(), rev_before, "L2 往返 revision 不归零");
+        assert_eq!(
+            app.session.revision(),
+            rev_before,
+            "L2 往返 revision 不归零"
+        );
         // 且会话仍可产帧/响应输入。
         let f = app.produce_frame(None).unwrap();
         let ProtocolMsg::Frame(FrameMsg::FrameReady { revision, .. }) = &f else {
@@ -1295,12 +1430,18 @@ mod tests {
                 frame_mode: FrameMode::Commands,
                 extra_surfaces: Vec::new(),
             })),
-            Err(ProtocolError::WrongState { state: "Detached", msg: "Handshake::Welcome" })
+            Err(ProtocolError::WrongState {
+                state: "Detached",
+                msg: "Handshake::Welcome"
+            })
         );
         assert!(app.connect().is_ok());
         assert_eq!(
             app.connect(),
-            Err(ProtocolError::WrongState { state: "Handshaking", msg: "connect()" })
+            Err(ProtocolError::WrongState {
+                state: "Handshaking",
+                msg: "connect()"
+            })
         );
 
         // Active 前宿主收不到帧；Listening 状态不能 close/activate 两次。
@@ -1313,17 +1454,30 @@ mod tests {
                 revision: 1,
                 payload: DrawList::default()
             })),
-            Err(ProtocolError::WrongState { state: "Host::Listening", msg: "Frame::FrameReady" })
+            Err(ProtocolError::WrongState {
+                state: "Host::Listening",
+                msg: "Frame::FrameReady"
+            })
         );
-        assert!(matches!(host.on_message(ProtocolMsg::Handshake(HandshakeMsg::Ready)),
-            Err(ProtocolError::WrongState { state: "Host::Listening", msg: "Handshake::Ready" })));
+        assert!(matches!(
+            host.on_message(ProtocolMsg::Handshake(HandshakeMsg::Ready)),
+            Err(ProtocolError::WrongState {
+                state: "Host::Listening",
+                msg: "Handshake::Ready"
+            })
+        ));
         // 合法前奏在全新端点上重演（上面的 app 已停在 Handshaking——非法
         // 迁移不改状态，但它的 connect 已被消费）。
         let mut app2 = AppEndpoint::new(StubSource::new(), "counter", "c", 480.0, 320.0);
         let mut host2 = HostEndpoint::listen();
         let _ = activate_pair(&mut app2, &mut host2);
-        assert!(matches!(host2.activate(2, 4, 43, WRect::default(), FrameMode::Commands),
-            Err(ProtocolError::WrongState { state: "Host::Active", msg: "activate()" })));
+        assert!(matches!(
+            host2.activate(2, 4, 43, WRect::default(), FrameMode::Commands),
+            Err(ProtocolError::WrongState {
+                state: "Host::Active",
+                msg: "activate()"
+            })
+        ));
         // 版本不符拒收。
         let mut host2 = HostEndpoint::listen();
         let mismatch = host2.on_message(ProtocolMsg::Handshake(HandshakeMsg::Hello {
@@ -1357,7 +1511,10 @@ mod tests {
             .unwrap();
         assert_eq!(
             up,
-            vec![HostAction::DesktopBus { wid: 3, record: "launch\u{1f}counter".into() }]
+            vec![HostAction::DesktopBus {
+                wid: 3,
+                record: "launch\u{1f}counter".into()
+            }]
         );
         let drop_title = host
             .on_message(ProtocolMsg::Control(ControlMsg::TitleChanged {
@@ -1388,13 +1545,23 @@ mod tests {
             height: 800.0,
             fonts: vec![],
             surfaces: vec![
-                SurfaceDecl { role: surface_role::BACKGROUND, width: 1280.0, height: 800.0 },
-                SurfaceDecl { role: surface_role::CHROME, width: 1280.0, height: 48.0 },
+                SurfaceDecl {
+                    role: surface_role::BACKGROUND,
+                    width: 1280.0,
+                    height: 800.0,
+                },
+                SurfaceDecl {
+                    role: surface_role::CHROME,
+                    width: 1280.0,
+                    height: 48.0,
+                },
             ],
         });
         let actions = host.on_message(hello).unwrap();
         match &actions[0] {
-            HostAction::ResolveAndAttach { app_name, surfaces, .. } => {
+            HostAction::ResolveAndAttach {
+                app_name, surfaces, ..
+            } => {
                 assert_eq!(app_name, "shell");
                 assert_eq!(surfaces.len(), 2);
                 assert_eq!(surfaces[1].role, surface_role::CHROME);
@@ -1418,7 +1585,11 @@ mod tests {
                 }],
             )
             .unwrap();
-        let ProtocolMsg::Handshake(HandshakeMsg::Welcome { wid, extra_surfaces, .. }) = &welcome
+        let ProtocolMsg::Handshake(HandshakeMsg::Welcome {
+            wid,
+            extra_surfaces,
+            ..
+        }) = &welcome
         else {
             panic!("期待 Welcome");
         };

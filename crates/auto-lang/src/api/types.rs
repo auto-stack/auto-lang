@@ -51,11 +51,21 @@ impl ApiAttrs {
         }
 
         let lower = fn_name.to_lowercase();
-        if lower.starts_with("get") || lower.starts_with("list") || lower.starts_with("find") || lower.starts_with("search") {
+        if lower.starts_with("get")
+            || lower.starts_with("list")
+            || lower.starts_with("find")
+            || lower.starts_with("search")
+        {
             "GET".to_string()
-        } else if lower.starts_with("create") || lower.starts_with("add") || lower.starts_with("save") {
+        } else if lower.starts_with("create")
+            || lower.starts_with("add")
+            || lower.starts_with("save")
+        {
             "POST".to_string()
-        } else if lower.starts_with("update") || lower.starts_with("modify") || lower.starts_with("set") {
+        } else if lower.starts_with("update")
+            || lower.starts_with("modify")
+            || lower.starts_with("set")
+        {
             "PUT".to_string()
         } else if lower.starts_with("delete") || lower.starts_with("remove") {
             "DELETE".to_string()

@@ -42,13 +42,26 @@ fn build_view(src: &str) -> View<DynamicMessage> {
 /// containers/lists at arbitrary depth).
 fn collect_editors<'a>(
     view: &'a View<DynamicMessage>,
-    out: &mut Vec<(&'a str, &'a Option<DynamicMessage>, &'a Option<DynamicMessage>)>,
+    out: &mut Vec<(
+        &'a str,
+        &'a Option<DynamicMessage>,
+        &'a Option<DynamicMessage>,
+    )>,
 ) {
     match view {
-        View::CodeEditor { key, on_change, on_cursor, .. } => {
+        View::CodeEditor {
+            key,
+            on_change,
+            on_cursor,
+            ..
+        } => {
             out.push((key.as_str(), on_change, on_cursor));
         }
-        View::Row { children, .. } | View::Column { children, .. } | View::List { items: children, .. } => {
+        View::Row { children, .. }
+        | View::Column { children, .. }
+        | View::List {
+            items: children, ..
+        } => {
             for child in children {
                 collect_editors(child, out);
             }
@@ -64,12 +77,21 @@ fn collect_editors<'a>(
 /// whose args are the resolved ints — never `Str("")`.
 fn assert_int_arg(msg: &DynamicMessage, event_name: &str, expected: i32, ctx: &str) {
     match msg {
-        DynamicMessage::Typed { event_name: name, args, .. } => {
+        DynamicMessage::Typed {
+            event_name: name,
+            args,
+            ..
+        } => {
             assert_eq!(name, event_name, "{}: event name", ctx);
             assert_eq!(args.len(), 1, "{}: one arg ({:?})", ctx, args);
             match &args[0] {
-                auto_val::Value::Int(v) => assert_eq!(*v, expected, "{}: int arg ({:?})", ctx, args),
-                other => panic!("{}: expected Int({}), got {:?} (Str(\"\") = F-W3 病灶)", ctx, expected, other),
+                auto_val::Value::Int(v) => {
+                    assert_eq!(*v, expected, "{}: int arg ({:?})", ctx, args)
+                }
+                other => panic!(
+                    "{}: expected Int({}), got {:?} (Str(\"\") = F-W3 病灶)",
+                    ctx, expected, other
+                ),
             }
         }
         other => panic!("{}: expected Typed message, got {:?}", ctx, other),
@@ -112,18 +134,43 @@ fn code_editor_loop_var_event_args_resolve() {
 
     let mut editors = Vec::new();
     collect_editors(&v, &mut editors);
-    assert_eq!(editors.len(), 3, "three editors built: {:?}", editors.iter().map(|(k, _, _)| k).collect::<Vec<_>>());
+    assert_eq!(
+        editors.len(),
+        3,
+        "three editors built: {:?}",
+        editors.iter().map(|(k, _, _)| k).collect::<Vec<_>>()
+    );
 
     let by_key = |k: &str| editors.iter().find(|(key, _, _)| *key == k).expect(k);
     let (key, on_change, on_cursor) = by_key("a.at");
     assert_eq!(*key, "a.at");
     // 041 形状：i = 循环索引 0。
-    assert_int_arg(on_change.as_ref().expect("on_change baked"), "SrcChanged", 0, "loop-var oninput");
-    assert_int_arg(on_cursor.as_ref().expect("on_cursor baked"), "CursorMoved", 0, "loop-var oncursor");
+    assert_int_arg(
+        on_change.as_ref().expect("on_change baked"),
+        "SrcChanged",
+        0,
+        "loop-var oninput",
+    );
+    assert_int_arg(
+        on_cursor.as_ref().expect("on_cursor baked"),
+        "CursorMoved",
+        0,
+        "loop-var oncursor",
+    );
     // 字面量实参直取。
-    assert_int_arg(by_key("lit").1.as_ref().unwrap(), "SrcChanged", 7, "literal oninput");
+    assert_int_arg(
+        by_key("lit").1.as_ref().unwrap(),
+        "SrcChanged",
+        7,
+        "literal oninput",
+    );
     // 前导绑定路径（t.id 多段 field 访问）经 bindings 解析。
-    assert_int_arg(by_key("dot").1.as_ref().unwrap(), "SrcChanged", 3, "dotted-path oninput");
+    assert_int_arg(
+        by_key("dot").1.as_ref().unwrap(),
+        "SrcChanged",
+        3,
+        "dotted-path oninput",
+    );
 }
 
 /// 无参事件回归锁：`.EditorCtx` 光杆形态（041 的 oncontextmenu 用法）
@@ -147,7 +194,9 @@ fn code_editor_no_param_event_still_bakes() {
     collect_editors(&v, &mut editors);
     assert_eq!(editors.len(), 1);
     match editors[0].1.as_ref().expect("on_change baked") {
-        DynamicMessage::Typed { event_name, args, .. } => {
+        DynamicMessage::Typed {
+            event_name, args, ..
+        } => {
             assert_eq!(event_name, "SrcChanged");
             assert!(args.is_empty(), "bare handler: zero args ({:?})", args);
         }
@@ -176,7 +225,8 @@ fn corpus_041_code_editor_events_reach_handler() {
     let mut editors = Vec::new();
     collect_editors(&v, &mut editors);
     assert_eq!(
-        editors.len(), 1,
+        editors.len(),
+        1,
         "active tab only (active_key=tab-main): {:?}",
         editors.iter().map(|(k, _, _)| k).collect::<Vec<_>>()
     );
@@ -199,7 +249,11 @@ fn corpus_041_code_editor_events_reach_handler() {
         auto_val::Value::Int(n) => n,
         other => panic!("edits after: {:?}", other),
     };
-    assert_eq!(edits_after, edits_before + 1, "SrcChanged handler ran (edits+1)");
+    assert_eq!(
+        edits_after,
+        edits_before + 1,
+        "SrcChanged handler ran (edits+1)"
+    );
     // tabs 元素是堆上 VmRef——经桥物化后读字段（plan370 note_field 同款）。
     let tabs = comp.read_state_as_vec("tabs").expect("tabs readable");
     let elem = tabs
@@ -222,21 +276,21 @@ fn corpus_041_code_editor_events_reach_handler() {
     comp.on(on_cursor);
 }
 
-
 /// PLAN-089(musk T-09): `readonly` prop reaches `View::CodeEditor` —
 /// literal `true` bakes true, state binding resolves, absence defaults to
 /// false (existing corpus untouched).
 #[test]
 fn code_editor_readonly_prop_bakes() {
-    fn collect_readonly<'a>(
-        view: &'a View<DynamicMessage>,
-        out: &mut Vec<(&'a str, bool)>,
-    ) {
+    fn collect_readonly<'a>(view: &'a View<DynamicMessage>, out: &mut Vec<(&'a str, bool)>) {
         match view {
             View::CodeEditor { key, readonly, .. } => {
                 out.push((key.as_str(), *readonly));
             }
-            View::Row { children, .. } | View::Column { children, .. } | View::List { items: children, .. } => {
+            View::Row { children, .. }
+            | View::Column { children, .. }
+            | View::List {
+                items: children, ..
+            } => {
                 for child in children {
                     collect_readonly(child, out);
                 }

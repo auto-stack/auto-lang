@@ -48,8 +48,7 @@ impl FragmentHasher {
         // For L1, we hash the string representation
         // This detects any change including formatting
         let text = format!("{:?}", frag);
-        blake3::hash(text.as_bytes())
-            .as_bytes()[..8]
+        blake3::hash(text.as_bytes()).as_bytes()[..8]
             .try_into()
             .map(u64::from_le_bytes)
             .unwrap_or(0)
@@ -84,8 +83,7 @@ impl FragmentHasher {
         // Hash body structure (simplified - just statement count)
         hasher.update(&frag.body.stmts.len().to_be_bytes());
 
-        hasher.finalize()
-            .as_bytes()[..8]
+        hasher.finalize().as_bytes()[..8]
             .try_into()
             .map(u64::from_le_bytes)
             .unwrap_or(0)
@@ -119,8 +117,7 @@ impl FragmentHasher {
         // Hash return type
         hash_type_no_rc(&mut hasher, &frag.ret);
 
-        hasher.finalize()
-            .as_bytes()[..8]
+        hasher.finalize().as_bytes()[..8]
             .try_into()
             .map(u64::from_le_bytes)
             .unwrap_or(0)
@@ -168,10 +165,10 @@ fn hash_type_no_rc(hasher: &mut blake3::Hasher, ty: &Type) {
         Type::CStruct(_) => hasher.update(b"CStruct"),
         Type::Linear(_) => hasher.update(b"Linear"),
         Type::Variadic => hasher.update(b"Variadic"),
-        Type::Option(_) => hasher.update(b"Option"),  // Plan 120
-        Type::Result(_) => hasher.update(b"Result"),  // Plan 120
-        Type::Handle { .. } => hasher.update(b"Handle"),  // Plan 121
-        Type::Rust(source) => hasher.update(source.full_path.as_bytes()),  // Plan 190
+        Type::Option(_) => hasher.update(b"Option"), // Plan 120
+        Type::Result(_) => hasher.update(b"Result"), // Plan 120
+        Type::Handle { .. } => hasher.update(b"Handle"), // Plan 121
+        Type::Rust(source) => hasher.update(source.full_path.as_bytes()), // Plan 190
         Type::Tuple(ts) => {
             hasher.update(b"Tuple");
             for t in ts {
@@ -283,7 +280,7 @@ mod tests {
                 ty: Type::Int,
                 default: None,
                 mode: Default::default(),
-                    destructure: None,
+                destructure: None,
             }],
             Body::new(),
             Type::Int,
@@ -405,7 +402,7 @@ mod tests {
                 ty: Type::Int,
                 default: None,
                 mode: Default::default(),
-                    destructure: None,
+                destructure: None,
             }],
             body1,
             Type::Int,
@@ -420,7 +417,7 @@ mod tests {
                 ty: Type::Int,
                 default: None,
                 mode: Default::default(),
-                    destructure: None,
+                destructure: None,
             }],
             body2,
             Type::Int,

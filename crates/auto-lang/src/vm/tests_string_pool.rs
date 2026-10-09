@@ -36,7 +36,11 @@ fn string_pool_survives_u16_boundary() {
 
     // 高位索引往返:nanbox 标签是 u32 负数编码,2^31 内必须无损。
     let hi = vm.add_string(b"high-index-tail".to_vec());
-    assert!(hi > 65535, "pool should exceed u16 range, got len {}", hi + 1);
+    assert!(
+        hi > 65535,
+        "pool should exceed u16 range, got len {}",
+        hi + 1
+    );
     let nv = auto_val::encode_string(hi as u32);
     assert_eq!(auto_val::decode_string(nv) as usize, hi);
     assert_eq!(
@@ -100,9 +104,15 @@ fn codegen_load_str_operand_is_u32() {
     use crate::vm::opcode::OpCode;
 
     let mut codegen = Codegen::new();
-    codegen.compile_expr(&Expr::Str("pool-u32-probe".into())).unwrap();
+    codegen
+        .compile_expr(&Expr::Str("pool-u32-probe".into()))
+        .unwrap();
     assert_eq!(codegen.code[0], OpCode::LOAD_STR as u8, "expected LOAD_STR");
-    assert_eq!(codegen.code.len(), 5, "LOAD_STR must be 1 opcode byte + 4 operand bytes");
+    assert_eq!(
+        codegen.code.len(),
+        5,
+        "LOAD_STR must be 1 opcode byte + 4 operand bytes"
+    );
     let idx = u32::from_le_bytes(codegen.code[1..5].try_into().unwrap());
     assert!(idx < codegen.strings.len() as u32);
     assert_eq!(codegen.strings[idx as usize], b"pool-u32-probe".to_vec());
@@ -130,11 +140,18 @@ fn engine_load_str_decode_width_matches_codegen() {
     );
     let lines = Disassembler::new(&flash).disassemble_range(0, codegen.code.len());
     // 找 push.accum:它占 1+8 字节,下一条指令偏移必须恰为 +9。
-    let accum = lines.iter().find(|l| l.mnemonic.contains("push.accum"))
+    let accum = lines
+        .iter()
+        .find(|l| l.mnemonic.contains("push.accum"))
         .expect("config prolog must emit push.accum");
-    let next = lines.iter().find(|l| l.offset > accum.offset)
+    let next = lines
+        .iter()
+        .find(|l| l.offset > accum.offset)
         .expect("instruction after push.accum");
-    assert_eq!(next.offset - accum.offset, 9,
+    assert_eq!(
+        next.offset - accum.offset,
+        9,
         "push.accum operand must be 8 bytes (two u32 pool indices); got {}",
-        next.offset - accum.offset);
+        next.offset - accum.offset
+    );
 }

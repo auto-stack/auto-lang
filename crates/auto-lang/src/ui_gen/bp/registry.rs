@@ -41,7 +41,9 @@ impl Default for BlueprintRegistry {
 impl BlueprintRegistry {
     /// Empty registry.
     pub fn new() -> Self {
-        Self { packages: Vec::new() }
+        Self {
+            packages: Vec::new(),
+        }
     }
 
     /// Discover packages under `root` (each child dir of `root/<kind>/<name>/`
@@ -123,7 +125,10 @@ impl BlueprintRegistry {
             .find(|p| p.spec.kind == kind && p.spec.name == name)
     }
 
-    pub fn list_by_kind<'a>(&'a self, kind: &'a str) -> impl Iterator<Item = &'a BlueprintPackage> + 'a {
+    pub fn list_by_kind<'a>(
+        &'a self,
+        kind: &'a str,
+    ) -> impl Iterator<Item = &'a BlueprintPackage> + 'a {
         self.packages.iter().filter(move |p| p.spec.kind == kind)
     }
 
@@ -134,8 +139,11 @@ impl BlueprintRegistry {
     /// 只以包形态存在,palette 经 schema 分类认识它,不注册回 WidgetRegistry).
     /// Returns the list of violations (empty = clean).
     pub fn palette_drift(&self, widgets: &WidgetRegistry) -> Vec<String> {
-        let mut tags: std::collections::HashSet<String> =
-            widgets.all_widgets().keys().map(|s| s.to_string()).collect();
+        let mut tags: std::collections::HashSet<String> = widgets
+            .all_widgets()
+            .keys()
+            .map(|s| s.to_string())
+            .collect();
         if let Some(schema) = crate::aura::default_schema_cached() {
             for (tag, meta) in schema.meta.iter() {
                 if meta.tier == crate::aura::schema::ElementTier::PackageOrigin {
@@ -146,10 +154,14 @@ impl BlueprintRegistry {
         let mut drift = Vec::new();
         for pkg in &self.packages {
             for w in &pkg.spec.palette {
-                let known = tags.contains(w)
-                    || tags.iter().any(|t| t.starts_with(&format!("{w}-")));
+                let known =
+                    tags.contains(w) || tags.iter().any(|t| t.starts_with(&format!("{w}-")));
                 if !known {
-                    drift.push(format!("{}: palette widget '{}' not in AURA registry", pkg.key(), w));
+                    drift.push(format!(
+                        "{}: palette widget '{}' not in AURA registry",
+                        pkg.key(),
+                        w
+                    ));
                 }
             }
         }
@@ -283,7 +295,10 @@ mod scan_tests {
             "navigation/sidebar-nav",
             "navigation/sidebar-shell",
         ] {
-            assert!(keys.contains(&key.to_string()), "missing {key}; keys: {keys:?}");
+            assert!(
+                keys.contains(&key.to_string()),
+                "missing {key}; keys: {keys:?}"
+            );
         }
     }
 
@@ -335,7 +350,10 @@ mod scan_tests {
             gotchas: None,
         });
         let drift = reg.palette_drift(&widgets);
-        assert!(drift.is_empty(), "chart package-origin tags must pass: {drift:?}");
+        assert!(
+            drift.is_empty(),
+            "chart package-origin tags must pass: {drift:?}"
+        );
 
         let mut reg2 = BlueprintRegistry::with_defaults();
         reg2.packages.push(BlueprintPackage {
@@ -358,7 +376,6 @@ mod scan_tests {
         assert_eq!(drift2.len(), 1, "unknown tags must still drift: {drift2:?}");
         assert!(drift2.iter().any(|d| d.contains("pie-chart")));
     }
-
 }
 
 /// PLAN-645 T-01: with_defaults 三级解析根（env → cwd 向上找 blueprints/ →
@@ -428,18 +445,28 @@ mod root_resolution_tests {
             "+++\nkind = \"form\"\nname = \"tiny\"\npalette = []\nextension_points = []\nvariants = [\"default\"]\n\n+++\n\n# Tiny\n",
         )
         .unwrap();
-        std::fs::write(pkg.join("reference").join("default.at"), "widget Tiny {\n    view {\n        text \"t\"\n    }\n}\n").unwrap();
+        std::fs::write(
+            pkg.join("reference").join("default.at"),
+            "widget Tiny {\n    view {\n        text \"t\"\n    }\n}\n",
+        )
+        .unwrap();
 
         let _guard = EnvGuard::set("AUTO_BLUEPRINTS_ROOT", tmp.as_os_str());
         let reg = BlueprintRegistry::with_defaults();
         let keys: Vec<String> = reg.iter().map(|p| p.key()).collect();
-        assert!(keys.contains(&"form/tiny".to_string()), "env-rooted scan must list form/tiny; keys: {keys:?}");
+        assert!(
+            keys.contains(&"form/tiny".to_string()),
+            "env-rooted scan must list form/tiny; keys: {keys:?}"
+        );
 
         let empty = std::env::temp_dir().join(format!("plan645-empty-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&empty);
         std::fs::create_dir_all(&empty).unwrap();
         std::env::set_var("AUTO_BLUEPRINTS_ROOT", empty.as_os_str());
         let reg2 = BlueprintRegistry::with_defaults();
-        assert!(reg2.packages().is_empty(), "empty override yields empty registry");
+        assert!(
+            reg2.packages().is_empty(),
+            "empty override yields empty registry"
+        );
     }
 }

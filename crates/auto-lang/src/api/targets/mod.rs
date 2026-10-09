@@ -2,13 +2,13 @@
 //!
 //! Plan 102 Phase 5.2-5.3: Code generators for different deployment targets
 
-mod typescript;
-mod tauri;
 mod axum;
+mod tauri;
+mod typescript;
 
-pub use typescript::TypeScriptGenerator;
-pub use tauri::TauriGenerator;
 pub use axum::AxumGenerator;
+pub use tauri::TauriGenerator;
+pub use typescript::TypeScriptGenerator;
 
 use crate::api::ApiModule;
 

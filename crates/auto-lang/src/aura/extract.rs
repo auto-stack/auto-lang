@@ -10,7 +10,7 @@
 //! - **Separation**: Handlers are extracted as LogicPayload
 
 use super::types::*;
-use crate::ast::{Expr, Type, Key, ViewPropValue, ViewProp, ViewEvent};
+use crate::ast::{Expr, Key, Type, ViewEvent, ViewProp, ViewPropValue};
 use std::collections::HashMap;
 
 // Plan 367 P2-3: thread-local store for view fragments.
@@ -23,7 +23,8 @@ thread_local! {
 /// Register a view fragment for inline expansion (Plan 367 P2-3).
 pub fn register_view_fragment(frag: &crate::ast::ui::ViewFragmentDecl) {
     VIEW_FRAGMENTS.with(|cell| {
-        cell.borrow_mut().insert(frag.name.as_str().to_string(), frag.clone());
+        cell.borrow_mut()
+            .insert(frag.name.as_str().to_string(), frag.clone());
     });
 }
 
@@ -358,7 +359,8 @@ fn flatten_dot_path(expr: &Expr) -> Option<String> {
 }
 
 /// Extract event handler pattern from expression
-fn extract_event_handler(expr: &Expr) -> ExtractResult<AuraEvent> {    match expr {
+fn extract_event_handler(expr: &Expr) -> ExtractResult<AuraEvent> {
+    match expr {
         // Identifier: could be ".Inc" or "Msg.Inc"
         Expr::Ident(name) => {
             let name_str = name.as_str();
@@ -400,7 +402,10 @@ fn extract_event_handler(expr: &Expr) -> ExtractResult<AuraEvent> {    match exp
                 }
                 _ => "Unknown".to_string(),
             };
-            let params: Vec<String> = call.args.args.iter()
+            let params: Vec<String> = call
+                .args
+                .args
+                .iter()
                 .filter_map(|arg| {
                     if let crate::ast::Arg::Pos(expr) = arg {
                         Some(expr_to_string(expr))
@@ -455,7 +460,8 @@ fn expr_to_string(expr: &Expr) -> String {
             }
         }
         Expr::Object(pairs) => {
-            let parts: Vec<String> = pairs.iter()
+            let parts: Vec<String> = pairs
+                .iter()
                 .map(|pair| {
                     let key_str = key_to_string(&pair.key);
                     let value_str = expr_to_string(&pair.value);
@@ -528,12 +534,17 @@ pub fn extract_type(ty: &Type) -> Type {
 // Widget Declaration Extractor (Plan 096)
 // ============================================================================
 
-use crate::ast::{WidgetDecl, StoreDecl, ModelBlock, ViewBlock, OnBlock, BindBlock, MsgDecl, PropDecl, ViewNode, ViewText};
+use crate::ast::{
+    BindBlock, ModelBlock, MsgDecl, OnBlock, PropDecl, StoreDecl, ViewBlock, ViewNode, ViewText,
+    WidgetDecl,
+};
 
 /// Extract AuraStore from parsed StoreDecl (Plan 351 / Design 18).
 /// A store is a view-less widget: state + msg + handlers → module-level refs + actions.
 /// Plan 051 C7: timer 块条目提取（WidgetDecl/StoreDecl 同形）。
-fn extract_timer_entries(timer: &Option<crate::ast::ui::TimerBlock>) -> Vec<crate::aura::types::AuraTimerEntry> {
+fn extract_timer_entries(
+    timer: &Option<crate::ast::ui::TimerBlock>,
+) -> Vec<crate::aura::types::AuraTimerEntry> {
     timer
         .as_ref()
         .map(|tb| {
@@ -555,9 +566,7 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
     } else {
         Vec::new()
     };
-    let messages: Vec<AuraMessage> = decl.messages.iter()
-        .map(|m| extract_msg_decl(m))
-        .collect();
+    let messages: Vec<AuraMessage> = decl.messages.iter().map(|m| extract_msg_decl(m)).collect();
     let (handlers, handler_params) = if let Some(on) = &decl.on {
         extract_on_block(on)?
     } else {
@@ -565,7 +574,9 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
     };
     // Plan 028 F9: `on stream sse(url[, "event"])` subscriptions — keep the
     // (url, event) wiring info alongside the handler keyed by its pattern.
-    let stream_handlers: Vec<crate::aura::types::AuraStreamHandler> = decl.on.iter()
+    let stream_handlers: Vec<crate::aura::types::AuraStreamHandler> = decl
+        .on
+        .iter()
         .flat_map(|on| on.handlers.iter().filter(|h| h.stream.is_some()))
         .map(|h| {
             let sub = h.stream.as_ref().expect("filtered");
@@ -584,7 +595,9 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
         .collect();
     // Plan 367 P2-2: extract computed properties (same pattern as widget)
     let computed: Vec<AuraComputed> = if let Some(ref computed_block) = decl.computed {
-        computed_block.properties.iter()
+        computed_block
+            .properties
+            .iter()
             .map(|p| {
                 Ok(AuraComputed {
                     name: p.name.as_str().to_string(),
@@ -607,7 +620,9 @@ pub fn extract_store_from_decl(decl: &StoreDecl) -> ExtractResult<AuraStore> {
         computed,
         // Plan 012 Batch G (gap 12): store-level watch block, same mapping
         // as the widget-level one.
-        watchers: decl.watch.iter()
+        watchers: decl
+            .watch
+            .iter()
             .map(|w| crate::aura::types::AuraWatch {
                 sources: w.sources.iter().map(|s| s.as_str().to_string()).collect(),
                 immediate: w.immediate,
@@ -631,16 +646,24 @@ pub fn extract_module_fn(fn_decl: &crate::ast::Fn) -> Option<AuraModuleFn> {
     if fn_decl.api_attrs.is_some() || fn_decl.is_test {
         return None;
     }
-    let params: Vec<String> = fn_decl.params.iter()
+    let params: Vec<String> = fn_decl
+        .params
+        .iter()
         .map(|p| p.name.as_str().to_string())
         .collect();
     let ret_ts = match &fn_decl.ret {
         crate::ast::Type::Void => "".to_string(),
-        crate::ast::Type::StrSlice | crate::ast::Type::StrOwned
-        | crate::ast::Type::StrFixed(_) | crate::ast::Type::CStrLit => "string".to_string(),
-        crate::ast::Type::Int | crate::ast::Type::Uint | crate::ast::Type::USize
-        | crate::ast::Type::I64 | crate::ast::Type::U64
-        | crate::ast::Type::Float | crate::ast::Type::Double => "number".to_string(),
+        crate::ast::Type::StrSlice
+        | crate::ast::Type::StrOwned
+        | crate::ast::Type::StrFixed(_)
+        | crate::ast::Type::CStrLit => "string".to_string(),
+        crate::ast::Type::Int
+        | crate::ast::Type::Uint
+        | crate::ast::Type::USize
+        | crate::ast::Type::I64
+        | crate::ast::Type::U64
+        | crate::ast::Type::Float
+        | crate::ast::Type::Double => "number".to_string(),
         crate::ast::Type::Bool => "boolean".to_string(),
         _ => "any".to_string(),
     };
@@ -662,9 +685,8 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
     };
 
     // Extract messages
-    let mut messages: Vec<AuraMessage> = decl.messages.iter()
-        .map(|m| extract_msg_decl(m))
-        .collect();
+    let mut messages: Vec<AuraMessage> =
+        decl.messages.iter().map(|m| extract_msg_decl(m)).collect();
 
     // Plan 448 B1: widget-own inline lambdas (`onclick: () => { ... }`) are
     // minted at PARSE time — the parser rewrites them into the decl's on-block
@@ -701,11 +723,14 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
     let inline_mints = take_inline_mints();
     for (pattern, stmts) in inline_mints {
         let variant_name = pattern.trim_start_matches('.').to_string();
-        let declared = messages.iter()
+        let declared = messages
+            .iter()
             .any(|m| m.variants.iter().any(|v| v.name == variant_name));
         if !declared {
             if messages.is_empty() {
-                messages.push(AuraMessage { variants: Vec::new() });
+                messages.push(AuraMessage {
+                    variants: Vec::new(),
+                });
             }
             messages[0].variants.push(AuraMsgVariant {
                 name: variant_name,
@@ -720,7 +745,8 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
     // Detect .Tick handler and extract interval from model vars
     let tick_interval = if handlers.keys().any(|k| k == ".Tick") {
         // Look for a model var named "interval" (default 1000ms)
-        let interval_val = state_vars.iter()
+        let interval_val = state_vars
+            .iter()
             .find(|v| v.name == "interval")
             .and_then(|v| {
                 if let Expr::Int(n) = &v.initial {
@@ -743,7 +769,8 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         crate::aura::types::lifecycle::INIT,
         crate::aura::types::lifecycle::DESTROY,
     ];
-    let lifecycle_events: Vec<crate::aura::types::AuraLifecycle> = lifecycle_names.iter()
+    let lifecycle_events: Vec<crate::aura::types::AuraLifecycle> = lifecycle_names
+        .iter()
         .filter_map(|name| {
             handlers.remove(*name).map(|payload| {
                 // name[1..] strips the leading "."
@@ -753,13 +780,13 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         .collect();
 
     // Extract props
-    let props: Vec<AuraProp> = decl.props.iter()
-        .map(|p| extract_prop_decl(p))
-        .collect();
+    let props: Vec<AuraProp> = decl.props.iter().map(|p| extract_prop_decl(p)).collect();
 
     // Extract computed properties
     let computed: Vec<AuraComputed> = if let Some(ref computed_block) = decl.computed {
-        computed_block.properties.iter()
+        computed_block
+            .properties
+            .iter()
             .map(|p| {
                 Ok(AuraComputed {
                     name: p.name.as_str().to_string(),
@@ -818,7 +845,9 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
         api_imports: Vec::new(),
         style_css: decl.style.clone(),
         ext_imports: decl.ext_imports.clone(),
-        watchers: decl.watch.iter()
+        watchers: decl
+            .watch
+            .iter()
             .map(|w| crate::aura::types::AuraWatch {
                 sources: w.sources.iter().map(|s| s.as_str().to_string()).collect(),
                 immediate: w.immediate,
@@ -826,19 +855,18 @@ pub fn extract_widget_from_decl(decl: &WidgetDecl) -> ExtractResult<AuraWidget> 
                 payload: LogicPayload::AstStmts(w.body.stmts.clone()),
             })
             .collect(),
-        exposes: decl.expose.iter()
-            .map(|n| n.as_str().to_string())
-            .collect(),
+        exposes: decl.expose.iter().map(|n| n.as_str().to_string()).collect(),
         setup: decl.setup.clone(),
         actions: decl.actions.clone(),
-    }
-)
+    })
 }
 
 /// Extract key bindings from bind block (Plan 275)
 fn extract_key_bindings(bind: &Option<BindBlock>) -> HashMap<String, String> {
     match bind {
-        Some(block) => block.bindings.iter()
+        Some(block) => block
+            .bindings
+            .iter()
             .map(|kb| (kb.key.clone(), kb.handler.clone()))
             .collect(),
         None => HashMap::new(),
@@ -847,13 +875,17 @@ fn extract_key_bindings(bind: &Option<BindBlock>) -> HashMap<String, String> {
 
 /// Extract state variables from model block
 fn extract_model_fields(model: &ModelBlock) -> ExtractResult<Vec<AuraStateDef>> {
-    model.fields.iter()
+    model
+        .fields
+        .iter()
         .map(|field| {
             Ok(AuraStateDef {
                 name: field.name.as_str().to_string(),
                 type_info: field.ty.clone(),
                 initial: field.init.clone(),
-                decorators: field.decorators.iter()
+                decorators: field
+                    .decorators
+                    .iter()
                     .map(|d| AuraDecorator {
                         name: d.name.as_str().to_string(),
                         args: d.args.clone(),
@@ -867,7 +899,9 @@ fn extract_model_fields(model: &ModelBlock) -> ExtractResult<Vec<AuraStateDef>> 
 /// Extract message declaration
 fn extract_msg_decl(msg: &MsgDecl) -> AuraMessage {
     AuraMessage {
-        variants: msg.variants.iter()
+        variants: msg
+            .variants
+            .iter()
             .map(|v| AuraMsgVariant {
                 name: v.name.as_str().to_string(),
                 quoted: v.quoted,
@@ -921,7 +955,9 @@ fn take_inline_mints() -> Vec<(String, Vec<crate::ast::Stmt>)> {
 fn collect_inline_events(node: &mut crate::ast::ViewNode) -> ExtractResult<()> {
     use crate::ast::ViewNode;
     match node {
-        ViewNode::Element { events, children, .. } => {
+        ViewNode::Element {
+            events, children, ..
+        } => {
             rewrite_inline_events(events)?;
             for c in children.iter_mut() {
                 collect_inline_events(c)?;
@@ -932,7 +968,11 @@ fn collect_inline_events(node: &mut crate::ast::ViewNode) -> ExtractResult<()> {
                 collect_inline_events(c)?;
             }
         }
-        ViewNode::Conditional { then_body, else_body, .. } => {
+        ViewNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             for c in then_body.iter_mut() {
                 collect_inline_events(c)?;
             }
@@ -968,7 +1008,9 @@ fn rewrite_inline_events(events: &mut [ViewEvent]) -> ExtractResult<()> {
             }
             // Sanitize the event name (modifiers like `onclick.stop` and
             // quoted customs like `on"x"` are not identifier-safe).
-            let base: String = ev.name.chars()
+            let base: String = ev
+                .name
+                .chars()
                 .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
                 .collect();
             let pattern = INLINE_MINTS.with(|c| {
@@ -986,12 +1028,22 @@ fn rewrite_inline_events(events: &mut [ViewEvent]) -> ExtractResult<()> {
 
 fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
     match node {
-        ViewNode::Element { tag, props, events, children, span } => {
+        ViewNode::Element {
+            tag,
+            props,
+            events,
+            children,
+            span,
+        } => {
             // Plan 367 P2-3: check if this element is a view fragment call.
             // Fragment calls are PascalCase tags whose name matches a registered
             // view fragment. Props are passed as named props matching fragment params.
             // When matched, inline-expand the fragment body with parameter substitution.
-            let is_pascal = tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+            let is_pascal = tag
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false);
             if is_pascal {
                 let fragment = VIEW_FRAGMENTS.with(|cell| cell.borrow().get(tag.as_str()).cloned());
                 if let Some(frag) = fragment {
@@ -1025,14 +1077,16 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 let value = match &p.value {
                     ViewPropValue::Expr(expr) => {
                         let desugared = if p.name == "style" || p.name == "class" {
-                            crate::design_tokens::recipe::desugar_style_expr(expr).unwrap_or_else(|_| expr.clone())
+                            crate::design_tokens::recipe::desugar_style_expr(expr)
+                                .unwrap_or_else(|_| expr.clone())
                         } else {
                             expr.clone()
                         };
                         AuraPropValue::Expr(desugared)
                     }
                     ViewPropValue::StyleBinding(bindings) => {
-                        let aura_bindings: Vec<AuraStyleBinding> = bindings.iter()
+                        let aura_bindings: Vec<AuraStyleBinding> = bindings
+                            .iter()
                             .map(|b| {
                                 Ok(AuraStyleBinding {
                                     style_name: b.style_name.clone(),
@@ -1052,7 +1106,10 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 if p.name.as_str() == "class" {
                     if let Some(existing) = aura_props.remove("class") {
                         let merged = match (existing, value) {
-                            (AuraPropValue::Expr(Expr::Array(mut elems)), AuraPropValue::Expr(e)) => {
+                            (
+                                AuraPropValue::Expr(Expr::Array(mut elems)),
+                                AuraPropValue::Expr(e),
+                            ) => {
                                 elems.push(e);
                                 AuraPropValue::Expr(Expr::Array(elems))
                             }
@@ -1070,7 +1127,8 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 aura_props.insert(p.name.clone(), value);
             }
 
-            let aura_events: HashMap<String, AuraEvent> = events.iter()
+            let aura_events: HashMap<String, AuraEvent> = events
+                .iter()
                 .map(|e| {
                     let event = AuraEvent {
                         handler: e.handler.clone(),
@@ -1082,7 +1140,8 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 })
                 .collect();
 
-            let aura_children: Vec<AuraNode> = children.iter()
+            let aura_children: Vec<AuraNode> = children
+                .iter()
                 .map(|c| extract_view_node(c))
                 .collect::<ExtractResult<_>>()?;
 
@@ -1097,20 +1156,24 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
         }
         ViewNode::Text(content) => {
             let text_content = match content {
-                ViewText::Literal(s) => {
-                    AuraTextContent::Literal(s.clone())
-                }
-                ViewText::Interpolated { template, bindings } => {
-                    AuraTextContent::Interpolated {
-                        template: template.clone(),
-                        bindings: bindings.clone(),
-                    }
-                }
+                ViewText::Literal(s) => AuraTextContent::Literal(s.clone()),
+                ViewText::Interpolated { template, bindings } => AuraTextContent::Interpolated {
+                    template: template.clone(),
+                    bindings: bindings.clone(),
+                },
             };
             Ok(AuraNode::Text(text_content))
         }
-        ViewNode::ForLoop { var, index, iterable, key_expr, body, span } => {
-            let aura_body: Vec<AuraNode> = body.iter()
+        ViewNode::ForLoop {
+            var,
+            index,
+            iterable,
+            key_expr,
+            body,
+            span,
+        } => {
+            let aura_body: Vec<AuraNode> = body
+                .iter()
                 .map(|c| extract_view_node(c))
                 .collect::<ExtractResult<_>>()?;
 
@@ -1124,13 +1187,20 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 debug_id: None,
             })
         }
-        ViewNode::Conditional { condition, then_body, else_body, span } => {
-            let aura_then: Vec<AuraNode> = then_body.iter()
+        ViewNode::Conditional {
+            condition,
+            then_body,
+            else_body,
+            span,
+        } => {
+            let aura_then: Vec<AuraNode> = then_body
+                .iter()
                 .map(|c| extract_view_node(c))
                 .collect::<ExtractResult<_>>()?;
 
             let aura_else = if let Some(else_nodes) = else_body {
-                let nodes: Vec<AuraNode> = else_nodes.iter()
+                let nodes: Vec<AuraNode> = else_nodes
+                    .iter()
                     .map(|c| extract_view_node(c))
                     .collect::<ExtractResult<_>>()?;
                 Some(nodes)
@@ -1146,7 +1216,12 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 debug_id: None,
             })
         }
-        ViewNode::Component { name, props, events, span } => {
+        ViewNode::Component {
+            name,
+            props,
+            events,
+            span,
+        } => {
             // Plan 367 P2-3: check if this is a view fragment call.
             // If so, inline-expand the fragment body with parameter substitution.
             let fragment = VIEW_FRAGMENTS.with(|cell| cell.borrow().get(name.as_str()).cloned());
@@ -1173,12 +1248,11 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
             }
 
             // Normal component (not a fragment) — extract as-is
-            let aura_props: Vec<(String, Expr)> = props.iter()
+            let aura_props: Vec<(String, Expr)> = props
+                .iter()
                 .filter_map(|p| {
                     match &p.value {
-                        ViewPropValue::Expr(expr) => {
-                            Some((p.name.clone(), expr.clone()))
-                        }
+                        ViewPropValue::Expr(expr) => Some((p.name.clone(), expr.clone())),
                         ViewPropValue::StyleBinding(_) => {
                             // Class bindings not supported for component props
                             None
@@ -1187,7 +1261,8 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 })
                 .collect();
 
-            let aura_events: HashMap<String, AuraEvent> = events.iter()
+            let aura_events: HashMap<String, AuraEvent> = events
+                .iter()
                 .map(|e| {
                     let event = AuraEvent {
                         handler: e.handler.clone(),
@@ -1212,8 +1287,14 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
         ViewNode::Outlet { memo } => Ok(AuraNode::Outlet { memo: *memo }),
         // PLAN-046 T-04: explicit memo block carries deps through unchanged
         // (they are evaluated per-frame by the AVB memo gate, not extracted).
-        ViewNode::MemoBlock { deps, exact, body, span } => {
-            let aura_body: Vec<AuraNode> = body.iter()
+        ViewNode::MemoBlock {
+            deps,
+            exact,
+            body,
+            span,
+        } => {
+            let aura_body: Vec<AuraNode> = body
+                .iter()
                 .map(|c| extract_view_node(c))
                 .collect::<ExtractResult<_>>()?;
             Ok(AuraNode::MemoBlock {
@@ -1224,8 +1305,15 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
                 span: *span,
             })
         }
-        ViewNode::Link { to, text, href, children, span } => {
-            let aura_children: Vec<AuraNode> = children.iter()
+        ViewNode::Link {
+            to,
+            text,
+            href,
+            children,
+            span,
+        } => {
+            let aura_children: Vec<AuraNode> = children
+                .iter()
                 .map(|c| extract_view_node(c))
                 .collect::<ExtractResult<_>>()?;
             Ok(AuraNode::Link {
@@ -1251,14 +1339,18 @@ fn extract_view_node(node: &ViewNode) -> ExtractResult<AuraNode> {
 /// - In `onclick: .Handler` → preserved (parent widget's handler)
 /// - In conditions `if .param_name == ...` → `if <call_expr> == ...`
 /// - In style strings → preserved (styles don't reference params)
-fn expand_fragment_node(
-    node: &ViewNode,
-    subs: &HashMap<String, Expr>,
-) -> ExtractResult<ViewNode> {
+fn expand_fragment_node(node: &ViewNode, subs: &HashMap<String, Expr>) -> ExtractResult<ViewNode> {
     match node {
-        ViewNode::Element { tag, props, events, children, span } => {
+        ViewNode::Element {
+            tag,
+            props,
+            events,
+            children,
+            span,
+        } => {
             // Transform props: substitute param references in expressions
-            let new_props: Vec<crate::ast::ui::ViewProp> = props.iter()
+            let new_props: Vec<crate::ast::ui::ViewProp> = props
+                .iter()
                 .map(|p| {
                     let new_value = match &p.value {
                         ViewPropValue::Expr(expr) => {
@@ -1273,7 +1365,8 @@ fn expand_fragment_node(
                 })
                 .collect::<ExtractResult<_>>()?;
             // Recursively expand children
-            let new_children: Vec<ViewNode> = children.iter()
+            let new_children: Vec<ViewNode> = children
+                .iter()
                 .map(|c| expand_fragment_node(c, subs))
                 .collect::<ExtractResult<_>>()?;
             Ok(ViewNode::Element {
@@ -1284,16 +1377,25 @@ fn expand_fragment_node(
                 span: *span,
             })
         }
-        ViewNode::Conditional { condition, then_body, else_body, span } => {
+        ViewNode::Conditional {
+            condition,
+            then_body,
+            else_body,
+            span,
+        } => {
             let new_condition = substitute_condition(condition, subs);
-            let new_then: Vec<ViewNode> = then_body.iter()
+            let new_then: Vec<ViewNode> = then_body
+                .iter()
                 .map(|c| expand_fragment_node(c, subs))
                 .collect::<ExtractResult<_>>()?;
-            let new_else: Option<Vec<ViewNode>> = else_body.as_ref()
-                .map(|nodes| nodes.iter()
-                    .map(|c| expand_fragment_node(c, subs))
-                    .collect::<ExtractResult<_>>()
-                )
+            let new_else: Option<Vec<ViewNode>> = else_body
+                .as_ref()
+                .map(|nodes| {
+                    nodes
+                        .iter()
+                        .map(|c| expand_fragment_node(c, subs))
+                        .collect::<ExtractResult<_>>()
+                })
                 .transpose()?;
             Ok(ViewNode::Conditional {
                 condition: new_condition,
@@ -1302,8 +1404,16 @@ fn expand_fragment_node(
                 span: *span,
             })
         }
-        ViewNode::ForLoop { var, index, iterable, key_expr, body, span } => {
-            let new_body: Vec<ViewNode> = body.iter()
+        ViewNode::ForLoop {
+            var,
+            index,
+            iterable,
+            key_expr,
+            body,
+            span,
+        } => {
+            let new_body: Vec<ViewNode> = body
+                .iter()
                 .map(|c| expand_fragment_node(c, subs))
                 .collect::<ExtractResult<_>>()?;
             // Plan 043 M5: the iterable is a STRING (parse_view_for_loop
@@ -1323,15 +1433,26 @@ fn expand_fragment_node(
                 span: *span,
             })
         }
-        ViewNode::Component { name, props, events, span } => {
+        ViewNode::Component {
+            name,
+            props,
+            events,
+            span,
+        } => {
             // Nested component call — expand its props too
-            let new_props: Vec<crate::ast::ui::ViewProp> = props.iter()
+            let new_props: Vec<crate::ast::ui::ViewProp> = props
+                .iter()
                 .map(|p| {
                     let new_value = match &p.value {
-                        ViewPropValue::Expr(expr) => ViewPropValue::Expr(substitute_expr(expr, subs)),
+                        ViewPropValue::Expr(expr) => {
+                            ViewPropValue::Expr(substitute_expr(expr, subs))
+                        }
                         other => other.clone(),
                     };
-                    Ok(crate::ast::ui::ViewProp { name: p.name.clone(), value: new_value })
+                    Ok(crate::ast::ui::ViewProp {
+                        name: p.name.clone(),
+                        value: new_value,
+                    })
                 })
                 .collect::<ExtractResult<_>>()?;
             Ok(ViewNode::Component {
@@ -1345,8 +1466,14 @@ fn expand_fragment_node(
         // PLAN-046 T-04: memo-block deps carry param references in inlined
         // view fns — substitute like any other expr (the catch-all clone
         // below would leave stale param refs behind).
-        ViewNode::MemoBlock { deps, exact, body, span } => {
-            let new_body: Vec<ViewNode> = body.iter()
+        ViewNode::MemoBlock {
+            deps,
+            exact,
+            body,
+            span,
+        } => {
+            let new_body: Vec<ViewNode> = body
+                .iter()
                 .map(|c| expand_fragment_node(c, subs))
                 .collect::<ExtractResult<_>>()?;
             Ok(ViewNode::MemoBlock {
@@ -1379,23 +1506,20 @@ fn substitute_expr(expr: &Expr, subs: &HashMap<String, Expr>) -> Expr {
             expr.clone()
         }
         // .param_name → substitution
-        Expr::Dot(obj, field) if matches!(obj.as_ref(), Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self") => {
+        Expr::Dot(obj, field) if matches!(obj.as_ref(), Expr::Ident(name) if name.as_str() == "." || name.as_str() == "self") =>
+        {
             if let Some(replacement) = subs.get(field.as_str()) {
                 return replacement.clone();
             }
             expr.clone()
         }
         // Recurse into compound expressions
-        Expr::Bina(lhs, op, rhs) => {
-            Expr::Bina(
-                Box::new(substitute_expr(lhs, subs)),
-                op.clone(),
-                Box::new(substitute_expr(rhs, subs)),
-            )
-        }
-        Expr::Dot(obj, field) => {
-            Expr::Dot(Box::new(substitute_expr(obj, subs)), field.clone())
-        }
+        Expr::Bina(lhs, op, rhs) => Expr::Bina(
+            Box::new(substitute_expr(lhs, subs)),
+            op.clone(),
+            Box::new(substitute_expr(rhs, subs)),
+        ),
+        Expr::Dot(obj, field) => Expr::Dot(Box::new(substitute_expr(obj, subs)), field.clone()),
         Expr::Call(call) => {
             let mut new_call = call.clone();
             // Plan 053 后续: also substitute the callee (`call.name`), not just
@@ -1405,10 +1529,15 @@ fn substitute_expr(expr: &Expr, subs: &HashMap<String, Expr>) -> Expr {
             // args were), so the generated :style/:class kept `output.columns`
             // instead of `output.Table.columns` → runtime undefined.
             new_call.name = Box::new(substitute_expr(&call.name, subs));
-            new_call.args.args = call.args.args.iter()
+            new_call.args.args = call
+                .args
+                .args
+                .iter()
                 .map(|a| match a {
                     crate::ast::Arg::Pos(e) => crate::ast::Arg::Pos(substitute_expr(e, subs)),
-                    crate::ast::Arg::Pair(n, e) => crate::ast::Arg::Pair(n.clone(), substitute_expr(e, subs)),
+                    crate::ast::Arg::Pair(n, e) => {
+                        crate::ast::Arg::Pair(n.clone(), substitute_expr(e, subs))
+                    }
                     other => other.clone(),
                 })
                 .collect();
@@ -1453,10 +1582,7 @@ fn substitute_condition(condition: &str, subs: &HashMap<String, Expr>) -> String
             }
         };
         // Replace ".param_name" with the replacement
-        result = result.replace(
-            &format!(".{}", param_name),
-            &replacement,
-        );
+        result = result.replace(&format!(".{}", param_name), &replacement);
         // Also replace bare "param_name" (not preceded by a dot) for conditions
         // like "if active { ... }" where active is used without a dot prefix.
         let bare_pattern = format!("{}", param_name);
@@ -1466,10 +1592,16 @@ fn substitute_condition(condition: &str, subs: &HashMap<String, Expr>) -> String
         let bare_bytes = bare_pattern.as_bytes();
         let mut i = 0;
         while i < bytes.len() {
-            if i + bare_bytes.len() <= bytes.len() && &bytes[i..i + bare_bytes.len()] == bare_bytes {
+            if i + bare_bytes.len() <= bytes.len() && &bytes[i..i + bare_bytes.len()] == bare_bytes
+            {
                 // Check word boundary: preceded by non-ident char
-                let prev_is_ident = i > 0 && (bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_' || bytes[i - 1] == b'.');
-                let next_is_ident = i + bare_bytes.len() < bytes.len() && (bytes[i + bare_bytes.len()].is_ascii_alphanumeric() || bytes[i + bare_bytes.len()] == b'_');
+                let prev_is_ident = i > 0
+                    && (bytes[i - 1].is_ascii_alphanumeric()
+                        || bytes[i - 1] == b'_'
+                        || bytes[i - 1] == b'.');
+                let next_is_ident = i + bare_bytes.len() < bytes.len()
+                    && (bytes[i + bare_bytes.len()].is_ascii_alphanumeric()
+                        || bytes[i + bare_bytes.len()] == b'_');
                 if !prev_is_ident && !next_is_ident {
                     new_result.push_str(&replacement);
                     i += bare_bytes.len();
@@ -1549,7 +1681,10 @@ fn assign_node_ids(root: &mut AuraNode) -> std::collections::HashMap<AuraNodeId,
 
 /// DFS 找首个 `variant: "submit"` 的 button 的 onclick 事件；无 → None。
 fn find_submit_onclick(node: &AuraNode) -> Option<crate::aura::types::AuraEvent> {
-    if let AuraNode::Element { tag, props, events, .. } = node {
+    if let AuraNode::Element {
+        tag, props, events, ..
+    } = node
+    {
         if tag.eq_ignore_ascii_case("button") {
             let is_submit = props.get("variant").is_some_and(|v| {
                 matches!(v, crate::aura::types::AuraPropValue::Expr(crate::ast::Expr::Str(s)) if s.as_str() == "submit")
@@ -1562,7 +1697,11 @@ fn find_submit_onclick(node: &AuraNode) -> Option<crate::aura::types::AuraEvent>
     let kids: Vec<&AuraNode> = match node {
         AuraNode::Element { children, .. } => children.iter().collect(),
         AuraNode::ForLoop { body, .. } => body.iter().collect(),
-        AuraNode::Conditional { then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             let mut k: Vec<&AuraNode> = then_body.iter().collect();
             if let Some(eb) = else_body {
                 k.extend(eb.iter());
@@ -1589,7 +1728,11 @@ fn wire_form_submit_inputs(node: &mut AuraNode, submit: &crate::aura::types::Aur
     let kids: Vec<&mut AuraNode> = match node {
         AuraNode::Element { children, .. } => children.iter_mut().collect(),
         AuraNode::ForLoop { body, .. } => body.iter_mut().collect(),
-        AuraNode::Conditional { then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             let mut k: Vec<&mut AuraNode> = then_body.iter_mut().collect();
             if let Some(eb) = else_body {
                 k.extend(eb.iter_mut());
@@ -1621,18 +1764,30 @@ fn assign_node_ids_recursive(
     *next_id += 1;
 
     match node {
-        AuraNode::Element { tag, props, children, span, debug_id, .. } => {
+        AuraNode::Element {
+            tag,
+            props,
+            children,
+            span,
+            debug_id,
+            ..
+        } => {
             *debug_id = Some(id);
             // Extract user_id from props if present
             let user_id = props.get("id").and_then(|v| match v {
-                crate::aura::types::AuraPropValue::Expr(crate::ast::Expr::Str(s)) => Some(s.as_str().to_string()),
+                crate::aura::types::AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                    Some(s.as_str().to_string())
+                }
                 _ => None,
             });
-            span_map.insert(id, SpanInfo {
-                span: *span,
-                aura_tag: tag.clone(),
-                user_id,
-            });
+            span_map.insert(
+                id,
+                SpanInfo {
+                    span: *span,
+                    aura_tag: tag.clone(),
+                    user_id,
+                },
+            );
             for child in children.iter_mut() {
                 assign_node_ids_recursive(child, next_id, span_map);
             }
@@ -1640,24 +1795,44 @@ fn assign_node_ids_recursive(
         AuraNode::Text(_) => {
             // Text nodes don't get a debug_id — they have no span field
         }
-        AuraNode::ForLoop { var: _, index: _, iterable: _, key_expr: _, body, span, debug_id } => {
+        AuraNode::ForLoop {
+            var: _,
+            index: _,
+            iterable: _,
+            key_expr: _,
+            body,
+            span,
+            debug_id,
+        } => {
             *debug_id = Some(id);
-            span_map.insert(id, SpanInfo {
-                span: *span,
-                aura_tag: "for".to_string(),
-                user_id: None,
-            });
+            span_map.insert(
+                id,
+                SpanInfo {
+                    span: *span,
+                    aura_tag: "for".to_string(),
+                    user_id: None,
+                },
+            );
             for child in body.iter_mut() {
                 assign_node_ids_recursive(child, next_id, span_map);
             }
         }
-        AuraNode::Conditional { condition: _, then_body, else_body, span, debug_id } => {
+        AuraNode::Conditional {
+            condition: _,
+            then_body,
+            else_body,
+            span,
+            debug_id,
+        } => {
             *debug_id = Some(id);
-            span_map.insert(id, SpanInfo {
-                span: *span,
-                aura_tag: "if".to_string(),
-                user_id: None,
-            });
+            span_map.insert(
+                id,
+                SpanInfo {
+                    span: *span,
+                    aura_tag: "if".to_string(),
+                    user_id: None,
+                },
+            );
             for child in then_body.iter_mut() {
                 assign_node_ids_recursive(child, next_id, span_map);
             }
@@ -1667,13 +1842,23 @@ fn assign_node_ids_recursive(
                 }
             }
         }
-        AuraNode::Component { name, props: _, events: _, children, span, debug_id } => {
+        AuraNode::Component {
+            name,
+            props: _,
+            events: _,
+            children,
+            span,
+            debug_id,
+        } => {
             *debug_id = Some(id);
-            span_map.insert(id, SpanInfo {
-                span: *span,
-                aura_tag: name.clone(),
-                user_id: None,
-            });
+            span_map.insert(
+                id,
+                SpanInfo {
+                    span: *span,
+                    aura_tag: name.clone(),
+                    user_id: None,
+                },
+            );
             // Plan 408 P11: recurse into slot children so they get debug ids too.
             for child in children.iter_mut() {
                 assign_node_ids_recursive(child, next_id, span_map);
@@ -1682,24 +1867,43 @@ fn assign_node_ids_recursive(
         AuraNode::Outlet { .. } => {
             // Outlet doesn't get a debug_id
         }
-        AuraNode::MemoBlock { deps: _, exact: _, body, span, debug_id } => {
+        AuraNode::MemoBlock {
+            deps: _,
+            exact: _,
+            body,
+            span,
+            debug_id,
+        } => {
             *debug_id = Some(id);
-            span_map.insert(id, SpanInfo {
-                span: *span,
-                aura_tag: "memo".to_string(),
-                user_id: None,
-            });
+            span_map.insert(
+                id,
+                SpanInfo {
+                    span: *span,
+                    aura_tag: "memo".to_string(),
+                    user_id: None,
+                },
+            );
             for child in body.iter_mut() {
                 assign_node_ids_recursive(child, next_id, span_map);
             }
         }
-        AuraNode::Link { to: _, text: _, href: _, children, span, debug_id } => {
+        AuraNode::Link {
+            to: _,
+            text: _,
+            href: _,
+            children,
+            span,
+            debug_id,
+        } => {
             *debug_id = Some(id);
-            span_map.insert(id, SpanInfo {
-                span: *span,
-                aura_tag: "link".to_string(),
-                user_id: None,
-            });
+            span_map.insert(
+                id,
+                SpanInfo {
+                    span: *span,
+                    aura_tag: "link".to_string(),
+                    user_id: None,
+                },
+            );
             for child in children.iter_mut() {
                 assign_node_ids_recursive(child, next_id, span_map);
             }
@@ -1708,7 +1912,12 @@ fn assign_node_ids_recursive(
 }
 
 /// Extract handlers from on block
-fn extract_on_block(on: &OnBlock) -> ExtractResult<(std::collections::BTreeMap<String, LogicPayload>, HashMap<String, Vec<String>>)> {
+fn extract_on_block(
+    on: &OnBlock,
+) -> ExtractResult<(
+    std::collections::BTreeMap<String, LogicPayload>,
+    HashMap<String, Vec<String>>,
+)> {
     let mut handlers = std::collections::BTreeMap::new();
     let mut handler_params = HashMap::new();
 
@@ -1795,7 +2004,8 @@ mod tests {
     /// machinery both see it.
     #[test]
     fn test_extract_inline_lambda_events() {
-        let widget = extract_widget_from_src(r#"
+        let widget = extract_widget_from_src(
+            r#"
 widget Counter {
     model { var count int = 0 }
     view {
@@ -1805,10 +2015,14 @@ widget Counter {
         }
     }
 }
-"#);
+"#,
+        );
         assert!(widget.messages.is_empty() == false);
-        let variants: Vec<&str> =
-            widget.messages[0].variants.iter().map(|v| v.name.as_str()).collect();
+        let variants: Vec<&str> = widget.messages[0]
+            .variants
+            .iter()
+            .map(|v| v.name.as_str())
+            .collect();
         assert_eq!(variants.len(), 2);
         assert!(variants.contains(&"__evt_onclick_1"));
         assert!(variants.contains(&"__evt_onclick_2"));
@@ -1825,7 +2039,11 @@ widget Counter {
         fn first_button<'a>(n: &'a AuraNode) -> Option<&'a AuraNode> {
             match n {
                 AuraNode::Element { tag, children, .. } => {
-                    if tag == "button" { Some(n) } else { children.iter().find_map(first_button) }
+                    if tag == "button" {
+                        Some(n)
+                    } else {
+                        children.iter().find_map(first_button)
+                    }
                 }
                 _ => None,
             }
@@ -1866,20 +2084,32 @@ widget App {
                 register_view_fragment(f);
             }
         }
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = extract_widget_from_decl(decl).expect("extract");
 
         // The fragment's button event references the minted name, and the
         // handler + variant were injected into the widget.
         fn find_button<'a>(n: &'a AuraNode, out: &mut Vec<&'a AuraEvent>) {
-            if let AuraNode::Element { tag, events, children, .. } = n {
+            if let AuraNode::Element {
+                tag,
+                events,
+                children,
+                ..
+            } = n
+            {
                 if tag == "button" {
                     out.extend(events.values());
                 }
-                for c in children { find_button(c, out); }
+                for c in children {
+                    find_button(c, out);
+                }
             }
         }
         let mut evs = Vec::new();
@@ -1888,7 +2118,9 @@ widget App {
         assert_eq!(evs[0].handler, ".__evtf_onclick_1");
 
         assert!(widget.handlers.contains_key(".__evtf_onclick_1"));
-        let has_variant = widget.messages.iter()
+        let has_variant = widget
+            .messages
+            .iter()
             .any(|m| m.variants.iter().any(|v| v.name == "__evtf_onclick_1"));
         assert!(has_variant, "variant injected: {:?}", widget.messages);
         clear_view_fragments();
@@ -1900,7 +2132,8 @@ widget App {
     /// that dispatch by base name go through `aura_events_get_base`.
     #[test]
     fn test_extract_preserves_event_key_modifiers() {
-        let widget = extract_widget_from_src(r#"
+        let widget = extract_widget_from_src(
+            r#"
 widget Nav {
     msg Msg { X, A, B, C }
     model { var n int = 0 }
@@ -1920,7 +2153,8 @@ widget Nav {
         .C -> { .n = 4 }
     }
 }
-"#);
+"#,
+        );
         let events = match &widget.view_tree {
             AuraNode::Element { events, .. } => events,
             other => panic!("expected element view tree, got {:?}", other),
@@ -1977,7 +2211,11 @@ widget Nav {
         let kids: Vec<&AuraNode> = match n {
             AuraNode::Element { children, .. } => children.iter().collect(),
             AuraNode::ForLoop { body, .. } => body.iter().collect(),
-            AuraNode::Conditional { then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 let mut k: Vec<&AuraNode> = then_body.iter().collect();
                 if let Some(eb) = else_body {
                     k.extend(eb.iter());
@@ -1998,7 +2236,8 @@ widget Nav {
     /// 的两轨等价物）。
     #[test]
     fn test_wire_form_submit_inputs_enter_to_submit_button() {
-        let widget = extract_widget_from_src(r#"
+        let widget = extract_widget_from_src(
+            r#"
 widget LoginPage {
     msg { Submit, UsernameChanged, PasswordChanged }
     model {
@@ -2018,7 +2257,8 @@ widget LoginPage {
         }
     }
 }
-"#);
+"#,
+        );
         let mut targets = Vec::new();
         collect_enter_targets(&widget.view_tree, &mut targets);
         assert_eq!(targets.len(), 2, "two inputs expected");
@@ -2035,7 +2275,8 @@ widget LoginPage {
     /// 显式 onenter 优先：已声明的 input 不被覆盖；未声明的照常接线。
     #[test]
     fn test_wire_form_submit_respects_explicit_onenter() {
-        let widget = extract_widget_from_src(r#"
+        let widget = extract_widget_from_src(
+            r#"
 widget FormView {
     msg { Submit, Search, Changed }
     model { var q str = "" }
@@ -2052,18 +2293,24 @@ widget FormView {
         }
     }
 }
-"#);
+"#,
+        );
         let mut targets = Vec::new();
         collect_enter_targets(&widget.view_tree, &mut targets);
         assert_eq!(targets.len(), 2);
-        assert_eq!(targets[0].1.as_deref(), Some(".Search"), "explicit onenter untouched");
+        assert_eq!(
+            targets[0].1.as_deref(),
+            Some(".Search"),
+            "explicit onenter untouched"
+        );
         assert_eq!(targets[1].1.as_deref(), Some(".Submit"), "bare input wired");
     }
 
     /// 无 submit 按钮（或按钮无 onclick）→ 原树返回（不接线、不报错）。
     #[test]
     fn test_wire_form_submit_absent_button_noop() {
-        let widget = extract_widget_from_src(r#"
+        let widget = extract_widget_from_src(
+            r#"
 widget NoForm {
     msg { Changed }
     model { var q str = "" }
@@ -2075,14 +2322,16 @@ widget NoForm {
         }
     }
 }
-"#);
+"#,
+        );
         let mut targets = Vec::new();
         collect_enter_targets(&widget.view_tree, &mut targets);
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].1, None, "no submit button → no wiring");
 
         // variant="submit" 但缺 onclick → 无消息可接线，同样原树返回。
-        let widget = extract_widget_from_src(r#"
+        let widget = extract_widget_from_src(
+            r#"
 widget NoOnclick {
     msg { Changed }
     model { var q str = "" }
@@ -2094,17 +2343,22 @@ widget NoOnclick {
         }
     }
 }
-"#);
+"#,
+        );
         let mut targets = Vec::new();
         collect_enter_targets(&widget.view_tree, &mut targets);
         assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].1, None, "submit button without onclick → no wiring");
+        assert_eq!(
+            targets[0].1, None,
+            "submit button without onclick → no wiring"
+        );
     }
 
     /// textarea 的 Enter 是换行语义，绝不接线；仅单行 input 参与。
     #[test]
     fn test_wire_form_submit_skips_textarea() {
-        let widget = extract_widget_from_src(r#"
+        let widget = extract_widget_from_src(
+            r#"
 widget WithArea {
     msg { Submit, Changed }
     model {
@@ -2120,7 +2374,8 @@ widget WithArea {
         }
     }
 }
-"#);
+"#,
+        );
         let mut targets = Vec::new();
         collect_enter_targets(&widget.view_tree, &mut targets);
         assert_eq!(targets.len(), 2, "input + textarea both collected");

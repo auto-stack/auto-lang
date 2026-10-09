@@ -11,11 +11,11 @@
 //! fn/contains 类型充当契约。验证等级语义见 `model::VerificationLevel`：
 //! 文件存在/名称登记最多 resolved/bound，不得自称 executed。
 
-pub mod loader;
-pub mod model;
-pub mod manifest;
-pub mod host;
 pub mod emission;
+pub mod host;
+pub mod loader;
+pub mod manifest;
+pub mod model;
 pub mod plan;
 pub mod providers;
 pub mod reference;

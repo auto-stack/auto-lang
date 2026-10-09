@@ -33,19 +33,24 @@ struct VmSession {
 
 impl SessionManager {
     pub fn new() -> Self {
-        Self { sessions: HashMap::new() }
+        Self {
+            sessions: HashMap::new(),
+        }
     }
 
     pub fn create(&mut self, sandbox: bool) -> String {
         let id = generate_session_id();
         let now = Instant::now();
-        self.sessions.insert(id.clone(), VmSession {
-            session: AutovmReplSession::new(),
-            created_at: now,
-            last_active: now,
-            sandbox,
-            source_history: Vec::new(),
-        });
+        self.sessions.insert(
+            id.clone(),
+            VmSession {
+                session: AutovmReplSession::new(),
+                created_at: now,
+                last_active: now,
+                sandbox,
+                source_history: Vec::new(),
+            },
+        );
         id
     }
 
@@ -75,7 +80,8 @@ impl SessionManager {
 
     pub fn cleanup_expired(&mut self, max_idle: Duration) {
         let now = Instant::now();
-        self.sessions.retain(|_, entry| now.duration_since(entry.last_active) < max_idle);
+        self.sessions
+            .retain(|_, entry| now.duration_since(entry.last_active) < max_idle);
     }
 
     pub fn session_count(&self) -> usize {
@@ -96,7 +102,9 @@ impl SessionManager {
 
     /// Get the accumulated source code for a session (for snapshot)
     pub fn get_source(&self, id: &str) -> Option<String> {
-        self.sessions.get(id).map(|entry| entry.source_history.join("\n\n"))
+        self.sessions
+            .get(id)
+            .map(|entry| entry.source_history.join("\n\n"))
     }
 
     /// Rebuild a session from scratch with patched source.

@@ -3,7 +3,7 @@
 //! This module provides functionality to check if a type correctly implements a spec/trait.
 //! It verifies that all required methods are implemented with matching signatures.
 
-use crate::ast::{SpecDecl, TypeDecl, Type};
+use crate::ast::{SpecDecl, Type, TypeDecl};
 use crate::error::{AutoError, SyntaxError};
 use miette::SourceSpan;
 use std::rc::Rc;
@@ -117,7 +117,10 @@ impl TraitChecker {
 
         for spec_method in &spec_decl.methods {
             let spec_ret = spec_method.ret.substitute(subst_names, subst_types);
-            let implemented = type_decl.methods.iter().find(|m| m.name == spec_method.name);
+            let implemented = type_decl
+                .methods
+                .iter()
+                .find(|m| m.name == spec_method.name);
 
             match implemented {
                 Some(method) => {
@@ -152,8 +155,8 @@ impl TraitChecker {
                     // declares none).
                     let is_compatible = matches!(
                         (&impl_ret, &spec_ret),
-                            // Exact match for same types
-                            (Type::Void, Type::Void)
+                        // Exact match for same types
+                        (Type::Void, Type::Void)
                             | (Type::Int, Type::Int)
                             | (Type::Uint, Type::Uint)
                             | (Type::Float, Type::Float)
@@ -244,10 +247,7 @@ impl TraitChecker {
     /// # Returns
     /// * `Ok(())` if the type implements all its specs
     /// * `Err(Vec<AutoError>)` with a list of conformance errors
-    pub fn check_all_specs<F>(
-        type_decl: &TypeDecl,
-        get_spec: F,
-    ) -> Result<(), Vec<AutoError>>
+    pub fn check_all_specs<F>(type_decl: &TypeDecl, get_spec: F) -> Result<(), Vec<AutoError>>
     where
         F: Fn(&str) -> Option<Rc<SpecDecl>>,
     {
@@ -289,10 +289,7 @@ impl TraitChecker {
     /// # Returns
     /// * `Ok(())` if the type implements all its generic specs correctly
     /// * `Err(Vec<AutoError>)` with a list of conformance errors
-    pub fn check_all_spec_impls<F>(
-        type_decl: &TypeDecl,
-        get_spec: F,
-    ) -> Result<(), Vec<AutoError>>
+    pub fn check_all_spec_impls<F>(type_decl: &TypeDecl, get_spec: F) -> Result<(), Vec<AutoError>>
     where
         F: Fn(&str) -> Option<Rc<SpecDecl>>,
     {
@@ -355,7 +352,7 @@ impl TraitChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Name, Param, SpecMethod, Type, Fn};
+    use crate::ast::{Fn, Name, Param, SpecMethod, Type};
     use ecow::EcoString as AutoStr;
 
     fn create_test_spec(name: &str, methods: Vec<SpecMethod>) -> SpecDecl {
@@ -364,7 +361,7 @@ mod tests {
             generic_params: Vec::new(), // Plan 057
             methods,
             is_pub: false,
-            bounds: Vec::new(), // Plan 397
+            bounds: Vec::new(),           // Plan 397
             associated_types: Vec::new(), // Plan 417-E2
         }
     }
@@ -394,7 +391,7 @@ mod tests {
             name: Name::from(name),
             params,
             ret,
-            body: None,  // No default implementation in trait checker
+            body: None, // No default implementation in trait checker
         }
     }
 
@@ -409,10 +406,10 @@ mod tests {
             body: Body::new(),
             ret,
             ret_name: None,
-            is_static: false,  // Plan 035 Phase 4: Default to instance method
+            is_static: false, // Plan 035 Phase 4: Default to instance method
             type_params: Vec::new(),
-            const_params: Vec::new(),  // Plan 061: No generic parameters
-            span: None,  // Plan 061: No source location
+            const_params: Vec::new(), // Plan 061: No generic parameters
+            span: None,               // Plan 061: No source location
             is_mut: false,
             is_test: false,
             doc: None,
@@ -425,10 +422,7 @@ mod tests {
 
     #[test]
     fn test_conformance_success() {
-        let spec = create_test_spec(
-            "Flyer",
-            vec![create_spec_method("fly", vec![], Type::Void)],
-        );
+        let spec = create_test_spec("Flyer", vec![create_spec_method("fly", vec![], Type::Void)]);
 
         let ty = create_test_type(
             "Pigeon",
@@ -518,16 +512,14 @@ mod tests {
         let result = TraitChecker::check_conformance(&ty, &spec);
         assert!(result.is_err());
         let errors = result.unwrap_err();
-        assert!(errors[0]
-            .to_string()
-            .contains("has return type"));
+        assert!(errors[0].to_string().contains("has return type"));
     }
 
     // Plan 057: Generic spec tests
 
     #[test]
     fn test_generic_spec_impl_correct_type_args() {
-        use crate::ast::{GenericParam, TypeParam, SpecImpl};
+        use crate::ast::{GenericParam, SpecImpl, TypeParam};
         use std::rc::Rc;
 
         // Create a generic spec with one type parameter
@@ -539,7 +531,7 @@ mod tests {
             })],
             methods: vec![create_spec_method("get", vec![], Type::Unknown)],
             is_pub: false,
-            bounds: Vec::new(), // Plan 397
+            bounds: Vec::new(),           // Plan 397
             associated_types: Vec::new(), // Plan 417-E2
         };
 
@@ -587,7 +579,7 @@ mod tests {
 
     #[test]
     fn test_generic_spec_impl_wrong_type_arg_count() {
-        use crate::ast::{GenericParam, TypeParam, SpecImpl};
+        use crate::ast::{GenericParam, SpecImpl, TypeParam};
         use std::rc::Rc;
 
         // Create a generic spec with two type parameters
@@ -605,7 +597,7 @@ mod tests {
             ],
             methods: vec![create_spec_method("get", vec![], Type::Unknown)],
             is_pub: false,
-            bounds: Vec::new(), // Plan 397
+            bounds: Vec::new(),           // Plan 397
             associated_types: Vec::new(), // Plan 417-E2
         };
 
@@ -651,7 +643,7 @@ mod tests {
 
     #[test]
     fn test_generic_spec_impl_missing_method() {
-        use crate::ast::{GenericParam, TypeParam, SpecImpl};
+        use crate::ast::{GenericParam, SpecImpl, TypeParam};
         use std::rc::Rc;
 
         // Create a generic spec
@@ -666,7 +658,7 @@ mod tests {
                 create_spec_method("set", vec![], Type::Void),
             ],
             is_pub: false,
-            bounds: Vec::new(), // Plan 397
+            bounds: Vec::new(),           // Plan 397
             associated_types: Vec::new(), // Plan 417-E2
         };
 
@@ -705,7 +697,9 @@ mod tests {
         let result = TraitChecker::check_all_spec_impls(&ty, get_spec);
         assert!(result.is_err());
         let errors = result.unwrap_err();
-        assert!(errors[0].to_string().contains("does not implement required method"));
+        assert!(errors[0]
+            .to_string()
+            .contains("does not implement required method"));
     }
 
     #[test]

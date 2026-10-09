@@ -14,10 +14,7 @@
 mod plan063_handler_float_arith {
     use auto_val::Value;
 
-    fn f_state(
-        comp: &crate::ui::dynamic::DynamicComponent,
-        field: &str,
-    ) -> f64 {
+    fn f_state(comp: &crate::ui::dynamic::DynamicComponent, field: &str) -> f64 {
         match comp.read_state(field).expect(field) {
             Value::Float(v) => v,
             Value::Double(v) => v,
@@ -46,7 +43,11 @@ mod plan063_handler_float_arith {
         comp.call_widget_handler(
             "App",
             "Tri",
-            &[Value::Float(2653.36), Value::Float(772.0), Value::Float(600.0)],
+            &[
+                Value::Float(2653.36),
+                Value::Float(772.0),
+                Value::Float(600.0),
+            ],
         )
         .expect("dispatch");
         let v = f_state(&comp, "a");
@@ -83,7 +84,11 @@ mod plan063_handler_float_arith {
         comp.call_widget_handler(
             "App",
             "Tri",
-            &[Value::Float(2653.36), Value::Float(772.0), Value::Float(600.0)],
+            &[
+                Value::Float(2653.36),
+                Value::Float(772.0),
+                Value::Float(600.0),
+            ],
         )
         .expect("dispatch");
         let v = f_state(&comp, "out");
@@ -101,18 +106,35 @@ mod plan063_handler_float_arith {
         std::env::set_var("AUTO_DEBUG_EMIT", "1");
         let rel = "test/ui/plan063_child_scrollbar/src/front/app.at";
         let manifest = [
-            std::env::var("CARGO_MANIFEST_DIR").ok().map(|d| std::path::PathBuf::from(d).join(rel)),
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(rel)),
             Some(std::path::PathBuf::from(rel)),
             Some(std::path::PathBuf::from(format!("../../{}", rel))),
-        ].into_iter().flatten().find(|p| p.exists());
-        let Some(manifest) = manifest else { eprintln!("plan063 corpus: SKIPPED"); return };
-        let mut comp = crate::plan370_test_support::build_component_from_app(&manifest).expect("compile corpus");
+        ]
+        .into_iter()
+        .flatten()
+        .find(|p| p.exists());
+        let Some(manifest) = manifest else {
+            eprintln!("plan063 corpus: SKIPPED");
+            return;
+        };
+        let mut comp = crate::plan370_test_support::build_component_from_app(&manifest)
+            .expect("compile corpus");
         let _ = comp.view_with_debug_gated(false); // render once: seed child props
-        // arm the drag (TrackDown twin)
+                                                   // arm the drag (TrackDown twin)
         comp.call_widget_handler("Child", "SetArmed", &[]).ok();
         // demo 同款派发口（on_with_input_for 带 __emit 清算侧）。
         comp.on_with_input_for("Child", "Movef5.0f160.0", None);
-        for dbg in ["scrollHeight","clientHeight","__emit_msg","dragging","left_top_cmd"] { eprintln!("[DBG] {} = {:?}", dbg, comp.read_state(dbg)); }
+        for dbg in [
+            "scrollHeight",
+            "clientHeight",
+            "__emit_msg",
+            "dragging",
+            "left_top_cmd",
+        ] {
+            eprintln!("[DBG] {} = {:?}", dbg, comp.read_state(dbg));
+        }
         match comp.read_state("left_top_cmd").expect("read") {
             Value::Float(v) if v == 160.0 => {}
             Value::Double(v) if v == 160.0 => {}
@@ -120,7 +142,7 @@ mod plan063_handler_float_arith {
         }
     }
 
-        /// 参数 float 比较（CustomScrollbar Move 守卫 `.scrollHeight > .clientHeight`
+    /// 参数 float 比较（CustomScrollbar Move 守卫 `.scrollHeight > .clientHeight`
     /// 同构：参数/实参参与 `>` 比较）——期望真臂可达。
     #[test]
     fn handler_param_float_comparison() {
@@ -153,7 +175,12 @@ mod plan063_anchor_picker {
     use crate::ui::code_editor::draw::Rect;
 
     fn mk(y: f32, h: f32) -> Rect {
-        Rect { x: 0.0, y, w: 100.0, h }
+        Rect {
+            x: 0.0,
+            y,
+            w: 100.0,
+            h,
+        }
     }
 
     #[test]

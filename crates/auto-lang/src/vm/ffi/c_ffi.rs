@@ -46,10 +46,7 @@ impl CFfiRuntime {
             let lib_name = Self::resolve_library_name(&manifest.library);
             let lib = unsafe {
                 libloading::Library::new(&lib_name).map_err(|e| {
-                    VMError::FFI(format!(
-                        "Failed to load C library '{}': {}",
-                        lib_name, e
-                    ))
+                    VMError::FFI(format!("Failed to load C library '{}': {}", lib_name, e))
                 })?
             };
             self.library = Some(Arc::new(lib));
@@ -72,7 +69,10 @@ impl CFfiRuntime {
             // error instead of panicking in the shim or silently miscalling.
             // The a2c backend consumes FnPtr manifests natively (closures
             // transpile to function pointers, Plan 060).
-            if func.params.iter().any(|p| matches!(p.ty, CTypeDesc::FnPtr { .. }))
+            if func
+                .params
+                .iter()
+                .any(|p| matches!(p.ty, CTypeDesc::FnPtr { .. }))
                 || matches!(func.return_type, CTypeDesc::FnPtr { .. })
             {
                 return Err(VMError::FFI(format!(
@@ -146,10 +146,8 @@ impl CFfiRuntime {
 fn create_c_shim(
     library: Arc<libloading::Library>,
     func: &CFunction,
-) -> Result<
-    impl Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
-    VMError,
-> {
+) -> Result<impl Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static, VMError>
+{
     let name_cstr = std::ffi::CString::new(func.name.as_bytes())
         .map_err(|e| VMError::FFI(format!("Invalid C function name '{}': {}", func.name, e)))?;
 
@@ -279,21 +277,24 @@ fn create_c_shim(
                 // --- size_t fn(const char*) ---
                 ([CTypeDesc::CStr], CTypeDesc::Size) => {
                     let f: fn(*const std::ffi::c_char) -> usize = std::mem::transmute(fp);
-                    let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char);
+                    let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                        as *const std::ffi::c_char);
                     _vm.push_i64_vm(task, r as i64);
                     return Ok(());
                 }
                 // --- int fn(const char*) ---
                 ([CTypeDesc::CStr], CTypeDesc::Int) => {
                     let f: fn(*const std::ffi::c_char) -> i32 = std::mem::transmute(fp);
-                    let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char);
+                    let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                        as *const std::ffi::c_char);
                     task.ram.push_i32(r);
                     return Ok(());
                 }
                 // --- double fn(const char*) ---
                 ([CTypeDesc::CStr], CTypeDesc::Double) => {
                     let f: fn(*const std::ffi::c_char) -> f64 = std::mem::transmute(fp);
-                    let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char);
+                    let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                        as *const std::ffi::c_char);
                     task.ram.push_f64(r);
                     return Ok(());
                 }
@@ -301,7 +302,8 @@ fn create_c_shim(
                 ([CTypeDesc::CStr], CTypeDesc::Ptr) => {
                     let f: fn(*const std::ffi::c_char) -> *mut std::ffi::c_void =
                         std::mem::transmute(fp);
-                    let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char);
+                    let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                        as *const std::ffi::c_char);
                     _vm.push_i64_vm(task, r as i64);
                     return Ok(());
                 }
@@ -310,19 +312,25 @@ fn create_c_shim(
                     let f: fn(*const std::ffi::c_char, *const std::ffi::c_char) -> i32 =
                         std::mem::transmute(fp);
                     let r = f(
-                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
-                        args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char,
+                        args_ptr.get(1).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char,
                     );
                     task.ram.push_i32(r);
                     return Ok(());
                 }
                 // --- ptr fn(const char*, const char*) ---
                 ([CTypeDesc::CStr, CTypeDesc::CStr], CTypeDesc::Ptr) => {
-                    let f: fn(*const std::ffi::c_char, *const std::ffi::c_char) -> *mut std::ffi::c_void =
-                        std::mem::transmute(fp);
+                    let f: fn(
+                        *const std::ffi::c_char,
+                        *const std::ffi::c_char,
+                    ) -> *mut std::ffi::c_void = std::mem::transmute(fp);
                     let r = f(
-                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
-                        args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char,
+                        args_ptr.get(1).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char,
                     );
                     _vm.push_i64_vm(task, r as i64);
                     return Ok(());
@@ -348,7 +356,8 @@ fn create_c_shim(
                 // --- void fn(ptr) ---
                 ([CTypeDesc::Ptr], CTypeDesc::Void) => {
                     let f: fn(*mut std::ffi::c_void) = std::mem::transmute(fp);
-                    f(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void);
+                    f(args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                        as *mut std::ffi::c_void);
                     return Ok(());
                 }
                 // --- void fn(int) ---
@@ -366,7 +375,8 @@ fn create_c_shim(
                 // --- int fn(ptr) ---
                 ([CTypeDesc::Ptr], CTypeDesc::Int) => {
                     let f: fn(*mut std::ffi::c_void) -> i32 = std::mem::transmute(fp);
-                    let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void);
+                    let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                        as *mut std::ffi::c_void);
                     task.ram.push_i32(r);
                     return Ok(());
                 }
@@ -375,31 +385,42 @@ fn create_c_shim(
                     let f: fn(*const std::ffi::c_char, *mut std::ffi::c_void) -> i32 =
                         std::mem::transmute(fp);
                     let r = f(
-                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
-                        args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char,
+                        args_ptr.get(1).copied().unwrap_or(std::ptr::null())
+                            as *mut std::ffi::c_void,
                     );
                     task.ram.push_i32(r);
                     return Ok(());
                 }
                 // --- ptr fn(ptr_mut, const char*) ---
                 ([CTypeDesc::PtrMut, CTypeDesc::CStr], CTypeDesc::Ptr) => {
-                    let f: fn(*mut std::ffi::c_void, *const std::ffi::c_char) -> *mut std::ffi::c_void =
-                        std::mem::transmute(fp);
+                    let f: fn(
+                        *mut std::ffi::c_void,
+                        *const std::ffi::c_char,
+                    ) -> *mut std::ffi::c_void = std::mem::transmute(fp);
                     let r = f(
-                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
-                        args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *mut std::ffi::c_void,
+                        args_ptr.get(1).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char,
                     );
                     _vm.push_i64_vm(task, r as i64);
                     return Ok(());
                 }
                 // --- ptr fn(ptr_mut, int, ptr)  fgets ---
                 ([CTypeDesc::PtrMut, CTypeDesc::Int, CTypeDesc::Ptr], CTypeDesc::Ptr) => {
-                    let f: fn(*mut std::ffi::c_void, i32, *mut std::ffi::c_void) -> *mut std::ffi::c_void =
-                        std::mem::transmute(fp);
+                    let f: fn(
+                        *mut std::ffi::c_void,
+                        i32,
+                        *mut std::ffi::c_void,
+                    ) -> *mut std::ffi::c_void = std::mem::transmute(fp);
                     let r = f(
-                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *mut std::ffi::c_void,
                         args_i32.get(0).copied().unwrap_or(0),
-                        args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                        args_ptr.get(1).copied().unwrap_or(std::ptr::null())
+                            as *mut std::ffi::c_void,
                     );
                     _vm.push_i64_vm(task, r as i64);
                     return Ok(());
@@ -409,7 +430,8 @@ fn create_c_shim(
                     let f: fn(*mut std::ffi::c_void, i32, usize) -> *mut std::ffi::c_void =
                         std::mem::transmute(fp);
                     let r = f(
-                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *mut std::ffi::c_void,
                         args_i32.get(0).copied().unwrap_or(0),
                         args_i64.get(0).copied().unwrap_or(0) as usize,
                     );
@@ -418,11 +440,16 @@ fn create_c_shim(
                 }
                 // --- ptr fn(ptr_mut, ptr, size_t)  memcpy ---
                 ([CTypeDesc::PtrMut, CTypeDesc::Ptr, CTypeDesc::Size], CTypeDesc::Ptr) => {
-                    let f: fn(*mut std::ffi::c_void, *const std::ffi::c_void, usize) -> *mut std::ffi::c_void =
-                        std::mem::transmute(fp);
+                    let f: fn(
+                        *mut std::ffi::c_void,
+                        *const std::ffi::c_void,
+                        usize,
+                    ) -> *mut std::ffi::c_void = std::mem::transmute(fp);
                     let r = f(
-                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
-                        args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_void,
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *mut std::ffi::c_void,
+                        args_ptr.get(1).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_void,
                         args_i64.get(0).copied().unwrap_or(0) as usize,
                     );
                     _vm.push_i64_vm(task, r as i64);
@@ -433,8 +460,10 @@ fn create_c_shim(
                     let f: fn(*const std::ffi::c_char, *const std::ffi::c_char, usize) -> i32 =
                         std::mem::transmute(fp);
                     let r = f(
-                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
-                        args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char,
+                        args_ptr.get(1).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char,
                         args_i64.get(0).copied().unwrap_or(0) as usize,
                     );
                     task.ram.push_i32(r);
@@ -443,7 +472,8 @@ fn create_c_shim(
                 // --- long fn(ptr_mut)  time ---
                 ([CTypeDesc::PtrMut], CTypeDesc::Long) => {
                     let f: fn(*mut std::ffi::c_void) -> i64 = std::mem::transmute(fp);
-                    let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void);
+                    let r = f(args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                        as *mut std::ffi::c_void);
                     _vm.push_i64_vm(task, r);
                     return Ok(());
                 }
@@ -456,7 +486,8 @@ fn create_c_shim(
                     let r = f(
                         args_i32.get(0).copied().unwrap_or(0),
                         args_i32.get(1).copied().unwrap_or(0),
-                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char,
                     );
                     _vm.push_i64_vm(task, r as i64);
                     return Ok(());
@@ -466,8 +497,10 @@ fn create_c_shim(
                     let f: fn(*mut std::ffi::c_void, *const std::ffi::c_char, usize) =
                         std::mem::transmute(fp);
                     f(
-                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
-                        args_ptr.get(1).copied().unwrap_or(std::ptr::null()) as *const std::ffi::c_char,
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *mut std::ffi::c_void,
+                        args_ptr.get(1).copied().unwrap_or(std::ptr::null())
+                            as *const std::ffi::c_char,
                         args_i64.get(0).copied().unwrap_or(0) as usize,
                     );
                     return Ok(());
@@ -476,7 +509,8 @@ fn create_c_shim(
                 ([CTypeDesc::Ptr, CTypeDesc::Int, CTypeDesc::Int], CTypeDesc::Void) => {
                     let f: fn(*mut std::ffi::c_void, i32, i32) = std::mem::transmute(fp);
                     f(
-                        args_ptr.get(0).copied().unwrap_or(std::ptr::null()) as *mut std::ffi::c_void,
+                        args_ptr.get(0).copied().unwrap_or(std::ptr::null())
+                            as *mut std::ffi::c_void,
                         args_i32.get(0).copied().unwrap_or(0),
                         args_i32.get(1).copied().unwrap_or(0),
                     );
@@ -484,7 +518,6 @@ fn create_c_shim(
                 }
                 // --- double fn(double, double)  difftime ---
                 // Already handled by the Double, Double -> Double arm above.
-
                 _ => {
                     log::warn!(
                         "Unsupported C-FFI signature for {}: {:?} -> {:?}",
@@ -528,13 +561,22 @@ mod tests {
     /// Plan 597: JSON-file manifest loading (non-builtin datasets).
     #[test]
     fn load_manifest_file_reads_engine_subset() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/test/vm_engine_face/engine_face.json");
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/test/vm_engine_face/engine_face.json"
+        );
         let m = load_manifest_file(path).expect("engine_face.json loads");
         assert_eq!(m.library, "autoterm_core");
         assert_eq!(m.functions.len(), 8);
-        assert!(m.functions.iter().any(|f| f.name == "autoterm_engine_spawn"));
+        assert!(m
+            .functions
+            .iter()
+            .any(|f| f.name == "autoterm_engine_spawn"));
         // buffer/out-param symbols intentionally absent (VM-unreachable face)
-        assert!(!m.functions.iter().any(|f| f.name == "autoterm_engine_row_text"));
+        assert!(!m
+            .functions
+            .iter()
+            .any(|f| f.name == "autoterm_engine_row_text"));
     }
 
     use super::*;

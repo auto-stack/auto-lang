@@ -108,8 +108,14 @@ struct FileStamp {
 
 fn stamp_of(path: &Path) -> FileStamp {
     match std::fs::metadata(path) {
-        Ok(m) => FileStamp { len: m.len(), mtime: m.modified().ok() },
-        Err(_) => FileStamp { len: u64::MAX, mtime: None },
+        Ok(m) => FileStamp {
+            len: m.len(),
+            mtime: m.modified().ok(),
+        },
+        Err(_) => FileStamp {
+            len: u64::MAX,
+            mtime: None,
+        },
     }
 }
 
@@ -123,7 +129,12 @@ struct PageCache {
 
 impl PageCache {
     fn new(budget: usize) -> Self {
-        PageCache { map: HashMap::new(), order: VecDeque::new(), bytes: 0, budget }
+        PageCache {
+            map: HashMap::new(),
+            order: VecDeque::new(),
+            bytes: 0,
+            budget,
+        }
     }
 
     fn get(&mut self, page: u32) -> Option<Arc<str>> {
@@ -144,7 +155,9 @@ impl PageCache {
         // Evict LRU pages over budget. A reader may still hold an evicted
         // Arc — dropping our handle only ends caching, not the borrow.
         while self.bytes > self.budget {
-            let Some(victim) = self.order.pop_front() else { break };
+            let Some(victim) = self.order.pop_front() else {
+                break;
+            };
             if let Some(t) = self.map.remove(&victim) {
                 self.bytes -= t.len();
             }
@@ -203,10 +216,11 @@ fn pread_exact(file: &File, buf: &mut [u8], mut offset: u64) -> io::Result<()> {
     Ok(())
 }
 
-
-
 fn utf8_io_error() -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, "stream did not contain valid UTF-8")
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "stream did not contain valid UTF-8",
+    )
 }
 
 impl PageStore {
@@ -218,8 +232,7 @@ impl PageStore {
         let page_bytes = cfg.page_bytes.max(MIN_PAGE_BYTES);
         let file = File::open(path)?;
         let len = file.metadata()?.len();
-        let mut pages: Vec<PageDesc> =
-            Vec::with_capacity((len as usize / page_bytes as usize) + 1);
+        let mut pages: Vec<PageDesc> = Vec::with_capacity((len as usize / page_bytes as usize) + 1);
         let mut buf = vec![0u8; page_bytes as usize];
         let mut offset = 0u64;
         while offset < len {
@@ -262,7 +275,9 @@ impl PageStore {
             prefetch_radius: cfg.prefetch_radius,
             pages,
             baseline: Mutex::new(stamp_of(path)),
-            cache: Mutex::new(PageCache::new(cfg.cache_budget.max(page_bytes as usize * 2))),
+            cache: Mutex::new(PageCache::new(
+                cfg.cache_budget.max(page_bytes as usize * 2),
+            )),
             prefetch_tx: Mutex::new(None),
             prefetched_pages: AtomicU64::new(0),
         });
@@ -344,7 +359,10 @@ impl PageStore {
     /// off-thread; `page_state` flips to Resident as pages land.
     pub fn prefetch_around(&self, page: u32) {
         let r = self.prefetch_radius;
-        self.prefetch_range(page.saturating_sub(r), page.saturating_add(r).saturating_add(1));
+        self.prefetch_range(
+            page.saturating_sub(r),
+            page.saturating_add(r).saturating_add(1),
+        );
     }
 
     /// Prefetch the page range covering byte range `[start, end)` plus the
@@ -435,7 +453,6 @@ impl std::fmt::Debug for PageStore {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // Tests (PLAN-728 T-01..T-05 单测族；E2E/native 面见 tests/plan728_supply_probes.rs)
 // ---------------------------------------------------------------------------
@@ -448,7 +465,11 @@ pub(crate) mod tests {
     /// Small pages + tight budget so tiny fixtures exercise multi-page
     /// tables, sub-page splits, and LRU eviction.
     fn test_cfg() -> PageConfig {
-        PageConfig { page_bytes: 512, cache_budget: 4 * 1024, prefetch_radius: 2 }
+        PageConfig {
+            page_bytes: 512,
+            cache_budget: 4 * 1024,
+            prefetch_radius: 2,
+        }
     }
 
     pub(crate) struct TempFile {
@@ -505,11 +526,17 @@ pub(crate) mod tests {
         // Root summaries answer without ANY page resident.
         assert_eq!(store.cache_bytes(), 0, "prescan must not warm the cache");
         assert_eq!(rope.len_bytes(), bytes.len());
-        assert_eq!(rope.line_count(), want_text.bytes().filter(|&b| b == b'\n').count() + 1);
+        assert_eq!(
+            rope.line_count(),
+            want_text.bytes().filter(|&b| b == b'\n').count() + 1
+        );
         assert_eq!(rope.len_chars(), want_text.chars().count());
         // Whole-document digest matches the flat digest of the file — the
         // Merkle chain folds prescan page digests (zero residency).
-        assert_eq!(rope.content_hash(), Rope::from_str(want_text).content_hash());
+        assert_eq!(
+            rope.content_hash(),
+            Rope::from_str(want_text).content_hash()
+        );
     }
 
     #[test]
@@ -529,7 +556,10 @@ pub(crate) mod tests {
         }
         let (rope, _store, _f) = open(&bytes, "boundary");
         let text = std::str::from_utf8(&bytes).unwrap();
-        assert_eq!(rope.line_count(), text.bytes().filter(|&b| b == b'\n').count() + 1);
+        assert_eq!(
+            rope.line_count(),
+            text.bytes().filter(|&b| b == b'\n').count() + 1
+        );
         assert_eq!(rope.to_string(), text);
     }
 
@@ -553,8 +583,15 @@ pub(crate) mod tests {
         let start = rope.line_start_byte(far);
         // The jump answered through a BOUNDED fault set (assert before any
         // whole-document materialization below).
-        assert!(store.cache_bytes() <= 4 * 1024 + 512, "cache {} over budget", store.cache_bytes());
-        assert_eq!(&rope.to_string()[start..start + lines[far].len()], lines[far]);
+        assert!(
+            store.cache_bytes() <= 4 * 1024 + 512,
+            "cache {} over budget",
+            store.cache_bytes()
+        );
+        assert_eq!(
+            &rope.to_string()[start..start + lines[far].len()],
+            lines[far]
+        );
     }
 
     // ── T-02 面②: overlay edits — dual-track equivalence ────────────────
@@ -577,7 +614,9 @@ pub(crate) mod tests {
         let mut model = text.clone();
 
         let bounds = |s: &str| -> Vec<usize> {
-            std::iter::once(0).chain(s.char_indices().map(|(i, c)| i + c.len_utf8())).collect()
+            std::iter::once(0)
+                .chain(s.char_indices().map(|(i, c)| i + c.len_utf8()))
+                .collect()
         };
         for op in 0..220 {
             let b = bounds(&model);
@@ -629,8 +668,15 @@ pub(crate) mod tests {
         paged.insert_bytes(boundary, "// edit\n");
         paged.delete_bytes(0, 9);
         assert_eq!(snap.to_string(), text, "pre-edit snapshot frozen");
-        assert_eq!(std::fs::read(f.path()).unwrap(), bytes, "base file untouched");
-        assert!(store.baseline_matches(), "baseline still matches (we never saved)");
+        assert_eq!(
+            std::fs::read(f.path()).unwrap(),
+            bytes,
+            "base file untouched"
+        );
+        assert!(
+            store.baseline_matches(),
+            "baseline still matches (we never saved)"
+        );
     }
 
     // ── T-03 面③: LRU budget ─────────────────────────────────────────────
@@ -666,7 +712,10 @@ pub(crate) mod tests {
         let _ = rope.to_string(); // warm everything once
         let total = rope.structural_resident_estimate() + store.structural_resident_bytes();
         // Per-page cost sanity: ~100KB doc must stay far under 1MB.
-        assert!(total < 1024 * 1024, "structural estimate {total} unexpectedly large for ~100KB doc");
+        assert!(
+            total < 1024 * 1024,
+            "structural estimate {total} unexpectedly large for ~100KB doc"
+        );
     }
 
     // ── T-04 面④: async prefetch + page-state observability ─────────────
@@ -683,7 +732,11 @@ pub(crate) mod tests {
         while store.page_state(3) == PageState::Cold && std::time::Instant::now() < deadline {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        assert_eq!(store.page_state(3), PageState::Resident, "prefetch must warm page 3");
+        assert_eq!(
+            store.page_state(3),
+            PageState::Resident,
+            "prefetch must warm page 3"
+        );
         assert!(store.prefetched_pages() >= 1);
         // Reads through the rope still answer (warm or cold alike).
         assert!(!rope.line(1).is_empty());
@@ -710,7 +763,11 @@ pub(crate) mod tests {
         let out = f.path().with_extension("out");
         rope.write_backed(&out).expect("write_backed");
         let written = std::fs::read(&out).expect("read back");
-        assert_eq!(written, model.into_bytes(), "round-trip must be byte-for-byte ({tag})");
+        assert_eq!(
+            written,
+            model.into_bytes(),
+            "round-trip must be byte-for-byte ({tag})"
+        );
         // No temp litter around the destination.
         let stem = out.file_name().unwrap().to_string_lossy().into_owned();
         let dir_litter = std::fs::read_dir(f.path().parent().unwrap())
@@ -721,7 +778,10 @@ pub(crate) mod tests {
                 n.starts_with(&stem) && n.contains("p728tmp")
             })
             .count();
-        assert_eq!(dir_litter, 0, "temp files must not survive a successful save ({tag})");
+        assert_eq!(
+            dir_litter, 0,
+            "temp files must not survive a successful save ({tag})"
+        );
         let _ = std::fs::remove_file(&out);
     }
 
@@ -732,12 +792,20 @@ pub(crate) mod tests {
         // CRLF preserved byte-for-byte (EOL interpretation stays downstream).
         save_roundtrip("rt-crlf", b"a\r\nb\r\nc\r\n".to_vec(), &[]);
         // BOM rides as raw bytes (interpretation stays downstream).
-        save_roundtrip("rt-bom", format!("\u{FEFF}bom head\nbody\n").into_bytes(), &[]);
+        save_roundtrip(
+            "rt-bom",
+            format!("\u{FEFF}bom head\nbody\n").into_bytes(),
+            &[],
+        );
         // Multi-span edits: head insert + middle replace + tail delete.
         save_roundtrip(
             "rt-edits",
             fixture(800),
-            &[(0, 0, "// header\n"), (20_000, 20_050, "替换\n"), (61_000, 400_000, "")],
+            &[
+                (0, 0, "// header\n"),
+                (20_000, 20_050, "替换\n"),
+                (61_000, 400_000, ""),
+            ],
         );
         // Edits that delete across page boundaries entirely.
         save_roundtrip("rt-bigdel", fixture(500), &[(600, 60_000, "x")]);
@@ -764,12 +832,22 @@ pub(crate) mod tests {
         let (mut rope, store, f) = open(&bytes, "rebase");
         rope.insert_bytes(0, "// v2\n");
         rope.write_backed(f.path()).expect("first save (in place)");
-        assert_eq!(std::fs::read(f.path()).unwrap(), rope.to_string().as_bytes());
-        assert!(store.baseline_matches(), "baseline re-stamped after own save");
+        assert_eq!(
+            std::fs::read(f.path()).unwrap(),
+            rope.to_string().as_bytes()
+        );
+        assert!(
+            store.baseline_matches(),
+            "baseline re-stamped after own save"
+        );
         // A second in-place save right after must succeed (fresh baseline).
         rope.insert_bytes(0, "// v3\n");
-        rope.write_backed(f.path()).expect("second save after refresh");
-        assert_eq!(std::fs::read(f.path()).unwrap(), rope.to_string().as_bytes());
+        rope.write_backed(f.path())
+            .expect("second save after refresh");
+        assert_eq!(
+            std::fs::read(f.path()).unwrap(),
+            rope.to_string().as_bytes()
+        );
     }
 
     #[test]
@@ -793,7 +871,10 @@ pub(crate) mod tests {
         let mem = Rope::from_str(&text);
 
         let snap0 = paged.snapshot();
-        assert!(snap0.subtree_equal(&mem.snapshot()), "paged vs mem Merkle-equal pre-edit");
+        assert!(
+            snap0.subtree_equal(&mem.snapshot()),
+            "paged vs mem Merkle-equal pre-edit"
+        );
         assert_eq!(snap0.content_hash(), mem.content_hash());
 
         let edit_at = paged.line_start_byte(200);
@@ -805,19 +886,28 @@ pub(crate) mod tests {
         // works over paged trees with page-digest shortcuts).
         let spans = paged.snapshot().prune_spans(&snap0);
         assert!(
-            spans
-                .diverged
-                .iter()
-                .any(|&(a1, a2, _, _)| a1 <= edit_at && edit_at + "// diverged
-".len() <= a2),
+            spans.diverged.iter().any(|&(a1, a2, _, _)| a1 <= edit_at
+                && edit_at
+                    + "// diverged
+"
+                    .len()
+                    <= a2),
             "edit region must register diverged: {:?}",
             spans.diverged
         );
 
         // Revert: Merkle-equal again (content-determined digests).
-        paged.delete_bytes(edit_at, edit_at + "// diverged
-".len());
-        assert!(paged.snapshot().subtree_equal(&mem.snapshot()), "revert restores equality");
+        paged.delete_bytes(
+            edit_at,
+            edit_at
+                + "// diverged
+"
+                .len(),
+        );
+        assert!(
+            paged.snapshot().subtree_equal(&mem.snapshot()),
+            "revert restores equality"
+        );
         let (lo, hi) = (mem.line_start_byte(5), mem.line_start_byte(30));
         assert_eq!(paged.range_hash(lo, hi), mem.range_hash(lo, hi));
     }

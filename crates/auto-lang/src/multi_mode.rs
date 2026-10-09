@@ -21,18 +21,11 @@ pub enum CompiledOutput {
         bytecode_path: PathBuf,
     },
     /// C transpilation output (.c and .h files)
-    C {
-        c_file: PathBuf,
-        h_file: PathBuf,
-    },
+    C { c_file: PathBuf, h_file: PathBuf },
     /// Rust transpilation output (.rs file)
-    Rust {
-        rs_file: PathBuf,
-    },
+    Rust { rs_file: PathBuf },
     /// No compilation needed (Evaluator mode)
-    Parsed {
-        source_path: PathBuf,
-    },
+    Parsed { source_path: PathBuf },
 }
 
 impl CompiledOutput {
@@ -108,28 +101,29 @@ impl MultiModeCompiler {
         let code = if let Some(code) = source_code {
             code.to_string()
         } else {
-            std::fs::read_to_string(&source_path)
-                .map_err(|e| AutoError::Msg(format!("Failed to read {}: {}", source_path.display(), e)))?
+            std::fs::read_to_string(&source_path).map_err(|e| {
+                AutoError::Msg(format!("Failed to read {}: {}", source_path.display(), e))
+            })?
         };
 
         // Compile according to mode
         let output = match mode {
-            ExecutionMode::AutoVM => {
-                self.compile_to_bytecode(name, &code)?
-            }
+            ExecutionMode::AutoVM => self.compile_to_bytecode(name, &code)?,
             ExecutionMode::C => {
                 // TODO: Use trans_c when the API is ready
-                return Err(AutoError::Msg("C transpilation not yet implemented in multi-mode compiler".to_string()));
+                return Err(AutoError::Msg(
+                    "C transpilation not yet implemented in multi-mode compiler".to_string(),
+                ));
             }
             ExecutionMode::Rust => {
                 // TODO: Use trans_rust when the API is ready
-                return Err(AutoError::Msg("Rust transpilation not yet implemented in multi-mode compiler".to_string()));
+                return Err(AutoError::Msg(
+                    "Rust transpilation not yet implemented in multi-mode compiler".to_string(),
+                ));
             }
-            ExecutionMode::Evaluator => {
-                CompiledOutput::Parsed {
-                    source_path: source_path.clone(),
-                }
-            }
+            ExecutionMode::Evaluator => CompiledOutput::Parsed {
+                source_path: source_path.clone(),
+            },
         };
 
         // Cache the output
@@ -139,11 +133,7 @@ impl MultiModeCompiler {
     }
 
     /// Compile source to AutoVM bytecode
-    fn compile_to_bytecode(
-        &mut self,
-        name: &str,
-        code: &str,
-    ) -> AutoResult<CompiledOutput> {
+    fn compile_to_bytecode(&mut self, name: &str, code: &str) -> AutoResult<CompiledOutput> {
         use crate::parser::Parser;
 
         // 1. Parse the code
@@ -180,7 +170,11 @@ impl MultiModeCompiler {
         std::fs::write(&bytecode_path, &codegen.code)
             .map_err(|e| AutoError::Msg(format!("Failed to write bytecode: {}", e)))?;
 
-        println!("Compiled {} to AutoVM bytecode: {}", name, bytecode_path.display());
+        println!(
+            "Compiled {} to AutoVM bytecode: {}",
+            name,
+            bytecode_path.display()
+        );
 
         Ok(CompiledOutput::Bytecode {
             bytecode: codegen.code,
@@ -298,10 +292,14 @@ fn main() int {
             "test",
             PathBuf::from("test.at"),
             ExecutionMode::AutoVM,
-            Some(code)
+            Some(code),
         );
 
-        assert!(result.is_ok(), "compile_dependency failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "compile_dependency failed: {:?}",
+            result.err()
+        );
         let output = result.unwrap();
         assert!(matches!(output, CompiledOutput::Bytecode { .. }));
 

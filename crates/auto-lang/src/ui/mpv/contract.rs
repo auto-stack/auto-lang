@@ -435,8 +435,14 @@ impl MediaContract {
         let detail = match (info.error, src) {
             (0, Some(s)) => format!("无法播放该媒体（加载或解码失败）：{s}"),
             (0, None) => "无法播放该媒体（加载或解码失败，mpv 未给出错误码）".to_string(),
-            (code, Some(s)) => format!("无法播放该媒体：{}（错误码 {code}）：{s}", engine.error_text(code)),
-            (code, None) => format!("无法播放该媒体：{}（错误码 {code}）", engine.error_text(code)),
+            (code, Some(s)) => format!(
+                "无法播放该媒体：{}（错误码 {code}）：{s}",
+                engine.error_text(code)
+            ),
+            (code, None) => format!(
+                "无法播放该媒体：{}（错误码 {code}）",
+                engine.error_text(code)
+            ),
         };
         self.media_error = Some(detail.clone());
         out.push(VideoContractEvent::MediaError(detail));

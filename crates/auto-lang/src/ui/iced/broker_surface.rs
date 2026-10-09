@@ -81,7 +81,10 @@ fn observe(line: &str) {
 }
 
 fn observe_unresolved(src: &str) {
-    let fresh = observed_unresolved().lock().unwrap().insert(src.to_string());
+    let fresh = observed_unresolved()
+        .lock()
+        .unwrap()
+        .insert(src.to_string());
     if fresh {
         observe(&format!("unresolved src (placeholder fallback): {src}"));
     }
@@ -123,10 +126,16 @@ pub(crate) fn bitmap_cache_put(src: &str, w: u32, h: u32, stride: u32, rgba: Vec
     let handle = if pixels.len() == tight * h as usize && w > 0 && h > 0 {
         Some(ImageHandle::from_rgba(w, h, pixels))
     } else {
-        observe(&format!("bitmap 尺寸失配（弃置）: {src} w={w} h={h} stride={stride} len={}", pixels.len()));
+        observe(&format!(
+            "bitmap 尺寸失配（弃置）: {src} w={w} h={h} stride={stride} len={}",
+            pixels.len()
+        ));
         None
     };
-    handle_cache().lock().unwrap().insert(src.to_string(), handle);
+    handle_cache()
+        .lock()
+        .unwrap()
+        .insert(src.to_string(), handle);
 }
 
 /// 位图键逐出（宿主 ReclaimWindow/断连清 client 位图——防 pid 复用串扰）。
@@ -194,12 +203,15 @@ pub(crate) fn resolve_drawlist_image(src: &str, w: u32, h: u32) -> Option<ImageH
     }
     // 本地词汇（文件 / builtin: / data: / media 票据）：同步快路径
     //（本地字节，无网络等待）。
-    let handle = crate::ui::iced::renderer::load_image_bytes(src)
-        .and_then(|bytes| decode_handle(&bytes));
+    let handle =
+        crate::ui::iced::renderer::load_image_bytes(src).and_then(|bytes| decode_handle(&bytes));
     if handle.is_none() {
         observe_unresolved(src);
     }
-    handle_cache().lock().unwrap().insert(src.to_string(), handle.clone());
+    handle_cache()
+        .lock()
+        .unwrap()
+        .insert(src.to_string(), handle.clone());
     handle
 }
 
@@ -269,15 +281,18 @@ fn resolve_workspace(src: &str, rest: &str, w: u32, h: u32) -> Option<ImageHandl
     let (br, bg, bb) = published.wallpaper.unwrap_or((24, 28, 38));
     pm.fill(tiny_skia::Color::from_rgba8(br, bg, bb, 255));
     for tile in tiles {
-        let (tx, ty, tw, th) =
-            crate::ui::iced::workspace_preview::tile_rect(tile, published.usable, w as f32, h as f32);
+        let (tx, ty, tw, th) = crate::ui::iced::workspace_preview::tile_rect(
+            tile,
+            published.usable,
+            w as f32,
+            h as f32,
+        );
         if tw <= 0.0 || th <= 0.0 {
             continue;
         }
-        let snap = crate::ui::iced::snapshot::snapshot_window_stale(
-            crate::ui::session::Wid(tile.wid),
-        )
-        .map(|(s, _)| s);
+        let snap =
+            crate::ui::iced::snapshot::snapshot_window_stale(crate::ui::session::Wid(tile.wid))
+                .map(|(s, _)| s);
         blit_rgba_rect(
             pm.data_mut(),
             snap.as_ref().map(|s| (s.rgba.as_slice(), s.w, s.h)),
@@ -291,14 +306,7 @@ fn resolve_workspace(src: &str, rest: &str, w: u32, h: u32) -> Option<ImageHandl
 }
 
 /// RGBA 区块近邻缩放平贴进 Pixmap 矩形（workspace tile；无快照 = 灰块）。
-fn blit_rgba_rect(
-    pm: &mut [u8],
-    snap: Option<(&[u8], u32, u32)>,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
-) {
+fn blit_rgba_rect(pm: &mut [u8], snap: Option<(&[u8], u32, u32)>, x: f32, y: f32, w: f32, h: f32) {
     for row in 0..h.max(1.0) as u32 {
         for col in 0..w.max(1.0) as u32 {
             let px = x as u32 + col;
@@ -370,8 +378,7 @@ fn rasterize_svg_contain(doc: &str, w: u32, h: u32) -> Option<ImageHandle> {
     let scale = (w as f32 / ts.width()).min(h as f32 / ts.height());
     let tx = (w as f32 - ts.width() * scale) / 2.0;
     let ty = (h as f32 - ts.height() * scale) / 2.0;
-    let transform =
-        tiny_skia::Transform::from_scale(scale, scale).post_translate(tx, ty);
+    let transform = tiny_skia::Transform::from_scale(scale, scale).post_translate(tx, ty);
     resvg::render(&tree, transform, &mut pm.as_mut());
     Some(ImageHandle::from_rgba(w, h, pm.take()))
 }
@@ -391,11 +398,7 @@ impl<M> iced::widget::canvas::Program<M> for DrawListPainter<M> {
         let mut frame = Frame::new(renderer, bounds.size());
         // clear 底色：整面铺（None = 透明，窗体容器底透出）。
         if let Some(clear) = self.list.clear {
-            frame.fill_rectangle(
-                iced::Point::ORIGIN,
-                bounds.size(),
-                to_color(clear),
-            );
+            frame.fill_rectangle(iced::Point::ORIGIN, bounds.size(), to_color(clear));
         }
         paint_ops(&mut frame, &self.list.ops);
         let _ = Path::new(|_| {});
@@ -448,25 +451,21 @@ where
                 // widget 本地坐标 → canvas 原点平移（越界面出 canvas
                 // 自动裁剪）。
                 let at = iced::Point::new(rect.x, rect.y);
-                frame.fill_rectangle(
-                    at,
-                    iced::Size::new(rect.w, rect.h),
-                    to_color(*color),
-                );
+                frame.fill_rectangle(at, iced::Size::new(rect.w, rect.h), to_color(*color));
                 i += 1;
             }
-            DrawOp::QuadR { rect, color, radius } => {
+            DrawOp::QuadR {
+                rect,
+                color,
+                radius,
+            } => {
                 // PLAN-679 Phase 2：圆角矩形（radius 编码端解析具值；
                 // rounded-full = min(w,h)/2 亦在编码端解析；此处再钳半边
                 // 防御）。r ≤ 0.5 退化直角。
                 let radius = (*radius).min(rect.w.min(rect.h) / 2.0).max(0.0);
                 if radius <= 0.5 {
                     let at = iced::Point::new(rect.x, rect.y);
-                    frame.fill_rectangle(
-                        at,
-                        iced::Size::new(rect.w, rect.h),
-                        to_color(*color),
-                    );
+                    frame.fill_rectangle(at, iced::Size::new(rect.w, rect.h), to_color(*color));
                 } else {
                     let path = iced::widget::canvas::Path::rounded_rectangle(
                         iced::Point::new(rect.x, rect.y),
@@ -477,30 +476,42 @@ where
                 }
                 i += 1;
             }
-            DrawOp::Text { x, y, size, line_height, color, text } => {
+            DrawOp::Text {
+                x,
+                y,
+                size,
+                line_height,
+                color,
+                text,
+            } => {
                 frame.fill_text(Text {
                     content: text.clone(),
                     position: iced::Point::new(*x, *y),
                     color: to_color(*color),
                     size: (*size).into(),
-                    line_height: iced::widget::text::LineHeight::Absolute(
-                        (*line_height).into(),
-                    ),
+                    line_height: iced::widget::text::LineHeight::Absolute((*line_height).into()),
                     ..Default::default()
                 });
                 i += 1;
             }
             // Plan 515 G2 —— typography 差分：weight/style 映射 iced Font
             //（宿主字体栈按 face 选择——cosmic-text 家族回退取最接近档）。
-            DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
+            DrawOp::TextStyled {
+                x,
+                y,
+                size,
+                line_height,
+                color,
+                weight,
+                italic,
+                text,
+            } => {
                 frame.fill_text(Text {
                     content: text.clone(),
                     position: iced::Point::new(*x, *y),
                     color: to_color(*color),
                     size: (*size).into(),
-                    line_height: iced::widget::text::LineHeight::Absolute(
-                        (*line_height).into(),
-                    ),
+                    line_height: iced::widget::text::LineHeight::Absolute((*line_height).into()),
                     font: iced::Font {
                         weight: css_weight_to_iced(*weight),
                         style: if *italic {
@@ -519,19 +530,13 @@ where
             // 仓内首用；未解析降级 = 占位 Quad + 观测行（I3 禁静默错绘）。
             DrawOp::Image { rect, src, .. } => {
                 let at = iced::Point::new(rect.x, rect.y);
-                let size =
-                    iced::Size::new(rect.w.max(0.0), rect.h.max(0.0));
+                let size = iced::Size::new(rect.w.max(0.0), rect.h.max(0.0));
                 match resolve_drawlist_image(src, rect.w.max(1.0) as u32, rect.h.max(1.0) as u32) {
-                    Some(handle) => frame.draw_image(
-                        iced::Rectangle::new(at, size),
-                        &handle,
-                    ),
+                    Some(handle) => frame.draw_image(iced::Rectangle::new(at, size), &handle),
                     None => frame.fill_rectangle(
                         at,
                         size,
-                        to_color(
-                            crate::ui::desktop_protocol::client_runtime::image_placeholder(),
-                        ),
+                        to_color(crate::ui::desktop_protocol::client_runtime::image_placeholder()),
                     ),
                 }
                 i += 1;
@@ -591,11 +596,7 @@ impl<M> iced::widget::canvas::Program<M> for DisplayListPainter<M> {
         use iced::widget::canvas::{Frame, Path};
         let mut frame = Frame::new(_renderer, bounds.size());
         if let Some(clear) = self.list.clear {
-            frame.fill_rectangle(
-                iced::Point::ORIGIN,
-                bounds.size(),
-                to_color(clear),
-            );
+            frame.fill_rectangle(iced::Point::ORIGIN, bounds.size(), to_color(clear));
         }
         paint_ops_v2(&mut frame, &self.list.ops);
         let _ = Path::new(|_| {});
@@ -675,7 +676,13 @@ where
                 i = end + 1;
             }
             DisplayOp::TransformPop => i += 1,
-            DisplayOp::Quad { rect, fill, radius, border, shadow } => {
+            DisplayOp::Quad {
+                rect,
+                fill,
+                radius,
+                border,
+                shadow,
+            } => {
                 let region = iced::Rectangle::new(
                     iced::Point::new(rect.x, rect.y),
                     iced::Size::new(rect.w.max(0.0), rect.h.max(0.0)),
@@ -705,8 +712,7 @@ where
                     WireFill::Color(c) => to_color(*c).into(),
                     WireFill::LinearGradient { angle, stops } => {
                         let (start, end) = iced::Radians(*angle).to_distance(&region);
-                        let mut linear =
-                            iced::widget::canvas::gradient::Linear::new(start, end);
+                        let mut linear = iced::widget::canvas::gradient::Linear::new(start, end);
                         for (offset, color) in stops {
                             linear = linear.add_stop(*offset, to_color(*color));
                         }
@@ -751,7 +757,16 @@ where
                 }
                 i += 1;
             }
-            DisplayOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
+            DisplayOp::TextStyled {
+                x,
+                y,
+                size,
+                line_height,
+                color,
+                weight,
+                italic,
+                text,
+            } => {
                 frame.fill_text(Text {
                     content: text.clone(),
                     position: iced::Point::new(*x, *y),
@@ -834,11 +849,7 @@ fn paint_shadow_scrim<R>(
 /// independent 臂内容：RGBA 前缓冲 → Image（`from_rgba` 直接纳 straight
 /// 非预乘；预乘换算在 iced 渲染器内部，协议层不感知）。
 pub fn pixels_element<'a, M: 'a>(surface: &PixelsSurface) -> iced::Element<'a, M> {
-    let handle = iced::widget::image::Handle::from_rgba(
-        surface.w,
-        surface.h,
-        surface.rgba.clone(),
-    );
+    let handle = iced::widget::image::Handle::from_rgba(surface.w, surface.h, surface.rgba.clone());
     iced::widget::image(handle)
         .width(iced::Length::Fill)
         .height(iced::Length::Fill)
@@ -851,10 +862,7 @@ pub fn broker_client_content(
     state: &DesktopSession,
     wid: Wid,
 ) -> Option<iced::Element<'_, DesktopMessage>> {
-    let client = state
-        .broker_clients
-        .values()
-        .find(|c| c.wid == Some(wid))?;
+    let client = state.broker_clients.values().find(|c| c.wid == Some(wid))?;
     // 像素前缓冲优先（independent 臂），回退命令帧（queue 臂）。
     if let Some(px) = client.composed_pixels() {
         return Some(pixels_element(px));
@@ -895,13 +903,22 @@ mod tests {
     #[test]
     fn t028_unresolved_negative_cache_and_notyet_lexicon() {
         let missing = "Z:/definitely/missing-028.png";
-        assert!(resolve_drawlist_image(missing, 24, 24).is_none(), "缺文件 None");
+        assert!(
+            resolve_drawlist_image(missing, 24, 24).is_none(),
+            "缺文件 None"
+        );
         assert!(
             handle_cache().lock().unwrap().contains_key(missing),
             "负缓存落位（占位 + 观测去重依据）"
         );
-        assert!(resolve_drawlist_image("foo://bar", 24, 24).is_none(), "未知 scheme");
-        assert!(resolve_drawlist_image("lucide:definitely-not-a-real-icon-name", 24, 24).is_none(), "未知名降级 None");
+        assert!(
+            resolve_drawlist_image("foo://bar", 24, 24).is_none(),
+            "未知 scheme"
+        );
+        assert!(
+            resolve_drawlist_image("lucide:definitely-not-a-real-icon-name", 24, 24).is_none(),
+            "未知名降级 None"
+        );
         assert!(resolve_drawlist_image("", 24, 24).is_none(), "空 src 容错");
     }
 
@@ -910,7 +927,10 @@ mod tests {
     #[test]
     fn t028_http_placeholder_first_then_background_fill() {
         let src = "http://127.0.0.1:1/zero28.png";
-        assert!(resolve_drawlist_image(src, 24, 24).is_none(), "首帧占位（无阻塞等待）");
+        assert!(
+            resolve_drawlist_image(src, 24, 24).is_none(),
+            "首帧占位（无阻塞等待）"
+        );
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
             if handle_cache().lock().unwrap().contains_key(src) {
@@ -936,9 +956,14 @@ mod tests {
         let miss_wid = Wid(428_001);
         let _ = snapshot::take_capture_requests(); // 清场
         let src = format!("thumbnail://{}", miss_wid.0);
-        assert!(resolve_drawlist_image(&src, 96, 64).is_none(), "miss 当帧占位");
         assert!(
-            snapshot::take_capture_requests().iter().any(|w| *w == miss_wid),
+            resolve_drawlist_image(&src, 96, 64).is_none(),
+            "miss 当帧占位"
+        );
+        assert!(
+            snapshot::take_capture_requests()
+                .iter()
+                .any(|w| *w == miss_wid),
             "miss 触发 request_capture"
         );
 
@@ -947,24 +972,40 @@ mod tests {
         let src = format!("thumbnail://{}", hit_wid.0);
         snapshot::cache_put(
             hit_wid,
-            WindowSnapshot { rgba: vec![1, 2, 3, 255], w: 1, h: 1 },
+            WindowSnapshot {
+                rgba: vec![1, 2, 3, 255],
+                w: 1,
+                h: 1,
+            },
         );
         let _ = snapshot::take_capture_requests(); // 清场
         assert!(resolve_drawlist_image(&src, 96, 64).is_some(), "命中直绘");
-        assert!(snapshot::take_capture_requests().is_empty(), "新鲜命中零重抓");
+        assert!(
+            snapshot::take_capture_requests().is_empty(),
+            "新鲜命中零重抓"
+        );
 
         // SWR：过期条目续绘（不跌占位）+ request_capture 静默重抓。
         let swr_wid = Wid(428_003);
         let src = format!("thumbnail://{}", swr_wid.0);
         snapshot::cache_put(
             swr_wid,
-            WindowSnapshot { rgba: vec![9, 9, 9, 255], w: 1, h: 1 },
+            WindowSnapshot {
+                rgba: vec![9, 9, 9, 255],
+                w: 1,
+                h: 1,
+            },
         );
         snapshot::__test_backdate(swr_wid);
         let _ = snapshot::take_capture_requests(); // 清场
-        assert!(resolve_drawlist_image(&src, 96, 64).is_some(), "过期条目续绘");
         assert!(
-            snapshot::take_capture_requests().iter().any(|w| *w == swr_wid),
+            resolve_drawlist_image(&src, 96, 64).is_some(),
+            "过期条目续绘"
+        );
+        assert!(
+            snapshot::take_capture_requests()
+                .iter()
+                .any(|w| *w == swr_wid),
             "过期触发静默重抓"
         );
 
@@ -1025,21 +1066,29 @@ mod tests {
         p.wallpaper = Some((10, 20, 30));
         p.workspaces.insert(
             "0".into(),
-            vec![PreviewTile { wid: 777001, x: 0.0, y: 0.0, w: 960.0, h: 520.0 }],
+            vec![PreviewTile {
+                wid: 777001,
+                x: 0.0,
+                y: 0.0,
+                w: 960.0,
+                h: 520.0,
+            }],
         );
         publish(p);
-        let h = resolve_drawlist_image("workspace://0!app-window", 176, 64)
-            .expect("workspace 合成");
+        let h =
+            resolve_drawlist_image("workspace://0!app-window", 176, 64).expect("workspace 合成");
         let (w, hh, data) = handle_rgba(&h);
         assert_eq!((w, hh), (176, 64));
         // 壁纸基色铺底在场（非 tile 区像素 = 10,20,30）。
         assert!(
-            data.chunks(4).any(|px| px[0] == 10 && px[1] == 20 && px[2] == 30),
+            data.chunks(4)
+                .any(|px| px[0] == 10 && px[1] == 20 && px[2] == 30),
             "壁纸基色铺底"
         );
         // tile 灰块在场（无快照 → 70,74,84）。
         assert!(
-            data.chunks(4).any(|px| px[0] == 70 && px[1] == 74 && px[2] == 84),
+            data.chunks(4)
+                .any(|px| px[0] == 70 && px[1] == 74 && px[2] == 84),
             "tile 灰块占位"
         );
         // 分区缺席 → fallback 图标。
@@ -1084,12 +1133,16 @@ mod tests {
         wide[stride as usize..stride as usize + (w * 4) as usize]
             .copy_from_slice(&rgba[(w * 4) as usize..]);
         bitmap_cache_put(src_wide, w, h, stride, wide);
-        let (_, _, data_w) = handle_rgba(&resolve_drawlist_image(src_wide, 48, 24).expect("宽行重排"));
+        let (_, _, data_w) =
+            handle_rgba(&resolve_drawlist_image(src_wide, 48, 24).expect("宽行重排"));
         assert_eq!(data_w, rgba, "宽 stride 行重排为紧排");
         // evict：逐出后回 miss（仍无负缓存）。
         bitmap_cache_evict(src);
         assert!(resolve_drawlist_image(src, 48, 24).is_none(), "逐出后 miss");
-        assert!(!handle_cache().lock().unwrap().contains_key(src), "逐出即清键");
+        assert!(
+            !handle_cache().lock().unwrap().contains_key(src),
+            "逐出即清键"
+        );
         // 尺寸失配守卫：载荷短于 h×w×4 → None Handle 入缓存（占位 +
         // 观测），不 panic。
         bitmap_cache_put("bitmap://test-p034-short", w, h, w * 4, vec![1u8; 4]);
@@ -1103,9 +1156,12 @@ mod tests {
     fn handle_rgba(h: &ImageHandle) -> (u32, u32, Vec<u8>) {
         use iced::widget::image::Handle;
         match h {
-            Handle::Rgba { width, height, pixels, .. } => {
-                (*width, *height, pixels.to_vec())
-            }
+            Handle::Rgba {
+                width,
+                height,
+                pixels,
+                ..
+            } => (*width, *height, pixels.to_vec()),
             _ => panic!("期望 RGBA Handle"),
         }
     }

@@ -69,15 +69,36 @@ fn generate_expected(case: &str) -> AutoResult<String> {
 #[test]
 fn conformance_bootstrap() {
     let cases = [
-        "001_int_add", "002_str_concat", "003_if_else", "004_for_range",
-        "005_fstring", "006_struct_access", "007_func_call", "008_arithmetic",
-        "009_comparison", "010_array_index",
-        "011_int_div", "012_int_mod", "013_negation", "014_float_arith",
-        "015_nested_if", "016_loop_break", "017_loop_continue", "018_for_iterator",
-        "019_enum_scalar", "020_enum_match",
-        "021_string_methods", "022_list_push_pop", "023_list_map_filter",
-        "024_map_basic", "025_option_basic", "026_result_basic",
-        "027_nested_func", "028_recursive_func", "029_multi_param", "030_str_to_int",
+        "001_int_add",
+        "002_str_concat",
+        "003_if_else",
+        "004_for_range",
+        "005_fstring",
+        "006_struct_access",
+        "007_func_call",
+        "008_arithmetic",
+        "009_comparison",
+        "010_array_index",
+        "011_int_div",
+        "012_int_mod",
+        "013_negation",
+        "014_float_arith",
+        "015_nested_if",
+        "016_loop_break",
+        "017_loop_continue",
+        "018_for_iterator",
+        "019_enum_scalar",
+        "020_enum_match",
+        "021_string_methods",
+        "022_list_push_pop",
+        "023_list_map_filter",
+        "024_map_basic",
+        "025_option_basic",
+        "026_result_basic",
+        "027_nested_func",
+        "028_recursive_func",
+        "029_multi_param",
+        "030_str_to_int",
     ];
     for case in &cases {
         match generate_expected(case) {
@@ -265,7 +286,9 @@ fn conformance_differential_stability() {
     assert!(
         ratio >= 0.5,
         "Only {}/{} ({:.0}%) programs executed successfully. Need >= 50%.",
-        passed, count, ratio * 100.0
+        passed,
+        count,
+        ratio * 100.0
     );
 }
 

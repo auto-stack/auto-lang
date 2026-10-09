@@ -42,7 +42,9 @@ pub fn transpile_aura(source: &str, output_path: Option<&str>) -> Result<String,
     // Parse with UI scenario
     let session = CompilerSession::ui();
     let mut parser = Parser::from(source).with_session(session);
-    let ast = parser.parse().map_err(|e| format!("Failed to parse: {:?}", e))?;
+    let ast = parser
+        .parse()
+        .map_err(|e| format!("Failed to parse: {:?}", e))?;
 
     // Extract and generate
     let mut code = String::new();
@@ -52,7 +54,8 @@ pub fn transpile_aura(source: &str, output_path: Option<&str>) -> Result<String,
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
             let aura_widget = extract_widget_from_decl(widget_decl)
                 .map_err(|e| format!("Failed to extract widget: {}", e))?;
-            let widget_code = generator.generate(&aura_widget)
+            let widget_code = generator
+                .generate(&aura_widget)
                 .map_err(|e| format!("Failed to generate: {}", e))?;
             code.push_str(&widget_code);
             code.push('\n');
@@ -72,7 +75,9 @@ pub fn transpile_vue_aura(source: &str, output_path: Option<&str>) -> Result<Str
     // Parse with UI scenario
     let session = CompilerSession::ui();
     let mut parser = Parser::from(source).with_session(session);
-    let ast = parser.parse().map_err(|e| format!("Failed to parse: {:?}", e))?;
+    let ast = parser
+        .parse()
+        .map_err(|e| format!("Failed to parse: {:?}", e))?;
 
     // Extract and generate
     let mut code = String::new();
@@ -82,7 +87,8 @@ pub fn transpile_vue_aura(source: &str, output_path: Option<&str>) -> Result<Str
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
             let aura_widget = extract_widget_from_decl(widget_decl)
                 .map_err(|e| format!("Failed to extract widget: {}", e))?;
-            let widget_code = generator.generate(&aura_widget)
+            let widget_code = generator
+                .generate(&aura_widget)
                 .map_err(|e| format!("Failed to generate: {}", e))?;
             code.push_str(&widget_code);
             code.push('\n');
@@ -132,7 +138,9 @@ pub fn resolve_stream_endpoints_for_project(root_dir: &str) -> Vec<crate::aura::
     // Robust against multi-line annotations and extra whitespace.
     let Ok(re) = regex::Regex::new(
         r#"(?s)#\[api\([^]]*path\s*=\s*"([^"]+)"[^]]*\)\]\s*pub\s+fn\s+(\w+)\s*\([^)]*\)\s*~?Stream<([^>]+)>"#,
-    ) else { return Vec::new(); };
+    ) else {
+        return Vec::new();
+    };
 
     re.captures_iter(&content)
         .filter_map(|cap| {
@@ -207,7 +215,11 @@ fn resolve_stream_variants(content: &str, type_name: &str) -> (String, Vec<(Stri
         }
         if let Some(m) = variant_re.captures(line) {
             let name = m.get(1).unwrap().as_str().to_string();
-            let wire = if snake { to_snake_case(&name) } else { name.clone() };
+            let wire = if snake {
+                to_snake_case(&name)
+            } else {
+                name.clone()
+            };
             variants.push((wire, name));
         }
     }
@@ -263,7 +275,10 @@ fn to_snake_case(s: &str) -> String {
                 // lowercase letter or digit, OR before the last uppercase in a
                 // run followed by a lowercase (e.g. "HTTPError" → "http_error").
                 let prev = chars[i - 1];
-                let next_lower = chars.get(i + 1).map(|n| n.is_ascii_lowercase()).unwrap_or(false);
+                let next_lower = chars
+                    .get(i + 1)
+                    .map(|n| n.is_ascii_lowercase())
+                    .unwrap_or(false);
                 if prev.is_ascii_lowercase() || prev.is_ascii_digit() || next_lower {
                     out.push('_');
                 }
@@ -424,7 +439,9 @@ fn load_ui_config_actions(
         &stripped[..end]
     } else {
         // Bare: up to end of line / comment.
-        let end = rest.find(|c: char| c == '\n' || c == '#').unwrap_or(rest.len());
+        let end = rest
+            .find(|c: char| c == '\n' || c == '#')
+            .unwrap_or(rest.len());
         let raw = rest[..end].trim();
         if raw.is_empty() {
             return None;
@@ -565,10 +582,7 @@ pub fn collect_use_module_fns(
     let mut imported_names: Vec<String> = Vec::new();
     let base_dir = at_path.parent().unwrap_or(std::path::Path::new("."));
     for use_stmt in crate::use_scanner::scan_use_statements(code) {
-        if use_stmt.is_c_import
-            || use_stmt.is_rust_import
-            || use_stmt.is_python_import
-        {
+        if use_stmt.is_c_import || use_stmt.is_rust_import || use_stmt.is_python_import {
             continue;
         }
         // Plan 559 W2: `use back.api: ...` is NOT a plain module on the vue
@@ -617,10 +631,10 @@ pub fn generate_component_from_file(
     at_path: &std::path::Path,
     opts: ComponentGenOptions,
 ) -> Result<GeneratedComponent, String> {
+    use crate::aura::extract_store_from_decl;
+    use crate::aura::extract_widget_from_decl;
     use crate::session::CompilerSession;
     use crate::ui_gen::{BackendGenerator, VueGenerator, VueMode};
-    use crate::aura::extract_widget_from_decl;
-    use crate::aura::extract_store_from_decl;
 
     let code = std::fs::read_to_string(at_path)
         .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
@@ -638,23 +652,25 @@ pub fn generate_component_from_file(
         .parent()
         .unwrap_or(std::path::Path::new("."))
         .to_path_buf();
-    let recipe_imports = crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
-        .map_err(|e| e.to_string())?;
+    let recipe_imports =
+        crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+            .map_err(|e| e.to_string())?;
 
     // Parse with UI scenario
     let session = CompilerSession::ui().with_backend("vue");
     let mut parser = Parser::from(code.as_str());
     parser = parser.with_session(session);
-    let ast = parser.parse()
+    let ast = parser
+        .parse()
         .map_err(|e| format!("Parse error in {}: {:?}", at_path.display(), e))?;
 
     // Auto-detect or use overrides
-    let api_imports = opts.api_imports_override.unwrap_or_else(|| {
-        extract_api_imports_from_ast(&ast, Some(&at_path))
-    });
-    let mut store_deps = opts.store_deps_override.unwrap_or_else(|| {
-        extract_store_imports_from_ast(&ast)
-    });
+    let api_imports = opts
+        .api_imports_override
+        .unwrap_or_else(|| extract_api_imports_from_ast(&ast, Some(&at_path)));
+    let mut store_deps = opts
+        .store_deps_override
+        .unwrap_or_else(|| extract_store_imports_from_ast(&ast));
     // PLAN-048 (auto-musk A 线): Display 化的 AST 省略 handler 体,限定调用
     // (`ForgeStore.X(...)`)不可见——改扫源文件文本,跨 store 引用并入 deps。
     // PLAN-675 (T-04 附带修复): 扫描前剥注释（与 lib.rs extract_store_deps_
@@ -671,9 +687,17 @@ pub fn generate_component_from_file(
                 if ch.is_alphanumeric() || ch == '_' {
                     cur.push(ch);
                 } else {
-                    let starts_uc = cur.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
-                    if starts_uc && cur.len() > 5 && cur.ends_with("Store")
-                        && !store_deps.contains(&cur) && !extra.contains(&cur) {
+                    let starts_uc = cur
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false);
+                    if starts_uc
+                        && cur.len() > 5
+                        && cur.ends_with("Store")
+                        && !store_deps.contains(&cur)
+                        && !extra.contains(&cur)
+                    {
                         extra.push(cur.clone());
                     }
                     cur.clear();
@@ -694,7 +718,9 @@ pub fn generate_component_from_file(
     // Plan 367 P2-4: module-level plain functions in the store file (siblings of
     // the `store { ... }` block, e.g. `fn format_git_label` helpers). The vue
     // codegen emits them into the composable so handlers can call them by name.
-    let module_fns: Vec<crate::aura::AuraModuleFn> = ast.stmts.iter()
+    let module_fns: Vec<crate::aura::AuraModuleFn> = ast
+        .stmts
+        .iter()
         .filter_map(|stmt| {
             if let crate::ast::Stmt::Fn(fn_decl) = stmt {
                 crate::aura::extract_module_fn(fn_decl)
@@ -711,16 +737,18 @@ pub fn generate_component_from_file(
         use_imported_names.iter().cloned().collect();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
-            let mut store = extract_store_from_decl(store_decl)
-                .map_err(|e| e.to_string())?;
+            let mut store = extract_store_from_decl(store_decl).map_err(|e| e.to_string())?;
             store.api_imports = api_imports.clone();
             store.stream_endpoints = opts.stream_endpoints.clone().unwrap_or_default();
             store.module_fns = module_fns.clone();
             store.sibling_stores = collect_store_siblings(at_path, &code);
             // PLAN-671 ③：use 导入 fn 池传进 store 发射器（与组件路径
             // :995/:1034 的 with_use_module_fns 同源）。
-            let (composable, warnings) =
-                VueGenerator::generate_store_composable_full(&store, &use_module_fns, &use_imported_set);
+            let (composable, warnings) = VueGenerator::generate_store_composable_full(
+                &store,
+                &use_module_fns,
+                &use_imported_set,
+            );
             store_warnings.extend(warnings);
             // PLAN-063 Phase B T15 (KD 061 D13): 归一命名(AuthStore→useAuthStore)。
             let filename = format!(
@@ -758,8 +786,8 @@ pub fn generate_component_from_file(
     let mut widgets: Vec<crate::aura::AuraWidget> = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let mut aura_widget = extract_widget_from_decl(widget_decl)
-                .map_err(|e| e.to_string())?;
+            let mut aura_widget =
+                extract_widget_from_decl(widget_decl).map_err(|e| e.to_string())?;
             aura_widget.api_imports = api_imports.clone();
             widgets.push(aura_widget);
         }
@@ -852,20 +880,19 @@ pub fn generate_component_from_file(
         let mut registry = ComponentRegistry::new();
         let rejected = registry.register_local(&widgets);
         for r in &rejected {
-            package_warnings.push(
-                crate::ui_gen::validators::ValidationWarning::new(
-                    "S004",
-                    // Info 而非 Warning:规则本身在解析层强制(builtin wins),
-                    // 告警咨询化 —— 既有生态存在合法 shadow(a2vue 语料的 Card),
-                    // Warning 会误伤 --strict。
-                    crate::ui_gen::validators::Severity::Info,
+            package_warnings.push(crate::ui_gen::validators::ValidationWarning::new(
+                "S004",
+                // Info 而非 Warning:规则本身在解析层强制(builtin wins),
+                // 告警咨询化 —— 既有生态存在合法 shadow(a2vue 语料的 Card),
+                // Warning 会误伤 --strict。
+                crate::ui_gen::validators::Severity::Info,
+                r,
+                format!(
+                    "local widget `{}` shadows builtin tag `{}` — builtin wins (Plan 408/435)",
                     r,
-                    format!(
-                        "local widget `{}` shadows builtin tag `{}` — builtin wins (Plan 408/435)",
-                        r, r.to_lowercase()
-                    ),
+                    r.to_lowercase()
                 ),
-            );
+            ));
         }
         let base = at_path
             .parent()
@@ -962,8 +989,10 @@ pub fn generate_component_from_file(
     // Plan 015 P1#8: R016 — view AST hard-keyword 撞名检查（strict 下经
     // has_blocking_warnings 让 build 失败；非 strict 只打警告）。
     for w in &widgets {
-        all_validation_warnings
-            .extend(crate::ui_gen::validators::r016_keyword_collision(&w.view_tree, &w.name));
+        all_validation_warnings.extend(crate::ui_gen::validators::r016_keyword_collision(
+            &w.view_tree,
+            &w.name,
+        ));
     }
 
     // pac.at `shadcn: off` (Plan 013): Plain mode keeps native HTML elements
@@ -988,8 +1017,7 @@ pub fn generate_component_from_file(
     // only sub_widget_models / known_sub_widgets (never the bound set), so
     // pass 1's emission set equals the real one; the result decides which
     // children downgrade their model var to defineModel in pass 2.
-    let mut same_file_bound: std::collections::HashMap<String, Vec<String>> =
-        Default::default();
+    let mut same_file_bound: std::collections::HashMap<String, Vec<String>> = Default::default();
     let has_any_channel = sub_widget_models.values().any(|c| !c.is_empty());
     if has_any_channel {
         for widget in &widgets {
@@ -1053,7 +1081,8 @@ pub fn generate_component_from_file(
             gen = gen.with_project_api_functions(api_imports.clone());
         }
 
-        let widget_code = gen.generate(widget)
+        let widget_code = gen
+            .generate(widget)
             .map_err(|e| format!("Failed to generate {}: {}", widget.name, e))?;
         all_widget_codes.push((widget.name.clone(), widget_code));
 
@@ -1069,7 +1098,8 @@ pub fn generate_component_from_file(
         for (vname, vnode) in &widget.named_views {
             let mut mini_widget = widget.clone();
             mini_widget.view_tree = vnode.clone();
-            let mini_code = gen.generate(&mini_widget)
+            let mini_code = gen
+                .generate(&mini_widget)
                 .map_err(|e| format!("Failed to generate {}/view {}: {}", widget.name, vname, e))?;
             all_named_view_codes.push((widget.name.clone(), vname.clone(), mini_code));
         }
@@ -1239,15 +1269,33 @@ widget App {
         assert!(out.contains("ref=\"menuEl\""), "sfc:\n{out}");
         assert!(out.contains("ref=\"scrollEl\""), "sfc:\n{out}");
         // Script declarations
-        assert!(out.contains("const triggerEl = ref<HTMLElement | null>(null)"), "sfc:\n{out}");
-        assert!(out.contains("const menuEl = ref<HTMLElement | null>(null)"), "sfc:\n{out}");
-        assert!(out.contains("const scrollEl = ref<HTMLElement | null>(null)"), "sfc:\n{out}");
+        assert!(
+            out.contains("const triggerEl = ref<HTMLElement | null>(null)"),
+            "sfc:\n{out}"
+        );
+        assert!(
+            out.contains("const menuEl = ref<HTMLElement | null>(null)"),
+            "sfc:\n{out}"
+        );
+        assert!(
+            out.contains("const scrollEl = ref<HTMLElement | null>(null)"),
+            "sfc:\n{out}"
+        );
         // Handler body: ref access maps onto the DOM element
-        assert!(out.contains("triggerEl.value!.getBoundingClientRect()"), "sfc:\n{out}");
-        assert!(out.contains("scrollEl.value!.scrollTop = scrollEl.value!.scrollTop + e.deltaY"), "sfc:\n{out}");
+        assert!(
+            out.contains("triggerEl.value!.getBoundingClientRect()"),
+            "sfc:\n{out}"
+        );
+        assert!(
+            out.contains("scrollEl.value!.scrollTop = scrollEl.value!.scrollTop + e.deltaY"),
+            "sfc:\n{out}"
+        );
         assert!(out.contains("scrollEl.value!.scrollHeight"), "sfc:\n{out}");
         assert!(out.contains("scrollEl.value!.clientHeight"), "sfc:\n{out}");
-        assert!(out.contains("menuEl.value!.querySelector('.item')"), "sfc:\n{out}");
+        assert!(
+            out.contains("menuEl.value!.querySelector('.item')"),
+            "sfc:\n{out}"
+        );
         // document/window pass-through
         assert!(out.contains("window.innerWidth"), "sfc:\n{out}");
         assert!(out.contains("window.innerHeight"), "sfc:\n{out}");
@@ -1307,9 +1355,18 @@ widget App {
         // typed `ref<any>` (component instance — defineExpose surface
         // unknown to the parent); native-tag pseudo-mappings (col → div)
         // stay HTMLElement.
-        assert!(out.contains("const triggerEl = ref<any>(null)"), "sfc:\n{out}");
-        assert!(out.contains("const menuEl = ref<HTMLElement | null>(null)"), "sfc:\n{out}");
-        assert!(out.contains("triggerEl.value!.getBoundingClientRect()"), "sfc:\n{out}");
+        assert!(
+            out.contains("const triggerEl = ref<any>(null)"),
+            "sfc:\n{out}"
+        );
+        assert!(
+            out.contains("const menuEl = ref<HTMLElement | null>(null)"),
+            "sfc:\n{out}"
+        );
+        assert!(
+            out.contains("triggerEl.value!.getBoundingClientRect()"),
+            "sfc:\n{out}"
+        );
     }
 
     /// Plan 356 follow-up #2: a reserved-keyword identifier (e.g. `tag`,
@@ -1352,8 +1409,7 @@ widget W(active_tag: str) {
             let src = format!(
                 "widget W(x: str) {{ view {{ button {{ style: if .x == {kw} {{ \"a\" }} else {{ \"b\" }} }} }} }}",
             );
-            transpile_vue_aura(&src, None)
-                .unwrap_or_else(|e| panic!("compare-operand {kw}: {e}"));
+            transpile_vue_aura(&src, None).unwrap_or_else(|e| panic!("compare-operand {kw}: {e}"));
         }
     }
 
@@ -1379,7 +1435,10 @@ widget Tags {
 "#;
         let out = transpile_vue_aura(src, None).expect("ident.field iterable must generate");
         // Outer loop iterates .notes; inner loop iterates note.tags.
-        assert!(out.matches("v-for").count() == 2, "expected 2 v-for loops in:\n{out}");
+        assert!(
+            out.matches("v-for").count() == 2,
+            "expected 2 v-for loops in:\n{out}"
+        );
     }
 
     /// Plan 356 follow-up: `ident.field.sub` chains as an iterable must also
@@ -1412,7 +1471,10 @@ widget W {
         let out = transpile_vue_aura(src, None).expect("real sidebar must generate");
         assert!(out.len() < 100_000, "output too large: {} bytes", out.len());
         assert!(out.contains("v-for"), "expected v-for in sidebar output");
-        assert!(out.contains("SelectTag"), "expected SelectTag handler in sidebar output");
+        assert!(
+            out.contains("SelectTag"),
+            "expected SelectTag handler in sidebar output"
+        );
     }
 
     /// Plan 356 regression: the minimal OOM trigger. A `for`-loop whose body
@@ -1427,7 +1489,10 @@ widget W {
         let src = include_str!("../../tests/fixtures/plan356_minimal_oom.at");
         let out = transpile_vue_aura(src, None).expect("Plan 356 trigger must generate");
         assert!(out.contains("v-for"), "expected v-for in:\n{out}");
-        assert!(out.contains("SelectTag"), "expected handler binding in:\n{out}");
+        assert!(
+            out.contains("SelectTag"),
+            "expected handler binding in:\n{out}"
+        );
     }
 
     /// Plan 356: the soft-keyword-as-identifier fix applies to any reserved
@@ -1454,8 +1519,7 @@ widget W(active: bool) {{
 }}
 "#,
             );
-            let out =
-                transpile_vue_aura(&src, None).unwrap_or_else(|e| panic!("{kw}: {e}"));
+            let out = transpile_vue_aura(&src, None).unwrap_or_else(|e| panic!("{kw}: {e}"));
             assert!(out.contains("v-for"), "{kw}: missing v-for in:\n{out}");
             assert!(out.contains("Go"), "{kw}: missing handler in:\n{out}");
         }
@@ -1586,7 +1650,10 @@ widget StrictR016Probe {
         assert!(
             ok.validation_warnings.iter().any(|w| w.rule == "R016"),
             "R016 warning must be collected: {:?}",
-            ok.validation_warnings.iter().map(|w| w.rule).collect::<Vec<_>>()
+            ok.validation_warnings
+                .iter()
+                .map(|w| w.rule)
+                .collect::<Vec<_>>()
         );
 
         // Strict: the R008 warning becomes a hard build failure.
@@ -1680,7 +1747,11 @@ widget StrictR016Legal {
         assert!(
             !legal.validation_warnings.iter().any(|w| w.rule == "R016"),
             "legal usage must not produce R016: {:?}",
-            legal.validation_warnings.iter().map(|w| w.rule).collect::<Vec<_>>()
+            legal
+                .validation_warnings
+                .iter()
+                .map(|w| w.rule)
+                .collect::<Vec<_>>()
         );
 
         let _ = std::fs::remove_file(&comma_path);
@@ -2022,11 +2093,28 @@ pub tag SseEventDto {
         assert_eq!(disc, "type");
         // All 6 variants captured, snake_cased.
         let wires: Vec<_> = variants.iter().map(|(w, _)| w.as_str()).collect();
-        assert_eq!(wires, vec!["delta", "thinking", "tool_call", "tool_result", "done", "error"]);
+        assert_eq!(
+            wires,
+            vec![
+                "delta",
+                "thinking",
+                "tool_call",
+                "tool_result",
+                "done",
+                "error"
+            ]
+        );
         let actions: Vec<_> = variants.iter().map(|(_, a)| a.as_str()).collect();
         assert_eq!(
             actions,
-            vec!["Delta", "Thinking", "ToolCall", "ToolResult", "Done", "Error"]
+            vec![
+                "Delta",
+                "Thinking",
+                "ToolCall",
+                "ToolResult",
+                "Done",
+                "Error"
+            ]
         );
     }
 
@@ -2068,10 +2156,7 @@ pub tag SseEventDto {
 
     /// Write `src` to a temp .at file and run `generate_component_from_file`.
     fn gen_with_shadcn(src: &str, shadcn: Option<bool>) -> super::GeneratedComponent {
-        let tmp = std::env::temp_dir().join(format!(
-            "plan013_shadcn_{:?}",
-            shadcn
-        ));
+        let tmp = std::env::temp_dir().join(format!("plan013_shadcn_{:?}", shadcn));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let at_path = tmp.join("app.at");

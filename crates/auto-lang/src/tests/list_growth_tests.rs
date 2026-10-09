@@ -30,8 +30,8 @@ fn test_list_automatic_growth() {
     let result = run(code).unwrap();
 
     // Parse the result array
-    assert!(result.contains("1"));   // first element
-    assert!(result.contains("10"));  // last element
+    assert!(result.contains("1")); // first element
+    assert!(result.contains("10")); // last element
 }
 
 #[test]

@@ -144,7 +144,10 @@ fn test_parse_literal_pattern_string() {
     assert_eq!(task.on_block.handlers.len(), 1);
 
     let (pattern, guard, _body) = &task.on_block.handlers[0];
-    assert!(matches!(pattern, TaskMsgPattern::Literal(LiteralValue::String(_))));
+    assert!(matches!(
+        pattern,
+        TaskMsgPattern::Literal(LiteralValue::String(_))
+    ));
     assert!(matches!(guard, None));
 }
 
@@ -164,7 +167,10 @@ fn test_parse_literal_pattern_int() {
     let tasks = extract_tasks(&result);
     let task = tasks[0];
     let (pattern, _, _) = &task.on_block.handlers[0];
-    assert!(matches!(pattern, TaskMsgPattern::Literal(LiteralValue::Int(404))));
+    assert!(matches!(
+        pattern,
+        TaskMsgPattern::Literal(LiteralValue::Int(404))
+    ));
 }
 
 #[test]
@@ -186,10 +192,16 @@ fn test_parse_literal_pattern_bool() {
     assert_eq!(task.on_block.handlers.len(), 2);
 
     let (p1, _, _) = &task.on_block.handlers[0];
-    assert!(matches!(p1, TaskMsgPattern::Literal(LiteralValue::Bool(true))));
+    assert!(matches!(
+        p1,
+        TaskMsgPattern::Literal(LiteralValue::Bool(true))
+    ));
 
     let (p2, _, _) = &task.on_block.handlers[1];
-    assert!(matches!(p2, TaskMsgPattern::Literal(LiteralValue::Bool(false))));
+    assert!(matches!(
+        p2,
+        TaskMsgPattern::Literal(LiteralValue::Bool(false))
+    ));
 }
 
 #[test]
@@ -214,7 +226,11 @@ fn test_parse_type_binding_pattern() {
         TaskMsgPattern::TypeBinding { name, type_expr } => {
             assert_eq!(name.as_str(), "msg");
             // Check that it's a string type
-            assert!(matches!(type_expr.as_ref(), Type::StrSlice), "Expected StrSlice type, got: {:?}", type_expr);
+            assert!(
+                matches!(type_expr.as_ref(), Type::StrSlice),
+                "Expected StrSlice type, got: {:?}",
+                type_expr
+            );
         }
         _ => panic!("Expected TypeBinding pattern, got: {:?}", pattern),
     }
@@ -244,7 +260,10 @@ fn test_parse_guard_expression() {
     assert!(pattern.is_type_binding());
 
     // Check guard is present
-    assert!(matches!(guard, Some(_)), "Guard expression should be present");
+    assert!(
+        matches!(guard, Some(_)),
+        "Guard expression should be present"
+    );
 }
 
 #[test]
@@ -322,7 +341,12 @@ fn test_parse_else_handler_with_context() {
 fn test_task_on_block_with_context() {
     use crate::token::Pos;
 
-    let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+    let pos = Pos {
+        line: 1,
+        at: 1,
+        pos: 0,
+        len: 0,
+    };
     let on_block = TaskOnBlock::with_context("ctx".into(), pos);
     assert!(on_block.has_context());
     assert_eq!(on_block.context_param, Some("ctx".into()));
@@ -334,7 +358,12 @@ fn test_task_on_block_add_handler_with_guard() {
     use crate::token::Pos;
     use auto_val::Op;
 
-    let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+    let pos = Pos {
+        line: 1,
+        at: 1,
+        pos: 0,
+        len: 0,
+    };
     let mut on_block = TaskOnBlock::new(pos);
     let pattern = TaskMsgPattern::TypeBinding {
         name: "amount".into(),

@@ -158,8 +158,8 @@ fn p042_bad_handler_error_lands_in_ring() {
     }
 }
 "#;
-    let mut dc = crate::build_dynamic_component(src, Some("scan_probe/bad.at"))
-        .expect("bad app build");
+    let mut dc =
+        crate::build_dynamic_component(src, Some("scan_probe/bad.at")).expect("bad app build");
     dc.on_with_input_for("Bad", "Init", None);
     let face = "vm:scan_probe/bad";
     let hit = crate::ui::syslog::snapshot()
@@ -171,10 +171,7 @@ fn p042_bad_handler_error_lands_in_ring() {
         hit
     );
     let hit = hit.unwrap();
-    assert!(matches!(
-        hit.level,
-        crate::ui::syslog::SyslogLevel::Error
-    ));
+    assert!(matches!(hit.level, crate::ui::syslog::SyslogLevel::Error));
 }
 
 /// PLAN-042 review R-2：HostLogger 直测（AC-02 log crate 腿）——error/
@@ -182,8 +179,8 @@ fn p042_bad_handler_error_lands_in_ring() {
 /// 环。并发进程内唯一 target 过滤自证（ring 全局共享同 syslog 单测口径）。
 #[test]
 fn p042_host_logger_levels_into_ring() {
-    use log::{Level, Record};
     use log::Log as _;
+    use log::{Level, Record};
     let logger = crate::ui::syslog::HostLogger;
     // format_args! 借用局部——Record 逐条就地构建（无闭包返回）。
     macro_rules! rec {

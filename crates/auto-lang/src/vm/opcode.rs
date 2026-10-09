@@ -12,7 +12,7 @@ pub enum OpCode {
     POP_N = 0x02,
     DUP = 0x03,
     SWAP = 0x04,
-    DROP = 0x05, // RAII cleanup: pops and frees owned value
+    DROP = 0x05,          // RAII cleanup: pops and frees owned value
     RESERVE_STACK = 0x06, // Reserve stack space for n_locals (prevents stack from overwriting locals)
 
     // === Constants ===
@@ -21,67 +21,66 @@ pub enum OpCode {
     CONST_0 = 0x12,
     CONST_1 = 0x13,
     CONST_F32 = 0x14,
-    CONST_F64 = 0x15,     // Plan 073: Double precision
-    CONST_I64 = 0x16,     // Plan 073: 64-bit integer
-    CONST_U64 = 0x17,     // Plan 073: 64-bit unsigned
+    CONST_F64 = 0x15, // Plan 073: Double precision
+    CONST_I64 = 0x16, // Plan 073: 64-bit integer
+    CONST_U64 = 0x17, // Plan 073: 64-bit unsigned
     LOAD_STR = 0x1F,
     // Plan 075: Object field manipulation
-    SET_FIELD = 0x2A,     // Plan 075: Set field on object (value, field_str_idx) -> void
-    SET_ELEM = 0x2B,      // Plan 073: Set element in array (array_id, index, value) -> void
-    GET_ELEM = 0x2C,      // Plan 073: Get element from array (array_id, index) -> value
-    GET_FIELD = 0x2D,     // Plan 073: Get field from object (obj_id, field_str_idx) -> value
-    CREATE_OBJ = 0x2E,    // Plan 073: Create object from field_count -> object_id
-    CREATE_ARRAY = 0x2F,   // Plan 073: Create array from elem_count -> array_id
-    ARRAY_LEN = 0x48,      // Plan 089: Get array length (array_id) -> length
-    MOD_F = 0x49,          // f32 % f32 -> f32
-    MOD_D = 0x4A,          // f64 % f64 -> f64
-    SLICE = 0x5C,          // Slice: (container, start, end) -> new_container, -1 = from start/end
-    CREATE_TUPLE = 0x5D,   // Plan 200: Create tuple from elem_count -> tuple_id (heap object)
+    SET_FIELD = 0x2A, // Plan 075: Set field on object (value, field_str_idx) -> void
+    SET_ELEM = 0x2B,  // Plan 073: Set element in array (array_id, index, value) -> void
+    GET_ELEM = 0x2C,  // Plan 073: Get element from array (array_id, index) -> value
+    GET_FIELD = 0x2D, // Plan 073: Get field from object (obj_id, field_str_idx) -> value
+    CREATE_OBJ = 0x2E, // Plan 073: Create object from field_count -> object_id
+    CREATE_ARRAY = 0x2F, // Plan 073: Create array from elem_count -> array_id
+    ARRAY_LEN = 0x48, // Plan 089: Get array length (array_id) -> length
+    MOD_F = 0x49,     // f32 % f32 -> f32
+    MOD_D = 0x4A,     // f64 % f64 -> f64
+    SLICE = 0x5C,     // Slice: (container, start, end) -> new_container, -1 = from start/end
+    CREATE_TUPLE = 0x5D, // Plan 200: Create tuple from elem_count -> tuple_id (heap object)
     GET_TUPLE_FIELD = 0x5E, // Plan 200: Get tuple field (tuple_id, field_index) -> value
     PROMOTE_F64 = 0xF1, // Plan 073: Widen f32 to f64 (now 1 slot -> 1 slot under Plan 377)
     // Plan 377 §3.3: RET_D (0xF2) 已删除 —— 全值单槽化后恒用 RET。
     // 0xF2 不再分配（保留空位以防旧调试符号引用）。bytecode 不持久化，无兼容风险。
-
-    CREATE_RANGE = 0x75,  // Plan 073: Create exclusive range (0..10) from (start, end) -> range_value
+    CREATE_RANGE = 0x75, // Plan 073: Create exclusive range (0..10) from (start, end) -> range_value
     CREATE_RANGE_EQ = 0x76, // Plan 073: Create inclusive range (0..=10) from (start, end) -> range_value
-    BUILD_FSTR = 0x77,    // Plan 073: Build f-string from part_count -> string
-    NULL_COALESCE = 0x78, // Plan 073: May<T> null coalesce: ?? operator (left ?? right) -> value
+    BUILD_FSTR = 0x77,      // Plan 073: Build f-string from part_count -> string
+    NULL_COALESCE = 0x78,   // Plan 073: May<T> null coalesce: ?? operator (left ?? right) -> value
     ERROR_PROPAGATE = 0x79, // Plan 073: May<T> error propagate: .? operator (expr.?) -> unwrapped_value
-    CREATE_NODE = 0x74,   // Plan 073: Create node from name_str_idx, arg_count -> node_id (changed from 0x30 to avoid conflict with ADD)
+    CREATE_NODE = 0x74, // Plan 073: Create node from name_str_idx, arg_count -> node_id (changed from 0x30 to avoid conflict with ADD)
     // Plan 120: Option and Result type opcodes
-    CREATE_SOME = 0x7D,   // value -> Some(value) (wrap value in Some)
-    CREATE_NONE = 0x7E,   // -> None (push None onto stack)
-    CREATE_OK = 0x7F,     // value -> Ok(value) (wrap value in Ok)
-    CREATE_ERR = 0xE0,    // str_idx -> Err(msg) (create error from string index)
-    IS_SOME = 0xE1,       // option -> bool (check if Option is Some)
-    IS_OK = 0xE2,         // result -> bool (check if Result is Ok)
-    UNWRAP_SOME = 0xE3,   // Some(value) -> value (unwrap Option, panic if None)
-    UNWRAP_OK = 0xE4,     // Ok(value) -> value (unwrap Result, panic if Err)
-    UNWRAP_ERR = 0xE5,    // Err(msg) -> msg (unwrap Result error, panic if Ok)
+    CREATE_SOME = 0x7D, // value -> Some(value) (wrap value in Some)
+    CREATE_NONE = 0x7E, // -> None (push None onto stack)
+    CREATE_OK = 0x7F,   // value -> Ok(value) (wrap value in Ok)
+    CREATE_ERR = 0xE0,  // str_idx -> Err(msg) (create error from string index)
+    IS_SOME = 0xE1,     // option -> bool (check if Option is Some)
+    IS_OK = 0xE2,       // result -> bool (check if Result is Ok)
+    UNWRAP_SOME = 0xE3, // Some(value) -> value (unwrap Option, panic if None)
+    UNWRAP_OK = 0xE4,   // Ok(value) -> value (unwrap Result, panic if Err)
+    UNWRAP_ERR = 0xE5,  // Err(msg) -> msg (unwrap Result error, panic if Ok)
     // Plan 162: Type cast: expr.as(Type) — runtime type conversion
-    TYPE_CAST_I32 = 0xE6,   // value -> i32 (truncate/reinterpret to i32)
-    TYPE_CAST_U32 = 0xE7,   // value -> u32 (truncate/reinterpret to u32)
-    TYPE_CAST_I64 = 0xE8,   // value -> i64 (extend to i64)
-    TYPE_CAST_U64 = 0xE9,   // value -> u64 (extend to u64)
-    TYPE_CAST_F64 = 0xEA,   // value -> f64 (convert to f64)
-    TYPE_CAST_PTR = 0xEB,   // value -> pointer (no-op, just type change)
+    TYPE_CAST_I32 = 0xE6, // value -> i32 (truncate/reinterpret to i32)
+    TYPE_CAST_U32 = 0xE7, // value -> u32 (truncate/reinterpret to u32)
+    TYPE_CAST_I64 = 0xE8, // value -> i64 (extend to i64)
+    TYPE_CAST_U64 = 0xE9, // value -> u64 (extend to u64)
+    TYPE_CAST_F64 = 0xEA, // value -> f64 (convert to f64)
+    TYPE_CAST_PTR = 0xEB, // value -> pointer (no-op, just type change)
     // Plan 162: Explicit type conversion: expr.to(Type) — may allocate/parse
-    TYPE_TO_STR = 0xEC,     // i32 -> string (via .to_string())
-    TYPE_TO_I32 = 0xED,     // value -> i32 (parse string or truncate)
-    TYPE_TO_F64 = 0xEE,     // value -> f64 (parse string or convert)
+    TYPE_TO_STR = 0xEC, // i32 -> string (via .to_string())
+    TYPE_TO_I32 = 0xED, // value -> i32 (parse string or truncate)
+    TYPE_TO_F64 = 0xEE, // value -> f64 (parse string or convert)
     // Plan 193: Extended type conversions
-    TYPE_F64_TO_STR = 0xF3, // f64 -> string
-    TYPE_I64_TO_STR = 0xF4, // i64 -> string
-    TYPE_U64_TO_STR = 0xF5, // u64 -> string (hex)
+    TYPE_F64_TO_STR = 0xF3,  // f64 -> string
+    TYPE_I64_TO_STR = 0xF4,  // i64 -> string
+    TYPE_U64_TO_STR = 0xF5,  // u64 -> string (hex)
     TYPE_BOOL_TO_STR = 0xF6, // bool -> string
-    TYPE_F64_TO_I32 = 0xF7, // f64 -> i32 (truncate)
-    TYPE_STR_TO_I64 = 0xF8, // string -> i64
-    TYPE_F32_TO_STR = 0xF9, // f32 -> string
-    TYPE_F32_TO_I32 = 0xFA, // f32 -> i32 (truncate)
+    TYPE_F64_TO_I32 = 0xF7,  // f64 -> i32 (truncate)
+    TYPE_STR_TO_I64 = 0xF8,  // string -> i64
+    TYPE_F32_TO_STR = 0xF9,  // f32 -> string
+    TYPE_F32_TO_I32 = 0xFA,  // f32 -> i32 (truncate)
     // Plan 075: Template string opcodes
-    TO_STR = 0x7A,        // Convert any value to string
-    IS_NIL = 0x7B,        // Check if value is nil (returns 1 if nil, 0 otherwise)
-    STR_CAT = 0x7C,       // Concatenate two strings (optimized string joining)
+    TO_STR = 0x7A,  // Convert any value to string
+    IS_NIL = 0x7B,  // Check if value is nil (returns 1 if nil, 0 otherwise)
+    STR_CAT = 0x7C, // Concatenate two strings (optimized string joining)
 
     // === Local Variables ===
     LOAD_LOCAL = 0x20,
@@ -101,32 +100,32 @@ pub enum OpCode {
     NEG = 0x35,
 
     // Plan 073: Floating-point arithmetic
-    ADD_F = 0x36,     // f32 + f32 -> f32
-    SUB_F = 0x37,     // f32 - f32 -> f32
-    MUL_F = 0x38,     // f32 * f32 -> f32
-    DIV_F = 0x39,     // f32 / f32 -> f32
-    NEG_F = 0x3A,     // -f32 -> f32
+    ADD_F = 0x36, // f32 + f32 -> f32
+    SUB_F = 0x37, // f32 - f32 -> f32
+    MUL_F = 0x38, // f32 * f32 -> f32
+    DIV_F = 0x39, // f32 / f32 -> f32
+    NEG_F = 0x3A, // -f32 -> f32
 
     // Plan 073: Double precision arithmetic
-    ADD_D = 0x3B,     // f64 + f64 -> f64
-    SUB_D = 0x3C,     // f64 - f64 -> f64
-    MUL_D = 0x3D,     // f64 * f64 -> f64
-    DIV_D = 0x3E,     // f64 / f64 -> f64
-    NEG_D = 0x3F,     // -f64 -> f64
+    ADD_D = 0x3B, // f64 + f64 -> f64
+    SUB_D = 0x3C, // f64 - f64 -> f64
+    MUL_D = 0x3D, // f64 * f64 -> f64
+    DIV_D = 0x3E, // f64 / f64 -> f64
+    NEG_D = 0x3F, // -f64 -> f64
 
     // 64-bit integer arithmetic (Plan 377: u64/i64 now 1 slot, TAG_U64/I64 nanbox)
-    MOD_U64 = 0xEF,     // u64 % u64 -> u64
+    MOD_U64 = 0xEF, // u64 % u64 -> u64
 
     // Plan 117: Type coercion for mixed arithmetic
-    I32_TO_F32 = 0x46,  // Convert i32 to f32
-    I64_TO_F64 = 0x47,  // Convert i64 to f64
-    U64_TO_F64 = 0x4B,  // Convert u64 to f64 (unsigned, avoids sign extension)
+    I32_TO_F32 = 0x46, // Convert i32 to f32
+    I64_TO_F64 = 0x47, // Convert i64 to f64
+    U64_TO_F64 = 0x4B, // Convert u64 to f64 (unsigned, avoids sign extension)
 
     // 64-bit integer arithmetic (Plan 377: u64/i64 now 1 slot, TAG_U64/I64 nanbox)
-    ADD_U64 = 0x4C,     // u64 + u64 -> u64 (wrapping)
-    SUB_U64 = 0x4D,     // u64 - u64 -> u64 (wrapping)
-    MUL_U64 = 0x4E,     // u64 * u64 -> u64 (wrapping)
-    DIV_U64 = 0x4F,     // u64 / u64 -> u64
+    ADD_U64 = 0x4C, // u64 + u64 -> u64 (wrapping)
+    SUB_U64 = 0x4D, // u64 - u64 -> u64 (wrapping)
+    MUL_U64 = 0x4E, // u64 * u64 -> u64 (wrapping)
+    DIV_U64 = 0x4F, // u64 / u64 -> u64
 
     AND = 0x40,
     OR = 0x41,
@@ -181,7 +180,7 @@ pub enum OpCode {
     CALL = 0x70,
     RET = 0x71,
     CALL_NAT = 0x72,
-    CALL_SPEC = 0x73,  // Dynamic dispatch: method_name_idx:u16, arg_count:u8 -> call by runtime receiver type
+    CALL_SPEC = 0x73, // Dynamic dispatch: method_name_idx:u16, arg_count:u8 -> call by runtime receiver type
     // Plan 369 Task 10: Python FFI native call with explicit runtime arg count.
     // native_id:u16, arg_count:u8. Unlike CALL_NAT, this carries the call-site
     // arg count so the Python shim pops the ACTUAL number of args — needed
@@ -190,15 +189,15 @@ pub enum OpCode {
     CALL_NAT_COUNTED = 0x5F,
 
     // === Concurrency ===
-    SPAWN = 0x80,    // func_id: u32, arg_count: u8 -> task_id: u32
-    TASK_ID = 0x81,  // -> task_id: u32
+    SPAWN = 0x80,      // func_id: u32, arg_count: u8 -> task_id: u32
+    TASK_ID = 0x81,    // -> task_id: u32
     YIELD_TASK = 0x82, // -> void (yield CPU back to task scheduler; NOT generator yield)
-    SLEEP = 0x83,    // ms: u32 -> void
-    JOIN = 0x84,     // task_id: u32 -> result
-    CHAN_NEW = 0x85, // -> channel_id: u32
-    SEND = 0x86,     // channel_id: u32, data: i32 -> void
-    RECV = 0x87,     // channel_id: u32 -> data: i32
-    TRY_RECV = 0x88, // channel_id: u32 -> data: i32 | 0 (non-blocking)
+    SLEEP = 0x83,      // ms: u32 -> void
+    JOIN = 0x84,       // task_id: u32 -> result
+    CHAN_NEW = 0x85,   // -> channel_id: u32
+    SEND = 0x86,       // channel_id: u32, data: i32 -> void
+    RECV = 0x87,       // channel_id: u32 -> data: i32
+    TRY_RECV = 0x88,   // channel_id: u32 -> data: i32 | 0 (non-blocking)
     // Plan 126: .go postfix operator - fire-and-forget spawn
     SPAWN_GO = 0x89, // future -> void (spawn Future in background, discard result)
     // Generator yield: pushes a value to the caller and suspends the generator
@@ -211,80 +210,80 @@ pub enum OpCode {
 
     // === Plan 127: Task/Msg Execution Opcodes ===
     // Task message loop and handler dispatch
-    TASK_LOOP = 0x8A,    // -> void (enter message processing loop)
-                         // Blocks waiting for messages, dispatches to handlers
-    HANDLE_MSG = 0x8B,   // msg_value -> void (dispatch message to matched handler)
-                         // Uses PatternMatcher to route to correct handler
-    REPLY = 0x8C,        // value -> void (send reply via current MessageContext)
-                         // Used in on(ctx) handlers for ask/reply pattern
+    TASK_LOOP = 0x8A, // -> void (enter message processing loop)
+    // Blocks waiting for messages, dispatches to handlers
+    HANDLE_MSG = 0x8B, // msg_value -> void (dispatch message to matched handler)
+    // Uses PatternMatcher to route to correct handler
+    REPLY = 0x8C, // value -> void (send reply via current MessageContext)
+    // Used in on(ctx) handlers for ask/reply pattern
 
     // === Closures (Plan 071: Direct Capture) ===
-    CLOSURE = 0x90,         // func_addr, capture_count × value -> closure_id: u32
-    CAPTURE_VAR = 0x91,     // -> value (load variable by name)
-    LOAD_CAPTURED = 0x92,   // closure_id -> value (load captured var by name)
-    STORE_CAPTURED = 0x93,  // closure_id, value -> (store captured var by name)
-    CALL_CLOSURE = 0x94,    // closure_id -> (call closure with captured env)
+    CLOSURE = 0x90,        // func_addr, capture_count × value -> closure_id: u32
+    CAPTURE_VAR = 0x91,    // -> value (load variable by name)
+    LOAD_CAPTURED = 0x92,  // closure_id -> value (load captured var by name)
+    STORE_CAPTURED = 0x93, // closure_id, value -> (store captured var by name)
+    CALL_CLOSURE = 0x94,   // closure_id -> (call closure with captured env)
 
     // === Plan 076 Phase 3: Generic List Opcodes ===
     // Type-specific list operations for monomorphized generics
-    CREATE_LIST_INT = 0xA0,     // -> list_id (create List<int> with Heap storage)
-    CREATE_LIST_STR = 0xA1,     // -> list_id (create List<string> with Heap storage)
-    CREATE_LIST_BOOL = 0xA2,    // -> list_id (create List<bool> with Heap storage)
-    LIST_PUSH_INT = 0xA3,       // list_id, value: int -> void
-    LIST_POP_INT = 0xA4,        // list_id -> int
-    LIST_GET_INT = 0xA5,        // list_id, index: int -> int
-    LIST_SET_INT = 0xA6,        // list_id, index: int, value: int -> void
+    CREATE_LIST_INT = 0xA0,  // -> list_id (create List<int> with Heap storage)
+    CREATE_LIST_STR = 0xA1,  // -> list_id (create List<string> with Heap storage)
+    CREATE_LIST_BOOL = 0xA2, // -> list_id (create List<bool> with Heap storage)
+    LIST_PUSH_INT = 0xA3,    // list_id, value: int -> void
+    LIST_POP_INT = 0xA4,     // list_id -> int
+    LIST_GET_INT = 0xA5,     // list_id, index: int -> int
+    LIST_SET_INT = 0xA6,     // list_id, index: int, value: int -> void
 
     // === Plan 076 Phase 4: Storage Strategy Opcodes ===
     // InlineInt64 storage variants (fixed 64-element capacity, no heap)
-    CREATE_LIST_INT_INLINE = 0xA7,  // -> list_id (create List<int> with InlineInt64 storage)
-    CREATE_LIST_STR_INLINE = 0xA8,  // -> list_id (create List<string> with InlineInt64 storage)
+    CREATE_LIST_INT_INLINE = 0xA7, // -> list_id (create List<int> with InlineInt64 storage)
+    CREATE_LIST_STR_INLINE = 0xA8, // -> list_id (create List<string> with InlineInt64 storage)
     CREATE_LIST_BOOL_INLINE = 0xA9, // -> list_id (create List<bool> with InlineInt64 storage)
 
     // === Plan 087 Phase 2: Generic Instance Opcodes ===
     // Support for user-defined generic types (type erasure)
-    NEW_INSTANCE = 0xB0,      // mono_name_len, mono_name_bytes -> instance_id
-                             // Create a new generic instance (uninitialized)
+    NEW_INSTANCE = 0xB0, // mono_name_len, mono_name_bytes -> instance_id
+    // Create a new generic instance (uninitialized)
     CONSTRUCT_INSTANCE = 0xB1, // instance_id, field_count × value -> void
-                             // Construct instance by populating fields from stack
+    // Construct instance by populating fields from stack
     GET_GENERIC_FIELD = 0xB2, // instance_id, field_index -> value
-                             // Get field value from generic instance
+    // Get field value from generic instance
     SET_GENERIC_FIELD = 0xB3, // instance_id, field_index, value -> void
-                             // Set field value in generic instance
+    // Set field value in generic instance
 
     // === Plan 088 Phase 4: Reference Passing Opcodes ===
     // Support for parameter passing modes (view, mut, take, copy)
-    LOAD_REF = 0xB4,          // var_index: u32 -> reference (load immutable reference)
-                             // Load an immutable reference to a local variable
-    STORE_REF = 0xB5,         // var_index: u32, value -> void (store via immutable reference)
-                             // Store a value through an immutable reference (error if not supported)
-    LOAD_MUT_REF = 0xB6,      // var_index: u32 -> mut_reference (load mutable reference)
-                             // Load a mutable reference to a local variable
-    STORE_MUT_REF = 0xB7,     // var_index: u32, value -> void (store via mutable reference)
-                             // Store a value through a mutable reference
+    LOAD_REF = 0xB4, // var_index: u32 -> reference (load immutable reference)
+    // Load an immutable reference to a local variable
+    STORE_REF = 0xB5, // var_index: u32, value -> void (store via immutable reference)
+    // Store a value through an immutable reference (error if not supported)
+    LOAD_MUT_REF = 0xB6, // var_index: u32 -> mut_reference (load mutable reference)
+    // Load a mutable reference to a local variable
+    STORE_MUT_REF = 0xB7, // var_index: u32, value -> void (store via mutable reference)
+    // Store a value through a mutable reference
 
     // === Plan 088 Phase 4: Function Prologue ===
     // Function metadata for dynamic parameter counting
-    FN_PROLOG = 0xB8,         // n_args: u8, n_locals: u8 -> void
-                             // Function prologue: record argument and local count
-                             // Used by LOAD_LOCAL/STORE_LOCAL to calculate stack offsets
+    FN_PROLOG = 0xB8, // n_args: u8, n_locals: u8 -> void
+    // Function prologue: record argument and local count
+    // Used by LOAD_LOCAL/STORE_LOCAL to calculate stack offsets
 
     // === Plan 197 Task 15: Enum Variant Pattern Matching ===
-    IS_VARIANT = 0xB9,       // instance_id, name_len:u16, name_bytes... -> bool
-                             // Check if heap object is a GenericInstanceData with matching mono_name
-                             // Returns true (-2147483648) or false (-2147483647)
+    IS_VARIANT = 0xB9, // instance_id, name_len:u16, name_bytes... -> bool
+    // Check if heap object is a GenericInstanceData with matching mono_name
+    // Returns true (-2147483648) or false (-2147483647)
 
     // === Plan 124: Async/Future/Await Opcodes ===
     // Future type operations for async system
-    CREATE_FUTURE = 0xC0,    // body_code_offset: u32 -> future_id
-                             // Create a Future from async block body
-                             // The body is compiled separately and stored
-    AWAIT_FUTURE = 0xC1,     // future_id -> value (or suspend)
-                             // Wait for future completion, returns inner value
-                             // If future is pending, suspends current task
-    POLL_FUTURE = 0xC2,      // future_id -> (is_ready: bool, value_or_nil)
-                             // Non-blocking poll: check if future is ready
-                             // Returns (true, value) if ready, (false, nil) if pending
+    CREATE_FUTURE = 0xC0, // body_code_offset: u32 -> future_id
+    // Create a Future from async block body
+    // The body is compiled separately and stored
+    AWAIT_FUTURE = 0xC1, // future_id -> value (or suspend)
+    // Wait for future completion, returns inner value
+    // If future is pending, suspends current task
+    POLL_FUTURE = 0xC2, // future_id -> (is_ready: bool, value_or_nil)
+    // Non-blocking poll: check if future is ready
+    // Returns (true, value) if ready, (false, nil) if pending
 
     // === Plan 317: Task actor state fields ===
     // Actor state fields persist across handler invocations on the actor's
@@ -292,15 +291,15 @@ pub enum OpCode {
     // absolute offsets (allocated at spawn time, above the bp region). These
     // opcodes use absolute addressing (not bp-relative) so any handler frame
     // can access them regardless of the current bp.
-    LOAD_STATE_FIELD = 0xC3,  // field_idx: u8 -> value (load actor state field)
+    LOAD_STATE_FIELD = 0xC3, // field_idx: u8 -> value (load actor state field)
     STORE_STATE_FIELD = 0xC4, // field_idx: u8, value -> void (store actor state field)
 
     // === Plan 317: Global variables (module-level var accessible from all fns) ===
     // String-keyed global storage on AutoVM.globals (DashMap). name_idx: u16
     // indexes into the string pool. Top-level `var x = ...` compiles to
     // STORE_GLOBAL; any fn reading/writing `x` compiles to LOAD/STORE_GLOBAL.
-    LOAD_GLOBAL = 0xC5,    // name_idx: u16 -> value
-    STORE_GLOBAL = 0xC6,   // name_idx: u16, value -> void
+    LOAD_GLOBAL = 0xC5,  // name_idx: u16 -> value
+    STORE_GLOBAL = 0xC6, // name_idx: u16, value -> void
 
     // === Debug ===
     SOURCE_LINE = 0xFE, // line: u16 -> void (Plan 199: record current source line)
@@ -310,19 +309,19 @@ pub enum OpCode {
     // handler stack. POP_HANDLER pops it on normal try-block exit.
     PUSH_HANDLER = 0xFD, // handler_pc: u16 -> void
     POP_HANDLER = 0x8F,  // -> void (pop the most-recent catch frame)
-    PUSH_NIL = 0xFB,    // -> nil marker (TAG_NULL in nanbox, i32::MIN+1 otherwise)
-    PUSH_BOOL = 0xFC,   // byte: 0|1 -> bool (Plan 318: true bool encoding, not Int)
+    PUSH_NIL = 0xFB,     // -> nil marker (TAG_NULL in nanbox, i32::MIN+1 otherwise)
+    PUSH_BOOL = 0xFC,    // byte: 0|1 -> bool (Plan 318: true bool encoding, not Int)
     HALT = 0xFF,
 
     // Plan 364 Step 5: Config-mode accumulation opcodes.
     // Config eval accumulates per-block statement results into a Node container
     // (rather than only taking the last value, as Script semantics do).
     // See crates/auto-lang/src/vm/codegen.rs config_mode branches.
-    PUSH_ACCUM = 0xD0,  // name_str_idx:u16, id_str_idx:u16 -> push Node(name, id) onto accum_stack
-    ACCUM_PAIR = 0xD1,  // key_str_idx:u16, pop value -> set_prop(key, value) on top container
-    ACCUM_NODE = 0xD2,  // pop Node value -> add as _exprN prop of top container
+    PUSH_ACCUM = 0xD0, // name_str_idx:u16, id_str_idx:u16 -> push Node(name, id) onto accum_stack
+    ACCUM_PAIR = 0xD1, // key_str_idx:u16, pop value -> set_prop(key, value) on top container
+    ACCUM_NODE = 0xD2, // pop Node value -> add as _exprN prop of top container
     ACCUM_MERGE = 0xD3, // pop Obj value -> merge all its fields into top container
-    POP_ACCUM = 0xD4,   // -> pop top Node, store in registry, push its id onto VM data stack
+    POP_ACCUM = 0xD4,  // -> pop top Node, store in registry, push its id onto VM data stack
 }
 
 impl From<u8> for OpCode {
@@ -780,65 +779,174 @@ impl OpCode {
     pub fn operand_size(self) -> Option<usize> {
         match self {
             // 0-byte operands (opcode only)
-            Self::NOP | Self::POP | Self::DUP | Self::SWAP | Self::DROP
-            | Self::CONST_0 | Self::CONST_1 | Self::HALT | Self::PRINT
-            | Self::YIELD_TASK | Self::YIELD_VAL | Self::CREATE_NONE
-            | Self::IS_SOME | Self::IS_OK | Self::UNWRAP_SOME | Self::UNWRAP_OK
-            | Self::UNWRAP_ERR | Self::IS_NIL | Self::NEG | Self::NEG_F
-            | Self::NEG_D | Self::NOT | Self::TO_STR | Self::STR_CAT
-            | Self::ADD | Self::SUB | Self::MUL | Self::DIV | Self::MOD
-            | Self::ADD_F | Self::SUB_F | Self::MUL_F | Self::DIV_F
-            | Self::ADD_D | Self::SUB_D | Self::MUL_D | Self::DIV_D
-            | Self::ADD_U64 | Self::SUB_U64 | Self::MUL_U64 | Self::DIV_U64
-            | Self::MOD_U64 | Self::AND | Self::OR | Self::XOR
-            | Self::SHL | Self::SHR | Self::EQ | Self::NE | Self::LT
-            | Self::GT | Self::LE | Self::GE | Self::EQ_D | Self::NE_D
-            | Self::LT_D | Self::GT_D | Self::LE_D | Self::GE_D
-            | Self::EQ_U64 | Self::NE_U64 | Self::LT_U64 | Self::GT_U64
-            | Self::LE_U64 | Self::GE_U64
-            | Self::EQ_F | Self::NE_F | Self::LT_F | Self::GT_F
-            | Self::LE_F | Self::GE_F
-            | Self::I32_TO_F32 | Self::I64_TO_F64 | Self::U64_TO_F64
-            | Self::PROMOTE_F64 | Self::NULL_COALESCE
-            | Self::TASK_ID | Self::SPAWN_GO | Self::REPLY | Self::HANDLE_MSG
-            | Self::CALL_CLOSURE | Self::TYPE_F64_TO_I32 | Self::TYPE_STR_TO_I64
-            | Self::TYPE_F32_TO_I32 | Self::TYPE_CAST_PTR | Self::ARRAY_LEN
-            | Self::MOD_F | Self::MOD_D
-            | Self::CREATE_SOME | Self::CREATE_ERR
-            | Self::CREATE_RANGE | Self::CREATE_RANGE_EQ
-            | Self::CHAN_NEW | Self::RECV | Self::TRY_RECV
-            | Self::TASK_LOOP | Self::AWAIT_FUTURE | Self::POLL_FUTURE
+            Self::NOP
+            | Self::POP
+            | Self::DUP
+            | Self::SWAP
+            | Self::DROP
+            | Self::CONST_0
+            | Self::CONST_1
+            | Self::HALT
+            | Self::PRINT
+            | Self::YIELD_TASK
+            | Self::YIELD_VAL
+            | Self::CREATE_NONE
+            | Self::IS_SOME
+            | Self::IS_OK
+            | Self::UNWRAP_SOME
+            | Self::UNWRAP_OK
+            | Self::UNWRAP_ERR
+            | Self::IS_NIL
+            | Self::NEG
+            | Self::NEG_F
+            | Self::NEG_D
+            | Self::NOT
+            | Self::TO_STR
+            | Self::STR_CAT
+            | Self::ADD
+            | Self::SUB
+            | Self::MUL
+            | Self::DIV
+            | Self::MOD
+            | Self::ADD_F
+            | Self::SUB_F
+            | Self::MUL_F
+            | Self::DIV_F
+            | Self::ADD_D
+            | Self::SUB_D
+            | Self::MUL_D
+            | Self::DIV_D
+            | Self::ADD_U64
+            | Self::SUB_U64
+            | Self::MUL_U64
+            | Self::DIV_U64
+            | Self::MOD_U64
+            | Self::AND
+            | Self::OR
+            | Self::XOR
+            | Self::SHL
+            | Self::SHR
+            | Self::EQ
+            | Self::NE
+            | Self::LT
+            | Self::GT
+            | Self::LE
+            | Self::GE
+            | Self::EQ_D
+            | Self::NE_D
+            | Self::LT_D
+            | Self::GT_D
+            | Self::LE_D
+            | Self::GE_D
+            | Self::EQ_U64
+            | Self::NE_U64
+            | Self::LT_U64
+            | Self::GT_U64
+            | Self::LE_U64
+            | Self::GE_U64
+            | Self::EQ_F
+            | Self::NE_F
+            | Self::LT_F
+            | Self::GT_F
+            | Self::LE_F
+            | Self::GE_F
+            | Self::I32_TO_F32
+            | Self::I64_TO_F64
+            | Self::U64_TO_F64
+            | Self::PROMOTE_F64
+            | Self::NULL_COALESCE
+            | Self::TASK_ID
+            | Self::SPAWN_GO
+            | Self::REPLY
+            | Self::HANDLE_MSG
+            | Self::CALL_CLOSURE
+            | Self::TYPE_F64_TO_I32
+            | Self::TYPE_STR_TO_I64
+            | Self::TYPE_F32_TO_I32
+            | Self::TYPE_CAST_PTR
+            | Self::ARRAY_LEN
+            | Self::MOD_F
+            | Self::MOD_D
+            | Self::CREATE_SOME
+            | Self::CREATE_ERR
+            | Self::CREATE_RANGE
+            | Self::CREATE_RANGE_EQ
+            | Self::CHAN_NEW
+            | Self::RECV
+            | Self::TRY_RECV
+            | Self::TASK_LOOP
+            | Self::AWAIT_FUTURE
+            | Self::POLL_FUTURE
             | Self::CONSTRUCT_INSTANCE
-            | Self::CREATE_LIST_INT | Self::CREATE_LIST_STR | Self::CREATE_LIST_BOOL
-            | Self::CREATE_LIST_INT_INLINE | Self::CREATE_LIST_STR_INLINE
-            | Self::CREATE_LIST_BOOL_INLINE | Self::LIST_PUSH_INT
-            | Self::LIST_POP_INT | Self::LIST_GET_INT | Self::LIST_SET_INT
-            | Self::GET_ELEM | Self::SET_ELEM | Self::SET_FIELD | Self::SLICE
+            | Self::CREATE_LIST_INT
+            | Self::CREATE_LIST_STR
+            | Self::CREATE_LIST_BOOL
+            | Self::CREATE_LIST_INT_INLINE
+            | Self::CREATE_LIST_STR_INLINE
+            | Self::CREATE_LIST_BOOL_INLINE
+            | Self::LIST_PUSH_INT
+            | Self::LIST_POP_INT
+            | Self::LIST_GET_INT
+            | Self::LIST_SET_INT
+            | Self::GET_ELEM
+            | Self::SET_ELEM
+            | Self::SET_FIELD
+            | Self::SLICE
             | Self::PUSH_NIL
-            | Self::LOAD_LOC_0 | Self::LOAD_LOC_1 | Self::LOAD_LOC_2
-            | Self::STORE_LOC_0 | Self::STORE_LOC_1
-            | Self::TYPE_CAST_I32 | Self::TYPE_CAST_U32 | Self::TYPE_CAST_I64
-            | Self::TYPE_CAST_U64 | Self::TYPE_CAST_F64 | Self::TYPE_TO_STR
-            | Self::TYPE_TO_I32 | Self::TYPE_TO_F64 | Self::TYPE_F64_TO_STR
-            | Self::TYPE_I64_TO_STR | Self::TYPE_U64_TO_STR | Self::TYPE_BOOL_TO_STR
-            | Self::TYPE_F32_TO_STR | Self::POP_HANDLER
+            | Self::LOAD_LOC_0
+            | Self::LOAD_LOC_1
+            | Self::LOAD_LOC_2
+            | Self::STORE_LOC_0
+            | Self::STORE_LOC_1
+            | Self::TYPE_CAST_I32
+            | Self::TYPE_CAST_U32
+            | Self::TYPE_CAST_I64
+            | Self::TYPE_CAST_U64
+            | Self::TYPE_CAST_F64
+            | Self::TYPE_TO_STR
+            | Self::TYPE_TO_I32
+            | Self::TYPE_TO_F64
+            | Self::TYPE_F64_TO_STR
+            | Self::TYPE_I64_TO_STR
+            | Self::TYPE_U64_TO_STR
+            | Self::TYPE_BOOL_TO_STR
+            | Self::TYPE_F32_TO_STR
+            | Self::POP_HANDLER
             | Self::GET_TUPLE_FIELD
-            | Self::ACCUM_NODE | Self::ACCUM_MERGE | Self::POP_ACCUM => Some(0),
+            | Self::ACCUM_NODE
+            | Self::ACCUM_MERGE
+            | Self::POP_ACCUM => Some(0),
 
             // 1-byte operand
-            Self::CONST_U8 | Self::PUSH_BOOL | Self::POP_N | Self::RESERVE_STACK
-            | Self::RET | Self::ERROR_PROPAGATE
-            | Self::LOAD_LOCAL | Self::STORE_LOCAL
-            | Self::LOAD_STATE_FIELD | Self::STORE_STATE_FIELD
-            | Self::CREATE_ARRAY | Self::CREATE_TUPLE
-            | Self::CREATE_OK | Self::GET_GENERIC_FIELD | Self::SET_GENERIC_FIELD => Some(1),
+            Self::CONST_U8
+            | Self::PUSH_BOOL
+            | Self::POP_N
+            | Self::RESERVE_STACK
+            | Self::RET
+            | Self::ERROR_PROPAGATE
+            | Self::LOAD_LOCAL
+            | Self::STORE_LOCAL
+            | Self::LOAD_STATE_FIELD
+            | Self::STORE_STATE_FIELD
+            | Self::CREATE_ARRAY
+            | Self::CREATE_TUPLE
+            | Self::CREATE_OK
+            | Self::GET_GENERIC_FIELD
+            | Self::SET_GENERIC_FIELD => Some(1),
 
             // 2-byte operand
-            Self::LOAD_STR | Self::CALL_NAT | Self::CAPTURE_VAR
-            | Self::LOAD_CAPTURED | Self::STORE_CAPTURED
-            | Self::LOAD_GLOBAL | Self::STORE_GLOBAL
-            | Self::JMP | Self::JMP_IF_Z | Self::JMP_IF_NZ
-            | Self::GET_FIELD | Self::PUSH_HANDLER
+            Self::LOAD_STR
+            | Self::CALL_NAT
+            | Self::CAPTURE_VAR
+            | Self::LOAD_CAPTURED
+            | Self::STORE_CAPTURED
+            | Self::LOAD_GLOBAL
+            | Self::STORE_GLOBAL
+            | Self::JMP
+            | Self::JMP_IF_Z
+            | Self::JMP_IF_NZ
+            | Self::GET_FIELD
+            | Self::PUSH_HANDLER
             | Self::ACCUM_PAIR => Some(2),
 
             // 4-byte operand (two u16: name_str_idx + id_str_idx)
@@ -851,13 +959,19 @@ impl OpCode {
             Self::FN_PROLOG => Some(2),
 
             // 4-byte operand
-            Self::CONST_I32 | Self::CONST_F32
-            | Self::JMP_FAR | Self::JMP_L
-            | Self::CALL | Self::CALL_SPEC
-            | Self::CLOSURE | Self::CREATE_FUTURE
+            Self::CONST_I32
+            | Self::CONST_F32
+            | Self::JMP_FAR
+            | Self::JMP_L
+            | Self::CALL
+            | Self::CALL_SPEC
+            | Self::CLOSURE
+            | Self::CREATE_FUTURE
             | Self::SLEEP
-            | Self::LOAD_REF | Self::STORE_REF
-            | Self::LOAD_MUT_REF | Self::STORE_MUT_REF => Some(4),
+            | Self::LOAD_REF
+            | Self::STORE_REF
+            | Self::LOAD_MUT_REF
+            | Self::STORE_MUT_REF => Some(4),
 
             // 5-byte operand
             Self::SPAWN | Self::CREATE_GENERATOR | Self::CREATE_NODE => Some(5),

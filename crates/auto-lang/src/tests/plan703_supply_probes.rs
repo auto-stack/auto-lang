@@ -95,22 +95,39 @@ mod plan703_diff_supply {
         // Field-by-field (parse without serde — the envelope is small and
         // the assertions are positional; a tiny extractor keeps the probe
         // dependency-free).
-        assert!(json.contains("\"hunks\":[{\"a1\":0,\"a2\":3,\"b1\":0,\"b2\":3}]"), "hunk field form (ctx=1 clamps a1 to 0): {json}");
+        assert!(
+            json.contains("\"hunks\":[{\"a1\":0,\"a2\":3,\"b1\":0,\"b2\":3}]"),
+            "hunk field form (ctx=1 clamps a1 to 0): {json}"
+        );
         assert!(json.contains("\"adds\":1"), "adds: {json}");
         assert!(json.contains("\"dels\":1"), "dels: {json}");
         assert!(json.contains("\"truncated\":false"), "truncated: {json}");
-        assert!(json.contains("\"degraded\":false"), "degraded (engine era): {json}");
+        assert!(
+            json.contains("\"degraded\":false"),
+            "degraded (engine era): {json}"
+        );
         assert!(json.contains("\"err\":\"\""), "no error: {json}");
         // Paired row: beta → beta2 with three-segment marking (pre="beta",
         // mid "2" on the r side; 1-based lo/ro).
         assert!(
-            json.contains("\"lo\":2,\"ro\":2,\"ln\":\"beta\",\"rn\":\"beta2\",\"lk\":\"del\",\"rk\":\"add\""),
+            json.contains(
+                "\"lo\":2,\"ro\":2,\"ln\":\"beta\",\"rn\":\"beta2\",\"lk\":\"del\",\"rk\":\"add\""
+            ),
             "paired row: {json}"
         );
-        assert!(json.contains("\"lpre\":\"beta\",\"lmid\":\"\",\"lpost\":\"\""), "l side (empty mid): {json}");
-        assert!(json.contains("\"rpre\":\"beta\",\"rmid\":\"2\",\"rpost\":\"\""), "r three-segment: {json}");
+        assert!(
+            json.contains("\"lpre\":\"beta\",\"lmid\":\"\",\"lpost\":\"\""),
+            "l side (empty mid): {json}"
+        );
+        assert!(
+            json.contains("\"rpre\":\"beta\",\"rmid\":\"2\",\"rpost\":\"\""),
+            "r three-segment: {json}"
+        );
         // Ctx rows carry the full text in lpre.
-        assert!(json.contains("\"lk\":\"ctx\",\"rk\":\"ctx\",\"lpre\":\"alpha\""), "ctx row: {json}");
+        assert!(
+            json.contains("\"lk\":\"ctx\",\"rk\":\"ctx\",\"lpre\":\"alpha\""),
+            "ctx row: {json}"
+        );
     }
 
     #[test]
@@ -123,8 +140,14 @@ mod plan703_diff_supply {
             "fn probe_diff_cr() str {{\n    return diff_files(\"{pa}\", \"{pb}\", 3)\n}}\n"
         ));
         let json = call_str(&bridge, "probe_diff_cr");
-        assert!(json.contains("\"hunks\":[],\"rows\":[]"), "CRLF == LF → empty diff: {json}");
-        assert!(json.contains("\"adds\":0,\"dels\":0"), "zero changes: {json}");
+        assert!(
+            json.contains("\"hunks\":[],\"rows\":[]"),
+            "CRLF == LF → empty diff: {json}"
+        );
+        assert!(
+            json.contains("\"adds\":0,\"dels\":0"),
+            "zero changes: {json}"
+        );
     }
 
     #[test]
@@ -137,9 +160,18 @@ mod plan703_diff_supply {
             fx.dir()
         ));
         let json = call_str(&bridge, "probe_missing");
-        assert!(json.contains("\"hunks\":[],\"rows\":[]"), "err form empties hunks/rows: {json}");
-        assert!(json.contains("\"err\":\"文件不存在"), "err carries the message: {json}");
-        assert!(json.contains("\"degraded\":false"), "degraded stays false: {json}");
+        assert!(
+            json.contains("\"hunks\":[],\"rows\":[]"),
+            "err form empties hunks/rows: {json}"
+        );
+        assert!(
+            json.contains("\"err\":\"文件不存在"),
+            "err carries the message: {json}"
+        );
+        assert!(
+            json.contains("\"degraded\":false"),
+            "degraded stays false: {json}"
+        );
     }
 
     #[test]
@@ -170,15 +202,33 @@ mod plan703_diff_supply {
             db.to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/"),
         );
 
-        let bridge =
-            probe_bridge_with(&format!("fn probe_dirs() str {{\n    return diff_dirs(\"{da}\", \"{db}\")\n}}\n"));
+        let bridge = probe_bridge_with(&format!(
+            "fn probe_dirs() str {{\n    return diff_dirs(\"{da}\", \"{db}\")\n}}\n"
+        ));
         let json = call_str(&bridge, "probe_dirs");
         // Five states: same / added / modified; skip-list hides target/.
-        assert!(json.contains("\"rel\":\"same.txt\",\"status\":\"same\""), "{json}");
-        assert!(json.contains("\"rel\":\"new.txt\",\"status\":\"added\""), "{json}");
-        assert!(json.contains("\"rel\":\"mod.txt\",\"status\":\"modified\""), "{json}");
-        assert!(!json.contains("target"), "skip-list hides build dirs: {json}");
-        assert!(json.contains("\"counts\":{\"same\":1,\"added\":1,\"deleted\":0,\"modified\":1,\"binary\":0}"), "counts: {json}");
+        assert!(
+            json.contains("\"rel\":\"same.txt\",\"status\":\"same\""),
+            "{json}"
+        );
+        assert!(
+            json.contains("\"rel\":\"new.txt\",\"status\":\"added\""),
+            "{json}"
+        );
+        assert!(
+            json.contains("\"rel\":\"mod.txt\",\"status\":\"modified\""),
+            "{json}"
+        );
+        assert!(
+            !json.contains("target"),
+            "skip-list hides build dirs: {json}"
+        );
+        assert!(
+            json.contains(
+                "\"counts\":{\"same\":1,\"added\":1,\"deleted\":0,\"modified\":1,\"binary\":0}"
+            ),
+            "counts: {json}"
+        );
         assert!(json.contains("\"truncated\":false"), "{json}");
         assert!(json.contains("\"err\":\"\""), "{json}");
     }
@@ -190,8 +240,9 @@ mod plan703_diff_supply {
         let da = format!("{}/a", fx.dir());
         let db = format!("{}/b", fx.dir());
         std::fs::create_dir_all(&da).unwrap();
-        let bridge =
-            probe_bridge_with(&format!("fn probe_dirs_missing() str {{\n    return diff_dirs(\"{da}\", \"{db}\")\n}}\n"));
+        let bridge = probe_bridge_with(&format!(
+            "fn probe_dirs_missing() str {{\n    return diff_dirs(\"{da}\", \"{db}\")\n}}\n"
+        ));
         let json = call_str(&bridge, "probe_dirs_missing");
         assert!(json.contains("\"entries\":[]"), "{json}");
         assert!(json.contains("\"err\":\"目录不存在"), "{json}");
@@ -204,7 +255,9 @@ mod plan703_diff_supply {
         // registry snapshots directly (zero full-text VM transit). Headless
         // registry setup: default font-system install (idempotent) + the
         // registry test lock, mirroring the core test posture.
-        use crate::ui::code_editor::{code_editor, code_editor_dispose, core, storage_key, CodeEditorConfig};
+        use crate::ui::code_editor::{
+            code_editor, code_editor_dispose, core, storage_key, CodeEditorConfig,
+        };
         core::ensure_font_system_call();
         let _guard = core::REGISTRY_TEST_LOCK.lock().unwrap();
         // The registry convention: `code_editor()` inserts under the key as
@@ -220,10 +273,16 @@ mod plan703_diff_supply {
         core_a.doc_replace("alpha\nbeta\ngamma\n");
         core_b.doc_replace("alpha\nbeta\ngamma\ndelta\n");
 
-                // Direct Rust-side call first: the registry face must work without
+        // Direct Rust-side call first: the registry face must work without
         // the VM in the loop.
-        let direct = crate::ui::code_editor::diff::envelope::diff_snapshots_envelope("p703-snap-a", "p703-snap-b");
-        assert!(direct.contains("\"adds\":1"), "direct registry face: {direct}");
+        let direct = crate::ui::code_editor::diff::envelope::diff_snapshots_envelope(
+            "p703-snap-a",
+            "p703-snap-b",
+        );
+        assert!(
+            direct.contains("\"adds\":1"),
+            "direct registry face: {direct}"
+        );
         let bridge = probe_bridge_with(
             "fn probe_snapshots() str {
     return diff_snapshots(\"p703-snap-a\", \"p703-snap-b\")
@@ -231,7 +290,10 @@ mod plan703_diff_supply {
 ",
         );
         let json = call_str(&bridge, "probe_snapshots");
-        assert!(json.contains("\"hunks\":[{\"a1\":0,\"a2\":4,\"b1\":0,\"b2\":5}]"), "append hunk (ctx=3 absorbs the 4-line doc): {json}");
+        assert!(
+            json.contains("\"hunks\":[{\"a1\":0,\"a2\":4,\"b1\":0,\"b2\":5}]"),
+            "append hunk (ctx=3 absorbs the 4-line doc): {json}"
+        );
         assert!(json.contains("\"adds\":1,\"dels\":0"), "counts: {json}");
         assert!(json.contains("\"err\":\"\""), "{json}");
     }

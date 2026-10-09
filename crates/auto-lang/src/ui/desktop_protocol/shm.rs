@@ -45,18 +45,8 @@ mod windows_map {
             max_low: u32,
             name: *const u16,
         ) -> isize;
-        fn OpenFileMappingW(
-            access: u32,
-            inherit: i32,
-            name: *const u16,
-        ) -> isize;
-        fn MapViewOfFile(
-            h: isize,
-            access: u32,
-            high: u32,
-            low: u32,
-            bytes: usize,
-        ) -> *mut u8;
+        fn OpenFileMappingW(access: u32, inherit: i32, name: *const u16) -> isize;
+        fn MapViewOfFile(h: isize, access: u32, high: u32, low: u32, bytes: usize) -> *mut u8;
         fn UnmapViewOfFile(ptr: *const u8) -> i32;
     }
 
@@ -80,7 +70,10 @@ mod windows_map {
                 )
             };
             if h == 0 {
-                return Err(format!("CreateFileMappingW: {}", std::io::Error::last_os_error()));
+                return Err(format!(
+                    "CreateFileMappingW: {}",
+                    std::io::Error::last_os_error()
+                ));
             }
             Self::map(h, size)
         }
@@ -90,7 +83,10 @@ mod windows_map {
             let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
             let h = unsafe { OpenFileMappingW(FILE_MAP_ALL_ACCESS, 0, wide.as_ptr()) };
             if h == 0 {
-                return Err(format!("OpenFileMappingW: {}", std::io::Error::last_os_error()));
+                return Err(format!(
+                    "OpenFileMappingW: {}",
+                    std::io::Error::last_os_error()
+                ));
             }
             Self::map(h, size)
         }
@@ -99,9 +95,15 @@ mod windows_map {
             let map = unsafe { MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, size as usize) };
             if map.is_null() {
                 // 句柄泄漏可忽略：进程退出回收；此处错误路径。
-                return Err(format!("MapViewOfFile: {}", std::io::Error::last_os_error()));
+                return Err(format!(
+                    "MapViewOfFile: {}",
+                    std::io::Error::last_os_error()
+                ));
             }
-            Ok(Self { map, mapping_handle: h })
+            Ok(Self {
+                map,
+                mapping_handle: h,
+            })
         }
 
         pub fn slice(&self, size: u32) -> &mut [u8] {
@@ -119,7 +121,6 @@ mod windows_map {
     pub fn unmap(ptr: *const u8) -> i32 {
         unsafe { UnmapViewOfFile(ptr) }
     }
-
 }
 
 #[cfg(windows)]
@@ -173,7 +174,10 @@ impl Mapping {
             .unwrap()
             .map
             .get(name)
-            .map(|shared| Self { shared: Arc::clone(shared), size })
+            .map(|shared| Self {
+                shared: Arc::clone(shared),
+                size,
+            })
             .ok_or_else(|| format!("open {name}: not found"))
     }
 
@@ -193,8 +197,7 @@ impl SharedFrameBuffer {
     /// 宿主侧：创建命名帧缓冲。
     pub fn create(name: &str, slot_count: u8, slot_size: u32) -> Result<Self, TransportError> {
         let size = slot_count as u32 * slot_size;
-        let mapping =
-            Mapping::create(name, size).map_err(TransportError::Io)?;
+        let mapping = Mapping::create(name, size).map_err(TransportError::Io)?;
         Ok(Self {
             inner: Inner::Mapped(mapping),
             slot_count,
@@ -204,8 +207,8 @@ impl SharedFrameBuffer {
 
     /// app 侧：打开既有命名帧缓冲。
     pub fn open(name: &str, slot_count: u8, slot_size: u32) -> Result<Self, TransportError> {
-        let mapping = Mapping::open(name, slot_count as u32 * slot_size)
-            .map_err(TransportError::Io)?;
+        let mapping =
+            Mapping::open(name, slot_count as u32 * slot_size).map_err(TransportError::Io)?;
         Ok(Self {
             inner: Inner::Mapped(mapping),
             slot_count,
@@ -371,7 +374,10 @@ mod tests {
         let list = DrawList {
             clear: Some(Rgba8::new(1, 2, 3, 255)),
             ops: vec![
-                DrawOp::Quad { rect: WRect::new(0.0, 0.0, 10.0, 20.0), color: Rgba8::new(9, 9, 9, 200) },
+                DrawOp::Quad {
+                    rect: WRect::new(0.0, 0.0, 10.0, 20.0),
+                    color: Rgba8::new(9, 9, 9, 200),
+                },
                 DrawOp::Text {
                     x: 1.0,
                     y: 2.0,

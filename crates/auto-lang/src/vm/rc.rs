@@ -14,12 +14,12 @@
 // insert_heap_object 不建 RC 条目(对象出世时尚无持有者);第一次 rc_push /
 // rc_retain 建条目。rc_stats().live_heap 以 heap_objects.len() 为准。
 
-use crate::vm::task::AutoTask;
 use crate::vm::engine::AutoVM;
+use crate::vm::task::AutoTask;
 use crate::vm::virt_memory::VirtualRAM;
 use dashmap::DashMap;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 /// 堆对象 id 基址(engine.rs heap_object_id_gen 起始值)。裸 i32 ≥ 此值按
@@ -60,7 +60,11 @@ pub fn heap_ref_id(nv: auto_val::NanoValue) -> Option<u64> {
         Some(auto_val::decode_bigint_handle(nv) as u64)
     } else if auto_val::is_i32(nv) {
         let id = auto_val::decode_i32(nv) as i64;
-        if id >= HEAP_ID_BASE as i64 { Some(id as u64) } else { None }
+        if id >= HEAP_ID_BASE as i64 {
+            Some(id as u64)
+        } else {
+            None
+        }
     } else {
         None
     }
@@ -294,7 +298,9 @@ impl AutoVM {
             if resurrected {
                 eprintln!(
                     "[P419UAF] !! RETAIN-AFTER-FREE id={} (rc {} -> {}) — site:\n{}",
-                    id, old, old + 1,
+                    id,
+                    old,
+                    old + 1,
                     std::backtrace::Backtrace::force_capture()
                 );
             } else {
@@ -308,7 +314,9 @@ impl AutoVM {
                 }
             }
         }
-        if std::env::var("P419_TRACE").is_ok() { eprintln!("[P419] retain {} -> {}", id, self.rc_count(id) + 1); }
+        if std::env::var("P419_TRACE").is_ok() {
+            eprintln!("[P419] retain {} -> {}", id, self.rc_count(id) + 1);
+        }
         self.rc_traffic.fetch_add(1, Ordering::Relaxed);
         match self.heap_rc.entry(id) {
             dashmap::mapref::entry::Entry::Occupied(mut e) => {
@@ -347,9 +355,20 @@ impl AutoVM {
         }
         if p419_uaf_traces(id) {
             let old = self.rc_count(id);
-            eprintln!("[P419UAF] release id={} (rc {} -> {})", id, old, old.saturating_sub(1));
+            eprintln!(
+                "[P419UAF] release id={} (rc {} -> {})",
+                id,
+                old,
+                old.saturating_sub(1)
+            );
         }
-        if std::env::var("P419_TRACE").is_ok() { eprintln!("[P419] release {} -> {}", id, self.rc_count(id).saturating_sub(1)); }
+        if std::env::var("P419_TRACE").is_ok() {
+            eprintln!(
+                "[P419] release {} -> {}",
+                id,
+                self.rc_count(id).saturating_sub(1)
+            );
+        }
         self.rc_traffic.fetch_add(1, Ordering::Relaxed);
         let zeroed = {
             let Some(mut e) = self.heap_rc.get_mut(&id) else {
@@ -360,7 +379,8 @@ impl AutoVM {
         if zeroed {
             // remove_if 而非 remove:窗口内若有新 retain 把计数拉回 >0
             //(audit 缺口),保留条目让 canary/泄漏追踪可见。
-            self.heap_rc.remove_if(&id, |_, a| a.load(Ordering::Acquire) == 0);
+            self.heap_rc
+                .remove_if(&id, |_, a| a.load(Ordering::Acquire) == 0);
             // PLAN-062 T12: 宽限窗延迟回收——归零先入 dying 队列（携带当前
             // 解释步），DYING_GRACE_STEPS 内未被复活才真回收。帧内/近邻的
             // raw 别名（无份额拷贝——历史内容保活语义的残余面）窗口内安全；
@@ -514,11 +534,7 @@ impl AutoVM {
     /// 条目被清扫)、live_shares 在程序结束+任务收尾后==0(配平自持)。
     pub fn pool_health(&self) -> PoolHealth {
         let st = self.pool_state.read().unwrap();
-        let live_shares = st
-            .rc
-            .iter()
-            .map(|a| a.load(Ordering::Relaxed) as u64)
-            .sum();
+        let live_shares = st.rc.iter().map(|a| a.load(Ordering::Relaxed) as u64).sum();
         PoolHealth {
             underflow_events: st.underflow_events.load(Ordering::Relaxed),
             phantom_drops: st.phantom_drops.load(Ordering::Relaxed),
@@ -542,7 +558,8 @@ impl AutoVM {
             // §9.4 ① free-site 栈:直接回答「谁释放了它」。
             eprintln!(
                 "[P419UAF] FREE id={} type={} — free site:\n{}",
-                id, tag,
+                id,
+                tag,
                 std::backtrace::Backtrace::force_capture()
             );
         }
@@ -602,20 +619,48 @@ impl AutoVM {
         let st = self.pool_state.read().unwrap();
         if idx >= st.rc.len() || st.pinned[idx] {
             if crate::pool_log_all() && idx < st.rc.len() {
-                eprintln!("[POOLLOG #{:>4}] retain {} PINNED-SKIP", crate::pool_log_seq(), idx);
+                eprintln!(
+                    "[POOLLOG #{:>4}] retain {} PINNED-SKIP",
+                    crate::pool_log_seq(),
+                    idx
+                );
             }
             return;
         }
         let cur = st.rc[idx].fetch_add(1, Ordering::Relaxed);
         // Plan 423 P5 续修(诊断设施):指定索引生死链 trace。
         if crate::pool_trace_idx() == Some(idx) {
-            eprintln!("[P419POOL] retain {} (rc {} -> {})
+            eprintln!(
+                "[P419POOL] retain {} (rc {} -> {})
   site:
-{}", idx, cur, cur + 1, std::backtrace::Backtrace::force_capture());
+{}",
+                idx,
+                cur,
+                cur + 1,
+                std::backtrace::Backtrace::force_capture()
+            );
         }
         if crate::pool_log_all() {
-            let content = self.strings.read().unwrap().get(idx).map(|b| String::from_utf8_lossy(b).chars().take(12).collect::<String>()).unwrap_or_default();
-            eprintln!("[POOLLOG #{:>4}] retain {} (rc {} -> {}) content={:?}", crate::pool_log_seq(), idx, cur, cur + 1, content);
+            let content = self
+                .strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .map(|b| {
+                    String::from_utf8_lossy(b)
+                        .chars()
+                        .take(12)
+                        .collect::<String>()
+                })
+                .unwrap_or_default();
+            eprintln!(
+                "[POOLLOG #{:>4}] retain {} (rc {} -> {}) content={:?}",
+                crate::pool_log_seq(),
+                idx,
+                cur,
+                cur + 1,
+                content
+            );
         }
         let _ = cur;
         self.rc_traffic.fetch_add(1, Ordering::Relaxed);
@@ -627,15 +672,25 @@ impl AutoVM {
             let st = self.pool_state.read().unwrap();
             if idx >= st.rc.len() || st.pinned[idx] {
                 if crate::pool_log_all() && idx < st.rc.len() {
-                    eprintln!("[POOLLOG #{:>4}] release {} PINNED-SKIP", crate::pool_log_seq(), idx);
+                    eprintln!(
+                        "[POOLLOG #{:>4}] release {} PINNED-SKIP",
+                        crate::pool_log_seq(),
+                        idx
+                    );
                 }
                 return;
             }
             let cur = st.rc[idx].fetch_sub(1, Ordering::AcqRel);
             if crate::pool_trace_idx() == Some(idx) {
-                eprintln!("[P419POOL] release {} (rc {} -> {})
+                eprintln!(
+                    "[P419POOL] release {} (rc {} -> {})
   site:
-{}", idx, cur, cur - 1, std::backtrace::Backtrace::force_capture());
+{}",
+                    idx,
+                    cur,
+                    cur - 1,
+                    std::backtrace::Backtrace::force_capture()
+                );
             }
             // Plan 510 G3 配对审计:cur==0 说明本 release 无配对 retain
             // (多扣款)——rc 下溢回绕 0xFFFFFFFF,槽位永久坏死 + 可能点燃
@@ -651,8 +706,26 @@ impl AutoVM {
                 }
             }
             if crate::pool_log_all() {
-                let content = self.strings.read().unwrap().get(idx).map(|b| String::from_utf8_lossy(b).chars().take(12).collect::<String>()).unwrap_or_default();
-                eprintln!("[POOLLOG #{:>4}] release {} (rc {} -> {}) content={:?}", crate::pool_log_seq(), idx, cur, cur.wrapping_sub(1), content);
+                let content = self
+                    .strings
+                    .read()
+                    .unwrap()
+                    .get(idx)
+                    .map(|b| {
+                        String::from_utf8_lossy(b)
+                            .chars()
+                            .take(12)
+                            .collect::<String>()
+                    })
+                    .unwrap_or_default();
+                eprintln!(
+                    "[POOLLOG #{:>4}] release {} (rc {} -> {}) content={:?}",
+                    crate::pool_log_seq(),
+                    idx,
+                    cur,
+                    cur.wrapping_sub(1),
+                    content
+                );
             }
             cur == 1
         };
@@ -666,9 +739,7 @@ impl AutoVM {
             // 复核非零（被并发 retain）则放弃释放——条目复活为合法存活。
             let still_zero = {
                 let mut st = self.pool_state.write().unwrap();
-                if idx < st.tombstone.len()
-                    && st.rc[idx].load(Ordering::Acquire) == 0
-                {
+                if idx < st.tombstone.len() && st.rc[idx].load(Ordering::Acquire) == 0 {
                     st.tombstone[idx] = true;
                     true
                 } else {
@@ -684,9 +755,13 @@ impl AutoVM {
     /// 归零真释放:置墓碑、清内容、进 freelist、删 dedup 键(一键一槽不变量)。
     fn pool_free_idx(&self, idx: usize) {
         if crate::pool_trace_idx() == Some(idx) {
-            eprintln!("[P419POOL] FREE {} (tombstone + freelist)
+            eprintln!(
+                "[P419POOL] FREE {} (tombstone + freelist)
   site:
-{}", idx, std::backtrace::Backtrace::force_capture());
+{}",
+                idx,
+                std::backtrace::Backtrace::force_capture()
+            );
         }
         let key = {
             let mut strings = self.strings.write().unwrap();
@@ -697,7 +772,15 @@ impl AutoVM {
             key
         };
         if crate::pool_log_all() {
-            eprintln!("[POOLLOG #{:>4}] FREE {} key={:?}", crate::pool_log_seq(), idx, key.as_ref().map(|k| String::from_utf8_lossy(k).chars().take(12).collect::<String>()));
+            eprintln!(
+                "[POOLLOG #{:>4}] FREE {} key={:?}",
+                crate::pool_log_seq(),
+                idx,
+                key.as_ref().map(|k| String::from_utf8_lossy(k)
+                    .chars()
+                    .take(12)
+                    .collect::<String>())
+            );
         }
         if let Some(k) = key {
             self.string_dedup.lock().unwrap().remove(&k);
@@ -727,7 +810,11 @@ impl AutoVM {
     pub fn pool_count(&self, idx: usize) -> u32 {
         let st = self.pool_state.read().unwrap();
         if idx < st.rc.len() {
-            if st.pinned[idx] { u32::MAX } else { st.rc[idx].load(Ordering::Acquire) }
+            if st.pinned[idx] {
+                u32::MAX
+            } else {
+                st.rc[idx].load(Ordering::Acquire)
+            }
         } else {
             0
         }

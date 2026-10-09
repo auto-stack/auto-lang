@@ -96,13 +96,20 @@ pub fn disassemble_flash(flash: &VirtualFlash, strings: Option<&[Vec<u8>]>) -> A
 
     // === Build metadata ===
     let strings: Vec<String> = strings
-        .map(|pool| pool.iter().map(|b| String::from_utf8_lossy(b).to_string()).collect())
+        .map(|pool| {
+            pool.iter()
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .collect()
+        })
         .unwrap_or_default();
     let exports: Vec<(String, String)> = flash
         .exports_by_name
         .iter()
         .map(|(name, &addr)| {
-            let target = labels.iter().find(|(_, &o)| o == addr as usize).map(|(l, _)| l.clone())
+            let target = labels
+                .iter()
+                .find(|(_, &o)| o == addr as usize)
+                .map(|(l, _)| l.clone())
                 .unwrap_or_else(|| format!("0x{:04x}", addr));
             (name.clone(), target)
         })
@@ -314,44 +321,124 @@ fn decode_operands(
 
     match op {
         // No operands
-        OpCode::NOP | OpCode::POP | OpCode::DUP | OpCode::SWAP | OpCode::DROP
-        | OpCode::CONST_0 | OpCode::CONST_1 | OpCode::HALT | OpCode::PRINT
-        | OpCode::YIELD_TASK | OpCode::YIELD_VAL | OpCode::CREATE_NONE
-        | OpCode::IS_SOME | OpCode::IS_OK | OpCode::UNWRAP_SOME | OpCode::UNWRAP_OK
-        | OpCode::UNWRAP_ERR | OpCode::IS_NIL | OpCode::NEG | OpCode::NEG_F
-        | OpCode::NEG_D | OpCode::NOT | OpCode::TO_STR | OpCode::STR_CAT
-        | OpCode::ADD | OpCode::SUB | OpCode::MUL | OpCode::DIV | OpCode::MOD
-        | OpCode::ADD_F | OpCode::SUB_F | OpCode::MUL_F | OpCode::DIV_F
-        | OpCode::ADD_D | OpCode::SUB_D | OpCode::MUL_D | OpCode::DIV_D
-        | OpCode::ADD_U64 | OpCode::SUB_U64 | OpCode::MUL_U64 | OpCode::DIV_U64
-        | OpCode::MOD_U64 | OpCode::AND | OpCode::OR | OpCode::XOR
-        | OpCode::SHL | OpCode::SHR | OpCode::EQ | OpCode::NE | OpCode::LT
-        | OpCode::GT | OpCode::LE | OpCode::GE | OpCode::EQ_D | OpCode::NE_D
-        | OpCode::LT_D | OpCode::GT_D | OpCode::LE_D | OpCode::GE_D
-            | OpCode::EQ_U64 | OpCode::NE_U64 | OpCode::LT_U64 | OpCode::GT_U64
-            | OpCode::LE_U64 | OpCode::GE_U64
-            | OpCode::EQ_F | OpCode::NE_F | OpCode::LT_F | OpCode::GT_F
-            | OpCode::LE_F | OpCode::GE_F
-        | OpCode::I32_TO_F32 | OpCode::I64_TO_F64 | OpCode::U64_TO_F64
-        | OpCode::PROMOTE_F64 | OpCode::NULL_COALESCE
-        | OpCode::TASK_ID | OpCode::SPAWN_GO | OpCode::REPLY | OpCode::HANDLE_MSG
-        | OpCode::CALL_CLOSURE | OpCode::TYPE_F64_TO_I32 | OpCode::TYPE_STR_TO_I64
-        | OpCode::TYPE_F32_TO_I32 | OpCode::TYPE_CAST_PTR | OpCode::ARRAY_LEN
-        | OpCode::MOD_F | OpCode::MOD_D
-        | OpCode::CREATE_SOME | OpCode::CREATE_ERR
-        | OpCode::CREATE_RANGE | OpCode::CREATE_RANGE_EQ
-        | OpCode::CHAN_NEW | OpCode::RECV | OpCode::TRY_RECV
-        | OpCode::TASK_LOOP | OpCode::AWAIT_FUTURE | OpCode::POLL_FUTURE
+        OpCode::NOP
+        | OpCode::POP
+        | OpCode::DUP
+        | OpCode::SWAP
+        | OpCode::DROP
+        | OpCode::CONST_0
+        | OpCode::CONST_1
+        | OpCode::HALT
+        | OpCode::PRINT
+        | OpCode::YIELD_TASK
+        | OpCode::YIELD_VAL
+        | OpCode::CREATE_NONE
+        | OpCode::IS_SOME
+        | OpCode::IS_OK
+        | OpCode::UNWRAP_SOME
+        | OpCode::UNWRAP_OK
+        | OpCode::UNWRAP_ERR
+        | OpCode::IS_NIL
+        | OpCode::NEG
+        | OpCode::NEG_F
+        | OpCode::NEG_D
+        | OpCode::NOT
+        | OpCode::TO_STR
+        | OpCode::STR_CAT
+        | OpCode::ADD
+        | OpCode::SUB
+        | OpCode::MUL
+        | OpCode::DIV
+        | OpCode::MOD
+        | OpCode::ADD_F
+        | OpCode::SUB_F
+        | OpCode::MUL_F
+        | OpCode::DIV_F
+        | OpCode::ADD_D
+        | OpCode::SUB_D
+        | OpCode::MUL_D
+        | OpCode::DIV_D
+        | OpCode::ADD_U64
+        | OpCode::SUB_U64
+        | OpCode::MUL_U64
+        | OpCode::DIV_U64
+        | OpCode::MOD_U64
+        | OpCode::AND
+        | OpCode::OR
+        | OpCode::XOR
+        | OpCode::SHL
+        | OpCode::SHR
+        | OpCode::EQ
+        | OpCode::NE
+        | OpCode::LT
+        | OpCode::GT
+        | OpCode::LE
+        | OpCode::GE
+        | OpCode::EQ_D
+        | OpCode::NE_D
+        | OpCode::LT_D
+        | OpCode::GT_D
+        | OpCode::LE_D
+        | OpCode::GE_D
+        | OpCode::EQ_U64
+        | OpCode::NE_U64
+        | OpCode::LT_U64
+        | OpCode::GT_U64
+        | OpCode::LE_U64
+        | OpCode::GE_U64
+        | OpCode::EQ_F
+        | OpCode::NE_F
+        | OpCode::LT_F
+        | OpCode::GT_F
+        | OpCode::LE_F
+        | OpCode::GE_F
+        | OpCode::I32_TO_F32
+        | OpCode::I64_TO_F64
+        | OpCode::U64_TO_F64
+        | OpCode::PROMOTE_F64
+        | OpCode::NULL_COALESCE
+        | OpCode::TASK_ID
+        | OpCode::SPAWN_GO
+        | OpCode::REPLY
+        | OpCode::HANDLE_MSG
+        | OpCode::CALL_CLOSURE
+        | OpCode::TYPE_F64_TO_I32
+        | OpCode::TYPE_STR_TO_I64
+        | OpCode::TYPE_F32_TO_I32
+        | OpCode::TYPE_CAST_PTR
+        | OpCode::ARRAY_LEN
+        | OpCode::MOD_F
+        | OpCode::MOD_D
+        | OpCode::CREATE_SOME
+        | OpCode::CREATE_ERR
+        | OpCode::CREATE_RANGE
+        | OpCode::CREATE_RANGE_EQ
+        | OpCode::CHAN_NEW
+        | OpCode::RECV
+        | OpCode::TRY_RECV
+        | OpCode::TASK_LOOP
+        | OpCode::AWAIT_FUTURE
+        | OpCode::POLL_FUTURE
         | OpCode::CONSTRUCT_INSTANCE
-        | OpCode::CREATE_LIST_INT | OpCode::CREATE_LIST_STR | OpCode::CREATE_LIST_BOOL
-        | OpCode::CREATE_LIST_INT_INLINE | OpCode::CREATE_LIST_STR_INLINE
-        | OpCode::CREATE_LIST_BOOL_INLINE | OpCode::LIST_PUSH_INT
-        | OpCode::LIST_POP_INT | OpCode::LIST_GET_INT | OpCode::LIST_SET_INT
-        | OpCode::GET_ELEM | OpCode::SET_ELEM | OpCode::SET_FIELD | OpCode::SLICE
+        | OpCode::CREATE_LIST_INT
+        | OpCode::CREATE_LIST_STR
+        | OpCode::CREATE_LIST_BOOL
+        | OpCode::CREATE_LIST_INT_INLINE
+        | OpCode::CREATE_LIST_STR_INLINE
+        | OpCode::CREATE_LIST_BOOL_INLINE
+        | OpCode::LIST_PUSH_INT
+        | OpCode::LIST_POP_INT
+        | OpCode::LIST_GET_INT
+        | OpCode::LIST_SET_INT
+        | OpCode::GET_ELEM
+        | OpCode::SET_ELEM
+        | OpCode::SET_FIELD
+        | OpCode::SLICE
         | OpCode::PUSH_NIL
         | OpCode::POP_HANDLER
-        | OpCode::ACCUM_NODE | OpCode::ACCUM_MERGE | OpCode::POP_ACCUM
-            => (vec![], 0),
+        | OpCode::ACCUM_NODE
+        | OpCode::ACCUM_MERGE
+        | OpCode::POP_ACCUM => (vec![], 0),
 
         OpCode::CONST_U8 => {
             let v = flash.read_u8(ip);
@@ -376,7 +463,10 @@ fn decode_operands(
         OpCode::FN_PROLOG => {
             let n_args = flash.read_u8(ip);
             let n_locals = flash.read_u8(ip + 1);
-            (vec![AbtOperand::ImmU8(n_args), AbtOperand::ImmU8(n_locals)], 2)
+            (
+                vec![AbtOperand::ImmU8(n_args), AbtOperand::ImmU8(n_locals)],
+                2,
+            )
         }
         OpCode::SPAWN => {
             let func = flash.read_u32(ip) as usize;
@@ -413,9 +503,12 @@ fn decode_operands(
             (vec![AbtOperand::ImmF64(v)], 8)
         }
 
-        OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
-        | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
-        | OpCode::PUSH_BOOL => {  // Plan 318: 1 byte operand (0|1)
+        OpCode::LOAD_LOCAL
+        | OpCode::STORE_LOCAL
+        | OpCode::LOAD_STATE_FIELD
+        | OpCode::STORE_STATE_FIELD
+        | OpCode::PUSH_BOOL => {
+            // Plan 318: 1 byte operand (0|1)
             let v = flash.read_u8(ip);
             // Plan 087/088: parameters encoded as 0x80 + param_index
             let operand = if v >= 0x80 {
@@ -436,8 +529,11 @@ fn decode_operands(
                 8,
             )
         }
-        OpCode::LOAD_LOC_0 | OpCode::LOAD_LOC_1 | OpCode::LOAD_LOC_2
-        | OpCode::STORE_LOC_0 | OpCode::STORE_LOC_1 => (vec![], 0),
+        OpCode::LOAD_LOC_0
+        | OpCode::LOAD_LOC_1
+        | OpCode::LOAD_LOC_2
+        | OpCode::STORE_LOC_0
+        | OpCode::STORE_LOC_1 => (vec![], 0),
 
         OpCode::LOAD_STR => {
             let v = flash.read_u32(ip);
@@ -498,7 +594,13 @@ fn decode_operands(
         OpCode::CALL_SPEC => {
             let method = flash.read_u32(ip);
             let argc = flash.read_u8(ip + 4);
-            (vec![AbtOperand::StringIdx(method as usize), AbtOperand::ImmU8(argc)], 5)
+            (
+                vec![
+                    AbtOperand::StringIdx(method as usize),
+                    AbtOperand::ImmU8(argc),
+                ],
+                5,
+            )
         }
 
         OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE => {
@@ -509,14 +611,23 @@ fn decode_operands(
         OpCode::CREATE_OBJ => {
             let key_index = flash.read_u32(ip);
             let field_count = flash.read_u8(ip + 4);
-            (vec![AbtOperand::ImmU32(key_index), AbtOperand::ImmU8(field_count)], 5)
+            (
+                vec![
+                    AbtOperand::ImmU32(key_index),
+                    AbtOperand::ImmU8(field_count),
+                ],
+                5,
+            )
         }
 
         // Plan 369 Task 10: py-FFI call: u16 native_id + u8 arg_count
         OpCode::CALL_NAT_COUNTED => {
             let native_id = flash.read_u16(ip);
             let arg_count = flash.read_u8(ip + 2);
-            (vec![AbtOperand::NatIdx(native_id), AbtOperand::ImmU8(arg_count)], 3)
+            (
+                vec![AbtOperand::NatIdx(native_id), AbtOperand::ImmU8(arg_count)],
+                3,
+            )
         }
 
         OpCode::BUILD_FSTR => {
@@ -552,10 +663,18 @@ fn decode_operands(
             (vec![AbtOperand::ImmU8(type_tag)], 1)
         }
 
-        OpCode::TYPE_CAST_I32 | OpCode::TYPE_CAST_U32 | OpCode::TYPE_CAST_I64
-        | OpCode::TYPE_CAST_U64 | OpCode::TYPE_CAST_F64 | OpCode::TYPE_TO_STR
-        | OpCode::TYPE_TO_I32 | OpCode::TYPE_TO_F64 | OpCode::TYPE_F64_TO_STR
-        | OpCode::TYPE_I64_TO_STR | OpCode::TYPE_U64_TO_STR | OpCode::TYPE_BOOL_TO_STR
+        OpCode::TYPE_CAST_I32
+        | OpCode::TYPE_CAST_U32
+        | OpCode::TYPE_CAST_I64
+        | OpCode::TYPE_CAST_U64
+        | OpCode::TYPE_CAST_F64
+        | OpCode::TYPE_TO_STR
+        | OpCode::TYPE_TO_I32
+        | OpCode::TYPE_TO_F64
+        | OpCode::TYPE_F64_TO_STR
+        | OpCode::TYPE_I64_TO_STR
+        | OpCode::TYPE_U64_TO_STR
+        | OpCode::TYPE_BOOL_TO_STR
         | OpCode::TYPE_F32_TO_STR => (vec![], 0),
 
         OpCode::CLOSURE => {
@@ -596,7 +715,6 @@ fn decode_operands(
         }
 
         // Already covered in the no-operands arm above
-
         OpCode::SOURCE_LINE => {
             let line = flash.read_u16(ip);
             (vec![AbtOperand::ImmU16(line)], 2)
@@ -616,6 +734,12 @@ fn decode_operands(
 
 fn sanitize_label(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }

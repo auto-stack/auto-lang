@@ -55,7 +55,12 @@ pub struct ValidationWarning {
 impl ValidationWarning {
     /// Create a warning (pub since Plan 012 Batch A: generators outside this
     /// module raise codegen warnings through the same channel).
-    pub fn new(rule: &'static str, severity: Severity, widget: &str, message: impl Into<String>) -> Self {
+    pub fn new(
+        rule: &'static str,
+        severity: Severity,
+        widget: &str,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             rule,
             severity,
@@ -148,7 +153,11 @@ pub fn print_warnings_once(file_tag: &str, warnings: &[ValidationWarning]) {
 ///
 /// `sfc` 是完整的 .vue 文件内容。`widget_name` 是组件名（如 "EditorPanel"）。
 /// `ctx` 提供生成器知道的额外上下文。
-pub fn validate_sfc(sfc: &str, widget_name: &str, ctx: &ValidationContext) -> Vec<ValidationWarning> {
+pub fn validate_sfc(
+    sfc: &str,
+    widget_name: &str,
+    ctx: &ValidationContext,
+) -> Vec<ValidationWarning> {
     let mut warnings = Vec::new();
     warnings.extend(r001_duplicate_component_key(sfc, widget_name));
     warnings.extend(r002_store_usage_without_import(sfc, widget_name, ctx));
@@ -196,7 +205,12 @@ fn r001_duplicate_component_key(sfc: &str, widget: &str) -> Vec<ValidationWarnin
     let mut by_tag: HashMap<String, Vec<Option<String>>> = HashMap::new();
     for (tag, key) in &component_keys {
         // 只关注 PascalCase 标签（Vue 组件），跳过原生 HTML
-        if tag.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+        if tag
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
             by_tag.entry(tag.clone()).or_default().push(key.clone());
         }
     }
@@ -269,8 +283,7 @@ fn collect_component_keys(template: &str) -> Vec<(String, Option<String>)> {
         let attrs = cap.group(2);
 
         // 在 attrs 里找 :key="..." 或 :key='...'
-        let key = find_attr_value(attrs, ":key")
-            .or_else(|| find_attr_value(attrs, ":key".into())); // 容错
+        let key = find_attr_value(attrs, ":key").or_else(|| find_attr_value(attrs, ":key".into())); // 容错
         result.push((tag, key));
     }
     result
@@ -498,7 +511,11 @@ fn r003_autodown_css_missing(
 ///
 /// 本次会话症状：Cancel 点击无反应，因为 handler 引用了但 on 块没定义。
 /// 当 ctx.used_handlers 提供时，优先用它（更精确）；否则从模板里正则提取。
-fn r004_undefined_handler(sfc: &str, widget: &str, ctx: &ValidationContext) -> Vec<ValidationWarning> {
+fn r004_undefined_handler(
+    sfc: &str,
+    widget: &str,
+    ctx: &ValidationContext,
+) -> Vec<ValidationWarning> {
     let template = extract_template(sfc);
     let script = extract_script(sfc);
 
@@ -673,7 +690,9 @@ fn r007_autodown_dual_instance(sfc: &str, widget: &str) -> Vec<ValidationWarning
     let template = extract_template(sfc);
     let count = template.matches("AutoDownEditor").count();
     // 一个 AutoDownEditor 标签会出现 2 次（开标签 + 可能的引用），我们数开标签
-    let open_count = regex_lite(r"<AutoDownEditor\b").find_iter(&template).count();
+    let open_count = regex_lite(r"<AutoDownEditor\b")
+        .find_iter(&template)
+        .count();
     if open_count < 2 {
         return vec![];
     }
@@ -689,9 +708,7 @@ fn r007_autodown_dual_instance(sfc: &str, widget: &str) -> Vec<ValidationWarning
             open_count
         ),
     )
-    .with_hint(
-        "See editor-integration pattern (Plan 363) for the single-instance approach.",
-    )]
+    .with_hint("See editor-integration pattern (Plan 363) for the single-instance approach.")]
 }
 
 // ============================================================================
@@ -803,11 +820,7 @@ pub fn r016_keyword_collision(
     warnings
 }
 
-fn r016_walk(
-    node: &crate::aura::AuraNode,
-    widget: &str,
-    warnings: &mut Vec<ValidationWarning>,
-) {
+fn r016_walk(node: &crate::aura::AuraNode, widget: &str, warnings: &mut Vec<ValidationWarning>) {
     use crate::aura::AuraNode;
     match node {
         AuraNode::Element { tag, children, .. } => {
@@ -862,7 +875,9 @@ fn r016_walk(
                 r016_walk(child, widget, warnings);
             }
         }
-        AuraNode::Link { to, href, children, .. } => {
+        AuraNode::Link {
+            to, href, children, ..
+        } => {
             if to.is_empty() && href.is_empty() {
                 warnings.push(
                     ValidationWarning::new(
@@ -889,7 +904,11 @@ fn r016_walk(
                 r016_walk(child, widget, warnings);
             }
         }
-        AuraNode::Conditional { then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             for child in then_body {
                 r016_walk(child, widget, warnings);
             }
@@ -951,10 +970,7 @@ fn fold(s: &str) -> String {
 }
 
 impl SchemaResolveScope {
-    pub fn from_widgets(
-        widgets: &[crate::aura::AuraWidget],
-        known_sub_widgets: &[String],
-    ) -> Self {
+    pub fn from_widgets(widgets: &[crate::aura::AuraWidget], known_sub_widgets: &[String]) -> Self {
         let mut local_fold = std::collections::HashSet::new();
         for name in known_sub_widgets {
             local_fold.insert(fold(name));
@@ -999,13 +1015,7 @@ pub fn validate_aura_against_schema(
     let mut out = Vec::new();
 
     for widget in widgets {
-        walk_node(
-            &widget.view_tree,
-            &widget.name,
-            &schema,
-            &scope,
-            &mut out,
-        );
+        walk_node(&widget.view_tree, &widget.name, &schema, &scope, &mut out);
     }
     out
 }
@@ -1019,7 +1029,12 @@ fn walk_node(
 ) {
     use crate::aura::AuraNode;
     match node {
-        AuraNode::Element { tag, props, children, .. } => {
+        AuraNode::Element {
+            tag,
+            props,
+            children,
+            ..
+        } => {
             if let Some((_canon, def)) = schema.resolve_tag(tag) {
                 // prop 校验:仅当元素声明过 props(空 props = P2 待补,跳过)
                 if !def.props.is_empty() {
@@ -1061,17 +1076,16 @@ fn walk_node(
                 let suggestion = schema
                     .all_tags()
                     .into_iter()
-                    .min_by_key(|t| {
-                        levenshtein(fold(tag).as_bytes(), fold(t).as_bytes())
-                    })
-                    .filter(|t| {
-                        levenshtein(fold(tag).as_bytes(), fold(t).as_bytes()) <= 3
-                    });
+                    .min_by_key(|t| levenshtein(fold(tag).as_bytes(), fold(t).as_bytes()))
+                    .filter(|t| levenshtein(fold(tag).as_bytes(), fold(t).as_bytes()) <= 3);
                 let mut w = ValidationWarning::new(
                     "S002",
                     Severity::Warning,
                     widget_name,
-                    format!("unknown element `<{}>` — not in schema, not a local widget/component", tag),
+                    format!(
+                        "unknown element `<{}>` — not in schema, not a local widget/component",
+                        tag
+                    ),
                 );
                 if let Some(s) = suggestion {
                     w = w.with_hint(format!("did you mean `<{}>`? (schema/aura.at)", s));
@@ -1087,7 +1101,11 @@ fn walk_node(
                 walk_node(c, widget_name, schema, scope, out);
             }
         }
-        AuraNode::Conditional { then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             for c in then_body {
                 walk_node(c, widget_name, schema, scope, out);
             }
@@ -1129,16 +1147,23 @@ mod tests {
     fn r002_ignores_store_refs_inside_string_literals() {
         let sfc = "<script setup>\nconst body = \"call store.notes before render\";\nconst code = 'store.Load()';\nconst note = \"日志: store.Load 已执行\";\n</script>\n<template/>";
         let warnings = r002_store_usage_without_import(sfc, "W", &ValidationContext::default());
-        assert!(warnings.is_empty(), "literal store refs must not fire R002: {warnings:?}");
+        assert!(
+            warnings.is_empty(),
+            "literal store refs must not fire R002: {warnings:?}"
+        );
     }
 
     /// 模板串 ${} 插值段保守不剥离（真实组件里那是真 store 用法）——
     /// 仍触发 R002（故意用例，记录既定口径）。
     #[test]
     fn r002_template_interpolation_conservatively_flagged() {
-        let sfc = "<script setup>\nconst tpl = `total ${store.notes.length}`;\n</script>\n<template/>";
+        let sfc =
+            "<script setup>\nconst tpl = `total ${store.notes.length}`;\n</script>\n<template/>";
         let warnings = r002_store_usage_without_import(sfc, "W", &ValidationContext::default());
-        assert!(!warnings.is_empty(), "interpolation is conservatively flagged");
+        assert!(
+            !warnings.is_empty(),
+            "interpolation is conservatively flagged"
+        );
     }
 
     /// 真实代码引用 store.X（字面量外）仍触发 R002。
@@ -1208,10 +1233,7 @@ mod tests {
     #[test]
     fn r001_ignores_lowercase_html() {
         // 原生 HTML 标签不应触发（即使重复 key）
-        let sfc = make_sfc(
-            r#"<div :key="'a'"></div><div :key="'a'"></div>"#,
-            "",
-        );
+        let sfc = make_sfc(r#"<div :key="'a'"></div><div :key="'a'"></div>"#, "");
         let ws = r001_duplicate_component_key(&sfc, "Test");
         assert_eq!(ws.len(), 0);
     }
@@ -1248,10 +1270,7 @@ function Foo() { store.notes = []; }"#,
 
     #[test]
     fn r002_ignores_store_composable_definition() {
-        let sfc = make_sfc(
-            "",
-            r#"export function useFooStore() { return { ... } }"#,
-        );
+        let sfc = make_sfc("", r#"export function useFooStore() { return { ... } }"#);
         let ctx = ValidationContext::default();
         let ws = r002_store_usage_without_import(&sfc, "Test", &ctx);
         assert_eq!(ws.len(), 0);
@@ -1420,10 +1439,7 @@ function Foo() { emit('Save'); emit('Cancel'); }"#,
 
     #[test]
     fn r006_detects_missing_key() {
-        let sfc = make_sfc(
-            r#"<div v-for="item in items">{{ item }}</div>"#,
-            "",
-        );
+        let sfc = make_sfc(r#"<div v-for="item in items">{{ item }}</div>"#, "");
         let ws = r006_v_for_without_key(&sfc, "Test");
         assert_eq!(ws.len(), 1);
     }
@@ -1685,20 +1701,17 @@ widget CopyButton {
             }
         }
         let ws = validate_aura_against_schema(&widgets, &[]);
-        let s002: Vec<&ValidationWarning> =
-            ws.iter().filter(|w| w.rule == "S002").collect();
+        let s002: Vec<&ValidationWarning> = ws.iter().filter(|w| w.rule == "S002").collect();
         assert!(s002.is_empty(), "本地 widget 与折叠别名不应告警: {s002:?}");
     }
 
     #[test]
     fn format_warnings_produces_readable_output() {
-        let ws = vec![ValidationWarning::new(
-            "R001",
-            Severity::Error,
-            "Test",
-            "Something is wrong",
-        )
-        .with_hint("Do X")];
+        let ws =
+            vec![
+                ValidationWarning::new("R001", Severity::Error, "Test", "Something is wrong")
+                    .with_hint("Do X"),
+            ];
         let out = format_warnings(&ws);
         assert!(out.contains("R001"));
         assert!(out.contains("ERROR"));

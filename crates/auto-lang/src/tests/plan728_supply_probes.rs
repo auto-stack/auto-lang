@@ -84,7 +84,9 @@ fn gen_lines(target_bytes: usize) -> String {
 
 #[test]
 fn paged_load_edit_save_e2e() {
-    let _guard = crate::ui::code_editor::core::REGISTRY_TEST_LOCK.lock().unwrap();
+    let _guard = crate::ui::code_editor::core::REGISTRY_TEST_LOCK
+        .lock()
+        .unwrap();
     set_font_system_call(probe_font_system);
 
     // 51MB > 50MB threshold → paged arm (AC-07 装载臂选择).
@@ -99,37 +101,66 @@ fn paged_load_edit_save_e2e() {
     let t0 = Instant::now();
     let loaded = code_editor_load_file(&key, src.path().to_str().unwrap());
     let load_wall = t0.elapsed();
-    assert_eq!(loaded, Some(model.len() as i64), "paged load returns the file size");
+    assert_eq!(
+        loaded,
+        Some(model.len() as i64),
+        "paged load returns the file size"
+    );
     eprintln!("[p728-e2e] load {}B in {load_wall:?}", model.len());
 
     // Arm selection + instant summaries (AC-01: 行数免调入即答).
     let (is_paged, lines, digest) = code_editor_with(&key, |c| {
-        (c.is_paged(), c.doc_snapshot().line_count(), c.doc_snapshot().content_hash())
+        (
+            c.is_paged(),
+            c.doc_snapshot().line_count(),
+            c.doc_snapshot().content_hash(),
+        )
     })
     .expect("core");
     assert!(is_paged, ">50MB load must take the file-backed arm");
     let want_lines = model.bytes().filter(|&b| b == b'\n').count() + 1;
     assert_eq!(lines, want_lines, "line_count answers from the page table");
-    assert_eq!(digest, Rope::content_hash_of(&model), "root digest folds prescan page digests");
+    assert_eq!(
+        digest,
+        Rope::content_hash_of(&model),
+        "root digest folds prescan page digests"
+    );
 
     // Structured edit FAR into the document (AC-02 over the registry face)
     // — offsets are full-document coordinates.
     let far_line = want_lines.saturating_sub(10);
     let far = code_editor_with(&key, |c| c.doc_snapshot().line_start_byte(far_line)).unwrap();
-    assert!(code_editor_edit(&key, far, far, "// p728 inserted\n"), "far edit applies");
+    assert!(
+        code_editor_edit(&key, far, far, "// p728 inserted\n"),
+        "far edit applies"
+    );
     let mut edited = model.clone();
     edited.insert_str(far, "// p728 inserted\n");
 
     // Save → byte-for-byte (AC-05 over the registry face).
     let out = TempFile::new("e2e-out", b"");
     let _ = std::fs::remove_file(out.path());
-    assert!(code_editor_save(&key, out.path().to_str().unwrap()), "merge save");
-    assert_eq!(std::fs::read(out.path()).unwrap(), edited.as_bytes(), "save is byte-for-byte");
+    assert!(
+        code_editor_save(&key, out.path().to_str().unwrap()),
+        "merge save"
+    );
+    assert_eq!(
+        std::fs::read(out.path()).unwrap(),
+        edited.as_bytes(),
+        "save is byte-for-byte"
+    );
 
     // External mutation behind the rope's back → refusal, 报错不静默.
     std::fs::write(src.path(), b"externally replaced").unwrap();
-    assert!(!code_editor_save(&key, src.path().to_str().unwrap()), "refuses mutated base");
-    assert_eq!(std::fs::read(src.path()).unwrap(), b"externally replaced", "original untouched by refusal");
+    assert!(
+        !code_editor_save(&key, src.path().to_str().unwrap()),
+        "refuses mutated base"
+    );
+    assert_eq!(
+        std::fs::read(src.path()).unwrap(),
+        b"externally replaced",
+        "original untouched by refusal"
+    );
 
     code_editor_dispose(&key);
 }
@@ -138,7 +169,9 @@ fn paged_load_edit_save_e2e() {
 
 #[test]
 fn small_file_arm_golden() {
-    let _guard = crate::ui::code_editor::core::REGISTRY_TEST_LOCK.lock().unwrap();
+    let _guard = crate::ui::code_editor::core::REGISTRY_TEST_LOCK
+        .lock()
+        .unwrap();
     set_font_system_call(probe_font_system);
 
     let text = gen_lines(300 * 1024); // 300KB « 50MB
@@ -147,16 +180,25 @@ fn small_file_arm_golden() {
     code_editor_dispose(&key);
     code_editor(&key, &Default::default());
 
-    assert_eq!(code_editor_load_file(&key, src.path().to_str().unwrap()), Some(text.len() as i64));
-    let (is_paged, content) =
-        code_editor_with(&key, |c| (c.is_paged(), c.text())).expect("core");
-    assert!(!is_paged, "small files stay on the in-memory arm (frozen ②)");
+    assert_eq!(
+        code_editor_load_file(&key, src.path().to_str().unwrap()),
+        Some(text.len() as i64)
+    );
+    let (is_paged, content) = code_editor_with(&key, |c| (c.is_paged(), c.text())).expect("core");
+    assert!(
+        !is_paged,
+        "small files stay on the in-memory arm (frozen ②)"
+    );
     assert_eq!(content, text, "golden: content identical byte-for-byte");
 
     let out = TempFile::new("small-out", b"");
     let _ = std::fs::remove_file(out.path());
     assert!(code_editor_save(&key, out.path().to_str().unwrap()));
-    assert_eq!(std::fs::read(out.path()).unwrap(), text.as_bytes(), "701 direct write unchanged");
+    assert_eq!(
+        std::fs::read(out.path()).unwrap(),
+        text.as_bytes(),
+        "701 direct write unchanged"
+    );
 
     code_editor_dispose(&key);
 }
@@ -210,7 +252,9 @@ fn api_signature_pin() {
 
 #[test]
 fn paged_find_and_jump() {
-    let _guard = crate::ui::code_editor::core::REGISTRY_TEST_LOCK.lock().unwrap();
+    let _guard = crate::ui::code_editor::core::REGISTRY_TEST_LOCK
+        .lock()
+        .unwrap();
     set_font_system_call(probe_font_system);
 
     // Small paged doc installed DIRECTLY through the kernel face (the
@@ -243,7 +287,10 @@ fn paged_find_and_jump() {
     let got: String = code_editor_with(&key, |c| {
         let mut editor = c.editor_lock();
         editor.with_buffer_mut(|b| {
-            b.lines.get_mut(cursor_line).map(|l| l.text().to_string()).unwrap_or_default()
+            b.lines
+                .get_mut(cursor_line)
+                .map(|l| l.text().to_string())
+                .unwrap_or_default()
         })
     })
     .unwrap();
@@ -268,7 +315,8 @@ fn paged_find_and_jump() {
     };
     with_needle.insert_str(byte_of_needle, &format!("{needle}\n"));
     let src2 = TempFile::new("find-src2", with_needle.as_bytes());
-    let (rope2, store2) = Rope::open_file_backed(src2.path(), PageConfig::default()).expect("open2");
+    let (rope2, store2) =
+        Rope::open_file_backed(src2.path(), PageConfig::default()).expect("open2");
     with_font_system(|fs| {
         code_editor_with(&key, |c| c.set_doc_file_backed(rope2, store2, fs)).expect("core");
     });
@@ -277,7 +325,10 @@ fn paged_find_and_jump() {
     // in the document, and a wrap-around would pay the whole-document
     // line scan (that cost is the bench谱's line, not the daily tier's).
     crate::ui::code_editor::core::code_editor_set_cursor(&key, 0, 0);
-    assert!(code_editor_with(&key, |c| c.set_search(&needle)).unwrap(), "pattern set");
+    assert!(
+        code_editor_with(&key, |c| c.set_search(&needle)).unwrap(),
+        "pattern set"
+    );
     let found = with_font_system(|fs| code_editor_with(&key, |c| c.find_next(fs)).unwrap_or(false));
     assert!(found, "find locates the needle");
     let (_, _, sel_len) = code_editor_with(&key, |c| c.cursor_info()).unwrap();
@@ -314,11 +365,20 @@ fn paged_memory_contract() {
     eprintln!(
         "[p728-mem] 30MB doc: full line scan {scan_wall:?}, cache {cache}B, structural {structural}B"
     );
-    assert!(cache <= 6 * 1024 * 1024 + 64 * 1024, "cache within budget: {cache}");
+    assert!(
+        cache <= 6 * 1024 * 1024 + 64 * 1024,
+        "cache within budget: {cache}"
+    );
     // 30MB档 structural well under the 12MB contract constant (1GB档 lands
     // in the bench谱; the 30MB numbers scale as table+tree ~ linearly).
-    assert!(structural <= 12 * 1024 * 1024, "structural estimate {structural} over 12MB at 30MB doc");
+    assert!(
+        structural <= 12 * 1024 * 1024,
+        "structural estimate {structural} over 12MB at 30MB doc"
+    );
 
     // Summaries still O(1)-instant after the mass eviction churn.
-    assert_eq!(rope.line_count(), text.bytes().filter(|&b| b == b'\n').count() + 1);
+    assert_eq!(
+        rope.line_count(),
+        text.bytes().filter(|&b| b == b'\n').count() + 1
+    );
 }

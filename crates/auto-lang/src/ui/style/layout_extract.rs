@@ -274,7 +274,10 @@ impl BoxLayout {
         }
         // Full per-side
         else {
-            Some(format!("{}/{}/{}/{}", t as i32, r as i32, b as i32, l as i32))
+            Some(format!(
+                "{}/{}/{}/{}",
+                t as i32, r as i32, b as i32, l as i32
+            ))
         }
     }
 
@@ -312,7 +315,10 @@ impl BoxLayout {
         } else if (t - b).abs() < 0.01 && (r - l).abs() < 0.01 {
             Some(format!("{}/{}", t as i32, r as i32))
         } else {
-            Some(format!("{}/{}/{}/{}", t as i32, r as i32, b as i32, l as i32))
+            Some(format!(
+                "{}/{}/{}/{}",
+                t as i32, r as i32, b as i32, l as i32
+            ))
         }
     }
 }
@@ -374,7 +380,10 @@ mod tests {
         assert_eq!(layout.padding_right, Some(16.0));
         assert_eq!(layout.padding_bottom, Some(16.0));
         assert_eq!(layout.padding_left, Some(16.0));
-        assert_eq!(layout.format_inline(None), Some("pad=8/16/16/16".to_string()));
+        assert_eq!(
+            layout.format_inline(None),
+            Some("pad=8/16/16/16".to_string())
+        );
     }
 
     #[test]

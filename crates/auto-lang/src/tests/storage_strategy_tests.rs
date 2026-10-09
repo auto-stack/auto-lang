@@ -1,7 +1,7 @@
 // Plan 076 Phase 4: Storage Strategy Runtime Tests
 // Tests for List<T, S> storage strategies in AutoVM
 
-use crate::vm::list_storage::{ListStorage, HeapStorage, InlineInt64Storage};
+use crate::vm::list_storage::{HeapStorage, InlineInt64Storage, ListStorage};
 use crate::vm::types::{ListData, ListStorage as UnivListStorage};
 
 #[test]
@@ -67,7 +67,11 @@ fn test_inline_storage_capacity_limit() {
 
     // Fill to capacity
     for i in 0..64 {
-        assert!(storage.push(auto_val::Value::Int(i)), "Should succeed at index {}", i);
+        assert!(
+            storage.push(auto_val::Value::Int(i)),
+            "Should succeed at index {}",
+            i
+        );
     }
 
     // Should fail when capacity exceeded
@@ -163,7 +167,11 @@ fn test_list_data_inline_push() {
 
     // Can push up to 64 elements
     for i in 0..64 {
-        assert!(list.push(auto_val::Value::Int(i)), "Should succeed at index {}", i);
+        assert!(
+            list.push(auto_val::Value::Int(i)),
+            "Should succeed at index {}",
+            i
+        );
     }
 
     // Should fail on 65th element
@@ -215,8 +223,8 @@ fn test_list_data_try_grow_heap() {
 fn test_list_data_try_grow_inline() {
     let mut list: ListData<auto_val::Value> = ListData::with_storage(UnivListStorage::InlineInt64);
 
-    assert!(list.try_grow(32));  // <= 64, should succeed
-    assert!(list.try_grow(64));  // == 64, should succeed
+    assert!(list.try_grow(32)); // <= 64, should succeed
+    assert!(list.try_grow(64)); // == 64, should succeed
     assert!(!list.try_grow(65)); // > 64, should fail
 }
 
@@ -239,7 +247,8 @@ fn test_list_data_pop() {
     assert_eq!(heap_list.pop(), Some(auto_val::Value::Int(1)));
     assert_eq!(heap_list.pop(), None);
 
-    let mut inline_list: ListData<auto_val::Value> = ListData::with_storage(UnivListStorage::InlineInt64);
+    let mut inline_list: ListData<auto_val::Value> =
+        ListData::with_storage(UnivListStorage::InlineInt64);
     inline_list.push(auto_val::Value::Int(1));
     inline_list.push(auto_val::Value::Int(2));
 
@@ -258,7 +267,8 @@ fn test_list_data_clear() {
     assert_eq!(heap_list.len(), 0);
     assert!(heap_list.is_empty());
 
-    let mut inline_list: ListData<auto_val::Value> = ListData::with_storage(UnivListStorage::InlineInt64);
+    let mut inline_list: ListData<auto_val::Value> =
+        ListData::with_storage(UnivListStorage::InlineInt64);
     inline_list.push(auto_val::Value::Int(1));
     inline_list.push(auto_val::Value::Int(2));
     inline_list.clear();

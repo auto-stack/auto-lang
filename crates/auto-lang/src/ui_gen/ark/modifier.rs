@@ -38,7 +38,10 @@
 //! | `loop` | `.loop(true)` |
 //! | `indicator` | `.indicator(true)` |
 
-use crate::ui_gen::shared::tailwind::{AlignItems, JustifyContent, TailwindParser, ComputedStyle, Dimension, Spacing, Size, FontWeight, TextAlign, Color, ObjectFit, BorderRadiusSpec};
+use crate::ui_gen::shared::tailwind::{
+    AlignItems, BorderRadiusSpec, Color, ComputedStyle, Dimension, FontWeight, JustifyContent,
+    ObjectFit, Size, Spacing, TailwindParser, TextAlign,
+};
 
 use crate::ast::Type;
 
@@ -149,11 +152,18 @@ impl ArkModifierDsl {
             }
             // Default shadow (always add for card appearance)
             if !style_str.contains("shadow-") && style.shadow.is_none() {
-                modifiers.push(".shadow({ radius: 12, color: '#00000020', offsetX: 2, offsetY: 4 })".to_string());
+                modifiers.push(
+                    ".shadow({ radius: 12, color: '#00000020', offsetX: 2, offsetY: 4 })"
+                        .to_string(),
+                );
             }
             // Default padding (only if not specified)
-            let has_padding = style_str.contains("p-") || style_str.contains("px-") || style_str.contains("py-")
-                || style.padding.all.is_some() || style.padding.x.is_some() || style.padding.y.is_some();
+            let has_padding = style_str.contains("p-")
+                || style_str.contains("px-")
+                || style_str.contains("py-")
+                || style.padding.all.is_some()
+                || style.padding.x.is_some()
+                || style.padding.y.is_some();
             if !has_padding {
                 modifiers.push(".padding(16)".to_string());
             }
@@ -222,7 +232,9 @@ impl ArkModifierDsl {
         // Align items and justify content
         // For Stack (box): use .align(Alignment) instead of alignItems/justifyContent
         // For Column/Row: use .alignItems() and .justifyContent()
-        let is_stack = parent_tag.map(|t| t.to_lowercase() == "box" || t == "Stack").unwrap_or(false);
+        let is_stack = parent_tag
+            .map(|t| t.to_lowercase() == "box" || t == "Stack")
+            .unwrap_or(false);
 
         if is_stack {
             // Stack uses .align() for content alignment
@@ -290,18 +302,33 @@ impl ArkModifierDsl {
         let left = spacing.left();
 
         // Check if x and y patterns
-        if spacing.x.is_some() && spacing.y.is_some() && spacing.top.is_none() && spacing.bottom.is_none() {
+        if spacing.x.is_some()
+            && spacing.y.is_some()
+            && spacing.top.is_none()
+            && spacing.bottom.is_none()
+        {
             let x_val = self.dimension_to_value(spacing.x.as_ref().unwrap());
             let y_val = self.dimension_to_value(spacing.y.as_ref().unwrap());
-            return format!(".padding({{ left: {}, right: {}, top: {}, bottom: {} }})", x_val, x_val, y_val, y_val);
+            return format!(
+                ".padding({{ left: {}, right: {}, top: {}, bottom: {} }})",
+                x_val, x_val, y_val, y_val
+            );
         }
 
         // Build individual sides
         let mut parts = Vec::new();
-        if let Some(v) = top { parts.push(format!("top: {}", self.dimension_to_value(&v))); }
-        if let Some(v) = right { parts.push(format!("right: {}", self.dimension_to_value(&v))); }
-        if let Some(v) = bottom { parts.push(format!("bottom: {}", self.dimension_to_value(&v))); }
-        if let Some(v) = left { parts.push(format!("left: {}", self.dimension_to_value(&v))); }
+        if let Some(v) = top {
+            parts.push(format!("top: {}", self.dimension_to_value(&v)));
+        }
+        if let Some(v) = right {
+            parts.push(format!("right: {}", self.dimension_to_value(&v)));
+        }
+        if let Some(v) = bottom {
+            parts.push(format!("bottom: {}", self.dimension_to_value(&v)));
+        }
+        if let Some(v) = left {
+            parts.push(format!("left: {}", self.dimension_to_value(&v)));
+        }
 
         if parts.is_empty() {
             String::new()
@@ -325,18 +352,33 @@ impl ArkModifierDsl {
         }
 
         // If x and y patterns
-        if spacing.x.is_some() && spacing.y.is_some() && spacing.top.is_none() && spacing.bottom.is_none() {
+        if spacing.x.is_some()
+            && spacing.y.is_some()
+            && spacing.top.is_none()
+            && spacing.bottom.is_none()
+        {
             let x_val = self.dimension_to_value(spacing.x.as_ref().unwrap());
             let y_val = self.dimension_to_value(spacing.y.as_ref().unwrap());
-            return format!(".margin({{ left: {}, right: {}, top: {}, bottom: {} }})", x_val, x_val, y_val, y_val);
+            return format!(
+                ".margin({{ left: {}, right: {}, top: {}, bottom: {} }})",
+                x_val, x_val, y_val, y_val
+            );
         }
 
         // Build individual sides
         let mut parts = Vec::new();
-        if let Some(v) = spacing.top() { parts.push(format!("top: {}", self.dimension_to_value(&v))); }
-        if let Some(v) = spacing.right() { parts.push(format!("right: {}", self.dimension_to_value(&v))); }
-        if let Some(v) = spacing.bottom() { parts.push(format!("bottom: {}", self.dimension_to_value(&v))); }
-        if let Some(v) = spacing.left() { parts.push(format!("left: {}", self.dimension_to_value(&v))); }
+        if let Some(v) = spacing.top() {
+            parts.push(format!("top: {}", self.dimension_to_value(&v)));
+        }
+        if let Some(v) = spacing.right() {
+            parts.push(format!("right: {}", self.dimension_to_value(&v)));
+        }
+        if let Some(v) = spacing.bottom() {
+            parts.push(format!("bottom: {}", self.dimension_to_value(&v)));
+        }
+        if let Some(v) = spacing.left() {
+            parts.push(format!("left: {}", self.dimension_to_value(&v)));
+        }
 
         if parts.is_empty() {
             String::new()
@@ -391,10 +433,13 @@ impl ArkModifierDsl {
     /// Convert BorderRadiusSpec to ArkTS borderRadius modifier
     fn border_radius_spec_to_modifier(&self, spec: &BorderRadiusSpec) -> String {
         match spec {
-            BorderRadiusSpec::All(dim) => {
-                self.dimension_to_border_radius(dim)
-            }
-            BorderRadiusSpec::Corners { top_left, top_right, bottom_right, bottom_left } => {
+            BorderRadiusSpec::All(dim) => self.dimension_to_border_radius(dim),
+            BorderRadiusSpec::Corners {
+                top_left,
+                top_right,
+                bottom_right,
+                bottom_left,
+            } => {
                 let mut parts = Vec::new();
                 if let Some(v) = top_left {
                     parts.push(format!("topLeft: {}", self.dimension_to_value(v)));
@@ -459,7 +504,13 @@ impl ArkModifierDsl {
     /// Convert Color to hex string
     fn color_to_hex(&self, color: &Color) -> String {
         if color.a < 1.0 {
-            format!("#{:02X}{:02X}{:02X}{:02X}", color.r, color.g, color.b, (color.a * 255.0) as u8)
+            format!(
+                "#{:02X}{:02X}{:02X}{:02X}",
+                color.r,
+                color.g,
+                color.b,
+                (color.a * 255.0) as u8
+            )
         } else {
             format!("#{:02X}{:02X}{:02X}", color.r, color.g, color.b)
         }
@@ -470,14 +521,46 @@ impl ArkModifierDsl {
     /// For Row: use VerticalAlign (vertical alignment of children)
     fn align_items_to_modifier(&self, align: &AlignItems, parent_tag: Option<&str>) -> String {
         // Determine if parent is Row (uses VerticalAlign) or Column (uses HorizontalAlign)
-        let is_row = parent_tag.map(|t| t.to_lowercase() == "row").unwrap_or(false);
+        let is_row = parent_tag
+            .map(|t| t.to_lowercase() == "row")
+            .unwrap_or(false);
 
         let ark_align = match align {
-            AlignItems::Start => if is_row { "VerticalAlign.Top" } else { "HorizontalAlign.Start" },
-            AlignItems::Center => if is_row { "VerticalAlign.Center" } else { "HorizontalAlign.Center" },
-            AlignItems::End => if is_row { "VerticalAlign.Bottom" } else { "HorizontalAlign.End" },
-            AlignItems::Stretch => if is_row { "VerticalAlign.Center" } else { "HorizontalAlign.Start" }, // No direct equivalent
-            AlignItems::Baseline => if is_row { "VerticalAlign.Center" } else { "HorizontalAlign.Start" }, // No direct equivalent
+            AlignItems::Start => {
+                if is_row {
+                    "VerticalAlign.Top"
+                } else {
+                    "HorizontalAlign.Start"
+                }
+            }
+            AlignItems::Center => {
+                if is_row {
+                    "VerticalAlign.Center"
+                } else {
+                    "HorizontalAlign.Center"
+                }
+            }
+            AlignItems::End => {
+                if is_row {
+                    "VerticalAlign.Bottom"
+                } else {
+                    "HorizontalAlign.End"
+                }
+            }
+            AlignItems::Stretch => {
+                if is_row {
+                    "VerticalAlign.Center"
+                } else {
+                    "HorizontalAlign.Start"
+                }
+            } // No direct equivalent
+            AlignItems::Baseline => {
+                if is_row {
+                    "VerticalAlign.Center"
+                } else {
+                    "HorizontalAlign.Start"
+                }
+            } // No direct equivalent
         };
         format!(".alignItems({})", ark_align)
     }
@@ -726,25 +809,37 @@ mod tests {
     #[test]
     fn test_align_center_modifier() {
         let result = prop_to_modifier("align", "center", None);
-        assert_eq!(result, Some(".alignItems(HorizontalAlign.Center)".to_string()));
+        assert_eq!(
+            result,
+            Some(".alignItems(HorizontalAlign.Center)".to_string())
+        );
     }
 
     #[test]
     fn test_align_start_modifier() {
         let result = prop_to_modifier("align", "start", None);
-        assert_eq!(result, Some(".alignItems(HorizontalAlign.Start)".to_string()));
+        assert_eq!(
+            result,
+            Some(".alignItems(HorizontalAlign.Start)".to_string())
+        );
     }
 
     #[test]
     fn test_arrange_center_modifier() {
         let result = prop_to_modifier("arrange", "center", None);
-        assert_eq!(result, Some(".justifyContent(FlexAlign.Center)".to_string()));
+        assert_eq!(
+            result,
+            Some(".justifyContent(FlexAlign.Center)".to_string())
+        );
     }
 
     #[test]
     fn test_arrange_between_modifier() {
         let result = prop_to_modifier("arrange", "between", None);
-        assert_eq!(result, Some(".justifyContent(FlexAlign.SpaceBetween)".to_string()));
+        assert_eq!(
+            result,
+            Some(".justifyContent(FlexAlign.SpaceBetween)".to_string())
+        );
     }
 
     // ========================================================================
@@ -761,7 +856,9 @@ mod tests {
 
         // Horizontal padding
         let mods = dsl.convert_style("px-4");
-        assert!(mods.iter().any(|m| m.contains("left") && m.contains("right")));
+        assert!(mods
+            .iter()
+            .any(|m| m.contains("left") && m.contains("right")));
     }
 
     #[test]
@@ -787,11 +884,15 @@ mod tests {
 
         // Font weight
         let mods = dsl.convert_style("font-bold");
-        assert!(mods.iter().any(|m| m.contains(".fontWeight") && m.contains("Bold")));
+        assert!(mods
+            .iter()
+            .any(|m| m.contains(".fontWeight") && m.contains("Bold")));
 
         // Text align
         let mods = dsl.convert_style("text-center");
-        assert!(mods.iter().any(|m| m.contains(".textAlign") && m.contains("Center")));
+        assert!(mods
+            .iter()
+            .any(|m| m.contains(".textAlign") && m.contains("Center")));
     }
 
     #[test]
@@ -849,8 +950,12 @@ mod tests {
     #[test]
     fn test_legacy_class_to_modifier() {
         // Ensure backwards compatibility - use style_to_modifier for ArkTS property names
-        assert!(style_to_modifier("padding", "4").unwrap().contains(".padding"));
-        assert!(style_to_modifier("fontWeight", "Bold").unwrap().contains(".fontWeight"));
+        assert!(style_to_modifier("padding", "4")
+            .unwrap()
+            .contains(".padding"));
+        assert!(style_to_modifier("fontWeight", "Bold")
+            .unwrap()
+            .contains(".fontWeight"));
     }
 
     // ========================================================================
@@ -929,11 +1034,17 @@ mod tests {
 
         // With hyphen
         let mods = dsl.convert_style("auto-play");
-        assert!(mods.iter().any(|m| m == ".autoPlay(true)"), "Expected .autoPlay(true) for 'auto-play'");
+        assert!(
+            mods.iter().any(|m| m == ".autoPlay(true)"),
+            "Expected .autoPlay(true) for 'auto-play'"
+        );
 
         // Without hyphen
         let mods = dsl.convert_style("autoplay");
-        assert!(mods.iter().any(|m| m == ".autoPlay(true)"), "Expected .autoPlay(true) for 'autoplay'");
+        assert!(
+            mods.iter().any(|m| m == ".autoPlay(true)"),
+            "Expected .autoPlay(true) for 'autoplay'"
+        );
     }
 
     #[test]
@@ -941,7 +1052,10 @@ mod tests {
         let dsl = ArkModifierDsl::new();
 
         let mods = dsl.convert_style("loop");
-        assert!(mods.iter().any(|m| m == ".loop(true)"), "Expected .loop(true) for 'loop'");
+        assert!(
+            mods.iter().any(|m| m == ".loop(true)"),
+            "Expected .loop(true) for 'loop'"
+        );
     }
 
     #[test]
@@ -949,7 +1063,10 @@ mod tests {
         let dsl = ArkModifierDsl::new();
 
         let mods = dsl.convert_style("indicator");
-        assert!(mods.iter().any(|m| m == ".indicator(true)"), "Expected .indicator(true) for 'indicator'");
+        assert!(
+            mods.iter().any(|m| m == ".indicator(true)"),
+            "Expected .indicator(true) for 'indicator'"
+        );
     }
 
     #[test]
@@ -957,15 +1074,33 @@ mod tests {
         let dsl = ArkModifierDsl::new();
 
         let mods = dsl.convert_style("auto-play loop");
-        assert!(mods.iter().any(|m| m == ".autoPlay(true)"), "Expected .autoPlay(true)");
-        assert!(mods.iter().any(|m| m == ".loop(true)"), "Expected .loop(true)");
+        assert!(
+            mods.iter().any(|m| m == ".autoPlay(true)"),
+            "Expected .autoPlay(true)"
+        );
+        assert!(
+            mods.iter().any(|m| m == ".loop(true)"),
+            "Expected .loop(true)"
+        );
 
         // With additional Tailwind classes
         let mods = dsl.convert_style("auto-play loop w-full h-200");
-        assert!(mods.iter().any(|m| m == ".autoPlay(true)"), "Expected .autoPlay(true)");
-        assert!(mods.iter().any(|m| m == ".loop(true)"), "Expected .loop(true)");
-        assert!(mods.iter().any(|m| m.contains(".width")), "Expected width modifier");
-        assert!(mods.iter().any(|m| m.contains(".height")), "Expected height modifier");
+        assert!(
+            mods.iter().any(|m| m == ".autoPlay(true)"),
+            "Expected .autoPlay(true)"
+        );
+        assert!(
+            mods.iter().any(|m| m == ".loop(true)"),
+            "Expected .loop(true)"
+        );
+        assert!(
+            mods.iter().any(|m| m.contains(".width")),
+            "Expected width modifier"
+        );
+        assert!(
+            mods.iter().any(|m| m.contains(".height")),
+            "Expected height modifier"
+        );
     }
 
     #[test]
@@ -974,7 +1109,10 @@ mod tests {
 
         // "no-indicator" should NOT add .indicator(true)
         let mods = dsl.convert_style("no-indicator");
-        assert!(!mods.iter().any(|m| m.contains("indicator")), "Should not have indicator modifier for 'no-indicator'");
+        assert!(
+            !mods.iter().any(|m| m.contains("indicator")),
+            "Should not have indicator modifier for 'no-indicator'"
+        );
     }
 
     #[test]
@@ -983,7 +1121,10 @@ mod tests {
 
         // "animation-loop" should NOT add .loop(true) for Swiper
         let mods = dsl.convert_style("animation-loop");
-        assert!(!mods.iter().any(|m| m == ".loop(true)"), "animation-loop should not add Swiper .loop(true)");
+        assert!(
+            !mods.iter().any(|m| m == ".loop(true)"),
+            "animation-loop should not add Swiper .loop(true)"
+        );
     }
 
     // ========================================================================
@@ -996,15 +1137,25 @@ mod tests {
 
         // rows-3 → .rowsTemplate('1fr 1fr 1fr')
         let mods = dsl.convert_style("rows-3");
-        assert!(mods.iter().any(|m| m == ".rowsTemplate('1fr 1fr 1fr')"), "Expected rowsTemplate for rows-3");
+        assert!(
+            mods.iter().any(|m| m == ".rowsTemplate('1fr 1fr 1fr')"),
+            "Expected rowsTemplate for rows-3"
+        );
 
         // rows-1 → .rowsTemplate('1fr')
         let mods = dsl.convert_style("rows-1");
-        assert!(mods.iter().any(|m| m == ".rowsTemplate('1fr')"), "Expected rowsTemplate for rows-1");
+        assert!(
+            mods.iter().any(|m| m == ".rowsTemplate('1fr')"),
+            "Expected rowsTemplate for rows-1"
+        );
 
         // rows-6 → .rowsTemplate('1fr 1fr 1fr 1fr 1fr 1fr')
         let mods = dsl.convert_style("rows-6");
-        assert!(mods.iter().any(|m| m == ".rowsTemplate('1fr 1fr 1fr 1fr 1fr 1fr')"), "Expected rowsTemplate for rows-6");
+        assert!(
+            mods.iter()
+                .any(|m| m == ".rowsTemplate('1fr 1fr 1fr 1fr 1fr 1fr')"),
+            "Expected rowsTemplate for rows-6"
+        );
     }
 
     #[test]
@@ -1013,11 +1164,18 @@ mod tests {
 
         // cols-2 → .columnsTemplate('1fr 1fr')
         let mods = dsl.convert_style("cols-2");
-        assert!(mods.iter().any(|m| m == ".columnsTemplate('1fr 1fr')"), "Expected columnsTemplate for cols-2");
+        assert!(
+            mods.iter().any(|m| m == ".columnsTemplate('1fr 1fr')"),
+            "Expected columnsTemplate for cols-2"
+        );
 
         // cols-4 → .columnsTemplate('1fr 1fr 1fr 1fr')
         let mods = dsl.convert_style("cols-4");
-        assert!(mods.iter().any(|m| m == ".columnsTemplate('1fr 1fr 1fr 1fr')"), "Expected columnsTemplate for cols-4");
+        assert!(
+            mods.iter()
+                .any(|m| m == ".columnsTemplate('1fr 1fr 1fr 1fr')"),
+            "Expected columnsTemplate for cols-4"
+        );
     }
 
     #[test]
@@ -1026,11 +1184,17 @@ mod tests {
 
         // row-gap-8 → .rowsGap(8)
         let mods = dsl.convert_style("row-gap-8");
-        assert!(mods.iter().any(|m| m == ".rowsGap(8)"), "Expected rowsGap for row-gap-8");
+        assert!(
+            mods.iter().any(|m| m == ".rowsGap(8)"),
+            "Expected rowsGap for row-gap-8"
+        );
 
         // row-gap-16 → .rowsGap(16)
         let mods = dsl.convert_style("row-gap-16");
-        assert!(mods.iter().any(|m| m == ".rowsGap(16)"), "Expected rowsGap for row-gap-16");
+        assert!(
+            mods.iter().any(|m| m == ".rowsGap(16)"),
+            "Expected rowsGap for row-gap-16"
+        );
     }
 
     #[test]
@@ -1039,11 +1203,17 @@ mod tests {
 
         // col-gap-8 → .columnsGap(8)
         let mods = dsl.convert_style("col-gap-8");
-        assert!(mods.iter().any(|m| m == ".columnsGap(8)"), "Expected columnsGap for col-gap-8");
+        assert!(
+            mods.iter().any(|m| m == ".columnsGap(8)"),
+            "Expected columnsGap for col-gap-8"
+        );
 
         // col-gap-4 → .columnsGap(4)
         let mods = dsl.convert_style("col-gap-4");
-        assert!(mods.iter().any(|m| m == ".columnsGap(4)"), "Expected columnsGap for col-gap-4");
+        assert!(
+            mods.iter().any(|m| m == ".columnsGap(4)"),
+            "Expected columnsGap for col-gap-4"
+        );
     }
 
     #[test]
@@ -1052,15 +1222,24 @@ mod tests {
 
         // scrollbar-off → .scrollBar(BarState.Off)
         let mods = dsl.convert_style("scrollbar-off");
-        assert!(mods.iter().any(|m| m == ".scrollBar(BarState.Off)"), "Expected scrollBar Off");
+        assert!(
+            mods.iter().any(|m| m == ".scrollBar(BarState.Off)"),
+            "Expected scrollBar Off"
+        );
 
         // scrollbar-on → .scrollBar(BarState.On)
         let mods = dsl.convert_style("scrollbar-on");
-        assert!(mods.iter().any(|m| m == ".scrollBar(BarState.On)"), "Expected scrollBar On");
+        assert!(
+            mods.iter().any(|m| m == ".scrollBar(BarState.On)"),
+            "Expected scrollBar On"
+        );
 
         // scrollbar-auto → .scrollBar(BarState.Auto)
         let mods = dsl.convert_style("scrollbar-auto");
-        assert!(mods.iter().any(|m| m == ".scrollBar(BarState.Auto)"), "Expected scrollBar Auto");
+        assert!(
+            mods.iter().any(|m| m == ".scrollBar(BarState.Auto)"),
+            "Expected scrollBar Auto"
+        );
     }
 
     #[test]
@@ -1069,18 +1248,42 @@ mod tests {
 
         // Combine multiple grid modifiers
         let mods = dsl.convert_style("rows-3 cols-2 row-gap-8 col-gap-4 scrollbar-off");
-        assert!(mods.iter().any(|m| m.contains("rowsTemplate")), "Expected rowsTemplate");
-        assert!(mods.iter().any(|m| m.contains("columnsTemplate")), "Expected columnsTemplate");
-        assert!(mods.iter().any(|m| m.contains("rowsGap")), "Expected rowsGap");
-        assert!(mods.iter().any(|m| m.contains("columnsGap")), "Expected columnsGap");
-        assert!(mods.iter().any(|m| m.contains("scrollBar")), "Expected scrollBar");
+        assert!(
+            mods.iter().any(|m| m.contains("rowsTemplate")),
+            "Expected rowsTemplate"
+        );
+        assert!(
+            mods.iter().any(|m| m.contains("columnsTemplate")),
+            "Expected columnsTemplate"
+        );
+        assert!(
+            mods.iter().any(|m| m.contains("rowsGap")),
+            "Expected rowsGap"
+        );
+        assert!(
+            mods.iter().any(|m| m.contains("columnsGap")),
+            "Expected columnsGap"
+        );
+        assert!(
+            mods.iter().any(|m| m.contains("scrollBar")),
+            "Expected scrollBar"
+        );
 
         // With Tailwind classes
         let mods = dsl.convert_style("rows-1 h-169 px-4 pt-1 scrollbar-off");
-        assert!(mods.iter().any(|m| m.contains("rowsTemplate")), "Expected rowsTemplate");
+        assert!(
+            mods.iter().any(|m| m.contains("rowsTemplate")),
+            "Expected rowsTemplate"
+        );
         assert!(mods.iter().any(|m| m.contains("height")), "Expected height");
-        assert!(mods.iter().any(|m| m.contains("padding")), "Expected padding");
-        assert!(mods.iter().any(|m| m.contains("scrollBar")), "Expected scrollBar");
+        assert!(
+            mods.iter().any(|m| m.contains("padding")),
+            "Expected padding"
+        );
+        assert!(
+            mods.iter().any(|m| m.contains("scrollBar")),
+            "Expected scrollBar"
+        );
     }
 
     #[test]
@@ -1089,22 +1292,37 @@ mod tests {
 
         // rows-3 without explicit height → should add default height (3 * 160 = 480)
         let mods = dsl.convert_style("rows-3");
-        assert!(mods.iter().any(|m| m == ".height(480)"), "Expected default height 480 for rows-3");
+        assert!(
+            mods.iter().any(|m| m == ".height(480)"),
+            "Expected default height 480 for rows-3"
+        );
 
         // rows-1 without explicit height → should add default height (1 * 160 = 160)
         let mods = dsl.convert_style("rows-1");
-        assert!(mods.iter().any(|m| m == ".height(160)"), "Expected default height 160 for rows-1");
+        assert!(
+            mods.iter().any(|m| m == ".height(160)"),
+            "Expected default height 160 for rows-1"
+        );
 
         // rows-2 with explicit height → should NOT add default height
         let mods = dsl.convert_style("rows-2 h-200");
-        assert!(mods.iter().any(|m| m.contains("height")), "Expected height modifier");
+        assert!(
+            mods.iter().any(|m| m.contains("height")),
+            "Expected height modifier"
+        );
         // Should have only one height modifier
         let height_count = mods.iter().filter(|m| m.contains(".height")).count();
-        assert_eq!(height_count, 1, "Should have only one height modifier when explicit height is set");
+        assert_eq!(
+            height_count, 1,
+            "Should have only one height modifier when explicit height is set"
+        );
 
         // cols-2 without rows → should NOT add default height
         let mods = dsl.convert_style("cols-2");
-        assert!(!mods.iter().any(|m| m.contains(".height")), "Should not add default height when only cols is specified");
+        assert!(
+            !mods.iter().any(|m| m.contains(".height")),
+            "Should not add default height when only cols is specified"
+        );
     }
 
     #[test]
@@ -1113,19 +1331,34 @@ mod tests {
 
         // Grid without scrollbar-xx → should add default scrollbar-off
         let mods = dsl.convert_style("rows-3");
-        assert!(mods.iter().any(|m| m == ".scrollBar(BarState.Off)"), "Expected default scrollbar-off");
+        assert!(
+            mods.iter().any(|m| m == ".scrollBar(BarState.Off)"),
+            "Expected default scrollbar-off"
+        );
 
         // Grid with explicit scrollbar-on → should NOT add default
         let mods = dsl.convert_style("rows-3 scrollbar-on");
-        assert!(mods.iter().any(|m| m == ".scrollBar(BarState.On)"), "Expected scrollbar-on");
+        assert!(
+            mods.iter().any(|m| m == ".scrollBar(BarState.On)"),
+            "Expected scrollbar-on"
+        );
         // Should have only one scrollBar modifier
         let scrollbar_count = mods.iter().filter(|m| m.contains("scrollBar")).count();
-        assert_eq!(scrollbar_count, 1, "Should have only one scrollBar modifier when explicit");
+        assert_eq!(
+            scrollbar_count, 1,
+            "Should have only one scrollBar modifier when explicit"
+        );
 
         // Grid with explicit scrollbar-auto → should NOT add default
         let mods = dsl.convert_style("rows-3 scrollbar-auto");
-        assert!(mods.iter().any(|m| m == ".scrollBar(BarState.Auto)"), "Expected scrollbar-auto");
+        assert!(
+            mods.iter().any(|m| m == ".scrollBar(BarState.Auto)"),
+            "Expected scrollbar-auto"
+        );
         let scrollbar_count = mods.iter().filter(|m| m.contains("scrollBar")).count();
-        assert_eq!(scrollbar_count, 1, "Should have only one scrollBar modifier when explicit");
+        assert_eq!(
+            scrollbar_count, 1,
+            "Should have only one scrollBar modifier when explicit"
+        );
     }
 }

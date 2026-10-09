@@ -200,11 +200,7 @@ fn main() {
 }
 "#;
         let result = run_with_capture(code);
-        assert!(
-            result.is_ok(),
-            "spawn crashed the VM: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "spawn crashed the VM: {:?}", result.err());
         let (_r, stdout) = result.unwrap();
         // The spawned task runs in its own RAM with its own captured copy of
         // `counter`, so the caller's `counter` stays 0. If the body were still

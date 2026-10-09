@@ -6,11 +6,11 @@
 
 use std::collections::HashMap;
 
-use iced::advanced::widget::Operation;
 use iced::advanced::widget::operation::{Focusable, Outcome, Scrollable, TextInput};
+use iced::advanced::widget::Operation;
+use iced::widget::Id;
 use iced::Rectangle;
 use iced::Vector;
-use iced::widget::Id;
 
 /// Collected layout bounds: widget ID string → (x, y, width, height).
 pub type BoundsMap = HashMap<String, (f32, f32, f32, f32)>;
@@ -55,9 +55,14 @@ impl LayoutCollector {
         if let Some(id) = id {
             if let Some(key) = Self::aura_id_str(id) {
                 if let Some(prev) = self.bounds.get(&key) {
-                    self.dup.push((key.clone(), *prev, (bounds.x, bounds.y, bounds.width, bounds.height)));
+                    self.dup.push((
+                        key.clone(),
+                        *prev,
+                        (bounds.x, bounds.y, bounds.width, bounds.height),
+                    ));
                 }
-                self.bounds.insert(key, (bounds.x, bounds.y, bounds.width, bounds.height));
+                self.bounds
+                    .insert(key, (bounds.x, bounds.y, bounds.width, bounds.height));
             }
         }
     }
@@ -83,21 +88,11 @@ impl Operation<BoundsMap> for LayoutCollector {
         self.try_record(id, bounds);
     }
 
-    fn focusable(
-        &mut self,
-        id: Option<&Id>,
-        bounds: Rectangle,
-        _state: &mut dyn Focusable,
-    ) {
+    fn focusable(&mut self, id: Option<&Id>, bounds: Rectangle, _state: &mut dyn Focusable) {
         self.try_record(id, bounds);
     }
 
-    fn text_input(
-        &mut self,
-        id: Option<&Id>,
-        bounds: Rectangle,
-        _state: &mut dyn TextInput,
-    ) {
+    fn text_input(&mut self, id: Option<&Id>, bounds: Rectangle, _state: &mut dyn TextInput) {
         self.try_record(id, bounds);
     }
 
@@ -105,9 +100,16 @@ impl Operation<BoundsMap> for LayoutCollector {
         // PLAN-530 步骤2：P530_TRACE=1 时输出重复 id 的双组 bounds。
         if std::env::var("P530_TRACE").as_deref() == Ok("1") {
             if self.dup.is_empty() {
-                eprintln!("[P530-TRACE] layout: no duplicate widget ids ({} total)", self.bounds.len());
+                eprintln!(
+                    "[P530-TRACE] layout: no duplicate widget ids ({} total)",
+                    self.bounds.len()
+                );
             } else {
-                eprintln!("[P530-TRACE] layout: {} DUPLICATE widget ids ({} total):", self.dup.len(), self.bounds.len());
+                eprintln!(
+                    "[P530-TRACE] layout: {} DUPLICATE widget ids ({} total):",
+                    self.dup.len(),
+                    self.bounds.len()
+                );
                 for (key, a, b) in self.dup.iter().take(20) {
                     eprintln!("[P530-TRACE]   dup {key}: first=({:.0},{:.0},{:.0}x{:.0}) again=({:.0},{:.0},{:.0}x{:.0})",
                         a.0, a.1, a.2, a.3, b.0, b.1, b.2, b.3);

@@ -658,11 +658,17 @@ pub(crate) async fn wait_legacy_stream_ready(stream_id: u64) {
         let notified = COMPLETION_NOTIFY.notified();
         tokio::pin!(notified);
         notified.as_mut().enable();
-        let handle = super::stdlib::ASYNC_STREAMS.lock().ok()
+        let handle = super::stdlib::ASYNC_STREAMS
+            .lock()
+            .ok()
             .and_then(|streams| streams.get(&stream_id).cloned());
         let Some(handle) = handle else { return };
         if handle.done.load(Ordering::SeqCst)
-            || handle.rx.lock().map(|rx| !rx.is_empty() || rx.is_closed()).unwrap_or(true)
+            || handle
+                .rx
+                .lock()
+                .map(|rx| !rx.is_empty() || rx.is_closed())
+                .unwrap_or(true)
         {
             return;
         }
@@ -685,33 +691,61 @@ mod tests {
     fn plan738_bridge_wait_uses_consumer_queue_after_raw_queue_drained() {
         let id = alloc_async_id();
         let raw = Arc::new(StreamHandle {
-            cell: Mutex::new(StreamCell { state: StreamState::Pending, queue: Default::default() }),
-            ready: Default::default(), space: Default::default(), finalized: AtomicBool::new(false),
+            cell: Mutex::new(StreamCell {
+                state: StreamState::Pending,
+                queue: Default::default(),
+            }),
+            ready: Default::default(),
+            space: Default::default(),
+            finalized: AtomicBool::new(false),
         });
         STREAMS.lock().unwrap().insert(id, raw);
         let (tx, rx) = tokio::sync::mpsc::channel(4);
         let legacy = Arc::new(super::super::stdlib::AsyncStreamHandle {
-            rx: Mutex::new(rx), done: AtomicBool::new(false),
+            rx: Mutex::new(rx),
+            done: AtomicBool::new(false),
         });
-        super::super::stdlib::ASYNC_STREAMS.lock().unwrap().insert(id, legacy.clone());
-        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
+        super::super::stdlib::ASYNC_STREAMS
+            .lock()
+            .unwrap()
+            .insert(id, legacy.clone());
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
         rt.block_on(async {
-            tx.send(super::super::stdlib::AsyncStreamEvent::Data("alpha".into())).await.unwrap();
+            tx.send(super::super::stdlib::AsyncStreamEvent::Data("alpha".into()))
+                .await
+                .unwrap();
             // The former credential blocks in this exact, valid bridge state.
-            assert!(tokio::time::timeout(Duration::from_millis(30), wait_stream_ready(id)).await.is_err());
-            assert!(tokio::time::timeout(Duration::from_millis(30), wait_legacy_stream_ready(id)).await.is_ok());
+            assert!(
+                tokio::time::timeout(Duration::from_millis(30), wait_stream_ready(id))
+                    .await
+                    .is_err()
+            );
+            assert!(
+                tokio::time::timeout(Duration::from_millis(30), wait_legacy_stream_ready(id))
+                    .await
+                    .is_ok()
+            );
             legacy.rx.lock().unwrap().try_recv().unwrap();
             // Arrival after parking must also wake the consumer immediately.
             let arrival = async {
                 tokio::task::yield_now().await;
-                tx.send(super::super::stdlib::AsyncStreamEvent::Data("beta".into())).await.unwrap();
+                tx.send(super::super::stdlib::AsyncStreamEvent::Data("beta".into()))
+                    .await
+                    .unwrap();
                 COMPLETION_NOTIFY.notify_waiters();
             };
-            let wait = tokio::time::timeout(Duration::from_millis(100), wait_legacy_stream_ready(id));
+            let wait =
+                tokio::time::timeout(Duration::from_millis(100), wait_legacy_stream_ready(id));
             let (result, _) = tokio::join!(wait, arrival);
             assert!(result.is_ok());
         });
-        super::super::stdlib::ASYNC_STREAMS.lock().unwrap().remove(&id);
+        super::super::stdlib::ASYNC_STREAMS
+            .lock()
+            .unwrap()
+            .remove(&id);
         STREAMS.lock().unwrap().remove(&id);
     }
 

@@ -30,7 +30,9 @@ fn test_a2r_corpus_file(path: &std::path::Path) -> AutoResult<()> {
     let mut sink = crate::trans::rust::transpile_rust(&name, &code)?;
     let expected = String::from_utf8_lossy(sink.done()?).to_string();
 
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
     let lib_code = crate::aavm2_lib_source(&root)?;
     let program = format!(
         "{}\nfn main() {{\n    print(ar_run(\"{}\", 0))\n}}\n",
@@ -39,9 +41,14 @@ fn test_a2r_corpus_file(path: &std::path::Path) -> AutoResult<()> {
     );
     let (_r, stdout) = run_with_capture(&program)?;
     if std::env::var("AA2R_DUMP").is_ok() {
-        eprintln!("DUMP-FILE {}
+        eprintln!(
+            "DUMP-FILE {}
 DUMP-HOST<<<{}>>>
-DUMP-AA2R<<<{}>>>", path.display(), expected, stdout);
+DUMP-AA2R<<<{}>>>",
+            path.display(),
+            expected,
+            stdout
+        );
     }
     assert_eq!(
         stdout.trim_end(),
@@ -58,7 +65,8 @@ DUMP-AA2R<<<{}>>>", path.display(), expected, stdout);
 /// `gNN_name/gNN_name.at`(三件套金样格式,新件一律此形态)。
 fn collect_corpus(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut out: Vec<std::path::PathBuf> = Vec::new();
-    for e in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("corpus dir {}: {e}", dir.display())) {
+    for e in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("corpus dir {}: {e}", dir.display()))
+    {
         let p = e.expect("read_dir entry").path();
         if p.is_dir() {
             let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -75,7 +83,10 @@ fn collect_corpus(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 }
 
 #[test]
-#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
+#[cfg_attr(
+    windows,
+    ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量"
+)]
 fn test_aavm2_a2r_is_corpus() {
     // Plan 564: 重内存测试守门——裸 cargo test(无 NEXTEST env)下秒退,
     // 防 2026-09-05 事件(12 线程全并发峰值 9.78GB);nextest 路径受
@@ -85,7 +96,11 @@ fn test_aavm2_a2r_is_corpus() {
     }
     let dir = corpus_dir();
     let entries = collect_corpus(&dir);
-    assert!(!entries.is_empty(), "no corpus files under {}", dir.display());
+    assert!(
+        !entries.is_empty(),
+        "no corpus files under {}",
+        dir.display()
+    );
     let mut checked = 0;
     for p in entries {
         test_a2r_corpus_file(&p).unwrap();
@@ -132,7 +147,9 @@ fn test_aavm2_a2r_probe_smoke() {
         "p05_double_match",
         "p12_is_binding_types",
     ];
-    let lib_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let lib_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
     let lib_code = crate::aavm2_lib_source(&lib_dir).unwrap();
     let probe_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/vm/99_idiom_probe");
     for p in probes {
@@ -151,10 +168,21 @@ fn main() {{
         let (_r, stdout) = run_with_capture(&program)
             .unwrap_or_else(|e| panic!("AA2R transpile failed for {}: {}", p, e));
         let rs = stdout.trim_end().to_string();
-        assert!(!rs.starts_with("TRANSPILE-ERROR") && !rs.is_empty(), "AA2R error for {}: {}", p, rs);
+        assert!(
+            !rs.starts_with("TRANSPILE-ERROR") && !rs.is_empty(),
+            "AA2R error for {}: {}",
+            p,
+            rs
+        );
         let out = std::env::temp_dir().join(format!("aa2r_probe_{}.rmeta", stem));
         let status = std::process::Command::new("rustc")
-            .args(["--crate-type=bin", "--edition", "2021", "--emit=metadata", "-o"])
+            .args([
+                "--crate-type=bin",
+                "--edition",
+                "2021",
+                "--emit=metadata",
+                "-o",
+            ])
             .arg(&out)
             .arg("-")
             .stdin(std::process::Stdio::piped())
@@ -163,7 +191,12 @@ fn main() {{
             .spawn()
             .and_then(|mut child| {
                 use std::io::Write;
-                child.stdin.as_mut().unwrap().write_all(rs.as_bytes()).unwrap();
+                child
+                    .stdin
+                    .as_mut()
+                    .unwrap()
+                    .write_all(rs.as_bytes())
+                    .unwrap();
                 child.wait_with_output()
             })
             .expect("rustc spawn");
@@ -213,7 +246,13 @@ fn test_aavm2_a2r_corpus_rustc() {
         let rs = String::from_utf8_lossy(sink.done().unwrap()).to_string();
         let out = std::env::temp_dir().join(format!("p523_rustc_{}.rmeta", name));
         let status = std::process::Command::new("rustc")
-            .args(["--crate-type=bin", "--edition", "2021", "--emit=metadata", "-o"])
+            .args([
+                "--crate-type=bin",
+                "--edition",
+                "2021",
+                "--emit=metadata",
+                "-o",
+            ])
             .arg(&out)
             .arg("-")
             .stdin(std::process::Stdio::piped())
@@ -222,7 +261,12 @@ fn test_aavm2_a2r_corpus_rustc() {
             .spawn()
             .and_then(|mut child| {
                 use std::io::Write;
-                child.stdin.as_mut().unwrap().write_all(rs.as_bytes()).unwrap();
+                child
+                    .stdin
+                    .as_mut()
+                    .unwrap()
+                    .write_all(rs.as_bytes())
+                    .unwrap();
                 child.wait_with_output()
             })
             .expect("rustc spawn");
@@ -235,7 +279,6 @@ fn test_aavm2_a2r_corpus_rustc() {
         );
     }
 }
-
 
 // ── Plan 523 W3:三件套金样(at+expected.rs+expected.out)+ A2R_BLESS ──
 //
@@ -261,7 +304,11 @@ fn golden_cases() -> Vec<(std::path::PathBuf, String)> {
         .collect();
     dirs.sort();
     for d in dirs {
-        let name = d.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+        let name = d
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
         if d.join(format!("{}.at", name)).is_file() {
             out.push((d, name));
         }
@@ -269,12 +316,20 @@ fn golden_cases() -> Vec<(std::path::PathBuf, String)> {
     // 平铺旁挂(抽验集,Plan 523 W3-10 裁定名单;at 不动、金样同名旁挂,
     // m5/compile 两 walker 零影响)
     const M4_SAMPLE: &[&str] = &[
-        "b07_fib", "b13_is_enum", "b32_is_break_continue", "b33_fstr_eval",
-        "b34_struct_basic", "b36_struct_nested", "b42_globals",
+        "b07_fib",
+        "b13_is_enum",
+        "b32_is_break_continue",
+        "b33_fstr_eval",
+        "b34_struct_basic",
+        "b36_struct_nested",
+        "b42_globals",
         // Plan 525 W1:裸 bool print 恢复件入金样集(P474 期望翻转评审位)
-        "b13_eval_print_true", "b14_eval_print_false", "b19_eval_print_bools",
+        "b13_eval_print_true",
+        "b14_eval_print_false",
+        "b19_eval_print_bools",
         // Plan 525 W2:方法族/is-struct 代表件入金样集(四路判定面)
-        "b44_methods_basic", "b45_is_struct_basic",
+        "b44_methods_basic",
+        "b45_is_struct_basic",
         // Plan 525 W3:容器族代表件入金样集
         "b46_list_basic",
         // Plan 525 W4:闭包族 g31/g32 与嵌套 fn g33 为 corpus_a2r per-case
@@ -340,7 +395,11 @@ fn test_aavm2_goldens_check() {
         "Goldens: {}/{} cases checked{}",
         cases.len() - blessed,
         cases.len(),
-        if blessed > 0 { format!(" (+{} blessed)", blessed) } else { String::new() }
+        if blessed > 0 {
+            format!(" (+{} blessed)", blessed)
+        } else {
+            String::new()
+        }
     );
 }
 
@@ -365,7 +424,9 @@ fn test_aavm2_fourpath_runner() {
     if !crate::tests::heavy_gate::heavy_gate("test_aavm2_fourpath_runner") {
         return;
     }
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
     let lib_code = crate::aavm2_lib_source(&root).unwrap();
     // 内容寻址缓存复用:compile corpus 的 build_aavm_rust_bin
     let bin = crate::tests::aavm_runner_tests::build_aavm_rust_bin_pub();
@@ -394,10 +455,17 @@ fn test_aavm2_fourpath_runner() {
         let (_r2, trans2) = crate::run_with_capture(&prog_trans).expect("path2 ar_run");
 
         // path3 / path4(转译编译 bin)
-        let run3 = std::process::Command::new(&bin).arg(&at).output().expect("path3 spawn");
+        let run3 = std::process::Command::new(&bin)
+            .arg(&at)
+            .output()
+            .expect("path3 spawn");
         assert!(run3.status.success(), "path3 failed on {}", name);
         let out3 = String::from_utf8_lossy(&run3.stdout).to_string();
-        let run4 = std::process::Command::new(&bin).arg("--trans").arg(&at).output().expect("path4 spawn");
+        let run4 = std::process::Command::new(&bin)
+            .arg("--trans")
+            .arg(&at)
+            .output()
+            .expect("path4 spawn");
         assert!(run4.status.success(), "path4 failed on {}", name);
         let trans4 = String::from_utf8_lossy(&run4.stdout).to_string();
 
@@ -412,7 +480,8 @@ fn test_aavm2_fourpath_runner() {
         let link_exe = link_dir.join("case_bin.exe");
         let rc = std::process::Command::new("rustc")
             .args(["--edition", "2021", "-O"])
-            .arg("-o").arg(&link_exe)
+            .arg("-o")
+            .arg(&link_exe)
             .arg("-")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -420,13 +489,20 @@ fn test_aavm2_fourpath_runner() {
             .spawn()
             .and_then(|mut child| {
                 use std::io::Write;
-                child.stdin.as_mut().unwrap().write_all(trans4.as_bytes()).unwrap();
+                child
+                    .stdin
+                    .as_mut()
+                    .unwrap()
+                    .write_all(trans4.as_bytes())
+                    .unwrap();
                 child.wait_with_output()
             })
             .expect("rustc spawn");
         let link_ok = rc.status.success();
         let out4r = if link_ok {
-            let ro = std::process::Command::new(&link_exe).output().expect("run linked");
+            let ro = std::process::Command::new(&link_exe)
+                .output()
+                .expect("run linked");
             assert!(ro.status.success(), "linked bin failed on {}", name);
             String::from_utf8_lossy(&ro.stdout).to_string()
         } else {
@@ -434,21 +510,34 @@ fn test_aavm2_fourpath_runner() {
         };
 
         // 判定
-        let exec_ok = link_ok
-            && out1.trim_end() == out3.trim_end()
-            && out1.trim_end() == out4r.trim_end();
-        let trans_ok = trans2.trim_end() == trans4.trim_end()
-            && trans2.trim_end() == trans_m.trim_end();
+        let exec_ok =
+            link_ok && out1.trim_end() == out3.trim_end() && out1.trim_end() == out4r.trim_end();
+        let trans_ok =
+            trans2.trim_end() == trans4.trim_end() && trans2.trim_end() == trans_m.trim_end();
         if !(exec_ok && trans_ok) {
             fails += 1;
         }
         table.push(format!(
             "{:<24} exec(②): {:<4} trans(③): {:<4} {}",
             name,
-            if out1.trim_end() == out3.trim_end() { "p1=p3" } else { "p1≠p3" },
-            if trans2.trim_end() == trans4.trim_end() { "p2=p4" } else { "p2≠p4" },
-            if exec_ok && trans_ok { "PASS" } else {
-                if link_ok { "FAIL" } else { "FAIL(link)" }
+            if out1.trim_end() == out3.trim_end() {
+                "p1=p3"
+            } else {
+                "p1≠p3"
+            },
+            if trans2.trim_end() == trans4.trim_end() {
+                "p2=p4"
+            } else {
+                "p2≠p4"
+            },
+            if exec_ok && trans_ok {
+                "PASS"
+            } else {
+                if link_ok {
+                    "FAIL"
+                } else {
+                    "FAIL(link)"
+                }
             }
         ));
         if !trans_ok {
@@ -472,7 +561,11 @@ fn test_aavm2_fourpath_runner() {
     for row in &table {
         eprintln!("{}", row);
     }
-    eprintln!("==== {} cases, {} PASS, {} FAIL ====", table.len(), table.len() - fails, fails);
+    eprintln!(
+        "==== {} cases, {} PASS, {} FAIL ====",
+        table.len(),
+        table.len() - fails,
+        fails
+    );
     assert_eq!(fails, 0, "four-path runner failures");
 }
-

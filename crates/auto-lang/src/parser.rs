@@ -125,7 +125,11 @@ fn stmt_expr_contains_await(expr: &Expr) -> bool {
         Expr::Await { .. } => true,
         Expr::Call(call) => {
             stmt_expr_contains_await(&call.name)
-                || call.args.args.iter().any(|a| stmt_expr_contains_await(&a.get_expr()))
+                || call
+                    .args
+                    .args
+                    .iter()
+                    .any(|a| stmt_expr_contains_await(&a.get_expr()))
         }
         Expr::Bina(l, _, r) => stmt_expr_contains_await(l) || stmt_expr_contains_await(r),
         Expr::Unary(_, e) => stmt_expr_contains_await(e),
@@ -149,7 +153,9 @@ fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
         // Property keywords (Phase 3): same precedence as dot
         // Error propagation (Phase 1b..3): ?. same precedence as dot
         // Plan 120: .? same precedence as dot
-        Op::DotView | Op::DotMut | Op::DotMove | Op::DotTake | Op::DotQuestion | Op::DotQuest => Ok(PREC_DOT),
+        Op::DotView | Op::DotMut | Op::DotMove | Op::DotTake | Op::DotQuestion | Op::DotQuest => {
+            Ok(PREC_DOT)
+        }
         // May type operators (Phase 1b.3)
         Op::QuestionQuestion => Ok(PREC_NULLCOALESCE),
         // Logical operators (Plan 072)
@@ -168,8 +174,7 @@ fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
 // parser.parse()
 // }
 
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CompileDest {
     Interp,    // for interperter
     TransC,    // for tranpiler to C
@@ -198,8 +203,6 @@ struct FnAnnotations {
     /// paths read this field, var paths read store_attrs — no interference.
     export_abi: Option<AutoStr>,
 }
-
-
 
 /// Plan 419 §8.3:块嵌套深度护栏(防真实病态递归把分段栈无限吃穿;
 /// 正常程序 < 50。debug 构建每层嵌套 ~670KB 巨帧,256 层上限把
@@ -426,9 +429,9 @@ impl<'a> Parser<'a> {
             dialects: Vec::new(),
             skip_check: false,
             errors: Vec::new(),
-            warnings: Vec::new(), // Plan 122: Warnings collection
-            pending_api_attrs: None, // Plan 312
-            pending_export_abi: None, // Plan 610
+            warnings: Vec::new(),             // Plan 122: Warnings collection
+            pending_api_attrs: None,          // Plan 312
+            pending_export_abi: None,         // Plan 610
             pending_generic_args: Vec::new(), // Plan 395
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
@@ -439,14 +442,14 @@ impl<'a> Parser<'a> {
             module_tracker: ModuleTracker::new(), // Plan 090
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
-            raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
-            impl_attrs: Vec::new(), // Plan 364 W1
-            file_attrs: Vec::new(), // Plan 306 Phase 3
+            raw_attrs: Vec::new(),              // Plan 159 Phase 6B-2
+            impl_attrs: Vec::new(),             // Plan 364 W1
+            file_attrs: Vec::new(),             // Plan 306 Phase 3
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
             py_item_imports: Vec::new(),
             script_pragma: false, // Plan 550 T10
-            rust_pragma: false, // Plan 555 T02
+            rust_pragma: false,   // Plan 555 T02
             saw_bare_null: false, // Plan 550 T10
         };
         parser.skip_comments();
@@ -501,9 +504,9 @@ impl<'a> Parser<'a> {
             dialects: Vec::new(),
             skip_check: false,
             errors: Vec::new(),
-            warnings: Vec::new(), // Plan 122: Warnings collection
-            pending_api_attrs: None, // Plan 312
-            pending_export_abi: None, // Plan 610
+            warnings: Vec::new(),             // Plan 122: Warnings collection
+            pending_api_attrs: None,          // Plan 312
+            pending_export_abi: None,         // Plan 610
             pending_generic_args: Vec::new(), // Plan 395
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
@@ -514,14 +517,14 @@ impl<'a> Parser<'a> {
             module_tracker: ModuleTracker::new(), // Plan 090
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
-            raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
-            impl_attrs: Vec::new(), // Plan 364 W1
-            file_attrs: Vec::new(), // Plan 306 Phase 3
+            raw_attrs: Vec::new(),              // Plan 159 Phase 6B-2
+            impl_attrs: Vec::new(),             // Plan 364 W1
+            file_attrs: Vec::new(),             // Plan 306 Phase 3
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
             py_item_imports: Vec::new(),
             script_pragma: false, // Plan 550 T10
-            rust_pragma: false, // Plan 555 T02
+            rust_pragma: false,   // Plan 555 T02
             saw_bare_null: false, // Plan 550 T10
         };
         parser.skip_comments();
@@ -559,9 +562,9 @@ impl<'a> Parser<'a> {
             dialects: Vec::new(),
             skip_check: false,
             errors: Vec::new(),
-            warnings: Vec::new(), // Plan 122: Warnings collection
-            pending_api_attrs: None, // Plan 312
-            pending_export_abi: None, // Plan 610
+            warnings: Vec::new(),             // Plan 122: Warnings collection
+            pending_api_attrs: None,          // Plan 312
+            pending_export_abi: None,         // Plan 610
             pending_generic_args: Vec::new(), // Plan 395
             error_limit: crate::get_error_limit(), // Use global error limit
             current_type_params: Vec::new(),
@@ -572,14 +575,14 @@ impl<'a> Parser<'a> {
             module_tracker: ModuleTracker::new(), // Plan 090
             lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
             session: crate::session::CompilerSession::default(), // Plan 096: Default session
-            raw_attrs: Vec::new(), // Plan 159 Phase 6B-2
-            impl_attrs: Vec::new(), // Plan 364 W1
-            file_attrs: Vec::new(), // Plan 306 Phase 3
+            raw_attrs: Vec::new(),              // Plan 159 Phase 6B-2
+            impl_attrs: Vec::new(),             // Plan 364 W1
+            file_attrs: Vec::new(),             // Plan 306 Phase 3
             pending_docs: Vec::new(),
             use_imports: Vec::new(),
             py_item_imports: Vec::new(),
             script_pragma: false, // Plan 550 T10
-            rust_pragma: false, // Plan 555 T02
+            rust_pragma: false,   // Plan 555 T02
             saw_bare_null: false, // Plan 550 T10
         };
         parser.skip_comments();
@@ -1178,12 +1181,16 @@ impl<'a> Parser<'a> {
         // Plan 05-Nav: Preserve unknown type names for code generation
         // Only preserve names that look like external types (not common collection names)
         // Common collection names without parameters should return Unknown
-        let common_collection_types = ["List", "Map", "Set", "Array", "Vec", "HashMap", "HashSet", "Option", "Result"];
+        let common_collection_types = [
+            "List", "Map", "Set", "Array", "Vec", "HashMap", "HashSet", "Option", "Result",
+        ];
         if common_collection_types.contains(&name) {
             // Return typed version for bare collection names (e.g., List -> Type::List(Unknown))
             match name {
                 "List" => return shared(Type::List(Box::new(Type::Unknown))),
-                "Map" => return shared(Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown))),
+                "Map" => {
+                    return shared(Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown)))
+                }
                 _ => return shared(Type::Unknown),
             }
         }
@@ -1200,8 +1207,9 @@ impl<'a> Parser<'a> {
             // default-on would be pure noise. AUTO_WARN_UNRESOLVED_TYPES=1
             // enables the one-shot deduped warning (dedupe per process).
             if std::env::var_os("AUTO_WARN_UNRESOLVED_TYPES").is_some() {
-                static WARNED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
-                    std::sync::OnceLock::new();
+                static WARNED: std::sync::OnceLock<
+                    std::sync::Mutex<std::collections::HashSet<String>>,
+                > = std::sync::OnceLock::new();
                 let warned = WARNED.get_or_init(Default::default);
                 if let Ok(mut set) = warned.lock() {
                     if set.insert(name.to_string()) {
@@ -1305,8 +1313,8 @@ impl<'a> Parser<'a> {
     /// `__exit__` 恰好一次）。
     fn with_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip `with`
-        // P560-D1/567-T12: with 头部窗口内 `as` Cast 臂截断——绑定位由本
-        // 函数消费（`with x as T {}` 的 T 不再被误吞为 Cast 类型位）。
+                     // P560-D1/567-T12: with 头部窗口内 `as` Cast 臂截断——绑定位由本
+                     // 函数消费（`with x as T {}` 的 T 不再被误吞为 Cast 类型位）。
         self.with_header = true;
         let ctx_res = self.parse_expr();
         self.with_header = false;
@@ -1381,12 +1389,7 @@ impl<'a> Parser<'a> {
                     })
                 };
                 let w = "__w".to_string();
-                let exit_call = || {
-                    Stmt::Expr(mk_bridge(
-                        "py_exit",
-                        Expr::Ident("__w".into()),
-                    ))
-                };
+                let exit_call = || Stmt::Expr(mk_bridge("py_exit", Expr::Ident("__w".into())));
                 let mut catch_stmts = vec![exit_call()];
                 catch_stmts.push(Stmt::Expr(mk_bridge(
                     "py_raise",
@@ -1432,7 +1435,7 @@ impl<'a> Parser<'a> {
     /// `for` (Iter::Cond), identical semantics to `for cond { body }`.
     fn while_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip `while`
-        // Optional parentheses around the condition: `while (cond)` or `while cond`.
+                     // Optional parentheses around the condition: `while (cond)` or `while cond`.
         let had_paren = if self.is_kind(TokenKind::LParen) {
             self.next();
             true
@@ -1550,14 +1553,14 @@ impl<'a> Parser<'a> {
 
     fn return_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip return keyword
-        // Plan 012 batch F (early return): a newline after `return` ends the
-        // statement — bare early return. Previously newlines were skipped to
-        // allow the value on the next line, which silently swallowed the
-        // following statement as the return expression:
-        //     return
-        //     .count += 1   // parsed as `return (.count += 1)`
-        // Now the return value must be on the same line as `return`; no
-        // source in the repo used the next-line form.
+                     // Plan 012 batch F (early return): a newline after `return` ends the
+                     // statement — bare early return. Previously newlines were skipped to
+                     // allow the value on the next line, which silently swallowed the
+                     // following statement as the return expression:
+                     //     return
+                     //     .count += 1   // parsed as `return (.count += 1)`
+                     // Now the return value must be on the same line as `return`; no
+                     // source in the repo used the next-line form.
         if self.is_kind(TokenKind::Newline)
             || self.is_kind(TokenKind::Semi)
             || self.is_kind(TokenKind::RBrace)
@@ -1574,12 +1577,13 @@ impl<'a> Parser<'a> {
     /// Can also be used bare as `yield` (yields nil).
     fn yield_expr_stmt(&mut self) -> AutoResult<Stmt> {
         self.next(); // skip 'yield' keyword
-        // Skip newlines
+                     // Skip newlines
         while self.is_kind(TokenKind::Newline) {
             self.next();
         }
         if self.is_kind(TokenKind::Semi)
-            || self.is_kind(TokenKind::RBrace) || self.is_kind(TokenKind::EOF)
+            || self.is_kind(TokenKind::RBrace)
+            || self.is_kind(TokenKind::EOF)
         {
             // bare `yield` → yield nil
             return Ok(Stmt::Expr(Expr::Yield(Box::new(Expr::Nil))));
@@ -1705,7 +1709,11 @@ impl<'a> Parser<'a> {
         let error_count = self.errors.len();
         AutoError::MultipleErrors {
             count: error_count,
-            plural: if error_count > 1 { "s".into() } else { "".into() },
+            plural: if error_count > 1 {
+                "s".into()
+            } else {
+                "".into()
+            },
             errors: self.errors.clone(),
         }
     }
@@ -2055,9 +2063,10 @@ impl<'a> Parser<'a> {
                 // 形态产物等），保留原样——原实现一律 body_to_obj，非 pair
                 // 尾块报 "Last block must be an object!" 挡死块语句收尾。
                 Stmt::Block(body) => {
-                    let all_pairs = body.stmts.iter().all(|s| {
-                        matches!(s, Stmt::Expr(Expr::Pair(_)))
-                    });
+                    let all_pairs = body
+                        .stmts
+                        .iter()
+                        .all(|s| matches!(s, Stmt::Expr(Expr::Pair(_))));
                     if all_pairs && !body.stmts.is_empty() {
                         let obj = self.body_to_obj(body)?;
                         stmts.pop();
@@ -2140,9 +2149,7 @@ impl<'a> Parser<'a> {
     // ref: https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
     pub fn expr_pratt(&mut self, min_power: u8) -> AutoResult<Expr> {
         // Plan 419 §8.3:表达式递归咽喉(cdb 实测括号链在此自递归)。
-        stacker::maybe_grow(512 * 1024, 1024 * 1024, || {
-            self.expr_pratt_inner(min_power)
-        })
+        stacker::maybe_grow(512 * 1024, 1024 * 1024, || self.expr_pratt_inner(min_power))
     }
 
     fn expr_pratt_inner(&mut self, min_power: u8) -> AutoResult<Expr> {
@@ -2752,7 +2759,10 @@ impl<'a> Parser<'a> {
                     // Infix `as` type cast: expr as Type
                     self.next(); // consume 'as'
                     let target_type = self.parse_type()?;
-                    lhs = Expr::Cast { expr: Box::new(lhs), target_type };
+                    lhs = Expr::Cast {
+                        expr: Box::new(lhs),
+                        target_type,
+                    };
                     continue;
                 }
                 TokenKind::Question => {
@@ -2763,14 +2773,25 @@ impl<'a> Parser<'a> {
                         break;
                     }
                     self.next(); // consume ?
-                    // Parse true branch with min_power > PREC_PAIR.l (8) so : isn't consumed as pair
+                                 // Parse true branch with min_power > PREC_PAIR.l (8) so : isn't consumed as pair
                     let true_expr = self.expr_pratt(9)?;
                     self.expect(TokenKind::Colon)?;
                     let false_expr = self.expr_pratt(PREC_TERNARY)?;
                     // Desugar into If expression
-                    let true_body = Body { stmts: vec![Stmt::Expr(true_expr)], has_new_line: false, source_lines: vec![] };
-                    let false_body = Body { stmts: vec![Stmt::Expr(false_expr)], has_new_line: false, source_lines: vec![] };
-                    let branch = Branch { cond: lhs, body: true_body };
+                    let true_body = Body {
+                        stmts: vec![Stmt::Expr(true_expr)],
+                        has_new_line: false,
+                        source_lines: vec![],
+                    };
+                    let false_body = Body {
+                        stmts: vec![Stmt::Expr(false_expr)],
+                        has_new_line: false,
+                        source_lines: vec![],
+                    };
+                    let branch = Branch {
+                        cond: lhs,
+                        body: true_body,
+                    };
                     lhs = Expr::If(If {
                         branches: vec![branch],
                         else_: Some(false_body),
@@ -2853,7 +2874,9 @@ impl<'a> Parser<'a> {
                     // Index or slice
                     Op::LSquare => {
                         self.next(); // skip [
-                        let rhs = if self.is_kind(TokenKind::Range) || self.is_kind(TokenKind::RangeEq) {
+                        let rhs = if self.is_kind(TokenKind::Range)
+                            || self.is_kind(TokenKind::RangeEq)
+                        {
                             // Leading ..: expr[..end] or expr[..=end]
                             let eq = self.is_kind(TokenKind::RangeEq);
                             self.next(); // skip .. or ..=
@@ -2974,10 +2997,10 @@ impl<'a> Parser<'a> {
                 break;
             }
             self.next(); // skip binary op
-            // Plan 317: Allow line continuation after || and && (and other
-            // binary ops) so multi-line conditions work:
-            //   if a.contains(x) ||
-            //      b.contains(x) {
+                         // Plan 317: Allow line continuation after || and && (and other
+                         // binary ops) so multi-line conditions work:
+                         //   if a.contains(x) ||
+                         //      b.contains(x) {
             if matches!(op, Op::Or | Op::And) {
                 self.skip_empty_lines();
             }
@@ -3048,14 +3071,18 @@ impl<'a> Parser<'a> {
                     if matches!(op, Op::Dot) && self.is_kind(TokenKind::Await) {
                         // .await suffix - consume the 'await' token
                         self.next();
-                        lhs = Expr::Await { expr: Box::new(lhs) };
+                        lhs = Expr::Await {
+                            expr: Box::new(lhs),
+                        };
                         continue;
                     }
                     // Plan 126: .go postfix operator - spawn background task
                     if matches!(op, Op::Dot) && self.is_kind(TokenKind::Go) {
                         // .go suffix - consume the 'go' token
                         self.next();
-                        lhs = Expr::Go { expr: Box::new(lhs) };
+                        lhs = Expr::Go {
+                            expr: Box::new(lhs),
+                        };
                         continue;
                     }
                     // Plan 162: .as(Type) type conversion
@@ -3065,7 +3092,10 @@ impl<'a> Parser<'a> {
                         self.expect(TokenKind::LParen)?;
                         let target_type = self.parse_type()?;
                         self.expect(TokenKind::RParen)?;
-                        lhs = Expr::Cast { expr: Box::new(lhs), target_type };
+                        lhs = Expr::Cast {
+                            expr: Box::new(lhs),
+                            target_type,
+                        };
                         continue;
                     }
                     // Plan 162: .to(Type) explicit type conversion
@@ -3075,7 +3105,10 @@ impl<'a> Parser<'a> {
                         self.expect(TokenKind::LParen)?;
                         let target_type = self.parse_type()?;
                         self.expect(TokenKind::RParen)?;
-                        lhs = Expr::To { expr: Box::new(lhs), target_type };
+                        lhs = Expr::To {
+                            expr: Box::new(lhs),
+                            target_type,
+                        };
                         continue;
                     }
                     // Handle enum variant constructors after dot: MayInt.Err(1), MayInt.Ok(val), etc.
@@ -3083,12 +3116,15 @@ impl<'a> Parser<'a> {
                     if matches!(op, Op::Dot)
                         && matches!(
                             self.cur.kind,
-                            TokenKind::ErrKW | TokenKind::OkKW | TokenKind::SomeKW | TokenKind::NoneKW
+                            TokenKind::ErrKW
+                                | TokenKind::OkKW
+                                | TokenKind::SomeKW
+                                | TokenKind::NoneKW
                         )
                     {
                         let variant_name: AutoStr = self.cur.text.clone().into();
                         self.next(); // consume the keyword token
-                        // Check if followed by parentheses (constructor call)
+                                     // Check if followed by parentheses (constructor call)
                         if self.is_kind(TokenKind::LParen) {
                             self.next(); // consume '('
                             let mut args = crate::ast::Args::new();
@@ -3265,7 +3301,7 @@ impl<'a> Parser<'a> {
             TokenKind::DotTake => Op::DotTake,
             TokenKind::QuestionQuestion => Op::QuestionQuestion,
             TokenKind::DotQuestion => Op::DotQuestion,
-            TokenKind::DotQuest => Op::DotQuest,  // Plan 120: .? error propagation
+            TokenKind::DotQuest => Op::DotQuest, // Plan 120: .? error propagation
             TokenKind::And => Op::And,
             TokenKind::Or => Op::Or,
             _ => {
@@ -3845,21 +3881,29 @@ impl<'a> Parser<'a> {
         // Used as method args, e.g. notes.filter(fn(n Note) bool { n.id > 0 }).
         if self.is_kind(TokenKind::Fn) {
             self.next(); // consume 'fn'
-            // Parse params: (name Type, name Type, ...) or ()
+                         // Parse params: (name Type, name Type, ...) or ()
             self.expect(TokenKind::LParen)?;
             let mut params = Vec::new();
             if !self.is_kind(TokenKind::RParen) {
                 loop {
                     let pname = self.parse_name()?;
-                    let pty = if self.is_type_name() { Some(self.parse_type()?) } else { None };
+                    let pty = if self.is_type_name() {
+                        Some(self.parse_type()?)
+                    } else {
+                        None
+                    };
                     params.push(crate::ast::ClosureParam::new(pname, pty));
-                    if !self.is_kind(TokenKind::Comma) { break; }
+                    if !self.is_kind(TokenKind::Comma) {
+                        break;
+                    }
                     self.next();
                 }
             }
             self.expect(TokenKind::RParen)?;
             // Optional return type
-            if self.is_type_name() { let _ = self.parse_type()?; }
+            if self.is_type_name() {
+                let _ = self.parse_type()?;
+            }
             // Plan 390 §15 Phase H (L5): Register all parameters in scope so the
             // body can reference them. The other two closure parse paths
             // (`x => ...` at ~1999, `(a,b) => ...` at ~3842) already do this;
@@ -3893,8 +3937,7 @@ impl<'a> Parser<'a> {
         // tokens. Without this, atom() rejected them → "Expected term".
         if self.is_kind(TokenKind::Ident) || self.cur_is_soft_ident() {
             let name = self.cur.text.clone();
-            if name == "Arc" || name == "Box" {
-            }
+            if name == "Arc" || name == "Box" {}
             self.next(); // consume the identifier
 
             // Check if this is a generic type instance (followed by <)
@@ -3952,18 +3995,23 @@ impl<'a> Parser<'a> {
             // `lookup_ident_type` returns None when the type_decl isn't found.
             // Lowercase idents stay identifiers (never struct construction) to
             // avoid clashing with a `name { ... }` block expression.
-            let accepts_as_type_construction = is_type || {
-                // Plan 043 M5: only widen for the UI scenario (store/widget
-                // model fields, where `Type{...}` construction is idiomatic
-                // and imported types may not be registered). Other dialects
-                // (notably gdscript) reuse atom() and their `Ident {` forms
-                // must not be reinterpreted as struct construction — doing so
-                // overflowed the parser stack on godot scene files.
-                self.is_ui_scenario()
-                    && !self.in_dot_rhs
-                    && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-                    && !matches!(self.lookup_meta(&name), Some(m) if matches!(m.as_ref(), Meta::Store(_) | Meta::Ref(_)))
-            };
+            let accepts_as_type_construction = is_type
+                || {
+                    // Plan 043 M5: only widen for the UI scenario (store/widget
+                    // model fields, where `Type{...}` construction is idiomatic
+                    // and imported types may not be registered). Other dialects
+                    // (notably gdscript) reuse atom() and their `Ident {` forms
+                    // must not be reinterpreted as struct construction — doing so
+                    // overflowed the parser stack on godot scene files.
+                    self.is_ui_scenario()
+                        && !self.in_dot_rhs
+                        && name
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false)
+                        && !matches!(self.lookup_meta(&name), Some(m) if matches!(m.as_ref(), Meta::Store(_) | Meta::Ref(_)))
+                };
             if self.is_kind(TokenKind::LBrace) && accepts_as_type_construction {
                 if !self.is_ui_scenario() {
                     // Non-UI dialects (notably gdscript) reuse atom() and their
@@ -4010,7 +4058,6 @@ impl<'a> Parser<'a> {
                     &AutoStr::new(),
                 )?));
             }
-
 
             // Not a special type expression, just a regular identifier
             // Plan 6B-4.14: Smart pointer constructors Box(expr) and Arc(expr)
@@ -4083,10 +4130,11 @@ impl<'a> Parser<'a> {
                             expected: ")".to_string(),
                             found: format!("{}", self.cur.text),
                             span,
-                        }.into());
+                        }
+                        .into());
                     }
                     self.next(); // consume ')'
-                    // Return early - don't let the final self.next() run
+                                 // Return early - don't let the final self.next() run
                     return Ok(Expr::Some(Box::new(value)));
                 } else {
                     // `Some` without parens - treat as identifier (variable reference)
@@ -4106,7 +4154,8 @@ impl<'a> Parser<'a> {
                             expected: ")".to_string(),
                             found: format!("{}", self.cur.text),
                             span,
-                        }.into());
+                        }
+                        .into());
                     }
                     self.next(); // consume ')'
                     return Ok(Expr::Ok(Box::new(value)));
@@ -4126,7 +4175,8 @@ impl<'a> Parser<'a> {
                             expected: ")".to_string(),
                             found: format!("{}", self.cur.text),
                             span,
-                        }.into());
+                        }
+                        .into());
                     }
                     self.next(); // consume ')'
                     return Ok(Expr::Err(Box::new(msg)));
@@ -4145,20 +4195,21 @@ impl<'a> Parser<'a> {
             // Plan 124: Async block: ~{ stmts }
             TokenKind::Tilde => {
                 self.next(); // consume '~'
-                // Expect a block { ... }
+                             // Expect a block { ... }
                 if !self.is_kind(TokenKind::LBrace) {
                     let span = pos_to_span(self.cur.pos);
                     return Err(SyntaxError::UnexpectedToken {
                         expected: "{".to_string(),
                         found: format!("{}", self.cur.text),
                         span,
-                    }.into());
+                    }
+                    .into());
                 }
                 let body = self.body()?;
                 // Return early since we already consumed '~' and the block
                 return Ok(Expr::AsyncBlock {
                     body,
-                    return_type: None,  // Will be inferred later
+                    return_type: None, // Will be inferred later
                 });
             }
             _ => {
@@ -4220,7 +4271,12 @@ impl<'a> Parser<'a> {
                             } else {
                                 (rest, "")
                             };
-                            if !field_name.is_empty() && field_name.chars().next().map_or(false, |c| c.is_alphabetic() || c == '_') {
+                            if !field_name.is_empty()
+                                && field_name
+                                    .chars()
+                                    .next()
+                                    .map_or(false, |c| c.is_alphabetic() || c == '_')
+                            {
                                 expr = Expr::Dot(Box::new(expr), field_name.into());
                                 if remaining.is_empty() {
                                     self.next();
@@ -4503,13 +4559,16 @@ impl<'a> Parser<'a> {
                     _ => None,
                 };
                 if let Some(type_name) = type_name {
-                    let bindings: Vec<Name> = call.args.args.iter().map(|arg| {
-                        match arg {
+                    let bindings: Vec<Name> = call
+                        .args
+                        .args
+                        .iter()
+                        .map(|arg| match arg {
                             Arg::Pos(Expr::Ident(name)) => name.clone(),
                             Arg::Name(name) => name.clone(),
                             _ => Name::from("_"),
-                        }
-                    }).collect();
+                        })
+                        .collect();
                     return Ok(Expr::Cover(Cover::Tag(TagCover {
                         kind: type_name,
                         tag: variant.clone(),
@@ -4559,7 +4618,11 @@ impl<'a> Parser<'a> {
 
     /// Plan 165: Parse struct destructuring pattern: Name { field1, field2: alias }
     /// Called when we see `{` after a type name in an is branch.
-    fn parse_struct_cover(&mut self, type_name: AutoStr, variant: Option<AutoStr>) -> AutoResult<Expr> {
+    fn parse_struct_cover(
+        &mut self,
+        type_name: AutoStr,
+        variant: Option<AutoStr>,
+    ) -> AutoResult<Expr> {
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
 
@@ -4574,10 +4637,7 @@ impl<'a> Parser<'a> {
                 // shorthand: field name = binding name
                 field.clone()
             };
-            fields.push(crate::ast::cover::FieldBinding {
-                field,
-                binding,
-            });
+            fields.push(crate::ast::cover::FieldBinding { field, binding });
 
             // Optional comma separator
             if self.is_kind(TokenKind::Comma) {
@@ -4599,13 +4659,14 @@ impl<'a> Parser<'a> {
         self.next(); // consume 'Some'
         if self.is_kind(TokenKind::LParen) {
             self.next(); // consume '('
-            // Expect an identifier (binding variable)
+                         // Expect an identifier (binding variable)
             if !self.is_kind(TokenKind::Ident) {
                 let span = pos_to_span(self.cur.pos);
                 return Err(SyntaxError::Generic {
                     message: "Pattern Some(x) expects an identifier".to_string(),
                     span,
-                }.into());
+                }
+                .into());
             }
             let binding = self.parse_name()?;
             self.expect(TokenKind::RParen)?; // consume ')'
@@ -4628,17 +4689,17 @@ impl<'a> Parser<'a> {
         self.next(); // consume 'Ok' or 'Err'
         if self.is_kind(TokenKind::LParen) {
             self.next(); // consume '('
-            // Parse the inner via the branch-pattern parser — it handles
-            // plain idents (normalized to a binding below) AND nested
-            // patterns: Type.Variant(binds), Type { fields },
-            // module.Type.Variant { fields } (Plan 396/B11(b)).
+                         // Parse the inner via the branch-pattern parser — it handles
+                         // plain idents (normalized to a binding below) AND nested
+                         // patterns: Type.Variant(binds), Type { fields },
+                         // module.Type.Variant { fields } (Plan 396/B11(b)).
             let prev_skip = self.skip_check;
             self.skip_check = true;
             let inner = self.is_branch_cond_expr_inner();
             self.skip_check = prev_skip;
             let inner = inner?;
             self.expect(TokenKind::RParen)?; // consume ')'
-            // A bare nested ident is normalized to a plain binding.
+                                             // A bare nested ident is normalized to a plain binding.
             if let Expr::Ident(name) = inner {
                 return Ok(Expr::ResultPattern(ResultCover {
                     variant,
@@ -4691,7 +4752,9 @@ impl<'a> Parser<'a> {
         let is_enum_or_tag = matches!(*typ.borrow(), Type::Enum(_) | Type::Tag(_));
         // Type::User may shadow an enum — check type_store explicitly
         let is_user_enum = matches!(*typ.borrow(), Type::User(_))
-            && self.type_store.read()
+            && self
+                .type_store
+                .read()
                 .map(|store| store.lookup_enum_decl_str(&name).is_some())
                 .unwrap_or(false);
         // Also treat as enum if it's a known type followed by .Variant pattern
@@ -4901,7 +4964,6 @@ impl<'a> Parser<'a> {
             let saved_prev = self.prev.clone();
             self.next(); // consume "pub"
 
-
             // Check what follows "pub"
             let stmt = match self.kind() {
                 TokenKind::Use => {
@@ -4911,17 +4973,31 @@ impl<'a> Parser<'a> {
                     }
                     stmt
                 }
-                TokenKind::Fn => {
-                    self.fn_decl_stmt_with_annotations("", false, false, false, false, true, Vec::new(), false)?
-                }
+                TokenKind::Fn => self.fn_decl_stmt_with_annotations(
+                    "",
+                    false,
+                    false,
+                    false,
+                    false,
+                    true,
+                    Vec::new(),
+                    false,
+                )?,
                 TokenKind::Static => {
                     // pub static fn ...
                     self.next(); // skip static
-                    self.fn_decl_stmt_with_annotations("", false, false, false, true, true, Vec::new(), false)?
+                    self.fn_decl_stmt_with_annotations(
+                        "",
+                        false,
+                        false,
+                        false,
+                        true,
+                        true,
+                        Vec::new(),
+                        false,
+                    )?
                 }
-                TokenKind::Type => {
-                    self.type_decl_stmt_with_annotation(false, true, Vec::new())?
-                }
+                TokenKind::Type => self.type_decl_stmt_with_annotation(false, true, Vec::new())?,
                 TokenKind::Enum | TokenKind::Tag => {
                     let mut stmt = self.enum_stmt()?;
                     if let Stmt::EnumDecl(ref mut e) = stmt {
@@ -5003,7 +5079,7 @@ impl<'a> Parser<'a> {
             TokenKind::Continue => self.continue_stmt()?,
             TokenKind::Return => self.return_stmt()?,
             TokenKind::Yield => self.yield_expr_stmt()?, // Plan 321: yield
-            TokenKind::Reply => self.reply_stmt()?,  // Plan 124 Phase 2.3: reply statement
+            TokenKind::Reply => self.reply_stmt()?,      // Plan 124 Phase 2.3: reply statement
             TokenKind::Use => self.use_stmt()?,
             TokenKind::Dep => {
                 // Plan 364 Step 3: In Config mode, manifest `dep xmen {}` is a
@@ -5035,7 +5111,7 @@ impl<'a> Parser<'a> {
             TokenKind::While => self.while_stmt()?, // Plan 010 (MS3-A)
             // Plan 560 T09 (E2)：with 上下文管理器糖。
             TokenKind::With => self.with_stmt()?,
-            TokenKind::Try => self.try_stmt()?,    // Plan 010 (MS3-A)
+            TokenKind::Try => self.try_stmt()?, // Plan 010 (MS3-A)
             TokenKind::Is => self.is_stmt()?,
             // Plan 095: Compile-time execution statements
             TokenKind::HashIf => self.hash_if_stmt()?,
@@ -5063,8 +5139,8 @@ impl<'a> Parser<'a> {
                     CompileDest::TransC if ann.has_rs && !ann.has_c => true, // Skip #[rs] in C transpiler
                     CompileDest::TransRust if ann.has_vm && !ann.has_rs => true, // Skip #[vm] in Rust transpiler
                     CompileDest::TransRust if ann.has_c && !ann.has_rs => true, // Skip #[c] in Rust transpiler
-                    CompileDest::Interp if ann.has_c && !ann.has_vm => true,    // Skip #[c] in interpreter
-                    CompileDest::Interp if ann.has_rs && !ann.has_vm => true,   // Skip #[rs] in interpreter
+                    CompileDest::Interp if ann.has_c && !ann.has_vm => true, // Skip #[c] in interpreter
+                    CompileDest::Interp if ann.has_rs && !ann.has_vm => true, // Skip #[rs] in interpreter
                     _ => false,
                 };
 
@@ -5099,7 +5175,8 @@ impl<'a> Parser<'a> {
 
                 // Check what comes next
                 // Plan 312: handle optional `pub` keyword between annotation and fn/type
-                let had_pub_prefix = self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident;
+                let had_pub_prefix =
+                    self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident;
                 if had_pub_prefix {
                     ann.has_pub = true;
                     self.next(); // consume "pub"
@@ -5124,7 +5201,11 @@ impl<'a> Parser<'a> {
                     )?
                 } else if self.is_kind(TokenKind::Type) {
                     // Type declaration
-                    self.type_decl_stmt_with_annotation(ann.has_c, ann.has_pub, ann.with_params.clone())?
+                    self.type_decl_stmt_with_annotation(
+                        ann.has_c,
+                        ann.has_pub,
+                        ann.with_params.clone(),
+                    )?
                 } else if self.is_kind(TokenKind::Enum) || self.is_kind(TokenKind::Tag) {
                     // Plan 376: #[derive(...)] / #[serde(...)] before an enum/tag.
                     // enum_stmt() picks up the attrs we just collected via raw_attrs.
@@ -5203,8 +5284,9 @@ impl<'a> Parser<'a> {
                     self.parse_ext_stmt()?
                 } else {
                     return Err(SyntaxError::Generic {
-                        message: "Expected 'fn', 'type', 'use', 'let', 'var', or 'task' after annotation"
-                            .to_string(),
+                        message:
+                            "Expected 'fn', 'type', 'use', 'let', 'var', or 'task' after annotation"
+                                .to_string(),
                         span: pos_to_span(self.cur.pos),
                     }
                     .into());
@@ -5283,23 +5365,39 @@ impl<'a> Parser<'a> {
                 let mut source_lines = Vec::new();
                 while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
                     self.skip_empty_lines();
-                    if self.is_kind(TokenKind::RBrace) { break; }
+                    if self.is_kind(TokenKind::RBrace) {
+                        break;
+                    }
                     let stmt_line = self.cur.pos.line;
                     stmts.push(self.parse_stmt()?);
                     source_lines.push(stmt_line);
                 }
                 self.expect(TokenKind::RBrace)?;
-                let inner_body = Body { stmts, source_lines, ..Default::default() };
+                let inner_body = Body {
+                    stmts,
+                    source_lines,
+                    ..Default::default()
+                };
                 // Prefix pub fn names with mod_name.
-                let prefixed_stmts: Vec<Stmt> = inner_body.stmts.into_iter().map(|mut stmt| {
-                    if let Stmt::Fn(ref mut fn_decl) = stmt {
-                        if fn_decl.is_pub {
-                            fn_decl.name = auto_val::AutoStr::from(format!("{}.{}", mod_name, fn_decl.name));
+                let prefixed_stmts: Vec<Stmt> = inner_body
+                    .stmts
+                    .into_iter()
+                    .map(|mut stmt| {
+                        if let Stmt::Fn(ref mut fn_decl) = stmt {
+                            if fn_decl.is_pub {
+                                fn_decl.name = auto_val::AutoStr::from(format!(
+                                    "{}.{}",
+                                    mod_name, fn_decl.name
+                                ));
+                            }
                         }
-                    }
-                    stmt
-                }).collect();
-                Stmt::Block(Body { stmts: prefixed_stmts, ..inner_body })
+                        stmt
+                    })
+                    .collect();
+                Stmt::Block(Body {
+                    stmts: prefixed_stmts,
+                    ..inner_body
+                })
             }
             // Otherwise, try to parse as an expression
             _ => self.expr_stmt()?,
@@ -5467,20 +5565,21 @@ impl<'a> Parser<'a> {
                 CompileDest::TransC if ann.has_vm && !ann.has_c => true, // Skip #[vm] in C transpiler
                 CompileDest::TransC if ann.has_rs && !ann.has_c => true, // Skip #[rs] in C transpiler
                 CompileDest::TransRust if ann.has_vm && !ann.has_rs => true, // Skip #[vm] in Rust transpiler
-                CompileDest::TransRust if ann.has_c && !ann.has_rs => true,  // Skip #[c] in Rust transpiler
-                CompileDest::Interp if ann.has_c && !ann.has_vm => true,     // Skip #[c] in interpreter
-                CompileDest::Interp if ann.has_rs && !ann.has_vm => true,    // Skip #[rs] in interpreter
+                CompileDest::TransRust if ann.has_c && !ann.has_rs => true, // Skip #[c] in Rust transpiler
+                CompileDest::Interp if ann.has_c && !ann.has_vm => true, // Skip #[c] in interpreter
+                CompileDest::Interp if ann.has_rs && !ann.has_vm => true, // Skip #[rs] in interpreter
                 _ => false,
             };
 
             // Plan 6B-4.19: Handle `pub` keyword prefix inside ext body
             // Must be checked BEFORE field detection since `pub` is also an Ident
-            let local_has_pub = if self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident {
-                self.next(); // consume "pub"
-                true
-            } else {
-                ann.has_pub
-            };
+            let local_has_pub =
+                if self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident {
+                    self.next(); // consume "pub"
+                    true
+                } else {
+                    ann.has_pub
+                };
 
             // Parse field declarations: name Type (same syntax as type members)
             // Fields must come before methods
@@ -5539,7 +5638,10 @@ impl<'a> Parser<'a> {
 
             // Parse method declarations (fn or static fn)
             // IMPORTANT: Check Static BEFORE Fn, since "static fn" starts with Static
-            if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Mut) || self.is_kind(TokenKind::Fn) {
+            if self.is_kind(TokenKind::Static)
+                || self.is_kind(TokenKind::Mut)
+                || self.is_kind(TokenKind::Fn)
+            {
                 // Track if this is a static method (Plan 035 Phase 4)
                 let is_static_method = self.is_kind(TokenKind::Static);
                 // Plan 163: Track if this is a mut method (&mut self)
@@ -5566,10 +5668,7 @@ impl<'a> Parser<'a> {
                     self.next(); // skip `mut` keyword
                     if !self.is_kind(TokenKind::Fn) {
                         return Err(SyntaxError::Generic {
-                            message: format!(
-                                "expected 'fn' after 'mut', found {:?}",
-                                self.kind()
-                            ),
+                            message: format!("expected 'fn' after 'mut', found {:?}", self.kind()),
                             span: pos_to_span(self.cur.pos),
                         }
                         .into());
@@ -5700,7 +5799,9 @@ impl<'a> Parser<'a> {
                 // enum Name u16 { ... } → Scalar with repr_type
                 let repr_type = self.parse_type()?;
                 let scalar_items = self.parse_scalar_enum_items()?;
-                kind = EnumKind::Scalar { repr_type: Some(repr_type) };
+                kind = EnumKind::Scalar {
+                    repr_type: Some(repr_type),
+                };
                 items = scalar_items;
             } else {
                 // Check if it's a known type (for Homogeneous)
@@ -6051,7 +6152,7 @@ impl<'a> Parser<'a> {
             }
             let name: AutoStr = self.cur.text.clone().into();
             self.next();
-            // Plan 396/B11(b): accept both  and 
+            // Plan 396/B11(b): accept both  and
             // (auto-ai's error.at declares struct-variant fields colon-style).
             if self.is_kind(TokenKind::Colon) {
                 self.next();
@@ -6068,7 +6169,11 @@ impl<'a> Parser<'a> {
     }
 
     /// Register an enum declaration in the parser's scope and type store.
-    fn register_enum_decl(&mut self, enum_decl: &EnumDecl, generic_params: &[crate::ast::GenericParam]) {
+    fn register_enum_decl(
+        &mut self,
+        enum_decl: &EnumDecl,
+        generic_params: &[crate::ast::GenericParam],
+    ) {
         match &enum_decl.kind {
             EnumKind::Scalar { .. } => {
                 self.define(enum_decl.name.as_str(), Meta::Enum(enum_decl.clone()));
@@ -6198,9 +6303,13 @@ impl<'a> Parser<'a> {
                 }
                 _ => {
                     return Err(SyntaxError::Generic {
-                        message: format!("Expected state field, lifecycle hook, or on block in task, got {:?}", self.kind()),
+                        message: format!(
+                            "Expected state field, lifecycle hook, or on block in task, got {:?}",
+                            self.kind()
+                        ),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
             }
             self.skip_empty_lines();
@@ -6280,9 +6389,13 @@ impl<'a> Parser<'a> {
         // Expect '!' postfix (async marker for lifecycle hooks)
         if !self.is_kind(TokenKind::Not) {
             return Err(SyntaxError::Generic {
-                message: format!("Lifecycle hook '{}' must have '!' postfix (e.g., fn {}() ! {{ ... }})", fn_name, fn_name),
+                message: format!(
+                    "Lifecycle hook '{}' must have '!' postfix (e.g., fn {}() ! {{ ... }})",
+                    fn_name, fn_name
+                ),
                 span: pos_to_span(self.cur.pos),
-            }.into());
+            }
+            .into());
         }
         self.next(); // consume '!'
 
@@ -6294,7 +6407,7 @@ impl<'a> Parser<'a> {
 
         // Create Fn struct
         let hook = Fn::new(
-            FnKind::Method,  // Lifecycle hooks are methods on the task
+            FnKind::Method, // Lifecycle hooks are methods on the task
             fn_name,
             Some(task_name.clone()),
             Vec::new(), // Lifecycle hooks have no params
@@ -6322,12 +6435,8 @@ impl<'a> Parser<'a> {
             None
         };
 
-        let mut on_block = TaskOnBlock::with_context_and_handlers(
-            context_param,
-            Vec::new(),
-            None,
-            pos,
-        );
+        let mut on_block =
+            TaskOnBlock::with_context_and_handlers(context_param, Vec::new(), None, pos);
 
         self.expect(TokenKind::LBrace)?;
         self.skip_empty_lines();
@@ -6483,9 +6592,13 @@ impl<'a> Parser<'a> {
                     self.next(); // consume ','
                 } else if !self.is_kind(TokenKind::RParen) {
                     return Err(SyntaxError::Generic {
-                        message: format!("Expected ',' or ')' in message pattern, got {:?}", self.kind()),
+                        message: format!(
+                            "Expected ',' or ')' in message pattern, got {:?}",
+                            self.kind()
+                        ),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
             }
 
@@ -6526,7 +6639,7 @@ impl<'a> Parser<'a> {
         // end of path, next should be a colon (for items), LBrace (Rust-style {items}), or end-of-statement
         if self.is_kind(TokenKind::Colon) {
             self.next(); // skip :
-            // Plan 167: Support wildcard import (use module: *)
+                         // Plan 167: Support wildcard import (use module: *)
             if self.is_kind(TokenKind::Star) {
                 self.next(); // skip *
                 is_wildcard = true;
@@ -6816,10 +6929,7 @@ impl<'a> Parser<'a> {
         let ident = self.expect_ident_str()?;
         if ident != "from" {
             return Err(SyntaxError::Generic {
-                message: format!(
-                    "Expected 'from' in use.web statement, got '{}'",
-                    ident
-                ),
+                message: format!("Expected 'from' in use.web statement, got '{}'", ident),
                 span: pos_to_span(self.cur.pos),
             }
             .into());
@@ -6885,8 +6995,8 @@ impl<'a> Parser<'a> {
         // check use.c or use.rust (only when no prefix)
         if prefix == PathPrefix::None && self.is_kind(TokenKind::Dot) {
             self.next(); // skip .
-            // Plan 470: capture the lang keyword's span before consuming it,
-            // so the deprecation label points at `use.rust` itself.
+                         // Plan 470: capture the lang keyword's span before consuming it,
+                         // so the deprecation label points at `use.rust` itself.
             let kw_span = pos_to_span(self.cur.pos);
             let name = self.expect_ident_str()?;
 
@@ -6918,14 +7028,20 @@ impl<'a> Parser<'a> {
 
         while self.is_kind(TokenKind::Dot) {
             self.next(); // skip .
-            // Keywords pac/super/super2/super3/super4 not allowed after dot
-            if self.is_kind(TokenKind::Pac) || self.is_kind(TokenKind::Super)
-                || self.is_kind(TokenKind::Super2) || self.is_kind(TokenKind::Super3)
-                || self.is_kind(TokenKind::Super4) {
+                         // Keywords pac/super/super2/super3/super4 not allowed after dot
+            if self.is_kind(TokenKind::Pac)
+                || self.is_kind(TokenKind::Super)
+                || self.is_kind(TokenKind::Super2)
+                || self.is_kind(TokenKind::Super3)
+                || self.is_kind(TokenKind::Super4)
+            {
                 return Err(SyntaxError::Generic {
-                    message: "Keywords 'pac' and 'super' can only appear at the start of a module path".into(),
+                    message:
+                        "Keywords 'pac' and 'super' can only appear at the start of a module path"
+                            .into(),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
             let segment = self.expect_ident_str()?;
             segments.push(segment.into());
@@ -6934,7 +7050,11 @@ impl<'a> Parser<'a> {
         let (items, is_wildcard) = self.parse_use_items()?;
 
         // Build ModulePath (Plan 131)
-        let module_path = Some(ModulePath::new(prefix.clone(), segments.clone(), items.clone()));
+        let module_path = Some(ModulePath::new(
+            prefix.clone(),
+            segments.clone(),
+            items.clone(),
+        ));
 
         // Legacy paths for backward compat
         let paths = if prefix == PathPrefix::Pac {
@@ -6942,7 +7062,10 @@ impl<'a> Parser<'a> {
             segments
         } else if matches!(prefix, PathPrefix::Super(_)) {
             // Include "super" in legacy paths (super.utils -> ["super", "utils"])
-            let super_count = match &prefix { PathPrefix::Super(n) => *n, _ => 0 };
+            let super_count = match &prefix {
+                PathPrefix::Super(n) => *n,
+                _ => 0,
+            };
             let mut p: Vec<AutoStr> = (0..super_count).map(|_| "super".into()).collect();
             p.extend(segments);
             p
@@ -7193,8 +7316,7 @@ impl<'a> Parser<'a> {
                     let stmts_len = stmts.len();
                     if self.in_on_body {
                         stmt_starts_with_dot.pop();
-                    } else
-                    if stmts_len >= 2 && *stmt_starts_with_dot.last().unwrap_or(&false) {
+                    } else if stmts_len >= 2 && *stmt_starts_with_dot.last().unwrap_or(&false) {
                         fn is_dot_self_call(expr: &Expr) -> bool {
                             match expr {
                                 Expr::Dot(obj, _) => {
@@ -7238,7 +7360,10 @@ impl<'a> Parser<'a> {
                                     continue;
                                 }
                                 match &stmts[i] {
-                                    Stmt::Expr(e) if !is_dot_self_call(e) && !matches!(e, Expr::Nil | Expr::Null) => {
+                                    Stmt::Expr(e)
+                                        if !is_dot_self_call(e)
+                                            && !matches!(e, Expr::Nil | Expr::Null) =>
+                                    {
                                         chain_target_idx = Some(i);
                                         break;
                                     }
@@ -7273,7 +7398,12 @@ impl<'a> Parser<'a> {
                                 self.errors.push(err.clone());
                                 self.cur = Token {
                                     kind: TokenKind::EOF,
-                                    pos: crate::token::Pos { line: 0, at: 0, pos: 0, len: 0 },
+                                    pos: crate::token::Pos {
+                                        line: 0,
+                                        at: 0,
+                                        pos: 0,
+                                        len: 0,
+                                    },
                                     text: "".into(),
                                 };
                                 self.exit_scope();
@@ -7363,7 +7493,11 @@ impl<'a> Parser<'a> {
         if ident_name.is_empty() {
             return false;
         }
-        ident_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+        ident_name
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
             && !matches!(
                 self.lookup_meta(ident_name),
                 Some(m) if matches!(m.as_ref(), Meta::Store(_) | Meta::Ref(_))
@@ -7846,11 +7980,7 @@ impl<'a> Parser<'a> {
 
         self.exit_scope();
 
-        Ok(Stmt::HashFor(HashFor {
-            var,
-            iter,
-            body,
-        }))
+        Ok(Stmt::HashFor(HashFor { var, iter, body }))
     }
 
     /// Plan 212 Phase 2.4: Parse #name(args) macro invocation
@@ -7869,7 +7999,10 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect(TokenKind::RParen)?;
-        Ok(Stmt::MacroCall(MacroCall { name: name.into(), args }))
+        Ok(Stmt::MacroCall(MacroCall {
+            name: name.into(),
+            args,
+        }))
     }
 
     /// Parse #is statement for compile-time type matching
@@ -7890,10 +8023,7 @@ impl<'a> Parser<'a> {
         }
         self.expect(TokenKind::RBrace)?;
 
-        Ok(Stmt::HashIs(HashIs {
-            target,
-            branches,
-        }))
+        Ok(Stmt::HashIs(HashIs { target, branches }))
     }
 
     /// Parse a single branch in #is statement
@@ -7936,24 +8066,28 @@ impl<'a> Parser<'a> {
                                 return Err(SyntaxError::Generic {
                                     message: format!("Invalid tag type: {}", cover.kind),
                                     span: pos_to_span(self.cur.pos),
-                                }.into());
+                                }
+                                .into());
                             }
                         };
 
                         for binding in &cover.bindings {
                             if binding.as_str() != "_" {
-                                self.define(binding.as_str(), Meta::Store(Store {
-                                    name: binding.clone(),
-                                    kind: StoreKind::Let,
-                                    attrs: vec![],
-                                    is_pub: false,
-                                    ty: tag_field_type.clone(),
-                                    expr: Expr::Uncover(TagUncover {
-                                        src: tgt.repr(),
-                                        cover: cover.clone(),
-                                        binding: binding.clone(),
+                                self.define(
+                                    binding.as_str(),
+                                    Meta::Store(Store {
+                                        name: binding.clone(),
+                                        kind: StoreKind::Let,
+                                        attrs: vec![],
+                                        is_pub: false,
+                                        ty: tag_field_type.clone(),
+                                        expr: Expr::Uncover(TagUncover {
+                                            src: tgt.repr(),
+                                            cover: cover.clone(),
+                                            binding: binding.clone(),
+                                        }),
                                     }),
-                                }));
+                                );
                             }
                         }
 
@@ -7987,7 +8121,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_is(&mut self) -> AutoResult<Is> {
         self.next(); // skip is
-        // Disable symbol checking for is-target (it's a name to match, not a variable to resolve)
+                     // Disable symbol checking for is-target (it's a name to match, not a variable to resolve)
         let old_skip_check = self.skip_check;
         self.skip_check = true;
         let target = self.parse_expr()?;
@@ -8087,14 +8221,19 @@ impl<'a> Parser<'a> {
                                 match &en_ref.kind {
                                     EnumKind::Heterogeneous { .. } => {
                                         // Find the variant's payload type
-                                        en_ref.items.iter()
+                                        en_ref
+                                            .items
+                                            .iter()
                                             .find(|item| item.name == cover.tag.as_str())
                                             .and_then(|item| item.payload_type.clone())
                                             .unwrap_or(Type::Unknown)
                                     }
                                     _ => {
                                         return Err(SyntaxError::Generic {
-                                            message: format!("Invalid enum type for tag pattern: {}", cover.kind),
+                                            message: format!(
+                                                "Invalid enum type for tag pattern: {}",
+                                                cover.kind
+                                            ),
                                             span: pos_to_span(self.cur.pos),
                                         }
                                         .into());
@@ -8726,10 +8865,18 @@ impl<'a> Parser<'a> {
                         "test" => ann.has_test = true,
                         // Plan 306 Phase 3: GDScript variable annotations.
                         // Capture full text (name + optional args) for verbatim @-prefix emission.
-                        "export" | "onready" | "export_range" | "export_enum"
-                        | "export_group" | "export_subgroup" | "export_flags"
-                        | "export_node_path" | "export_file" | "export_dir"
-                        | "export_multiline" | "export_color_no_alpha" => {
+                        "export"
+                        | "onready"
+                        | "export_range"
+                        | "export_enum"
+                        | "export_group"
+                        | "export_subgroup"
+                        | "export_flags"
+                        | "export_node_path"
+                        | "export_file"
+                        | "export_dir"
+                        | "export_multiline"
+                        | "export_color_no_alpha" => {
                             let mut attr_str = annot.to_string();
                             self.next(); // skip the annotation name
                             let args = self.collect_annotation_args();
@@ -9175,8 +9322,10 @@ impl<'a> Parser<'a> {
             Fn::new(kind, name.clone(), parent, params, body, ret_type)
         };
 
-        fn_expr.span = Some((declaration_start,
-            (self.prev.pos.pos + self.prev.pos.len).saturating_sub(declaration_start)));
+        fn_expr.span = Some((
+            declaration_start,
+            (self.prev.pos.pos + self.prev.pos.len).saturating_sub(declaration_start),
+        ));
 
         // Plan 417-E3: surface `<T>`/`[T]` generic params (with `has` bounds)
         // on the AST node, mirroring fn_decl_stmt_with_annotations (which
@@ -9428,8 +9577,10 @@ impl<'a> Parser<'a> {
             Fn::new(kind, name.clone(), parent, params, body, ret_type)
         };
 
-        fn_expr.span = Some((declaration_start,
-            (self.prev.pos.pos + self.prev.pos.len).saturating_sub(declaration_start)));
+        fn_expr.span = Some((
+            declaration_start,
+            (self.prev.pos.pos + self.prev.pos.len).saturating_sub(declaration_start),
+        ));
 
         // Plan 061: Set type_params from #[with(...)] and <T>
         fn_expr.type_params = type_params;
@@ -9665,7 +9816,7 @@ impl<'a> Parser<'a> {
                 ty: Type::Variadic,
                 default: None,
                 mode: ParamMode::default(),
-                    destructure: None,
+                destructure: None,
             });
         }
 
@@ -9853,7 +10004,12 @@ impl<'a> Parser<'a> {
         self.type_decl_stmt_with_annotation(false, false, Vec::new())
     }
 
-    pub fn type_decl_stmt_with_annotation(&mut self, has_c_annotation: bool, is_pub: bool, with_params: Vec<crate::ast::TypeParam>) -> AutoResult<Stmt> {
+    pub fn type_decl_stmt_with_annotation(
+        &mut self,
+        has_c_annotation: bool,
+        is_pub: bool,
+        with_params: Vec<crate::ast::TypeParam>,
+    ) -> AutoResult<Stmt> {
         // TODO: deal with scope
         self.next(); // skip `type` keyword
 
@@ -9942,30 +10098,30 @@ impl<'a> Parser<'a> {
                 // Fall through to the normal type body parsing below (don't
                 // consume the `{` — the body parser expects it).
             } else {
-            let target = self.parse_type()?;
-            self.expect(TokenKind::Semi)?;
+                let target = self.parse_type()?;
+                self.expect(TokenKind::Semi)?;
 
-            // Extract just the names from GenericParam for TypeAlias
-            let params: Vec<Name> = generic_params
-                .into_iter()
-                .filter_map(|p| match p {
-                    GenericParam::Type(tp) => Some(tp.name),
-                    GenericParam::Const(_) => None, // Const params not supported in type aliases
-                })
-                .collect();
+                // Extract just the names from GenericParam for TypeAlias
+                let params: Vec<Name> = generic_params
+                    .into_iter()
+                    .filter_map(|p| match p {
+                        GenericParam::Type(tp) => Some(tp.name),
+                        GenericParam::Const(_) => None, // Const params not supported in type aliases
+                    })
+                    .collect();
 
-            // Plan 091: Store type alias in Database (removed Universe dependency)
-            if let Some(ref db) = self.db {
-                if let Ok(mut db) = db.write() {
-                    db.insert_type_alias(name.clone(), (params.clone(), target.clone()));
+                // Plan 091: Store type alias in Database (removed Universe dependency)
+                if let Some(ref db) = self.db {
+                    if let Ok(mut db) = db.write() {
+                        db.insert_type_alias(name.clone(), (params.clone(), target.clone()));
+                    }
                 }
-            }
 
-            return Ok(Stmt::TypeAlias(TypeAlias {
-                name,
-                params,
-                target,
-            }));
+                return Ok(Stmt::TypeAlias(TypeAlias {
+                    name,
+                    params,
+                    target,
+                }));
             } // close else (non-record type alias)
         }
 
@@ -10062,9 +10218,10 @@ impl<'a> Parser<'a> {
         // empty TypeDecl (same shape the CType path above relies on). Only fire
         // when the next token is an end-of-statement/block token — NOT `is`,
         // `as`, `has`, or `{` (those continue to the body-parse path below).
-        if matches!(self.cur.kind,
-            TokenKind::Newline | TokenKind::Semi | TokenKind::EOF | TokenKind::RBrace)
-        {
+        if matches!(
+            self.cur.kind,
+            TokenKind::Newline | TokenKind::Semi | TokenKind::EOF | TokenKind::RBrace
+        ) {
             if self.is_kind(TokenKind::Semi) {
                 self.next(); // consume optional trailing ';'
             }
@@ -10127,9 +10284,10 @@ impl<'a> Parser<'a> {
                             // a bare name (assoc types parse as Type::User
                             // with an empty decl).
                             let assoc_name = match &ty {
-                                Type::User(u) if u.members.is_empty()
-                                    && u.methods.is_empty()
-                                    && u.generic_params.is_empty() =>
+                                Type::User(u)
+                                    if u.members.is_empty()
+                                        && u.methods.is_empty()
+                                        && u.generic_params.is_empty() =>
                                 {
                                     u.name.clone()
                                 }
@@ -10226,15 +10384,18 @@ impl<'a> Parser<'a> {
                 CompileDest::TransC if ann.has_vm && !ann.has_c => true, // Skip #[vm] in C transpiler
                 CompileDest::TransC if ann.has_rs && !ann.has_c => true, // Skip #[rs] in C transpiler
                 CompileDest::TransRust if ann.has_vm && !ann.has_rs => true, // Skip #[vm] in Rust transpiler
-                CompileDest::TransRust if ann.has_c && !ann.has_rs => true,  // Skip #[c] in Rust transpiler
-                CompileDest::Interp if ann.has_c && !ann.has_vm => true,     // Skip #[c] in interpreter
-                CompileDest::Interp if ann.has_rs && !ann.has_vm => true,    // Skip #[rs] in interpreter
+                CompileDest::TransRust if ann.has_c && !ann.has_rs => true, // Skip #[c] in Rust transpiler
+                CompileDest::Interp if ann.has_c && !ann.has_vm => true, // Skip #[c] in interpreter
+                CompileDest::Interp if ann.has_rs && !ann.has_vm => true, // Skip #[rs] in interpreter
                 _ => false,
             };
 
             if should_skip {
                 // Skip the entire function declaration
-                if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Mut) || self.is_kind(TokenKind::Fn) {
+                if self.is_kind(TokenKind::Static)
+                    || self.is_kind(TokenKind::Mut)
+                    || self.is_kind(TokenKind::Fn)
+                {
                     let is_static = self.is_kind(TokenKind::Static);
                     let is_mut = self.is_kind(TokenKind::Mut);
                     if is_static {
@@ -10260,15 +10421,19 @@ impl<'a> Parser<'a> {
             }
 
             // Plan 6B-4.19: Handle `pub` keyword prefix inside type body
-            let local_has_pub = if self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident {
-                self.next(); // consume "pub"
-                true
-            } else {
-                ann.has_pub
-            };
+            let local_has_pub =
+                if self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident {
+                    self.next(); // consume "pub"
+                    true
+                } else {
+                    ann.has_pub
+                };
 
             // Check for static fn, mut fn, or fn
-            if self.is_kind(TokenKind::Static) || self.is_kind(TokenKind::Mut) || self.is_kind(TokenKind::Fn) {
+            if self.is_kind(TokenKind::Static)
+                || self.is_kind(TokenKind::Mut)
+                || self.is_kind(TokenKind::Fn)
+            {
                 let is_static = self.is_kind(TokenKind::Static);
                 let is_mut = self.is_kind(TokenKind::Mut);
                 if is_static {
@@ -10552,7 +10717,6 @@ impl<'a> Parser<'a> {
         let ty = self.parse_type()?;
         Ok(UnionField { name, ty })
     }
-
 
     fn get_int_expr(&mut self, num: &Expr) -> i64 {
         match num {
@@ -11032,7 +11196,9 @@ impl<'a> Parser<'a> {
                     );
                 }
                 // Support Result(T, E) style generic with parens
-                if self.cur.kind == TokenKind::LParen && (name == "Result" || name == "Option" || name == "List" || name == "Map") {
+                if self.cur.kind == TokenKind::LParen
+                    && (name == "Result" || name == "Option" || name == "List" || name == "Map")
+                {
                     self.next(); // consume (
                     let mut args = vec![self.parse_type()?];
                     while self.cur.kind == TokenKind::Comma {
@@ -11309,7 +11475,11 @@ impl<'a> Parser<'a> {
                 // TODO: Implement TypeDecl substitution (similar to Tag substitution)
                 // For now, return GenericInstance
                 drop(base_type_ref);
-                return Ok(Type::GenericInstance(GenericInstance { base_name, args, source: None }));
+                return Ok(Type::GenericInstance(GenericInstance {
+                    base_name,
+                    args,
+                    source: None,
+                }));
             }
             _ => {
                 // Either built-in type or non-generic user-defined type
@@ -11330,7 +11500,11 @@ impl<'a> Parser<'a> {
                 } else if args.len() == 2 {
                     // List<int, Heap> → Return GenericInstance for full type
                     // This allows the transpiler to see both parameters
-                    Ok(Type::GenericInstance(GenericInstance { base_name, args, source: None }))
+                    Ok(Type::GenericInstance(GenericInstance {
+                        base_name,
+                        args,
+                        source: None,
+                    }))
                 } else {
                     Err(SyntaxError::Generic {
                         message: format!(
@@ -11343,13 +11517,19 @@ impl<'a> Parser<'a> {
                 }
             }
             "Map" => match args.len() {
-                2 => Ok(Type::Map(Box::new(args[0].clone()), Box::new(args[1].clone()))),
+                2 => Ok(Type::Map(
+                    Box::new(args[0].clone()),
+                    Box::new(args[1].clone()),
+                )),
                 // Plan 396/B11(b):  (single arg) leaves the value type
-                // unspecified — default V to Unknown, mirroring the bare 
+                // unspecified — default V to Unknown, mirroring the bare
                 // shortcut (parser.rs common-collection default). The previous
                 // hard error rejected valid sources (auto-ai tool.at's
                 // ), silently skipping whole-module transpile.
-                1 => Ok(Type::Map(Box::new(args[0].clone()), Box::new(Type::Unknown))),
+                1 => Ok(Type::Map(
+                    Box::new(args[0].clone()),
+                    Box::new(Type::Unknown),
+                )),
                 n => Err(SyntaxError::Generic {
                     message: format!(
                         "Map expects 1 or 2 type parameters (Map<K> / Map<K, V>), but got {}",
@@ -11391,7 +11571,11 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 // User-defined generic instance (including May<T> from stdlib)
-                Ok(Type::GenericInstance(GenericInstance { base_name, args, source: None }))
+                Ok(Type::GenericInstance(GenericInstance {
+                    base_name,
+                    args,
+                    source: None,
+                }))
             }
         }
     }
@@ -11454,9 +11638,7 @@ impl<'a> Parser<'a> {
     /// Some keywords like `Link`, `Type` are PascalCase identifiers that users
     /// may use as enum/type names.
     fn is_keyword_as_type(&self) -> bool {
-        matches!(self.cur.kind,
-            TokenKind::Link | TokenKind::Type
-        )
+        matches!(self.cur.kind, TokenKind::Link | TokenKind::Type)
     }
 
     pub fn parse_type(&mut self) -> AutoResult<Type> {
@@ -11494,8 +11676,7 @@ impl<'a> Parser<'a> {
                     self.next(); // consume '+'
                     if !self.is_kind(TokenKind::Ident) {
                         return Err(SyntaxError::Generic {
-                            message: "dyn trait object: expected trait name after '+'"
-                                .to_string(),
+                            message: "dyn trait object: expected trait name after '+'".to_string(),
                             span: pos_to_span(self.cur.pos),
                         }
                         .into());
@@ -11541,7 +11722,7 @@ impl<'a> Parser<'a> {
                 // Plan 120: Parse !T as Type::Result(T)
                 // Plan 121: ! without type means Result<void> (e.g., fn main() !)
                 self.next(); // Consume '!'
-                // Check if there's a type following the '!'
+                             // Check if there's a type following the '!'
                 if self.is_type_name() {
                     let inner_type = self.parse_type()?;
                     Ok(Type::Result(Box::new(inner_type)))
@@ -11559,7 +11740,10 @@ impl<'a> Parser<'a> {
                 let inner_type = self.parse_type()?;
                 // Check if inner is Iter<T> or Stream<T> — these are direct types, not Future
                 match &inner_type {
-                    Type::GenericInstance(inst) if inst.base_name.as_str() == "Iter" || inst.base_name.as_str() == "Stream" => {
+                    Type::GenericInstance(inst)
+                        if inst.base_name.as_str() == "Iter"
+                            || inst.base_name.as_str() == "Stream" =>
+                    {
                         // ~Iter<T> / ~Stream<T> → return directly (no Future wrapping)
                         Ok(inner_type)
                     }
@@ -11580,8 +11764,8 @@ impl<'a> Parser<'a> {
             TokenKind::LParen => {
                 // Plan 200: Tuple type (T1, T2, ...)
                 self.next(); // skip (
-                // Plan 391 D5: `()` is the unit type (Rust `()`), e.g. Result<(), str>.
-                // Map to Type::Void — rust.rs type_name already emits it as `()`.
+                             // Plan 391 D5: `()` is the unit type (Rust `()`), e.g. Result<(), str>.
+                             // Map to Type::Void — rust.rs type_name already emits it as `()`.
                 if self.is_kind(TokenKind::RParen) {
                     self.next(); // skip )
                     return Ok(Type::Void);
@@ -11600,7 +11784,14 @@ impl<'a> Parser<'a> {
                 }
             }
             // Allow keyword tokens that can also serve as type/ident names (e.g., Link, Path, Type, Color)
-            _ if self.cur.text.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) => {
+            _ if self
+                .cur
+                .text
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false) =>
+            {
                 // Keywords that look like type names (PascalCase) should be treated as identifiers
                 self.parse_ident_or_generic_type()
             }
@@ -11631,15 +11822,47 @@ impl<'a> Parser<'a> {
     /// Plan 408 P12 §10.3: browser/宿主全局标识符白名单——parser 豁免，
     /// codegen（ts_adapter）原样直出。Vue script-setup 运行时这些是全局可用的。
     const HOST_GLOBALS: &'static [&'static str] = &[
-        "document", "window", "navigator", "localStorage", "sessionStorage",
-        "matchMedia", "confirm", "alert", "prompt", "location", "history",
-        "console", "fetch", "requestAnimationFrame", "cancelAnimationFrame",
-        "setTimeout", "setInterval", "clearTimeout", "clearInterval",
-        "HTMLElement", "Event", "EventTarget", "IntersectionObserver",
-        "ResizeObserver", "MutationObserver", "URL", "URLSearchParams",
-        "FormData", "Blob", "File", "FileReader", "Headers", "Request",
-        "Response", "ReadableStream", "WritableStream", "TextEncoder",
-        "TextDecoder", "crypto", "performance", "screen",
+        "document",
+        "window",
+        "navigator",
+        "localStorage",
+        "sessionStorage",
+        "matchMedia",
+        "confirm",
+        "alert",
+        "prompt",
+        "location",
+        "history",
+        "console",
+        "fetch",
+        "requestAnimationFrame",
+        "cancelAnimationFrame",
+        "setTimeout",
+        "setInterval",
+        "clearTimeout",
+        "clearInterval",
+        "HTMLElement",
+        "Event",
+        "EventTarget",
+        "IntersectionObserver",
+        "ResizeObserver",
+        "MutationObserver",
+        "URL",
+        "URLSearchParams",
+        "FormData",
+        "Blob",
+        "File",
+        "FileReader",
+        "Headers",
+        "Request",
+        "Response",
+        "ReadableStream",
+        "WritableStream",
+        "TextEncoder",
+        "TextDecoder",
+        "crypto",
+        "performance",
+        "screen",
     ];
 
     /// Plan 410: `err_span` is the expression-start span recorded by the caller
@@ -11690,7 +11913,10 @@ impl<'a> Parser<'a> {
                     if self.infer_ctx.fn_scope_idxs.len() >= 2 {
                         if let Expr::Ident(name) = l.as_ref() {
                             if !self.exists(name.as_str())
-                                && self.infer_ctx.lookup_type(&Name::from(name.as_str())).is_some()
+                                && self
+                                    .infer_ctx
+                                    .lookup_type(&Name::from(name.as_str()))
+                                    .is_some()
                             {
                                 let candidates = self.get_defined_names();
                                 return Err(NameError::undefined_variable(
@@ -12101,9 +12327,9 @@ impl<'a> Parser<'a> {
         // Parse identifier or generic type instance (e.g., List or List<int>)
         let name = self.cur.text.clone();
         self.next(); // skip the identifier
-        // Plan 410: prev is now the expression's first token — its position is
-        // the error span hint for check_symbol (UndefinedVariable must point at
-        // the identifier, not at the cursor after the whole expression).
+                     // Plan 410: prev is now the expression's first token — its position is
+                     // the error span hint for check_symbol (UndefinedVariable must point at
+                     // the identifier, not at the cursor after the whole expression).
         let start_pos = self.prev.pos;
 
         // Plan 408: 'grid' is lexed as Ident now, so the statement-level path
@@ -12358,7 +12584,8 @@ impl<'a> Parser<'a> {
                 .unwrap_or(false),
             _ => false,
         };
-        let is_colon_pair = is_constructor && !is_dot_call
+        let is_colon_pair = is_constructor
+            && !is_dot_call
             && primary_prop.is_none()
             && !self.is_kind(TokenKind::LBrace)
             && self.is_kind(TokenKind::Colon);
@@ -12514,20 +12741,24 @@ impl<'a> Parser<'a> {
                 return Err(SyntaxError::Generic {
                     message: "nav() requires at least one argument (path)".to_string(),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
         };
 
         // Collect named arguments as params
-        let params: Vec<Pair> = args.args.iter().skip(1).filter_map(|arg| {
-            match arg {
+        let params: Vec<Pair> = args
+            .args
+            .iter()
+            .skip(1)
+            .filter_map(|arg| match arg {
                 Arg::Pair(name, expr) => Some(Pair {
                     key: Key::NamedKey(name.clone()),
                     value: Box::new(expr.clone()),
                 }),
                 _ => None,
-            }
-        }).collect();
+            })
+            .collect();
 
         Ok(Expr::NavCall {
             path: Box::new(path),
@@ -12746,20 +12977,23 @@ impl<'a> Parser<'a> {
                             return Err(SyntaxError::Generic {
                                 message: "duplicate `view` block in widget".into(),
                                 span: pos_to_span(self.cur.pos),
-                            }.into());
+                            }
+                            .into());
                         }
                     } else if self.is_kind(TokenKind::Ident) {
                         let vname = self.cur.text.clone();
                         self.next();
                         self.expect(TokenKind::LBrace)?;
                         let root = self.parse_view_root_nodes()?;
-                        if named_views.iter().any(|(n, _)| n.as_str() == vname.as_str()) {
+                        if named_views
+                            .iter()
+                            .any(|(n, _)| n.as_str() == vname.as_str())
+                        {
                             return Err(SyntaxError::Generic {
-                                message: format!(
-                                    "duplicate named view `view {}` in widget", vname
-                                ),
+                                message: format!("duplicate named view `view {}` in widget", vname),
                                 span: pos_to_span(self.cur.pos),
-                            }.into());
+                            }
+                            .into());
                         }
                         named_views.push((vname, ViewBlock { root }));
                     } else {
@@ -12769,7 +13003,8 @@ impl<'a> Parser<'a> {
                                 self.cur.text
                             ),
                             span: pos_to_span(self.cur.pos),
-                        }.into());
+                        }
+                        .into());
                     }
                 }
                 "on" => {
@@ -12796,7 +13031,8 @@ impl<'a> Parser<'a> {
                         return Err(SyntaxError::Generic {
                             message: "duplicate `setup` block in widget".into(),
                             span: pos_to_span(self.cur.pos),
-                        }.into());
+                        }
+                        .into());
                     }
                 }
                 "expose" => {
@@ -12808,7 +13044,8 @@ impl<'a> Parser<'a> {
                         return Err(SyntaxError::Generic {
                             message: "duplicate `actions` block in widget".into(),
                             span: pos_to_span(self.cur.pos),
-                        }.into());
+                        }
+                        .into());
                     }
                 }
                 // Plan 051 C7: timer 声明块（周期计时器）。
@@ -12817,7 +13054,8 @@ impl<'a> Parser<'a> {
                         return Err(SyntaxError::Generic {
                             message: "duplicate `timer` block in widget".into(),
                             span: pos_to_span(self.cur.pos),
-                        }.into());
+                        }
+                        .into());
                     }
                 }
                 _ => {
@@ -12839,9 +13077,8 @@ impl<'a> Parser<'a> {
                     self.prev = saved_prev;
                     if next_is_brace {
                         const BLOCK_KEYWORDS: [&str; 13] = [
-                            "msg", "model", "computed", "view", "on", "style",
-                            "use", "watch", "expose", "routes", "setup", "actions",
-                            "timer",
+                            "msg", "model", "computed", "view", "on", "style", "use", "watch",
+                            "expose", "routes", "setup", "actions", "timer",
                         ];
                         if let Some(kw) = BLOCK_KEYWORDS
                             .iter()
@@ -12855,7 +13092,9 @@ impl<'a> Parser<'a> {
                         }
                     }
                     if view.is_none() {
-                        view = Some(ViewBlock { root: self.parse_view_node()? });
+                        view = Some(ViewBlock {
+                            root: self.parse_view_node()?,
+                        });
                     } else {
                         return Err(SyntaxError::Generic {
                             message: format!(
@@ -12912,14 +13151,16 @@ impl<'a> Parser<'a> {
                             e.event, decl.name
                         ),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
             }
         }
         // Plan 451: actions 块的 handler 必须命中本 widget 的 on{} 事件——
         // 编译期校验（auto-atom 文件形态要运行时才对得上）。
         if let Some(ref acts) = decl.actions {
-            let handler_names: std::collections::HashSet<String> = decl.on
+            let handler_names: std::collections::HashSet<String> = decl
+                .on
                 .iter()
                 .flat_map(|o| o.handlers.iter())
                 .map(|h| on_handler_event_name(&h.pattern))
@@ -12933,7 +13174,8 @@ impl<'a> Parser<'a> {
                             a.handler, decl.name
                         ),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
             }
         }
@@ -12965,16 +13207,12 @@ impl<'a> Parser<'a> {
         let mut minted: Vec<(String, Vec<Stmt>)> = Vec::new();
         Self::mint_view_inline(&mut view.root, &mut counter, &mut minted)?;
         Self::mint_bare_input_sync(&decl.name, &mut view.root, &mut counter, &mut minted)?;
-        let dlg_states = Self::mint_modal_dialog_toggle(
-            &mut view.root,
-            &mut counter,
-            &mut minted,
-        )?;
+        let dlg_states = Self::mint_modal_dialog_toggle(&mut view.root, &mut counter, &mut minted)?;
         // PLAN-533 T5: 铸造的 `__dlg_open_<n>` state 落 model 块（缺失则建）。
         if !dlg_states.is_empty() {
-            let model = decl.model.get_or_insert_with(|| ModelBlock {
-                fields: Vec::new(),
-            });
+            let model = decl
+                .model
+                .get_or_insert_with(|| ModelBlock { fields: Vec::new() });
             for name in dlg_states {
                 if !model.fields.iter().any(|f| f.name.as_str() == name) {
                     model.fields.push(ModelField {
@@ -12993,11 +13231,15 @@ impl<'a> Parser<'a> {
         }
         for (pattern, stmts) in minted {
             let variant_name = pattern.trim_start_matches('.').to_string();
-            let declared = decl.messages.iter()
+            let declared = decl
+                .messages
+                .iter()
                 .any(|m| m.variants.iter().any(|v| v.name.as_str() == variant_name));
             if !declared {
                 if decl.messages.is_empty() {
-                    decl.messages.push(MsgDecl { variants: Vec::new() });
+                    decl.messages.push(MsgDecl {
+                        variants: Vec::new(),
+                    });
                 }
                 decl.messages[0].variants.push(MsgVariant {
                     name: Name::from(variant_name.as_str()),
@@ -13008,9 +13250,9 @@ impl<'a> Parser<'a> {
             }
             let mut body = Body::new();
             body.stmts = stmts;
-            let on = decl
-                .on
-                .get_or_insert_with(|| OnBlock { handlers: Vec::new() });
+            let on = decl.on.get_or_insert_with(|| OnBlock {
+                handlers: Vec::new(),
+            });
             on.handlers.push(OnHandler {
                 pattern,
                 params: Vec::new(),
@@ -13027,7 +13269,9 @@ impl<'a> Parser<'a> {
         minted: &mut Vec<(String, Vec<Stmt>)>,
     ) -> AutoResult<()> {
         match node {
-            ViewNode::Element { events, children, .. } => {
+            ViewNode::Element {
+                events, children, ..
+            } => {
                 Self::mint_events_inline(events, counter, minted)?;
                 for c in children.iter_mut() {
                     Self::mint_view_inline(c, counter, minted)?;
@@ -13038,7 +13282,11 @@ impl<'a> Parser<'a> {
                     Self::mint_view_inline(c, counter, minted)?;
                 }
             }
-            ViewNode::Conditional { then_body, else_body, .. } => {
+            ViewNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 for c in then_body.iter_mut() {
                     Self::mint_view_inline(c, counter, minted)?;
                 }
@@ -13116,7 +13364,13 @@ impl<'a> Parser<'a> {
         minted: &mut Vec<(String, Vec<Stmt>)>,
     ) -> AutoResult<()> {
         match node {
-            ViewNode::Element { tag, props, events, children, .. } => {
+            ViewNode::Element {
+                tag,
+                props,
+                events,
+                children,
+                ..
+            } => {
                 if matches!(tag.as_str(), "input" | "textarea")
                     && Self::direct_state_value_field(props).is_some()
                     && !events.iter().any(|ev| {
@@ -13155,7 +13409,11 @@ impl<'a> Parser<'a> {
                     Self::mint_bare_input_sync(widget_name, c, counter, minted)?;
                 }
             }
-            ViewNode::Conditional { then_body, else_body, .. } => {
+            ViewNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 for c in then_body.iter_mut() {
                     Self::mint_bare_input_sync(widget_name, c, counter, minted)?;
                 }
@@ -13247,7 +13505,13 @@ impl<'a> Parser<'a> {
         states: &mut Vec<String>,
     ) -> AutoResult<()> {
         match node {
-            ViewNode::Element { tag, props, events, children, .. } => {
+            ViewNode::Element {
+                tag,
+                props,
+                events,
+                children,
+                ..
+            } => {
                 // PLAN-534 D4: hovercard 根——同一 __dlg_open_N 铸造机器,
                 // 但 trigger 无显式事件时补 hover 进/出（onmouseenter→置
                 // true / onmouseleave→置 false）而非 onclick toggle/close
@@ -13287,9 +13551,17 @@ impl<'a> Parser<'a> {
                     minted.push((format!(".{leave}"), vec![leave_body]));
                     states.push(state_name);
                     for c in children.iter_mut() {
-                        if let ViewNode::Element { tag: ctag, events: cev, .. } = c {
+                        if let ViewNode::Element {
+                            tag: ctag,
+                            events: cev,
+                            ..
+                        } = c
+                        {
                             if Self::hover_card_role(ctag) == Some("trigger") {
-                                if !cev.iter().any(|e| matches!(e.name.as_str(), "onmouseenter" | "onhover")) {
+                                if !cev
+                                    .iter()
+                                    .any(|e| matches!(e.name.as_str(), "onmouseenter" | "onhover"))
+                                {
                                     cev.push(ViewEvent {
                                         name: "onmouseenter".to_string(),
                                         handler: format!(".{enter}"),
@@ -13297,7 +13569,9 @@ impl<'a> Parser<'a> {
                                         inline: None,
                                     });
                                 }
-                                if !cev.iter().any(|e| matches!(e.name.as_str(), "onmouseleave" | "onhoverout")) {
+                                if !cev.iter().any(|e| {
+                                    matches!(e.name.as_str(), "onmouseleave" | "onhoverout")
+                                }) {
                                     cev.push(ViewEvent {
                                         name: "onmouseleave".to_string(),
                                         handler: format!(".{leave}"),
@@ -13345,7 +13619,13 @@ impl<'a> Parser<'a> {
                     // （content 内任意深度）→ close。
                     let is_click = |name: &str| matches!(name, "onclick" | "onClick" | "on_click");
                     for c in children.iter_mut() {
-                        if let ViewNode::Element { tag: ctag, events: cev, children: cch, .. } = c {
+                        if let ViewNode::Element {
+                            tag: ctag,
+                            events: cev,
+                            children: cch,
+                            ..
+                        } = c
+                        {
                             if Self::modal_dialog_tag_role(ctag) == Some("trigger") {
                                 // 包裹形态（trigger 内单 Element 子,如包住的
                                 // button）且内层无 onclick → toggle 落内层按钮
@@ -13353,8 +13633,11 @@ impl<'a> Parser<'a> {
                                 // trigger 自身（裸文本形态由转换层读）。
                                 let target: &mut Vec<ViewEvent> = if cch.len() == 1 {
                                     match &mut cch[0] {
-                                        ViewNode::Element { events: inner_ev, .. }
-                                            if !inner_ev.iter().any(|e| is_click(e.name.as_str())) =>
+                                        ViewNode::Element {
+                                            events: inner_ev, ..
+                                        } if !inner_ev
+                                            .iter()
+                                            .any(|e| is_click(e.name.as_str())) =>
                                         {
                                             inner_ev
                                         }
@@ -13385,7 +13668,11 @@ impl<'a> Parser<'a> {
                     Self::mint_modal_dialog_toggle_inner(c, counter, minted, states)?;
                 }
             }
-            ViewNode::Conditional { then_body, else_body, .. } => {
+            ViewNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 for c in then_body.iter_mut() {
                     Self::mint_modal_dialog_toggle_inner(c, counter, minted, states)?;
                 }
@@ -13428,7 +13715,12 @@ impl<'a> Parser<'a> {
     /// （cancel/action/close 无 onclick → 补 `.__dlg_close_<n>`）。
     fn wire_modal_close_recursive(node: &mut ViewNode, close_variant: &str) {
         match node {
-            ViewNode::Element { tag, events, children, .. } => {
+            ViewNode::Element {
+                tag,
+                events,
+                children,
+                ..
+            } => {
                 if matches!(
                     Self::modal_dialog_tag_role(tag),
                     Some("cancel") | Some("action") | Some("close")
@@ -13452,7 +13744,11 @@ impl<'a> Parser<'a> {
                     Self::wire_modal_close_recursive(c, close_variant);
                 }
             }
-            ViewNode::Conditional { then_body, else_body, .. } => {
+            ViewNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 for c in then_body.iter_mut() {
                     Self::wire_modal_close_recursive(c, close_variant);
                 }
@@ -13623,7 +13919,13 @@ impl<'a> Parser<'a> {
                 .into());
             };
 
-            imports.push(ExtImport { kind, symbols, path, call_args, ref_fields });
+            imports.push(ExtImport {
+                kind,
+                symbols,
+                path,
+                call_args,
+                ref_fields,
+            });
             self.skip_empty_lines();
         }
         self.expect(TokenKind::RBrace)?;
@@ -13728,10 +14030,7 @@ impl<'a> Parser<'a> {
                 self.next();
             } else {
                 return Err(SyntaxError::Generic {
-                    message: format!(
-                        "Expected '->' after watch sources, got '{}'",
-                        self.cur.text
-                    ),
+                    message: format!("Expected '->' after watch sources, got '{}'", self.cur.text),
                     span: pos_to_span(self.cur.pos),
                 }
                 .into());
@@ -13830,7 +14129,10 @@ impl<'a> Parser<'a> {
             body.stmts.push(stmt);
         }
         self.expect(TokenKind::RBrace)?;
-        Ok(crate::ast::ui::SetupBlock { body, ref_annotations })
+        Ok(crate::ast::ui::SetupBlock {
+            body,
+            ref_annotations,
+        })
     }
 
     fn parse_expose_block_inner(&mut self) -> AutoResult<Vec<Name>> {
@@ -13946,7 +14248,8 @@ impl<'a> Parser<'a> {
                         return Err(SyntaxError::Generic {
                             message: "duplicate `timer` block in store".into(),
                             span: pos_to_span(self.cur.pos),
-                        }.into());
+                        }
+                        .into());
                     }
                 }
                 _ => {
@@ -13979,7 +14282,8 @@ impl<'a> Parser<'a> {
                             e.event, name
                         ),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
             }
         }
@@ -14197,7 +14501,10 @@ impl<'a> Parser<'a> {
                 let pname = self.cur.text.clone();
                 self.next();
                 let pty = self.parse_type()?;
-                params.push(SceneSignalParam { name: pname, ty: pty });
+                params.push(SceneSignalParam {
+                    name: pname,
+                    ty: pty,
+                });
                 if self.is_kind(TokenKind::Comma) {
                     self.next();
                     self.skip_empty_lines();
@@ -14315,12 +14622,12 @@ impl<'a> Parser<'a> {
         }
 
         self.expect(TokenKind::LBrace)?;
-        self.skip_empty_lines();  // Skip empty lines after opening brace
+        self.skip_empty_lines(); // Skip empty lines after opening brace
 
         let mut variants = Vec::new();
 
         while !self.is_kind(TokenKind::RBrace) {
-            self.skip_empty_lines();  // Skip empty lines before each variant
+            self.skip_empty_lines(); // Skip empty lines before each variant
             if self.is_kind(TokenKind::RBrace) {
                 break;
             }
@@ -14343,9 +14650,7 @@ impl<'a> Parser<'a> {
             if self.is_kind(TokenKind::LParen) {
                 self.next();
                 loop {
-                    let name = if self.is_kind(TokenKind::Ident)
-                        || self.is_kind(TokenKind::Str)
-                    {
+                    let name = if self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::Str) {
                         if let Ok(tok) = self.lexer.next() {
                             if tok.kind == TokenKind::Colon {
                                 self.lexer.push_token(tok);
@@ -14384,7 +14689,7 @@ impl<'a> Parser<'a> {
             if self.is_kind(TokenKind::Comma) {
                 self.next();
             }
-            self.skip_empty_lines();  // Skip empty lines after comma
+            self.skip_empty_lines(); // Skip empty lines after comma
         }
         self.expect(TokenKind::RBrace)?;
 
@@ -14437,7 +14742,14 @@ impl<'a> Parser<'a> {
             } else {
                 Expr::Nil
             };
-            fields.push(ModelField { name, ty, init, mutable, is_primary, decorators });
+            fields.push(ModelField {
+                name,
+                ty,
+                init,
+                mutable,
+                is_primary,
+                decorators,
+            });
             self.skip_empty_lines();
         }
         self.expect(TokenKind::RBrace)?;
@@ -14482,7 +14794,7 @@ impl<'a> Parser<'a> {
                     let mut args = Vec::new();
                     if self.is_kind(TokenKind::LParen) {
                         self.next(); // skip (
-                        // Parse string argument
+                                     // Parse string argument
                         if self.is_kind(TokenKind::Str) {
                             args.push(self.cur.text.to_string());
                             self.next();
@@ -14538,9 +14850,13 @@ impl<'a> Parser<'a> {
                 self.next();
             } else {
                 return Err(SyntaxError::Generic {
-                    message: format!("Expected '=>' after computed property name, got '{}'", self.cur.text),
+                    message: format!(
+                        "Expected '=>' after computed property name, got '{}'",
+                        self.cur.text
+                    ),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
 
             // Parse expression, or a multi-statement block body.
@@ -14803,7 +15119,8 @@ impl<'a> Parser<'a> {
                         self.cur.text
                     ),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
             let event: crate::ast::Name = self.cur.text.clone().into();
             self.next();
@@ -14829,7 +15146,8 @@ impl<'a> Parser<'a> {
                                     self.cur.text
                                 ),
                                 span: pos_to_span(self.cur.pos),
-                            }.into());
+                            }
+                            .into());
                         }
                         every_ms = Some(self.cur.text.as_str().parse::<u64>().map_err(|_| {
                             SyntaxError::Generic {
@@ -14852,7 +15170,8 @@ impl<'a> Parser<'a> {
                                 key
                             ),
                             span: pos_to_span(self.cur.pos),
-                        }.into());
+                        }
+                        .into());
                     }
                 }
                 self.skip_empty_lines();
@@ -14911,7 +15230,8 @@ impl<'a> Parser<'a> {
                         return Err(SyntaxError::Generic {
                             message: "duplicate `menubar` block in actions".into(),
                             span: pos_to_span(self.cur.pos),
-                        }.into());
+                        }
+                        .into());
                     }
                 }
                 "toolbar" => {
@@ -14919,7 +15239,8 @@ impl<'a> Parser<'a> {
                         return Err(SyntaxError::Generic {
                             message: "duplicate `toolbar` block in actions".into(),
                             span: pos_to_span(self.cur.pos),
-                        }.into());
+                        }
+                        .into());
                     }
                 }
                 _ => {
@@ -14929,13 +15250,18 @@ impl<'a> Parser<'a> {
                             ident
                         ),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
             }
             self.skip_empty_lines();
         }
         self.expect(TokenKind::RBrace)?;
-        Ok(crate::ast::ui::ActionsBlock { actions, menubar, toolbar })
+        Ok(crate::ast::ui::ActionsBlock {
+            actions,
+            menubar,
+            toolbar,
+        })
     }
 
     /// `action (id: "...", handler: .ActXxx, title: "...", icon: "...",
@@ -14992,7 +15318,13 @@ impl<'a> Parser<'a> {
             span: pos_to_span(self.cur.pos),
         })?;
         Ok(crate::ast::ui::ActionEntry {
-            id, handler, title, icon, shortcut, enabled_if, checked_if,
+            id,
+            handler,
+            title,
+            icon,
+            shortcut,
+            enabled_if,
+            checked_if,
         })
     }
 
@@ -15014,7 +15346,8 @@ impl<'a> Parser<'a> {
             return Err(SyntaxError::Generic {
                 message: "action: `handler` expects a `.Event` reference".into(),
                 span: pos_to_span(self.cur.pos),
-            }.into());
+            }
+            .into());
         }
         let name = self.cur.text.to_string();
         self.expect(TokenKind::Ident)?;
@@ -15038,9 +15371,7 @@ impl<'a> Parser<'a> {
         // 前导点词法两可（Dot token 或 text 为 "." 的标识符，同
         // parse_actions_handler_attr 的处理）。
         let at_dot = |p: &mut Self| p.is_kind(TokenKind::Dot) || p.cur.text.as_str() == ".";
-        while !self.is_kind(TokenKind::Comma)
-            && !self.is_kind(TokenKind::EOF)
-        {
+        while !self.is_kind(TokenKind::Comma) && !self.is_kind(TokenKind::EOF) {
             if self.is_kind(TokenKind::RParen) {
                 if depth <= 0 {
                     break;
@@ -15078,13 +15409,19 @@ impl<'a> Parser<'a> {
                     }
                 }
                 parts.push(chain);
-            } else if self.is_kind(TokenKind::Lt) || self.is_kind(TokenKind::Gt)
-                || self.is_kind(TokenKind::Le) || self.is_kind(TokenKind::Ge)
-                || self.is_kind(TokenKind::Eq) || self.is_kind(TokenKind::Neq)
-                || self.is_kind(TokenKind::And) || self.is_kind(TokenKind::Or)
+            } else if self.is_kind(TokenKind::Lt)
+                || self.is_kind(TokenKind::Gt)
+                || self.is_kind(TokenKind::Le)
+                || self.is_kind(TokenKind::Ge)
+                || self.is_kind(TokenKind::Eq)
+                || self.is_kind(TokenKind::Neq)
+                || self.is_kind(TokenKind::And)
+                || self.is_kind(TokenKind::Or)
                 || self.is_kind(TokenKind::Not)
-                || self.is_kind(TokenKind::Add) || self.is_kind(TokenKind::Sub)
-                || self.is_kind(TokenKind::Star) || self.is_kind(TokenKind::Div)
+                || self.is_kind(TokenKind::Add)
+                || self.is_kind(TokenKind::Sub)
+                || self.is_kind(TokenKind::Star)
+                || self.is_kind(TokenKind::Div)
                 || self.is_kind(TokenKind::Mod)
             {
                 parts.push(self.cur.text.to_string());
@@ -15114,14 +15451,16 @@ impl<'a> Parser<'a> {
                         self.cur.text
                     ),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
         }
         if parts.is_empty() {
             return Err(SyntaxError::Generic {
                 message: "action condition: enabled_if/checked_if expression is empty".into(),
                 span: pos_to_span(self.cur.pos),
-            }.into());
+            }
+            .into());
         }
         Ok(parts.join(" "))
     }
@@ -15163,9 +15502,13 @@ impl<'a> Parser<'a> {
                 "title" => title = Some(self.parse_actions_string_attr()?),
                 _ => {
                     return Err(SyntaxError::Generic {
-                        message: format!("menu: unexpected attribute `{}` (expected id/title)", key),
+                        message: format!(
+                            "menu: unexpected attribute `{}` (expected id/title)",
+                            key
+                        ),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
             }
             if self.is_kind(TokenKind::Comma) {
@@ -15226,9 +15569,13 @@ impl<'a> Parser<'a> {
                             action = Some(self.parse_actions_string_attr()?);
                         } else {
                             return Err(SyntaxError::Generic {
-                                message: format!("item: unexpected attribute `{}` (expected action)", key),
+                                message: format!(
+                                    "item: unexpected attribute `{}` (expected action)",
+                                    key
+                                ),
                                 span: pos_to_span(self.cur.pos),
-                            }.into());
+                            }
+                            .into());
                         }
                         if self.is_kind(TokenKind::Comma) {
                             self.next();
@@ -15245,7 +15592,8 @@ impl<'a> Parser<'a> {
                     return Err(SyntaxError::Generic {
                         message: format!("unexpected `{}` (expected item / sep)", ident),
                         span: pos_to_span(self.cur.pos),
-                    }.into());
+                    }
+                    .into());
                 }
             }
             if self.is_kind(TokenKind::Comma) {
@@ -15321,7 +15669,9 @@ impl<'a> Parser<'a> {
                     type_hint = ty_parts.join(" ");
                 }
                 params.push((pname, type_hint));
-                if self.cur.text.as_str() == "," { self.next(); }
+                if self.cur.text.as_str() == "," {
+                    self.next();
+                }
             }
             self.next();
         }
@@ -15420,7 +15770,8 @@ impl<'a> Parser<'a> {
             named_views: Vec::new(),
             on,
             bind: None,
-            props: params.into_iter()
+            props: params
+                .into_iter()
                 .map(|(pname, hint)| PropDecl {
                     name: pname,
                     ty: Self::fragment_param_hint_to_type(&hint),
@@ -15481,7 +15832,9 @@ impl<'a> Parser<'a> {
                     type_hint = ty_parts.join(" ");
                 }
                 params.push((pname, type_hint));
-                if self.cur.text.as_str() == "," { self.next(); }
+                if self.cur.text.as_str() == "," {
+                    self.next();
+                }
             }
             self.next();
         }
@@ -15504,7 +15857,11 @@ impl<'a> Parser<'a> {
         self.exit_scope();
         self.skip_empty_lines();
         self.expect(TokenKind::RBrace)?;
-        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl { name, params, body }))
+        Ok(Stmt::ViewFragmentDecl(ViewFragmentDecl {
+            name,
+            params,
+            body,
+        }))
     }
 
     /// Parse view block, returning the ViewBlock directly
@@ -15644,7 +16001,10 @@ impl<'a> Parser<'a> {
             if bindings.is_empty() {
                 return Ok(ViewNode::text(template));
             } else {
-                return Ok(ViewNode::Text(ViewText::Interpolated { template, bindings }));
+                return Ok(ViewNode::Text(ViewText::Interpolated {
+                    template,
+                    bindings,
+                }));
             }
         }
 
@@ -15666,14 +16026,14 @@ impl<'a> Parser<'a> {
             return Ok(ViewNode::text(tag));
         }
 
-
         // Check for string literal or f-string as primary property shorthand:
         // tag "value" → tag (primary_prop: "value")
         // tag f"count: ${.n}" → tag (primary_prop: f"count: ${.n})
         // The primary prop depends on the element type (from get_primary_prop)
         // Also handle .field as primary prop: Text .title → Text (text: .title)
         // Also handle ident.field as primary prop: Text item.order → Text (text: item.order)
-        let has_primary_prop_value = self.is_kind(TokenKind::Str) || self.is_kind(TokenKind::FStrStart);
+        let has_primary_prop_value =
+            self.is_kind(TokenKind::Str) || self.is_kind(TokenKind::FStrStart);
         let has_dot_primary = self.is_kind(TokenKind::Dot);
         // Check if identifier is followed by dot (like item.order) or paren (fn call).
         // Plan 012 P2: 'link'/'task' are contextual keywords (TokenKind::Link/
@@ -15689,19 +16049,20 @@ impl<'a> Parser<'a> {
         // into a stray dump/child node.
         let has_ident_field_primary = (self.is_kind(TokenKind::Ident)
             || self.is_kind(TokenKind::Link)
-            || self.is_kind(TokenKind::Task)) && {
-            // Peek ahead: ident 后跟 Dot（字段访问）/ LParen（函数调用）/
-            // LBracket（索引访问）
-            if let Ok(next_token) = self.lexer.next() {
-                let is_field_or_call = next_token.kind == TokenKind::Dot
-                    || next_token.kind == TokenKind::LParen
-                    || next_token.kind == TokenKind::LSquare;
-                self.lexer.push_token(next_token);
-                is_field_or_call
-            } else {
-                false
-            }
-        };
+            || self.is_kind(TokenKind::Task))
+            && {
+                // Peek ahead: ident 后跟 Dot（字段访问）/ LParen（函数调用）/
+                // LBracket（索引访问）
+                if let Ok(next_token) = self.lexer.next() {
+                    let is_field_or_call = next_token.kind == TokenKind::Dot
+                        || next_token.kind == TokenKind::LParen
+                        || next_token.kind == TokenKind::LSquare;
+                    self.lexer.push_token(next_token);
+                    is_field_or_call
+                } else {
+                    false
+                }
+            };
 
         if has_primary_prop_value {
             if let Some(primary_prop) = Self::get_primary_prop(&tag) {
@@ -15833,62 +16194,68 @@ impl<'a> Parser<'a> {
                     .into());
                 }
             } else {
-            self.next();
-            self.skip_empty_lines();
-
-            while !self.is_kind(TokenKind::RParen) {
-                self.skip_empty_lines();
-                if self.is_kind(TokenKind::RParen) {
-                    break;
-                }
-
-                let key = self.cur.text.to_string();
                 self.next();
+                self.skip_empty_lines();
 
-                // Custom event with a quoted name (allows ':'/'-' in the event
-                // name, which an identifier key cannot hold):
-                //   on "autodown:slash-open".document: .OnOpen($event)
-                // Internally the name is kept quoted: on"autodown:slash-open".
-                let key = if key == "on" && self.is_kind(TokenKind::Str) {
-                    let custom = self.cur.text.to_string();
+                while !self.is_kind(TokenKind::RParen) {
+                    self.skip_empty_lines();
+                    if self.is_kind(TokenKind::RParen) {
+                        break;
+                    }
+
+                    let key = self.cur.text.to_string();
                     self.next();
-                    format!("on\"{}\"", custom)
-                } else {
-                    key
-                };
 
-                // Check if it's an event (onclick, etc.)
-                if key.starts_with("on") {
-                    let key = self.parse_event_modifiers(key)?;
-                    self.expect(TokenKind::Colon)?;
-                    // Parse handler with optional parameters: .Inc or .Delete(todo.id)
-                    let (handler, params, inline) = self.parse_event_value()?;
-                    events.push(ViewEvent { name: key, handler, params, inline });
-                } else {
-                    self.expect(TokenKind::Colon)?;
+                    // Custom event with a quoted name (allows ':'/'-' in the event
+                    // name, which an identifier key cannot hold):
+                    //   on "autodown:slash-open".document: .OnOpen($event)
+                    // Internally the name is kept quoted: on"autodown:slash-open".
+                    let key = if key == "on" && self.is_kind(TokenKind::Str) {
+                        let custom = self.cur.text.to_string();
+                        self.next();
+                        format!("on\"{}\"", custom)
+                    } else {
+                        key
+                    };
 
-                    // Check for style binding: style: { completed: todo.done }
-                    // style_obj: { top: expr } is the inline-style (:style) form.
-                    if (key == "style" || key == "style_obj") && self.is_kind(TokenKind::LBrace) {
-                        let binding = self.parse_style_binding()?;
-                        props.push(ViewProp {
+                    // Check if it's an event (onclick, etc.)
+                    if key.starts_with("on") {
+                        let key = self.parse_event_modifiers(key)?;
+                        self.expect(TokenKind::Colon)?;
+                        // Parse handler with optional parameters: .Inc or .Delete(todo.id)
+                        let (handler, params, inline) = self.parse_event_value()?;
+                        events.push(ViewEvent {
                             name: key,
-                            value: ViewPropValue::StyleBinding(binding),
+                            handler,
+                            params,
+                            inline,
                         });
                     } else {
-                        let value = self.parse_expr()?;
-                        props.push(ViewProp {
-                            name: key,
-                            value: ViewPropValue::Expr(value),
-                        });
+                        self.expect(TokenKind::Colon)?;
+
+                        // Check for style binding: style: { completed: todo.done }
+                        // style_obj: { top: expr } is the inline-style (:style) form.
+                        if (key == "style" || key == "style_obj") && self.is_kind(TokenKind::LBrace)
+                        {
+                            let binding = self.parse_style_binding()?;
+                            props.push(ViewProp {
+                                name: key,
+                                value: ViewPropValue::StyleBinding(binding),
+                            });
+                        } else {
+                            let value = self.parse_expr()?;
+                            props.push(ViewProp {
+                                name: key,
+                                value: ViewPropValue::Expr(value),
+                            });
+                        }
+                    }
+
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next();
                     }
                 }
-
-                if self.is_kind(TokenKind::Comma) {
-                    self.next();
-                }
-            }
-            self.expect(TokenKind::RParen)?;
+                self.expect(TokenKind::RParen)?;
             }
         }
 
@@ -15985,8 +16352,8 @@ impl<'a> Parser<'a> {
                             && self.cur.text.starts_with("on");
                         // Quoted custom event: `on "autodown:slash-open":` —
                         // `on` followed by a string literal.
-                        let is_quoted_event = self.cur.text == "on"
-                            && next_token.kind == TokenKind::Str;
+                        let is_quoted_event =
+                            self.cur.text == "on" && next_token.kind == TokenKind::Str;
                         self.lexer.push_token(next_token);
                         is_colon || is_event_modifier || is_quoted_event
                     } else {
@@ -16020,8 +16387,15 @@ impl<'a> Parser<'a> {
                     // Check if it's an event (onclick, etc.)
                     if key.starts_with("on") {
                         let (handler, params, inline) = self.parse_event_value()?;
-                        events.push(ViewEvent { name: key, handler, params, inline });
-                    } else if (key == "style" || key == "style_obj") && self.is_kind(TokenKind::LBrace) {
+                        events.push(ViewEvent {
+                            name: key,
+                            handler,
+                            params,
+                            inline,
+                        });
+                    } else if (key == "style" || key == "style_obj")
+                        && self.is_kind(TokenKind::LBrace)
+                    {
                         let binding = self.parse_style_binding()?;
                         props.push(ViewProp {
                             name: key,
@@ -16232,7 +16606,10 @@ impl<'a> Parser<'a> {
             iterable,
             key_expr,
             body,
-            span: Some((start_pos.pos, self.prev.pos.pos + self.prev.pos.len - start_pos.pos)),
+            span: Some((
+                start_pos.pos,
+                self.prev.pos.pos + self.prev.pos.len - start_pos.pos,
+            )),
         })
     }
 
@@ -16259,11 +16636,9 @@ impl<'a> Parser<'a> {
             TokenKind::Int => {
                 let text = self.cur.text.clone();
                 self.next();
-                let value: i32 = text.parse().map_err(|_| {
-                    SyntaxError::Generic {
-                        message: format!("key clause Int literal out of range: `{}`", text),
-                        span: pos_to_span(self.prev.pos),
-                    }
+                let value: i32 = text.parse().map_err(|_| SyntaxError::Generic {
+                    message: format!("key clause Int literal out of range: `{}`", text),
+                    span: pos_to_span(self.prev.pos),
                 })?;
                 Expr::Int(value)
             }
@@ -16390,7 +16765,10 @@ impl<'a> Parser<'a> {
             deps,
             exact,
             body,
-            span: Some((start_pos.pos, self.prev.pos.pos + self.prev.pos.len - start_pos.pos)),
+            span: Some((
+                start_pos.pos,
+                self.prev.pos.pos + self.prev.pos.len - start_pos.pos,
+            )),
         })
     }
 
@@ -16453,7 +16831,10 @@ impl<'a> Parser<'a> {
             condition,
             then_body,
             else_body,
-            span: Some((start_pos.pos, self.prev.pos.pos + self.prev.pos.len - start_pos.pos)),
+            span: Some((
+                start_pos.pos,
+                self.prev.pos.pos + self.prev.pos.len - start_pos.pos,
+            )),
         })
     }
 
@@ -16533,7 +16914,16 @@ impl<'a> Parser<'a> {
             children.push(ViewNode::Text(ViewText::Literal(text.clone())));
         }
 
-        Ok(ViewNode::Link { to, text, href, children, span: Some((start_pos.pos, self.prev.pos.pos + self.prev.pos.len - start_pos.pos)) })
+        Ok(ViewNode::Link {
+            to,
+            text,
+            href,
+            children,
+            span: Some((
+                start_pos.pos,
+                self.prev.pos.pos + self.prev.pos.len - start_pos.pos,
+            )),
+        })
     }
 
     /// Parse condition expression (until '{')
@@ -16575,9 +16965,7 @@ impl<'a> Parser<'a> {
                     if self.is_kind(TokenKind::LParen) {
                         self.next();
                         chain.push('(');
-                        while !self.is_kind(TokenKind::RParen)
-                            && !self.is_kind(TokenKind::LBrace)
-                        {
+                        while !self.is_kind(TokenKind::RParen) && !self.is_kind(TokenKind::LBrace) {
                             chain.push_str(&self.cur.text.to_string());
                             self.next();
                         }
@@ -16588,10 +16976,14 @@ impl<'a> Parser<'a> {
                     }
                 }
                 parts.push(chain);
-            } else if self.is_kind(TokenKind::Lt) || self.is_kind(TokenKind::Gt)
-                || self.is_kind(TokenKind::Le) || self.is_kind(TokenKind::Ge)
-                || self.is_kind(TokenKind::Eq) || self.is_kind(TokenKind::Neq)
-                || self.is_kind(TokenKind::And) || self.is_kind(TokenKind::Or)
+            } else if self.is_kind(TokenKind::Lt)
+                || self.is_kind(TokenKind::Gt)
+                || self.is_kind(TokenKind::Le)
+                || self.is_kind(TokenKind::Ge)
+                || self.is_kind(TokenKind::Eq)
+                || self.is_kind(TokenKind::Neq)
+                || self.is_kind(TokenKind::And)
+                || self.is_kind(TokenKind::Or)
                 || self.is_kind(TokenKind::Not)
             {
                 let op = self.cur.text.to_string();
@@ -16629,8 +17021,10 @@ impl<'a> Parser<'a> {
                 let op = self.cur.text.to_string();
                 self.next();
                 parts.push(op);
-            } else if self.is_kind(TokenKind::Add) || self.is_kind(TokenKind::Sub)
-                || self.is_kind(TokenKind::Star) || self.is_kind(TokenKind::Div)
+            } else if self.is_kind(TokenKind::Add)
+                || self.is_kind(TokenKind::Sub)
+                || self.is_kind(TokenKind::Star)
+                || self.is_kind(TokenKind::Div)
                 || self.is_kind(TokenKind::Mod)
             {
                 let op = self.cur.text.to_string();
@@ -16730,9 +17124,7 @@ impl<'a> Parser<'a> {
     /// starts with a paren — so it parses via `parse_closure` and returns the
     /// lambda's statements with an empty handler string; extraction mints the
     /// anonymous event name and injects the matching on-handler.
-    fn parse_event_value(
-        &mut self,
-    ) -> AutoResult<(String, Vec<String>, Option<Vec<Stmt>>)> {
+    fn parse_event_value(&mut self) -> AutoResult<(String, Vec<String>, Option<Vec<Stmt>>)> {
         if self.is_kind(TokenKind::LParen) {
             let closure = self.parse_closure()?;
             if let Expr::Closure(c) = &closure {
@@ -16938,12 +17330,15 @@ impl<'a> Parser<'a> {
                 let num = self.cur.text.to_string();
                 self.next();
                 parts.push(num);
-                } else if self.is_kind(TokenKind::Float) || self.is_kind(TokenKind::True) || self.is_kind(TokenKind::False) {
-                    // Plan 015 P1#5: float and bool literals in view event args
-                    // (".HoverChange(true)") — previously loud parse errors.
-                    let lit = self.cur.text.to_string();
-                    self.next();
-                    parts.push(lit);
+            } else if self.is_kind(TokenKind::Float)
+                || self.is_kind(TokenKind::True)
+                || self.is_kind(TokenKind::False)
+            {
+                // Plan 015 P1#5: float and bool literals in view event args
+                // (".HoverChange(true)") — previously loud parse errors.
+                let lit = self.cur.text.to_string();
+                self.next();
+                parts.push(lit);
             } else if self.is_kind(TokenKind::Str) {
                 let s = format!("\"{}\"", self.cur.text.as_str());
                 self.next();
@@ -16955,10 +17350,20 @@ impl<'a> Parser<'a> {
                 // leftover operator token, pushing empty args forever -> 48 GiB
                 // OOM. Consume the operator as part of this arg expression.
                 let op_text = self.cur.text.to_string();
-                if matches!(op_text.as_str(),
-                    "+" | "-" | "*" | "/" | "%"
-                    | "==" | "!=" | "<" | ">" | "<=" | ">="
-                    | "&&" | "||"
+                if matches!(
+                    op_text.as_str(),
+                    "+" | "-"
+                        | "*"
+                        | "/"
+                        | "%"
+                        | "=="
+                        | "!="
+                        | "<"
+                        | ">"
+                        | "<="
+                        | ">="
+                        | "&&"
+                        | "||"
                 ) {
                     parts.push(format!(" {} ", op_text));
                     self.next();
@@ -17060,7 +17465,10 @@ impl<'a> Parser<'a> {
             }
         }
         self.expect(TokenKind::RParen)?;
-        Ok(groups.into_iter().filter_map(|g| g.into_iter().next()).collect())
+        Ok(groups
+            .into_iter()
+            .filter_map(|g| g.into_iter().next())
+            .collect())
     }
 
     fn parse_on_block(&mut self) -> AutoResult<OnBlock> {
@@ -17085,18 +17493,17 @@ impl<'a> Parser<'a> {
             // event object as `ev` (platform layer parses JSON, 已决③).
             // One-token lookahead: bare `stream -> …` stays a msg pattern.
             let mut stream_sub: Option<crate::ast::ui::StreamSubscription> = None;
-            let is_stream_sub = if self.cur.kind == TokenKind::Ident
-                && self.cur.text.as_str() == "stream"
-            {
-                let saved_cur = self.cur.clone();
-                self.next();
-                let next_is_kind_ident = self.cur.kind == TokenKind::Ident;
-                self.lexer.push_token(self.cur.clone());
-                self.cur = saved_cur;
-                next_is_kind_ident
-            } else {
-                false
-            };
+            let is_stream_sub =
+                if self.cur.kind == TokenKind::Ident && self.cur.text.as_str() == "stream" {
+                    let saved_cur = self.cur.clone();
+                    self.next();
+                    let next_is_kind_ident = self.cur.kind == TokenKind::Ident;
+                    self.lexer.push_token(self.cur.clone());
+                    self.cur = saved_cur;
+                    next_is_kind_ident
+                } else {
+                    false
+                };
             let (pattern, params) = if is_stream_sub {
                 self.next(); // consume 'stream'
                 let kind = self.cur.text.to_string();
@@ -17176,7 +17583,12 @@ impl<'a> Parser<'a> {
             self.in_on_body = false;
             self.exit_scope();
 
-            handlers.push(OnHandler { pattern, params, body, stream: stream_sub });
+            handlers.push(OnHandler {
+                pattern,
+                params,
+                body,
+                stream: stream_sub,
+            });
             self.skip_empty_lines();
         }
 
@@ -17208,7 +17620,8 @@ impl<'a> Parser<'a> {
                 return Err(SyntaxError::Generic {
                     message: format!("Expected string key in bind block, got '{}'", self.cur.text),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             };
 
             // Expect ->
@@ -17221,7 +17634,8 @@ impl<'a> Parser<'a> {
                 return Err(SyntaxError::Generic {
                     message: format!("Expected '->' in bind block, got '{}'", self.cur.text),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             }
 
             // Parse handler: .Name
@@ -17232,9 +17646,13 @@ impl<'a> Parser<'a> {
                 format!(".{}", name)
             } else {
                 return Err(SyntaxError::Generic {
-                    message: format!("Expected '.HandlerName' in bind block, got '{}'", self.cur.text),
+                    message: format!(
+                        "Expected '.HandlerName' in bind block, got '{}'",
+                        self.cur.text
+                    ),
                     span: pos_to_span(self.cur.pos),
-                }.into());
+                }
+                .into());
             };
 
             bindings.push(KeyBinding { key, handler });
@@ -17254,7 +17672,8 @@ impl<'a> Parser<'a> {
             Err(SyntaxError::Generic {
                 message: format!("Expected '{}', got '{}'", expected, self.cur.text),
                 span: pos_to_span(self.cur.pos),
-            }.into())
+            }
+            .into())
         }
     }
 
@@ -17271,37 +17690,32 @@ impl<'a> Parser<'a> {
         // Elements with "id" as primary prop
         // These are typically components/containers that need identification
         match tag {
-            "preview-card" | "PreviewCard" | "codeblock" | "Codeblock" |
-            "tabs" | "Tabs" | "dialog" | "Dialog" |
-            "sheet" | "Sheet" | "popover" | "Popover" |
-            "dropdown-menu" | "DropdownMenu" | "context-menu" | "ContextMenu" |
-            "alert-dialog" | "AlertDialog" | "drawer" | "Drawer" |
-            "modal" | "Modal" |
-            "tabs-trigger" | "TabsTrigger" | "tabs-content" | "TabsContent" => Some("id"),
+            "preview-card" | "PreviewCard" | "codeblock" | "Codeblock" | "tabs" | "Tabs"
+            | "dialog" | "Dialog" | "sheet" | "Sheet" | "popover" | "Popover" | "dropdown-menu"
+            | "DropdownMenu" | "context-menu" | "ContextMenu" | "alert-dialog" | "AlertDialog"
+            | "drawer" | "Drawer" | "modal" | "Modal" | "tabs-trigger" | "TabsTrigger"
+            | "tabs-content" | "TabsContent" => Some("id"),
 
             // Elements with "name" as primary prop (form inputs)
-            "input" | "Input" | "select" | "Select" | "textarea" | "Textarea" |
-            "checkbox" | "Checkbox" | "switch" | "Switch" |
-            "radio-group" | "RadioGroup" | "slider" | "Slider" |
-            "range" | "Range" | "combobox" | "Combobox" |
-            "autocomplete" | "Autocomplete" => Some("name"),
+            "input" | "Input" | "select" | "Select" | "textarea" | "Textarea" | "checkbox"
+            | "Checkbox" | "switch" | "Switch" | "radio-group" | "RadioGroup" | "slider"
+            | "Slider" | "range" | "Range" | "combobox" | "Combobox" | "autocomplete"
+            | "Autocomplete" => Some("name"),
 
             // Elements with "src" as primary prop (images/media)
-            "image" | "Image" | "img" | "video" | "Video" |
-            "audio" | "Audio" | "icon" | "Icon" => Some("src"),
+            "image" | "Image" | "img" | "video" | "Video" | "audio" | "Audio" | "icon" | "Icon" => {
+                Some("src")
+            }
 
             // Elements with "text" as primary prop
             // All text content elements and buttons
-            "text" | "Text" | "h1" | "H1" | "h2" | "H2" | "h3" | "H3" |
-            "h4" | "H4" | "h5" | "H5" | "h6" | "H6" |
-            "p" | "P" | "span" | "Span" | "label" | "Label" |
-            "button" | "Button" | "a" | "link" | "Link" |
-            "th" | "Th" | "td" | "Td" | "li" | "Li" |
-            "option" | "Option" | "summary" | "Summary" |
-            "badge" | "Badge" | "tag" | "Tag" | "chip" | "Chip" |
-            "toast" | "Toast" | "alert" | "Alert" |
-            "menu-item" | "MenuItem" | "context-menu-item" | "ContextMenuItem" |
-            "dropdown-item" | "DropdownItem" => Some("text"),
+            "text" | "Text" | "h1" | "H1" | "h2" | "H2" | "h3" | "H3" | "h4" | "H4" | "h5"
+            | "H5" | "h6" | "H6" | "p" | "P" | "span" | "Span" | "label" | "Label" | "button"
+            | "Button" | "a" | "link" | "Link" | "th" | "Th" | "td" | "Td" | "li" | "Li"
+            | "option" | "Option" | "summary" | "Summary" | "badge" | "Badge" | "tag" | "Tag"
+            | "chip" | "Chip" | "toast" | "Toast" | "alert" | "Alert" | "menu-item"
+            | "MenuItem" | "context-menu-item" | "ContextMenuItem" | "dropdown-item"
+            | "DropdownItem" => Some("text"),
 
             // Default: text prop for all other elements
             _ => Some("text"),
@@ -17374,13 +17788,15 @@ mod tests {
     /// Plan 567 T12（P560-D1）: with-as 绑定解析——pratt 截断 + 块形态产物。
     #[test]
     fn test_with_as_binding_parses_to_block_form() {
-        let mut parser = Parser::new("fn main() {
+        let mut parser = Parser::new(
+            "fn main() {
     var ctx = 1
     with ctx as g {
         print(1)
     }
 }
-");
+",
+        );
         let code = parser.parse().expect("with-as must parse");
         let src = format!("{:?}", code);
         // 块形态锚点：__w 存储 + py_enter 绑定 + try/catch（py_exit + py_raise）+ finally
@@ -17393,29 +17809,43 @@ mod tests {
     /// `with x as T {}`（T 是类型名形态）不被 Cast 臂误吞——绑定消费优先。
     #[test]
     fn test_with_as_type_shaped_name_not_swallowed() {
-        let mut parser = Parser::new("fn main() {
+        let mut parser = Parser::new(
+            "fn main() {
     var ctx = 1
     with ctx as T {
         print(1)
     }
 }
-");
-        let code = parser.parse().expect("type-shaped as-name must bind, not Cast");
+",
+        );
+        let code = parser
+            .parse()
+            .expect("type-shaped as-name must bind, not Cast");
         let src = format!("{:?}", code);
-        assert!(src.contains("py_enter"), "as T consumed as binding: {}", src);
+        assert!(
+            src.contains("py_enter"),
+            "as T consumed as binding: {}",
+            src
+        );
     }
 
     /// 正常模式 Cast 语义零回归：`a as int` 仍为 Cast。
     #[test]
     fn test_cast_outside_with_header_unchanged() {
-        let mut parser = Parser::new("fn main() {
+        let mut parser = Parser::new(
+            "fn main() {
     var y = 1 as int
     print(y)
 }
-");
+",
+        );
         let code = parser.parse().expect("plain cast must parse");
         let src = format!("{:?}", code);
-        assert!(src.contains("Cast"), "cast preserved outside with header: {}", src);
+        assert!(
+            src.contains("Cast"),
+            "cast preserved outside with header: {}",
+            src
+        );
     }
 
     /// Plan 451: actions 块解析——注册表/menubar/toolbar 全字段。
@@ -17463,7 +17893,10 @@ mod tests {
         assert_eq!(mb.menus[0].id, "file");
         assert_eq!(mb.menus[0].title, "文件");
         assert_eq!(mb.menus[0].items.len(), 3);
-        assert!(matches!(mb.menus[0].items[1], crate::ast::ui::MenuItemEntry::Sep));
+        assert!(matches!(
+            mb.menus[0].items[1],
+            crate::ast::ui::MenuItemEntry::Sep
+        ));
         let tb = acts.toolbar.as_ref().expect("toolbar");
         assert_eq!(tb.items.len(), 3);
     }
@@ -17505,7 +17938,12 @@ widget App {
         let ast = parser.parse().expect("top-level actions decl parses");
         let block = match ast.stmts.first() {
             Some(crate::ast::Stmt::ActionsDecl(b)) => b,
-            _ => panic!("expected ActionsDecl, got {:?}", ast.stmts.first().map(|s| matches!(s, crate::ast::Stmt::ActionsDecl(_)))),
+            _ => panic!(
+                "expected ActionsDecl, got {:?}",
+                ast.stmts
+                    .first()
+                    .map(|s| matches!(s, crate::ast::Stmt::ActionsDecl(_)))
+            ),
         };
         assert_eq!(block.actions.len(), 1);
         assert_eq!(block.actions[0].id, "file.new");
@@ -17517,9 +17955,14 @@ widget App {
 widget App { view { col { text \"hi\" {} } } }
 ";
         let mut parser2 = Parser::from(src2).with_session(session2);
-        let ast2 = parser2.parse().expect("plain `actions` identifier unaffected");
+        let ast2 = parser2
+            .parse()
+            .expect("plain `actions` identifier unaffected");
         assert!(
-            !ast2.stmts.iter().any(|s| matches!(s, crate::ast::Stmt::ActionsDecl(_))),
+            !ast2
+                .stmts
+                .iter()
+                .any(|s| matches!(s, crate::ast::Stmt::ActionsDecl(_))),
             "no ActionsDecl for non-block `actions` usage"
         );
     }
@@ -17561,7 +18004,10 @@ widget App { view { col { text \"hi\" {} } } }
 ";
         let mut parser = Parser::from(src).with_session(session);
         let ast = parser.parse().expect("near-miss still parses as element");
-        assert!(matches!(ast.stmts.first(), Some(crate::ast::Stmt::WidgetDecl(_))));
+        assert!(matches!(
+            ast.stmts.first(),
+            Some(crate::ast::Stmt::WidgetDecl(_))
+        ));
         let hit = parser.warnings.iter().any(|w| {
             matches!(
                 w,
@@ -17569,7 +18015,11 @@ widget App { view { col { text \"hi\" {} } } }
                     if found == "veiw" && suggestion == "view"
             )
         });
-        assert!(hit, "expected near-miss warning, got {} warnings", parser.warnings.len());
+        assert!(
+            hit,
+            "expected near-miss warning, got {} warnings",
+            parser.warnings.len()
+        );
 
         let session2 = crate::session::CompilerSession::ui();
         let src2 = "widget App {
@@ -17579,11 +18029,13 @@ widget App { view { col { text \"hi\" {} } } }
         let mut parser2 = Parser::from(src2).with_session(session2);
         parser2.parse().expect("legit element parses");
         assert!(
-            !parser2.warnings.iter().any(|w| matches!(w, Warning::SuspiciousBlockKeyword { .. })),
+            !parser2
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::SuspiciousBlockKeyword { .. })),
             "legit element must not warn"
         );
     }
-
 
     use super::*;
     fn parse_once(code: &str) -> Code {
@@ -17659,8 +18111,7 @@ widget App { view { col { text \"hi\" {} } } }
 ",
             "}"
         );
-        let mut parser =
-            Parser::from(code_b).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code_b).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         assert!(ast.stmts.iter().any(|s| matches!(s, Stmt::WidgetDecl(_))));
 
@@ -17676,8 +18127,7 @@ widget App { view { col { text \"hi\" {} } } }
 ",
             "}"
         );
-        let mut parser =
-            Parser::from(code_c).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code_c).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         assert!(ast.stmts.iter().any(|s| matches!(s, Stmt::WidgetDecl(_))));
     }
@@ -17708,39 +18158,56 @@ widget App { view { col { text \"hi\" {} } } }
             "}"
         );
         let count = |code: &str| -> usize {
-            let mut parser =
-                Parser::from(code).with_session(crate::session::CompilerSession::ui());
+            let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
             let ast = parser.parse().unwrap();
-            let widget = ast.stmts.iter().find_map(|s| match s {
-                Stmt::WidgetDecl(w) => Some(w),
-                _ => None,
-            }).expect("widget decl");
+            let widget = ast
+                .stmts
+                .iter()
+                .find_map(|s| match s {
+                    Stmt::WidgetDecl(w) => Some(w),
+                    _ => None,
+                })
+                .expect("widget decl");
             let handler = widget.on.as_ref().unwrap().handlers.first().unwrap();
             handler.body.stmts.len()
         };
         // 变体二分:带 ; / 不带 ; / 同行
         let with_semi = code;
-        let no_semi = code.replace("};
+        let no_semi = code.replace(
+            "};
 ", "}
-");
-        let same_line = code.replace("};
-      .go", "}
-      let _z = .go");
+",
+        );
+        let same_line = code.replace(
+            "};
+      .go",
+            "}
+      let _z = .go",
+        );
         assert_eq!(count(&with_semi), 2, "semi-terminated: two stmts");
         assert_eq!(count(&no_semi), 2, "newline-terminated: two stmts");
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
-        let widget = ast.stmts.iter().find_map(|s| match s {
-            Stmt::WidgetDecl(w) => Some(w),
-            _ => None,
-        }).expect("widget decl");
+        let widget = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget decl");
         assert!(widget.on.is_some(), "on block parsed");
         // 断言语句数与形状:let draft = {..}; 与 .go(draft) 是两条独立语句,
         // let 的值不得变成 {..}.go(...) 方法链。
         let handler = widget.on.as_ref().unwrap().handlers.first().unwrap();
         let stmts = &handler.body.stmts;
-        assert_eq!(stmts.len(), 2, "two separate stmts, got {}: {:#?}", stmts.len(), stmts);
+        assert_eq!(
+            stmts.len(),
+            2,
+            "two separate stmts, got {}: {:#?}",
+            stmts.len(),
+            stmts
+        );
         assert!(
             matches!(&stmts[0], crate::ast::Stmt::Store(st)
                 if matches!(st.kind, crate::ast::StoreKind::Let)
@@ -17754,8 +18221,7 @@ widget App { view { col { text \"hi\" {} } } }
     fn test_widget_parses_via_dialect_in_ui_scenario() {
         // PR-2: widget 经 UiDialect 派发，UI 场景下解析为 WidgetDecl。
         let code = "widget App {\n  model { count int = 0 }\n  view { text \"hello\" }\n}";
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         let last = ast.stmts.last().unwrap();
         assert!(matches!(last, Stmt::WidgetDecl(_)));
@@ -17777,8 +18243,7 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         let widget = ast
             .stmts
@@ -17828,8 +18293,7 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         let widget = ast
             .stmts
@@ -17869,8 +18333,7 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         let widget = ast
             .stmts
@@ -17896,7 +18359,10 @@ widget App { view { col { text \"hi\" {} } } }
             ViewNode::Element { events, .. } => events,
             other => panic!("expected col element, got {:?}", other),
         };
-        assert_eq!(col_events[0].name, "on\"autodown:slash-close\".document.capture");
+        assert_eq!(
+            col_events[0].name,
+            "on\"autodown:slash-close\".document.capture"
+        );
         assert_eq!(col_events[0].handler, ".Close");
         assert_eq!(col_events[0].params, vec!["$event.detail".to_string()]);
     }
@@ -17915,8 +18381,7 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         let widget = ast
             .stmts
@@ -17931,7 +18396,10 @@ widget App { view { col { text \"hi\" {} } } }
             ViewNode::Element { props, .. } => props,
             other => panic!("expected element root, got {:?}", other),
         };
-        let style_obj = props.iter().find(|p| p.name == "style_obj").expect("style_obj prop");
+        let style_obj = props
+            .iter()
+            .find(|p| p.name == "style_obj")
+            .expect("style_obj prop");
         match &style_obj.value {
             ViewPropValue::StyleBinding(entries) => {
                 assert_eq!(entries.len(), 2);
@@ -17958,8 +18426,7 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         let widget = ast
             .stmts
@@ -18019,8 +18486,7 @@ widget App { view { col { text \"hi\" {} } } }
             "    return mode\n",
             "}\n"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().expect("stmt after try/catch must parse");
         match &ast.stmts[0] {
             Stmt::Fn(f) => assert_eq!(f.body.stmts.len(), 3, "let+try+return"),
@@ -18040,13 +18506,18 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut p2 =
-            Parser::from(code2).with_session(crate::session::CompilerSession::ui());
-        let ast2 = p2.parse().expect("stmt after try/catch in on-body must parse");
-        let w = ast2.stmts.iter().find_map(|s| match s {
-            Stmt::WidgetDecl(w) => Some(w),
-            _ => None,
-        }).expect("widget");
+        let mut p2 = Parser::from(code2).with_session(crate::session::CompilerSession::ui());
+        let ast2 = p2
+            .parse()
+            .expect("stmt after try/catch in on-body must parse");
+        let w = ast2
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget");
         let on = w.on.as_ref().expect("on block");
         assert_eq!(on.handlers[0].body.stmts.len(), 2, "try + assignment after");
     }
@@ -18073,8 +18544,7 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         let widget = ast
             .stmts
@@ -18115,8 +18585,7 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         let widget = ast
             .stmts
@@ -18157,8 +18626,7 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         let widget = ast
             .stmts
@@ -18198,8 +18666,8 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut parser = Parser::from(after_catch)
-            .with_session(crate::session::CompilerSession::ui());
+        let mut parser =
+            Parser::from(after_catch).with_session(crate::session::CompilerSession::ui());
         assert!(
             parser.parse().is_err(),
             "catch binding must not leak past the catch body"
@@ -18217,8 +18685,8 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut parser = Parser::from(in_finally)
-            .with_session(crate::session::CompilerSession::ui());
+        let mut parser =
+            Parser::from(in_finally).with_session(crate::session::CompilerSession::ui());
         assert!(
             parser.parse().is_err(),
             "catch binding must not be visible inside finally"
@@ -18242,8 +18710,7 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         let widget = ast
             .stmts
@@ -18281,8 +18748,7 @@ widget App { view { col { text \"hi\" {} } } }
             "  }\n",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         let widget = ast
             .stmts
@@ -18493,7 +18959,11 @@ widget App { view { col { text \"hi\" {} } } }
         let last = ast.stmts.last().unwrap();
         // Should be parsed as: Call { name: Dot(Ident("CounterTask"), "spawn"), args: [] }
         let str = last.to_string();
-        assert!(str.contains(".spawn"), "Expected .spawn in output, got: {}", str);
+        assert!(
+            str.contains(".spawn"),
+            "Expected .spawn in output, got: {}",
+            str
+        );
     }
 
     #[test]
@@ -18533,8 +19003,7 @@ widget App { view { col { text \"hi\" {} } } }
             "    }\n",
             "}\n",
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().unwrap();
         // Traverse: StoreDecl → on → handlers[0] → body stmts → the var Store.
         use crate::ast::{Expr, Stmt};
@@ -18543,7 +19012,9 @@ widget App { view { col { text \"hi\" {} } } }
             .iter()
             .find(|s| matches!(s, Stmt::StoreDecl(_)))
             .expect("store decl");
-        let Stmt::StoreDecl(decl) = stmt else { unreachable!() };
+        let Stmt::StoreDecl(decl) = stmt else {
+            unreachable!()
+        };
         let on = decl.on.as_ref().expect("on block");
         let handler = on
             .handlers
@@ -18572,12 +19043,18 @@ widget App { view { col { text \"hi\" {} } } }
             node.args.args
         );
         assert!(
-            node.args.args.iter().any(|a| matches!(a, Arg::Pair(k, _) if k.as_str() == "id")),
+            node.args
+                .args
+                .iter()
+                .any(|a| matches!(a, Arg::Pair(k, _) if k.as_str() == "id")),
             "id field present as named arg, got {:?}",
             node.args.args
         );
         assert!(
-            node.args.args.iter().any(|a| matches!(a, Arg::Pair(k, _) if k.as_str() == "command")),
+            node.args
+                .args
+                .iter()
+                .any(|a| matches!(a, Arg::Pair(k, _) if k.as_str() == "command")),
             "command field present as named arg, got {:?}",
             node.args.args
         );
@@ -18611,9 +19088,10 @@ widget App { view { col { text \"hi\" {} } } }
             "    }\n",
             "}\n",
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
-        let ast = parser.parse().expect("widget view with PascalCase fields parses");
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let ast = parser
+            .parse()
+            .expect("widget view with PascalCase fields parses");
         // RenderT's view body must contain the for loop with the text element.
         use crate::ast::Stmt;
         let view_fn = ast
@@ -18626,13 +19104,15 @@ widget App { view { col { text \"hi\" {} } } }
             .expect("RenderT view fn decl");
         let root = view_fn.body.clone();
         // Root → col element → for loop → text element with a Dot primary prop.
-        fn collect_text_primary(
-            node: &crate::ast::ui::ViewNode,
-            out: &mut Vec<crate::ast::Expr>,
-        ) {
+        fn collect_text_primary(node: &crate::ast::ui::ViewNode, out: &mut Vec<crate::ast::Expr>) {
             use crate::ast::ui::ViewNode;
             match node {
-                ViewNode::Element { tag, props, children, .. } => {
+                ViewNode::Element {
+                    tag,
+                    props,
+                    children,
+                    ..
+                } => {
                     if tag == "text" {
                         for p in props {
                             if p.name == "text" {
@@ -18651,7 +19131,11 @@ widget App { view { col { text \"hi\" {} } } }
                         collect_text_primary(c, out);
                     }
                 }
-                ViewNode::Conditional { then_body, else_body, .. } => {
+                ViewNode::Conditional {
+                    then_body,
+                    else_body,
+                    ..
+                } => {
                     for c in then_body.iter().chain(else_body.iter().flatten()) {
                         collect_text_primary(c, out);
                     }
@@ -19025,10 +19509,9 @@ exe hello {
         let mut parser = Parser::from(&code);
         parser.parse().unwrap();
         assert!(
-            parser
-                .warnings
-                .iter()
-                .any(|w| matches!(w, Warning::DeprecatedFeature { name, .. } if name == "use.rust")),
+            parser.warnings.iter().any(
+                |w| matches!(w, Warning::DeprecatedFeature { name, .. } if name == "use.rust")
+            ),
             "use.rust must trigger W0005 DeprecatedFeature, got: {:?}",
             parser.warnings
         );
@@ -19367,15 +19850,28 @@ exe hello {
         let session = crate::session::CompilerSession::ui();
         let mut p = Parser::from(code).with_session(session);
         let ast = p.parse().expect("inline lambda event must parse");
-        let w = ast.stmts.iter().find_map(|s| match s {
-            Stmt::WidgetDecl(w) => Some(w),
-            _ => None,
-        }).expect("widget");
+        let w = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget");
 
         let events = |tag: &str| -> Vec<(String, Vec<String>, Option<usize>)> {
-            fn walk(node: &ViewNode, tag: &str, out: &mut Vec<(String, Vec<String>, Option<usize>)>) {
+            fn walk(
+                node: &ViewNode,
+                tag: &str,
+                out: &mut Vec<(String, Vec<String>, Option<usize>)>,
+            ) {
                 match node {
-                    ViewNode::Element { tag: t, events, children, .. } => {
+                    ViewNode::Element {
+                        tag: t,
+                        events,
+                        children,
+                        ..
+                    } => {
                         if t == tag {
                             for e in events {
                                 out.push((
@@ -19385,14 +19881,18 @@ exe hello {
                                 ));
                             }
                         }
-                        for c in children { walk(c, tag, out); }
+                        for c in children {
+                            walk(c, tag, out);
+                        }
                     }
                     ViewNode::Component { .. } => {}
                     _ => {}
                 }
             }
             let mut out = Vec::new();
-            if let Some(v) = &w.view { walk(&v.root, tag, &mut out); }
+            if let Some(v) = &w.view {
+                walk(&v.root, tag, &mut out);
+            }
             out
         };
 
@@ -19418,9 +19918,16 @@ exe hello {
         let patterns: Vec<&str> = on.handlers.iter().map(|h| h.pattern.as_str()).collect();
         assert!(patterns.contains(&".__evt_onclick_1"));
         assert!(patterns.contains(&".__evt_onclick_2"));
-        assert_eq!(on.handlers[0].body.stmts.len(), 1, "lambda body moved into the handler");
-        let variants: Vec<&str> =
-            w.messages.iter().flat_map(|m| m.variants.iter().map(|v| v.name.as_str())).collect();
+        assert_eq!(
+            on.handlers[0].body.stmts.len(),
+            1,
+            "lambda body moved into the handler"
+        );
+        let variants: Vec<&str> = w
+            .messages
+            .iter()
+            .flat_map(|m| m.variants.iter().map(|v| v.name.as_str()))
+            .collect();
         assert!(variants.contains(&"__evt_onclick_1"));
         assert!(variants.contains(&"__evt_onclick_2"));
     }
@@ -19449,10 +19956,14 @@ exe hello {
         let session = crate::session::CompilerSession::ui();
         let mut p = Parser::from(code).with_session(session);
         let ast = p.parse().expect("bare value input must parse");
-        let w = ast.stmts.iter().find_map(|s| match s {
-            Stmt::WidgetDecl(w) => Some(w),
-            _ => None,
-        }).expect("widget");
+        let w = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget");
 
         #[derive(PartialEq, Debug)]
         struct Ev<'a> {
@@ -19463,44 +19974,101 @@ exe hello {
         }
         fn walk<'a>(node: &'a ViewNode, out: &mut Vec<Ev<'a>>) {
             match node {
-                ViewNode::Element { tag, events, children, .. } => {
+                ViewNode::Element {
+                    tag,
+                    events,
+                    children,
+                    ..
+                } => {
                     for e in events {
-                        out.push(Ev { tag, name: &e.name, handler: &e.handler, stmts: e.inline.as_ref().map_or(0, |b| b.len()) });
+                        out.push(Ev {
+                            tag,
+                            name: &e.name,
+                            handler: &e.handler,
+                            stmts: e.inline.as_ref().map_or(0, |b| b.len()),
+                        });
                     }
-                    for c in children { walk(c, out); }
+                    for c in children {
+                        walk(c, out);
+                    }
                 }
                 ViewNode::ForLoop { body, .. } => {
-                    for c in body { walk(c, out); }
+                    for c in body {
+                        walk(c, out);
+                    }
                 }
-                ViewNode::Conditional { then_body, else_body, .. } => {
-                    for c in then_body { walk(c, out); }
+                ViewNode::Conditional {
+                    then_body,
+                    else_body,
+                    ..
+                } => {
+                    for c in then_body {
+                        walk(c, out);
+                    }
                     if let Some(els) = else_body {
-                        for c in els { walk(c, out); }
+                        for c in els {
+                            walk(c, out);
+                        }
                     }
                 }
                 _ => {}
             }
         }
         let mut evs = Vec::new();
-        if let Some(v) = &w.view { walk(&v.root, &mut evs); }
+        if let Some(v) = &w.view {
+            walk(&v.root, &mut evs);
+        }
 
         assert_eq!(evs.len(), 3, "only bare direct-state inputs/textarea mint");
-        assert_eq!(evs[0], Ev { tag: "input", name: "oninput", handler: ".__bind_App_oninput_1", stmts: 0 });
-        assert_eq!(evs[1], Ev { tag: "input", name: "oninput", handler: ".Changed", stmts: 0 },
-            "explicit oninput suppresses minting");
-        assert_eq!(evs[2], Ev { tag: "textarea", name: "oninput", handler: ".__bind_App_oninput_2", stmts: 0 },
-            "textarea mints too; counter is view-order deterministic");
+        assert_eq!(
+            evs[0],
+            Ev {
+                tag: "input",
+                name: "oninput",
+                handler: ".__bind_App_oninput_1",
+                stmts: 0
+            }
+        );
+        assert_eq!(
+            evs[1],
+            Ev {
+                tag: "input",
+                name: "oninput",
+                handler: ".Changed",
+                stmts: 0
+            },
+            "explicit oninput suppresses minting"
+        );
+        assert_eq!(
+            evs[2],
+            Ev {
+                tag: "textarea",
+                name: "oninput",
+                handler: ".__bind_App_oninput_2",
+                stmts: 0
+            },
+            "textarea mints too; counter is view-order deterministic"
+        );
 
         // The minted handler is an empty-body on-handler + msg variant, so the
         // decl-based VM synthesis (VmBridge::new_from_decls) sees it and the
         // input_state_map writeback keys on its name.
         let on = w.on.as_ref().expect("on block injected");
-        let minted = on.handlers.iter().find(|h| h.pattern == ".__bind_App_oninput_1")
+        let minted = on
+            .handlers
+            .iter()
+            .find(|h| h.pattern == ".__bind_App_oninput_1")
             .expect("minted on-handler");
-        assert!(minted.body.stmts.is_empty(), "empty body — writeback happens pre-dispatch");
+        assert!(
+            minted.body.stmts.is_empty(),
+            "empty body — writeback happens pre-dispatch"
+        );
         assert!(minted.params.is_empty(), "no phantom arg (audit B12(b))");
-        let variants: Vec<&str> =
-            w.messages.iter().flat_map(|m| m.variants.iter().map(|v| v.name.as_str())).collect();
+        let variants: Vec<&str> = w
+            .messages
+            .iter()
+            .flat_map(|m| m.variants.iter().map(|v| v.name.as_str()))
+            .collect();
         assert!(variants.contains(&"__bind_App_oninput_1"));
         assert!(variants.contains(&"__bind_App_oninput_2"));
     }
@@ -19531,14 +20099,21 @@ exe hello {
         let session = crate::session::CompilerSession::ui();
         let mut p = Parser::from(code).with_session(session);
         let ast = p.parse().expect("unbound dialog must parse");
-        let w = ast.stmts.iter().find_map(|s| match s {
-            Stmt::WidgetDecl(w) => Some(w),
-            _ => None,
-        }).expect("widget");
+        let w = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget");
 
         // 铸造 state：`var __dlg_open_1 bool = false`
         let model = w.model.as_ref().expect("model block minted");
-        let field = model.fields.iter().find(|f| f.name.as_str() == "__dlg_open_1")
+        let field = model
+            .fields
+            .iter()
+            .find(|f| f.name.as_str() == "__dlg_open_1")
             .expect("minted state var");
         assert!(matches!(field.init, Expr::Bool(false)), "init false");
         assert!(matches!(field.ty, Type::Bool), "typed bool");
@@ -19547,25 +20122,36 @@ exe hello {
         fn find_dialog<'a>(node: &'a ViewNode) -> Option<&'a ViewNode> {
             match node {
                 ViewNode::Element { tag, children, .. } => {
-                    if tag == "dialog" { return Some(node); }
+                    if tag == "dialog" {
+                        return Some(node);
+                    }
                     children.iter().find_map(find_dialog)
                 }
                 _ => None,
             }
         }
         let dlg = find_dialog(&w.view.as_ref().unwrap().root).expect("dialog root");
-        let open = dlg_element_props(dlg).iter().find(|p| p.name == "open")
+        let open = dlg_element_props(dlg)
+            .iter()
+            .find(|p| p.name == "open")
             .expect("open prop minted");
         // 对照：真实解析 `(open: .show)` 的表达式形态。
         let bound_code = "widget B { view { dialog (open: .show) { } } }";
         let mut p2 = Parser::from(bound_code).with_session(crate::session::CompilerSession::ui());
         let ast2 = p2.parse().expect("bound dialog parses");
-        let w2 = ast2.stmts.iter().find_map(|s| match s {
-            Stmt::WidgetDecl(w) => Some(w),
-            _ => None,
-        }).expect("widget 2");
+        let w2 = ast2
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget 2");
         let real = find_dialog(&w2.view.as_ref().unwrap().root).unwrap();
-        let real_open = dlg_element_props(real).iter().find(|p| p.name == "open").unwrap();
+        let real_open = dlg_element_props(real)
+            .iter()
+            .find(|p| p.name == "open")
+            .unwrap();
         let ViewPropValue::Expr(real_expr) = &real_open.value else {
             panic!("bound open prop must be an expr");
         };
@@ -19581,13 +20167,21 @@ exe hello {
         // trigger/close 补 onclick。
         fn events_of<'a>(node: &'a ViewNode, tag: &str) -> Vec<(String, String)> {
             fn walk<'a>(node: &'a ViewNode, tag: &str, out: &mut Vec<(String, String)>) {
-                if let ViewNode::Element { tag: t, events, children, .. } = node {
+                if let ViewNode::Element {
+                    tag: t,
+                    events,
+                    children,
+                    ..
+                } = node
+                {
                     if t == tag {
                         for e in events {
                             out.push((e.name.clone(), e.handler.clone()));
                         }
                     }
-                    for c in children { walk(c, tag, out); }
+                    for c in children {
+                        walk(c, tag, out);
+                    }
                 }
             }
             let mut out = Vec::new();
@@ -19597,32 +20191,53 @@ exe hello {
         let root = &w.view.as_ref().unwrap().root;
         let trig = events_of(root, "dialog-trigger");
         assert!(
-            trig.iter().any(|(n, h)| n == "onclick" && h == ".__dlg_toggle_1"),
+            trig.iter()
+                .any(|(n, h)| n == "onclick" && h == ".__dlg_toggle_1"),
             "trigger onclick minted: {trig:?}"
         );
         let close = events_of(root, "dialog-close");
         assert!(
-            close.iter().any(|(n, h)| n == "onclick" && h == ".__dlg_close_1"),
+            close
+                .iter()
+                .any(|(n, h)| n == "onclick" && h == ".__dlg_close_1"),
             "close onclick minted: {close:?}"
         );
 
         // 折叠进 on + msg（decl-based VM 合成路径读取面）。
         let on = w.on.as_ref().expect("on block injected");
         let patterns: Vec<&str> = on.handlers.iter().map(|h| h.pattern.as_str()).collect();
-        assert!(patterns.contains(&".__dlg_toggle_1"), "toggle handler folded: {patterns:?}");
-        assert!(patterns.contains(&".__dlg_close_1"), "close handler folded: {patterns:?}");
-        let variants: Vec<&str> =
-            w.messages.iter().flat_map(|m| m.variants.iter().map(|v| v.name.as_str())).collect();
+        assert!(
+            patterns.contains(&".__dlg_toggle_1"),
+            "toggle handler folded: {patterns:?}"
+        );
+        assert!(
+            patterns.contains(&".__dlg_close_1"),
+            "close handler folded: {patterns:?}"
+        );
+        let variants: Vec<&str> = w
+            .messages
+            .iter()
+            .flat_map(|m| m.variants.iter().map(|v| v.name.as_str()))
+            .collect();
         assert!(variants.contains(&"__dlg_toggle_1"));
         assert!(variants.contains(&"__dlg_close_1"));
 
         // 负例：显式 open 绑定不铸造。
         let w2_open = dlg_element_props(real);
-        assert!(w2_open.iter().any(|p| p.name == "open"), "bound form has its own open");
+        assert!(
+            w2_open.iter().any(|p| p.name == "open"),
+            "bound form has its own open"
+        );
         let trig2 = events_of(&w2.view.as_ref().unwrap().root, "dialog-trigger");
         assert!(trig2.is_empty(), "bound form mints nothing: {trig2:?}");
         assert!(
-            !w2.model.as_ref().map(|m| m.fields.iter().any(|f| f.name.as_str().starts_with("__dlg_"))).unwrap_or(false),
+            !w2.model
+                .as_ref()
+                .map(|m| m
+                    .fields
+                    .iter()
+                    .any(|f| f.name.as_str().starts_with("__dlg_")))
+                .unwrap_or(false),
             "bound form mints no state"
         );
     }
@@ -19657,22 +20272,33 @@ exe hello {
         let session = crate::session::CompilerSession::ui();
         let mut p = Parser::from(code).with_session(session);
         let ast = p.parse().expect("unbound hovercard must parse");
-        let w = ast.stmts.iter().find_map(|s| match s {
-            Stmt::WidgetDecl(w) => Some(w),
-            _ => None,
-        }).expect("widget");
+        let w = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget");
 
         // 铸造 state：`var __dlg_open_1 bool = false`（与 dialog 机器同槽）。
         let model = w.model.as_ref().expect("model block minted");
-        let field = model.fields.iter().find(|f| f.name.as_str() == "__dlg_open_1")
+        let field = model
+            .fields
+            .iter()
+            .find(|f| f.name.as_str() == "__dlg_open_1")
             .expect("minted state var");
         assert!(matches!(field.init, Expr::Bool(false)), "init false");
 
         // 根节点补 open 绑定。
         fn find_tag<'a>(node: &'a ViewNode, tag: &str) -> Option<&'a ViewNode> {
             match node {
-                ViewNode::Element { tag: t, children, .. } => {
-                    if t == tag { return Some(node); }
+                ViewNode::Element {
+                    tag: t, children, ..
+                } => {
+                    if t == tag {
+                        return Some(node);
+                    }
                     children.iter().find_map(|c| find_tag(c, tag))
                 }
                 _ => None,
@@ -19680,7 +20306,9 @@ exe hello {
         }
         let root_node = &w.view.as_ref().unwrap().root;
         let hc = find_tag(root_node, "hover-card").expect("hover-card root");
-        let open = dlg_element_props(hc).iter().find(|p| p.name == "open")
+        let open = dlg_element_props(hc)
+            .iter()
+            .find(|p| p.name == "open")
             .expect("open prop minted");
         let ViewPropValue::Expr(mint_expr) = &open.value else {
             panic!("minted open prop must be an expr");
@@ -19693,13 +20321,21 @@ exe hello {
         // trigger 补 hover 进/出（非 onclick toggle）。
         fn events_of<'a>(node: &'a ViewNode, tag: &str) -> Vec<(String, String)> {
             fn walk<'a>(node: &'a ViewNode, tag: &str, out: &mut Vec<(String, String)>) {
-                if let ViewNode::Element { tag: t, events, children, .. } = node {
+                if let ViewNode::Element {
+                    tag: t,
+                    events,
+                    children,
+                    ..
+                } = node
+                {
                     if t == tag {
                         for e in events {
                             out.push((e.name.clone(), e.handler.clone()));
                         }
                     }
-                    for c in children { walk(c, tag, out); }
+                    for c in children {
+                        walk(c, tag, out);
+                    }
                 }
             }
             let mut out = Vec::new();
@@ -19708,11 +20344,13 @@ exe hello {
         }
         let trig = events_of(root_node, "hover-card-trigger");
         assert!(
-            trig.iter().any(|(n, h)| n == "onmouseenter" && h == ".__dlg_enter_1"),
+            trig.iter()
+                .any(|(n, h)| n == "onmouseenter" && h == ".__dlg_enter_1"),
             "trigger onmouseenter minted: {trig:?}"
         );
         assert!(
-            trig.iter().any(|(n, h)| n == "onmouseleave" && h == ".__dlg_leave_1"),
+            trig.iter()
+                .any(|(n, h)| n == "onmouseleave" && h == ".__dlg_leave_1"),
             "trigger onmouseleave minted: {trig:?}"
         );
         assert!(
@@ -19723,8 +20361,14 @@ exe hello {
         // 折叠进 on + msg。
         let on = w.on.as_ref().expect("on block injected");
         let patterns: Vec<&str> = on.handlers.iter().map(|h| h.pattern.as_str()).collect();
-        assert!(patterns.contains(&".__dlg_enter_1"), "enter handler folded: {patterns:?}");
-        assert!(patterns.contains(&".__dlg_leave_1"), "leave handler folded: {patterns:?}");
+        assert!(
+            patterns.contains(&".__dlg_enter_1"),
+            "enter handler folded: {patterns:?}"
+        );
+        assert!(
+            patterns.contains(&".__dlg_leave_1"),
+            "leave handler folded: {patterns:?}"
+        );
 
         // 负例：显式 hover 绑定不覆盖。
         let bound_code = concat!(
@@ -19742,13 +20386,19 @@ exe hello {
         );
         let mut p2 = Parser::from(bound_code).with_session(crate::session::CompilerSession::ui());
         let ast2 = p2.parse().expect("bound hovercard parses");
-        let w2 = ast2.stmts.iter().find_map(|s| match s {
-            Stmt::WidgetDecl(w) => Some(w),
-            _ => None,
-        }).expect("widget 2");
+        let w2 = ast2
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget 2");
         let trig2 = events_of(&w2.view.as_ref().unwrap().root, "hover-card-trigger");
         assert!(
-            trig2.iter().any(|(n, h)| n == "onmouseenter" && h == ".opened"),
+            trig2
+                .iter()
+                .any(|(n, h)| n == "onmouseenter" && h == ".opened"),
             "explicit onmouseenter preserved: {trig2:?}"
         );
         assert!(
@@ -19756,7 +20406,13 @@ exe hello {
             "bound form mints no extra hover events: {trig2:?}"
         );
         assert!(
-            !w2.model.as_ref().map(|m| m.fields.iter().any(|f| f.name.as_str().starts_with("__dlg_"))).unwrap_or(false),
+            !w2.model
+                .as_ref()
+                .map(|m| m
+                    .fields
+                    .iter()
+                    .any(|f| f.name.as_str().starts_with("__dlg_")))
+                .unwrap_or(false),
             "bound form mints no state"
         );
     }
@@ -19777,10 +20433,14 @@ exe hello {
         let session = crate::session::CompilerSession::ui();
         let mut p = Parser::from(code).with_session(session);
         let ast = p.parse().expect("unnamed msg decl must parse");
-        let w = ast.stmts.iter().find_map(|s| match s {
-            Stmt::WidgetDecl(w) => Some(w),
-            _ => None,
-        }).expect("widget");
+        let w = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget");
         assert_eq!(w.messages.len(), 1);
         let msg = &w.messages[0];
         assert_eq!(msg.variants.len(), 3);
@@ -19788,18 +20448,18 @@ exe hello {
         assert_eq!(msg.variants[2].name.as_str(), "Set");
         assert_eq!(msg.variants[2].payload.len(), 1);
 
-        let legacy = concat!(
-            "widget Counter {\n",
-            "    msg Msg { Inc }\n",
-            "}\n"
-        );
+        let legacy = concat!("widget Counter {\n", "    msg Msg { Inc }\n", "}\n");
         let session = crate::session::CompilerSession::ui();
         let mut p2 = Parser::from(legacy).with_session(session);
         let ast2 = p2.parse().expect("legacy named msg decl must still parse");
-        let w2 = ast2.stmts.iter().find_map(|s| match s {
-            Stmt::WidgetDecl(w) => Some(w),
-            _ => None,
-        }).expect("widget");
+        let w2 = ast2
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::WidgetDecl(w) => Some(w),
+                _ => None,
+            })
+            .expect("widget");
         assert_eq!(w2.messages[0].variants.len(), 1);
         assert_eq!(w2.messages[0].variants[0].name.as_str(), "Inc");
     }
@@ -19832,9 +20492,11 @@ widget Counter {
         match result {
             Ok(ast) => {
                 // Check that we got a widget declaration
-                let non_empty: Vec<_> = ast.stmts.iter().filter(|s| {
-                    !matches!(s, Stmt::EmptyLine(_))
-                }).collect();
+                let non_empty: Vec<_> = ast
+                    .stmts
+                    .iter()
+                    .filter(|s| !matches!(s, Stmt::EmptyLine(_)))
+                    .collect();
                 assert_eq!(non_empty.len(), 1, "Should have one widget statement");
 
                 if let Stmt::WidgetDecl(widget) = non_empty[0] {
@@ -19882,9 +20544,11 @@ widget W {
 
         match result {
             Ok(ast) => {
-                let non_empty: Vec<_> = ast.stmts.iter().filter(|s| {
-                    !matches!(s, Stmt::EmptyLine(_))
-                }).collect();
+                let non_empty: Vec<_> = ast
+                    .stmts
+                    .iter()
+                    .filter(|s| !matches!(s, Stmt::EmptyLine(_)))
+                    .collect();
                 assert_eq!(non_empty.len(), 1, "Should have one widget statement");
 
                 if let Stmt::WidgetDecl(widget) = non_empty[0] {
@@ -19935,9 +20599,11 @@ widget W {
 
         match result {
             Ok(ast) => {
-                let non_empty: Vec<_> = ast.stmts.iter().filter(|s| {
-                    !matches!(s, Stmt::EmptyLine(_))
-                }).collect();
+                let non_empty: Vec<_> = ast
+                    .stmts
+                    .iter()
+                    .filter(|s| !matches!(s, Stmt::EmptyLine(_)))
+                    .collect();
                 if let Stmt::WidgetDecl(widget) = non_empty[0] {
                     let view = widget.view.as_ref().expect("View should be parsed");
                     if let ViewNode::Element { tag, .. } = &view.root {
@@ -19979,9 +20645,11 @@ widget App {
 
         match result {
             Ok(ast) => {
-                let non_empty: Vec<_> = ast.stmts.iter().filter(|s| {
-                    !matches!(s, Stmt::EmptyLine(_))
-                }).collect();
+                let non_empty: Vec<_> = ast
+                    .stmts
+                    .iter()
+                    .filter(|s| !matches!(s, Stmt::EmptyLine(_)))
+                    .collect();
                 assert_eq!(non_empty.len(), 1, "Should have one widget statement");
 
                 if let Stmt::WidgetDecl(widget) = non_empty[0] {
@@ -19993,7 +20661,7 @@ widget App {
                     let routes = widget.routes.as_ref().unwrap();
                     assert_eq!(routes.routes.len(), 3);
                     assert_eq!(routes.routes[0].path, "/");
-                    assert_eq!(routes.routes[0].module, "homepage");  // lowercase (backward compat)
+                    assert_eq!(routes.routes[0].module, "homepage"); // lowercase (backward compat)
                     assert_eq!(routes.routes[1].path, "/button");
                     assert_eq!(routes.routes[2].path, "/user/:id");
                     assert_eq!(routes.routes[2].params, vec!["id"]);
@@ -20067,9 +20735,11 @@ widget Test {
 
         match result {
             Ok(ast) => {
-                let non_empty: Vec<_> = ast.stmts.iter().filter(|s| {
-                    !matches!(s, Stmt::EmptyLine(_))
-                }).collect();
+                let non_empty: Vec<_> = ast
+                    .stmts
+                    .iter()
+                    .filter(|s| !matches!(s, Stmt::EmptyLine(_)))
+                    .collect();
                 assert_eq!(non_empty.len(), 1, "Should have one widget statement");
 
                 if let Stmt::WidgetDecl(widget) = non_empty[0] {
@@ -20158,7 +20828,8 @@ widget Test {
     #[test]
     fn test_string_as_primary_prop_with_additional_props() {
         // button "Click" (class: "btn") { onclick: .Test }
-        let code = r#"widget Test { view { button "Click me" (class: "btn") { onclick: .Test } } }"#;
+        let code =
+            r#"widget Test { view { button "Click me" (class: "btn") { onclick: .Test } } }"#;
         let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
         let mut parser = Parser::from(code).with_session(session);
         let result = parser.parse();
@@ -20167,7 +20838,10 @@ widget Test {
         if let Ok(ast) = result {
             if let Stmt::WidgetDecl(widget) = &ast.stmts[0] {
                 if let Some(view) = &widget.view {
-                    if let ViewNode::Element { tag, props, events, .. } = &view.root {
+                    if let ViewNode::Element {
+                        tag, props, events, ..
+                    } = &view.root
+                    {
                         assert_eq!(tag, "button");
                         // Should have text prop from string literal
                         assert!(props.iter().any(|p| p.name == "text"));
@@ -20205,7 +20879,10 @@ widget Test {
                         // The child should be an element with tag ">"
                         assert_eq!(children.len(), 1);
                         if let ViewNode::Element { tag, .. } = &children[0] {
-                            assert_eq!(tag, ">", "The '>' should be parsed as element tag, not text syntax");
+                            assert_eq!(
+                                tag, ">",
+                                "The '>' should be parsed as element tag, not text syntax"
+                            );
                             // No primary prop for ">" element
                         }
                     }
@@ -20258,9 +20935,11 @@ widget Counter {
 
         match result {
             Ok(ast) => {
-                let non_empty: Vec<_> = ast.stmts.iter().filter(|s| {
-                    !matches!(s, Stmt::EmptyLine(_))
-                }).collect();
+                let non_empty: Vec<_> = ast
+                    .stmts
+                    .iter()
+                    .filter(|s| !matches!(s, Stmt::EmptyLine(_)))
+                    .collect();
                 assert_eq!(non_empty.len(), 1, "Should have one widget statement");
 
                 if let Stmt::WidgetDecl(widget) = non_empty[0] {
@@ -20273,7 +20952,10 @@ widget Counter {
                     let model = widget.model.as_ref().unwrap();
                     assert_eq!(model.fields.len(), 1);
                     assert_eq!(model.fields[0].name.as_str(), "count");
-                    assert!(model.fields[0].mutable, "count should be mutable with var keyword");
+                    assert!(
+                        model.fields[0].mutable,
+                        "count should be mutable with var keyword"
+                    );
 
                     // Check on block has dot-prefixed handlers
                     assert!(widget.on.is_some());
@@ -20334,7 +21016,10 @@ widget Test {
         if let Ok(ast) = result2 {
             if let Stmt::WidgetDecl(widget) = &ast.stmts[0] {
                 let model = widget.model.as_ref().unwrap();
-                assert!(!model.fields[0].mutable, "Field without var should be immutable");
+                assert!(
+                    !model.fields[0].mutable,
+                    "Field without var should be immutable"
+                );
             }
         }
     }
@@ -20516,7 +21201,13 @@ widget Test {
             _ => panic!("expected fn decl"),
         };
         let body = &fn_decl.body.stmts;
-        assert_eq!(body.len(), 2, "expected bare return + expr stmt, got {}: {:?}", body.len(), body);
+        assert_eq!(
+            body.len(),
+            2,
+            "expected bare return + expr stmt, got {}: {:?}",
+            body.len(),
+            body
+        );
         match &body[0] {
             Stmt::Return(expr) => {
                 assert!(
@@ -20570,7 +21261,11 @@ widget Shell {
         let result = parser.parse();
 
         let ast = result.expect("multi-param msg should parse");
-        let non_empty: Vec<_> = ast.stmts.iter().filter(|s| !matches!(s, Stmt::EmptyLine(_))).collect();
+        let non_empty: Vec<_> = ast
+            .stmts
+            .iter()
+            .filter(|s| !matches!(s, Stmt::EmptyLine(_)))
+            .collect();
         let widget = match non_empty[0] {
             Stmt::WidgetDecl(w) => w,
             other => panic!("expected WidgetDecl, got {:?}", other),
@@ -20583,15 +21278,27 @@ widget Shell {
 
         // Complete(str, int) — two payload types.
         assert_eq!(msg.variants[1].name.as_str(), "Complete");
-        assert_eq!(msg.variants[1].payload.len(), 2, "Complete has 2 payload types");
+        assert_eq!(
+            msg.variants[1].payload.len(),
+            2,
+            "Complete has 2 payload types"
+        );
 
         // RunSmart(int, str, []str) — three payload types.
         assert_eq!(msg.variants[2].name.as_str(), "RunSmart");
-        assert_eq!(msg.variants[2].payload.len(), 3, "RunSmart has 3 payload types");
+        assert_eq!(
+            msg.variants[2].payload.len(),
+            3,
+            "RunSmart has 3 payload types"
+        );
 
         // SetTag(str) — single payload still works (regression guard).
         assert_eq!(msg.variants[3].name.as_str(), "SetTag");
-        assert_eq!(msg.variants[3].payload.len(), 1, "SetTag has 1 payload type");
+        assert_eq!(
+            msg.variants[3].payload.len(),
+            1,
+            "SetTag has 1 payload type"
+        );
     }
 
     /// Plan 043 M5 #1 regression: the full Plan 043 shell_store msg declaration
@@ -20616,16 +21323,28 @@ store S {
         let mut parser = Parser::from(code).with_session(session);
         let result = parser.parse();
         let ast = result.expect("full shell_store msg should parse");
-        let store = ast.stmts.iter().find_map(|s| match s {
-            Stmt::StoreDecl(s) => Some(s),
-            _ => None,
-        }).expect("store declaration present");
+        let store = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::StoreDecl(s) => Some(s),
+                _ => None,
+            })
+            .expect("store declaration present");
         let msg = &store.messages[0];
         assert_eq!(msg.variants.len(), 15, "all 15 variants parse");
         // Spot-check the multi-param ones.
-        let runsmart = msg.variants.iter().find(|v| v.name.as_str() == "RunSmart").unwrap();
+        let runsmart = msg
+            .variants
+            .iter()
+            .find(|v| v.name.as_str() == "RunSmart")
+            .unwrap();
         assert_eq!(runsmart.payload.len(), 3, "RunSmart has 3 payload types");
-        let complete = msg.variants.iter().find(|v| v.name.as_str() == "Complete").unwrap();
+        let complete = msg
+            .variants
+            .iter()
+            .find(|v| v.name.as_str() == "Complete")
+            .unwrap();
         assert_eq!(complete.payload.len(), 2, "Complete has 2 payload types");
     }
 
@@ -20653,7 +21372,11 @@ widget W {
         let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
         let mut parser = Parser::from(code).with_session(session);
         let ast = parser.parse().expect("view None comparison should parse");
-        let non_empty: Vec<_> = ast.stmts.iter().filter(|s| !matches!(s, Stmt::EmptyLine(_))).collect();
+        let non_empty: Vec<_> = ast
+            .stmts
+            .iter()
+            .filter(|s| !matches!(s, Stmt::EmptyLine(_)))
+            .collect();
         assert_eq!(non_empty.len(), 1, "one widget statement");
     }
 
@@ -20673,7 +21396,9 @@ store S {
 "#;
         let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
         let mut parser = Parser::from(code).with_session(session);
-        let ast = parser.parse().expect("undeclared PascalCase struct literal should construct");
+        let ast = parser
+            .parse()
+            .expect("undeclared PascalCase struct literal should construct");
         let _ = ast; // parsed OK is the contract
 
         // Lowercase idents must NOT be treated as struct construction (they
@@ -20686,7 +21411,9 @@ widget W {
 "#;
         let session2 = crate::session::CompilerSession::new(crate::session::Scenario::UI);
         let mut parser2 = Parser::from(code2).with_session(session2);
-        let _ = parser2.parse().expect("lowercase model fields parse normally");
+        let _ = parser2
+            .parse()
+            .expect("lowercase model fields parse normally");
     }
 
     /// Plan 043 M5: a parameterized on-handler must bind ALL its params, both
@@ -20700,43 +21427,65 @@ widget W {
             let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
             let mut parser = Parser::from(code).with_session(session);
             let ast = parser.parse().expect("should parse");
-            let store = ast.stmts.iter().find_map(|s| match s {
-                Stmt::StoreDecl(s) => Some(s),
-                _ => None,
-            }).expect("store present");
-            store.on.as_ref().expect("on block present").handlers[0].params.clone()
+            let store = ast
+                .stmts
+                .iter()
+                .find_map(|s| match s {
+                    Stmt::StoreDecl(s) => Some(s),
+                    _ => None,
+                })
+                .expect("store present");
+            store.on.as_ref().expect("on block present").handlers[0]
+                .params
+                .clone()
         }
 
         // 3 bare params — all must survive.
-        let p = handler_params(r#"
+        let p = handler_params(
+            r#"
 store S {
     model { x int = 0 }
     msg Msg { Run(int, str, []str) }
     on { .Run(block_id, name, args) -> { .x = 0 } }
 }
-"#);
-        assert_eq!(p, vec!["block_id".to_string(), "name".to_string(), "args".to_string()],
-            "all 3 bare param names bound");
+"#,
+        );
+        assert_eq!(
+            p,
+            vec![
+                "block_id".to_string(),
+                "name".to_string(),
+                "args".to_string()
+            ],
+            "all 3 bare param names bound"
+        );
 
         // name+type form — names kept, types dropped.
-        let p = handler_params(r#"
+        let p = handler_params(
+            r#"
 store S {
     model { x int = 0 }
     msg Msg { Add(int, int) }
     on { .Add(a int, b int) -> { .x = a } }
 }
-"#);
-        assert_eq!(p, vec!["a".to_string(), "b".to_string()],
-            "name+type params: names kept, types dropped");
+"#,
+        );
+        assert_eq!(
+            p,
+            vec!["a".to_string(), "b".to_string()],
+            "name+type params: names kept, types dropped"
+        );
 
         // Single param (regression guard).
-        let p = handler_params(r#"
+        let p = handler_params(
+            r#"
 store S {
     model { x int = 0 }
     msg Msg { Set(int) }
     on { .Set(v) -> { .x = v } }
 }
-"#);
+"#,
+        );
         assert_eq!(p, vec!["v".to_string()], "single param still works");
     }
 
@@ -20761,9 +21510,15 @@ widget Counter {
 "#;
         let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
         let mut parser = Parser::from(code).with_session(session);
-        let ast = parser.parse().expect("multiline computed body should parse");
+        let ast = parser
+            .parse()
+            .expect("multiline computed body should parse");
 
-        let non_empty: Vec<_> = ast.stmts.iter().filter(|s| !matches!(s, Stmt::EmptyLine(_))).collect();
+        let non_empty: Vec<_> = ast
+            .stmts
+            .iter()
+            .filter(|s| !matches!(s, Stmt::EmptyLine(_)))
+            .collect();
         let widget = match non_empty[0] {
             Stmt::WidgetDecl(w) => w,
             other => panic!("expected WidgetDecl, got {:?}", other),
@@ -20787,7 +21542,10 @@ widget Counter {
                     "body ends in a return"
                 );
             }
-            other => panic!("expected Expr::Block for multiline computed, got {:?}", other),
+            other => panic!(
+                "expected Expr::Block for multiline computed, got {:?}",
+                other
+            ),
         }
     }
 
@@ -20800,25 +21558,36 @@ widget Counter {
             let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
             let mut parser = Parser::from(code).with_session(session);
             let ast = parser.parse().expect("should parse");
-            let fd = ast.stmts.iter().find_map(|s| match s {
-                Stmt::Fn(f) => Some(f),
-                _ => None,
-            }).expect("fn present");
+            let fd = ast
+                .stmts
+                .iter()
+                .find_map(|s| match s {
+                    Stmt::Fn(f) => Some(f),
+                    _ => None,
+                })
+                .expect("fn present");
             fd.body.stmts.len()
         }
         // dot-prefix assign + action call → 2 separate stmts (was 1: merged).
-        assert_eq!(fn_body_stmt_count("fn f() {\n    .cwd = result.cwd\n    .RefreshGit()\n}\n"), 2);
+        assert_eq!(
+            fn_body_stmt_count("fn f() {\n    .cwd = result.cwd\n    .RefreshGit()\n}\n"),
+            2
+        );
         // Plan 514（2026-09-02 用户裁定）：换行流式链已移除——旧链形态
         // （let x = A.new() 换行 .b() 换行 .c()）现在直接报语法错
         // （多行管道算子设计中）；同一行的链不受影响。
         {
             let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
-            let mut parser = Parser::from("fn f() {\n    let x = A.new()\n    .b()\n    .c()\n}\n").with_session(session);
+            let mut parser = Parser::from("fn f() {\n    let x = A.new()\n    .b()\n    .c()\n}\n")
+                .with_session(session);
             let err = parser.parse().expect_err("legacy newline chain must error");
             assert!(err.to_string().contains("不再自动续接"), "got: {}", err);
         }
         // api-call assign + action → 2 separate stmts.
-        assert_eq!(fn_body_stmt_count("fn f() {\n    .x = history()\n    .RefreshGit()\n}\n"), 2);
+        assert_eq!(
+            fn_body_stmt_count("fn f() {\n    .x = history()\n    .RefreshGit()\n}\n"),
+            2
+        );
         // let + dot assigns (no action) → 3 stmts.
         assert_eq!(fn_body_stmt_count("fn f() {\n    let snap = command_list()\n    .cwd = snap.cwd\n    .home = snap.home\n}\n"), 3);
     }
@@ -20833,10 +21602,14 @@ widget Counter {
         let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
         let mut parser = Parser::from(code).with_session(session);
         let ast = parser.parse().expect("should parse");
-        let fd = ast.stmts.iter().find_map(|s| match s {
-            Stmt::Fn(f) => Some(f),
-            _ => None,
-        }).expect("fn present");
+        let fd = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("fn present");
         assert_eq!(fd.body.stmts.len(), 2, "bare return + following stmt");
         assert!(
             matches!(&fd.body.stmts[0], Stmt::Return(e) if matches!(e.as_ref(), Expr::Nil)),
@@ -20852,10 +21625,14 @@ widget Counter {
         let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
         let mut parser = Parser::from(code).with_session(session);
         let ast = parser.parse().expect("should parse");
-        let fd = ast.stmts.iter().find_map(|s| match s {
-            Stmt::Fn(f) => Some(f),
-            _ => None,
-        }).expect("fn present");
+        let fd = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("fn present");
         assert!(
             matches!(&fd.body.stmts[0], Stmt::Return(e) if matches!(e.as_ref(), Expr::Int(42))),
             "return value on same line, got {:?}",
@@ -20930,14 +21707,23 @@ fn f(v Value) bool {
 }
 ";
         let ast = parse_once(code);
-        let fd = ast.stmts.iter().find_map(|s| match s {
-            Stmt::Fn(fd) if fd.name == "f" => Some(fd),
-            _ => None,
-        }).expect("fn f present");
-        let is_stmt = fd.body.stmts.iter().find_map(|s| match s {
-            Stmt::Is(is_) => Some(is_),
-            _ => None,
-        }).expect("is statement present");
+        let fd = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Fn(fd) if fd.name == "f" => Some(fd),
+                _ => None,
+            })
+            .expect("fn f present");
+        let is_stmt = fd
+            .body
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Is(is_) => Some(is_),
+                _ => None,
+            })
+            .expect("is statement present");
         let pat = match &is_stmt.branches[0] {
             IsBranch::EqBranch(patterns, _) => patterns[0].clone(),
             other => panic!("expected EqBranch, got {:?}", other),
@@ -20959,7 +21745,9 @@ fn f(v Value) bool {
         let code = "\u{FEFF}fn main() {\n    print(\"ok\")\n}\n";
         let ast = parse_once(code);
         assert!(
-            ast.stmts.iter().any(|s| matches!(s, Stmt::Fn(fd) if fd.name == "main")),
+            ast.stmts
+                .iter()
+                .any(|s| matches!(s, Stmt::Fn(fd) if fd.name == "main")),
             "fn main should parse from BOM-prefixed source"
         );
     }
@@ -20987,10 +21775,14 @@ fn main() {
     fn test_nested_slice_type_parses() {
         let code = "pub type Cell = { v: int }\npub type Grid = { rows: [][]Cell }\n";
         let ast = parse_once(code);
-        let grid = ast.stmts.iter().find_map(|s| match s {
-            Stmt::TypeDecl(td) if td.name == "Grid" => Some(td),
-            _ => None,
-        }).expect("Grid type decl present");
+        let grid = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::TypeDecl(td) if td.name == "Grid" => Some(td),
+                _ => None,
+            })
+            .expect("Grid type decl present");
         let rows = grid.find_member("rows").expect("rows member");
         assert!(
             matches!(&rows.ty, crate::ast::Type::Slice(s) if matches!(s.elem.as_ref(), crate::ast::Type::Slice(_))),
@@ -21004,10 +21796,14 @@ fn main() {
     fn test_slice_of_tuple_type_parses() {
         let code = "pub type Cell = { v: int }\npub type Sheet = { cells: [](str, Cell) }\n";
         let ast = parse_once(code);
-        let sheet = ast.stmts.iter().find_map(|s| match s {
-            Stmt::TypeDecl(td) if td.name == "Sheet" => Some(td),
-            _ => None,
-        }).expect("Sheet type decl present");
+        let sheet = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::TypeDecl(td) if td.name == "Sheet" => Some(td),
+                _ => None,
+            })
+            .expect("Sheet type decl present");
         let cells = sheet.find_member("cells").expect("cells member");
         assert!(
             matches!(&cells.ty, crate::ast::Type::Slice(s) if matches!(s.elem.as_ref(), crate::ast::Type::Tuple(ts) if ts.len() == 2)),
@@ -21033,22 +21829,32 @@ pub style brand_btn = "bg-brand text-white"
 style = 123
 "#;
         let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
-        let code_ast = parser.parse().expect("should parse style recipes successfully");
+        let code_ast = parser
+            .parse()
+            .expect("should parse style recipes successfully");
 
         // 1. card_base
-        let card_base = code_ast.stmts.iter().find_map(|s| match s {
-            Stmt::StyleRecipeDecl(r) if r.name == "card_base" => Some(r),
-            _ => None,
-        }).expect("card_base style recipe should exist");
+        let card_base = code_ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::StyleRecipeDecl(r) if r.name == "card_base" => Some(r),
+                _ => None,
+            })
+            .expect("card_base style recipe should exist");
         assert_eq!(card_base.doc.as_deref(), Some("Base card style"));
         assert!(!card_base.is_pub);
         assert_eq!(card_base.params.len(), 0);
 
         // 2. pill
-        let pill = code_ast.stmts.iter().find_map(|s| match s {
-            Stmt::StyleRecipeDecl(r) if r.name == "pill" => Some(r),
-            _ => None,
-        }).expect("pill style recipe should exist");
+        let pill = code_ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::StyleRecipeDecl(r) if r.name == "pill" => Some(r),
+                _ => None,
+            })
+            .expect("pill style recipe should exist");
         assert_eq!(pill.params.len(), 3);
         assert_eq!(pill.params[0].name.as_str(), "bg");
         assert!(pill.params[0].default_value.is_some());
@@ -21056,17 +21862,25 @@ style = 123
         assert_eq!(pill.params[2].name.as_str(), "pad");
 
         // 3. pill_danger
-        let pill_danger = code_ast.stmts.iter().find_map(|s| match s {
-            Stmt::StyleRecipeDecl(r) if r.name == "pill_danger" => Some(r),
-            _ => None,
-        }).expect("pill_danger style recipe should exist");
+        let pill_danger = code_ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::StyleRecipeDecl(r) if r.name == "pill_danger" => Some(r),
+                _ => None,
+            })
+            .expect("pill_danger style recipe should exist");
         assert_eq!(pill_danger.params.len(), 0);
 
         // 4. brand_btn (pub)
-        let brand_btn = code_ast.stmts.iter().find_map(|s| match s {
-            Stmt::StyleRecipeDecl(r) if r.name == "brand_btn" => Some(r),
-            _ => None,
-        }).expect("brand_btn style recipe should exist");
+        let brand_btn = code_ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::StyleRecipeDecl(r) if r.name == "brand_btn" => Some(r),
+                _ => None,
+            })
+            .expect("brand_btn style recipe should exist");
         assert!(brand_btn.is_pub);
 
         // 5. style = 123 should NOT be a StyleRecipeDecl
@@ -21074,7 +21888,10 @@ style = 123
             Stmt::StyleRecipeDecl(r) if r.name == "style" => true,
             _ => false,
         });
-        assert!(!non_recipe, "style = 123 must not be parsed as a StyleRecipeDecl");
+        assert!(
+            !non_recipe,
+            "style = 123 must not be parsed as a StyleRecipeDecl"
+        );
     }
 
     // ---- PLAN-046: keyed-for `key:` clause parsing matrix ----
@@ -21082,8 +21899,7 @@ style = 123
     /// Parse a widget whose view root is a single for-loop; return it.
     fn plan046_parse_root_for(src: &str) -> crate::ast::ui::ViewNode {
         let code = format!("widget App {{\n  view {{\n{}\n  }}\n}}", src);
-        let mut parser =
-            Parser::from(&code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(&code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().expect("widget must parse");
         let widget = ast
             .stmts
@@ -21099,9 +21915,8 @@ style = 123
     /// `for x in .items key: x.id { }` → key_expr = Dot(Ident(x), id).
     #[test]
     fn plan046_keyed_for_item_field_chain() {
-        let root = plan046_parse_root_for(
-            "    for x in .items key: x.id {\n      text \"r\"\n    }",
-        );
+        let root =
+            plan046_parse_root_for("    for x in .items key: x.id {\n      text \"r\"\n    }");
         match root {
             ViewNode::ForLoop { var, key_expr, .. } => {
                 assert_eq!(var, "x");
@@ -21121,9 +21936,8 @@ style = 123
     /// `key: .id` → self-rooted state chain (same shape as expression position).
     #[test]
     fn plan046_keyed_for_state_chain() {
-        let root = plan046_parse_root_for(
-            "    for x in .items key: .user.id {\n      text \"r\"\n    }",
-        );
+        let root =
+            plan046_parse_root_for("    for x in .items key: .user.id {\n      text \"r\"\n    }");
         match root {
             ViewNode::ForLoop { key_expr, .. } => {
                 let key_expr = key_expr.expect("key clause must parse");
@@ -21141,12 +21955,18 @@ style = 123
         let root =
             plan046_parse_root_for("    for x in .items key: \"abc\" {\n      text \"r\"\n    }");
         match root {
-            ViewNode::ForLoop { key_expr: Some(Expr::Str(s)), .. } => assert_eq!(s, "abc"),
+            ViewNode::ForLoop {
+                key_expr: Some(Expr::Str(s)),
+                ..
+            } => assert_eq!(s, "abc"),
             other => panic!("expected Str key, got {:?}", other),
         }
         let root = plan046_parse_root_for("    for x in .items key: 5 {\n      text \"r\"\n    }");
         match root {
-            ViewNode::ForLoop { key_expr: Some(Expr::Int(v)), .. } => assert_eq!(v, 5),
+            ViewNode::ForLoop {
+                key_expr: Some(Expr::Int(v)),
+                ..
+            } => assert_eq!(v, 5),
             other => panic!("expected Int key, got {:?}", other),
         }
     }
@@ -21154,11 +21974,12 @@ style = 123
     /// Index form composes: `for i, x in .items key: x.id`.
     #[test]
     fn plan046_keyed_for_with_index_var() {
-        let root = plan046_parse_root_for(
-            "    for i, x in .items key: x.id {\n      text \"r\"\n    }",
-        );
+        let root =
+            plan046_parse_root_for("    for i, x in .items key: x.id {\n      text \"r\"\n    }");
         match root {
-            ViewNode::ForLoop { index, key_expr, .. } => {
+            ViewNode::ForLoop {
+                index, key_expr, ..
+            } => {
                 assert_eq!(index.as_deref(), Some("i"));
                 assert!(key_expr.is_some(), "key clause must survive index form");
             }
@@ -21171,7 +21992,12 @@ style = 123
     fn plan046_keyless_for_has_no_key_expr() {
         let root = plan046_parse_root_for("    for x in .items {\n      text \"r\"\n    }");
         match root {
-            ViewNode::ForLoop { var, key_expr, body, .. } => {
+            ViewNode::ForLoop {
+                var,
+                key_expr,
+                body,
+                ..
+            } => {
                 assert_eq!(var, "x");
                 assert!(key_expr.is_none(), "keyless loop must have key_expr None");
                 assert_eq!(body.len(), 1);
@@ -21192,8 +22018,7 @@ style = 123
             "  }\n",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         assert!(
             parser.parse().is_err(),
             "call-shaped key must be a parse error"
@@ -21204,13 +22029,15 @@ style = 123
 
     /// Parse a widget whose view root is a single memo block; return it.
     fn plan046_parse_root_memo(src: &str) -> crate::ast::ui::ViewNode {
-        let code = format!("widget App {{
+        let code = format!(
+            "widget App {{
   view {{
 {}
   }}
-}}", src);
-        let mut parser =
-            Parser::from(&code).with_session(crate::session::CompilerSession::ui());
+}}",
+            src
+        );
+        let mut parser = Parser::from(&code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().expect("widget must parse");
         let widget = ast
             .stmts
@@ -21232,7 +22059,9 @@ style = 123
     }",
         );
         match root {
-            ViewNode::MemoBlock { deps, exact, body, .. } => {
+            ViewNode::MemoBlock {
+                deps, exact, body, ..
+            } => {
                 assert_eq!(deps.len(), 2, "逗号列表拍平为逐项 deps");
                 assert!(!exact);
                 assert_eq!(body.len(), 1);
@@ -21279,14 +22108,21 @@ style = 123
             "memo (foo: 1) { text \"h\" }",
             "memo (deps: .a, exact: \"yes\") { text \"h\" }",
         ] {
-            let code = format!("widget App {{
+            let code = format!(
+                "widget App {{
   view {{
     {}
   }}
-}}", src);
+}}",
+                src
+            );
             let mut parser =
                 Parser::from(&code).with_session(crate::session::CompilerSession::ui());
-            assert!(parser.parse().is_err(), "bad memo header must error: {}", src);
+            assert!(
+                parser.parse().is_err(),
+                "bad memo header must error: {}",
+                src
+            );
         }
     }
 
@@ -21309,8 +22145,7 @@ style = 123
 ",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().expect("outlet prop must parse");
         let widget = ast
             .stmts
@@ -21336,8 +22171,7 @@ style = 123
     outlet
   }
 }";
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().expect("bare outlet must parse");
         let widget = ast
             .stmts
@@ -21358,8 +22192,7 @@ style = 123
     outlet (memo: false)
   }
 }";
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         let ast = parser.parse().expect("explicit-false outlet must parse");
         let widget = ast
             .stmts
@@ -21380,8 +22213,7 @@ style = 123
     outlet (foo: 1)
   }
 }";
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         assert!(parser.parse().is_err(), "non-memo outlet header must error");
     }
 
@@ -21416,23 +22248,22 @@ style = 123
             "  }\n",
             "}"
         );
-        let mut parser =
-            Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
         assert!(
             parser.parse().is_err(),
             "empty key clause must be a parse error"
         );
     }
-
 }
-
 
 /// Plan 560 T07：中缀糖直产桥调用（`a @ b`→py_matmul、`a ** b`→py_pow）。
 fn mk_infix_sugar_call(name: &str, l: crate::ast::Expr, r: crate::ast::Expr) -> crate::ast::Expr {
     use crate::ast::{Arg, Args, Call, Expr, Type};
     Expr::Call(Call {
         name: Box::new(Expr::Ident(name.into())),
-        args: Args { args: vec![Arg::Pos(l), Arg::Pos(r)] },
+        args: Args {
+            args: vec![Arg::Pos(l), Arg::Pos(r)],
+        },
         ret: Type::Unknown,
         type_args: Vec::new(),
         generic_args: Vec::new(),

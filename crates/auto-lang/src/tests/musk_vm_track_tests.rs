@@ -33,9 +33,15 @@ mod musk_vm_track_p053_2_null_equality {
     /// 显隐的现场形态）。
     #[test]
     fn null_var_guard_ne_none_is_false() {
-        let out = run_code("let g = null\nif g != None {\n    print(\"BAD\")\n} else {\n    print(\"GOOD\")\n}");
+        let out = run_code(
+            "let g = null\nif g != None {\n    print(\"BAD\")\n} else {\n    print(\"GOOD\")\n}",
+        );
         eprintln!("[P053-2] null guard => [{}]", out);
-        assert!(out.contains("GOOD"), "expected GOOD (guard blocked), got: [{}]", out);
+        assert!(
+            out.contains("GOOD"),
+            "expected GOOD (guard blocked), got: [{}]",
+            out
+        );
     }
 
     /// JSON null 字段与 `None` 守卫（musk 后端桥回填形态）。
@@ -98,7 +104,8 @@ mod musk_vm_track_p053_6_regex_static {
         eprintln!("[P053-6] replace g => [{}]", out);
         assert!(
             out.contains("a&lt;b&gt;c"),
-            "expected a&lt;b&gt;c, got: [{}]", out
+            "expected a&lt;b&gt;c, got: [{}]",
+            out
         );
     }
 
@@ -206,12 +213,18 @@ mod musk_vm_track_p053_6_regex_static {
         eprintln!("[P053-6] leak-C full => [{}]", c);
         assert!(
             a.contains("reply with one short sentence"),
-            "A: fn 内 replace 返回, got: [{}]", a
+            "A: fn 内 replace 返回, got: [{}]",
+            a
         );
-        assert!(b.contains("text|reply"), "B: fn 内 obj 字面量, got: [{}]", b);
+        assert!(
+            b.contains("text|reply"),
+            "B: fn 内 obj 字面量, got: [{}]",
+            b
+        );
         assert!(
             c.contains("text|reply with one short sentence"),
-            "C: 完整形态, got: [{}]", c
+            "C: 完整形态, got: [{}]",
+            c
         );
     }
 
@@ -219,22 +232,55 @@ mod musk_vm_track_p053_6_regex_static {
     #[test]
     fn message_chain_str_methods_matrix() {
         let cases: &[(&str, &str)] = &[
-            ("trimEnd", "fn f(s str) -> str { return s.trimEnd() }\nprint(f(\"a \"))|a"),
-            ("to_lower", "fn f(s str) -> str { return s.to_lower() }\nprint(f(\"AbC\"))|abc"),
-            ("to_upper", "fn f(s str) -> str { return s.to_upper() }\nprint(f(\"aBc\"))|ABC"),
-            ("includes", "fn f(s str) -> bool { return s.includes(\"ell\") }\nprint(f(\"hello\"))|true"),
-            ("lastIndexOf", "fn f(s str) -> int { return s.lastIndexOf(\"l\") }\nprint(f(\"hello\"))|3"),
-            ("indexOf", "fn f(s str) -> int { return s.indexOf(\"e\") }\nprint(f(\"hello\"))|1"),
-            ("substring", "fn f(s str) -> str { return s.substring(1, 3) }\nprint(f(\"hello\"))|el"),
-            ("char_code_at", "fn f(s str) -> int { return s.char_code_at(0) }\nprint(f(\"A\"))|65"),
-            ("slice", "fn f(s str) -> str { return s.slice(0, 2) }\nprint(f(\"hello\"))|he"),
+            (
+                "trimEnd",
+                "fn f(s str) -> str { return s.trimEnd() }\nprint(f(\"a \"))|a",
+            ),
+            (
+                "to_lower",
+                "fn f(s str) -> str { return s.to_lower() }\nprint(f(\"AbC\"))|abc",
+            ),
+            (
+                "to_upper",
+                "fn f(s str) -> str { return s.to_upper() }\nprint(f(\"aBc\"))|ABC",
+            ),
+            (
+                "includes",
+                "fn f(s str) -> bool { return s.includes(\"ell\") }\nprint(f(\"hello\"))|true",
+            ),
+            (
+                "lastIndexOf",
+                "fn f(s str) -> int { return s.lastIndexOf(\"l\") }\nprint(f(\"hello\"))|3",
+            ),
+            (
+                "indexOf",
+                "fn f(s str) -> int { return s.indexOf(\"e\") }\nprint(f(\"hello\"))|1",
+            ),
+            (
+                "substring",
+                "fn f(s str) -> str { return s.substring(1, 3) }\nprint(f(\"hello\"))|el",
+            ),
+            (
+                "char_code_at",
+                "fn f(s str) -> int { return s.char_code_at(0) }\nprint(f(\"A\"))|65",
+            ),
+            (
+                "slice",
+                "fn f(s str) -> str { return s.slice(0, 2) }\nprint(f(\"hello\"))|he",
+            ),
         ];
         let mut misses: Vec<&str> = Vec::new();
         for (name, spec) in cases.iter() {
             let (code, expect) = spec.split_once('|').unwrap();
             let out = run_code(code);
             let ok = out.trim().contains(expect);
-            eprintln!("[P053-6] str-method {} => [{}] expect contains [{}] {}", name, out.trim(), expect, if ok { "OK" } else { "MISS" });
+            eprintln!(
+                "[P053-6] str-method {} => [{}] expect contains [{}] {}",
+                name,
+                out.trim(),
+                expect,
+                if ok { "OK" } else { "MISS" }
+            );
             if !ok {
                 misses.push(name);
             }
@@ -249,11 +295,16 @@ mod musk_vm_track_p053_6_regex_static {
 mod musk_vm_track_p053_6_widget_content {
     use crate::parser::Parser;
 
-    fn count_text_nodes(view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, label: &str) -> usize {
+    fn count_text_nodes(
+        view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+        label: &str,
+    ) -> usize {
         use crate::ui::view::View;
         match view {
             View::Text { content, .. } => usize::from(content == label),
-            View::Column { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            View::Column { children, .. } => {
+                children.iter().map(|c| count_text_nodes(c, label)).sum()
+            }
             View::Row { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
             _ => 0,
         }
@@ -292,15 +343,15 @@ mod musk_vm_track_p053_6_widget_content {
         for st in &ast.stmts {
             match st {
                 crate::ast::Stmt::WidgetDecl(d) => decls.push(d.clone()),
-                crate::ast::Stmt::Fn(_) | crate::ast::Stmt::UseWeb(_) => import_stmts.push(st.clone()),
+                crate::ast::Stmt::Fn(_) | crate::ast::Stmt::UseWeb(_) => {
+                    import_stmts.push(st.clone())
+                }
                 _ => {}
             }
         }
-        let root_widget =
-            crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
-        let child_widget =
-            crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        let child_widget = crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
         registry.register(child_widget);
 
         let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
@@ -315,18 +366,23 @@ mod musk_vm_track_p053_6_widget_content {
         .expect("component");
         comp.write_state_vec(
             "messages",
-            vec![auto_val::Value::Obj(
-                Box::new(auto_val::Obj::new().with("content", auto_val::Value::str("hello & <world>"))),
-            )],
+            vec![auto_val::Value::Obj(Box::new(
+                auto_val::Obj::new().with("content", auto_val::Value::str("hello & <world>")),
+            ))],
         )
         .unwrap();
         let (view, _, _) = comp.view_with_debug_gated(false);
-        fn dump_texts(v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+        fn dump_texts(
+            v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            out: &mut Vec<String>,
+        ) {
             use crate::ui::view::View;
             match v {
                 View::Text { content, .. } => out.push(content.clone()),
                 View::Column { children, .. } | View::Row { children, .. } => {
-                    for c in children { dump_texts(c, out); }
+                    for c in children {
+                        dump_texts(c, out);
+                    }
                 }
                 _ => {}
             }
@@ -368,11 +424,9 @@ mod musk_vm_track_p053_6_widget_content {
                 _ => {}
             }
         }
-        let root_widget =
-            crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
-        let child_widget =
-            crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        let child_widget = crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
         registry.register(child_widget);
 
         let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
@@ -387,9 +441,9 @@ mod musk_vm_track_p053_6_widget_content {
         .expect("component");
         comp.write_state(
             "current",
-            auto_val::Value::Obj(
-                Box::new(auto_val::Obj::new().with("content", auto_val::Value::str("hello obj world"))),
-            ),
+            auto_val::Value::Obj(Box::new(
+                auto_val::Obj::new().with("content", auto_val::Value::str("hello obj world")),
+            )),
         )
         .unwrap();
         let (view, _, _) = comp.view_with_debug_gated(false);
@@ -469,11 +523,16 @@ mod musk_vm_track_p053_1_computed_helper_chain {
 mod musk_vm_track_p053_1_widget_computed {
     use crate::parser::Parser;
 
-    fn count_text_nodes(view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, label: &str) -> usize {
+    fn count_text_nodes(
+        view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+        label: &str,
+    ) -> usize {
         use crate::ui::view::View;
         match view {
             View::Text { content, .. } => usize::from(content == label),
-            View::Column { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
+            View::Column { children, .. } => {
+                children.iter().map(|c| count_text_nodes(c, label)).sum()
+            }
             View::Row { children, .. } => children.iter().map(|c| count_text_nodes(c, label)).sum(),
             _ => 0,
         }
@@ -527,11 +586,9 @@ mod musk_vm_track_p053_1_widget_computed {
             }
         }
         assert_eq!(decls.len(), 2, "root + child");
-        let root_widget =
-            crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
-        let child_widget =
-            crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        let child_widget = crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
         registry.register(child_widget);
 
         let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
@@ -545,11 +602,11 @@ mod musk_vm_track_p053_1_widget_computed {
         )
         .expect("component");
         let mk = |id: &str, role: &str| {
-            auto_val::Value::Obj(
-                Box::new(auto_val::Obj::new()
+            auto_val::Value::Obj(Box::new(
+                auto_val::Obj::new()
                     .with("id", auto_val::Value::str(id))
-                    .with("role", auto_val::Value::str(role))),
-            )
+                    .with("role", auto_val::Value::str(role)),
+            ))
         };
         comp.write_state_vec(
             "messages",
@@ -557,10 +614,14 @@ mod musk_vm_track_p053_1_widget_computed {
         )
         .unwrap();
         // 非空 leaf:强制走 `.length` + `messages[i].id` 全路径。
-        comp.write_state("active_leaf", auto_val::Value::str("m3")).unwrap();
+        comp.write_state("active_leaf", auto_val::Value::str("m3"))
+            .unwrap();
         let (view, _, _) = comp.view_with_debug_gated(false);
         let rows = count_text_nodes(&view, "row");
-        assert_eq!(rows, 1, "computed 链式 helper(.length+索引+.id)必须解出 1 行(leaf=m3)");
+        assert_eq!(
+            rows, 1,
+            "computed 链式 helper(.length+索引+.id)必须解出 1 行(leaf=m3)"
+        );
     }
 
     /// P-053-1 续(悬垂透传):computed 透传链多帧重估——call_vm_fn 编组
@@ -597,11 +658,9 @@ mod musk_vm_track_p053_1_widget_computed {
                 _ => {}
             }
         }
-        let root_widget =
-            crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
-        let child_widget =
-            crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        let child_widget = crate::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
         registry.register(child_widget);
 
         let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
@@ -625,7 +684,10 @@ mod musk_vm_track_p053_1_widget_computed {
             let (view, _, _) = comp.view_with_debug_gated(false);
             rows_last = count_text_nodes(&view, "row");
         }
-        assert_eq!(rows_last, 2, "computed 透传链 8 帧重估后仍须解出 2 行(悬垂引用回归)");
+        assert_eq!(
+            rows_last, 2,
+            "computed 透传链 8 帧重估后仍须解出 2 行(悬垂引用回归)"
+        );
     }
 }
 
@@ -670,9 +732,13 @@ mod musk_vm_track_p053_4_merged_api_warning {
 
         // Bytecode must contain CALL_NAT 3142 (auto.vm.warn_api_noop)
         let has_warn_call = module.code.windows(4).any(|w| {
-            w[0] == crate::vm::opcode::OpCode::CALL_NAT as u8 && u16::from_le_bytes([w[1], w[2]]) == 3142
+            w[0] == crate::vm::opcode::OpCode::CALL_NAT as u8
+                && u16::from_le_bytes([w[1], w[2]]) == 3142
         });
-        assert!(has_warn_call, "merged mode #[api] call must emit CALL_NAT 3142");
+        assert!(
+            has_warn_call,
+            "merged mode #[api] call must emit CALL_NAT 3142"
+        );
     }
 }
 
@@ -689,9 +755,17 @@ let v = localStorage.getItem("test_key")
 print(v)
 "#;
         let result = run_with_capture(code);
-        assert!(result.is_ok(), "localStorage get_item should run without canary panic: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "localStorage get_item should run without canary panic: {:?}",
+            result.err()
+        );
         let (_, stdout) = result.unwrap();
-        assert!(stdout.contains("test_value_123"), "expected test_value_123, got: [{}]", stdout);
+        assert!(
+            stdout.contains("test_value_123"),
+            "expected test_value_123, got: [{}]",
+            stdout
+        );
     }
 }
 
@@ -734,10 +808,15 @@ mod musk_vm_track_p053_7_sibling_handler_calls {
         .expect("synthesize");
 
         // Synthesized module contains handler_SiblingWidget_DoLoad export
-        let has_handler = module.exports.iter().any(|(name, _)| {
-            name.contains("handler_SiblingWidget_DoLoad")
-        });
-        assert!(has_handler, "expected handler_SiblingWidget_DoLoad in module exports: {:?}", module.exports.keys().collect::<Vec<_>>());
+        let has_handler = module
+            .exports
+            .iter()
+            .any(|(name, _)| name.contains("handler_SiblingWidget_DoLoad"));
+        assert!(
+            has_handler,
+            "expected handler_SiblingWidget_DoLoad in module exports: {:?}",
+            module.exports.keys().collect::<Vec<_>>()
+        );
     }
 }
 
@@ -759,7 +838,11 @@ if guard {
 }
 "#;
         let (_code_res, stdout) = run_with_capture(code).expect("run");
-        assert!(stdout.contains("GUARD_BLOCKED"), "404 error object must be blocked by guard, got: [{}]", stdout);
+        assert!(
+            stdout.contains("GUARD_BLOCKED"),
+            "404 error object must be blocked by guard, got: [{}]",
+            stdout
+        );
     }
 
     #[test]
@@ -775,7 +858,11 @@ if guard {
 }
 "#;
         let (_code_res, stdout) = run_with_capture(code).expect("run");
-        assert!(stdout.contains("GUARD_PASSED"), "200 success object must pass guard, got: [{}]", stdout);
+        assert!(
+            stdout.contains("GUARD_PASSED"),
+            "200 success object must pass guard, got: [{}]",
+            stdout
+        );
     }
 }
 
@@ -851,7 +938,12 @@ mod musk_vm_track_p053_b4_title_tooltip {
         let (view, _, _) = comp.view_with_debug_gated(false);
         let mut buttons = Vec::new();
         collect_buttons(&view, &mut buttons);
-        assert_eq!(buttons.len(), 2, "两个 button 都要转出, got {}", buttons.len());
+        assert_eq!(
+            buttons.len(),
+            2,
+            "两个 button 都要转出, got {}",
+            buttons.len()
+        );
         let labeled = buttons
             .iter()
             .map(|b| match b {
@@ -881,7 +973,11 @@ mod musk_vm_track_p053_b4_title_tooltip {
                 _ => None,
             })
             .expect("plain button");
-        assert_eq!(plain, "无提示", "无 title 的 label 保持纯净, got: {:?}", plain);
+        assert_eq!(
+            plain, "无提示",
+            "无 title 的 label 保持纯净, got: {:?}",
+            plain
+        );
     }
 
     /// snapshot：EE03 剥离为独立 title prop（MCP 断言面直接可读）。
@@ -890,9 +986,8 @@ mod musk_vm_track_p053_b4_title_tooltip {
         let comp = build_root();
         let (view, id_map, _) = comp.view_with_debug_gated(false);
         let state = std::collections::HashMap::new();
-        let snap = crate::ui::snapshot_builder::SnapshotBuilder::build(
-            "Root53t", &state, &view, &id_map,
-        );
+        let snap =
+            crate::ui::snapshot_builder::SnapshotBuilder::build("Root53t", &state, &view, &id_map);
         // UiNode 树递归找 Button 节点的 props。
         fn walk(
             node: &crate::ui::mcp_types::UiNode,
@@ -978,15 +1073,16 @@ mod musk_vm_track_p053_b4_title_tooltip {
         eprintln!("[P053-b4] vue SFC:\n{}", sfc);
         assert!(
             sfc.contains(":title=\"'sess-literal'\""),
-            "静态 title 必须落 title 属性(绑定常量形态), SFC:\n{}", sfc
+            "静态 title 必须落 title 属性(绑定常量形态), SFC:\n{}",
+            sfc
         );
         assert!(
             sfc.contains(":title=\"s.id\""),
-            "表达式 title 必须落 :title 绑定, SFC:\n{}", sfc
+            "表达式 title 必须落 :title 绑定, SFC:\n{}",
+            sfc
         );
     }
 }
-
 
 /// PLAN-054 T1 (R1): EE03 title 标记不得落可见文本流——内容子树按钮的
 /// leading Text 泄漏。现场（musk chats_view.at A1/A2）：`button { title: …
@@ -1073,7 +1169,9 @@ mod musk_vm_track_p054_t1_title_content_subtree {
             );
             let session = crate::session::CompilerSession::ui();
             let mut parser = Parser::from(src.as_str()).with_session(session);
-            let ast = parser.parse().unwrap_or_else(|e| panic!("{tag}: parse {e}"));
+            let ast = parser
+                .parse()
+                .unwrap_or_else(|e| panic!("{tag}: parse {e}"));
             let decls: Vec<crate::ast::WidgetDecl> = ast
                 .stmts
                 .iter()
@@ -1104,7 +1202,9 @@ mod musk_vm_track_p054_t1_title_content_subtree {
                 }
                 match view {
                     View::Image { src, .. } => *img = Some(src.clone()),
-                    View::Button { content: Some(c), .. } => first_image(c, img),
+                    View::Button {
+                        content: Some(c), ..
+                    } => first_image(c, img),
                     View::Row { children, .. } | View::Column { children, .. } => {
                         for c in children {
                             first_image(c, img);
@@ -1158,9 +1258,14 @@ mod musk_vm_track_p054_t1_title_content_subtree {
         let mut labels = Vec::new();
         let mut texts = Vec::new();
         walk(&view, &mut labels, &mut texts);
-        eprintln!("[P054-T1] button labels: {:?}, text contents: {:?}", labels, texts);
+        eprintln!(
+            "[P054-T1] button labels: {:?}, text contents: {:?}",
+            labels, texts
+        );
         assert!(
-            labels.iter().any(|l| l.ends_with(&format!("\u{EE03}sess-054-id"))),
+            labels
+                .iter()
+                .any(|l| l.ends_with(&format!("\u{EE03}sess-054-id"))),
             "Button.label 必须保留 EE03+title 尾段(tooltip 通道), got: {:?}",
             labels
         );
@@ -1176,7 +1281,6 @@ mod musk_vm_track_p054_t1_title_content_subtree {
         );
     }
 }
-
 
 /// P-053-8: 二级导航点击会话实参漂移——UI 事件层携带正确 id
 /// （encode `Pick\u{1f}s\u{1f}<id>`），handler 体内参数却读到会话名
@@ -1252,16 +1356,16 @@ mod musk_vm_track_p053_8_click_arg_drift {
         dc.write_state_vec(
             "session_list",
             vec![
-                auto_val::Value::Obj(
-                    Box::new(auto_val::Obj::new()
+                auto_val::Value::Obj(Box::new(
+                    auto_val::Obj::new()
                         .with("id", auto_val::Value::str("8f20138cab63f0c24832d3fb"))
-                        .with("name", auto_val::Value::str("你好"))),
-                ),
-                auto_val::Value::Obj(
-                    Box::new(auto_val::Obj::new()
+                        .with("name", auto_val::Value::str("你好")),
+                )),
+                auto_val::Value::Obj(Box::new(
+                    auto_val::Obj::new()
                         .with("id", auto_val::Value::str("13e16478f80c91da604b87e7"))
-                        .with("name", auto_val::Value::str("alpha"))),
-                ),
+                        .with("name", auto_val::Value::str("alpha")),
+                )),
             ],
         )
         .unwrap();
@@ -1325,16 +1429,16 @@ mod musk_vm_track_p053_8_corpus {
         dc.write_state_vec(
             "session_list",
             vec![
-                auto_val::Value::Obj(
-                    Box::new(auto_val::Obj::new()
+                auto_val::Value::Obj(Box::new(
+                    auto_val::Obj::new()
                         .with("id", auto_val::Value::str("8f20138cab63f0c24832d3fb"))
-                        .with("name", auto_val::Value::str("你好"))),
-                ),
-                auto_val::Value::Obj(
-                    Box::new(auto_val::Obj::new()
+                        .with("name", auto_val::Value::str("你好")),
+                )),
+                auto_val::Value::Obj(Box::new(
+                    auto_val::Obj::new()
                         .with("id", auto_val::Value::str("13e16478f80c91da604b87e7"))
-                        .with("name", auto_val::Value::str("alpha"))),
-                ),
+                        .with("name", auto_val::Value::str("alpha")),
+                )),
             ],
         )
         .unwrap();
@@ -1436,7 +1540,7 @@ mod musk_vm_track_p053_8_phantom_freelist {
         let live = vm.add_string("你好".as_bytes().to_vec());
         vm.pool_retain(live);
         vm.pool_retain(live); // rc=2:两个存活持有
-        // 人为注入幻影条目(现场形态:存活槽进入 freelist)。
+                              // 人为注入幻影条目(现场形态:存活槽进入 freelist)。
         vm.pool_state.write().unwrap().freelist.push(live);
         // 后续内化不得偷该槽。
         let other = vm.add_string("other".as_bytes().to_vec());
@@ -1457,7 +1561,6 @@ mod musk_vm_track_p053_8_phantom_freelist {
     }
 }
 
-
 /// PLAN-054 手动探针（#[ignore]，需 MUSK_APP_PATH 指向真实 musk app.at）：
 /// 走生产管线 build_dynamic_component（与 auto run --render=vm 同装载路径，
 /// 含 register_imported_components 三路注册）渲染一帧，倒出全部 Image src
@@ -1476,7 +1579,11 @@ mod musk_vm_track_p054_runtime_probe {
         let mut dc = crate::build_dynamic_component(&code, Some(app.to_str().unwrap()))
             .expect("production loader build");
         // 过 auth guard（app.at: authenticated => token != None computed）。
-        let fields: Vec<String> = dc.state_fields().iter().map(|f| format!("{:?}", f)).collect();
+        let fields: Vec<String> = dc
+            .state_fields()
+            .iter()
+            .map(|f| format!("{:?}", f))
+            .collect();
         eprintln!("[P054-probe] state fields: {:?}", fields);
         let authed = dc.write_state("token", auto_val::Value::Str("probe-token".into()));
         authed.expect("write token");
@@ -1498,8 +1605,15 @@ mod musk_vm_track_p054_runtime_probe {
             .filter(|k| k.contains("current") || k.contains("Name") || k.contains("Title"))
             .cloned()
             .collect();
-        eprintln!("[P054-probe] vm fn exports matching current/Name/Title: {:?}", names);
-        for cand in ["currentName", "currentTitle", "WorkspaceSelector.currentName"] {
+        eprintln!(
+            "[P054-probe] vm fn exports matching current/Name/Title: {:?}",
+            names
+        );
+        for cand in [
+            "currentName",
+            "currentTitle",
+            "WorkspaceSelector.currentName",
+        ] {
             match bridge.call_vm_fn(cand, &[]) {
                 Ok(v) => eprintln!("[P054-probe] call_vm_fn({cand}) = {:?}", v),
                 Err(e) => eprintln!("[P054-probe] call_vm_fn({cand}) ERR: {:?}", e),
@@ -1591,7 +1705,10 @@ mod musk_vm_track_p054_t3_interp_i18n {
 
     fn texts_of(comp: &crate::ui::dynamic::DynamicComponent) -> Vec<String> {
         let (view, _, _) = comp.view_with_debug_gated(false);
-        fn walk(view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+        fn walk(
+            view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            out: &mut Vec<String>,
+        ) {
             use crate::ui::view::View;
             match view {
                 View::Text { content, .. } => out.push(content.clone()),
@@ -1786,9 +1903,7 @@ mod musk_vm_track_p054_t3_none_return {
             "}\n",
         );
         let bridge = build_bridge(src);
-        let v = bridge
-            .call_vm_fn("load", &[])
-            .expect("call load");
+        let v = bridge.call_vm_fn("load", &[]).expect("call load");
         eprintln!("[P054-T3] return None => {:?}", v);
         assert_eq!(
             v,
@@ -1848,7 +1963,10 @@ mod musk_vm_track_p054_t3_if_fallback {
             .write_state("current", auto_val::Value::Int(0))
             .expect("write garbage current");
         let (view, _, _) = comp.view_with_debug_gated(false);
-        fn texts(view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>, out: &mut Vec<String>) {
+        fn texts(
+            view: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            out: &mut Vec<String>,
+        ) {
             use crate::ui::view::View;
             match view {
                 View::Text { content, .. } => out.push(content.clone()),
@@ -1890,10 +2008,15 @@ mod musk_vm_track_p054_t4_style_probe {
             "session-item relative h-auto w-full flex flex-col items-start justify-start gap-0.5 text-left py-2.5 px-3 mb-1.5 rounded-lg border border-transparent bg-card hover:border-border hover:bg-accent text-foreground",
         );
         for (name, s) in [("selected", selected), ("unselected", unselected)] {
-            let Ok(s) = s else { eprintln!("[P054-T4] {name}: PARSE FAIL"); continue };
+            let Ok(s) = s else {
+                eprintln!("[P054-T4] {name}: PARSE FAIL");
+                continue;
+            };
             let is = crate::ui::style::iced_adapter::IcedStyle::from_style(&s);
-            eprintln!("[P054-T4] {name}: border={} width={:?} color={:?} bg={:?}",
-                is.border, is.border_width, is.border_color, is.background_color);
+            eprintln!(
+                "[P054-T4] {name}: border={} width={:?} color={:?} bg={:?}",
+                is.border, is.border_width, is.border_color, is.background_color
+            );
         }
     }
 }
@@ -1901,8 +2024,8 @@ mod musk_vm_track_p054_t4_style_probe {
 /// PLAN-054 T4 (A6/A9/A11) 回归锁：会话卡片/消息行样式链。
 #[cfg(all(test, feature = "ui-iced"))]
 mod musk_vm_track_p054_t4_styles {
-    use crate::ui::style::{Style, StyleClass};
     use crate::ui::style::iced_adapter::IcedStyle;
+    use crate::ui::style::{Style, StyleClass};
 
     /// A9 锁①：border-primary/25 带解析（选中卡片淡描边）。
     /// 09-01 对拍"border alpha 未支持/描边过重"在当前 master 不成立,
@@ -1965,13 +2088,19 @@ mod musk_vm_track_p054_t4_styles {
             .collect();
         let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract");
         let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
-            &decls[0], &decls[1..], &root_widget,
+            &decls[0],
+            &decls[1..],
+            &root_widget,
             crate::ui::widget_registry::WidgetRegistry::new(),
-            vec![], &std::collections::HashMap::new(), false,
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
         )
         .expect("component");
         let (view, _, _) = comp.view_with_debug_gated(false);
-        fn find_image(view: &View<crate::ui::interpreter::DynamicMessage>) -> Option<&crate::ui::style::Style> {
+        fn find_image(
+            view: &View<crate::ui::interpreter::DynamicMessage>,
+        ) -> Option<&crate::ui::style::Style> {
             match view {
                 View::Image { style, .. } => style.as_ref(),
                 View::Row { children, .. } | View::Column { children, .. } => {
@@ -1983,7 +2112,10 @@ mod musk_vm_track_p054_t4_styles {
         }
         let img_style = find_image(&view).expect("icon image");
         let is = IcedStyle::from_style(img_style);
-        assert!(is.margin_left_auto, "ml-auto 必须进图标样式(A11 此前整串丢弃)");
+        assert!(
+            is.margin_left_auto,
+            "ml-auto 必须进图标样式(A11 此前整串丢弃)"
+        );
         assert!(is.text_color.is_some(), "text-muted-foreground 着色必须在");
         assert!(
             img_style.classes.iter().any(|c| matches!(c,
@@ -1996,14 +2128,21 @@ mod musk_vm_track_p054_t4_styles {
     /// A6：self-end / items-end 进 IcedStyle（渲染层列臂消费）。
     #[test]
     fn message_row_self_end_items_end_reach_iced_style() {
-        let s = Style::parse("flex flex-col gap-[3px] max-w-[85%] self-end items-end").expect("parse");
+        let s =
+            Style::parse("flex flex-col gap-[3px] max-w-[85%] self-end items-end").expect("parse");
         let is = IcedStyle::from_style(&s);
         assert!(
-            matches!(is.align_self, Some(crate::ui::style::iced_adapter::IcedAlign::End)),
+            matches!(
+                is.align_self,
+                Some(crate::ui::style::iced_adapter::IcedAlign::End)
+            ),
             "self-end 必须进 align_self(此前仅降级告警)"
         );
         assert!(
-            matches!(is.align_items, Some(crate::ui::style::iced_adapter::IcedAlign::End)),
+            matches!(
+                is.align_items,
+                Some(crate::ui::style::iced_adapter::IcedAlign::End)
+            ),
             "items-end 必须进 align_items"
         );
     }
@@ -2059,7 +2198,11 @@ mod musk_vm_track_p054_t5_date_format {
         let zero = bridge
             .call_vm_fn("msg_time_label", &[auto_val::Value::Int(0)])
             .expect("call zero");
-        assert_eq!(zero, auto_val::Value::Str("".into()), "createdAt=0 必须空串");
+        assert_eq!(
+            zero,
+            auto_val::Value::Str("".into()),
+            "createdAt=0 必须空串"
+        );
     }
 }
 
@@ -2159,9 +2302,13 @@ mod musk_vm_track_p055_dump {
             .collect();
         let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract");
         let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
-            &decls[0], &decls[1..], &root_widget,
+            &decls[0],
+            &decls[1..],
+            &root_widget,
             crate::ui::widget_registry::WidgetRegistry::new(),
-            vec![], &std::collections::HashMap::new(), false,
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
         )
         .expect("component");
         let (view, _, _) = comp.view_with_debug_gated(false);
@@ -2169,7 +2316,17 @@ mod musk_vm_track_p055_dump {
             match style {
                 None => "None".into(),
                 Some(s) => {
-                    let names: Vec<String> = s.classes.iter().map(|c| format!("{:?}", c).split('(').next().unwrap_or("").to_string()).collect();
+                    let names: Vec<String> = s
+                        .classes
+                        .iter()
+                        .map(|c| {
+                            format!("{:?}", c)
+                                .split('(')
+                                .next()
+                                .unwrap_or("")
+                                .to_string()
+                        })
+                        .collect();
                     format!("{:?}", names)
                 }
             }
@@ -2177,17 +2334,37 @@ mod musk_vm_track_p055_dump {
         fn walk(view: &View<crate::ui::interpreter::DynamicMessage>, depth: usize) {
             let ind = "  ".repeat(depth);
             match view {
-                View::Column { children, style, .. } => {
+                View::Column {
+                    children, style, ..
+                } => {
                     eprintln!("{}Column style={}", ind, style_summary(style));
-                    for c in children { walk(c, depth + 1); }
+                    for c in children {
+                        walk(c, depth + 1);
+                    }
                 }
-                View::Row { children, style, .. } => {
+                View::Row {
+                    children, style, ..
+                } => {
                     eprintln!("{}Row style={}", ind, style_summary(style));
-                    for c in children { walk(c, depth + 1); }
+                    for c in children {
+                        walk(c, depth + 1);
+                    }
                 }
-                View::Button { label, style, content, .. } => {
-                    eprintln!("{}Button label={:?} style={}", ind, label, style_summary(style));
-                    if let Some(c) = content { walk(c, depth + 1); }
+                View::Button {
+                    label,
+                    style,
+                    content,
+                    ..
+                } => {
+                    eprintln!(
+                        "{}Button label={:?} style={}",
+                        ind,
+                        label,
+                        style_summary(style)
+                    );
+                    if let Some(c) = content {
+                        walk(c, depth + 1);
+                    }
                 }
                 View::Text { content, style, .. } => {
                     eprintln!("{}Text {:?} style={}", ind, content, style_summary(style));
@@ -2276,23 +2453,33 @@ mod musk_vm_track_p055_dump2 {
             .collect();
         let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract");
         let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
-            &decls[0], &decls[1..], &root_widget,
+            &decls[0],
+            &decls[1..],
+            &root_widget,
             crate::ui::widget_registry::WidgetRegistry::new(),
-            vec![], &std::collections::HashMap::new(), false,
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
         )
         .expect("component");
         let (view, _, _) = comp.view_with_debug_gated(false);
         fn walk(view: &View<crate::ui::interpreter::DynamicMessage>, depth: usize) {
             let ind = "  ".repeat(depth);
             match view {
-                View::Column { children, style, .. } => {
+                View::Column {
+                    children, style, ..
+                } => {
                     let n = style.as_ref().map(|s| s.classes.len()).unwrap_or(0);
                     eprintln!("{}Column classes={}", ind, n);
-                    for c in children { walk(c, depth + 1); }
+                    for c in children {
+                        walk(c, depth + 1);
+                    }
                 }
                 View::Row { children, .. } => {
                     eprintln!("{}Row", ind);
-                    for c in children { walk(c, depth + 1); }
+                    for c in children {
+                        walk(c, depth + 1);
+                    }
                 }
                 View::Text { content, .. } => eprintln!("{}Text {:?}", ind, content),
                 _other => eprintln!("{}other", ind),
@@ -2421,9 +2608,14 @@ mod musk_vm_track_p055_dump2 {
         // 回归锁：musk estimateTokens 整数定点形态——双轨同值
         // （Vue: round(cjk*0.9 + non*0.25)）。
         let get = |sample: &str| {
-            bridge.call_vm_fn("est3", &[auto_val::Value::str(sample)]).ok()
+            bridge
+                .call_vm_fn("est3", &[auto_val::Value::str(sample)])
+                .ok()
         };
-        assert_eq!(get("用户打招呼，询问有什么可以帮忙的。"), Some(auto_val::Value::Int(14)));
+        assert_eq!(
+            get("用户打招呼，询问有什么可以帮忙的。"),
+            Some(auto_val::Value::Int(14))
+        );
         assert_eq!(get("abcdefgh"), Some(auto_val::Value::Int(2)));
         assert_eq!(get("hi 你好"), Some(auto_val::Value::Int(3)));
     }
@@ -2479,7 +2671,11 @@ mod musk_vm_track_p055_dump2 {
 ",
         );
         let bridge = build_bridge(src);
-        for (label, sample) in [("cjk17", "用户打招呼，询问有什么可以帮忙的。"), ("ascii8", "abcdefgh"), ("mixed", "hi 你好")] {
+        for (label, sample) in [
+            ("cjk17", "用户打招呼，询问有什么可以帮忙的。"),
+            ("ascii8", "abcdefgh"),
+            ("mixed", "hi 你好"),
+        ] {
             match bridge.call_vm_fn("est2", &[auto_val::Value::str(sample)]) {
                 Ok(v) => eprintln!("[P055-E2] {} = {:?}", label, v),
                 Err(e) => eprintln!("[P055-E2] {} ERR: {:?}", label, e),
@@ -2544,11 +2740,25 @@ mod musk_vm_track_p055_dump2 {
         let sample = "用户打招呼，询问有什么可以帮忙的。";
         // 回归锁：.length = 字符数（JS 语义）、for-in 计数、索引式 char_code_at。
         let get = |name: &str| {
-            bridge.call_vm_fn(name, &[auto_val::Value::str(sample)]).ok()
+            bridge
+                .call_vm_fn(name, &[auto_val::Value::str(sample)])
+                .ok()
         };
-        assert_eq!(get("len_of"), Some(auto_val::Value::Int(17)), ".length 必须为字符数");
-        assert_eq!(get("iter_count"), Some(auto_val::Value::Int(17)), "for-in over str 必须逐字符迭代");
-        assert_eq!(get("code_via_index"), Some(auto_val::Value::Int(0x7528)), "str.char_code_at 索引式");
+        assert_eq!(
+            get("len_of"),
+            Some(auto_val::Value::Int(17)),
+            ".length 必须为字符数"
+        );
+        assert_eq!(
+            get("iter_count"),
+            Some(auto_val::Value::Int(17)),
+            "for-in over str 必须逐字符迭代"
+        );
+        assert_eq!(
+            get("code_via_index"),
+            Some(auto_val::Value::Int(0x7528)),
+            "str.char_code_at 索引式"
+        );
     }
 
     /// estimateTokens 同款 for-in over str 在 VM 的行为（Vue=5 vs VM=1 根因）。
@@ -2622,9 +2832,13 @@ mod musk_vm_track_p055_dump3 {
             .collect();
         let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract");
         let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
-            &decls[0], &decls[1..], &root_widget,
+            &decls[0],
+            &decls[1..],
+            &root_widget,
             crate::ui::widget_registry::WidgetRegistry::new(),
-            vec![], &std::collections::HashMap::new(), false,
+            vec![],
+            &std::collections::HashMap::new(),
+            false,
         )
         .expect("component");
         let (view, _, _) = comp.view_with_debug_gated(false);
@@ -2632,7 +2846,9 @@ mod musk_vm_track_p055_dump3 {
             match view {
                 View::Text { content, .. } => out.push(format!("T({})", content)),
                 View::Column { children, .. } | View::Row { children, .. } => {
-                    for c in children { walk(c, out); }
+                    for c in children {
+                        walk(c, out);
+                    }
                 }
                 _ => out.push("?".into()),
             }
@@ -2646,7 +2862,8 @@ mod musk_vm_track_p055_dump3 {
     fn p055_if_bisect() {
         // 回归锁：裸 computed 条件真值判定（此前恒假 → musk 用户消息
         // 恒走 chat_message else 臂、hasTime 恒隐藏）。
-        let ra = render("widget P55A {
+        let ra = render(
+            "widget P55A {
     computed {
         isUser => true
     }
@@ -2660,11 +2877,14 @@ mod musk_vm_track_p055_dump3 {
         }
     }
 }
-");
+",
+        );
         assert_eq!(ra, "T(IF)", "裸 computed 真值必须取 then 臂");
         // (b) computed true 条件 + div{html:} 混合分支体
-        eprintln!("[P055-3b] {}",
-            render("widget P55B {
+        eprintln!(
+            "[P055-3b] {}",
+            render(
+                "widget P55B {
     computed {
         isUser => true
     }
@@ -2681,10 +2901,14 @@ mod musk_vm_track_p055_dump3 {
         }
     }
 }
-"));
+"
+            )
+        );
         // (c) 字面量 true 条件
-        eprintln!("[P055-3c] {}",
-            render("widget P55C {
+        eprintln!(
+            "[P055-3c] {}",
+            render(
+                "widget P55C {
     view {
         col {
             if true {
@@ -2695,10 +2919,14 @@ mod musk_vm_track_p055_dump3 {
         }
     }
 }
-"));
+"
+            )
+        );
         // (d) 无 else 臂（if 独立）
-        eprintln!("[P055-3d] {}",
-            render("widget P55D {
+        eprintln!(
+            "[P055-3d] {}",
+            render(
+                "widget P55D {
     view {
         col {
             if true {
@@ -2708,10 +2936,14 @@ mod musk_vm_track_p055_dump3 {
         }
     }
 }
-"));
+"
+            )
+        );
         // (e) musk 同款条件形态 .role == "user"
-        eprintln!("[P055-3e] {}",
-            render("widget P55E {
+        eprintln!(
+            "[P055-3e] {}",
+            render(
+                "widget P55E {
     model {
         var role str = \"user\"
     }
@@ -2728,7 +2960,9 @@ mod musk_vm_track_p055_dump3 {
         }
     }
 }
-"));
+"
+            )
+        );
     }
 }
 
@@ -2790,7 +3024,11 @@ mod musk_vm_track_p055_input_event_text {
         // 派发形态与实机一致：事件串携带 payload 编码的字面 "$event" 实参
         // （event_to_message_with 冻结 + encode_payload 嵌入），input_value 为
         // 用户键入文本。
-        dc.on_with_input_for("QSearch", "SetQ\u{1F}s\u{1F}$event", Some("你好".to_string()));
+        dc.on_with_input_for(
+            "QSearch",
+            "SetQ\u{1F}s\u{1F}$event",
+            Some("你好".to_string()),
+        );
         assert_eq!(
             match dc.read_state("q").expect("q readable") {
                 auto_val::Value::Str(s) => s.as_str().to_string(),
@@ -2864,18 +3102,22 @@ mod musk_vm_track_p055_pre_code_arm {
             "    }\n",
             "}\n",
         ));
-        let col = first_styled_container(&v).expect("pre 应转换为带样式的容器（此前 fallback 丢类串）");
+        let col =
+            first_styled_container(&v).expect("pre 应转换为带样式的容器（此前 fallback 丢类串）");
         let style = match col {
             View::Container { style, .. } | View::Column { style, .. } => {
                 style.as_ref().expect("style 必须在")
             }
             _ => unreachable!(),
         };
-        use crate::ui::style::StyleClass;
         use crate::ui::style::iced_adapter::IcedStyle;
+        use crate::ui::style::StyleClass;
         // 类串解析面：border-top 类 + padding/max-h 适配值三键齐备。
         assert!(
-            style.classes.iter().any(|c| matches!(c, StyleClass::BorderTop)),
+            style
+                .classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::BorderTop)),
             "border-t 应解析，got {:?}",
             style.classes
         );
@@ -2951,9 +3193,7 @@ mod musk_vm_track_p055_nav_active {
     }
 
     /// 找 nav-item 产物按钮的样式类串文本。
-    fn nav_button_classes(
-        v: &View<crate::ui::interpreter::DynamicMessage>,
-    ) -> Option<String> {
+    fn nav_button_classes(v: &View<crate::ui::interpreter::DynamicMessage>) -> Option<String> {
         match v {
             View::Button { style, .. } => style.as_ref().map(|s| {
                 s.classes
@@ -2990,7 +3230,11 @@ mod musk_vm_track_p055_nav_active {
             "active 时 text-primary 应在，got {}",
             classes
         );
-        assert!(classes.contains("FontMedium"), "font-medium 应在，got {}", classes);
+        assert!(
+            classes.contains("FontMedium"),
+            "font-medium 应在，got {}",
+            classes
+        );
     }
 
     #[test]
@@ -3266,10 +3510,7 @@ mod musk_vm_track_p057_char_receiver {
     /// 控制组：单字符字符串接收者（str 臂）不回归。
     #[test]
     fn single_char_string_receiver_still_works() {
-        let out = run_code(concat!(
-            "let one = \"你\"\n",
-            "print(one.char_code_at(0))",
-        ));
+        let out = run_code(concat!("let one = \"你\"\n", "print(one.char_code_at(0))",));
         assert!(
             matches!(&out, Ok(s) if s.contains("20320")),
             "expected 20320, got: {:?}",
@@ -3297,7 +3538,8 @@ mod musk_vm_track_p057_web_natives {
         assert!(
             matches!(&out, Ok(s) if s.contains(needle)),
             "expected stdout containing {:?}, got: {:?}",
-            needle, out
+            needle,
+            out
         );
     }
 
@@ -3454,7 +3696,9 @@ mod musk_vm_track_p057_compile_gate {
     /// 控制组：非四命名空间的未解析静态调用维持静默（T4 语义面不回归）。
     #[test]
     fn non_web_namespace_stays_silent() {
-        let out = run_code("fn main() {\n    let x = Foo.bar({ a: 1 })\n    if x == None { print(\"NONE\") }\n}");
+        let out = run_code(
+            "fn main() {\n    let x = Foo.bar({ a: 1 })\n    if x == None { print(\"NONE\") }\n}",
+        );
         assert!(
             matches!(&out, Ok(s) if s.contains("NONE")),
             "non-web unresolved call should stay silent, got: {:?}",
@@ -3686,7 +3930,10 @@ mod probe_rc_leak_soak {
         }
         let after = dc.heap_live_objects();
         let delta = after as i64 - base as i64;
-        eprintln!("[probe:{}] base={} after={} delta={}", timer, base, after, delta);
+        eprintln!(
+            "[probe:{}] base={} after={} delta={}",
+            timer, base, after, delta
+        );
         delta
     }
 
@@ -3711,10 +3958,16 @@ mod probe_rc_leak_soak {
         fire(&mut dc, "LitPushTick");
         // PLAN-604 AC-02: struct 元素经 List.push 入列后字段读往返保真
         // (B12 族元素读损坏在语料级不复现的守护断言)。
-        assert_eq!(dc.read_state("lenSeen"), Ok(auto_val::Value::Int(100)),
-            "LitPushTick: 100 个 struct 元素必须真正入列");
-        assert_eq!(dc.read_state("sum"), Ok(auto_val::Value::Int(4950)),
-            "LitPushTick: for-each 字段读求和 0+1+..+99 必须 = 4950");
+        assert_eq!(
+            dc.read_state("lenSeen"),
+            Ok(auto_val::Value::Int(100)),
+            "LitPushTick: 100 个 struct 元素必须真正入列"
+        );
+        assert_eq!(
+            dc.read_state("sum"),
+            Ok(auto_val::Value::Int(4950)),
+            "LitPushTick: for-each 字段读求和 0+1+..+99 必须 = 4950"
+        );
         let base = dc.heap_live_objects();
         for _ in 0..40 {
             fire(&mut dc, "LitPushTick");
@@ -3722,8 +3975,11 @@ mod probe_rc_leak_soak {
         let after = dc.heap_live_objects();
         // PLAN-604 AC-01 同款容差(PLAN-062 T12 口径):列表 churn 40 拍
         // 增量 ≤ 64(实例+列表全回收)。
-        assert!(after as i64 - base as i64 <= 64,
-            "LitPushTick 40 拍 live_heap 增量 {} > 64(RC 滞留回归)", after - base);
+        assert!(
+            after as i64 - base as i64 <= 64,
+            "LitPushTick 40 拍 live_heap 增量 {} > 64(RC 滞留回归)",
+            after - base
+        );
     }
 
     #[test]
@@ -3753,7 +4009,12 @@ mod probe_rc_leak_soak {
             fire(&mut dc, "StructTick");
         }
         let after = dc.heap_live_objects();
-        eprintln!("[trace] base={} after={} delta={}", base, after, after - base);
+        eprintln!(
+            "[trace] base={} after={} delta={}",
+            base,
+            after,
+            after - base
+        );
     }
 
     #[test]
@@ -3765,7 +4026,10 @@ mod probe_rc_leak_soak {
         eprintln!("[verdict] empty typed list per-tick: {}", d_list);
 
         let d_lit = growth("LitTick", 40);
-        eprintln!("[verdict] struct literal into local var per-tick: {}", d_lit);
+        eprintln!(
+            "[verdict] struct literal into local var per-tick: {}",
+            d_lit
+        );
 
         let d_int = growth("IntPushTick", 40);
         eprintln!("[verdict] int push per-tick: {}", d_int);
@@ -3784,7 +4048,12 @@ mod probe_rc_leak_soak {
             ("StrPushTick", d_str),
             ("StructTick", d_struct),
         ] {
-            assert!(d <= 64, "{} 40 拍 live_heap 增量 {} > 64(RC 滞留回归)", name, d);
+            assert!(
+                d <= 64,
+                "{} 40 拍 live_heap 增量 {} > 64(RC 滞留回归)",
+                name,
+                d
+            );
         }
     }
 }
@@ -3829,7 +4098,11 @@ mod musk_vm_track_p066_1_json_string_read {
 }"#,
         );
         eprintln!("[P066-1] j.type => [{}]", out);
-        assert!(out.contains("questionnaire"), "expected questionnaire, got: [{}]", out);
+        assert!(
+            out.contains("questionnaire"),
+            "expected questionnaire, got: [{}]",
+            out
+        );
     }
 
     /// 字面量 obj 的 `type` 键（KD-057①：读取为空）。
@@ -3842,7 +4115,11 @@ mod musk_vm_track_p066_1_json_string_read {
 }"#,
         );
         eprintln!("[P066-1] lit.type => [{}]", out);
-        assert!(out.contains("lit-type"), "expected lit-type, got: [{}]", out);
+        assert!(
+            out.contains("lit-type"),
+            "expected lit-type, got: [{}]",
+            out
+        );
     }
 
     /// 对照组：字面量 `kind` 键读取本就正常（KD-057① 在案），钉住防回归。
@@ -3855,7 +4132,11 @@ mod musk_vm_track_p066_1_json_string_read {
 }"#,
         );
         eprintln!("[P066-1] lit.kind => [{}]", out);
-        assert!(out.contains("lit-kind"), "expected lit-kind, got: [{}]", out);
+        assert!(
+            out.contains("lit-kind"),
+            "expected lit-kind, got: [{}]",
+            out
+        );
     }
 }
 
@@ -3917,7 +4198,11 @@ mod musk_vm_track_p066_2_regex_fence {
 }"#,
         );
         eprintln!("[P066-2] fence strip => [{}]", out);
-        assert!(out.contains("\"a\": 1"), "expected JSON body, got: [{}]", out);
+        assert!(
+            out.contains("\"a\": 1"),
+            "expected JSON body, got: [{}]",
+            out
+        );
         assert!(!out.contains("NOMATCH"), "no match, got: [{}]", out);
     }
 
@@ -3936,9 +4221,17 @@ mod musk_vm_track_p066_2_regex_fence {
 }"#,
         );
         eprintln!("[P066-2] group extract => [{}]", out);
-        assert!(out.contains("3"), "expected length 3 (full+g1+g2), got: [{}]", out);
+        assert!(
+            out.contains("3"),
+            "expected length 3 (full+g1+g2), got: [{}]",
+            out
+        );
         assert!(out.contains("设置"), "expected group1, got: [{}]", out);
-        assert!(out.contains("你想要哪个"), "expected group2, got: [{}]", out);
+        assert!(
+            out.contains("你想要哪个"),
+            "expected group2, got: [{}]",
+            out
+        );
     }
 
     /// 583 回归锁直击：匹配结果列表元素经消费后仍可读（首个消费者释放
@@ -3955,7 +4248,11 @@ mod musk_vm_track_p066_2_regex_fence {
         );
         eprintln!("[P066-2] elements survive => [{}]", out);
         assert!(out.contains("3"), "expected 3 matches, got: [{}]", out);
-        assert!(out.contains("123"), "expected 123 (elements intact), got: [{}]", out);
+        assert!(
+            out.contains("123"),
+            "expected 123 (elements intact), got: [{}]",
+            out
+        );
     }
 }
 
@@ -4014,7 +4311,8 @@ mod musk_vm_track_p080_http_web_family {
                     let s = l.to_string();
                     // call.nat nat#N → 追加解析名，断言可按名匹配。
                     if let Some(id) = s.split("nat#").nth(1).and_then(|rest| {
-                        let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+                        let digits: String =
+                            rest.chars().take_while(|c| c.is_ascii_digit()).collect();
                         digits.parse::<u16>().ok()
                     }) {
                         if let Some(name) = meta.natives.get(&id) {
@@ -4024,8 +4322,10 @@ mod musk_vm_track_p080_http_web_family {
                     s
                 })
                 .collect::<Vec<_>>()
-                .join("
-"),
+                .join(
+                    "
+",
+                ),
             Err(e) => panic!("run failed: {e}"),
         }
     }
@@ -4035,16 +4335,21 @@ mod musk_vm_track_p080_http_web_family {
         // PLAN-712 T-17：try 包裹——传输失败自候选②起为可捕获异常（相对
         // URL 无 base = builder error），平价断言只看反汇编内的 native 名，
         // 运行必须对失败免疫。
-        let text = disasm_text("fn main() {
+        let text = disasm_text(
+            "fn main() {
     try {
         let data = Http.get(\"/api/workspace/list\")
         print(data.workspaces)
     } catch (e) {
         print(\"err\")
     }
-}");
-        assert!(text.contains("auto.http.get_json"), "get_json missing:
-{text}");
+}",
+        );
+        assert!(
+            text.contains("auto.http.get_json"),
+            "get_json missing:
+{text}"
+        );
         // 注册名别名两形态（auto.json.to_value / Json.to_value），按 to_value 计。
         assert!(
             text.contains("auto.json.to_value") || text.contains("Json.to_value"),
@@ -4055,15 +4360,20 @@ mod musk_vm_track_p080_http_web_family {
 
     #[test]
     fn http_post_two_args_rewrites() {
-        let text = disasm_text("fn main() {
+        let text = disasm_text(
+            "fn main() {
     try {
         Http.post(\"/api/x\", { \"a\": 1 })
     } catch (e) {
         print(\"err\")
     }
-}");
-        assert!(text.contains("auto.http.post_json"), "post_json missing:
-{text}");
+}",
+        );
+        assert!(
+            text.contains("auto.http.post_json"),
+            "post_json missing:
+{text}"
+        );
         // 注册名别名两形态（auto.json.to_value / Json.to_value），按 to_value 计。
         assert!(
             text.contains("auto.json.to_value") || text.contains("Json.to_value"),
@@ -4076,29 +4386,39 @@ mod musk_vm_track_p080_http_web_family {
     fn http_get_json_alias_rewrites_same() {
         // ts_adapter 语义：get_json 与 get 同映射（双端一致取 JSON body）。
         // try 包裹同上（PLAN-712 T-17 传输失败改抛）。
-        let text = disasm_text("fn main() {
+        let text = disasm_text(
+            "fn main() {
     try {
         let d = Http.get_json(\"/api/x\")
         print(d)
     } catch (e) {
         print(\"err\")
     }
-}");
-        assert!(text.contains("auto.http.get_json"), "get_json missing:
-{text}");
+}",
+        );
+        assert!(
+            text.contains("auto.http.get_json"),
+            "get_json missing:
+{text}"
+        );
     }
 
     #[test]
     fn http_delete_rewrites() {
-        let text = disasm_text("fn main() {
+        let text = disasm_text(
+            "fn main() {
     try {
         Http.delete(\"/api/x\")
     } catch (e) {
         print(\"err\")
     }
-}");
-        assert!(text.contains("auto.http.delete_json"), "delete_json missing:
-{text}");
+}",
+        );
+        assert!(
+            text.contains("auto.http.delete_json"),
+            "delete_json missing:
+{text}"
+        );
     }
 
     /// PLAN-043 Phase 2 回归钉：旧配方 `json.to_value(Http.get_json(..))`
@@ -4109,13 +4429,15 @@ mod musk_vm_track_p080_http_web_family {
     /// 前端空」全族根因，auto-os PLAN-043 Part 2 实证链）。
     #[test]
     fn json_to_value_idempotent_on_parsed_object() {
-        let out = match crate::run_with_capture(r#"fn main() {
+        let out = match crate::run_with_capture(
+            r#"fn main() {
     let parsed = json.to_value("{\"entries\":[{\"id\":\"abc\"}],\"label\":\"ok\"}")
     let again = json.to_value(parsed)
     print(again.entries.len())
     print(again.entries[0].id)
     print(again.label)
-}"#) {
+}"#,
+        ) {
             Ok((_, stdout)) => stdout,
             Err(e) => panic!("run failed: {e:?}"),
         };

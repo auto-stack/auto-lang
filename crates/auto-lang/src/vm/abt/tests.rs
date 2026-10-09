@@ -67,24 +67,29 @@ fn assert_roundtrip(source: &str) {
 
 #[test]
 fn test_roundtrip_empty_main() {
-    assert_roundtrip(r#"
+    assert_roundtrip(
+        r#"
 fn main() {
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_roundtrip_hello_world() {
-    assert_roundtrip(r#"
+    assert_roundtrip(
+        r#"
 fn main() {
     print("Hello")
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_roundtrip_add_function() {
-    assert_roundtrip(r#"
+    assert_roundtrip(
+        r#"
 fn add(a, b) {
     return a + b
 }
@@ -92,23 +97,27 @@ fn add(a, b) {
 fn main() {
     print(add(3, 4))
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_roundtrip_local_vars() {
-    assert_roundtrip(r#"
+    assert_roundtrip(
+        r#"
 fn main() {
     let x = 10
     let y = 20
     print(x + y)
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_roundtrip_if_else() {
-    assert_roundtrip(r#"
+    assert_roundtrip(
+        r#"
 fn main() {
     let x = 5
     if x > 3 {
@@ -117,12 +126,14 @@ fn main() {
         print(0)
     }
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_roundtrip_loop() {
-    assert_roundtrip(r#"
+    assert_roundtrip(
+        r#"
 fn main() {
     var sum = 0
     for i in 0..3 {
@@ -130,48 +141,57 @@ fn main() {
     }
     print(sum)
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_roundtrip_call_nat() {
-    assert_roundtrip(r#"
+    assert_roundtrip(
+        r#"
 fn main() {
     print(42)
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_roundtrip_float() {
-    assert_roundtrip(r#"
+    assert_roundtrip(
+        r#"
 fn main() {
     let x = 3.14
     print(x)
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_roundtrip_negative_int() {
-    assert_roundtrip(r#"
+    assert_roundtrip(
+        r#"
 fn main() {
     let x = -42
     print(x)
 }
-"#);
+"#,
+    );
 }
 
 #[test]
 fn test_roundtrip_bool() {
-    assert_roundtrip(r#"
+    assert_roundtrip(
+        r#"
 fn main() {
     let t = true
     let f = false
     print(t)
     print(f)
 }
-"#);
+"#,
+    );
 }
 
 // ============================================================================
@@ -191,7 +211,8 @@ main:
   call.nat nat#1
   ret 0
 "#;
-    let (vm, output, main_entry) = crate::create_vm_from_abt(abt).expect("create_vm_from_abt failed");
+    let (vm, output, main_entry) =
+        crate::create_vm_from_abt(abt).expect("create_vm_from_abt failed");
     assert_eq!(main_entry, 0, "main entry should be 0");
 
     let task_id = vm.spawn_task(main_entry, 16384);
@@ -200,7 +221,11 @@ main:
     });
 
     let result = output.read().unwrap().clone();
-    assert_eq!(result, "42\n", "Expected '42\\n' in output, got: {:?}", result);
+    assert_eq!(
+        result, "42\n",
+        "Expected '42\\n' in output, got: {:?}",
+        result
+    );
 }
 
 #[tokio::test]
@@ -217,7 +242,11 @@ main:
   ret 0
 "#;
     let output = crate::run_abt(abt).await.expect("run_abt failed");
-    assert_eq!(output, "42\n", "Expected '42\\n' in output, got: {:?}", output);
+    assert_eq!(
+        output, "42\n",
+        "Expected '42\\n' in output, got: {:?}",
+        output
+    );
 }
 
 #[tokio::test]
@@ -238,7 +267,11 @@ main:
   ret 0
 "#;
     let output = crate::run_abt(abt).await.expect("run_abt failed");
-    assert_eq!(output, "1\n2\n3\n", "Expected '1\\n2\\n3\\n' in output, got: {:?}", output);
+    assert_eq!(
+        output, "1\n2\n3\n",
+        "Expected '1\\n2\\n3\\n' in output, got: {:?}",
+        output
+    );
 }
 
 #[tokio::test]
@@ -257,5 +290,9 @@ main:
   ret 0
 "#;
     let output = crate::run_abt(abt).await.expect("run_abt failed");
-    assert_eq!(output, "30\n", "Expected '30\\n' in output, got: {:?}", output);
+    assert_eq!(
+        output, "30\n",
+        "Expected '30\\n' in output, got: {:?}",
+        output
+    );
 }

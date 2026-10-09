@@ -70,16 +70,13 @@ pub struct RenderCli {
 /// 200..=4320）。畸形 = Err（CLI 显式面不静默吞）。
 fn parse_window_spec(spec: &str) -> Result<(f32, f32), String> {
     let Some((w, h)) = spec.trim().split_once(['x', 'X']) else {
-        return Err(format!("--window 畸形（{spec:?}，期望 <W>x<H>，如 800x600）"));
+        return Err(format!(
+            "--window 畸形（{spec:?}，期望 <W>x<H>，如 800x600）"
+        ));
     };
-    let (w, h) = (
-        w.trim().parse::<f32>(),
-        h.trim().parse::<f32>(),
-    );
+    let (w, h) = (w.trim().parse::<f32>(), h.trim().parse::<f32>());
     match (w, h) {
-        (Ok(w), Ok(h))
-            if (200.0..=7680.0).contains(&w) && (200.0..=4320.0).contains(&h) =>
-        {
+        (Ok(w), Ok(h)) if (200.0..=7680.0).contains(&w) && (200.0..=4320.0).contains(&h) => {
             Ok((w, h))
         }
         _ => Err(format!(
@@ -103,9 +100,10 @@ pub fn parse_render_cli(args: &[String]) -> Result<RenderCli, String> {
             }
             if a == flag {
                 *i += 1;
-                return args.get(*i).cloned().ok_or_else(|| {
-                    format!("{flag} 缺值（期望后随参数或 = 值形）")
-                });
+                return args
+                    .get(*i)
+                    .cloned()
+                    .ok_or_else(|| format!("{flag} 缺值（期望后随参数或 = 值形）"));
             }
             Err(format!("{flag} 未匹配"))
         };
@@ -113,10 +111,10 @@ pub fn parse_render_cli(args: &[String]) -> Result<RenderCli, String> {
             rc.mode = Some(RenderBase::Rq);
         } else if a.starts_with("--render-mode=") || a == "--render-mode" {
             let v = next(&mut i, "--render-mode")?;
-            rc.mode = Some(
-                RenderBase::parse(&v)
-                    .ok_or_else(|| format!("未知 --render-mode={v:?}（independent|rq|desktop）"))?,
-            );
+            rc.mode =
+                Some(RenderBase::parse(&v).ok_or_else(|| {
+                    format!("未知 --render-mode={v:?}（independent|rq|desktop）")
+                })?);
         } else if a.starts_with("--desktop-endpoint=") || a == "--desktop-endpoint" {
             rc.desktop_endpoint = Some(next(&mut i, "--desktop-endpoint")?);
         } else if a.starts_with("--window=") || a == "--window" {
@@ -144,7 +142,13 @@ pub fn resolve_render_base(
     if let Some(v) = env {
         match RenderBase::parse(v) {
             Some(m) => {
-                return (m, Some(format!("[render] render-mode: {} (AUTO_VM_RENDER env)", m.name())))
+                return (
+                    m,
+                    Some(format!(
+                        "[render] render-mode: {} (AUTO_VM_RENDER env)",
+                        m.name()
+                    )),
+                )
             }
             None if v.trim().eq_ignore_ascii_case("queue")
                 || v.trim().eq_ignore_ascii_case("auto") => {}
@@ -152,7 +156,9 @@ pub fn resolve_render_base(
             None => {
                 return (
                     RenderBase::Independent,
-                    Some(format!("[render] AUTO_VM_RENDER={v:?} 不识——跳过降下级（independent）")),
+                    Some(format!(
+                        "[render] AUTO_VM_RENDER={v:?} 不识——跳过降下级（independent）"
+                    )),
                 )
             }
         }
@@ -160,14 +166,22 @@ pub fn resolve_render_base(
     if let Some(v) = pac {
         match RenderBase::parse(v) {
             Some(m) => {
-                return (m, Some(format!("[render] render-mode: {} (pac desktop_render)", m.name())))
+                return (
+                    m,
+                    Some(format!(
+                        "[render] render-mode: {} (pac desktop_render)",
+                        m.name()
+                    )),
+                )
             }
             None if v.trim().eq_ignore_ascii_case("queue")
                 || v.trim().eq_ignore_ascii_case("auto") => {}
             None => {
                 return (
                     RenderBase::Independent,
-                    Some(format!("[render] pac desktop_render={v:?} 不识——跳过（independent）")),
+                    Some(format!(
+                        "[render] pac desktop_render={v:?} 不识——跳过（independent）"
+                    )),
                 )
             }
         }
@@ -246,8 +260,7 @@ mod tests {
         assert_eq!(rc.window, Some((800.0, 600.0)));
         assert_eq!(rc.title.as_deref(), Some("部署面板"));
         // = 形单 token。
-        let rc = parse_render_cli(&args(&["--desktop-endpoint=p2", "--window=1024x768"]))
-            .unwrap();
+        let rc = parse_render_cli(&args(&["--desktop-endpoint=p2", "--window=1024x768"])).unwrap();
         assert_eq!(rc.desktop_endpoint.as_deref(), Some("p2"));
         assert_eq!(rc.window, Some((1024.0, 768.0)));
     }
@@ -257,11 +270,26 @@ mod tests {
         // 显式已知参数畸形 = Err（不静默吞成缺省）。
         assert!(parse_render_cli(&args(&["--render-mode", "rqq"])).is_err());
         assert!(parse_render_cli(&args(&["--render-mode"])).is_err(), "缺值");
-        assert!(parse_render_cli(&args(&["--desktop-endpoint"])).is_err(), "缺值");
-        assert!(parse_render_cli(&args(&["--window", "800"])).is_err(), "缺 H");
-        assert!(parse_render_cli(&args(&["--window", "100x600"])).is_err(), "越界下");
-        assert!(parse_render_cli(&args(&["--window", "800x9999"])).is_err(), "越界上");
-        assert!(parse_render_cli(&args(&["--window", "axb"])).is_err(), "非数");
+        assert!(
+            parse_render_cli(&args(&["--desktop-endpoint"])).is_err(),
+            "缺值"
+        );
+        assert!(
+            parse_render_cli(&args(&["--window", "800"])).is_err(),
+            "缺 H"
+        );
+        assert!(
+            parse_render_cli(&args(&["--window", "100x600"])).is_err(),
+            "越界下"
+        );
+        assert!(
+            parse_render_cli(&args(&["--window", "800x9999"])).is_err(),
+            "越界上"
+        );
+        assert!(
+            parse_render_cli(&args(&["--window", "axb"])).is_err(),
+            "非数"
+        );
     }
 
     #[test]
@@ -282,9 +310,12 @@ mod tests {
             Some("remote"),
             Some("desktop"),
         );
-        assert_eq!(b, RenderBase::Independent, "CLI 顶优先（含显式 independent 压 env/pac）");
-        let (b, log) =
-            resolve_render_base(Some(RenderBase::Rq), Some("desktop"), Some("desktop"));
+        assert_eq!(
+            b,
+            RenderBase::Independent,
+            "CLI 顶优先（含显式 independent 压 env/pac）"
+        );
+        let (b, log) = resolve_render_base(Some(RenderBase::Rq), Some("desktop"), Some("desktop"));
         assert_eq!(b, RenderBase::Rq);
         assert!(log.unwrap().contains("CLI"));
         let (b, log) = resolve_render_base(None, Some("desktop"), Some("rq"));
@@ -321,9 +352,15 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("p693-sidecar-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        assert!(sidecar_pac_desktop_render_from(&dir).is_none(), "无 pac.at = None");
-        std::fs::write(dir.join("pac.at"), "name = \"demo\"\ndesktop_render: \"remote\"\n")
-            .unwrap();
+        assert!(
+            sidecar_pac_desktop_render_from(&dir).is_none(),
+            "无 pac.at = None"
+        );
+        std::fs::write(
+            dir.join("pac.at"),
+            "name = \"demo\"\ndesktop_render: \"remote\"\n",
+        )
+        .unwrap();
         assert_eq!(
             sidecar_pac_desktop_render_from(&dir).as_deref(),
             Some("remote"),
@@ -331,9 +368,15 @@ mod tests {
         );
         // 值域外透传（解析在 resolve 腿）+ 单引号形 + 空值跳过。
         std::fs::write(dir.join("pac.at"), "desktop_render: 'desktop'\n").unwrap();
-        assert_eq!(sidecar_pac_desktop_render_from(&dir).as_deref(), Some("desktop"));
+        assert_eq!(
+            sidecar_pac_desktop_render_from(&dir).as_deref(),
+            Some("desktop")
+        );
         std::fs::write(dir.join("pac.at"), "desktop_render: \"\"\n").unwrap();
-        assert!(sidecar_pac_desktop_render_from(&dir).is_none(), "空值 = 未声明");
+        assert!(
+            sidecar_pac_desktop_render_from(&dir).is_none(),
+            "空值 = 未声明"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -341,9 +384,16 @@ mod tests {
 
     #[test]
     fn base_parse_value_domain() {
-        assert_eq!(RenderBase::parse("independent"), Some(RenderBase::Independent));
+        assert_eq!(
+            RenderBase::parse("independent"),
+            Some(RenderBase::Independent)
+        );
         assert_eq!(RenderBase::parse("rq"), Some(RenderBase::Rq));
-        assert_eq!(RenderBase::parse("REMOTE"), Some(RenderBase::Rq), "别名大小写不敏感");
+        assert_eq!(
+            RenderBase::parse("REMOTE"),
+            Some(RenderBase::Rq),
+            "别名大小写不敏感"
+        );
         assert_eq!(RenderBase::parse("rqhost"), Some(RenderBase::Rq));
         assert_eq!(RenderBase::parse("desktop"), Some(RenderBase::Desktop));
         assert_eq!(RenderBase::parse("queue"), None, "帧覆盖声明非底座");

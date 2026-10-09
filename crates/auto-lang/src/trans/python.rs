@@ -1,4 +1,4 @@
-use super::{escape_str, Sink, Trans, ToStrError};
+use super::{escape_str, Sink, ToStrError, Trans};
 use crate::ast::*;
 use crate::AutoResult;
 use auto_val::AutoStr;
@@ -47,9 +47,7 @@ pub struct PythonTrans {
 /// Plan 567 T14（P560-D1）: with-as 块形态识别——parser with_stmt 产出的
 /// 规范序列（var __w = e; var x = py_enter(__w); try/catch/finally）。
 /// 命中返回 (ctx_expr, 绑定名, with 体)。
-fn match_with_as_block(
-    block: &crate::ast::Body,
-) -> Option<(&Expr, String, &crate::ast::Body)> {
+fn match_with_as_block(block: &crate::ast::Body) -> Option<(&Expr, String, &crate::ast::Body)> {
     if block.stmts.len() != 3 {
         return None;
     }
@@ -133,7 +131,9 @@ impl PythonTrans {
             Expr::Uint(u) => write!(sink.body, "{}", u).map_err(Into::into),
             Expr::Float(f, _) => write!(sink.body, "{}", f).map_err(Into::into),
             Expr::Double(d, _) => write!(sink.body, "{}", d).map_err(Into::into),
-            Expr::Bool(b) => write!(sink.body, "{}", if *b { "True" } else { "False" }).map_err(Into::into),
+            Expr::Bool(b) => {
+                write!(sink.body, "{}", if *b { "True" } else { "False" }).map_err(Into::into)
+            }
             Expr::Char(c) => write!(sink.body, "'{}'", c).map_err(Into::into),
             Expr::Str(s) => write!(sink.body, "\"{}\"", escape_str(s)).map_err(Into::into),
             Expr::CStr(s) => write!(sink.body, "\"{}\"", s).map_err(Into::into),
@@ -210,8 +210,7 @@ impl PythonTrans {
             // Type cast / conversion
             Expr::Cast { expr, target_type } | Expr::To { expr, target_type } => {
                 match target_type {
-                    Type::Int | Type::Uint | Type::USize
-                    | Type::I64 | Type::U64 | Type::Byte => {
+                    Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64 | Type::Byte => {
                         write!(sink.body, "int(")?;
                         self.expr(expr, sink)?;
                         sink.body.write(b")")?;
@@ -350,24 +349,22 @@ impl PythonTrans {
             }
 
             // Plan 213: Result pattern in is branches
-            Expr::ResultPattern(cover) => {
-                match cover.variant {
-                    crate::ast::cover::ResultVariant::Ok => {
-                        if let Some(ref binding) = cover.binding {
-                            write!(sink.body, "OkCase({})", binding).map_err(Into::into)
-                        } else {
-                            write!(sink.body, "OkCase(_)").map_err(Into::into)
-                        }
-                    }
-                    crate::ast::cover::ResultVariant::Err => {
-                        if let Some(ref binding) = cover.binding {
-                            write!(sink.body, "ErrCase({})", binding).map_err(Into::into)
-                        } else {
-                            write!(sink.body, "ErrCase(_)").map_err(Into::into)
-                        }
+            Expr::ResultPattern(cover) => match cover.variant {
+                crate::ast::cover::ResultVariant::Ok => {
+                    if let Some(ref binding) = cover.binding {
+                        write!(sink.body, "OkCase({})", binding).map_err(Into::into)
+                    } else {
+                        write!(sink.body, "OkCase(_)").map_err(Into::into)
                     }
                 }
-            }
+                crate::ast::cover::ResultVariant::Err => {
+                    if let Some(ref binding) = cover.binding {
+                        write!(sink.body, "ErrCase({})", binding).map_err(Into::into)
+                    } else {
+                        write!(sink.body, "ErrCase(_)").map_err(Into::into)
+                    }
+                }
+            },
 
             // nil/Null -> None
             Expr::Nil | Expr::Null => sink.body.write(b"None").to(),
@@ -423,7 +420,9 @@ impl PythonTrans {
             Expr::Cover(cover) => {
                 match cover {
                     Cover::Tag(tag_cover) => {
-                        let real_bindings: Vec<&AutoStr> = tag_cover.bindings.iter()
+                        let real_bindings: Vec<&AutoStr> = tag_cover
+                            .bindings
+                            .iter()
                             .filter(|b| b.as_str() != "_")
                             .collect();
                         if real_bindings.is_empty() && self.scalar_enums.contains(&tag_cover.kind) {
@@ -445,7 +444,9 @@ impl PythonTrans {
                                 } else {
                                     sink.body.write(b"(")?;
                                     for (i, b) in real_bindings.iter().enumerate() {
-                                        if i > 0 { sink.body.write(b", ")?; }
+                                        if i > 0 {
+                                            sink.body.write(b", ")?;
+                                        }
                                         sink.body.write_all(b.as_bytes())?;
                                     }
                                     sink.body.write(b")")?;
@@ -523,8 +524,7 @@ impl PythonTrans {
                                 // the Python side either way.
                                 if cl.params.len() == 1 {
                                     sink.body.write(b" as ")?;
-                                    sink.body
-                                        .write_all(cl.params[0].name.as_bytes())?;
+                                    sink.body.write_all(cl.params[0].name.as_bytes())?;
                                 }
                                 sink.body.write(b":\n")?;
                                 self.indent();
@@ -664,7 +664,8 @@ impl PythonTrans {
         } else {
             store.ty.clone()
         };
-        self.local_var_types.insert(store.name.clone(), effective_ty);
+        self.local_var_types
+            .insert(store.name.clone(), effective_ty);
 
         sink.body.write_all(store.name.as_bytes())?;
         sink.body.write(b" = ")?;
@@ -720,15 +721,16 @@ impl PythonTrans {
         self.local_var_types.clear();
         for param in &func.params {
             if !matches!(param.ty, Type::Unknown) {
-                self.local_var_types.insert(param.name.clone(), param.ty.clone());
+                self.local_var_types
+                    .insert(param.name.clone(), param.ty.clone());
             }
         }
 
         self.print_indent(&mut sink.body)?;
 
         // Plan 213 Task 7: async def for ~T return types, or main with .await
-        let is_async = self.is_async_fn(func)
-            || (func.name == "main" && Self::has_await(&func.body.stmts));
+        let is_async =
+            self.is_async_fn(func) || (func.name == "main" && Self::has_await(&func.body.stmts));
         if is_async {
             sink.body.write(b"async ")?;
         }
@@ -837,14 +839,20 @@ impl PythonTrans {
         }
     }
 
-    fn fn_decl_in_class(&mut self, func: &Fn, _type_decl: &TypeDecl, sink: &mut Sink) -> AutoResult<()> {
+    fn fn_decl_in_class(
+        &mut self,
+        func: &Fn,
+        _type_decl: &TypeDecl,
+        sink: &mut Sink,
+    ) -> AutoResult<()> {
         let out = &mut sink.body;
         let _ = out;
         // Plan 283 Task 2.1: Clear and populate local_var_types from method params
         self.local_var_types.clear();
         for param in &func.params {
             if !matches!(param.ty, Type::Unknown) {
-                self.local_var_types.insert(param.name.clone(), param.ty.clone());
+                self.local_var_types
+                    .insert(param.name.clone(), param.ty.clone());
             }
         }
 
@@ -1076,8 +1084,11 @@ impl PythonTrans {
             match branch {
                 IsBranch::EqBranch(patterns, body) => {
                     for (i, pat) in patterns.iter().enumerate() {
-                        if i == 0 { sink.body.write(b"case ")?; }
-                        else { sink.body.write(b" | ")?; }
+                        if i == 0 {
+                            sink.body.write(b"case ")?;
+                        } else {
+                            sink.body.write(b" | ")?;
+                        }
                         self.expr(pat, sink)?;
                     }
                     sink.body.write(b":\n")?;
@@ -1122,9 +1133,9 @@ impl PythonTrans {
         if let Some(ident) = self.extract_call_name(&call.name) {
             match ident.as_ref() {
                 // Identical in Python — just pass through
-                "print" | "len" | "range" | "type" | "abs" | "min" | "max" | "sum"
-                | "sorted" | "reversed" | "enumerate" | "zip" | "map" | "filter"
-                | "isinstance" | "hasattr" | "getattr" | "setattr" => {
+                "print" | "len" | "range" | "type" | "abs" | "min" | "max" | "sum" | "sorted"
+                | "reversed" | "enumerate" | "zip" | "map" | "filter" | "isinstance"
+                | "hasattr" | "getattr" | "setattr" => {
                     return self.emit_plain_call(call, sink);
                 }
                 // Plan 539 W0 (DIV-PY-EXCEPT-1): py_call_may always lowers to
@@ -1857,7 +1868,10 @@ impl PythonTrans {
                 sink.body.write(b"kind: str = ''\n")?;
 
                 for item in &enum_decl.items {
-                    if !item.has_fields() && !item.has_tuple_payload() && item.payload_type.is_none() {
+                    if !item.has_fields()
+                        && !item.has_tuple_payload()
+                        && item.payload_type.is_none()
+                    {
                         continue;
                     }
                     self.print_indent(&mut sink.body)?;
@@ -1866,7 +1880,9 @@ impl PythonTrans {
                     sink.body.write(b": ")?;
 
                     let type_name = if item.has_tuple_payload() {
-                        let parts: Vec<String> = item.payload_types.iter()
+                        let parts: Vec<String> = item
+                            .payload_types
+                            .iter()
                             .map(|t| self.python_type_name(t).to_string())
                             .collect();
                         format!("tuple[{}]", parts.join(", ")).into()
@@ -1881,7 +1897,9 @@ impl PythonTrans {
 
                     sink.body.write(b" = ")?;
                     let default = if item.has_tuple_payload() {
-                        let parts: Vec<String> = item.payload_types.iter()
+                        let parts: Vec<String> = item
+                            .payload_types
+                            .iter()
                             .map(|t| self.python_default_value(t).to_string())
                             .collect();
                         format!("({})", parts.join(", ")).into()
@@ -1896,7 +1914,10 @@ impl PythonTrans {
 
                 // Factory static methods for variants with payload
                 for item in &enum_decl.items {
-                    if !item.has_fields() && !item.has_tuple_payload() && item.payload_type.is_none() {
+                    if !item.has_fields()
+                        && !item.has_tuple_payload()
+                        && item.payload_type.is_none()
+                    {
                         continue;
                     }
                     sink.body.write(b"\n")?;
@@ -1911,7 +1932,9 @@ impl PythonTrans {
 
                     if item.has_tuple_payload() {
                         for (i, _) in item.payload_types.iter().enumerate() {
-                            if i > 0 { sink.body.write(b", ")?; }
+                            if i > 0 {
+                                sink.body.write(b", ")?;
+                            }
                             write!(sink.body, "v{}", i)?;
                         }
                         sink.body.write(b"):\n")?;
@@ -1925,7 +1948,9 @@ impl PythonTrans {
                         sink.body.write_all(field_name.as_bytes())?;
                         sink.body.write(b"=(")?;
                         for (i, _) in item.payload_types.iter().enumerate() {
-                            if i > 0 { sink.body.write(b", ")?; }
+                            if i > 0 {
+                                sink.body.write(b", ")?;
+                            }
                             write!(sink.body, "v{}", i)?;
                         }
                         sink.body.write(b"))\n")?;
@@ -2156,7 +2181,12 @@ impl PythonTrans {
     }
 
     /// Helper: emit a method inside a tag class
-    fn fn_decl_in_class_for_tag(&mut self, func: &Fn, _tag: &Tag, sink: &mut Sink) -> AutoResult<()> {
+    fn fn_decl_in_class_for_tag(
+        &mut self,
+        func: &Fn,
+        _tag: &Tag,
+        sink: &mut Sink,
+    ) -> AutoResult<()> {
         let out = &mut sink.body;
         let _ = out;
         // Reuse the same logic as fn_decl_in_class
@@ -2185,8 +2215,8 @@ impl PythonTrans {
             Type::CStrLit => "str".into(),
             Type::User(type_decl) => type_decl.name.clone(),
             Type::Enum(enum_decl) => enum_decl.borrow().name.clone(),
-            Type::List(_) => "list".into(),  // List<T> → list in Python
-            Type::Map(_, _) => "dict".into(),  // Map<K, V> → dict in Python (Plan 160)
+            Type::List(_) => "list".into(), // List<T> → list in Python
+            Type::Map(_, _) => "dict".into(), // Map<K, V> → dict in Python (Plan 160)
             Type::Option(inner) => format!("Optional[{}]", self.python_type_name(inner)).into(),
             Type::Result(inner) => format!("Result[{}]", self.python_type_name(inner)).into(),
             Type::GenericInstance(inst) => {
@@ -2211,8 +2241,12 @@ impl PythonTrans {
 
     fn collect_type_import_for(&mut self, ty: &Type) {
         match ty {
-            Type::Option(_) => { self.imports.insert("Optional".into()); }
-            Type::Result(_) => { self.imports.insert("Result".into()); }
+            Type::Option(_) => {
+                self.imports.insert("Optional".into());
+            }
+            Type::Result(_) => {
+                self.imports.insert("Result".into());
+            }
             Type::GenericInstance(inst) => {
                 if inst.base_name == "Future" {
                     // async functions don't need special import for the type
@@ -2235,9 +2269,11 @@ impl PythonTrans {
             Expr::None | Expr::Nil | Expr::Null => Type::Option(Box::new(Type::Unknown)),
             Expr::Ok(_) => Type::Result(Box::new(Type::Unknown)),
             Expr::Err(_) => Type::Result(Box::new(Type::Unknown)),
-            Expr::Ident(name) => {
-                self.local_var_types.get(name).cloned().unwrap_or(Type::Unknown)
-            }
+            Expr::Ident(name) => self
+                .local_var_types
+                .get(name)
+                .cloned()
+                .unwrap_or(Type::Unknown),
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => Type::StrSlice,
             Expr::Int(_) => Type::Int,
             Expr::Uint(_) => Type::Uint,
@@ -2301,7 +2337,8 @@ impl PythonTrans {
             self.py_imports.push((module.into(), Vec::new()));
         } else {
             // `use json: dumps, loads` → `from json import dumps, loads`
-            self.py_imports.push((module.into(), use_stmt.items.clone()));
+            self.py_imports
+                .push((module.into(), use_stmt.items.clone()));
         }
     }
 
@@ -2360,7 +2397,7 @@ impl Trans for PythonTrans {
 
         // Split into declarations and main statements, preserving source line info
         let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
-        let mut main_stmts: Vec<(Stmt, usize)> = Vec::new();  // (stmt, source_line)
+        let mut main_stmts: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
 
         let source_lines = ast.source_lines;
         for (i, stmt) in ast.stmts.into_iter().enumerate() {
@@ -2396,7 +2433,9 @@ impl Trans for PythonTrans {
                 }
                 // Scan methods for Optional/Result types
                 for method in &type_decl.methods {
-                    self.collect_type_imports(&method.params.iter().map(|p| &p.ty).collect::<Vec<_>>());
+                    self.collect_type_imports(
+                        &method.params.iter().map(|p| &p.ty).collect::<Vec<_>>(),
+                    );
                     self.collect_type_import_for(&method.ret);
                 }
             } else if let Stmt::EnumDecl(enum_decl) = decl {
@@ -2430,8 +2469,10 @@ impl Trans for PythonTrans {
             self.stmt(decl, sink)?;
             // Add newline between declarations, but not after the last one
             if i < decls.len() - 1 {
-                sink.body.write(b"
-")?;
+                sink.body.write(
+                    b"
+",
+                )?;
             }
         }
         sink.record();
@@ -2440,8 +2481,10 @@ impl Trans for PythonTrans {
         if let Some((ref main_stmt, main_line)) = main_func {
             // Output the main function
             if !decls.is_empty() {
-                sink.body.write(b"
-")?;
+                sink.body.write(
+                    b"
+",
+                )?;
             }
             sink.record();
             sink.set_source_line(main_line);
@@ -2456,26 +2499,36 @@ impl Trans for PythonTrans {
             };
 
             // Add main guard
-            sink.body.write(b"
+            sink.body.write(
+                b"
 if __name__ == \"__main__\":
-")?;
+",
+            )?;
             self.indent();
             if main_is_async {
-                sink.body.write(b"    asyncio.run(main())
-")?;
+                sink.body.write(
+                    b"    asyncio.run(main())
+",
+                )?;
             } else {
-                sink.body.write(b"    main()
-")?;
+                sink.body.write(
+                    b"    main()
+",
+                )?;
             }
             self.dedent();
         } else if !main_stmts.is_empty() {
             // Wrap statements in a main function
             if !decls.is_empty() {
-                sink.body.write(b"
-")?;
+                sink.body.write(
+                    b"
+",
+                )?;
             }
-            sink.body.write(b"def main():
-")?;
+            sink.body.write(
+                b"def main():
+",
+            )?;
             self.indent();
             for (stmt, line) in &main_stmts {
                 sink.record();
@@ -2486,12 +2539,16 @@ if __name__ == \"__main__\":
             self.dedent();
 
             // Add main guard
-            sink.body.write(b"
+            sink.body.write(
+                b"
 
 if __name__ == \"__main__\":
-")?;
-            sink.body.write(b"    main()
-")?;
+",
+            )?;
+            sink.body.write(
+                b"    main()
+",
+            )?;
         }
 
         // ── Phase 3: Collect imports and prepend them to the body ──
@@ -2511,8 +2568,10 @@ if __name__ == \"__main__\":
             || self.imports.contains("dataclass")
             || self.imports.contains("Enum");
         if has_py_imports && has_typing_imports {
-            import_buf.write(b"
-")?;
+            import_buf.write(
+                b"
+",
+            )?;
         }
         let mut typing_imports = Vec::new();
         if self.imports.contains("Optional") {
@@ -2525,34 +2584,46 @@ if __name__ == \"__main__\":
             typing_imports.push("Protocol");
         }
         if !typing_imports.is_empty() {
-            write!(import_buf, "from typing import {}
-", typing_imports.join(", "))?;
+            write!(
+                import_buf,
+                "from typing import {}
+",
+                typing_imports.join(", ")
+            )?;
         }
         if self.imports.contains("dataclass") {
-            import_buf.write(b"from dataclasses import dataclass
-")?;
+            import_buf.write(
+                b"from dataclasses import dataclass
+",
+            )?;
         }
         if self.imports.contains("Enum") {
-            import_buf.write(b"from enum import Enum, auto
-")?;
+            import_buf.write(
+                b"from enum import Enum, auto
+",
+            )?;
         }
         // Blank line after all imports, before code body
         if has_py_imports || has_typing_imports {
-            import_buf.write(b"
-")?;
+            import_buf.write(
+                b"
+",
+            )?;
         }
 
         // Plan 539 W0 (DIV-PY-EXCEPT-1): the py_call_may helper — catches
         // Python exceptions and yields the None sentinel (Python has no
         // inline catch expression).
         if self.needs_may_helper {
-            import_buf.write(b"def _auto_may(f, default):
+            import_buf.write(
+                b"def _auto_may(f, default):
     try:
         return f()
     except Exception:
         return default
 
-")?;
+",
+            )?;
         }
 
         // Plan 602 (D3): the py_subclass factory — exec a class template
@@ -2560,7 +2631,8 @@ if __name__ == \"__main__\":
         // (lambdas) as bound methods. Indent rule matches the VM native:
         // uniform +4 per non-empty source line.
         if self.needs_subclass_helper {
-            import_buf.write(b"def _auto_subclass(name, base, methods):
+            import_buf.write(
+                b"def _auto_subclass(name, base, methods):
     ns = {\"__base__\": base}
     body = \"\"
     cbs = {}
@@ -2578,9 +2650,9 @@ if __name__ == \"__main__\":
         setattr(cls, m, v)
     return cls
 
-")?;
+",
+            )?;
         }
-
 
         sink.prepend_body(&import_buf);
 
@@ -2592,7 +2664,7 @@ mod tests {
     use super::*;
     use crate::parser::Parser;
     // Plan 091: Universe removed
-    
+
     use std::fs::read_to_string;
     use std::path::PathBuf;
 
@@ -2612,7 +2684,7 @@ mod tests {
 
         // Plan 091: PythonTrans no longer needs Universe, but Parser still requires it
         // Plan 091: Universe removed
-    let _scope = crate::scope_manager::ScopeManager::new();
+        let _scope = crate::scope_manager::ScopeManager::new();
         let mut parser = Parser::from(src.as_str());
         let ast = parser.parse()?;
         let mut sink = Sink::new(name.into());

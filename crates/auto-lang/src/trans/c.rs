@@ -3,14 +3,14 @@ use crate::ast::*;
 use crate::ast::{ArrayType, Type};
 use crate::database::Database;
 use crate::error::attach_source;
+use crate::error::AutoError;
 use crate::parser::Parser;
 use crate::scope::Meta;
 use crate::AutoResult;
-use crate::error::AutoError;
+use auto_val::shared;
 use auto_val::AutoStr;
 use auto_val::Op;
 use auto_val::StrExt;
-use auto_val::shared;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -40,7 +40,7 @@ pub struct CTrans {
     name: AutoStr,
     // Phase 066: Hybrid support for Universe (deprecated) and Database (new)
     // scope removed (Plan 091)
-    db: Option<Arc<RwLock<Database>>>,    // New (Phase 066)
+    db: Option<Arc<RwLock<Database>>>, // New (Phase 066)
     last_out: OutKind,
     style: CStyle,
     // Plan 060: Closure support
@@ -59,6 +59,13 @@ pub struct CTrans {
     // Populated when `use c <header.h>` is encountered — tracks which C functions
     // are available from imported headers so the transpiler can resolve calls directly.
     c_manifest_functions: HashSet<AutoStr>,
+    // PLAN-738: `#[c] type X;` opaque names from c.* declaration modules —
+    // render by their C symbol name (e.g. `*FILE` → `FILE*`), not void**.
+    pub c_opaque_types: std::collections::HashSet<String>,
+    // PLAN-738: ext TypeDecl names from stdlib auto.* target layers — their
+    // bodies have no C emission (C provider = c.* declarations + libc);
+    // referencing the static face is an honest target diagnostic, not raw C.
+    pub stdlib_ext_types: std::collections::HashSet<String>,
 }
 
 /// Information about a closure for code generation
@@ -90,6 +97,8 @@ impl CTrans {
             declared_specs: HashMap::new(),
             local_var_uncovers: HashMap::new(),
             c_manifest_functions: HashSet::new(),
+            c_opaque_types: std::collections::HashSet::new(),
+            stdlib_ext_types: std::collections::HashSet::new(),
         }
     }
 
@@ -101,8 +110,8 @@ impl CTrans {
             uses_bool: false,
             libs: HashSet::new(),
             header: Vec::new(),
-            name: "".into(),  // Will be set later
-                        db: Some(db),
+            name: "".into(), // Will be set later
+            db: Some(db),
             last_out: OutKind::None,
             style: CStyle::Modern,
             closure_counter: 0,
@@ -112,9 +121,10 @@ impl CTrans {
             declared_specs: HashMap::new(),
             local_var_uncovers: HashMap::new(),
             c_manifest_functions: HashSet::new(),
+            c_opaque_types: std::collections::HashSet::new(),
+            stdlib_ext_types: std::collections::HashSet::new(),
         }
     }
-
 
     pub fn set_stayle(&mut self, style: CStyle) {
         self.style = style;
@@ -216,7 +226,8 @@ impl CTrans {
         let dirty_frags = {
             let db_read = db.read().unwrap();
             let all_frags = db_read.get_fragments_by_file(file_id);
-            all_frags.into_iter()
+            all_frags
+                .into_iter()
                 .filter(|frag| db_read.is_fragment_dirty(frag))
                 .collect::<Vec<_>>()
         };
@@ -242,12 +253,14 @@ impl CTrans {
                 results.insert(frag_id.clone(), (source, header));
 
                 // Store artifacts in Database
-                db.write().unwrap().insert_artifact(crate::database::Artifact {
-                    frag_id: frag_id.clone(),
-                    artifact_type: crate::database::ArtifactType::CSource,
-                    path: std::path::PathBuf::from(format!("{:?}_source.c", frag_id)),
-                    content_hash: 0,  // TODO: compute actual hash
-                });
+                db.write()
+                    .unwrap()
+                    .insert_artifact(crate::database::Artifact {
+                        frag_id: frag_id.clone(),
+                        artifact_type: crate::database::ArtifactType::CSource,
+                        path: std::path::PathBuf::from(format!("{:?}_source.c", frag_id)),
+                        content_hash: 0, // TODO: compute actual hash
+                    });
 
                 // Mark as transpiled
                 db.write().unwrap().mark_transpiled(&frag_id);
@@ -353,10 +366,8 @@ impl CTrans {
                     return Ok(false);
                 }
                 // Register struct type for later type inference
-                self.declared_types.insert(
-                    type_decl.name.clone(),
-                    Type::User(type_decl.clone()),
-                );
+                self.declared_types
+                    .insert(type_decl.name.clone(), Type::User(type_decl.clone()));
                 self.type_decl(type_decl, sink)?;
             }
             Stmt::Expr(expr) => {
@@ -369,7 +380,8 @@ impl CTrans {
                 }
                 // Register variable type for later lookup (e.g., is-stmt target)
                 if !matches!(store.ty, Type::Unknown) {
-                    self.local_var_types.insert(store.name.clone(), store.ty.clone());
+                    self.local_var_types
+                        .insert(store.name.clone(), store.ty.clone());
                 } else {
                     if let Some(inferred) = self.infer_expr_type(&store.expr) {
                         self.local_var_types.insert(store.name.clone(), inferred);
@@ -416,18 +428,14 @@ impl CTrans {
             }
             Stmt::Union(union) => {
                 // Register union type for later type inference
-                self.declared_types.insert(
-                    union.name.clone(),
-                    Type::Union(union.clone()),
-                );
+                self.declared_types
+                    .insert(union.name.clone(), Type::Union(union.clone()));
                 self.union(union, sink)?;
             }
             Stmt::Tag(tag) => {
                 // Register tag type for later type inference
-                self.declared_types.insert(
-                    tag.name.clone(),
-                    Type::Tag(shared(tag.clone())),
-                );
+                self.declared_types
+                    .insert(tag.name.clone(), Type::Tag(shared(tag.clone())));
                 self.tag(tag, sink)?;
             }
             Stmt::SpecDecl(spec_decl) => {
@@ -522,12 +530,14 @@ impl CTrans {
         }
 
         // Function body (drop the borrow before calling self.body)
-        if false {  // Plan 091: scope removed
+        if false {
+            // Plan 091: scope removed
             let _ = self;
             // scope.enter_fn(method.name.clone());
         }
         self.body(&method.body, sink, &method.ret, "", &method.name)?;
-        if false {  // Plan 091: scope removed
+        if false {
+            // Plan 091: scope removed
             let _ = self;
             // scope.exit_fn();
         }
@@ -719,12 +729,19 @@ impl CTrans {
 
     /// Convert a Heterogeneous EnumDecl to a Tag for reusing tag code generation.
     fn enum_decl_to_tag(enum_decl: &EnumDecl) -> Tag {
-        let fields: Vec<TagField> = enum_decl.items.iter().map(|item| TagField {
-            name: item.name.clone().into(),
-            ty: item.payload_type.clone().unwrap_or(Type::Void),
-        }).collect();
+        let fields: Vec<TagField> = enum_decl
+            .items
+            .iter()
+            .map(|item| TagField {
+                name: item.name.clone().into(),
+                ty: item.payload_type.clone().unwrap_or(Type::Void),
+            })
+            .collect();
         let (generic_params, methods) = match &enum_decl.kind {
-            EnumKind::Heterogeneous { generic_params, methods } => (generic_params.clone(), methods.clone()),
+            EnumKind::Heterogeneous {
+                generic_params,
+                methods,
+            } => (generic_params.clone(), methods.clone()),
             _ => (vec![], vec![]),
         };
         Tag {
@@ -1084,7 +1101,8 @@ impl CTrans {
 
     fn spec_decl(&mut self, spec_decl: &SpecDecl, _sink: &mut Sink) -> AutoResult<()> {
         // Store spec for later lookup (vtable generation, delegation wrappers)
-        self.declared_specs.insert(spec_decl.name.clone(), spec_decl.clone());
+        self.declared_specs
+            .insert(spec_decl.name.clone(), spec_decl.clone());
 
         // Generate vtable struct for the spec
         let mut header = std::mem::take(&mut self.header);
@@ -1327,12 +1345,18 @@ impl CTrans {
             UseKind::Auto => {
                 let module = use_stmt.paths.join(".");
                 if self.assembly_modules.contains_key(&module) {
-                    self.libs.insert(format!("\"{}.h\"", module.replace('.', "_")).into());
+                    self.libs
+                        .insert(format!("\"{}.h\"", module.replace('.', "_")).into());
                     return Ok(());
                 }
                 if use_stmt.paths.first().is_some_and(|p| p.as_str() == "auto") {
                     if let Some(module) = use_stmt.paths.get(1) {
-                        if crate::stdlib_assembly::providers::unsupported_reason(module.as_str(), "c").is_some() {
+                        if crate::stdlib_assembly::providers::unsupported_reason(
+                            module.as_str(),
+                            "c",
+                        )
+                        .is_some()
+                        {
                             return Ok(());
                         }
                     }
@@ -1357,12 +1381,12 @@ impl CTrans {
             }
             UseKind::Rust => {
                 return Err(AutoError::Msg(
-                    "use.rs imports are not supported in C target".to_string()
+                    "use.rs imports are not supported in C target".to_string(),
                 ));
             }
             UseKind::Py => {
                 return Err(AutoError::Msg(
-                    "use.py imports are not supported in C target".to_string()
+                    "use.py imports are not supported in C target".to_string(),
                 ));
             }
         }
@@ -1463,7 +1487,9 @@ impl CTrans {
             }
             Expr::Ident(name) => self.ident(name, out),
             Expr::GenName(name) => out.write(name.as_bytes()).to(),
-            Expr::Str(s) => out.write_all(format!("\"{}\"", escape_str(s)).as_bytes()).to(),
+            Expr::Str(s) => out
+                .write_all(format!("\"{}\"", escape_str(s)).as_bytes())
+                .to(),
             Expr::CStr(s) => out.write_all(format!("\"{}\"", s).as_bytes()).to(),
             Expr::FStr(fs) => self.fstr(fs, out),
             Expr::Bool(b) => {
@@ -2102,8 +2128,9 @@ impl CTrans {
                 } else {
                     self.body(&fn_decl.body, sink, &fn_decl.ret, "", &fn_decl.name)?;
                 }
-                if false {  // Plan 091: scope removed
-            let _ = self;
+                if false {
+                    // Plan 091: scope removed
+                    let _ = self;
                     // scope.exit_fn();
                 }
             }
@@ -2197,7 +2224,8 @@ impl CTrans {
         let has_return = !matches!(ret_type, Type::Void | Type::Unknown { .. });
         let ret_is_array = matches!(ret_type, Type::Array(_) | Type::Slice(_));
 
-        if false {  // Plan 091: scope removed
+        if false {
+            // Plan 091: scope removed
             let _ = self;
             // scope.enter_scope();
         }
@@ -2341,7 +2369,8 @@ impl CTrans {
         self.dedent();
         self.print_indent(&mut sink.body)?;
         sink.body.write(b"}")?;
-        if false {  // Plan 091: scope removed
+        if false {
+            // Plan 091: scope removed
             let _ = self;
             // scope.exit_scope();
         }
@@ -2397,6 +2426,11 @@ impl CTrans {
                     // as a bare Type::User placeholder.
                     if let Some(actual_ty) = self.declared_types.get(&usr_type.name) {
                         return self.c_type_name(actual_ty);
+                    }
+                    // PLAN-738: `#[c] type X;` opaque from c.* modules — the
+                    // C symbol is the name itself (stdio.h FILE etc.).
+                    if self.c_opaque_types.contains(usr_type.name.as_str()) {
+                        return usr_type.name.to_string();
                     }
                     "void*".to_string()
                 } else {
@@ -2483,7 +2517,9 @@ impl CTrans {
             }
             // Tuple types - transpile to anonymous struct
             Type::Tuple(ts) => {
-                let fields: Vec<String> = ts.iter().enumerate()
+                let fields: Vec<String> = ts
+                    .iter()
+                    .enumerate()
                     .map(|(i, t)| format!("{} _{}", self.c_type_name(t), i))
                     .collect();
                 format!("struct {{ {} }}", fields.join("; "))
@@ -2653,8 +2689,9 @@ impl CTrans {
         } else if matches!(store.ty, Type::Unknown) {
             if let Some(inferred_type) = self.infer_expr_type(&store.expr) {
                 // Update the scope with the inferred type for future lookups
-                if false {  // Plan 091: scope removed
-            let _ = self;
+                if false {
+                    // Plan 091: scope removed
+                    let _ = self;
                     // scope.update_store_type(&store.name, inferred_type.clone());
                 }
 
@@ -2877,9 +2914,11 @@ impl CTrans {
                     let first = &patterns[0];
                     if let Expr::Cover(Cover::Tag(tag_cover)) = first {
                         // Generate: case ENUM_VARIANT:
-                        let enum_const = format!("{}_{}",
+                        let enum_const = format!(
+                            "{}_{}",
                             tag_cover.kind.to_uppercase(),
-                            tag_cover.tag.to_uppercase());
+                            tag_cover.tag.to_uppercase()
+                        );
                         sink.body.write(b"case ")?;
                         sink.body.write(enum_const.as_bytes())?;
                         sink.body.write(b":\n")?;
@@ -2902,10 +2941,8 @@ impl CTrans {
                         };
                         for binding in &tag_cover.bindings {
                             if binding.as_str() != "_" {
-                                self.local_var_types.insert(
-                                    binding.clone(),
-                                    binding_type.clone(),
-                                );
+                                self.local_var_types
+                                    .insert(binding.clone(), binding_type.clone());
                                 // Also register uncover mapping for ident() to use
                                 self.local_var_uncovers.insert(
                                     binding.clone(),
@@ -3729,16 +3766,34 @@ impl CTrans {
         let lhs_type = self.get_expr_type(lhs);
         if matches!(lhs_type, Type::Unknown) {
             if let (Expr::Ident(module), Expr::Ident(symbol)) = (lhs.as_ref(), rhs.as_ref()) {
-                if self.assembly_modules.get(module.as_str()).is_some_and(|functions| functions.contains(symbol.as_str())) {
+                if self
+                    .assembly_modules
+                    .get(module.as_str())
+                    .is_some_and(|functions| functions.contains(symbol.as_str()))
+                {
                     write!(out, "{symbol}(")?;
                     for (index, argument) in call.args.args.iter().enumerate() {
-                        if index > 0 { write!(out, ", ")?; }
+                        if index > 0 {
+                            write!(out, ", ")?;
+                        }
                         self.arg(argument, out)?;
                     }
                     write!(out, ")")?;
                     return Ok(true);
                 }
-                crate::stdlib_assembly::providers::require_reference_provider(module.as_str(), symbol.as_str(), "c")?;
+                // PLAN-738: ext 静态面来自 stdlib auto.* 目标层——这些 body
+                // 无 C 发射（stdlib 的 C provider = c.* 声明模块 + libc）；
+                // 引用即诚实目标诊断，不做裸透传坏 C。
+                if self.stdlib_ext_types.contains(module.as_str()) {
+                    return Err(format!(
+                        "STDASSEMBLY.TARGET_UNSUPPORTED: {module}.{symbol}: stdlib ext face has no C emission — bind the c.* provider directly (e.g. use c.stdio)"
+                    ).into());
+                }
+                crate::stdlib_assembly::providers::require_reference_provider(
+                    module.as_str(),
+                    symbol.as_str(),
+                    "c",
+                )?;
             }
         }
 
@@ -4403,7 +4458,7 @@ impl Trans for CTrans {
         // Split stmts into decls and main, preserving source line info
         // TODO: handle potential includes when needed
         let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
-        let mut main: Vec<(Stmt, usize)> = Vec::new();  // (stmt, source_line)
+        let mut main: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
 
         // preprocess
         let source_lines = ast.source_lines;

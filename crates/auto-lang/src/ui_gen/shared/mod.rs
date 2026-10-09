@@ -20,16 +20,16 @@
 //! 2. **Tailwind-First**: Use Tailwind CSS classes as the primary styling mechanism
 //! 3. **Generator Responsibility**: Each generator maps Tailwind to its native styling
 
-pub mod tailwind;
 pub mod registry;
 pub mod state;
 pub mod style;
+pub mod tailwind;
 
 // Re-export main types
-pub use tailwind::{TailwindParser, TailwindClass, Color, Shadow, FontWeight, TextAlign};
-pub use registry::{ComponentRegistry, ComponentMapping, VueMapping, JetMapping};
-pub use state::{StateAnalyzer, ModelProperty, ComputedProperty, MessageDef, EventHandler};
-pub use style::{ComputedStyle, Display, FlexDirection, Spacing, Size, Dimension};
+pub use registry::{ComponentMapping, ComponentRegistry, JetMapping, VueMapping};
+pub use state::{ComputedProperty, EventHandler, MessageDef, ModelProperty, StateAnalyzer};
+pub use style::{ComputedStyle, Dimension, Display, FlexDirection, Size, Spacing};
+pub use tailwind::{Color, FontWeight, Shadow, TailwindClass, TailwindParser, TextAlign};
 
 /// Shared generation utilities
 pub struct SharedGen;

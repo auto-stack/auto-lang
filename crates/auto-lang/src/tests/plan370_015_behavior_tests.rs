@@ -65,8 +65,10 @@ mod plan370_015_behavior_tests {
 {}",
             misaligned.len(),
             table.len(),
-            misaligned.join("
-")
+            misaligned.join(
+                "
+"
+            )
         );
     }
 
@@ -124,17 +126,21 @@ mod plan370_015_behavior_tests {
     fn d1_init_loads_seed_notes() {
         run_big_stack(|| {
             let dc = match build_015_component() {
-            Some(c) => c,
-            None => {
-                eprintln!("plan370: SKIPPED — app.at not found");
-                return;
-            }
-        };
-        // db.at seeds 6 notes (Welcome..Sprint Planning).
-        assert_eq!(notes_count(&dc), 6, "Init should load 6 seed notes");
-        assert_eq!(state_str(&dc, "active_id"), "0", "initial active_id");
-        assert_eq!(state_str(&dc, "active_folder"), "all", "initial active_folder");
-        assert_eq!(state_str(&dc, "active_tag"), "", "initial active_tag empty");
+                Some(c) => c,
+                None => {
+                    eprintln!("plan370: SKIPPED — app.at not found");
+                    return;
+                }
+            };
+            // db.at seeds 6 notes (Welcome..Sprint Planning).
+            assert_eq!(notes_count(&dc), 6, "Init should load 6 seed notes");
+            assert_eq!(state_str(&dc, "active_id"), "0", "initial active_id");
+            assert_eq!(
+                state_str(&dc, "active_folder"),
+                "all",
+                "initial active_folder"
+            );
+            assert_eq!(state_str(&dc, "active_tag"), "", "initial active_tag empty");
         })
     }
 
@@ -146,7 +152,7 @@ mod plan370_015_behavior_tests {
     #[test]
     fn d2_new_note_appends() {
         run_big_stack(|| {
-        let mut dc =     match build_015_component() {
+            let mut dc = match build_015_component() {
                 Some(c) => c,
                 None => {
                     eprintln!("plan370: SKIPPED — app.at not found");
@@ -180,14 +186,18 @@ mod plan370_015_behavior_tests {
     #[test]
     fn d3_select_note_sets_active_id() {
         run_big_stack(|| {
-        let mut dc =     match build_015_component() {
+            let mut dc = match build_015_component() {
                 Some(c) => c,
                 None => {
                     eprintln!("plan370: SKIPPED — app.at not found");
                     return;
                 }
             };
-            assert_eq!(state_str(&dc, "active_id"), "0", "precondition: active_id 0");
+            assert_eq!(
+                state_str(&dc, "active_id"),
+                "0",
+                "precondition: active_id 0"
+            );
             // PLAN-616: SelectNote 从 App 下移到 NavTree/store（行点击 →
             // NavTree.SelectNote(k) → store.SelectNote(k)）。用 store 层驱动，
             // 与 d9 同款（走 store 方法链 codegen 路径）。
@@ -206,7 +216,7 @@ mod plan370_015_behavior_tests {
     #[test]
     fn d4_view_tabs_switch_folder() {
         run_big_stack(|| {
-        let mut dc =     match build_015_component() {
+            let mut dc = match build_015_component() {
                 Some(c) => c,
                 None => {
                     eprintln!("plan370: SKIPPED — app.at not found");
@@ -232,7 +242,7 @@ mod plan370_015_behavior_tests {
     #[test]
     fn d6_tag_filter_sets_and_clears() {
         run_big_stack(|| {
-        let mut dc =     match build_015_component() {
+            let mut dc = match build_015_component() {
                 Some(c) => c,
                 None => {
                     eprintln!("plan370: SKIPPED — app.at not found");
@@ -241,7 +251,11 @@ mod plan370_015_behavior_tests {
             };
             assert_eq!(state_str(&dc, "active_tag"), "");
             dc.on_with_input_for("NotesStore", &with_str("SelectTag", "work"), None);
-            assert_eq!(state_str(&dc, "active_tag"), "work", "store.SelectTag(work)");
+            assert_eq!(
+                state_str(&dc, "active_tag"),
+                "work",
+                "store.SelectTag(work)"
+            );
             dc.on_with_input_for("NotesStore", "ClearTag", None);
             assert_eq!(state_str(&dc, "active_tag"), "", "store.ClearTag");
         })
@@ -257,7 +271,7 @@ mod plan370_015_behavior_tests {
     #[test]
     fn d7_toggle_pin_flips_flag() {
         run_big_stack(|| {
-        let mut dc =     match build_015_component() {
+            let mut dc = match build_015_component() {
                 Some(c) => c,
                 None => {
                     eprintln!("plan370: SKIPPED — app.at not found");
@@ -265,7 +279,11 @@ mod plan370_015_behavior_tests {
                 }
             };
             // active_id=0 → notes[0] is "Welcome", pinned:true in the seed data.
-            assert_eq!(state_str(&dc, "active_id"), "0", "precondition: active_id 0");
+            assert_eq!(
+                state_str(&dc, "active_id"),
+                "0",
+                "precondition: active_id 0"
+            );
             let before = match note_field(&dc, 0, "pinned") {
                 Value::Bool(b) => b,
                 other => panic!("notes[0].pinned not a bool: {:?}", other),
@@ -292,7 +310,7 @@ mod plan370_015_behavior_tests {
     #[test]
     fn d8_toggle_dark_mode() {
         run_big_stack(|| {
-        let mut dc =     match build_015_component() {
+            let mut dc = match build_015_component() {
                 Some(c) => c,
                 None => {
                     eprintln!("plan370: SKIPPED — app.at not found");
@@ -324,7 +342,7 @@ mod plan370_015_behavior_tests {
     #[test]
     fn d9_set_accent_color() {
         run_big_stack(|| {
-        let mut dc =     match build_015_component() {
+            let mut dc = match build_015_component() {
                 Some(c) => c,
                 None => {
                     eprintln!("plan370: SKIPPED — app.at not found");
@@ -352,7 +370,7 @@ mod plan370_015_behavior_tests {
     #[test]
     fn d10_edit_fills_draft_fields() {
         run_big_stack(|| {
-        let mut dc =     match build_015_component() {
+            let mut dc = match build_015_component() {
                 Some(c) => c,
                 None => {
                     eprintln!("plan370: SKIPPED — app.at not found");
@@ -361,7 +379,11 @@ mod plan370_015_behavior_tests {
             };
             // Precondition: draft is loaded from the active note, not dirty.
             assert_eq!(state_str(&dc, "dirty"), "false", "initial dirty");
-            assert_eq!(state_str(&dc, "draft_title"), "Welcome", "initial draft_title");
+            assert_eq!(
+                state_str(&dc, "draft_title"),
+                "Welcome",
+                "initial draft_title"
+            );
 
             // EditorPanel.EditTitle(v) → store.EditTitle(v) → draft_title + dirty.
             dc.on_with_input_for("EditorPanel", &with_str("EditTitle", "MCP Title"), None);
@@ -378,7 +400,11 @@ mod plan370_015_behavior_tests {
 
             // SaveDraft → FlushDraft（落库 + 重载）→ dirty 复位。
             dc.on_with_input_for("EditorPanel", "SaveDraft", None);
-            assert_eq!(state_str(&dc, "dirty"), "false", "SaveDraft should clear dirty");
+            assert_eq!(
+                state_str(&dc, "dirty"),
+                "false",
+                "SaveDraft should clear dirty"
+            );
         })
     }
 
@@ -461,4 +487,3 @@ mod plan370_015_behavior_tests {
         );
     }
 }
-

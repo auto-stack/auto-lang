@@ -35,7 +35,13 @@ pub struct GutterCache {
     /// stale taller image into the new quad — squeezed digits, misaligned
     /// rows. The content marker (first number, its y bits, count) keys the
     /// visible band: pure scroll changes it while w/h/revision stay put.
-    image: Option<(iced::advanced::image::Handle, f32, f32, u64, (Option<(usize, u32)>, usize))>,
+    image: Option<(
+        iced::advanced::image::Handle,
+        f32,
+        f32,
+        u64,
+        (Option<(usize, u32)>, usize),
+    )>,
     swash: SwashCache,
 }
 
@@ -57,20 +63,19 @@ impl GutterCache {
         number: usize,
         digits: usize,
     ) -> &Vec<LayoutLine> {
-        self.layouts
-            .entry((number, digits))
-            .or_insert_with(|| {
-                // Plan 414 §6.4: same family as the body (baseline parity).
-                let attrs = Attrs::new().family(crate::ui::code_editor::core::mono_family());
-                let text = format!("{number:>digits$}");
-                let mut line = BufferLine::new(
-                    text,
-                    LineEnding::None,
-                    AttrsList::new(&attrs),
-                    Shaping::Advanced,
-                );
-                line.layout(font_system, 1.0, None, Wrap::None, None, 8).to_vec()
-            })
+        self.layouts.entry((number, digits)).or_insert_with(|| {
+            // Plan 414 §6.4: same family as the body (baseline parity).
+            let attrs = Attrs::new().family(crate::ui::code_editor::core::mono_family());
+            let text = format!("{number:>digits$}");
+            let mut line = BufferLine::new(
+                text,
+                LineEnding::None,
+                AttrsList::new(&attrs),
+                Shaping::Advanced,
+            );
+            line.layout(font_system, 1.0, None, Wrap::None, None, 8)
+                .to_vec()
+        })
     }
 
     /// Rasterize the gutter if stale; return the (handle, width) pair.
@@ -135,7 +140,9 @@ impl GutterCache {
 
             let layout = {
                 let layouts = self.layout(font_system, entry.number, section.digits);
-                let Some(line) = layouts.first() else { continue };
+                let Some(line) = layouts.first() else {
+                    continue;
+                };
                 line.clone()
             };
 
@@ -153,11 +160,8 @@ impl GutterCache {
                 let right_edge = width as f32 - FOLD_GUTTER_W;
                 let x_anchor = (right_edge - run_w).max(GUTTER_PAD);
                 let physical = glyph.physical((x_anchor, line_y), section.font_size);
-                self.swash.with_pixels(
-                    font_system,
-                    physical.cache_key,
-                    fg,
-                    |x, y, color| {
+                self.swash
+                    .with_pixels(font_system, physical.cache_key, fg, |x, y, color| {
                         blend_pixel(
                             &mut rgba,
                             width,
@@ -166,8 +170,7 @@ impl GutterCache {
                             physical.y + y,
                             color,
                         );
-                    },
-                );
+                    });
             }
         }
 
@@ -176,12 +179,8 @@ impl GutterCache {
         // blocks draw a downward triangle (▾, click to fold), folded blocks
         // a rightward one (▸, click to expand). Slightly dimmed so they
         // read as affordances rather than content.
-        let fold_color = cosmic_text::Color::rgba(
-            fg.r(),
-            fg.g(),
-            fg.b(),
-            ((fg.a() as f32) * 0.8) as u8,
-        );
+        let fold_color =
+            cosmic_text::Color::rgba(fg.r(), fg.g(), fg.b(), ((fg.a() as f32) * 0.8) as u8);
         for fold in &section.folds {
             let cx = width as f32 - FOLD_GUTTER_W / 2.0;
             let cy = fold.y + section.line_height / 2.0;
@@ -303,12 +302,25 @@ mod tests {
     fn section(height: f32) -> GutterSection {
         GutterSection {
             bounds: Rect::new(0.0, 0.0, 60.0, height),
-            background: Rgba { r: 0.1, g: 0.1, b: 0.1, a: 1.0 },
-            foreground: Rgba { r: 0.8, g: 0.8, b: 0.8, a: 1.0 },
+            background: Rgba {
+                r: 0.1,
+                g: 0.1,
+                b: 0.1,
+                a: 1.0,
+            },
+            foreground: Rgba {
+                r: 0.8,
+                g: 0.8,
+                b: 0.8,
+                a: 1.0,
+            },
             digits: 2,
             font_size: 14.0,
             line_height: 19.0,
-            numbers: vec![GutterNumber { number: 1, y: 0.0 }, GutterNumber { number: 2, y: 19.0 }],
+            numbers: vec![
+                GutterNumber { number: 1, y: 0.0 },
+                GutterNumber { number: 2, y: 19.0 },
+            ],
             folds: Vec::new(),
         }
     }
@@ -350,7 +362,9 @@ mod tests {
         );
         assert_eq!(*cached_rev, 7);
         // Unchanged geometry + revision keeps the cache (no churn per frame).
-        let _ = cache.image(&section(80.0), &mut fs, 7).expect("cached serve");
+        let _ = cache
+            .image(&section(80.0), &mut fs, 7)
+            .expect("cached serve");
         let (_, _, h2, r2, _) = cache.image.as_ref().unwrap();
         assert!((h2 - 80.0).abs() <= 0.5 && *r2 == 7);
     }

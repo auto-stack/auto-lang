@@ -63,7 +63,8 @@ fn widgets_gallery_all_front_pages_compile() {
 
     let mut failures = Vec::new();
     for p in &pages {
-        let rel = p.strip_prefix(dir.parent().unwrap().parent().unwrap())
+        let rel = p
+            .strip_prefix(dir.parent().unwrap().parent().unwrap())
             .unwrap_or(p)
             .display()
             .to_string();

@@ -73,7 +73,12 @@ pub fn fence_palette() -> ((u8, u8, u8), (u8, u8, u8), (u8, u8, u8), (u8, u8, u8
     if crate::ui::style::theme::dark_mode() {
         (FENCE_BG, FENCE_HEADER_BG, FENCE_HEADER_FG, FENCE_BORDER)
     } else {
-        (FENCE_BG_LIGHT, FENCE_HEADER_BG_LIGHT, FENCE_HEADER_FG_LIGHT, FENCE_BORDER_LIGHT)
+        (
+            FENCE_BG_LIGHT,
+            FENCE_HEADER_BG_LIGHT,
+            FENCE_HEADER_FG_LIGHT,
+            FENCE_BORDER_LIGHT,
+        )
     }
 }
 
@@ -223,7 +228,10 @@ pub const PANEL_CHROME: ChromeSpec = ChromeSpec {
 pub fn callout_kind_classes(kind: &str) -> (&'static str, &'static str) {
     match kind {
         "info" => (" border-blue-500/50 bg-blue-500/10", " text-blue-400"),
-        "tip" | "success" => (" border-emerald-500/50 bg-emerald-500/10", " text-emerald-400"),
+        "tip" | "success" => (
+            " border-emerald-500/50 bg-emerald-500/10",
+            " text-emerald-400",
+        ),
         "warning" | "warn" | "caution" => {
             (" border-amber-500/50 bg-amber-500/10", " text-amber-400")
         }
@@ -283,12 +291,20 @@ pub fn heading_extra_margins(level: i64) -> (f32, f32) {
 /// #6b7280 / dark zinc-400 #a1a1aa）——编辑壳 quote 块前景覆盖。
 pub fn quote_muted_rgb() -> (u8, u8, u8) {
     let dark = crate::ui::style::theme::dark_mode();
-    if dark { (161, 161, 170) } else { (107, 114, 128) }
+    if dark {
+        (161, 161, 170)
+    } else {
+        (107, 114, 128)
+    }
 }
 
 pub fn heading_strong_rgb() -> (u8, u8, u8) {
     let dark = crate::ui::style::theme::dark_mode();
-    if dark { (129, 140, 248) } else { (67, 56, 202) }
+    if dark {
+        (129, 140, 248)
+    } else {
+        (67, 56, 202)
+    }
 }
 
 /// heading 编辑壳字号表（从 autodown_editor::core::kind_font_size 搬家）。
@@ -349,27 +365,42 @@ pub fn family_of(kind: BlockType) -> &'static BlockFamily {
 static FAMILY_HEADING: BlockFamily = BlockFamily {
     kind: BlockType::Heading,
     chrome: PLAIN,
-    body: BodyKind::Text { mono: false, size: BODY_SIZE },
+    body: BodyKind::Text {
+        mono: false,
+        size: BODY_SIZE,
+    },
 };
 static FAMILY_PARAGRAPH: BlockFamily = BlockFamily {
     kind: BlockType::Paragraph,
     chrome: PLAIN,
-    body: BodyKind::Text { mono: false, size: BODY_SIZE },
+    body: BodyKind::Text {
+        mono: false,
+        size: BODY_SIZE,
+    },
 };
 static FAMILY_FENCE: BlockFamily = BlockFamily {
     kind: BlockType::Fence,
     chrome: FENCE_CHROME,
-    body: BodyKind::Text { mono: true, size: FENCE_SIZE },
+    body: BodyKind::Text {
+        mono: true,
+        size: FENCE_SIZE,
+    },
 };
 static FAMILY_FENCE_LIGHT: BlockFamily = BlockFamily {
     kind: BlockType::Fence,
     chrome: FENCE_CHROME_LIGHT,
-    body: BodyKind::Text { mono: true, size: FENCE_SIZE },
+    body: BodyKind::Text {
+        mono: true,
+        size: FENCE_SIZE,
+    },
 };
 static FAMILY_QUOTE: BlockFamily = BlockFamily {
     kind: BlockType::Blockquote,
     chrome: QUOTE_CHROME,
-    body: BodyKind::Text { mono: false, size: BODY_SIZE },
+    body: BodyKind::Text {
+        mono: false,
+        size: BODY_SIZE,
+    },
 };
 static FAMILY_LIST: BlockFamily = BlockFamily {
     kind: BlockType::ListBlock,
@@ -379,7 +410,10 @@ static FAMILY_LIST: BlockFamily = BlockFamily {
 static FAMILY_LIST_ITEM: BlockFamily = BlockFamily {
     kind: BlockType::ListItem,
     chrome: PLAIN,
-    body: BodyKind::Text { mono: false, size: BODY_SIZE },
+    body: BodyKind::Text {
+        mono: false,
+        size: BODY_SIZE,
+    },
 };
 static FAMILY_TABLE: BlockFamily = BlockFamily {
     kind: BlockType::Table,
@@ -430,7 +464,10 @@ static FAMILY_WIKILINK: BlockFamily = BlockFamily {
         pad: 0.0,
         header_h: 0.0,
     },
-    body: BodyKind::Text { mono: false, size: BODY_SIZE },
+    body: BodyKind::Text {
+        mono: false,
+        size: BODY_SIZE,
+    },
 };
 static FAMILY_QUERY: BlockFamily = BlockFamily {
     kind: BlockType::QueryBlock,
@@ -505,7 +542,10 @@ mod tests {
         let d = family_of(BlockType::Fence);
         crate::ui::style::theme::set_dark_mode(true);
         assert!(std::ptr::eq(c, d));
-        assert!(!std::ptr::eq(a, c), "light/dark fence families must be distinct statics");
+        assert!(
+            !std::ptr::eq(a, c),
+            "light/dark fence families must be distinct statics"
+        );
     }
 
     /// T2 行为等价锚：fence/quote/break chrome 与搬家前字面量一致
@@ -514,12 +554,18 @@ mod tests {
     /// FENCE_CHROME_LIGHT（vue .code-block-container 实值对齐）。
     #[test]
     fn migrated_chrome_strings_match_pre_family_literals() {
-        assert_eq!(FENCE_CHROME.outer, "rounded-lg border bg-zinc-950 overflow-hidden w-full");
+        assert_eq!(
+            FENCE_CHROME.outer,
+            "rounded-lg border bg-zinc-950 overflow-hidden w-full"
+        );
         assert_eq!(
             FENCE_CHROME.header.unwrap(),
             "w-full h-[28px] px-4 py-2 border-b bg-zinc-800 text-zinc-400"
         );
-        assert_eq!(FENCE_CHROME.header_label, "text-xs font-medium text-zinc-400");
+        assert_eq!(
+            FENCE_CHROME.header_label,
+            "text-xs font-medium text-zinc-400"
+        );
         assert_eq!(FENCE_CHROME.body, "p-4");
         assert_eq!(
             FENCE_CHROME.body_text,
@@ -558,7 +604,10 @@ mod tests {
         // 文本体：paragraph/heading/fence 正文。
         assert!(matches!(
             family_of(BlockType::Fence).body,
-            BodyKind::Text { mono: true, size: FENCE_SIZE }
+            BodyKind::Text {
+                mono: true,
+                size: FENCE_SIZE
+            }
         ));
         assert!(matches!(
             family_of(BlockType::Paragraph).body,
@@ -572,7 +621,10 @@ mod tests {
             BlockType::QueryBlock,
             BlockType::BlockEmbed,
         ] {
-            assert!(matches!(family_of(kind).body, BodyKind::Panel), "{kind} 应为面板体");
+            assert!(
+                matches!(family_of(kind).body, BodyKind::Panel),
+                "{kind} 应为面板体"
+            );
         }
     }
 
@@ -582,6 +634,8 @@ mod tests {
         assert!(callout_kind_classes("info").0.contains("border-blue"));
         assert!(callout_kind_classes("warning").0.contains("border-amber"));
         assert!(callout_kind_classes("danger").1.contains("text-red"));
-        assert!(callout_kind_classes("whatever").0.contains("border-primary"));
+        assert!(callout_kind_classes("whatever")
+            .0
+            .contains("border-primary"));
     }
 }

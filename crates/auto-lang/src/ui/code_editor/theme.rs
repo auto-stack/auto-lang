@@ -9,8 +9,8 @@
 
 use cosmic_text::SyntaxTheme;
 use syntect::highlighting::{
-    Color as SynColor, FontStyle, ScopeSelectors, StyleModifier, Theme as SynTheme,
-    ThemeItem, ThemeSettings,
+    Color as SynColor, FontStyle, ScopeSelectors, StyleModifier, Theme as SynTheme, ThemeItem,
+    ThemeSettings,
 };
 
 /// Backend-agnostic RGBA color (0.0–1.0 components).
@@ -107,7 +107,11 @@ fn hsl_to_rgb(h: u16, s: u8, l: u8) -> (f32, f32, f32) {
     if s == 0.0 {
         return (l, l, l);
     }
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let hue = |mut t: f32| -> f32 {
         if t < 0.0 {
@@ -158,7 +162,12 @@ impl CodeEditorTheme {
     /// Foreground 真值；accent 沿用 dark 定 L=62 / light 定 L=42 约定；其余
     /// 槽位由 bg/fg/accent 混合派生）。这就是 V4 的「编辑器色域映射」：
     /// 语义 token 域 (u8 RGB) → 编辑器域 (f32 0.0-1.0) 的唯一入口。
-    pub fn from_resolved(dark: bool, accent: &str, bg_rgb: (u8, u8, u8), fg_rgb: (u8, u8, u8)) -> Self {
+    pub fn from_resolved(
+        dark: bool,
+        accent: &str,
+        bg_rgb: (u8, u8, u8),
+        fg_rgb: (u8, u8, u8),
+    ) -> Self {
         let l = if dark { 62 } else { 42 };
         let (ar, ag, ab) = {
             let (r, g, b) = hsl_to_rgb(accent_hsl(accent).0, accent_hsl(accent).1, l);
@@ -175,21 +184,37 @@ impl CodeEditorTheme {
     }
 
     /// 内置主题面：从 registry ThemeSpec 取 Background/Foreground。
-    pub fn for_builtin(spec: &crate::design_tokens::registry::ThemeSpec, dark: bool, accent: &str) -> Self {
+    pub fn for_builtin(
+        spec: &crate::design_tokens::registry::ThemeSpec,
+        dark: bool,
+        accent: &str,
+    ) -> Self {
         use crate::design_tokens::registry::{resolve_rgb, TokenName};
-        let bg = resolve_rgb(spec, TokenName::Background, dark)
-            .unwrap_or(if dark { (28, 29, 36) } else { (251, 251, 253) });
-        let fg = resolve_rgb(spec, TokenName::Foreground, dark)
-            .unwrap_or(if dark { (219, 222, 230) } else { (31, 33, 41) });
+        let bg = resolve_rgb(spec, TokenName::Background, dark).unwrap_or(if dark {
+            (28, 29, 36)
+        } else {
+            (251, 251, 253)
+        });
+        let fg = resolve_rgb(spec, TokenName::Foreground, dark).unwrap_or(if dark {
+            (219, 222, 230)
+        } else {
+            (31, 33, 41)
+        });
         Self::from_resolved(dark, accent, bg, fg)
     }
 
     /// 合成主题面：从 decl ComposedTheme 取 Background/Foreground。
-    pub fn for_composed(spec: &crate::design_tokens::decl::ComposedTheme, dark: bool, accent: &str) -> Self {
+    pub fn for_composed(
+        spec: &crate::design_tokens::decl::ComposedTheme,
+        dark: bool,
+        accent: &str,
+    ) -> Self {
         use crate::design_tokens::registry::TokenName;
-        let bg = spec.resolve_rgb(TokenName::Background, dark)
+        let bg = spec
+            .resolve_rgb(TokenName::Background, dark)
             .unwrap_or(if dark { (28, 29, 36) } else { (251, 251, 253) });
-        let fg = spec.resolve_rgb(TokenName::Foreground, dark)
+        let fg = spec
+            .resolve_rgb(TokenName::Foreground, dark)
             .unwrap_or(if dark { (219, 222, 230) } else { (31, 33, 41) });
         Self::from_resolved(dark, accent, bg, fg)
     }
@@ -201,9 +226,7 @@ impl CodeEditorTheme {
             selectors
                 .iter()
                 .map(|sel| ThemeItem {
-                    scope: sel
-                        .parse::<ScopeSelectors>()
-                        .unwrap_or_default(),
+                    scope: sel.parse::<ScopeSelectors>().unwrap_or_default(),
                     style: StyleModifier {
                         foreground: Some(color.syn_color()),
                         background: None,
@@ -219,11 +242,7 @@ impl CodeEditorTheme {
         // (glyph_id 0, verified: Consolas-Italic has no CJK fallback).
         let scopes = [
             scope(&["keyword", "storage"], self.syntax.keyword, None),
-            scope(
-                &["string", "string.regexp"],
-                self.syntax.string,
-                None,
-            ),
+            scope(&["string", "string.regexp"], self.syntax.string, None),
             scope(&["comment"], self.syntax.comment, None),
             scope(
                 &["entity.name.function", "support.function"],
@@ -247,11 +266,7 @@ impl CodeEditorTheme {
                 self.syntax.constant,
                 None,
             ),
-            scope(
-                &["variable", "variable.other"],
-                self.syntax.variable,
-                None,
-            ),
+            scope(&["variable", "variable.other"], self.syntax.variable, None),
             scope(
                 &["punctuation", "meta.brace"],
                 self.syntax.punctuation,
@@ -417,9 +432,11 @@ mod tests {
     #[test]
     fn active_code_theme_follows_theme_switch() {
         let fg_of = |t: &CodeEditorTheme| {
-            ((t.foreground.r * 255.0).round() as i32,
-             (t.foreground.g * 255.0).round() as i32,
-             (t.foreground.b * 255.0).round() as i32)
+            (
+                (t.foreground.r * 255.0).round() as i32,
+                (t.foreground.g * 255.0).round() as i32,
+                (t.foreground.b * 255.0).round() as i32,
+            )
         };
         crate::ui::style::theme::set_theme("zinc");
         let zinc = active_code_theme(true, "indigo");
@@ -434,7 +451,10 @@ mod tests {
     /// (Plan 413 regression: 041's Chinese comments rendered as boxes).
     #[test]
     fn comment_scope_is_not_italic() {
-        for theme in [CodeEditorTheme::dark("indigo"), CodeEditorTheme::light("indigo")] {
+        for theme in [
+            CodeEditorTheme::dark("indigo"),
+            CodeEditorTheme::light("indigo"),
+        ] {
             let syn = theme.syntax_theme();
             let mut saw_comment_scope = false;
             for item in &syn.scopes {

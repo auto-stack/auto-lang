@@ -25,9 +25,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use a2r_std::http::server_upload::{
-    failed_session, UploadErrorKind, UploadExecutor, UploadPhase, UploadPhaseHook,
-    UploadReceiveMode, UploadReceiveOptions, UploadReceivedMeta, UploadRequest, UploadReceipt,
-    UploadServeLimits, UploadSession,
+    failed_session, UploadErrorKind, UploadExecutor, UploadPhase, UploadPhaseHook, UploadReceipt,
+    UploadReceiveMode, UploadReceiveOptions, UploadReceivedMeta, UploadRequest, UploadServeLimits,
+    UploadSession,
 };
 use tokio::io::AsyncWriteExt;
 
@@ -211,7 +211,12 @@ fn validate_roots(root: &str, staging_root: &str) -> Result<(), String> {
     for (label, p) in [("root", &root_p), ("staging_root", &staging_p)] {
         match std::fs::metadata(p) {
             Ok(md) if md.is_dir() => {}
-            Ok(_) => return Err(format!("upload {label} is not a directory: {}", p.display())),
+            Ok(_) => {
+                return Err(format!(
+                    "upload {label} is not a directory: {}",
+                    p.display()
+                ))
+            }
             Err(e) => return Err(format!("upload {label} missing: {e}")),
         }
     }
@@ -224,7 +229,8 @@ fn validate_roots(root: &str, staging_root: &str) -> Result<(), String> {
     }
     if lexically_inside(&root_p, &staging_p) || lexically_inside(&staging_p, &root_p) {
         return Err(
-            "upload staging_root must live outside the public root (and not contain it)".to_string(),
+            "upload staging_root must live outside the public root (and not contain it)"
+                .to_string(),
         );
     }
     Ok(())
@@ -557,7 +563,10 @@ impl MultipartIncremental {
     }
 
     /// 当前字段收尾（part 边界/close 前）：文本 UTF-8 校验 + 有序入表。
-    fn finish_current_field(&mut self, options: &UploadReceiveOptions) -> Result<(), UploadErrorKind> {
+    fn finish_current_field(
+        &mut self,
+        options: &UploadReceiveOptions,
+    ) -> Result<(), UploadErrorKind> {
         if self.state == MpState::TextContent {
             if self.fields.len() + 1 > options.max_text_fields as usize {
                 return Err(UploadErrorKind::BadMultipart);
@@ -688,7 +697,11 @@ fn unquote(v: &str) -> String {
 }
 
 fn media_of(ct: &str) -> String {
-    ct.split(';').next().unwrap_or("").trim().to_ascii_lowercase()
+    ct.split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase()
 }
 
 fn charset_of(ct: &str) -> Option<String> {
@@ -765,13 +778,19 @@ impl UploadExecutor for UploadExecutorImpl {
 }
 
 fn with_entry<R>(id: u64, f: impl FnOnce(&Arc<SessionEntry>) -> R) -> Option<R> {
-    let entry = SERVICE.registry.lock().ok().and_then(|r| r.get(&id).cloned());
+    let entry = SERVICE
+        .registry
+        .lock()
+        .ok()
+        .and_then(|r| r.get(&id).cloned());
     entry.map(|e| f(&e))
 }
 
 /// 取消会话（幂等；scope 收口/断连级联）。Committing 期取消记迟到（不回滚）。
 pub fn cancel_session(session_id: u64) {
-    let Some(entry) = with_entry(session_id, |e| e.clone()) else { return };
+    let Some(entry) = with_entry(session_id, |e| e.clone()) else {
+        return;
+    };
     let staged_path: Option<PathBuf> = {
         let mut phase = entry.phase.lock().unwrap();
         match &*phase {
@@ -980,7 +999,9 @@ async fn run_receive(
             .await;
         }
     }
-    let content_type_raw = header_value(&req_headers, "content-type").unwrap_or("").to_string();
+    let content_type_raw = header_value(&req_headers, "content-type")
+        .unwrap_or("")
+        .to_string();
     let content_type = media_of(&content_type_raw);
 
     let mut parser = None;
@@ -1009,12 +1030,8 @@ async fn run_receive(
             match MultipartIncremental::new(&boundary, &options, &hard) {
                 Ok(p) => parser = Some(p),
                 Err(kind) => {
-                    return fail_receive(
-                        &entry,
-                        kind,
-                        "invalid multipart boundary".to_string(),
-                    )
-                    .await
+                    return fail_receive(&entry, kind, "invalid multipart boundary".to_string())
+                        .await
                 }
             }
         }
@@ -1163,7 +1180,10 @@ async fn run_receive(
                 Some(mp) => mp
                     .finish()
                     .map_err(|kind| {
-                        (kind, "truncated multipart body (missing closing boundary)".to_string())
+                        (
+                            kind,
+                            "truncated multipart body (missing closing boundary)".to_string(),
+                        )
                     })
                     .map(|_| mp.snapshot(&options.file_field)),
             };
@@ -1184,9 +1204,10 @@ async fn run_receive(
                         Ok(Err(e)) => {
                             Err((UploadErrorKind::Io, format!("staging finish failed: {e}")))
                         }
-                        Err(_) => {
-                            Err((UploadErrorKind::Io, "staging writer exited unexpectedly".into()))
-                        }
+                        Err(_) => Err((
+                            UploadErrorKind::Io,
+                            "staging writer exited unexpectedly".into(),
+                        )),
                     }
                 }
             }
@@ -1229,7 +1250,9 @@ async fn fail_receive(
 /// lease 看门狗：Staged 期无人 commit/reject → 过期清理（许可释放）。
 async fn lease_watchdog(session_id: u64, deadline: Instant) {
     tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)).await;
-    let Some(entry) = with_entry(session_id, |e| e.clone()) else { return };
+    let Some(entry) = with_entry(session_id, |e| e.clone()) else {
+        return;
+    };
     let expired_staging: Option<PathBuf> = {
         let mut phase = entry.phase.lock().unwrap();
         if matches!(&*phase, SessionPhase::Staged { .. }) {
@@ -1613,42 +1636,59 @@ mod tests {
         let options = opts(r#"{"mode":"multipart","text_fields":["a"]}"#);
         let body = b"--B\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n1\r\n--B--\r\n";
         assert_eq!(
-            drive_parser("B", body, 5, &options).map(|_| ()).unwrap_err(),
+            drive_parser("B", body, 5, &options)
+                .map(|_| ())
+                .unwrap_err(),
             K::BadMultipart
         );
         let body = b"--B\r\nContent-Disposition: form-data; name=\"file\"\r\n\r\n1\r\n--B\r\nContent-Disposition: form-data; name=\"file\"\r\n\r\n2\r\n--B--\r\n";
         assert_eq!(
-            drive_parser("B", body, 5, &options).map(|_| ()).unwrap_err(),
+            drive_parser("B", body, 5, &options)
+                .map(|_| ())
+                .unwrap_err(),
             K::BadMultipart
         );
         let body = b"--B\r\nContent-Disposition: form-data; name=\"nope\"\r\n\r\n1\r\n--B--\r\n";
         assert_eq!(
-            drive_parser("B", body, 5, &options).map(|_| ()).unwrap_err(),
+            drive_parser("B", body, 5, &options)
+                .map(|_| ())
+                .unwrap_err(),
             K::BadMultipart
         );
         let body = b"--B\r\nContent-Disposition: form-data; name=\"file\"\r\n\r\nDATA";
         assert_eq!(
-            drive_parser("B", body, 5, &options).map(|_| ()).unwrap_err(),
+            drive_parser("B", body, 5, &options)
+                .map(|_| ())
+                .unwrap_err(),
             K::BadMultipart
         );
-        let body = b"--B\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n\xFF\xFE\r\n--B--\r\n";
+        let body =
+            b"--B\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\n\xFF\xFE\r\n--B--\r\n";
         assert_eq!(
-            drive_parser("B", body, 5, &options).map(|_| ()).unwrap_err(),
+            drive_parser("B", body, 5, &options)
+                .map(|_| ())
+                .unwrap_err(),
             K::BadMultipart
         );
         let body = b"--B\r\nContent-Disposition: form-data; name=\"file\"\r\nContent-Transfer-Encoding: base64\r\n\r\nWFla\r\n--B--\r\n";
         assert_eq!(
-            drive_parser("B", body, 5, &options).map(|_| ()).unwrap_err(),
+            drive_parser("B", body, 5, &options)
+                .map(|_| ())
+                .unwrap_err(),
             K::BadMultipart
         );
         let body = b"--B\r\nContent-Disposition: form-data; name=\"file\"\r\nContent-Type: multipart/mixed; boundary=X\r\n\r\n.\r\n--B--\r\n";
         assert_eq!(
-            drive_parser("B", body, 5, &options).map(|_| ()).unwrap_err(),
+            drive_parser("B", body, 5, &options)
+                .map(|_| ())
+                .unwrap_err(),
             K::BadMultipart
         );
         let body = b"--B\r\nContent-Disposition: form-data; name=\"a\"\r\nContent-Type: text/plain; charset=iso-8859-1\r\n\r\nx\r\n--B--\r\n";
         assert_eq!(
-            drive_parser("B", body, 5, &options).map(|_| ()).unwrap_err(),
+            drive_parser("B", body, 5, &options)
+                .map(|_| ())
+                .unwrap_err(),
             K::UnsupportedMedia
         );
     }
@@ -1667,7 +1707,9 @@ mod tests {
         let options = opts(r#"{"mode":"multipart","max_file_bytes":10,"text_fields":["k"]}"#);
         assert!(drive_parser("B", &file_n(10), 3, &options).is_ok());
         assert_eq!(
-            drive_parser("B", &file_n(11), 3, &options).map(|_| ()).unwrap_err(),
+            drive_parser("B", &file_n(11), 3, &options)
+                .map(|_| ())
+                .unwrap_err(),
             K::BodyTooLarge
         );
         // 文本预算样例须带 file part（无 file part 本身即 BadMultipart）。
@@ -1680,12 +1722,16 @@ mod tests {
         let options = opts(r#"{"mode":"multipart","text_fields":["k"],"max_text_field_bytes":4}"#);
         assert!(drive_parser("B", &tf("1234"), 3, &options).is_ok());
         assert_eq!(
-            drive_parser("B", &tf("12345"), 3, &options).map(|_| ()).unwrap_err(),
+            drive_parser("B", &tf("12345"), 3, &options)
+                .map(|_| ())
+                .unwrap_err(),
             K::BadMultipart
         );
         // 重复字段保序（不静默覆盖）。
         let mut body = Vec::new();
-        body.extend_from_slice(b"--B\r\nContent-Disposition: form-data; name=\"file\"\r\n\r\nF\r\n");
+        body.extend_from_slice(
+            b"--B\r\nContent-Disposition: form-data; name=\"file\"\r\n\r\nF\r\n",
+        );
         for v in ["1", "2"] {
             body.extend_from_slice(b"--B\r\n");
             body.extend_from_slice(b"Content-Disposition: form-data; name=\"k\"\r\n\r\n");
@@ -1758,7 +1804,10 @@ mod tests {
         let req = upload_request_from_parts(
             "POST",
             "/up",
-            vec![("content-type".to_string(), "application/octet-stream".to_string())],
+            vec![(
+                "content-type".to_string(),
+                "application/octet-stream".to_string(),
+            )],
             trickle,
         );
         let session = runtime.block_on(a2r_std::http::upload_receive(
@@ -1770,11 +1819,14 @@ mod tests {
         let meta = a2r_std::http::upload_metadata_json(&session);
         assert!(meta.contains("total_timeout"), "{meta}");
         assert!(meta.contains("\"suggested_status\":408"), "{meta}");
-        assert!(drive_until(
-            &runtime,
-            || std::fs::read_dir(&staging).unwrap().next().is_none(),
-            5
-        ), "staging cleaned after total timeout");
+        assert!(
+            drive_until(
+                &runtime,
+                || std::fs::read_dir(&staging).unwrap().next().is_none(),
+                5
+            ),
+            "staging cleaned after total timeout"
+        );
         assert_eq!(upload_session_count(), 0);
     }
 
@@ -1796,10 +1848,7 @@ mod tests {
     // ── receive/commit/reject/lease 集成（内存流 + 独占临时目录） ──────
 
     fn temp_roots(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
-        let base = std::env::temp_dir().join(format!(
-            "plan730-svc-{tag}-{}",
-            std::process::id()
-        ));
+        let base = std::env::temp_dir().join(format!("plan730-svc-{tag}-{}", std::process::id()));
         let root = base.join("public");
         let staging = base.join("private-staging");
         std::fs::create_dir_all(&root).unwrap();
@@ -1869,13 +1918,16 @@ mod tests {
         assert_eq!(upload_staged_count(), 1);
         // 合同：只允许已存在的安全父目录——测试预建子目录。
         std::fs::create_dir_all(root.join("ok")).unwrap();
-        let receipt =
-            runtime.block_on(a2r_std::http::upload_commit(session.clone(), "ok/x.bin"));
+        let receipt = runtime.block_on(a2r_std::http::upload_commit(session.clone(), "ok/x.bin"));
         assert_eq!(receipt.status, 201, "{}", receipt.json);
         let on_disk = std::fs::read(root.join("ok/x.bin")).unwrap();
         assert_eq!(on_disk, payload, "published bytes identical");
         assert_eq!(upload_staged_count(), 0);
-        assert_eq!(upload_session_count(), 0, "terminal session leaves registry");
+        assert_eq!(
+            upload_session_count(),
+            0,
+            "terminal session leaves registry"
+        );
         // 同名冲突：原文件不变。
         let another = runtime.block_on(a2r_std::http::upload_receive(
             req_from(vec![b"second".to_vec()], "application/octet-stream"),
@@ -1897,9 +1949,7 @@ mod tests {
         let big: Vec<u8> = vec![0xA7; 12 * 1024 * 1024];
         let mut body = Vec::new();
         body.extend_from_slice(b"--B730\r\n");
-        body.extend_from_slice(
-            b"Content-Disposition: form-data; name=\"note\"\r\n\r\nhello\r\n",
-        );
+        body.extend_from_slice(b"Content-Disposition: form-data; name=\"note\"\r\n\r\nhello\r\n");
         body.extend_from_slice(b"--B730\r\n");
         body.extend_from_slice(
             b"Content-Disposition: form-data; name=\"file\"; filename=\"big.bin\"\r\n\r\n",
@@ -1921,8 +1971,11 @@ mod tests {
         assert!(meta.contains("\"filename\":\"big.bin\""));
         assert!(meta.contains("\"name\":\"note\",\"value\":\"hello\""));
         assert_eq!(upload_staged_count(), 1);
-        let receipt = runtime
-            .block_on(a2r_std::http::upload_reject(session, 422, "business check failed"));
+        let receipt = runtime.block_on(a2r_std::http::upload_reject(
+            session,
+            422,
+            "business check failed",
+        ));
         assert_eq!(receipt.status, 422);
         assert_eq!(upload_staged_count(), 0);
         assert_eq!(upload_session_count(), 0);
@@ -2013,11 +2066,14 @@ mod tests {
         ));
         assert!(session.is_received());
         assert!(drive_until(&runtime, || upload_session_count() == 0, 5));
-        assert!(drive_until(
-            &runtime,
-            || std::fs::read_dir(&staging).unwrap().next().is_none(),
-            5
-        ), "lease cleanup settles");
+        assert!(
+            drive_until(
+                &runtime,
+                || std::fs::read_dir(&staging).unwrap().next().is_none(),
+                5
+            ),
+            "lease cleanup settles"
+        );
         let receipt = runtime.block_on(a2r_std::http::upload_commit(session, "late.bin"));
         assert_eq!(receipt.status, 410, "{}", receipt.json);
         let _ = root;
@@ -2080,8 +2136,7 @@ mod tests {
         ));
         assert!(!session.is_received());
         assert!(
-            a2r_std::http::upload_metadata_json(&session)
-                .contains("missing"),
+            a2r_std::http::upload_metadata_json(&session).contains("missing"),
             "missing staging rejected"
         );
         let _ = staging;
@@ -2097,7 +2152,10 @@ mod tests {
             "POST",
             "/up",
             vec![
-                ("content-type".to_string(), "application/octet-stream".to_string()),
+                (
+                    "content-type".to_string(),
+                    "application/octet-stream".to_string(),
+                ),
                 ("content-encoding".to_string(), "gzip".to_string()),
             ],
             stream_of(vec![vec![1, 2, 3]]),

@@ -270,16 +270,18 @@ impl HtmlTranspiler {
 
             AdocBlock::HorizontalRule => Ok(format!("<hr class=\"{}\" />", self.class("break"))),
 
-            AdocBlock::Image { alt, url } => {
-                Ok(format!(
-                    "<img src=\"{}\" alt=\"{}\" class=\"{}\" />",
-                    helpers::escape_html(url),
-                    helpers::escape_html(alt),
-                    self.class("image")
-                ))
-            }
+            AdocBlock::Image { alt, url } => Ok(format!(
+                "<img src=\"{}\" alt=\"{}\" class=\"{}\" />",
+                helpers::escape_html(url),
+                helpers::escape_html(alt),
+                self.class("image")
+            )),
 
-            AdocBlock::If { condition, then_body, else_body } => {
+            AdocBlock::If {
+                condition,
+                then_body,
+                else_body,
+            } => {
                 let mut output = format!("<!-- if {} -->\n", condition);
                 for block in then_body {
                     output.push_str(&self.transpile_block_content(block)?);
@@ -296,7 +298,12 @@ impl HtmlTranspiler {
                 Ok(output)
             }
 
-            AdocBlock::For { var, index, iterable, body } => {
+            AdocBlock::For {
+                var,
+                index,
+                iterable,
+                body,
+            } => {
                 let mut output = if let Some(idx) = index {
                     format!("<!-- for ({}, {}) in {} -->\n", var, idx, iterable)
                 } else {
@@ -310,7 +317,11 @@ impl HtmlTranspiler {
                 Ok(output)
             }
 
-            AdocBlock::Component { name, props, children } => {
+            AdocBlock::Component {
+                name,
+                props,
+                children,
+            } => {
                 let mut output = format!("<div class=\"{}\" ", name);
                 for (key, value) in props {
                     output.push_str(&format!("{}={:?} ", key, value));
@@ -324,13 +335,12 @@ impl HtmlTranspiler {
                 Ok(output)
             }
 
-            AdocBlock::RawCode(code) => {
-                Ok(format!("<script>\n{}\n</script>", helpers::escape_html(code)))
-            }
+            AdocBlock::RawCode(code) => Ok(format!(
+                "<script>\n{}\n</script>",
+                helpers::escape_html(code)
+            )),
 
-            AdocBlock::Include(path) => {
-                Ok(format!("<!-- include: {} -->", path))
-            }
+            AdocBlock::Include(path) => Ok(format!("<!-- include: {} -->", path)),
         }
     }
 

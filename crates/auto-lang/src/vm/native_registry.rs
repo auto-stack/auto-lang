@@ -21,9 +21,9 @@
 //!     // Emit CALL_NAT with native_id
 //! }
 //! ```
+use crate::vm::native_catalog::NATIVE_ID_ENTRIES;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use crate::vm::native_catalog::NATIVE_ID_ENTRIES;
 
 /// Lightweight return type for native functions (Send + Sync safe).
 /// Codegen converts these to full `Type` values during initialization.
@@ -109,11 +109,18 @@ impl AutoVMNativeRegistry {
 
     fn allocate_id(&mut self) -> u16 {
         while NATIVE_ID_ENTRIES.iter().any(|(_, id)| *id == self.next_id)
-            || self.registry.values().any(|id| *id == self.next_id) {
-            self.next_id = self.next_id.checked_add(1).expect("native ID space exhausted");
+            || self.registry.values().any(|id| *id == self.next_id)
+        {
+            self.next_id = self
+                .next_id
+                .checked_add(1)
+                .expect("native ID space exhausted");
         }
         let id = self.next_id;
-        self.next_id = self.next_id.checked_add(1).expect("native ID space exhausted");
+        self.next_id = self
+            .next_id
+            .checked_add(1)
+            .expect("native ID space exhausted");
         id
     }
 
@@ -383,7 +390,9 @@ impl AutoVMNativeRegistry {
         use crate::ast::{FnKind, Stmt};
         use crate::parser::Parser;
 
-        let Ok(stdlib_dir) = crate::stdlib_assembly::loader::repo_stdlib_root() else { return; };
+        let Ok(stdlib_dir) = crate::stdlib_assembly::loader::repo_stdlib_root() else {
+            return;
+        };
 
         let vm_files: Vec<std::path::PathBuf> = std::fs::read_dir(stdlib_dir)
             .ok()
@@ -392,9 +401,7 @@ impl AutoVMNativeRegistry {
                     .filter_map(|e| e.ok())
                     .filter(|e| {
                         e.path().extension().map_or(false, |ext| ext == "at")
-                            && e.file_name()
-                                .to_str()
-                                .map_or(false, |n| n.contains(".vm."))
+                            && e.file_name().to_str().map_or(false, |n| n.contains(".vm."))
                     })
                     .map(|e| e.path())
                     .collect()
@@ -426,16 +433,21 @@ impl AutoVMNativeRegistry {
                 match stmt {
                     Stmt::Fn(fn_decl) if fn_decl.kind == FnKind::VmFunction => {
                         let canonical = if let Some(parent) = &fn_decl.parent {
-                            format!("auto.{}.{}.{}", module_name, parent.to_string().to_lowercase(), fn_decl.name)
+                            format!(
+                                "auto.{}.{}.{}",
+                                module_name,
+                                parent.to_string().to_lowercase(),
+                                fn_decl.name
+                            )
                         } else {
                             format!("auto.{}.{}", module_name, fn_decl.name)
                         };
 
                         // Only register if not already registered (hardcoded IDs take precedence)
-                        if !self.registry.contains_key(&canonical)
-                        {
+                        if !self.registry.contains_key(&canonical) {
                             // Check NATIVE_ID_MAP for fixed ID before assigning dynamic ID
-                            let id = if let Some(&fixed_id) = NATIVE_ID_MAP.get(canonical.as_str()) {
+                            let id = if let Some(&fixed_id) = NATIVE_ID_MAP.get(canonical.as_str())
+                            {
                                 fixed_id
                             } else {
                                 self.allocate_id()
@@ -455,12 +467,15 @@ impl AutoVMNativeRegistry {
                         let target_lower = ext.target.to_string().to_lowercase();
                         for method in &ext.methods {
                             if method.kind == FnKind::VmFunction {
-                                let canonical =
-                                    format!("auto.{}.{}.{}", module_name, target_lower, method.name);
+                                let canonical = format!(
+                                    "auto.{}.{}.{}",
+                                    module_name, target_lower, method.name
+                                );
 
-                                if !self.registry.contains_key(&canonical)
-                                {
-                                    let id = if let Some(&fixed_id) = NATIVE_ID_MAP.get(canonical.as_str()) {
+                                if !self.registry.contains_key(&canonical) {
+                                    let id = if let Some(&fixed_id) =
+                                        NATIVE_ID_MAP.get(canonical.as_str())
+                                    {
                                         fixed_id
                                     } else {
                                         self.allocate_id()
@@ -530,7 +545,10 @@ impl AutoVMNativeRegistry {
     /// All methods point to NATIVE_RUST_STDLIB_DISPATCH (3000) for dynamic dispatch.
     pub fn register_rust_type_methods(&mut self, type_name: &str) {
         let dispatch_id: u16 = 3000; // NATIVE_RUST_STDLIB_DISPATCH
-        if let Some((_, methods)) = RUST_STDLIB_METHODS.iter().find(|(name, _)| *name == type_name) {
+        if let Some((_, methods)) = RUST_STDLIB_METHODS
+            .iter()
+            .find(|(name, _)| *name == type_name)
+        {
             for method in *methods {
                 let full_name = format!("{}.{}", type_name, method);
                 self.register_with_id(&full_name, dispatch_id);
@@ -550,11 +568,17 @@ mod tests {
         crate::parser::Parser::from(vm_api)
             .parse()
             .unwrap_or_else(|e| panic!("image.vm.at must parse: {e}"));
-        for name in ["queue", "open", "scan", "request", "retain", "release", "close", "stats"] {
-            assert!(api.contains(&format!("fn {name}")), "missing image API: {name}");
+        for name in [
+            "queue", "open", "scan", "request", "retain", "release", "close", "stats",
+        ] {
+            assert!(
+                api.contains(&format!("fn {name}")),
+                "missing image API: {name}"
+            );
         }
         assert!(
-            !api.lines().any(|line| line.trim_start().starts_with("pixels ")),
+            !api.lines()
+                .any(|line| line.trim_start().starts_with("pixels ")),
             "public image API must not expose a pixels field"
         );
         assert!(include_str!("../../../../stdlib/auto/image.vm.at").contains("#[vm]"));
@@ -572,8 +596,12 @@ mod tests {
         let id3 = registry.register("List.len");
         assert!(id1 < id2 && id2 < id3);
         for id in [id1, id2, id3] {
-            assert!(!crate::vm::native_catalog::NATIVE_ID_ENTRIES.iter().any(|(_, reserved)| *reserved == id),
-                "dynamic allocation must not overwrite a production native id");
+            assert!(
+                !crate::vm::native_catalog::NATIVE_ID_ENTRIES
+                    .iter()
+                    .any(|(_, reserved)| *reserved == id),
+                "dynamic allocation must not overwrite a production native id"
+            );
         }
     }
 
@@ -615,24 +643,63 @@ mod tests {
 
     #[test]
     fn test_to_canonical_default() {
-        assert_eq!(AutoVMNativeRegistry::to_canonical("List.push"), Some("auto.list.push".to_string()));
-        assert_eq!(AutoVMNativeRegistry::to_canonical("str.len"), Some("auto.str.len".to_string()));
-        assert_eq!(AutoVMNativeRegistry::to_canonical("File.read_text"), Some("auto.file.read_text".to_string()));
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("List.push"),
+            Some("auto.list.push".to_string())
+        );
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("str.len"),
+            Some("auto.str.len".to_string())
+        );
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("File.read_text"),
+            Some("auto.file.read_text".to_string())
+        );
     }
 
     #[test]
     fn test_to_canonical_mapped() {
-        assert_eq!(AutoVMNativeRegistry::to_canonical("TaskHandle.send"), Some("auto.task.send".to_string()));
-        assert_eq!(AutoVMNativeRegistry::to_canonical("TaskSystem.start"), Some("auto.task_system.start".to_string()));
-        assert_eq!(AutoVMNativeRegistry::to_canonical("Response.status_code"), Some("auto.http.response.status_code".to_string()));
-        assert_eq!(AutoVMNativeRegistry::to_canonical("Result.map_err"), Some("auto.result.map_err".to_string()));
-        assert_eq!(AutoVMNativeRegistry::to_canonical("Http.get"), Some("auto.http.get".to_string()));
-        assert_eq!(AutoVMNativeRegistry::to_canonical("Option.or"), Some("auto.option.or".to_string()));
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("TaskHandle.send"),
+            Some("auto.task.send".to_string())
+        );
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("TaskSystem.start"),
+            Some("auto.task_system.start".to_string())
+        );
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("Response.status_code"),
+            Some("auto.http.response.status_code".to_string())
+        );
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("Result.map_err"),
+            Some("auto.result.map_err".to_string())
+        );
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("Http.get"),
+            Some("auto.http.get".to_string())
+        );
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("Option.or"),
+            Some("auto.option.or".to_string())
+        );
         // Plan 202: List/HashMap/Map canonical mapping
-        assert_eq!(AutoVMNativeRegistry::to_canonical("List.push"), Some("auto.list.push".to_string()));
-        assert_eq!(AutoVMNativeRegistry::to_canonical("List.join"), Some("auto.list.join".to_string()));
-        assert_eq!(AutoVMNativeRegistry::to_canonical("HashMap.insert"), Some("auto.hashmap.insert".to_string()));
-        assert_eq!(AutoVMNativeRegistry::to_canonical("Map.new"), Some("auto.hashmap.new".to_string()));
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("List.push"),
+            Some("auto.list.push".to_string())
+        );
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("List.join"),
+            Some("auto.list.join".to_string())
+        );
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("HashMap.insert"),
+            Some("auto.hashmap.insert".to_string())
+        );
+        assert_eq!(
+            AutoVMNativeRegistry::to_canonical("Map.new"),
+            Some("auto.hashmap.new".to_string())
+        );
     }
 
     #[test]

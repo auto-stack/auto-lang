@@ -262,7 +262,6 @@ fn transpile_expr(expr: &Expr, ctx: &KotlinAdapterCtx, out: &mut Vec<u8>) {
         }
 
         // Literals ----------------------------------------------------------
-
         Expr::Int(i) => {
             write!(out, "{}", i).ok();
         }
@@ -590,7 +589,12 @@ fn transpile_assign_target(expr: &Expr, ctx: &KotlinAdapterCtx, out: &mut Vec<u8
             write!(out, "{}", name.as_str()).ok();
         }
         other => {
-            write!(out, "/* TODO(kotlin): assign target {} */", expr_kind(other)).ok();
+            write!(
+                out,
+                "/* TODO(kotlin): assign target {} */",
+                expr_kind(other)
+            )
+            .ok();
         }
     }
 }
@@ -616,12 +620,7 @@ fn try_transpile_builtin_call(
     match module {
         "json" => {
             // Kotlin org.json or TODO comment
-            write!(
-                out,
-                "/* TODO(kotlin): org.json.{} */",
-                method
-            )
-            .ok();
+            write!(out, "/* TODO(kotlin): org.json.{} */", method).ok();
             for arg in args.args.iter() {
                 let _ = arg.get_expr(); // ensure used; values embedded in comment omitted for brevity
             }
@@ -750,11 +749,7 @@ mod tests {
         );
         let expr = Expr::Bina(Box::new(lhs), auto_val::Op::Asn, Box::new(rhs));
         let body = transpile_handler_body(&[Stmt::Expr(expr)], &ctx_empty());
-        assert!(
-            body.contains("count = count + 1"),
-            "body = {}",
-            body
-        );
+        assert!(body.contains("count = count + 1"), "body = {}", body);
     }
 
     #[test]
@@ -801,7 +796,11 @@ mod tests {
     fn test_kotlin_no_semicolons() {
         let stmt = Stmt::Expr(call("print", vec![Expr::Str("hi".into())]));
         let body = transpile_handler_body(&[stmt], &ctx_empty());
-        assert!(!body.contains(';'), "Kotlin output must not contain ';': {}", body);
+        assert!(
+            !body.contains(';'),
+            "Kotlin output must not contain ';': {}",
+            body
+        );
     }
 
     #[test]
@@ -893,6 +892,10 @@ mod tests {
         let mut out = Vec::new();
         transpile_expr(&e, &ctx_empty(), &mut out);
         let s = String::from_utf8(out).unwrap();
-        assert!(s.contains("TODO(kotlin)"), "should emit TODO comment: {}", s);
+        assert!(
+            s.contains("TODO(kotlin)"),
+            "should emit TODO comment: {}",
+            s
+        );
     }
 }

@@ -24,11 +24,21 @@ enum Msg {
 fn two_layer_view() -> View<Msg> {
     let left = View::col()
         .style("absolute top-0 left-0 w-[300px] h-[300px] bg-[#202020]")
-        .child(View::button("A").style("w-full h-full").on_click(|_| Msg::A).build())
+        .child(
+            View::button("A")
+                .style("w-full h-full")
+                .on_click(|_| Msg::A)
+                .build(),
+        )
         .build();
     let right = View::col()
         .style("absolute top-0 left-[300px] w-[300px] h-[300px] bg-[#303030]")
-        .child(View::button("B").style("w-full h-full").on_click(|_| Msg::B).build())
+        .child(
+            View::button("B")
+                .style("w-full h-full")
+                .on_click(|_| Msg::B)
+                .build(),
+        )
         .build();
     View::col()
         .style("relative w-[600px] h-[300px] bg-background")
@@ -113,11 +123,21 @@ fn p023_spacer_gap_click_falls_through() {
     }
     let base = View::col()
         .style("w-full h-full")
-        .child(View::button("BASE").style("w-full h-full").on_click(|_| M2::Base).build())
+        .child(
+            View::button("BASE")
+                .style("w-full h-full")
+                .on_click(|_| M2::Base)
+                .build(),
+        )
         .build();
     let c_layer = View::col()
         .style("absolute top-[100px] left-[100px] w-[100px] h-[100px] bg-[#404040]")
-        .child(View::button("C").style("w-full h-full").on_click(|_| M2::C).build())
+        .child(
+            View::button("C")
+                .style("w-full h-full")
+                .on_click(|_| M2::C)
+                .build(),
+        )
         .build();
     let root = View::col()
         .style("relative w-[600px] h-[300px] bg-background")

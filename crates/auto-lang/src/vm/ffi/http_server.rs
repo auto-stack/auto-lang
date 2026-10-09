@@ -152,7 +152,10 @@ pub(crate) fn fn_response_kind(fn_name: &str) -> crate::api::contract::ResponseK
     API_RETURN_TYPES
         .lock()
         .ok()
-        .and_then(|t| t.get(fn_name).map(|r| crate::api::contract::ResponseKind::from_return_string(r)))
+        .and_then(|t| {
+            t.get(fn_name)
+                .map(|r| crate::api::contract::ResponseKind::from_return_string(r))
+        })
         .unwrap_or(crate::api::contract::ResponseKind::Json)
 }
 
@@ -480,12 +483,8 @@ pub(crate) fn legacy_store_files(
         };
         let n = FILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let path = std::path::Path::new(&dir).join(format!("{}_{}", n, base));
-        std::fs::write(&path, data).map_err(|e| {
-            format!(
-                "upload write failed for {}: {e}",
-                path.to_string_lossy()
-            )
-        })?;
+        std::fs::write(&path, data)
+            .map_err(|e| format!("upload write failed for {}: {e}", path.to_string_lossy()))?;
         stored.push(LegacyStoredFile {
             field: field.clone(),
             filename: filename.clone(),
@@ -1397,7 +1396,7 @@ mod plan326_tests {
                 "GET",
                 "/api/notes/42",
                 None,
-                        )
+            )
             .expect("bind");
             assert_eq!(n, 1);
             let nv = task.ram.pop_nv();
@@ -4032,9 +4031,8 @@ pub(crate) fn compute_ws_accept(key: &str) -> String {
 ///     batches while the connection task writes frames.
 /// PLAN-736 T-05：进程内服务关停发送端（`POST /__auto/shutdown` 触发同一
 /// 关闭入口；headless 测试的确定性注入路径——真实 Ctrl+C 证据范围见 SD-01）。
-static SERVICE_SHUTDOWN_TX: std::sync::Mutex<
-    Option<tokio::sync::watch::Sender<bool>>,
-> = std::sync::Mutex::new(None);
+static SERVICE_SHUTDOWN_TX: std::sync::Mutex<Option<tokio::sync::watch::Sender<bool>>> =
+    std::sync::Mutex::new(None);
 
 fn register_service_shutdown_tx(tx: tokio::sync::watch::Sender<bool>) {
     if let Ok(mut slot) = SERVICE_SHUTDOWN_TX.lock() {
@@ -4060,7 +4058,10 @@ pub(crate) fn handle_service_control_path(
     }
     let json_resp = |status: u16, body: serde_json::Value| -> axum::response::Response {
         axum::response::Response::builder()
-            .status(axum::http::StatusCode::from_u16(status).unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR))
+            .status(
+                axum::http::StatusCode::from_u16(status)
+                    .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+            )
             .header("content-type", "application/json")
             .body(axum::body::Body::from(body.to_string()))
             .unwrap()
@@ -4072,7 +4073,10 @@ pub(crate) fn handle_service_control_path(
         )),
         ("GET", "/__auto/health/ready") => {
             if obs::is_ready() {
-                Some(json_resp(200, obs::service_identity().unwrap_or_else(|| serde_json::json!({}))))
+                Some(json_resp(
+                    200,
+                    obs::service_identity().unwrap_or_else(|| serde_json::json!({})),
+                ))
             } else {
                 Some(json_resp(
                     503,
@@ -4082,7 +4086,10 @@ pub(crate) fn handle_service_control_path(
         }
         ("GET", "/__auto/health/snapshot") => {
             if !peer_is_loopback(peer) {
-                return Some(json_resp(403, serde_json::json!({ "error": "loopback only" })));
+                return Some(json_resp(
+                    403,
+                    serde_json::json!({ "error": "loopback only" }),
+                ));
             }
             Some(json_resp(
                 200,
@@ -4095,7 +4102,10 @@ pub(crate) fn handle_service_control_path(
         }
         ("POST", "/__auto/shutdown") => {
             if !peer_is_loopback(peer) {
-                return Some(json_resp(403, serde_json::json!({ "error": "loopback only" })));
+                return Some(json_resp(
+                    403,
+                    serde_json::json!({ "error": "loopback only" }),
+                ));
             }
             let sent = SERVICE_SHUTDOWN_TX
                 .lock()
@@ -4899,10 +4909,7 @@ fn advance_dispatch(
             .collect();
         let op_id = crate::vm::ffi::stdlib::alloc_async_id();
         crate::vm::ffi::async_http::register_live_op(op_id);
-        LEGACY_STORE_RESULTS
-            .lock()
-            .unwrap()
-            .insert(op_id, None);
+        LEGACY_STORE_RESULTS.lock().unwrap().insert(op_id, None);
         tokio::task::spawn_blocking(move || {
             let result = legacy_store_files(&files).map(|stored| {
                 (
@@ -4946,10 +4953,7 @@ fn advance_dispatch(
 
 /// PLAN-730 T-07：落盘完成后的续跑（middleware 已在 park 前全过——从链尾
 /// 直达 handler）。
-fn advance_after_legacy_store(
-    vm: &std::rc::Rc<AutoVM>,
-    p: &mut ParkedRequest,
-) -> ParkedResume {
+fn advance_after_legacy_store(vm: &std::rc::Rc<AutoVM>, p: &mut ParkedRequest) -> ParkedResume {
     let ctx = std::mem::replace(&mut p.ctx, placeholder_ctx());
     match start_handler(vm, ctx, p.reply_tx.take()) {
         DispatchOutcome::Replied => ParkedResume::Consumed,
@@ -5041,9 +5045,7 @@ fn run_middleware_at(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx, index: usize) 
                     return MWStep::Reply(ApiReply::Full {
                         status: 500,
                         headers: cors_json_headers(&ctx.request_id),
-                        body: ApiBody::Text(
-                            br#"{"error":"middleware failed"}"#.to_vec(),
-                        ),
+                        body: ApiBody::Text(br#"{"error":"middleware failed"}"#.to_vec()),
                     });
                 }
                 MWEnd::Null
@@ -5410,7 +5412,10 @@ fn handler_declares_file_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> 
 /// ctx 的声明返回串（named fn 经 API_RETURN_TYPES；axum closure 反查导出名）。
 fn declared_return(vm: &std::rc::Rc<AutoVM>, ctx: &DispatchCtx) -> String {
     let lookup = |name: &str| -> Option<String> {
-        API_RETURN_TYPES.lock().ok().and_then(|t| t.get(name).cloned())
+        API_RETURN_TYPES
+            .lock()
+            .ok()
+            .and_then(|t| t.get(name).cloned())
     };
     match ctx.axum_route {
         Some(ref r) => crate::vm::ffi::axum_adapter::export_name_for_closure(vm, r.closure_id)
@@ -6274,8 +6279,7 @@ pub(crate) fn resume_parked_request(
                         status: 500,
                         headers,
                         body: ApiBody::Text(
-                            format!("{{\"error\":{}}}", json_escape_string(&message))
-                                .into_bytes(),
+                            format!("{{\"error\":{}}}", json_escape_string(&message)).into_bytes(),
                         ),
                     })
                 }
@@ -6971,7 +6975,10 @@ fn validate_body_value(declared_ty: &str, v: &serde_json::Value) -> Result<(), S
         }
         ParamKind::Optional(_) => {
             if !v.is_null() {
-                let inner = declared_ty.trim().trim_start_matches('?').trim_end_matches('?');
+                let inner = declared_ty
+                    .trim()
+                    .trim_start_matches('?')
+                    .trim_end_matches('?');
                 let inner_kind = ParamKind::from_param_string(inner, &[]);
                 let bad_scalar = match (&inner_kind, v) {
                     (ParamKind::Str, serde_json::Value::String(_)) => false,
@@ -7046,9 +7053,8 @@ pub(crate) fn push_typed_string_arg(
                 if !range_ok {
                     return Err(bad(sig.ty.trim()));
                 }
-                task.ram.push_nv(crate::vm::ffi::convert::encode_i64_with_heap(
-                    vm, i,
-                ));
+                task.ram
+                    .push_nv(crate::vm::ffi::convert::encode_i64_with_heap(vm, i));
             }
             Err(_) => return Err(bad(sig.ty.trim())),
         },
@@ -7921,10 +7927,18 @@ mod plan093_catch_all_tests {
 
     #[test]
     fn catch_all_consumes_remaining_segments() {
-        let m = match_route(&routes(), "GET", "/api/files/default/targets/probe-a/pac.at")
-            .expect("multi-segment catch-all must match");
+        let m = match_route(
+            &routes(),
+            "GET",
+            "/api/files/default/targets/probe-a/pac.at",
+        )
+        .expect("multi-segment catch-all must match");
         assert_eq!(m.fn_name, "workspace_file");
-        let ws = m.path_params.iter().find(|(k, _)| k == "workspace_id").unwrap();
+        let ws = m
+            .path_params
+            .iter()
+            .find(|(k, _)| k == "workspace_id")
+            .unwrap();
         assert_eq!(ws.1, "default");
         let rest = m.path_params.iter().find(|(k, _)| k == "path").unwrap();
         assert_eq!(rest.1, "targets/probe-a/pac.at");

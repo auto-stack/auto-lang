@@ -18,7 +18,15 @@ impl fmt::Display for TypeAlias {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "type {}", self.name)?;
         if !self.params.is_empty() {
-            write!(f, "<{}>", self.params.iter().map(|p| p.as_str()).collect::<Vec<_>>().join(", "))?;
+            write!(
+                f,
+                "<{}>",
+                self.params
+                    .iter()
+                    .map(|p| p.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
         }
         write!(f, " = {}", self.target)
     }

@@ -113,7 +113,11 @@ pub fn word_range(text: &str, pos: usize) -> Range<usize> {
     if p >= len {
         // 指向末尾：取最后一个字符的类别。
         let last_start = prev_char_start(text, len);
-        let class = text[last_start..].chars().next().map(char_class).unwrap_or(CharClass::Punct);
+        let class = text[last_start..]
+            .chars()
+            .next()
+            .map(char_class)
+            .unwrap_or(CharClass::Punct);
         let mut start = last_start;
         while start > 0 {
             let ps = prev_char_start(text, start);
@@ -127,7 +131,11 @@ pub fn word_range(text: &str, pos: usize) -> Range<usize> {
     }
 
     // p 处字符的类别，向两侧扩展同类连续段。
-    let class = text[p..].chars().next().map(char_class).unwrap_or(CharClass::Punct);
+    let class = text[p..]
+        .chars()
+        .next()
+        .map(char_class)
+        .unwrap_or(CharClass::Punct);
     let mut start = p;
     while start > 0 {
         let ps = prev_char_start(text, start);
@@ -139,7 +147,11 @@ pub fn word_range(text: &str, pos: usize) -> Range<usize> {
     }
     let mut end = p;
     while end < len {
-        let ch_len = text[end..].chars().next().map(|c| c.len_utf8()).unwrap_or(0);
+        let ch_len = text[end..]
+            .chars()
+            .next()
+            .map(|c| c.len_utf8())
+            .unwrap_or(0);
         if text[end..].chars().next().map(char_class) == Some(class) {
             end += ch_len;
         } else {
@@ -177,7 +189,10 @@ mod tests {
     #[test]
     fn t02_normalized_range_backward_drag() {
         // 从右往左拖:anchor > head,range 仍归一为 min..max。
-        let mut sel = Selection { anchor: 10, head: 3 };
+        let mut sel = Selection {
+            anchor: 10,
+            head: 3,
+        };
         assert_eq!(sel.range(), 3..10);
         sel.extend_to(0);
         assert_eq!(sel.range(), 0..10);
@@ -228,7 +243,7 @@ mod tests {
         assert_eq!(word_range(text, 1), 0..3); // "abc"
         assert_eq!(word_range(text, 3), 3..9); // "你好"
         assert_eq!(word_range(text, 9), 9..12); // "def"
-        // 双击选词固化:点 `你` 选 "你好"。
+                                                // 双击选词固化:点 `你` 选 "你好"。
         let mut sel = Selection::new();
         sel.select_word(text, 3);
         assert_eq!(sel.selected_text(text), "你好");
@@ -259,9 +274,15 @@ mod tests {
         // 汉字区间的切片按字节偏移切,UTF-8 边界安全。
         let text = "姓名:张三";
         // "姓名" = 0..6, ":" = 6..7, "张三" = 7..13
-        let mut sel = Selection { anchor: 0, head: 13 };
+        let mut sel = Selection {
+            anchor: 0,
+            head: 13,
+        };
         assert_eq!(sel.selected_text(text), "姓名:张三");
-        sel = Selection { anchor: 7, head: 13 };
+        sel = Selection {
+            anchor: 7,
+            head: 13,
+        };
         assert_eq!(sel.selected_text(text), "张三");
     }
 }

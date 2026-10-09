@@ -14,8 +14,7 @@ fn test_ffi_dual(case: &str) -> AutoResult<()> {
     // PLAN-592: dep 路径占位符——语料文件化,VM/a2r/oracle 三腿共享同一份 input.at
     let ffi_dual_dir = d.join("test/ffi_dual").to_string_lossy().replace('\\', "/");
     src = src.replace("{{FFI_DUAL_DIR}}", &ffi_dual_dir);
-    let expected =
-        read_to_string(d.join(format!("test/ffi_dual/{}/expected_output.txt", case)))?;
+    let expected = read_to_string(d.join(format!("test/ffi_dual/{}/expected_output.txt", case)))?;
 
     let (_, stdout) = run_with_capture(&src)?;
     let trimmed = stdout.trim();
@@ -24,11 +23,7 @@ fn test_ffi_dual(case: &str) -> AutoResult<()> {
         let wrong_path = d.join(format!("test/ffi_dual/{}/.wrong.out", case));
         std::fs::write(&wrong_path, &stdout)?;
     }
-    assert_eq!(
-        trimmed, expected_trimmed,
-        "VM output mismatch for {}",
-        case
-    );
+    assert_eq!(trimmed, expected_trimmed, "VM output mismatch for {}", case);
     Ok(())
 }
 
@@ -142,8 +137,13 @@ print(pt.to_string())
 "#
     );
     let (_, stdout) = run_with_capture(&src).expect("run");
-    let expected = "2\nhits\nmisses\n7\n7\n1.0.0\ntrue\n7\ntrue\n7\n42\n3\n4\norigin\n(3, 4) origin"; // Plan 474 待澄清#3: bool 显示形态 true/false
-    assert_eq!(stdout.trim(), expected, "dep method e2e output mismatch:\n{stdout}");
+    let expected =
+        "2\nhits\nmisses\n7\n7\n1.0.0\ntrue\n7\ntrue\n7\n42\n3\n4\norigin\n(3, 4) origin"; // Plan 474 待澄清#3: bool 显示形态 true/false
+    assert_eq!(
+        stdout.trim(),
+        expected,
+        "dep method e2e output mismatch:\n{stdout}"
+    );
 
     // unwrap_ok 错误传播:Result 构造失败 → VMError(带 cdylib 侧错误消息)
     let bad = format!(
@@ -206,7 +206,11 @@ print(n.echo_u8(1000))"#,
 print(n.u64_max())"#,
     );
     let (_, out) = crate::run_with_capture(&u64_max).expect("u64_max runs");
-    assert_eq!(out.trim(), "-1", "u64::MAX through i64 slot (DIV-DEP-4 pin)");
+    assert_eq!(
+        out.trim(),
+        "-1",
+        "u64::MAX through i64 slot (DIV-DEP-4 pin)"
+    );
 
     // —— 负面断言 ——
     // arity 上限:接收者 + 3 参 = 4 ABI 参数 → RuntimeError(v1 supports ≤3)
@@ -398,23 +402,33 @@ fn ffi_dual_014_std_generated_segment() {
 #[test]
 fn ffi_dual_015_rust_type_route_not_hijacked_by_native_registry() {
     // 1. 原生 String API(无 use.rs)——副作用:auto.str.from 惰性注册进全局表
-    let (_, out1) = crate::run_with_capture(r#"
+    let (_, out1) = crate::run_with_capture(
+        r#"
 fn main() {
     let s = String.from("native")
     print(s.len())
 }
-"#).expect("native String.from runs");
+"#,
+    )
+    .expect("native String.from runs");
     assert_eq!(out1.trim(), "6");
 
     // 2. use.rs 的 String.from——必须仍走 dispatch 3000 生成段,
     //    不得被已注册的 auto.str.from 劫持
-    let (_, out2) = crate::run_with_capture(r#"
+    let (_, out2) = crate::run_with_capture(
+        r#"
 use.rs std::string::String
 fn main() {
     print(String.from("42"))
 }
-"#).expect("rust String.from runs");
-    assert_eq!(out2.trim(), "42", "rust type import must not be hijacked by lazily-registered auto.str native");
+"#,
+    )
+    .expect("rust String.from runs");
+    assert_eq!(
+        out2.trim(),
+        "42",
+        "rust type import must not be hijacked by lazily-registered auto.str native"
+    );
 }
 
 // PLAN-591 T3/T7: V1 布局/语义语料(三腿共享 018_dep_fields,fixture autolang_shapes)。
@@ -490,15 +504,17 @@ fn ffi_dual_019_dep_layout_invariants() {
 
     // 对抗②(features):窄变体(无 features)——width: i32 对 5000000000 截断
     let narrow = src_of(
-        &format!(
-            "dep autolang_shapes(path: \"{ffi}/018_dep_fields/fixture/autolang_shapes\")"
-        ),
+        &format!("dep autolang_shapes(path: \"{ffi}/018_dep_fields/fixture/autolang_shapes\")"),
         "autolang_shapes::{FeatCfg}",
         r#"    let f = FeatCfg.new(5000000000, "narrow")
     print(f.width)"#,
     );
     let (_, out) = crate::run_with_capture(&narrow).expect("FeatCfg narrow runs");
-    assert_eq!(out.trim(), "705032704", "narrow variant: i32 wraparound pin");
+    assert_eq!(
+        out.trim(),
+        "705032704",
+        "narrow variant: i32 wraparound pin"
+    );
 
     // 对抗②(features):宽变体(features: ["wide"])——width: i64 全值保留。
     // 若异 features 共用陈旧 pack(指纹未含 features),此处会拿到 705032704。
@@ -534,9 +550,7 @@ fn ffi_dual_019_dep_layout_invariants() {
     );
 
     let twin_a = src_of(
-        &format!(
-            "dep autolang_shapes(path: \"{ffi}/018_dep_fields/fixture/autolang_shapes\")"
-        ),
+        &format!("dep autolang_shapes(path: \"{ffi}/018_dep_fields/fixture/autolang_shapes\")"),
         "autolang_shapes::{Messy}",
         r#"    let m = Messy.new(1000, "alpha", true)
     print(m.a)
@@ -551,4 +565,3 @@ fn ffi_dual_019_dep_layout_invariants() {
         "twin a truth(与 _b 同进程先后装载,布局各归各)"
     );
 }
-

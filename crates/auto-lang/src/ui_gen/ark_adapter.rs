@@ -17,8 +17,8 @@
 //! full expression transpiler here).
 
 use crate::ast::*;
-use crate::trans::Sink;
 use crate::trans::typescript::TypeScriptTrans;
+use crate::trans::Sink;
 use std::collections::HashSet;
 use std::io::Write;
 
@@ -701,12 +701,22 @@ fn try_transpile_builtin_call(
         }
         // storage — HarmonyOS API (e.g. @ohos.data.preferences) mapping TBD
         "storage" => {
-            write!(out, "/* TODO(storage): map storage.{} to HarmonyOS prefs API */", method).ok();
+            write!(
+                out,
+                "/* TODO(storage): map storage.{} to HarmonyOS prefs API */",
+                method
+            )
+            .ok();
             true
         }
         // event — HarmonyOS emitter API mapping TBD
         "event" => {
-            write!(out, "/* TODO(event): map event.{} to HarmonyOS emitter API */", method).ok();
+            write!(
+                out,
+                "/* TODO(event): map event.{} to HarmonyOS emitter API */",
+                method
+            )
+            .ok();
             true
         }
         // router — HarmonyOS router/navigation API mapping TBD
@@ -921,19 +931,13 @@ mod tests {
 
     #[test]
     fn test_return_stmt() {
-        let body = transpile_handler_body(
-            &[Stmt::Return(Box::new(Expr::Int(7)))],
-            &ctx_empty(),
-        );
+        let body = transpile_handler_body(&[Stmt::Return(Box::new(Expr::Int(7)))], &ctx_empty());
         assert_eq!(body.trim(), "return 7;");
     }
 
     #[test]
     fn test_return_nil() {
-        let body = transpile_handler_body(
-            &[Stmt::Return(Box::new(Expr::Nil))],
-            &ctx_empty(),
-        );
+        let body = transpile_handler_body(&[Stmt::Return(Box::new(Expr::Nil))], &ctx_empty());
         assert_eq!(body.trim(), "return;");
     }
 
@@ -959,7 +963,11 @@ mod tests {
     #[test]
     fn test_for_cond_while() {
         // for i < 10 { ... } → while (i < 10) { ... }
-        let cond = Expr::Bina(Box::new(ident("i")), auto_val::Op::Lt, Box::new(Expr::Int(10)));
+        let cond = Expr::Bina(
+            Box::new(ident("i")),
+            auto_val::Op::Lt,
+            Box::new(Expr::Int(10)),
+        );
         let for_loop = For {
             iter: Iter::Cond,
             range: cond,
@@ -1000,10 +1008,6 @@ mod tests {
             pos: None,
         });
         let body = transpile_handler_body(&[Stmt::Expr(expr)], &ctx_empty());
-        assert!(
-            body.contains("this.notes.push(1)"),
-            "body = {}",
-            body
-        );
+        assert!(body.contains("this.notes.push(1)"), "body = {}", body);
     }
 }

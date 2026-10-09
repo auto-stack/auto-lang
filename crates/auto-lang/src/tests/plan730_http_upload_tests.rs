@@ -12,10 +12,7 @@ mod plan730_probe {
     use std::path::{Path, PathBuf};
 
     fn temp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "plan730-probe-{tag}-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("plan730-probe-{tag}-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("probe temp dir");
         dir
     }
@@ -87,7 +84,10 @@ mod plan730_probe {
         // 嵌套关系（staging 在 root 之内）必须被词法检查拒绝（私有性合同）。
         let nested = root.join("public/nested");
         std::fs::create_dir_all(&nested).unwrap();
-        assert!(is_lexically_inside(&root, &nested), "lexical nesting detected");
+        assert!(
+            is_lexically_inside(&root, &nested),
+            "lexical nesting detected"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -174,7 +174,10 @@ fn up(req UploadRequest, note str) UploadReceipt {
 "#;
         let err = crate::run_with_capture(mixed_body).expect_err("body param must be rejected");
         let msg = format!("{err:?}");
-        assert!(msg.contains("upload endpoints allow only path params"), "{msg}");
+        assert!(
+            msg.contains("upload endpoints allow only path params"),
+            "{msg}"
+        );
 
         let no_param = r#"
 #[api(method = "POST", path = "/up")]
@@ -206,7 +209,9 @@ print("done")
         assert!(receipts >= 1, "upload_error receipt registered");
         assert_eq!(sessions, 0);
         // 编组门反例：普通 fn（非 #[api]）不在上传返回表。
-        assert!(!crate::vm::ffi::http_server::fn_is_api_upload_return("main"));
+        assert!(!crate::vm::ffi::http_server::fn_is_api_upload_return(
+            "main"
+        ));
     }
 }
 
@@ -231,8 +236,7 @@ mod http_e2e {
     const PORT_LEGACY: u16 = 18975;
 
     fn temp_roots(tag: &str) -> (PathBuf, PathBuf) {
-        let base =
-            std::env::temp_dir().join(format!("plan730-e2e-{}-{}", tag, std::process::id()));
+        let base = std::env::temp_dir().join(format!("plan730-e2e-{}-{}", tag, std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let root = base.join("public");
         let staging = base.join("private-staging");
@@ -353,7 +357,9 @@ fn plain_int() int {{
         stream.set_read_timeout(Some(Duration::from_secs(60))).ok();
         let mut req =
             format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n");
-        let has_cl = headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-length"));
+        let has_cl = headers
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("content-length"));
         for (k, v) in headers {
             req.push_str(&format!("{k}: {v}\r\n"));
         }
@@ -448,7 +454,9 @@ fn plain_int() int {{
     fn http_e2e_plan730_vm_multipart_upload_commit_download() {
         let (root, staging) = temp_roots("mp");
         let port = start_server(&upload_program(&root, &staging), PORT_MP);
-        let payload: Vec<u8> = (0..12usize * 1024 * 1024).map(|i| (i % 253) as u8).collect();
+        let payload: Vec<u8> = (0..12usize * 1024 * 1024)
+            .map(|i| (i % 253) as u8)
+            .collect();
         let body = multipart_body("P730BOUND", "hello", &payload);
         let (status, _hdrs, resp) = raw_request_with_body(
             port,
@@ -462,12 +470,16 @@ fn plain_int() int {{
         assert!(text.contains("\"ok\":true"), "{text}");
         assert!(text.contains("\"size\":\"12582912\""), "{text}");
         assert!(text.contains("\"path\":\"mp/blob.bin\""), "{text}");
-        assert!(text.contains("\"name\":\"note\",\"value\":\"hello\""), "{text}");
+        assert!(
+            text.contains("\"name\":\"note\",\"value\":\"hello\""),
+            "{text}"
+        );
         assert!(staging_is_empty(&staging), "staging cleaned after commit");
         let on_disk = std::fs::read(root.join("mp/blob.bin")).unwrap();
         assert_eq!(on_disk.len(), payload.len());
         // 729 下载路由读同文件（字节相同——上传后下载互通，T-08 前置）。
-        let (s2, _h2, downloaded) = raw_request_with_body(port, "GET", "/api/files/mp/blob.bin", &[], b"");
+        let (s2, _h2, downloaded) =
+            raw_request_with_body(port, "GET", "/api/files/mp/blob.bin", &[], b"");
         assert_eq!(s2, 200);
         assert_eq!(downloaded, on_disk, "download bytes identical");
         // 同名再传 → 409（原文件不变）。
@@ -563,11 +575,15 @@ fn plain_int() int {{
             b"GUARDED",
         );
         assert_eq!(
-            s3, 200,
+            s3,
+            200,
             "middleware short-circuit keeps legacy reply shape: {}",
             String::from_utf8_lossy(&b3)
         );
-        assert!(staging_is_empty(&staging), "middleware reject stages nothing");
+        assert!(
+            staging_is_empty(&staging),
+            "middleware reject stages nothing"
+        );
         assert!(
             std::fs::read_dir(root.join("mp")).unwrap().next().is_none(),
             "no published file"
@@ -690,7 +706,10 @@ fn plain_int() int {{
             let (s, _h, b) = raw_request_with_body(port, "GET", "/plain", &[], b"");
             let dt = t0.elapsed();
             assert_eq!(s, 200, "health #{i}: {}", String::from_utf8_lossy(&b));
-            assert!(dt.as_millis() < 500, "health #{i} took {dt:?} (owner blocked?)");
+            assert!(
+                dt.as_millis() < 500,
+                "health #{i} took {dt:?} (owner blocked?)"
+            );
             std::thread::sleep(Duration::from_millis(60));
         }
         // 第二笔上传：queue=1 满且 active 被占 → 600ms 队列期限 → 503。
@@ -709,14 +728,28 @@ fn plain_int() int {{
             String::from_utf8_lossy(&b2).contains("queue_full"),
             "queue-full receipt: {dt2:?} {b2:?}"
         );
-        assert!(dt2.as_secs() < 5, "admission deadline bounds the wait: {dt2:?}");
-        assert!(h2.iter().any(|(k, _)| k == "content-type"), "receipt JSON reply");
+        assert!(
+            dt2.as_secs() < 5,
+            "admission deadline bounds the wait: {dt2:?}"
+        );
+        assert!(
+            h2.iter().any(|(k, _)| k == "content-type"),
+            "receipt JSON reply"
+        );
         // holder 完成（写完剩余 body）→ 201（active 释放、字节完整）。
         let rest = vec![b'H'; 524288 - 64 * 1024];
         holder.write_all(&rest).unwrap();
         let (sh, _hh, bh) = read_response(&mut holder);
-        assert_eq!(sh, 201, "holder completes: {}", String::from_utf8_lossy(&bh));
-        assert_eq!(std::fs::read(root.join("raw/data.bin")).unwrap().len(), 524288);
+        assert_eq!(
+            sh,
+            201,
+            "holder completes: {}",
+            String::from_utf8_lossy(&bh)
+        );
+        assert_eq!(
+            std::fs::read(root.join("raw/data.bin")).unwrap().len(),
+            524288
+        );
         std::env::remove_var("AUTO_HTTP_UPLOAD_ACTIVE");
         std::env::remove_var("AUTO_HTTP_UPLOAD_QUEUE");
         std::env::remove_var("AUTO_HTTP_UPLOAD_QUEUE_TIMEOUT_MS");
@@ -733,10 +766,7 @@ fn plain_int() int {{
             port,
             "POST",
             "/api/uploads/mp",
-            &[(
-                "Content-Type",
-                "multipart/form-data; boundary=\"QB730\"",
-            )],
+            &[("Content-Type", "multipart/form-data; boundary=\"QB730\"")],
             &body,
         );
         assert_eq!(sq, 201, "quoted boundary: {}", String::from_utf8_lossy(&bq));
@@ -779,7 +809,9 @@ fn plain_int() int {{
         let port = start_server(&upload_program(&root, &staging), 18980);
         let base = format!("http://127.0.0.1:{port}");
         let src_file = root.parent().unwrap().join("client-src.bin");
-        let data: Vec<u8> = (0usize..(2 * 1024 * 1024)).map(|i| (i % 249) as u8).collect();
+        let data: Vec<u8> = (0usize..(2 * 1024 * 1024))
+            .map(|i| (i % 249) as u8)
+            .collect();
         std::fs::write(&src_file, &data).unwrap();
 
         // 1. 727 multipart 上传 → 201（note 字段随行）。
@@ -822,7 +854,11 @@ fn plain_int() int {{
             r#"{"field":"file"}"#,
         );
         let receipt4 = a2r_std::http::transfer_wait_typed(&t4);
-        assert_eq!(receipt4.kind.as_str(), "failed", "conflict is a failure: {receipt4:?}");
+        assert_eq!(
+            receipt4.kind.as_str(),
+            "failed",
+            "conflict is a failure: {receipt4:?}"
+        );
         assert_eq!(receipt4.status, Some(409), "{receipt4:?}");
         assert_eq!(
             std::fs::read(root.join("mp/blob.bin")).unwrap(),
@@ -978,8 +1014,7 @@ fn plain_int() int {{
         let (s, _h, b) = raw_request_with_body(port, "GET", "/plain", &[], b"");
         assert_eq!(s, 200);
         assert_eq!(
-            b,
-            b"730730",
+            b, b"730730",
             "plain int endpoint not hijacked by upload gates"
         );
     }
@@ -1049,7 +1084,13 @@ fn main() {
     let rs = String::from_utf8(rcode.done().expect("finalize").clone()).expect("utf8");
     assert!(rs.contains("-> a2r_std::http::UploadReceipt"), "{rs}");
     assert!(rs.contains("req: a2r_std::http::UploadRequest"), "{rs}");
-    assert!(rs.contains(r#"a2r_std::http::upload_receive(req, "r", "s""#), "{rs}");
-    assert!(rs.contains(r#"a2r_std::http::upload_commit(session, "x.bin").await"#), "{rs}");
+    assert!(
+        rs.contains(r#"a2r_std::http::upload_receive(req, "r", "s""#),
+        "{rs}"
+    );
+    assert!(
+        rs.contains(r#"a2r_std::http::upload_commit(session, "x.bin").await"#),
+        "{rs}"
+    );
     assert!(!rs.contains("impl Upload"), "类型不误判 trait: {rs}");
 }

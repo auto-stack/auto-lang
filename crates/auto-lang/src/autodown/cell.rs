@@ -233,10 +233,11 @@ fn try_parse_directive_body(body: &str, line: usize) -> Result<CellDirective, Ce
 
     for part in parts {
         if let Some(type_val) = part.strip_prefix("type:") {
-            cell_type = Some(type_val.parse::<CellType>().map_err(|e| CellDirectiveError {
-                line,
-                message: e,
-            })?);
+            cell_type = Some(
+                type_val
+                    .parse::<CellType>()
+                    .map_err(|e| CellDirectiveError { line, message: e })?,
+            );
         } else if let Some(dep_val) = part.strip_prefix("depends_on:") {
             for dep in dep_val.split(',') {
                 let dep = dep.trim();
@@ -473,7 +474,7 @@ $var x = 1
 
     #[test]
     fn test_lexer_skips_comments() {
-        use crate::autodown::lexer::{AdocLexer, AdTokenKind};
+        use crate::autodown::lexer::{AdTokenKind, AdocLexer};
 
         let source = "/// cell:c1 type:code\n# Title\n";
         let mut lexer = AdocLexer::new(source);
@@ -498,7 +499,7 @@ $var x = 1
 
     #[test]
     fn test_lexer_inline_comment() {
-        use crate::autodown::lexer::{AdocLexer, AdTokenKind};
+        use crate::autodown::lexer::{AdTokenKind, AdocLexer};
 
         let source = "Hello // this is a comment\nWorld";
         let mut lexer = AdocLexer::new(source);

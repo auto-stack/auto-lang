@@ -11,19 +11,25 @@
 #![cfg(all(test, feature = "iced-layout-tests"))]
 
 use crate::ui::iced::right_press_area::test_support::slot_lock;
-use crate::ui::iced::right_press_area::{clear_pointer_press, last_pointer_press, PointerPressArea};
+use crate::ui::iced::right_press_area::{
+    clear_pointer_press, last_pointer_press, PointerPressArea,
+};
 
+use iced::widget::column;
 use iced::widget::mouse_area;
 use iced::widget::text;
-use iced::widget::column;
 use iced::{Event, Point};
 use iced_test::simulator;
 
 fn right_press_events(pos: Point) -> [Event; 3] {
     [
         Event::Mouse(iced::mouse::Event::CursorMoved { position: pos }),
-        Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Right)),
-        Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Right)),
+        Event::Mouse(iced::mouse::Event::ButtonPressed(
+            iced::mouse::Button::Right,
+        )),
+        Event::Mouse(iced::mouse::Event::ButtonReleased(
+            iced::mouse::Button::Right,
+        )),
     ]
 }
 

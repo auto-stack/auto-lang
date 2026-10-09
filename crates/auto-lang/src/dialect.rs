@@ -31,8 +31,7 @@ pub trait Dialect: Send + Sync {
     /// - 返回 `Ok(Some(stmt))`：本方言已处理，产出 stmt。
     /// - 返回 `Ok(None)`：关键字虽在列表里但本次不归我管（让下一个方言/默认路径处理）。
     /// - 返回 `Err(_)`：报错。
-    fn try_parse_stmt(&self, parser: &mut Parser, keyword: &str)
-        -> AutoResult<Option<Stmt>>;
+    fn try_parse_stmt(&self, parser: &mut Parser, keyword: &str) -> AutoResult<Option<Stmt>>;
 
     /// 命中真实 TokenKind 时调用（view/on 等非 Ident 的 UI token）。
     /// 默认不接管（返回 `Ok(None)`）；需要接管的方言覆写此方法。

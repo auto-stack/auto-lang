@@ -98,15 +98,27 @@ mod tests {
         let usable = (1280.0_f32, 720.0_f32);
         let (bw, bh) = (176.0_f32, 66.0_f32);
         let scale = 66.0_f32 / 720.0; // 0.091666…（Contain 受短边约束）
-        // 全桌面 tile → 117.33×66，横向居中（off_x = (176-117.33)/2）。
-        let full = PreviewTile { wid: 1, x: 0.0, y: 0.0, w: 1280.0, h: 720.0 };
+                                      // 全桌面 tile → 117.33×66，横向居中（off_x = (176-117.33)/2）。
+        let full = PreviewTile {
+            wid: 1,
+            x: 0.0,
+            y: 0.0,
+            w: 1280.0,
+            h: 720.0,
+        };
         let (x, y, w, h) = tile_rect(&full, usable, bw, bh);
         assert!((w - 1280.0 * scale).abs() < 0.01, "w 受 scale: {w}");
         assert!((h - 66.0).abs() < 0.01, "纵向贴满: {h}");
         assert!((x - (bw - w) / 2.0).abs() < 0.01, "横向居中: {x}");
         assert!((y - 0.0).abs() < 0.01);
         // 左半窗（0,0,640,720）→ 紧贴居中块左缘，纵向满高。
-        let left = PreviewTile { wid: 2, x: 0.0, y: 0.0, w: 640.0, h: 720.0 };
+        let left = PreviewTile {
+            wid: 2,
+            x: 0.0,
+            y: 0.0,
+            w: 640.0,
+            h: 720.0,
+        };
         let (x, _, w, h) = tile_rect(&left, usable, bw, bh);
         assert!((x - (bw - 1280.0 * scale) / 2.0).abs() < 0.01, "{x}");
         assert!((w - 640.0 * scale).abs() < 0.01, "{w}");
@@ -123,9 +135,21 @@ mod tests {
     /// 退化守卫：零尺寸盒/usable 不 panic、返回空矩形。
     #[test]
     fn tile_rect_guards_zero_dims() {
-        let t = PreviewTile { wid: 1, x: 1.0, y: 1.0, w: 10.0, h: 10.0 };
-        assert_eq!(tile_rect(&t, (0.0, 100.0), 100.0, 100.0), (0.0, 0.0, 0.0, 0.0));
-        assert_eq!(tile_rect(&t, (100.0, 100.0), 0.0, 100.0), (0.0, 0.0, 0.0, 0.0));
+        let t = PreviewTile {
+            wid: 1,
+            x: 1.0,
+            y: 1.0,
+            w: 10.0,
+            h: 10.0,
+        };
+        assert_eq!(
+            tile_rect(&t, (0.0, 100.0), 100.0, 100.0),
+            (0.0, 0.0, 0.0, 0.0)
+        );
+        assert_eq!(
+            tile_rect(&t, (100.0, 100.0), 0.0, 100.0),
+            (0.0, 0.0, 0.0, 0.0)
+        );
     }
 
     /// 壁纸基色解析：#hex 三态（好值/非 hex/图片路径）。

@@ -87,11 +87,7 @@ fn rewrite_expr(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mut bool) 
                         return;
                     }
                 };
-                let has_kw = c
-                    .args
-                    .args
-                    .iter()
-                    .any(|a| matches!(a, Arg::Pair(_, _)));
+                let has_kw = c.args.args.iter().any(|a| matches!(a, Arg::Pair(_, _)));
                 // A1/A2 只对 py-known 接收者改写（Auto 方法分派
                 // `s.len()`/`xs.push()` 保持糖态走原生通道——T05 实证：
                 // 盲改会让 obj_call 的 Auto 臂拒绝字符串方法）。
@@ -132,10 +128,7 @@ fn rewrite_expr(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mut bool) 
         Expr::Index(recv, idx) => {
             rewrite_expr(recv, k, fname, changed);
             rewrite_expr(idx, k, fname, changed);
-            let is_slice_shape = matches!(
-                idx.as_ref(),
-                Expr::Range(_) | Expr::Bina(_, _, _)
-            );
+            let is_slice_shape = matches!(idx.as_ref(), Expr::Range(_) | Expr::Bina(_, _, _));
             if recv_is_py(recv, k, fname) && !is_slice_shape {
                 let recv = *std::mem::replace(recv, Box::new(Expr::Null));
                 let idx = *std::mem::replace(idx, Box::new(Expr::Null));
@@ -204,9 +197,7 @@ fn rewrite_expr(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mut bool) 
             rewrite_expr(r, k, fname, changed);
         }
         Expr::ErrorPropagate(inner) => rewrite_expr(inner, k, fname, changed),
-        Expr::To { expr, .. } | Expr::Cast { expr, .. } => {
-            rewrite_expr(expr, k, fname, changed)
-        }
+        Expr::To { expr, .. } | Expr::Cast { expr, .. } => rewrite_expr(expr, k, fname, changed),
         Expr::Closure(c) => rewrite_expr(&mut c.body, k, fname, changed),
         Expr::Block(b) => rewrite_body(&mut b.stmts, k, fname, changed),
         Expr::If(i) => {
@@ -288,10 +279,10 @@ fn rewrite2_expr(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mut bool)
                 // B6：len(x) → obj_len(x)（双通道组合子；len 非保留字，
                 // 用户自定义 fn len 的遮蔽面由链接序兜底——W2 罕见注记）
                 Expr::Ident(n) if n.as_str() == "len" && c.args.args.len() == 1 => {
-                    *e = mk_call("obj_len", vec![std::mem::replace(
-                        &mut c.args.args[0],
-                        Arg::Pos(Expr::Null),
-                    )]);
+                    *e = mk_call(
+                        "obj_len",
+                        vec![std::mem::replace(&mut c.args.args[0], Arg::Pos(Expr::Null))],
+                    );
                     *changed = true;
                 }
                 // D7：print(x) 中 x 为 py-known 裸名 → py_str 包裹。
@@ -336,20 +327,14 @@ fn rewrite2_expr(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mut bool)
         Expr::Index(recv, idx) => {
             rewrite2_expr(recv, k, fname, changed);
             rewrite2_expr(idx, k, fname, changed);
-            let is_slice = matches!(
-                idx.as_ref(),
-                Expr::Range(_) | Expr::Bina(_, _, _)
-            );
+            let is_slice = matches!(idx.as_ref(), Expr::Range(_) | Expr::Bina(_, _, _));
             if recv_is_py(recv, k, fname) && is_slice {
                 // 先探形（借用），命中才取走
                 if lower_slice_probe(idx) {
                     let recv_v = *std::mem::replace(recv, Box::new(Expr::Null));
                     let idx_v = *std::mem::replace(idx, Box::new(Expr::Null));
                     if let Some(slice_expr) = lower_slice(idx_v) {
-                        *e = mk_call(
-                            "py_getitem",
-                            vec![Arg::Pos(recv_v), Arg::Pos(slice_expr)],
-                        );
+                        *e = mk_call("py_getitem", vec![Arg::Pos(recv_v), Arg::Pos(slice_expr)]);
                         *changed = true;
                     }
                 }
@@ -375,9 +360,7 @@ fn rewrite_expr_shallow(e: &mut Expr, k: &PyKnowledge, fname: &str, changed: &mu
             }
         }
         Expr::Some(i) | Expr::Ok(i) | Expr::Err(i) => rewrite2_expr(i, k, fname, changed),
-        Expr::To { expr, .. } | Expr::Cast { expr, .. } => {
-            rewrite2_expr(expr, k, fname, changed)
-        }
+        Expr::To { expr, .. } | Expr::Cast { expr, .. } => rewrite2_expr(expr, k, fname, changed),
         _ => {}
     }
 }
@@ -586,7 +569,11 @@ pub fn rule_err_propagate(code: &mut Code) -> AutoResult<bool> {
     Ok(changed)
 }
 
-fn errprop_body(stmts: &mut [Stmt], user_fns: &std::collections::HashSet<String>, changed: &mut bool) {
+fn errprop_body(
+    stmts: &mut [Stmt],
+    user_fns: &std::collections::HashSet<String>,
+    changed: &mut bool,
+) {
     for stmt in stmts.iter_mut() {
         match stmt {
             Stmt::Store(s) => errprop_expr(&mut s.expr, user_fns, changed),
@@ -667,9 +654,7 @@ fn errprop_expr(e: &mut Expr, user_fns: &std::collections::HashSet<String>, chan
             errprop_expr(l, user_fns, changed);
             errprop_expr(r, user_fns, changed);
         }
-        Expr::To { expr, .. } | Expr::Cast { expr, .. } => {
-            errprop_expr(expr, user_fns, changed)
-        }
+        Expr::To { expr, .. } | Expr::Cast { expr, .. } => errprop_expr(expr, user_fns, changed),
         Expr::Closure(cl) => errprop_expr(&mut cl.body, user_fns, changed),
         Expr::Block(b) => errprop_body(&mut b.stmts, user_fns, changed),
         Expr::If(i) => {

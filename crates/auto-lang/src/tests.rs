@@ -3,18 +3,18 @@
 mod a2c_tests;
 // PLAN-701 供④/供⑥: time 族三面对拍 + shell_recent 签名冒烟
 mod plan701_supply_probes;
-mod plan728_supply_probes; // PLAN-728: 文件后援分页 rope 探针族（710 形态）
-mod plan728_bench; // PLAN-728 T-08: 阶梯基准谱（#[ignore] 显式跑，JSONL 入 docs/reports）
 mod plan703_supply_probes;
 mod plan710_supply_probes;
+mod plan728_bench; // PLAN-728 T-08: 阶梯基准谱（#[ignore] 显式跑，JSONL 入 docs/reports）
+mod plan728_supply_probes; // PLAN-728: 文件后援分页 rope 探针族（710 形态）
 // PLAN-716 供料包: 组B 帧时间戳通道（VM/a2r 双轨+门控+开销两态）+组C 窗口投影
 mod plan716_supply_probes;
 // KNOWN-DEBT 396 rider (Plan 415-B1): stdlib .rs.at ↔ a2r-std signature parity
+#[cfg(feature = "test-trans")]
+mod a2r_c_abi_gates;
 mod a2r_std_signature_parity;
 #[cfg(feature = "test-trans")]
 mod a2r_tests;
-#[cfg(feature = "test-trans")]
-mod a2r_c_abi_gates;
 #[cfg(feature = "test-trans")]
 mod a2ts_tests;
 // Plan 577: a2ts directed compile-level probes (.at → tsc --noEmit)
@@ -27,24 +27,25 @@ mod unified_api_tests;
 mod perf_benchmark_tests;
 #[path = "tests/plan377_bench.rs"]
 mod plan377_bench; // Plan 377 §4.3: 单槽化性能验收
-// config_tests removed - Plan 091 (deprecated Interpreter dependency)
+                   // config_tests removed - Plan 091 (deprecated Interpreter dependency)
 mod const_generic_integration_tests; // Plan 052: Const generic integration tests
 mod const_generic_tests; // Plan 052: Const generic parameter tests
 mod default_storage_tests; // Plan 052: DefaultStorage type alias tests
 mod dstr_tests;
 mod error_tests;
 // Plan 094: Hybrid FFI Bridge tests
+mod ffi_dep_parity_tests; // PLAN-592 T6: dep 三轨行为对拍(VM/oracle/a2r)
+mod ffi_dual_tests; // Plan 212 Phase 3D.1: FFI dual-test infrastructure
 mod ffi_tests;
 mod field_access_tests; // Plan 056: Field access tests
-mod ffi_dual_tests; // Plan 212 Phase 3D.1: FFI dual-test infrastructure
-mod ffi_dep_parity_tests; // PLAN-592 T6: dep 三轨行为对拍(VM/oracle/a2r)
 mod generic_spec_tests; // Plan 057: Generic spec tests
-mod trait_vm_tests; // Plan 417-E4: spec default-method inheritance
 mod list_growth_tests;
 mod list_tests; // Comprehensive List operation tests (Plan 051)
 mod may_tests;
 mod mem_tests;
+mod trait_vm_tests; // Plan 417-E4: spec default-method inheritance
 // Plan 565 P0: mem-profile 归因报告（#[ignore] 诊断，仅 mem-profile feature）
+mod fs_tree_parity; // PLAN-681: fs.tree VM/a2r-std 双轨逐字节对拍 (P670-D1 缺口④/AC-05)
 #[cfg(feature = "mem-profile")]
 mod mem_profile_report_tests;
 mod memory_quick_test;
@@ -52,7 +53,6 @@ mod memory_tests;
 mod ownership_tests;
 mod phase3_tests; // Plan 125: Phase 3 polymorphic routing tests
 mod pointer_tests; // Plan 052: Pointer type tests
-mod fs_tree_parity; // PLAN-681: fs.tree VM/a2r-std 双轨逐字节对拍 (P670-D1 缺口④/AC-05)
 mod read_text_range_parity; // Plan 673 T-03: 分块读 VM/a2r-std 双轨逐字节对拍 (P670-D1)
 mod stdlib_tests;
 mod storage_integration_tests;
@@ -63,41 +63,38 @@ mod test_generic_full;
 mod test_generic_parse;
 mod test_generic_simple;
 mod test_let_generic;
+mod use_semantics_tests;
 mod vm_functions_tests;
-mod vm_json_float_read_tests; // Plan 474: __json_object 浮点字段 Dot 读回归（plan011④）
-mod use_semantics_tests; // Plan 545: use 命名空间语义（bare=命名空间 / : * = 显式全量）
-// vm_tests and autovm_tests merged - Plan 118
-// autovm_tests removed - tests consolidated into vm_tests
-mod vm_tests;
-mod infer_tests;
+mod vm_json_float_read_tests; // Plan 474: __json_object 浮点字段 Dot 读回归（plan011④） // Plan 545: use 命名空间语义（bare=命名空间 / : * = 显式全量）
+                                                                                         // vm_tests and autovm_tests merged - Plan 118
+                                                                                         // autovm_tests removed - tests consolidated into vm_tests
+mod actor_state_tests;
+mod actor_tests; // Plan 327 Phase 1: Task/Msg actor handler execution
 mod autodown_tests;
 mod generator_tests; // Plan 326: generator for-loop regression tests
-mod actor_tests; // Plan 327 Phase 1: Task/Msg actor handler execution
-mod actor_state_tests; // Plan 327: actor state field persistence
-// `mod async_probe_tests;` was removed: it referenced a non-existent file (a
-// research placeholder from the "VM 真异步调度统一调研报告" commit, self-marked
-// "调研后删除") and broke `cargo test --lib` on master. The research report
-// itself lives in docs/plans/.
-// Plan 289: Book listing tests gated behind test-book feature (slow: ~5-7s each)
+mod infer_tests;
+mod vm_tests; // Plan 327: actor state field persistence
+              // `mod async_probe_tests;` was removed: it referenced a non-existent file (a
+              // research placeholder from the "VM 真异步调度统一调研报告" commit, self-marked
+              // "调研后删除") and broke `cargo test --lib` on master. The research report
+              // itself lives in docs/plans/.
+              // Plan 289: Book listing tests gated behind test-book feature (slow: ~5-7s each)
 #[cfg(feature = "test-book")]
 mod book_listing_tests;
 // Plan 177: VM file-based test framework(Plan 568: 纯 .at 语料 golden 档,aavm 腿已迁出;
 // PLAN-700: 原 Plan 289 语料档门拆除,语料三族常驻编译——tv 降为纯 nextest filter 档)
-mod vm_file_tests;
 #[cfg(feature = "test-aavm")] // Plan 568: vm_file_tests 内嵌 aavm 腿整体迁入
 mod aavm_runner_tests;
+mod vm_file_tests;
 // Plan 564: 重内存测试守门(NEXTEST/AUTO_LANG_HEAVY_MEM 双通道,防裸 cargo test
 // 全并发)。PLAN-726 T-02 拆除 test-aavm feature 门并升 pub(crate):machine_gate
 // 机器级单实例闸门为跨档跨树基建(画廊围栏在 lib.rs 顶层、churn-1m 在 crate::vm、
 // aavm 族在 crate::tests,三树共用)。
-pub(crate) mod heavy_gate;
-mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
-#[cfg(feature = "test-aavm")] // Plan 565 L1: 语料闸门 once-compiled runner(编译一次+File.read_text 注入)
-mod aavm2_corpus_runner;
 #[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
 mod aavm2_a2r; // Plan 447 部分② Phase 7: AA2R is 发射对齐主 a2r 闸门
-#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
-mod aavm_at_mode_tests; // Plan 531: aavm.at a2r 模式入口(位置参数)验收锚
+#[cfg(feature = "test-aavm")]
+// Plan 565 L1: 语料闸门 once-compiled runner(编译一次+File.read_text 注入)
+mod aavm2_corpus_runner;
 #[cfg(feature = "test-aavm")] // Plan 568: 原无门(日常档在跑),随 aavm 系入独立档
 mod aavm2_m1; // Plan 432 S1: M1 lexer token 流一致性闸门
 #[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
@@ -109,30 +106,34 @@ mod aavm2_m4; // Plan 432 S4: M4 codegen 字节码结构一致性闸门
 #[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
 mod aavm2_m5; // Plan 432 S5: M3 主里程碑 —— 全管线行为一致性闸门
 #[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
+mod aavm2_repro_242; // Plan 432 D26: VM 字符串池 RC 回归复现(ignore,修复后转绿)
+#[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
 mod aavm2_t3; // Plan 532: t3 里程碑档——嵌套塔解释栈零漂移最终验收(大版本升级专用)
 #[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
-mod aavm2_repro_242; // Plan 432 D26: VM 字符串池 RC 回归复现(ignore,修复后转绿)
+mod aavm_at_mode_tests; // Plan 531: aavm.at a2r 模式入口(位置参数)验收锚
 mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in parity/
+mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
+pub(crate) mod heavy_gate;
 mod plan569_py_dispatch_tests; // Plan 569 D2: py 返回值方法分派动态化——codegen 决策核单测（无 pyo3 依赖）// ============================================================
-// PLAN-691 T-04: 顶层散测试文件归位（src/*_tests.rs → src/tests/，2026-09-22）。
-// 以下 mod 声明自 lib.rs 迁入，cfg 门与溯源注释原样保留；
-// 文件本体对应 git mv 至 src/tests/<name>.rs（rename 纯 move）。
-// test_runner 例外留在 lib.rs——VM native auto.test.* 生产依赖（Plan 263）。
-// ============================================================
+                               // PLAN-691 T-04: 顶层散测试文件归位（src/*_tests.rs → src/tests/，2026-09-22）。
+                               // 以下 mod 声明自 lib.rs 迁入，cfg 门与溯源注释原样保留；
+                               // 文件本体对应 git mv 至 src/tests/<name>.rs（rename 纯 move）。
+                               // test_runner 例外留在 lib.rs——VM native auto.test.* 生产依赖（Plan 263）。
+                               // ============================================================
 
 #[cfg(test)]
 mod test_util; // Plan 266 Phase 4: Differential testing utilities
-// Plan 088: Parameter passing mode tests
+               // Plan 088: Parameter passing mode tests
 #[cfg(test)]
 mod plan_088_parser_tests;
 #[cfg(test)]
 mod plan_088_tests;
 #[cfg(test)]
-mod test_parser_arrow;
+mod test_double_lexer;
 #[cfg(test)]
 mod test_float_full;
 #[cfg(test)]
-mod test_double_lexer;
+mod test_parser_arrow;
 #[cfg(test)]
 mod vm_types_tests;
 // Plan 076 Phase 1: Generic type support tests
@@ -188,9 +189,9 @@ mod plan446_batch4_tests;
 mod plan446_c1_popover_tests;
 // Plan 446 批五: 渲染层（§P/U1-U7）回归。
 #[cfg(all(test, feature = "ui-iced"))]
-mod plan446_batch5_tests;
-#[cfg(all(test, feature = "ui-iced"))]
 mod plan370_store_vm_tests;
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan446_batch5_tests;
 // Plan 442 A2: legacy `use store: X` facade regression corpus.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan442_store_facade_tests;
@@ -233,9 +234,9 @@ mod plan019_vm_own_module_link_tests;
 mod plan732_wikilink_tests;
 // PLAN-739: 编辑回声→换页视面跟随回归（F-037-R1——input_values 键入条目
 // 永生 × patch_input_values ADE 覆写钉死视面）。
+mod plan051_ext_widget_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan739_input_pin_tests;
-mod plan051_ext_widget_tests;
 // Plan 051 C7: `timer { ... }` 声明块（widget/store 周期计时器 DSL）。
 mod plan051_timer_tests;
 // Plan 051 Phase 2: 会话壳视觉五缺陷（子模块 use.web 注册表/容器 min-h/i18n 参数）。
@@ -276,10 +277,10 @@ mod plan536_t12_send_chain_probe_tests;
 // PLAN-083 T-01：异步 HTTP 消息桥（Http.get_msg）——派生线程完成项入队、
 // 载荷协议 {"ok","status","body"}、␟s␟ 载荷编码经 decode_payload 回填
 // handler 的字符串实参往返（decode_payload 在 ui::dynamic，随 ui-iced 门）。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan083_http_msg_bridge_tests;
 mod auto_down_vm_server_probe_tests;
 mod autodown_codegen_debts_tests;
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan083_http_msg_bridge_tests;
 // Plan 049 (auto-musk) style-parity: class.rs 支持度探针 + 对拍 dump（手动门,
 // 跨仓 sibling 布局;T1 映射草案逐类断言见模块头注）。
 #[cfg(all(test, feature = "ui-iced"))]
@@ -312,11 +313,11 @@ mod plan046_obj_natives_tests;
 mod plan367_viewfn_tests;
 // Plan 408: component fn → independent Vue SFC synthesis (P2 residuals).
 #[cfg(test)]
-mod plan408_tests;
-#[cfg(test)]
 mod native_css_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan370_015_behavior_tests;
+#[cfg(test)]
+mod plan408_tests;
 // Plan 409 §6: link 子组件 VM 渲染缺口 regression tests (needs the gallery
 // sources + the ui-iced interpreter path).
 #[cfg(all(test, feature = "ui-iced"))]
@@ -329,11 +330,11 @@ mod plan412_tests;
 mod plan446_j1_repro_tests;
 // Plan 437 Phase 2: VM 轨子组件 Init 生命周期钉子(渲染期 props→Init→build)。
 #[cfg(test)]
-mod plan437_child_init_tests;
-#[cfg(test)]
 mod plan352_tests;
 #[cfg(test)]
 mod plan353_tests;
+#[cfg(test)]
+mod plan437_child_init_tests;
 // Plan 359 Phase 5 (G1/G2/G3): Concurrency bug fixes (spawn, generic types, channels)
 #[cfg(test)]
 mod plan348_concurrency_tests;
@@ -349,9 +350,9 @@ mod plan498_chart_interaction_tests;
 mod plan492_tests;
 // Plan 499 M2: 指针移动限频流管道 e2e——pipe-payload 全链送达逻辑坐标。
 #[cfg(test)]
-mod plan499_pointer_stream_tests;
-#[cfg(test)]
 mod plan499_engine_float_to_int_tests;
+#[cfg(test)]
+mod plan499_pointer_stream_tests;
 // Plan 503: 桌面视觉刷新——style 串循环成员插值（VM/vue 双端）回归。
 #[cfg(test)]
 mod plan503_tests;
@@ -438,7 +439,7 @@ mod plan711_cpu_slice_tests;
 #[cfg(test)]
 mod plan712_http_error_semantics_tests;
 mod plan724_http_client_tests; // PLAN-724: a2r HTTP 客户端收敛（golden + 探针 + http_e2e_plan724 编译运行腿）
-// PLAN-727: HTTP 文件传输（31_plan727 golden + legacy 发射探针 + http_e2e_plan727 三方编译运行腿）
+                               // PLAN-727: HTTP 文件传输（31_plan727 golden + legacy 发射探针 + http_e2e_plan727 三方编译运行腿）
 mod plan727_http_transfer_tests;
 // PLAN-729: 服务端文件响应（32_plan729 golden + 发射/类型映射/VM native 探针 + http_e2e_plan729 T-06 增补）
 mod plan729_http_server_file_tests;

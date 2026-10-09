@@ -16,8 +16,8 @@
 //! ```
 
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use crate::ui::scroll::intent::{ScrollIntent, ScrollSource};
 use crate::ui::scroll::state::{Axis, ScrollAxisState, ScrollState};
@@ -280,8 +280,14 @@ mod tests {
         let h = next_controller_handle();
         bind_controller(&h, "pane_a");
         // F-4：未预热（无测量基线）→ intent 留队 + prime 名单（不再解析为 0）。
-        assert!(!take_prime_requests().is_empty(), "new binding requests priming");
-        assert!(take_prime_requests().is_empty(), "stable rebuild does not re-request");
+        assert!(
+            !take_prime_requests().is_empty(),
+            "new binding requests priming"
+        );
+        assert!(
+            take_prime_requests().is_empty(),
+            "stable rebuild does not re-request"
+        );
         enqueue_intent(
             &h,
             ScrollIntent::ToEnd {

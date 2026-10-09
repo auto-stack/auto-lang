@@ -134,10 +134,7 @@ mod plan131_tests {
             is_pub: false,
             is_wildcard: false,
         };
-        assert_eq!(
-            use_stmt.module_path.as_ref().unwrap().display(),
-            "pac.db"
-        );
+        assert_eq!(use_stmt.module_path.as_ref().unwrap().display(), "pac.db");
         // Test Display trait
         assert_eq!(format!("{}", use_stmt), "(use (module_path pac.db))");
     }

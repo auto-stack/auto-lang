@@ -78,7 +78,10 @@ pub enum ValidationError {
 
     /// E0986: Element cannot have children
     #[error("element '{tag}' cannot have children")]
-    #[diagnostic(code(aura::E0986), help("'{tag}' is a leaf element, remove the children"))]
+    #[diagnostic(
+        code(aura::E0986),
+        help("'{tag}' is a leaf element, remove the children")
+    )]
     InvalidChildren {
         tag: String,
         #[label("element with invalid children")]
@@ -99,9 +102,7 @@ pub enum ValidationError {
 
     /// Multiple validation errors
     #[error("multiple validation errors")]
-    MultipleErrors {
-        errors: Vec<ValidationError>,
-    },
+    MultipleErrors { errors: Vec<ValidationError> },
 }
 
 /// Widget validator using AURA schema
@@ -117,7 +118,10 @@ impl WidgetValidator {
         // Plan 435 P2:schema/aura.at 为主数据源;加载失败回落硬编码 fallback
         // (AuraSchema::new,192 元素、无 meta),并打日志 —— 不因 schema 损坏阻塞构建。
         let schema = crate::aura::load_default_schema().unwrap_or_else(|e| {
-            eprintln!("[warn] schema/aura.at load failed, falling back to builtin schema: {}", e);
+            eprintln!(
+                "[warn] schema/aura.at load failed, falling back to builtin schema: {}",
+                e
+            );
             crate::aura::schema::AuraSchema::new()
         });
         Ok(Self {
@@ -212,7 +216,12 @@ impl WidgetValidator {
     /// Validate a view tree recursively
     fn validate_view_tree(&self, node: &ViewNode, errors: &mut Vec<ValidationError>) {
         match node {
-            ViewNode::Element { tag, props, children, .. } => {
+            ViewNode::Element {
+                tag,
+                props,
+                children,
+                ..
+            } => {
                 // Check if element is known in schema
                 if let Some(element_def) = self.schema.get_element(tag) {
                     // Validate props
@@ -249,7 +258,11 @@ impl WidgetValidator {
                     }
                 }
             }
-            ViewNode::Conditional { then_body, else_body, .. } => {
+            ViewNode::Conditional {
+                then_body,
+                else_body,
+                ..
+            } => {
                 for child in then_body {
                     self.validate_view_tree(child, errors);
                 }
@@ -275,7 +288,12 @@ impl WidgetValidator {
             ViewNode::Outlet { .. } => {
                 // Router outlet - no children or props to validate
             }
-            ViewNode::MemoBlock { deps, exact: _, body, .. } => {
+            ViewNode::MemoBlock {
+                deps,
+                exact: _,
+                body,
+                ..
+            } => {
                 // PLAN-046: memo block — deps 是任意表达式（schema 外），体
                 // 递归校验。
                 let _ = deps;
@@ -283,7 +301,13 @@ impl WidgetValidator {
                     self.validate_view_tree(child, errors);
                 }
             }
-            ViewNode::Link { to, text, href, children, .. } => {
+            ViewNode::Link {
+                to,
+                text,
+                href,
+                children,
+                ..
+            } => {
                 // Navigation link - validate that 'to' is valid
                 let _ = (to, text, href); // Suppress unused warning
                 for child in children {
@@ -442,7 +466,10 @@ impl<'a> ElementValidation<'a> {
 
     /// Check if element allows children
     pub fn allows_children(&self) -> bool {
-        self.element_def.as_ref().map(|d| d.allows_children).unwrap_or(false)
+        self.element_def
+            .as_ref()
+            .map(|d| d.allows_children)
+            .unwrap_or(false)
     }
 }
 
@@ -455,17 +482,30 @@ pub fn format_validation_errors(errors: &[ValidationError]) -> String {
 
         // Add suggestion if available
         match error {
-            ValidationError::UnknownElement { tag: _, suggestion, .. } => {
+            ValidationError::UnknownElement {
+                tag: _, suggestion, ..
+            } => {
                 if let Some(s) = suggestion {
                     output.push_str(&format!("  = help: did you mean '{}'?\n", s));
                 }
-                output.push_str(&format!("  = help: available elements: col, row, button, text, input, ...\n"));
+                output.push_str(&format!(
+                    "  = help: available elements: col, row, button, text, input, ...\n"
+                ));
             }
-            ValidationError::InvalidProp { tag, suggestion, valid_props, .. } => {
+            ValidationError::InvalidProp {
+                tag,
+                suggestion,
+                valid_props,
+                ..
+            } => {
                 if let Some(s) = suggestion {
                     output.push_str(&format!("  = help: did you mean '{}'?\n", s));
                 }
-                output.push_str(&format!("  = help: valid props for '{}': {}\n", tag, valid_props.join(", ")));
+                output.push_str(&format!(
+                    "  = help: valid props for '{}': {}\n",
+                    tag,
+                    valid_props.join(", ")
+                ));
             }
             ValidationError::MissingImport { widget, .. } => {
                 output.push_str(&format!(
@@ -525,9 +565,9 @@ mod tests {
     #[test]
     fn test_levenshtein_distance() {
         assert_eq!(WidgetValidator::levenshtein_distance("button", "button"), 0);
-        assert_eq!(WidgetValidator::levenshtein_distance("buton", "button"), 1);  // insert 't'
-        assert_eq!(WidgetValidator::levenshtein_distance("buttn", "button"), 1);  // insert 'o'
-        assert_eq!(WidgetValidator::levenshtein_distance("col", "row"), 2);  // substitute c→r, l→w
+        assert_eq!(WidgetValidator::levenshtein_distance("buton", "button"), 1); // insert 't'
+        assert_eq!(WidgetValidator::levenshtein_distance("buttn", "button"), 1); // insert 'o'
+        assert_eq!(WidgetValidator::levenshtein_distance("col", "row"), 2); // substitute c→r, l→w
     }
 
     #[test]
@@ -545,13 +585,11 @@ mod tests {
 
     #[test]
     fn test_format_errors() {
-        let errors = vec![
-            ValidationError::UnknownElement {
-                tag: "buton".to_string(),
-                span: SourceSpan::from(0..0),
-                suggestion: Some("button".to_string()),
-            },
-        ];
+        let errors = vec![ValidationError::UnknownElement {
+            tag: "buton".to_string(),
+            span: SourceSpan::from(0..0),
+            suggestion: Some("button".to_string()),
+        }];
 
         let output = format_validation_errors(&errors);
         assert!(output.contains("unknown view element 'buton'"));
@@ -561,8 +599,14 @@ mod tests {
     #[test]
     fn test_auto_imported_widgets() {
         // Core widgets should be auto-imported
-        for widget in ["col", "row", "stack", "scroll", "text", "image", "button", "input"] {
-            assert!(AUTO_IMPORTED_WIDGETS.contains(&widget), "Missing auto-imported widget: {}", widget);
+        for widget in [
+            "col", "row", "stack", "scroll", "text", "image", "button", "input",
+        ] {
+            assert!(
+                AUTO_IMPORTED_WIDGETS.contains(&widget),
+                "Missing auto-imported widget: {}",
+                widget
+            );
         }
     }
 
@@ -572,7 +616,11 @@ mod tests {
 
         // Auto-imported widgets should be available without explicit import
         for widget in ["col", "row", "text", "button"] {
-            assert!(validator.is_widget_available(widget), "Auto-imported widget '{}' not available", widget);
+            assert!(
+                validator.is_widget_available(widget),
+                "Auto-imported widget '{}' not available",
+                widget
+            );
         }
     }
 
@@ -581,11 +629,17 @@ mod tests {
         let mut validator = WidgetValidator::new().unwrap();
 
         // Extended widget (swiper) should not be available without import
-        assert!(!validator.is_widget_available("swiper"), "Extended widget 'swiper' should not be available without import");
+        assert!(
+            !validator.is_widget_available("swiper"),
+            "Extended widget 'swiper' should not be available without import"
+        );
 
         // Add explicit import
         validator.add_import("swiper");
-        assert!(validator.is_widget_available("swiper"), "Extended widget 'swiper' should be available after import");
+        assert!(
+            validator.is_widget_available("swiper"),
+            "Extended widget 'swiper' should be available after import"
+        );
     }
 
     #[test]
@@ -606,12 +660,10 @@ mod tests {
 
     #[test]
     fn test_missing_import_error_format() {
-        let errors = vec![
-            ValidationError::MissingImport {
-                widget: "swiper".to_string(),
-                span: SourceSpan::from(0..0),
-            },
-        ];
+        let errors = vec![ValidationError::MissingImport {
+            widget: "swiper".to_string(),
+            span: SourceSpan::from(0..0),
+        }];
 
         let output = format_validation_errors(&errors);
         assert!(output.contains("widget 'swiper' requires explicit import"));

@@ -51,8 +51,7 @@ fn t02_literal_form_wins_over_variant() {
         std::fs::write(base.join(dir).join("mod.at"), "// fixture\n").unwrap();
     }
 
-    let hit = crate::resolve_module_path(&base, "foo_bar")
-        .expect("literal directory must resolve");
+    let hit = crate::resolve_module_path(&base, "foo_bar").expect("literal directory must resolve");
     assert!(
         hit.parent().is_some_and(|p| p.ends_with("foo_bar")),
         "literal form must win when both spellings exist; got {hit:?}"
@@ -79,7 +78,10 @@ fn t03_no_underscore_path_literal_only() {
         "underscore module must reach kebab dir; got {literal:?}"
     );
     assert!(
-        literal.unwrap().parent().is_some_and(|p| p.ends_with("plain-name")),
+        literal
+            .unwrap()
+            .parent()
+            .is_some_and(|p| p.ends_with("plain-name")),
         "resolved mod.at must live in the kebab dir"
     );
     let _ = std::fs::remove_dir_all(&base);
@@ -111,7 +113,10 @@ fn t05_dep_probe_pkg_reaches_kebab_dir() {
     std::fs::create_dir_all(&app).unwrap();
     std::fs::write(
         app.join("pac.at"),
-        format!("dep bps {{\n    path: \"{}\"\n}}\n", base.join("blueprints").display()),
+        format!(
+            "dep bps {{\n    path: \"{}\"\n}}\n",
+            base.join("blueprints").display()
+        ),
     )
     .unwrap();
     let pkg = base.join("blueprints/feedback/empty-state/reference");
@@ -142,7 +147,9 @@ fn t06_filetree_palette_restored_zero_drift() {
     let widgets = WidgetRegistry::with_defaults();
 
     // 注册面：icon 进 WidgetRegistry（canonical 小写键），双端原生（import None）。
-    let icon = widgets.get("icon").expect("icon must be registered (PLAN-649)");
+    let icon = widgets
+        .get("icon")
+        .expect("icon must be registered (PLAN-649)");
     assert_eq!(icon.name, "Icon");
     assert!(
         icon.backend("vue").is_some() && icon.backend("iced").is_some(),
@@ -198,7 +205,9 @@ fn t07_data_table_vocabulary_face_locked() {
     use crate::ui_gen::widget::WidgetRegistry;
 
     let widgets = WidgetRegistry::with_defaults();
-    let spec = widgets.get("data-table").expect("data-table alias registered");
+    let spec = widgets
+        .get("data-table")
+        .expect("data-table alias registered");
     assert_eq!(spec.name, "DataTable");
 
     // P4-4 overlay 活链路：schema `datatable` 的 vue 映射在 spec 上。
@@ -268,7 +277,9 @@ fn collect_view_texts(
                 collect_view_texts(c, out);
             }
         }
-        View::Input { placeholder, value, .. } => {
+        View::Input {
+            placeholder, value, ..
+        } => {
             out.push(placeholder.clone());
             out.push(value.clone());
         }
@@ -359,9 +370,7 @@ fn t09_e2e_vm_track_more_kebab_packages_and_no_regression() {
                 "{dotted}: VM view must contain {e:?}; snapshot: {texts:?}"
             );
         }
-        let _ = std::fs::remove_dir_all(
-            app.parent().unwrap().parent().unwrap().parent().unwrap(),
-        );
+        let _ = std::fs::remove_dir_all(app.parent().unwrap().parent().unwrap().parent().unwrap());
     }
 }
 

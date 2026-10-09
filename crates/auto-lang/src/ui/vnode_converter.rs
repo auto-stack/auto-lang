@@ -36,7 +36,7 @@ use super::vnode::{id_from_path, VNode, VNodeId, VNodeKind, VNodeProps, VTree};
 use super::interpreter::DynamicMessage;
 
 #[cfg(feature = "interpreter")]
-use super::event_router::{EventRouter, EventContext, EventType};
+use super::event_router::{EventContext, EventRouter, EventType};
 
 /// 主转换函数：View<M> → VTree
 ///
@@ -221,7 +221,13 @@ where
         // Overlay is a VM layout wrapper. The inspector tree has no stack node,
         // so expose the base and floating content in paint order as a zero-gap
         // column instead of dropping the entire example subtree.
-        View::Overlay { .. } => (VNodeKind::Column, VNodeProps::Layout { spacing: 0, padding: 0 }),
+        View::Overlay { .. } => (
+            VNodeKind::Column,
+            VNodeProps::Layout {
+                spacing: 0,
+                padding: 0,
+            },
+        ),
         // PLAN-063 T-04d-2: 锚槽在 convert_view_to_vnode* 入口已透传子件，
         // 此臂不可达（穷尽性兜底）；保持 Empty 形态以防绕行调用面。
         View::AnchorSlot { .. } => (VNodeKind::Text, VNodeProps::Empty),
@@ -236,18 +242,31 @@ where
         // Empty 占位, MCP 寻址/检视需要看见画布)。
         View::Canvas { .. } => (VNodeKind::Canvas, VNodeProps::Empty),
         // Plan 422: 弹层在 VNode 里作为容器节点(anchor/content 为子)。
-        View::Popover { .. } => (VNodeKind::Column, VNodeProps::Layout { spacing: 0, padding: 0 }),
+        View::Popover { .. } => (
+            VNodeKind::Column,
+            VNodeProps::Layout {
+                spacing: 0,
+                padding: 0,
+            },
+        ),
 
         // F-UAT-2: Rich 段落在 VNode 面为拼接文本（快照/MCP 文本可见性；
         // span 级样式不进 vtree——检视粒度=段落文本）。
         View::Rich { spans, .. } => (
             VNodeKind::Text,
             VNodeProps::Text {
-                content: spans.iter().map(|sp| sp.content.clone()).collect::<String>(),
+                content: spans
+                    .iter()
+                    .map(|sp| sp.content.clone())
+                    .collect::<String>(),
                 selectable: false,
             },
         ),
-        View::Text { content, selectable, .. } => (
+        View::Text {
+            content,
+            selectable,
+            ..
+        } => (
             VNodeKind::Text,
             VNodeProps::Text {
                 content: content.clone(),
@@ -255,7 +274,9 @@ where
             },
         ),
 
-        View::Button { label, disabled, .. } => (
+        View::Button {
+            label, disabled, ..
+        } => (
             VNodeKind::Button,
             VNodeProps::Button {
                 label: label.clone(),
@@ -263,7 +284,9 @@ where
             },
         ),
 
-        View::Column { spacing, padding, .. } => (
+        View::Column {
+            spacing, padding, ..
+        } => (
             VNodeKind::Column,
             VNodeProps::Layout {
                 spacing: *spacing,
@@ -271,7 +294,9 @@ where
             },
         ),
 
-        View::Row { spacing, padding, .. } => (
+        View::Row {
+            spacing, padding, ..
+        } => (
             VNodeKind::Row,
             VNodeProps::Layout {
                 spacing: *spacing,
@@ -337,7 +362,12 @@ where
         // 占位(headless 断言据此识别 terminal 节点;真渲染在 iced 侧)。
         // PLAN-656 T-06: managed content——检视层 Text 占位（terminal 同款；
         // 真渲染在 iced widget / Vue bridge）。
-        View::ManagedScrollContent { key, logical_w, logical_h, .. } => (
+        View::ManagedScrollContent {
+            key,
+            logical_w,
+            logical_h,
+            ..
+        } => (
             VNodeKind::Text,
             VNodeProps::Text {
                 content: format!(
@@ -348,7 +378,13 @@ where
             },
         ),
 
-        View::Terminal { key, cols, rows, lines, .. } => (
+        View::Terminal {
+            key,
+            cols,
+            rows,
+            lines,
+            ..
+        } => (
             VNodeKind::Text,
             VNodeProps::Text {
                 content: format!(
@@ -363,9 +399,7 @@ where
         ),
 
         View::Textarea {
-            placeholder,
-            value,
-            ..
+            placeholder, value, ..
         } => (
             VNodeKind::Textarea,
             VNodeProps::Textarea {
@@ -395,7 +429,9 @@ where
         ),
 
         View::Select {
-            options, selected_index, ..
+            options,
+            selected_index,
+            ..
         } => (
             VNodeKind::Select,
             VNodeProps::Select {
@@ -420,16 +456,19 @@ where
 
         View::Scrollable { offset, .. } => (
             VNodeKind::Scrollable,
-            VNodeProps::Scrollable { offset_y: offset.map(|(_, y)| y) },
+            VNodeProps::Scrollable {
+                offset_y: offset.map(|(_, y)| y),
+            },
         ),
 
-        View::List { spacing, .. } => (
-            VNodeKind::List,
-            VNodeProps::List { spacing: *spacing },
-        ),
+        View::List { spacing, .. } => (VNodeKind::List, VNodeProps::List { spacing: *spacing }),
 
         View::Table {
-            spacing, col_spacing, table_key, col_widths, ..
+            spacing,
+            col_spacing,
+            table_key,
+            col_widths,
+            ..
         } => (
             VNodeKind::Table,
             VNodeProps::Table {
@@ -441,7 +480,11 @@ where
         ),
 
         View::Slider {
-            min, max, value, step, ..
+            min,
+            max,
+            value,
+            step,
+            ..
         } => (
             VNodeKind::Slider,
             VNodeProps::Slider {
@@ -576,7 +619,9 @@ where
         // (`link (to:) { … }`) serializes into the vtree as its child —
         // previously the `..` dropped it, so autoui_vtree/inspect never saw
         // the card/link inner nodes (the R3 misjudge root).
-        View::Button { content: Some(c), .. } => vec![(**c).clone()],
+        View::Button {
+            content: Some(c), ..
+        } => vec![(**c).clone()],
         View::Container { child, .. } => vec![*child.clone()],
         View::Scrollable { child, .. } => vec![*child.clone()],
         View::List { items, .. } => items.clone(),
@@ -592,7 +637,11 @@ where
         View::Tabs { contents, .. } => contents.clone(),
         // Plan 422: 弹层的 anchor(widget 锚)与 content 都是 VNode 子节点
         // (坐标锚无 anchor 子)。子序 = snapshot/probe 约定 0/1。
-        View::Popover { anchor: crate::ui::view::PopoverAnchor::Widget(w), content, .. } => {
+        View::Popover {
+            anchor: crate::ui::view::PopoverAnchor::Widget(w),
+            content,
+            ..
+        } => {
             vec![*w.clone(), *content.clone()]
         }
         View::Popover { content, .. } => vec![*content.clone()],
@@ -616,14 +665,14 @@ where
     M: Clone + std::fmt::Debug,
 {
     match view {
-        View::Column { children, .. } | View::Row { children, .. } => {
-            children.iter().collect()
-        }
+        View::Column { children, .. } | View::Row { children, .. } => children.iter().collect(),
         View::Overlay { base, content, .. } => vec![base.as_ref(), content.as_ref()],
         View::Grid { cells, .. } => cells.iter().collect(),
         // G4: keep the borrow variant in lockstep with extract_children —
         // paths derived from VNodes must resolve to the same nodes here.
-        View::Button { content: Some(c), .. } => vec![c.as_ref()],
+        View::Button {
+            content: Some(c), ..
+        } => vec![c.as_ref()],
         View::Container { child, .. } | View::Scrollable { child, .. } => vec![child.as_ref()],
         View::List { items, .. } => items.iter().collect(),
         View::Table { headers, rows, .. } => {
@@ -637,7 +686,11 @@ where
         }
         View::Tabs { contents, .. } => contents.iter().collect(),
         // Plan 422: 与 extract_children 保持同序(widget 锚在前)。
-        View::Popover { anchor: crate::ui::view::PopoverAnchor::Widget(w), content, .. } => {
+        View::Popover {
+            anchor: crate::ui::view::PopoverAnchor::Widget(w),
+            content,
+            ..
+        } => {
             vec![w.as_ref(), content.as_ref()]
         }
         View::Popover { content, .. } => vec![content.as_ref()],
@@ -741,13 +794,22 @@ mod tests {
             on_right_click: None,
             content: Some(Box::new(View::Column {
                 children: vec![
-                    View::Text { content: "Title".to_string(), style: None, selectable: false },
-                    View::Text { content: "desc line".to_string(), style: None, selectable: false },
+                    View::Text {
+                        content: "Title".to_string(),
+                        style: None,
+                        selectable: false,
+                    },
+                    View::Text {
+                        content: "desc line".to_string(),
+                        style: None,
+                        selectable: false,
+                    },
                 ],
                 spacing: 2,
                 padding: 0,
                 style: None,
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             })),
         };
 
@@ -785,8 +847,9 @@ mod tests {
             spacing: 10,
             padding: 0,
             style: None,
-                onclick: None, on_right_click: None,
-            };
+            onclick: None,
+            on_right_click: None,
+        };
 
         let tree = view_to_vtree(view);
 
@@ -855,8 +918,9 @@ mod tests {
             spacing: 5,
             padding: 10,
             style: None,
-                onclick: None, on_right_click: None,
-            };
+            onclick: None,
+            on_right_click: None,
+        };
 
         let tree = view_to_vtree(view);
 
@@ -884,13 +948,15 @@ mod tests {
                 spacing: 5,
                 padding: 0,
                 style: None,
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }],
             spacing: 10,
             padding: 0,
             style: None,
-                onclick: None, on_right_click: None,
-            };
+            onclick: None,
+            on_right_click: None,
+        };
 
         let tree = view_to_vtree(view);
 
@@ -925,8 +991,9 @@ mod tests {
             center_x: true,
             center_y: true,
             style: None,
-                onclick: None, on_right_click: None,
-            };
+            onclick: None,
+            on_right_click: None,
+        };
 
         let tree = view_to_vtree(view);
 
@@ -1094,9 +1161,9 @@ mod tests {
             max: 100.0,
             value: 50.0,
             step: Some(1.0),
-            on_change: Some(crate::ui::view::SliderChangeHandler::new(
-                |_v| TestMsg::Change,
-            )),
+            on_change: Some(crate::ui::view::SliderChangeHandler::new(|_v| {
+                TestMsg::Change
+            })),
             style: None,
         };
 
@@ -1106,7 +1173,13 @@ mod tests {
         let root = tree.root().unwrap();
         assert_eq!(root.kind, VNodeKind::Slider);
 
-        if let VNodeProps::Slider { min, max, value, step } = &root.props {
+        if let VNodeProps::Slider {
+            min,
+            max,
+            value,
+            step,
+        } = &root.props
+        {
             assert_eq!(*min, 0.0);
             assert_eq!(*max, 100.0);
             assert_eq!(*value, 50.0);
@@ -1158,7 +1231,8 @@ mod tests {
                     spacing: 5,
                     padding: 0,
                     style: None,
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 },
                 View::Button {
                     disabled: false,
@@ -1172,8 +1246,9 @@ mod tests {
             spacing: 10,
             padding: 0,
             style: None,
-                onclick: None, on_right_click: None,
-            };
+            onclick: None,
+            on_right_click: None,
+        };
 
         let tree = view_to_vtree(view);
 
@@ -1229,8 +1304,9 @@ mod tests {
             spacing: 10,
             padding: 0,
             style: None,
-                onclick: None, on_right_click: None,
-            };
+            onclick: None,
+            on_right_click: None,
+        };
 
         let tree = view_to_vtree(view);
         let stats = tree.stats();
@@ -1255,14 +1331,33 @@ mod tests {
         // root col -> [ text, row -> [ button ] ]
         let view: View<u32> = View::Column {
             children: vec![
-                View::Text { content: "a".into(), style: None, selectable: false },
-                View::Row { children: vec![
-                    View::Button { label: "b".into(), onclick: 0, style: None, on_right_click: None, content: None, disabled: false },
-                ], spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None },
+                View::Text {
+                    content: "a".into(),
+                    style: None,
+                    selectable: false,
+                },
+                View::Row {
+                    children: vec![View::Button {
+                        label: "b".into(),
+                        onclick: 0,
+                        style: None,
+                        on_right_click: None,
+                        content: None,
+                        disabled: false,
+                    }],
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                    onclick: None,
+                    on_right_click: None,
+                },
             ],
-            spacing: 0, padding: 0, style: None,
-                onclick: None, on_right_click: None,
-            };
+            spacing: 0,
+            padding: 0,
+            style: None,
+            onclick: None,
+            on_right_click: None,
+        };
         let tree = view_to_vtree_with_paths(view, |_| None);
 
         // root id 由空 path 派生
@@ -1286,10 +1381,17 @@ mod tests {
     fn vtree_with_paths_span_callback_invoked_per_path() {
         use super::view_to_vtree_with_paths;
         let view: View<u32> = View::Column {
-            children: vec![View::Text { content: "x".into(), style: None, selectable: false }],
-            spacing: 0, padding: 0, style: None,
-                onclick: None, on_right_click: None,
-            };
+            children: vec![View::Text {
+                content: "x".into(),
+                style: None,
+                selectable: false,
+            }],
+            spacing: 0,
+            padding: 0,
+            style: None,
+            onclick: None,
+            on_right_click: None,
+        };
         let tree = view_to_vtree_with_paths(view, |path| {
             Some(crate::ui::debug::SourceSpan {
                 offset: path.iter().map(|&x| x as usize).sum::<usize>(),
@@ -1313,11 +1415,16 @@ mod tests {
         use super::view_to_vtree_with_paths;
         fn build() -> View<u32> {
             View::Column {
-                children: vec![View::Text { content: "c".into(), style: None, selectable: false }],
+                children: vec![View::Text {
+                    content: "c".into(),
+                    style: None,
+                    selectable: false,
+                }],
                 spacing: 0,
                 padding: 0,
                 style: None,
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }
         }
         let t1 = view_to_vtree_with_paths(build(), |_| None);
@@ -1401,7 +1508,8 @@ where
     let children = extract_children(view);
     for child_view in children {
         let child_id = tree.next_id();
-        let child_node = convert_view_to_vnode_with_events(&child_view, child_id, Some(id), tree, router);
+        let child_node =
+            convert_view_to_vnode_with_events(&child_view, child_id, Some(id), tree, router);
         tree.add_node(child_node);
         vnode.add_child(child_id);
     }
@@ -1522,8 +1630,8 @@ where
 #[cfg(test)]
 #[cfg(feature = "interpreter")]
 mod tests_with_events {
-    use super::*;
     use super::interpreter::DynamicMessage;
+    use super::*;
 
     #[test]
     fn test_button_event_extraction() {
@@ -1577,8 +1685,9 @@ mod tests_with_events {
             spacing: 10,
             padding: 0,
             style: None,
-                onclick: None, on_right_click: None,
-            };
+            onclick: None,
+            on_right_click: None,
+        };
 
         let (vtree, router) = view_to_vtree_with_events(view);
 

@@ -8,7 +8,6 @@
 // Re-export core Atom types from the lightweight auto-atom crate.
 pub use auto_atom::{Atom, AtomBuilder, AtomError, AtomResult, EMPTY};
 
-
 /// Reader for Atom data from Auto code
 ///
 /// AtomReader provides a convenient way to parse Auto code and directly
@@ -68,7 +67,8 @@ impl AtomReader {
     /// ```
     pub fn parse(&mut self, code: impl Into<auto_val::AutoStr>) -> AtomResult<Atom> {
         let code = code.into();
-        let result = self.interp
+        let result = self
+            .interp
             .eval(code.as_str())
             .map_err(|e| AtomError::ConversionFailed(format!("Failed to parse code: {}", e)))?;
 

@@ -54,7 +54,9 @@ fn spec_frontmatter_datasource_version_slot_is_not_a_version_key() {
 #[test]
 fn pac_dep_version_keys_are_flagged() {
     for key in ["version", "pin", "rev", "tag", "branch", "commit"] {
-        let pac = format!("name: \"app\"\ndep bps {{\n    path: \"../blueprints\"\n    {key}: \"0.1.0\"\n}}\n");
+        let pac = format!(
+            "name: \"app\"\ndep bps {{\n    path: \"../blueprints\"\n    {key}: \"0.1.0\"\n}}\n"
+        );
         let err = crate::pac_dep_version_violation(&pac, "bps")
             .unwrap_or_else(|| panic!("key {key} must be flagged"));
         assert!(err.contains("Q5"), "error must point at Q5, got: {err}");
@@ -107,8 +109,10 @@ fn resolve_module_path_rejects_dep_with_version_key() {
 /// 正对照：同构 fixture 去掉版本键 → 照常解析（护栏只打版本键，不伤 path dep）。
 #[test]
 fn resolve_module_path_still_resolves_clean_path_dep() {
-    let (_tmp, front) =
-        dep_fixture("bpslib", "name: \"app\"\ndep bps {\n    path: \"bpslib\"\n}\n");
+    let (_tmp, front) = dep_fixture(
+        "bpslib",
+        "name: \"app\"\ndep bps {\n    path: \"bpslib\"\n}\n",
+    );
     let resolved = crate::resolve_module_path(&front, "bps.form.login");
     let ok = resolved.as_ref().is_some_and(|p| p.ends_with("login.at"));
     assert!(ok, "expected clean resolution, got {resolved:?}");

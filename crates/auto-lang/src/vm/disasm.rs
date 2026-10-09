@@ -74,8 +74,11 @@ impl<'a> Disassembler<'a> {
     }
 
     pub(crate) fn instruction_operands(&self, op: OpCode, offset: usize) -> usize {
-        if op == OpCode::SOURCE_LINE { 2 }
-        else { self.decode_operands(op, offset + 1, offset).1 }
+        if op == OpCode::SOURCE_LINE {
+            2
+        } else {
+            self.decode_operands(op, offset + 1, offset).1
+        }
     }
 
     /// Disassemble a range of bytecode
@@ -132,42 +135,120 @@ impl<'a> Disassembler<'a> {
     fn decode_operands(&self, op: OpCode, ip: usize, offset: usize) -> (String, usize) {
         match op {
             // No operands
-            OpCode::NOP | OpCode::POP | OpCode::DUP | OpCode::SWAP | OpCode::DROP
-            | OpCode::CONST_0 | OpCode::CONST_1 | OpCode::HALT | OpCode::PRINT
-            | OpCode::YIELD_TASK | OpCode::YIELD_VAL | OpCode::CREATE_NONE
-            | OpCode::IS_SOME | OpCode::IS_OK | OpCode::UNWRAP_SOME | OpCode::UNWRAP_OK
-            | OpCode::UNWRAP_ERR | OpCode::IS_NIL | OpCode::NEG | OpCode::NEG_F
-            | OpCode::NEG_D | OpCode::NOT | OpCode::TO_STR | OpCode::STR_CAT
-            | OpCode::ADD | OpCode::SUB | OpCode::MUL | OpCode::DIV | OpCode::MOD
-            | OpCode::ADD_F | OpCode::SUB_F | OpCode::MUL_F | OpCode::DIV_F
-            | OpCode::ADD_D | OpCode::SUB_D | OpCode::MUL_D | OpCode::DIV_D
-            | OpCode::ADD_U64 | OpCode::SUB_U64 | OpCode::MUL_U64 | OpCode::DIV_U64
-            | OpCode::MOD_U64 | OpCode::AND | OpCode::OR | OpCode::XOR
-            | OpCode::SHL | OpCode::SHR | OpCode::EQ | OpCode::NE | OpCode::LT
-            | OpCode::GT | OpCode::LE | OpCode::GE | OpCode::EQ_D | OpCode::NE_D
-            | OpCode::LT_D | OpCode::GT_D | OpCode::LE_D | OpCode::GE_D
-            | OpCode::EQ_U64 | OpCode::NE_U64 | OpCode::LT_U64 | OpCode::GT_U64
-            | OpCode::LE_U64 | OpCode::GE_U64
-            | OpCode::EQ_F | OpCode::NE_F | OpCode::LT_F | OpCode::GT_F
-            | OpCode::LE_F | OpCode::GE_F
-            | OpCode::I32_TO_F32 | OpCode::I64_TO_F64 | OpCode::U64_TO_F64
-            | OpCode::PROMOTE_F64 | OpCode::NULL_COALESCE
-            | OpCode::TASK_ID | OpCode::SPAWN_GO | OpCode::REPLY | OpCode::HANDLE_MSG
-            | OpCode::CALL_CLOSURE | OpCode::TYPE_F64_TO_I32 | OpCode::TYPE_STR_TO_I64
-            | OpCode::TYPE_F32_TO_I32 | OpCode::TYPE_CAST_PTR | OpCode::ARRAY_LEN
-            | OpCode::MOD_F | OpCode::MOD_D
-            | OpCode::CREATE_SOME | OpCode::CREATE_ERR
-            | OpCode::CREATE_RANGE | OpCode::CREATE_RANGE_EQ
-            | OpCode::CHAN_NEW | OpCode::RECV | OpCode::TRY_RECV
-            | OpCode::TASK_LOOP | OpCode::AWAIT_FUTURE | OpCode::POLL_FUTURE
+            OpCode::NOP
+            | OpCode::POP
+            | OpCode::DUP
+            | OpCode::SWAP
+            | OpCode::DROP
+            | OpCode::CONST_0
+            | OpCode::CONST_1
+            | OpCode::HALT
+            | OpCode::PRINT
+            | OpCode::YIELD_TASK
+            | OpCode::YIELD_VAL
+            | OpCode::CREATE_NONE
+            | OpCode::IS_SOME
+            | OpCode::IS_OK
+            | OpCode::UNWRAP_SOME
+            | OpCode::UNWRAP_OK
+            | OpCode::UNWRAP_ERR
+            | OpCode::IS_NIL
+            | OpCode::NEG
+            | OpCode::NEG_F
+            | OpCode::NEG_D
+            | OpCode::NOT
+            | OpCode::TO_STR
+            | OpCode::STR_CAT
+            | OpCode::ADD
+            | OpCode::SUB
+            | OpCode::MUL
+            | OpCode::DIV
+            | OpCode::MOD
+            | OpCode::ADD_F
+            | OpCode::SUB_F
+            | OpCode::MUL_F
+            | OpCode::DIV_F
+            | OpCode::ADD_D
+            | OpCode::SUB_D
+            | OpCode::MUL_D
+            | OpCode::DIV_D
+            | OpCode::ADD_U64
+            | OpCode::SUB_U64
+            | OpCode::MUL_U64
+            | OpCode::DIV_U64
+            | OpCode::MOD_U64
+            | OpCode::AND
+            | OpCode::OR
+            | OpCode::XOR
+            | OpCode::SHL
+            | OpCode::SHR
+            | OpCode::EQ
+            | OpCode::NE
+            | OpCode::LT
+            | OpCode::GT
+            | OpCode::LE
+            | OpCode::GE
+            | OpCode::EQ_D
+            | OpCode::NE_D
+            | OpCode::LT_D
+            | OpCode::GT_D
+            | OpCode::LE_D
+            | OpCode::GE_D
+            | OpCode::EQ_U64
+            | OpCode::NE_U64
+            | OpCode::LT_U64
+            | OpCode::GT_U64
+            | OpCode::LE_U64
+            | OpCode::GE_U64
+            | OpCode::EQ_F
+            | OpCode::NE_F
+            | OpCode::LT_F
+            | OpCode::GT_F
+            | OpCode::LE_F
+            | OpCode::GE_F
+            | OpCode::I32_TO_F32
+            | OpCode::I64_TO_F64
+            | OpCode::U64_TO_F64
+            | OpCode::PROMOTE_F64
+            | OpCode::NULL_COALESCE
+            | OpCode::TASK_ID
+            | OpCode::SPAWN_GO
+            | OpCode::REPLY
+            | OpCode::HANDLE_MSG
+            | OpCode::CALL_CLOSURE
+            | OpCode::TYPE_F64_TO_I32
+            | OpCode::TYPE_STR_TO_I64
+            | OpCode::TYPE_F32_TO_I32
+            | OpCode::TYPE_CAST_PTR
+            | OpCode::ARRAY_LEN
+            | OpCode::MOD_F
+            | OpCode::MOD_D
+            | OpCode::CREATE_SOME
+            | OpCode::CREATE_ERR
+            | OpCode::CREATE_RANGE
+            | OpCode::CREATE_RANGE_EQ
+            | OpCode::CHAN_NEW
+            | OpCode::RECV
+            | OpCode::TRY_RECV
+            | OpCode::TASK_LOOP
+            | OpCode::AWAIT_FUTURE
+            | OpCode::POLL_FUTURE
             | OpCode::CONSTRUCT_INSTANCE
-            | OpCode::CREATE_LIST_INT | OpCode::CREATE_LIST_STR | OpCode::CREATE_LIST_BOOL
-            | OpCode::CREATE_LIST_INT_INLINE | OpCode::CREATE_LIST_STR_INLINE
-            | OpCode::CREATE_LIST_BOOL_INLINE | OpCode::LIST_PUSH_INT
-            | OpCode::LIST_POP_INT | OpCode::LIST_GET_INT | OpCode::LIST_SET_INT
-            | OpCode::GET_ELEM | OpCode::SET_ELEM | OpCode::SET_FIELD | OpCode::SLICE
-            | OpCode::PUSH_NIL
-                => (String::new(), 0),
+            | OpCode::CREATE_LIST_INT
+            | OpCode::CREATE_LIST_STR
+            | OpCode::CREATE_LIST_BOOL
+            | OpCode::CREATE_LIST_INT_INLINE
+            | OpCode::CREATE_LIST_STR_INLINE
+            | OpCode::CREATE_LIST_BOOL_INLINE
+            | OpCode::LIST_PUSH_INT
+            | OpCode::LIST_POP_INT
+            | OpCode::LIST_GET_INT
+            | OpCode::LIST_SET_INT
+            | OpCode::GET_ELEM
+            | OpCode::SET_ELEM
+            | OpCode::SET_FIELD
+            | OpCode::SLICE
+            | OpCode::PUSH_NIL => (String::new(), 0),
 
             // 1-byte operand
             OpCode::CONST_U8 => {
@@ -177,7 +258,14 @@ impl<'a> Disassembler<'a> {
             // Plan 318: PUSH_BOOL byte operand (0|1)
             OpCode::PUSH_BOOL => {
                 let v = self.flash.read_u8(ip);
-                (if v != 0 { "true".into() } else { "false".into() }, 1)
+                (
+                    if v != 0 {
+                        "true".into()
+                    } else {
+                        "false".into()
+                    },
+                    1,
+                )
             }
             OpCode::POP_N => {
                 let v = self.flash.read_u8(ip);
@@ -239,8 +327,10 @@ impl<'a> Disassembler<'a> {
             }
 
             // 1-byte local index
-            OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
-            | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD => {
+            OpCode::LOAD_LOCAL
+            | OpCode::STORE_LOCAL
+            | OpCode::LOAD_STATE_FIELD
+            | OpCode::STORE_STATE_FIELD => {
                 let v = self.flash.read_u8(ip);
                 (format!("{}", v), 1)
             }
@@ -338,7 +428,10 @@ impl<'a> Disassembler<'a> {
                 for i in 0..part_count {
                     tags.push(self.flash.read_u8(ip + 1 + i as usize));
                 }
-                (format!("parts={}, tags={:?}", part_count, tags), 1 + part_count as usize)
+                (
+                    format!("parts={}, tags={:?}", part_count, tags),
+                    1 + part_count as usize,
+                )
             }
 
             // GET_FIELD: u32 field_idx
@@ -363,28 +456,51 @@ impl<'a> Disassembler<'a> {
             }
 
             // Type casts and conversions (no operands)
-            OpCode::TYPE_CAST_I32 | OpCode::TYPE_CAST_U32 | OpCode::TYPE_CAST_I64
-            | OpCode::TYPE_CAST_U64 | OpCode::TYPE_CAST_F64 | OpCode::TYPE_TO_STR
-            | OpCode::TYPE_TO_I32 | OpCode::TYPE_TO_F64 | OpCode::TYPE_F64_TO_STR
-            | OpCode::TYPE_I64_TO_STR | OpCode::TYPE_U64_TO_STR | OpCode::TYPE_BOOL_TO_STR
+            OpCode::TYPE_CAST_I32
+            | OpCode::TYPE_CAST_U32
+            | OpCode::TYPE_CAST_I64
+            | OpCode::TYPE_CAST_U64
+            | OpCode::TYPE_CAST_F64
+            | OpCode::TYPE_TO_STR
+            | OpCode::TYPE_TO_I32
+            | OpCode::TYPE_TO_F64
+            | OpCode::TYPE_F64_TO_STR
+            | OpCode::TYPE_I64_TO_STR
+            | OpCode::TYPE_U64_TO_STR
+            | OpCode::TYPE_BOOL_TO_STR
             | OpCode::TYPE_F32_TO_STR
             | OpCode::POP_HANDLER => (String::new(), 0),
 
             // Closures
             OpCode::CLOSURE => {
+                // 引擎真实前进（engine.rs CLOSURE 臂）：addr(u32) +
+                // capture_count(u8) + n_args(u8) + capture_count ×
+                // (var_name_idx u32 + slot_offset u16)。短算会使反汇编/
+                // 引用闭包走查错位到捕获描述符中段（PLAN-738
+                // INVALID_BYTECODE 误报根因）。
                 let addr = self.flash.read_u32(ip);
-                (format!("addr=0x{:04x}", addr), 4)
+                let captures = self.flash.read_u8(ip + 4) as usize;
+                (
+                    format!(
+                        "addr=0x{:04x} captures={} n_args={}",
+                        addr,
+                        captures,
+                        self.flash.read_u8(ip + 5)
+                    ),
+                    6 + captures * 6,
+                )
             }
 
             // Generic instance
             OpCode::NEW_INSTANCE => {
                 // NEW_INSTANCE reads name_len from stack, then name_bytes from bytecode.
                 // To disassemble, look backward for the preceding CONST_I32 that pushed the length.
-                let name_len = if offset >= 5 && self.flash.read_u8(offset - 5) == OpCode::CONST_I32 as u8 {
-                    self.flash.read_i32(offset - 4) as usize
-                } else {
-                    0
-                };
+                let name_len =
+                    if offset >= 5 && self.flash.read_u8(offset - 5) == OpCode::CONST_I32 as u8 {
+                        self.flash.read_i32(offset - 4) as usize
+                    } else {
+                        0
+                    };
                 let mut bytes = Vec::new();
                 for i in 0..name_len {
                     bytes.push(self.flash.read_u8(ip + i));
@@ -417,7 +533,10 @@ impl<'a> Disassembler<'a> {
                 let capture_count = self.flash.read_u8(ip + 4);
                 // Total immediate length: 4 (offset) + 1 (count) + 4*count (names)
                 let total = 4 + 1 + 4 * capture_count as usize;
-                (format!("body=0x{:04x} captures={}", offset_val, capture_count), total)
+                (
+                    format!("body=0x{:04x} captures={}", offset_val, capture_count),
+                    total,
+                )
             }
 
             // Source line (handled above, but needed for exhaustiveness)
@@ -448,9 +567,7 @@ impl<'a> Disassembler<'a> {
                 let idx = self.flash.read_u32(ip);
                 (format!("key={}", idx), 4)
             }
-            OpCode::ACCUM_NODE | OpCode::ACCUM_MERGE | OpCode::POP_ACCUM => {
-                (String::new(), 0)
-            }
+            OpCode::ACCUM_NODE | OpCode::ACCUM_MERGE | OpCode::POP_ACCUM => (String::new(), 0),
         }
     }
 }
@@ -458,12 +575,20 @@ impl<'a> Disassembler<'a> {
 impl std::fmt::Display for DisasmLine {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.line.is_some() {
-            write!(f, "  {:04x}: {:16} {}", self.offset, self.mnemonic, self.operands)?;
+            write!(
+                f,
+                "  {:04x}: {:16} {}",
+                self.offset, self.mnemonic, self.operands
+            )?;
             if let Some(line) = self.line {
                 write!(f, "  ; line {}", line)?;
             }
         } else {
-            write!(f, "  {:04x}: {:16} {}", self.offset, self.mnemonic, self.operands)?;
+            write!(
+                f,
+                "  {:04x}: {:16} {}",
+                self.offset, self.mnemonic, self.operands
+            )?;
         }
         Ok(())
     }

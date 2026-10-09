@@ -16,14 +16,20 @@
 // PLAN-700: 原内层 cfg 门删除——模组门 test-aavm 已等价覆盖（原 imply）
 #[test]
 fn test_aavm2_t3_tower_milestone() {
-    if std::env::var("T3_MILESTONE").map(|v| v != "0" && !v.is_empty()).unwrap_or(false) == false {
+    if std::env::var("T3_MILESTONE")
+        .map(|v| v != "0" && !v.is_empty())
+        .unwrap_or(false)
+        == false
+    {
         eprintln!(
             "skipped: aavm2_t3_tower_milestone 是里程碑档测试(小时级)——\
              大版本升级时以 T3_MILESTONE=1 cargo t3 运行"
         );
         return;
     }
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
     let script = root.join("scripts").join("aavm_tower_check.sh");
     let output = std::process::Command::new("bash")
         .arg(&script)

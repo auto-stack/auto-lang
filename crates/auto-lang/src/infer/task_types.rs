@@ -19,7 +19,10 @@
 //! 2. Checks send/ask message types against the envelope
 //! 3. Infers reply types from ctx.reply() calls
 
-use crate::ast::{Arg, Body, Expr, LiteralValue, Name, TaskMsgPattern, TaskOnBlock, Type, TypeDecl, TypeDeclKind, Union, UnionField};
+use crate::ast::{
+    Arg, Body, Expr, LiteralValue, Name, TaskMsgPattern, TaskOnBlock, Type, TypeDecl, TypeDeclKind,
+    Union, UnionField,
+};
 use crate::error::TypeError;
 use std::collections::HashMap;
 
@@ -124,7 +127,10 @@ impl TaskTypeChecker {
                     is_pub: false,
                 })
             }
-            TaskMsgPattern::WithBindings { variant, bindings: _ } => {
+            TaskMsgPattern::WithBindings {
+                variant,
+                bindings: _,
+            } => {
                 // Variant with bindings is like a tuple enum variant
                 Type::User(TypeDecl {
                     consts: Vec::new(),
@@ -195,9 +201,10 @@ impl TaskTypeChecker {
             (Type::Uint, Type::U64) | (Type::U64, Type::Uint) => true,
 
             // Union types: check if any field accepts
-            (Type::Union(union_type), found_type) => {
-                union_type.fields.iter().any(|f| self.type_accepts(&f.ty, found_type))
-            }
+            (Type::Union(union_type), found_type) => union_type
+                .fields
+                .iter()
+                .any(|f| self.type_accepts(&f.ty, found_type)),
 
             // User types
             (Type::User(a), Type::User(b)) => a.name == b.name,
@@ -334,8 +341,14 @@ mod tests {
     #[test]
     fn test_literal_to_type() {
         assert!(matches!(literal_to_type(&LiteralValue::Int(42)), Type::Int));
-        assert!(matches!(literal_to_type(&LiteralValue::Bool(true)), Type::Bool));
-        assert!(matches!(literal_to_type(&LiteralValue::Char('a')), Type::Char));
+        assert!(matches!(
+            literal_to_type(&LiteralValue::Bool(true)),
+            Type::Bool
+        ));
+        assert!(matches!(
+            literal_to_type(&LiteralValue::Char('a')),
+            Type::Char
+        ));
     }
 
     #[test]
@@ -364,12 +377,20 @@ mod tests {
         let envelope = Type::Union(Union {
             name: "TestEnvelope".into(),
             fields: vec![
-                UnionField { name: "IntVariant".into(), ty: Type::Int },
-                UnionField { name: "StrVariant".into(), ty: Type::StrFixed(0) },
+                UnionField {
+                    name: "IntVariant".into(),
+                    ty: Type::Int,
+                },
+                UnionField {
+                    name: "StrVariant".into(),
+                    ty: Type::StrFixed(0),
+                },
             ],
         });
         assert!(checker.check_send_type(&envelope, &Type::Int).is_ok());
-        assert!(checker.check_send_type(&envelope, &Type::StrFixed(0)).is_ok());
+        assert!(checker
+            .check_send_type(&envelope, &Type::StrFixed(0))
+            .is_ok());
         assert!(checker.check_send_type(&envelope, &Type::Bool).is_err());
     }
 
@@ -384,7 +405,12 @@ mod tests {
     fn test_infer_envelope_type_empty() {
         use crate::token::Pos;
         let mut checker = TaskTypeChecker::new();
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let on_block = TaskOnBlock::new(pos);
         let result = checker.infer_envelope_type("TestTask", &on_block);
         assert!(matches!(result, Type::Void));
@@ -396,7 +422,12 @@ mod tests {
         use crate::token::Pos;
 
         let mut checker = TaskTypeChecker::new();
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let mut on_block = TaskOnBlock::new(pos);
 
         on_block.add_handler_with_guard(
@@ -418,7 +449,12 @@ mod tests {
         use crate::token::Pos;
 
         let mut checker = TaskTypeChecker::new();
-        let pos = Pos { line: 1, at: 1, pos: 0, len: 0 };
+        let pos = Pos {
+            line: 1,
+            at: 1,
+            pos: 0,
+            len: 0,
+        };
         let mut on_block = TaskOnBlock::new(pos);
 
         on_block.add_handler_with_guard(

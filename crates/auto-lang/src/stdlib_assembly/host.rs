@@ -39,9 +39,55 @@ pub fn verify_rust_reference(
     // `.await`；解包该等待点，随后与 producer asyncness 双向核对（错配=漂移），
     // 不做一刀切拒绝。
     let mut awaited = false;
+    let mut adapters: Vec<&'static str> = Vec::new();
     if let syn::Expr::Await(await_expr) = expression {
         expression = *await_expr.base;
         awaited = true;
+    }
+    // 发射侧适配壳：`last_status() as i64` 的数值面转换。
+    while let syn::Expr::Cast(cast) = expression {
+        expression = *cast.expr;
+        adapters.push("scalar cast adapter");
+    }
+    // 发射侧适配壳：post/status 包装块 `{ let __resp = <主调用>.await;
+    // set_last_status(..); __resp.1 }` 与 PLAN-724 三参元数分派的
+    // `async { let (..) = post(..).await; HttpResponse { .. } }`——校验
+    // 块内主调用；状态侧信道/元数分派面记为适配变体（§5.3 单独记录）。
+    let mut wrapped = false;
+    if let syn::Expr::Async(async_block) = expression {
+        expression = syn::Expr::Block(syn::ExprBlock {
+            attrs: Vec::new(),
+            label: None,
+            block: async_block.block,
+        });
+        wrapped = true;
+    }
+    if let syn::Expr::Block(block) = expression {
+        wrapped = true;
+        let primary = block.block.stmts.iter().find_map(|stmt| match stmt {
+            syn::Stmt::Local(local) => {
+                let init = local.init.as_ref()?;
+                let mut expr = init.expr.as_ref();
+                if let syn::Expr::Await(await_expr) = expr {
+                    expr = await_expr.base.as_ref();
+                    awaited = true;
+                }
+                match expr {
+                    syn::Expr::Call(call) => Some(call.clone()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        });
+        match primary {
+            Some(call) => {
+                adapters.push("wrapper block (status side-channel adapter)");
+                expression = syn::Expr::Call(call);
+            }
+            None => {
+                return Err(format!("STDASSEMBLY.SIGNATURE_UNVERIFIED: {module}.{symbol}: adapter expression requires independent proof").into());
+            }
+        }
     }
     let syn::Expr::Call(call) = expression else {
         return Err(format!("STDASSEMBLY.SIGNATURE_UNVERIFIED: {module}.{symbol}: adapter expression requires independent proof").into());
@@ -112,13 +158,17 @@ pub fn verify_rust_reference(
             )
         })?;
     let producer_async = producer.1.sig.asyncness.is_some();
-    if producer_async != awaited {
+    if producer_async != awaited && !wrapped {
+        // 包装壳（元数分派/侧信道）内含 PLAN-724 冻结的发射语义——其内部
+        // await/producer 相干性属 724 合同，不以 738 签名面拒绝；降级为
+        // Resolved 证明（见下方元数分派臂），普通形状仍严格双向核对。
         return Err(format!(
             "STDASSEMBLY.SIGNATURE_DRIFT: {module}.{symbol}: async mode mismatch (producer async={producer_async}, emission awaited={awaited}): {}",
             producer.0
         )
         .into());
     }
+    let mode_variant = producer_async != awaited;
     if !producer.1.sig.generics.params.is_empty() {
         return Err(format!(
             "STDASSEMBLY.SIGNATURE_UNVERIFIED: {}::{callee}: generic adapter unavailable",
@@ -127,7 +177,6 @@ pub fn verify_rust_reference(
         .into());
     }
     let mut parameters = Vec::new();
-    let mut adapters: Vec<&'static str> = Vec::new();
     for parameter in &producer.1.sig.inputs {
         let syn::FnArg::Typed(parameter) = parameter else {
             return Err(format!(
@@ -149,12 +198,35 @@ pub fn verify_rust_reference(
     }
     let mut returns = match &producer.1.sig.output {
         syn::ReturnType::Default => "void".into(),
-        syn::ReturnType::Type(_, ty) => logical_type(ty).ok_or_else(|| {
-            format!(
-                "STDASSEMBLY.SIGNATURE_UNVERIFIED: {}::{callee}: return representation",
-                producer.0
-            )
-        })?,
+        syn::ReturnType::Type(_, ty) => match logical_type(ty) {
+            Some(text) => text,
+            // async 流 facade：get_stream_async 返回 AsyncHTTPStream，公共
+            // 面为 HTTPStream——await 消费后同一逻辑流面；适配变体记录。
+            None if matches!(&**ty, syn::Type::Path(path)
+                if path.path.segments.last().is_some_and(|s| s.ident == "AsyncHTTPStream")) =>
+            {
+                adapters.push("async stream facade (awaited consumption)");
+                "HTTPStream".into()
+            }
+            // post_sync 族 (status, body) 元组面：包装壳选取 body 元素对齐
+            // 公共 str 返回；状态进侧信道——适配变体记录。
+            None if matches!(&**ty, syn::Type::Tuple(tuple)
+                if tuple.elems.len() == 2
+                    && logical_type(&tuple.elems[0]).as_deref() == Some("int")
+                    && logical_type(&tuple.elems[1]).as_deref() == Some("str")) =>
+            {
+                adapters
+                    .push("(status, body) tuple adapter; body selected, status to side-channel");
+                "str".into()
+            }
+            None => {
+                return Err(format!(
+                    "STDASSEMBLY.SIGNATURE_UNVERIFIED: {}::{callee}: return representation",
+                    producer.0
+                )
+                .into());
+            }
+        },
     };
     let mut error_shape = "Rust return value".to_string();
     // The selected parse implementation uses serde_json::Value::Null as its
@@ -181,6 +253,23 @@ pub fn verify_rust_reference(
         error_shape,
     };
     if call.args.len() != contract.parameters.len() {
+        // PLAN-724 T-06 冻结的元数分派历史面（如三参 post 的 auth tuple
+        // 臂）：发射壳自带约定形状，不与公共二元数签名对拍——降级为
+        // Resolved 证明并记录变体，不冒称 SignatureChecked。
+        if wrapped || mode_variant {
+            return Ok(Some(ReferenceProof {
+                module: module.into(),
+                symbol: symbol.into(),
+                declaration,
+                declaration_hash: layer.content_hash,
+                producer: contract.producer.clone(),
+                native_id: None,
+                callee: names.join("::"),
+                verification: VerificationLevel::Resolved,
+                public_signature: public.signature.clone().unwrap(),
+                selected_adapter: contract,
+            }));
+        }
         return Err(format!(
             "STDASSEMBLY.SIGNATURE_DRIFT: {module}.{symbol}: emitted arity / Rust producer arity"
         )
@@ -386,7 +475,7 @@ fn logical_type(ty: &syn::Type) -> Option<String> {
     }
     Some(match segment.ident.to_string().as_str() {
         "str" | "String" => "str".into(),
-        "i32" | "i64" => "int".into(),
+        "i32" | "i64" | "u8" | "u16" | "u32" | "u64" | "usize" => "int".into(),
         "bool" => "bool".into(),
         "f64" => "float".into(),
         "Value" => "JsonValue".into(),
@@ -395,6 +484,8 @@ fn logical_type(ty: &syn::Type) -> Option<String> {
         "FileResponse" | "UploadRequest" | "UploadSession" | "UploadReceipt" => {
             segment.ident.to_string()
         }
+        // http 客户端/服务端资源面（公共声明同名；句柄经 wire 物化）。
+        "Response" | "HTTPStream" | "RequestBuilder" | "FileTransfer" => segment.ident.to_string(),
         _ => return None,
     })
 }

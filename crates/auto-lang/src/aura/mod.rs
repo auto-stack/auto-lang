@@ -39,20 +39,20 @@
 //! };
 //! ```
 
-mod types;
-pub mod extract;
 mod atom;
+pub mod extract;
 pub mod schema;
 pub mod schema_loader;
+mod types;
 #[allow(unused)]
 pub mod validate;
 // Plan 507 T2：元素级 queue 覆盖登记（无 feature 门——schema 漂移围栏
 // 日常档可读；运行时消费方 ui/desktop_protocol/coverage.rs 在 ui 档）。
 pub mod element_coverage;
 
-pub use types::*;
-pub use extract::*;
 pub use atom::*;
+pub use extract::*;
 pub use schema::*;
 pub use schema_loader::*;
+pub use types::*;
 pub use validate::*;

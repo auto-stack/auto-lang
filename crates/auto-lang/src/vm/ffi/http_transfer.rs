@@ -17,8 +17,8 @@
 
 use std::collections::HashMap;
 
-use crate::vm::ffi::convert::VMConvertible;
 use crate::vm::engine::{AutoVM, VMError};
+use crate::vm::ffi::convert::VMConvertible;
 use crate::vm::task::AutoTask;
 
 use std::sync::atomic::Ordering;
@@ -338,12 +338,20 @@ pub(crate) fn spawn_core_download_with_progress(
                     .as_ref()
                     .map(|e| e.message.clone())
                     .unwrap_or_else(|| "download failed".to_string());
-                let _ = tx.send(crate::vm::ffi::stdlib::AsyncStreamEvent::Error(msg)).await;
-                let _ = tx.send(crate::vm::ffi::stdlib::AsyncStreamEvent::Done).await;
+                let _ = tx
+                    .send(crate::vm::ffi::stdlib::AsyncStreamEvent::Error(msg))
+                    .await;
+                let _ = tx
+                    .send(crate::vm::ffi::stdlib::AsyncStreamEvent::Done)
+                    .await;
             }
             _ => {
-                let _ = tx.try_send(crate::vm::ffi::stdlib::AsyncStreamEvent::Data(receipt.json()));
-                let _ = tx.send(crate::vm::ffi::stdlib::AsyncStreamEvent::Done).await;
+                let _ = tx.try_send(crate::vm::ffi::stdlib::AsyncStreamEvent::Data(
+                    receipt.json(),
+                ));
+                let _ = tx
+                    .send(crate::vm::ffi::stdlib::AsyncStreamEvent::Done)
+                    .await;
             }
         }
         stream_handle.done.store(true, Ordering::SeqCst);
@@ -435,7 +443,11 @@ Connection: close
         }
         assert!(saw_progress_or_receipt, "进度/收据事件缺失");
         assert!(saw_done, "Done 终结缺失");
-        assert_eq!(std::fs::read(&path).unwrap(), b"relay-body-123", "staging 提交落盘");
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            b"relay-body-123",
+            "staging 提交落盘"
+        );
         let _ = done;
         std::fs::remove_dir_all(dir).ok();
     }

@@ -205,17 +205,17 @@ pub enum Stmt {
     /// Consumed by the Vue codegen; other backends must fail with an explicit
     /// "requires vue render" error.
     UseWeb(Vec<crate::ast::ui::ExtImport>),
-    Dep(DepStmt),  // Plan 092: Dependency declaration
+    Dep(DepStmt), // Plan 092: Dependency declaration
     OnEvents(OnEvents),
     Comment(AutoStr),
     Alias(Alias),
-    TypeAlias(TypeAlias),  // Type alias: type List<T> = List<T, DefaultStorage>
+    TypeAlias(TypeAlias), // Type alias: type List<T> = List<T, DefaultStorage>
     EmptyLine(usize),
     Break,
     Continue,
-    Return(Box<Expr>),  // Return statement with value
-    Reply(Box<Expr>),   // Plan 124 Phase 2.3: reply statement for ask/reply RPC
-    Ext(Ext),  // Type extension (like Rust's impl)
+    Return(Box<Expr>), // Return statement with value
+    Reply(Box<Expr>),  // Plan 124 Phase 2.3: reply statement for ask/reply RPC
+    Ext(Ext),          // Type extension (like Rust's impl)
     // Plan 096: UI scenario statements
     WidgetDecl(WidgetDecl),
     // Plan 351: shared store (scene:ui)
@@ -274,7 +274,11 @@ impl Stmt {
 
     pub fn is_new_block(&self) -> bool {
         match self {
-            Stmt::Block(_) | Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::EnumDecl(_) | Stmt::SpecDecl(_) => true,
+            Stmt::Block(_)
+            | Stmt::Fn(_)
+            | Stmt::TypeDecl(_)
+            | Stmt::EnumDecl(_)
+            | Stmt::SpecDecl(_) => true,
             _ => false,
         }
     }
@@ -284,7 +288,12 @@ impl fmt::Display for Stmt {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Stmt::Use(use_stmt) => write!(f, "{}", use_stmt),
-            Stmt::UseWeb(entries) => write!(f, "use.web ({} web import{})", entries.len(), if entries.len() == 1 { "" } else { "s" }),
+            Stmt::UseWeb(entries) => write!(
+                f,
+                "use.web ({} web import{})",
+                entries.len(),
+                if entries.len() == 1 { "" } else { "s" }
+            ),
             Stmt::Expr(expr) => write!(f, "{}", expr),
             Stmt::If(if_stmt) => write!(f, "{}", if_stmt),
             Stmt::For(for_stmt) => write!(f, "{}", for_stmt),
@@ -306,7 +315,7 @@ impl fmt::Display for Stmt {
             Stmt::Break => write!(f, "(break)"),
             Stmt::Continue => write!(f, "(continue)"),
             Stmt::Return(expr) => write!(f, "(return {})", expr),
-            Stmt::Reply(expr) => write!(f, "(reply {})", expr),  // Plan 124 Phase 2.3
+            Stmt::Reply(expr) => write!(f, "(reply {})", expr), // Plan 124 Phase 2.3
             Stmt::Ext(ext) => write!(f, "{}", ext),
             Stmt::Dep(dep) => write!(f, "{}", dep),
             // Plan 096: UI scenario statements
@@ -354,11 +363,11 @@ pub enum Expr {
     // composite exprs
     Ref(Name),
     // Borrow expressions (Phase 3)
-    View(Box<Expr>),    // Immutable borrow (like Rust &T)
-    Mut(Box<Expr>),     // Mutable borrow (like Rust &mut T)
-    Move(Box<Expr>),    // Ownership transfer (Plan 122: renamed from Take)
-    Take(Box<Expr>),    // DEPRECATED - use Move instead
-    Hold(Hold),         // Hold path binding (temporary borrow with syntax sugar)
+    View(Box<Expr>), // Immutable borrow (like Rust &T)
+    Mut(Box<Expr>),  // Mutable borrow (like Rust &mut T)
+    Move(Box<Expr>), // Ownership transfer (Plan 122: renamed from Take)
+    Take(Box<Expr>), // DEPRECATED - use Move instead
+    Hold(Hold),      // Hold path binding (temporary borrow with syntax sugar)
     Unary(Op, Box<Expr>),
     Bina(Box<Expr>, Op, Box<Expr>),
     /// Dot expression: object.field or Type.method
@@ -376,48 +385,57 @@ pub enum Expr {
     Call(Call),
     Node(Node),
     Index(/*array*/ Box<Expr>, /*index*/ Box<Expr>),
-    Lambda(Fn),        // Named lambda function
-    Closure(Closure),  // Plan 060: Closure:  x => expr or (a, b) => expr
+    Lambda(Fn),       // Named lambda function
+    Closure(Closure), // Plan 060: Closure:  x => expr or (a, b) => expr
     FStr(FStr),
     Grid(Grid),
     Cover(Cover),
     Uncover(TagUncover),
     // Plan 120: Pattern matching for Option/Result in is statements
-    OptionPattern(crate::ast::cover::OptionCover),   // Some(x) or None in is branch
-    ResultPattern(crate::ast::cover::ResultCover),   // Ok(x) or Err(e) in is branch
+    OptionPattern(crate::ast::cover::OptionCover), // Some(x) or None in is branch
+    ResultPattern(crate::ast::cover::ResultCover), // Ok(x) or Err(e) in is branch
     OptionUncover(crate::ast::cover::OptionUncover), // Extract value from Some
     ResultUncover(crate::ast::cover::ResultUncover), // Extract value from Ok/Err
     // Plan 165: Struct destructuring pattern for is statement
-    StructPattern(crate::ast::cover::StructCover),  // Point { x, y } in is branch
+    StructPattern(crate::ast::cover::StructCover), // Point { x, y } in is branch
     // stmt exprs
     If(If),
     Nil,
     Null,
     // May type operators (Phase 1b.3)
-    NullCoalesce(Box<Expr>, Box<Expr>),  // left ?? right
-    ErrorPropagate(Box<Expr>),            // expression.?
-    Cast { expr: Box<Expr>, target_type: Type },  // expr.as(Type) — type conversion (zero-cost reinterpret)
-    To { expr: Box<Expr>, target_type: Type },    // expr.to(Type) — explicit type conversion (may allocate)
-    TupleDestruct { names: Vec<Name>, expr: Box<Expr> },  // let (a, b) = expr
+    NullCoalesce(Box<Expr>, Box<Expr>), // left ?? right
+    ErrorPropagate(Box<Expr>),          // expression.?
+    Cast {
+        expr: Box<Expr>,
+        target_type: Type,
+    }, // expr.as(Type) — type conversion (zero-cost reinterpret)
+    To {
+        expr: Box<Expr>,
+        target_type: Type,
+    }, // expr.to(Type) — explicit type conversion (may allocate)
+    TupleDestruct {
+        names: Vec<Name>,
+        expr: Box<Expr>,
+    }, // let (a, b) = expr
     // Plan 120: Option and Result constructors
-    Some(Box<Expr>),                      // Some(value)
-    None,                                 // None
-    Ok(Box<Expr>),                        // Ok(value)
-    Err(Box<Expr>),                       // Err(message)
+    Some(Box<Expr>), // Some(value)
+    None,            // None
+    Ok(Box<Expr>),   // Ok(value)
+    Err(Box<Expr>),  // Err(message)
     // Plan 6B-4.14: Smart pointer constructors
-    BoxExpr(Box<Expr>),                   // Box(value) → Box::new(value) in Rust
-    ArcExpr(Box<Expr>),                   // Arc(value) → Arc::new(value) in Rust
+    BoxExpr(Box<Expr>), // Box(value) → Box::new(value) in Rust
+    ArcExpr(Box<Expr>), // Arc(value) → Arc::new(value) in Rust
     // Router navigation (Plan 105)
     NavCall {
         path: Box<Expr>,
-        params: Vec<Pair>,  // key-value pairs for route params
+        params: Vec<Pair>, // key-value pairs for route params
     },
     // Plan 124: Async/Future/Await system
     /// Async block: ~{ stmts }
     /// Returns a Future<T> value
     AsyncBlock {
         body: Body,
-        return_type: Option<Type>,  // Type inference will fill this
+        return_type: Option<Type>, // Type inference will fill this
     },
     /// Await expression: expr.await
     /// Unwraps Future<T> to T
@@ -428,7 +446,7 @@ pub enum Expr {
     /// Spawns async block to background worker pool
     /// Returns void (fire-and-forget)
     Go {
-        expr: Box<Expr>,  // Must be ~T (Future)
+        expr: Box<Expr>, // Must be ~T (Future)
     },
     /// Plan 321: Yield expression for generators.
     /// `yield expr` suspends the generator and sends expr's value to the caller.
@@ -524,7 +542,16 @@ impl fmt::Display for Expr {
             Expr::ErrorPropagate(e) => write!(f, "(?. {})", e),
             Expr::Cast { expr, target_type } => write!(f, "(as {} {})", expr, target_type),
             Expr::To { expr, target_type } => write!(f, "(to {} {})", expr, target_type),
-            Expr::TupleDestruct { names, expr } => write!(f, "(destr ({}) {})", names.iter().map(|n| n.as_str()).collect::<Vec<_>>().join(" "), expr),
+            Expr::TupleDestruct { names, expr } => write!(
+                f,
+                "(destr ({}) {})",
+                names
+                    .iter()
+                    .map(|n| n.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                expr
+            ),
             // Plan 120: Option and Result constructors
             Expr::Some(e) => write!(f, "(Some {})", e),
             Expr::None => write!(f, "None"),
@@ -1280,7 +1307,9 @@ impl ToAtom for Stmt {
             Stmt::ModelBlock(model) => format!("(model {} fields)", model.fields.len()).into(),
             Stmt::ViewBlock(_) => "(view)".into(),
             // Plan 306: Godot scene declaration
-            Stmt::SceneDecl(scene) => format!("(scene {} : {})", scene.name, scene.node_type).into(),
+            Stmt::SceneDecl(scene) => {
+                format!("(scene {} : {})", scene.name, scene.node_type).into()
+            }
             // Plan 121: Task/Msg system
             Stmt::TaskDef(task) => task.to_atom(),
             // Plan 124 Phase 2.3: reply statement for ask/reply RPC
@@ -1330,7 +1359,7 @@ impl ToAtom for Code {
 mod markdown_tests {
     use super::*;
     use crate::parser::Parser;
-        use std::cell::RefCell;
+    use std::cell::RefCell;
     use std::fs;
     use std::path::Path;
     use std::rc::Rc;
@@ -1593,7 +1622,7 @@ mod markdown_tests {
 
         for tc in cases {
             // Plan 091: Universe removed
-    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+            let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
             let mut parser = Parser::from(&tc.input);
             let code = parser
                 .parse()
@@ -1707,7 +1736,7 @@ mod markdown_tests {
 
         for tc in cases {
             // Plan 091: Universe removed
-    let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
+            let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
             let mut parser = Parser::from(&tc.input);
 
             match parser.parse() {

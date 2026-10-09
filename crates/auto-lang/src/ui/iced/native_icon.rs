@@ -34,9 +34,8 @@ pub fn ensure(slot_id: u64, hwnd: crate::ui::native_dock::NativeHwnd) {
     if guard.contains_key(&slot_id) {
         return;
     }
-    let extracted = crate::ui::native_dock::win32::window_icon_rgba(hwnd).map(
-        |(rgba, w, h)| NativeIcon { rgba, w, h },
-    );
+    let extracted = crate::ui::native_dock::win32::window_icon_rgba(hwnd)
+        .map(|(rgba, w, h)| NativeIcon { rgba, w, h });
     guard.insert(slot_id, extracted);
 }
 
@@ -70,7 +69,11 @@ mod tests {
     fn put(slot_id: u64) {
         cache().lock().unwrap().insert(
             slot_id,
-            Some(NativeIcon { rgba: vec![1, 2, 3, 4], w: 1, h: 1 }),
+            Some(NativeIcon {
+                rgba: vec![1, 2, 3, 4],
+                w: 1,
+                h: 1,
+            }),
         );
     }
 
@@ -90,7 +93,10 @@ mod tests {
         // 非 hicon / 坏 id / 未注入槽 → None；未注入 icon_field → 占位。
         assert!(parse_field("lucide:app-window").is_none(), "lucide 不误吞");
         assert!(parse_field("hicon:bad").is_none(), "坏 id 拒收");
-        assert!(parse_field(&format!("hicon:{T2}")).is_none(), "未注入槽 miss");
+        assert!(
+            parse_field(&format!("hicon:{T2}")).is_none(),
+            "未注入槽 miss"
+        );
         assert_eq!(icon_field(T2), "app-window", "未注入 = 占位回退");
     }
 

@@ -3,10 +3,10 @@
 // Phase 1 Integration: Added optional `style` field to all View variants
 // to support the unified styling system (Plan 004, 90% complete).
 
+use super::style::{Color, SizeValue, Style, StyleClass};
+use crate::ui::scroll::{ScrollAxes, ScrollbarPolicy};
 use std::fmt::Debug;
 use std::sync::Arc;
-use super::style::{Style, StyleClass, SizeValue, Color};
-use crate::ui::scroll::{ScrollAxes, ScrollbarPolicy};
 
 /// PLAN-656 T-03: scroll-pane controller 的 runtime 绑定句柄（IR 层私有形态，
 /// 非核心滚动语义——见 `ui/scroll/mod.rs` 头注记：controller 是 logical
@@ -38,8 +38,7 @@ pub struct SelectCallback<M> {
 
 impl<M> std::fmt::Debug for SelectCallback<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SelectCallback")
-            .finish()
+        f.debug_struct("SelectCallback").finish()
     }
 }
 
@@ -111,8 +110,7 @@ pub struct AccordionToggleCallback<M> {
 
 impl<M> std::fmt::Debug for AccordionToggleCallback<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AccordionToggleCallback")
-            .finish()
+        f.debug_struct("AccordionToggleCallback").finish()
     }
 }
 
@@ -142,8 +140,7 @@ pub struct TabsSelectCallback<M> {
 
 impl<M> std::fmt::Debug for TabsSelectCallback<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TabsSelectCallback")
-            .finish()
+        f.debug_struct("TabsSelectCallback").finish()
     }
 }
 
@@ -173,8 +170,7 @@ pub struct NavigationRailSelectCallback<M> {
 
 impl<M> std::fmt::Debug for NavigationRailSelectCallback<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NavigationRailSelectCallback")
-            .finish()
+        f.debug_struct("NavigationRailSelectCallback").finish()
     }
 }
 
@@ -344,7 +340,9 @@ impl<M> ScrollCallback<M> {
     where
         F: Fn(ScrollMetrics) -> M + Send + Sync + 'static,
     {
-        Self { callback: Arc::new(f) }
+        Self {
+            callback: Arc::new(f),
+        }
     }
 
     pub fn call(&self, metrics: ScrollMetrics) -> M {
@@ -389,7 +387,9 @@ impl<M> MediaEventHandler<M> {
     where
         F: Fn(MediaEventPayload) -> M + Send + Sync + 'static,
     {
-        Self { callback: Arc::new(f) }
+        Self {
+            callback: Arc::new(f),
+        }
     }
 
     pub fn call(&self, payload: MediaEventPayload) -> M {
@@ -414,7 +414,10 @@ pub struct SliderChangeHandler<M> {
 impl<M> std::fmt::Debug for SliderChangeHandler<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.label {
-            Some(name) => f.debug_struct("SliderChangeHandler").field("event", name).finish(),
+            Some(name) => f
+                .debug_struct("SliderChangeHandler")
+                .field("event", name)
+                .finish(),
             None => f.debug_struct("SliderChangeHandler").finish(),
         }
     }
@@ -425,7 +428,10 @@ impl<M> SliderChangeHandler<M> {
     where
         F: Fn(f32) -> M + Send + Sync + 'static,
     {
-        Self { callback: Arc::new(f), label: None }
+        Self {
+            callback: Arc::new(f),
+            label: None,
+        }
     }
 
     /// PLAN-661 T-03: 带事件名标签构造（快照 actions 挂 set_value 的
@@ -434,7 +440,10 @@ impl<M> SliderChangeHandler<M> {
     where
         F: Fn(f32) -> M + Send + Sync + 'static,
     {
-        Self { callback: Arc::new(f), label: Some(Arc::from(label)) }
+        Self {
+            callback: Arc::new(f),
+            label: Some(Arc::from(label)),
+        }
     }
 
     pub fn call(&self, value: f32) -> M {
@@ -477,7 +486,9 @@ impl<M> FocusCallback<M> {
     where
         F: Fn(FocusMetrics) -> M + Send + Sync + 'static,
     {
-        Self { callback: Arc::new(f) }
+        Self {
+            callback: Arc::new(f),
+        }
     }
 
     pub fn call(&self, metrics: FocusMetrics) -> M {
@@ -514,7 +525,9 @@ impl<M> LinkCallback<M> {
     where
         F: Fn(WikiLinkMetrics) -> M + Send + Sync + 'static,
     {
-        Self { callback: Arc::new(f) }
+        Self {
+            callback: Arc::new(f),
+        }
     }
 
     pub fn call(&self, metrics: WikiLinkMetrics) -> M {
@@ -569,8 +582,7 @@ pub fn col_boundary_hit(x: f32, widths: &[f32], spacing: f32, band: f32) -> Opti
 /// 定义在 view.rs（非门控）而非 autodown_render：消费臂
 ///（aura_view_builder autodown_on_col_resize_binding）在无 autodown 特性
 /// 的构建档也要可命名（复审门 ui-iced 档抓红后上移）。
-pub type TableColResizeFn<M> =
-    std::sync::Arc<dyn Fn(u64, ColResizeMetrics) -> M + Send + Sync>;
+pub type TableColResizeFn<M> = std::sync::Arc<dyn Fn(u64, ColResizeMetrics) -> M + Send + Sync>;
 
 /// Plan 045 T1: 表格列宽拖拽落定回调（[`ScrollCallback`] 同款 newtype 形态，
 /// Arc<dyn Fn> 可跨消息类型包装——VM 轨 DynamicMessage→IcedMessage 转换不丢）。
@@ -590,7 +602,9 @@ impl<M> ColResizeCallback<M> {
     where
         F: Fn(ColResizeMetrics) -> M + Send + Sync + 'static,
     {
-        Self { callback: Arc::new(f) }
+        Self {
+            callback: Arc::new(f),
+        }
     }
 
     pub fn call(&self, metrics: ColResizeMetrics) -> M {
@@ -621,15 +635,12 @@ pub enum View<M: Clone + Debug> {
     /// PLAN-063 T-04d-2: 块锚定坐标槽——右栏逐块包装，iced 布局期把块
     /// 内容 y 写入全局注册表（块 0 = 内容原点），供块锚定同步目标计算。
     /// VM 轨专用（autodown_render 构造；vue 生成器不产生此变体）。
-    AnchorSlot {
-        index: u64,
-        child: Box<View<M>>,
-    },
+    AnchorSlot { index: u64, child: Box<View<M>> },
 
     /// Text display with optional styling
     Text {
         content: String,
-        style: Option<Style>,  // ✅ NEW: Unified styling support
+        style: Option<Style>, // ✅ NEW: Unified styling support
         /// Plan 481: opt-in selection & copy (drag/double-click/Ctrl+C on
         /// iced via SelectableText). Default false; vue 端仅作语义声明。
         selectable: bool,
@@ -647,9 +658,9 @@ pub enum View<M: Clone + Debug> {
     /// Button with label, click handler, and optional styling
     Button {
         label: String,
-        onclick: M,  // Direct message storage (Auto: `onclick: Msg.Inc`)
-        style: Option<Style>,  // ✅ NEW: Unified styling support
-        on_right_click: Option<M>,  // Plan 402: right-click (contextmenu) handler
+        onclick: M,                // Direct message storage (Auto: `onclick: Msg.Inc`)
+        style: Option<Style>,      // ✅ NEW: Unified styling support
+        on_right_click: Option<M>, // Plan 402: right-click (contextmenu) handler
         /// Plan 409 §6: optional content subtree rendered inside the button.
         /// `link (to:) { text/row/icon ... }` converts its children into this
         /// container and renders them as the button's content (vue parity),
@@ -664,9 +675,9 @@ pub enum View<M: Clone + Debug> {
     /// Horizontal layout with optional styling
     Row {
         children: Vec<View<M>>,
-        spacing: u16,        // Legacy field (kept for backward compatibility)
-        padding: u16,        // Legacy field (kept for backward compatibility)
-        style: Option<Style>,  // ✅ NEW: Takes priority over spacing/padding
+        spacing: u16,         // Legacy field (kept for backward compatibility)
+        padding: u16,         // Legacy field (kept for backward compatibility)
+        style: Option<Style>, // ✅ NEW: Takes priority over spacing/padding
         /// Plan 490 G4：布局件点击（VM/Vue parity——Vue 轨 onclick→@click
         /// 泛映射既有；VM 转换层提取 row/col/div 的 onclick，iced 侧以
         /// mouse_area 包装发射）。None = 纯布局（缺省，行为不变）。
@@ -680,9 +691,9 @@ pub enum View<M: Clone + Debug> {
     /// Vertical layout with optional styling
     Column {
         children: Vec<View<M>>,
-        spacing: u16,        // Legacy field (kept for backward compatibility)
-        padding: u16,        // Legacy field (kept for backward compatibility)
-        style: Option<Style>,  // ✅ NEW: Takes priority over spacing/padding
+        spacing: u16,         // Legacy field (kept for backward compatibility)
+        padding: u16,         // Legacy field (kept for backward compatibility)
+        style: Option<Style>, // ✅ NEW: Takes priority over spacing/padding
         /// Plan 490 G4：同 [`View::Row::onclick`]。
         onclick: Option<M>,
         /// PLAN-002 B：同 [`View::Row::on_right_click`]。
@@ -694,10 +705,10 @@ pub enum View<M: Clone + Debug> {
         placeholder: String,
         value: String,
         on_change: Option<M>,
-        on_submit: Option<M>,  // Fires on Enter key press
+        on_submit: Option<M>, // Fires on Enter key press
         width: Option<u16>,   // Legacy field
         password: bool,
-        style: Option<Style>,  // ✅ NEW: Unified styling support
+        style: Option<Style>, // ✅ NEW: Unified styling support
     },
 
     /// Multi-line text input with optional styling
@@ -705,7 +716,7 @@ pub enum View<M: Clone + Debug> {
         placeholder: String,
         value: String,
         on_change: Option<M>,
-        on_submit: Option<M>,  // Fires on Enter key press (Plan 053 M4)
+        on_submit: Option<M>, // Fires on Enter key press (Plan 053 M4)
         height: Option<u16>,
         style: Option<Style>,
         /// Plan 057 续(富文本输入):语法着色段 — (text, kind) 连续覆盖 value。
@@ -827,7 +838,7 @@ pub enum View<M: Clone + Debug> {
         is_checked: bool,
         label: String,
         on_toggle: Option<M>,
-        style: Option<Style>,  // ✅ NEW: Unified styling support
+        style: Option<Style>, // ✅ NEW: Unified styling support
     },
 
     /// PLAN-066: 原生外部组件透传变体（NativeWidgetEntry::Element 通道）。
@@ -864,12 +875,12 @@ pub enum View<M: Clone + Debug> {
     /// Container wrapper for styling and layout
     Container {
         child: Box<View<M>>,
-        padding: u16,        // Legacy field
-        width: Option<u16>,  // Legacy field
-        height: Option<u16>, // Legacy field
-        center_x: bool,      // Legacy field
-        center_y: bool,      // Legacy field
-        style: Option<Style>,  // ✅ NEW: Takes priority over individual fields
+        padding: u16,         // Legacy field
+        width: Option<u16>,   // Legacy field
+        height: Option<u16>,  // Legacy field
+        center_x: bool,       // Legacy field
+        center_y: bool,       // Legacy field
+        style: Option<Style>, // ✅ NEW: Takes priority over individual fields
         /// Plan 490 G4：同 [`View::Row::onclick`]（div 形态消费面）。
         onclick: Option<M>,
         /// PLAN-002 B：同 [`View::Row::on_right_click`]（div 形态消费面）。
@@ -881,7 +892,7 @@ pub enum View<M: Clone + Debug> {
         child: Box<View<M>>,
         width: Option<u16>,
         height: Option<u16>,
-        style: Option<Style>,  // ✅ NEW: Unified styling support
+        style: Option<Style>, // ✅ NEW: Unified styling support
         /// Plan 057 续(滚动 id 冲突修复):.at 的 `auto_scroll: "…"` 标记 —
         /// 主列表滚动区。VM 端据此(且仅据此)挂 blocklist_scroll id;块内
         /// max-h 滚动区不再共享同 id(snap_to_end 曾误命中块内滚动区)。
@@ -908,7 +919,7 @@ pub enum View<M: Clone + Debug> {
         label: String,
         is_selected: bool,
         on_select: Option<M>,
-        style: Option<Style>,  // ✅ NEW: Unified styling support
+        style: Option<Style>, // ✅ NEW: Unified styling support
     },
 
     /// Select dropdown with optional styling
@@ -916,14 +927,14 @@ pub enum View<M: Clone + Debug> {
         options: Vec<String>,
         selected_index: Option<usize>,
         on_select: Option<SelectCallback<M>>,
-        style: Option<Style>,  // ✅ NEW: Unified styling support
+        style: Option<Style>, // ✅ NEW: Unified styling support
     },
 
     /// List with optional styling
     List {
         items: Vec<View<M>>,
-        spacing: u16,        // Legacy field
-        style: Option<Style>,  // ✅ NEW: Takes priority over spacing
+        spacing: u16,         // Legacy field
+        style: Option<Style>, // ✅ NEW: Takes priority over spacing
     },
 
     /// Table with optional styling
@@ -932,7 +943,7 @@ pub enum View<M: Clone + Debug> {
         rows: Vec<Vec<View<M>>>,
         spacing: u16,
         col_spacing: u16,
-        style: Option<Style>,  // ✅ NEW: Unified styling support
+        style: Option<Style>, // ✅ NEW: Unified styling support
         /// Plan 045 T7: 表键观测口（"t{block_hash}"，autodown_render 装配）
         /// ——snapshot/mcp 寻址用（resize_col 按键落 state），不进渲染面。
         table_key: Option<String>,
@@ -961,7 +972,7 @@ pub enum View<M: Clone + Debug> {
 
     /// Progress bar for displaying progress with optional styling
     ProgressBar {
-        progress: f32,  // 0.0 to 1.0
+        progress: f32, // 0.0 to 1.0
         style: Option<Style>,
         /// **可拖拽进度条**（`onseek` prop）：按下或按住拖动时，把指针在该
         /// 元素 bounds 内的横向位置换算成 **0..1 的比例**交给这个回调。
@@ -980,7 +991,7 @@ pub enum View<M: Clone + Debug> {
     /// Plan 010: Unified Navigation Components
     Accordion {
         items: Vec<AccordionItem<M>>,
-        allow_multiple: bool,  // Allow multiple sections expanded
+        allow_multiple: bool, // Allow multiple sections expanded
         on_toggle: Option<AccordionToggleCallback<M>>,
         style: Option<Style>,
     },
@@ -1020,10 +1031,7 @@ pub enum View<M: Clone + Debug> {
     },
 
     /// Image from URL with optional styling
-    Image {
-        src: String,
-        style: Option<Style>,
-    },
+    Image { src: String, style: Option<Style> },
 
     /// Plan 547: asynchronous image surface backed by an opaque media URI.
     ImageSurface {
@@ -1307,7 +1315,10 @@ pub struct ElementHitHandler<M> {
 impl<M> std::fmt::Debug for ElementHitHandler<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.label {
-            Some(name) => f.debug_struct("ElementHitHandler").field("event", name).finish(),
+            Some(name) => f
+                .debug_struct("ElementHitHandler")
+                .field("event", name)
+                .finish(),
             None => f.debug_struct("ElementHitHandler").finish(),
         }
     }
@@ -1318,7 +1329,10 @@ impl<M> ElementHitHandler<M> {
     where
         F: Fn(String) -> M + Send + Sync + 'static,
     {
-        Self { callback: Arc::new(f), label: None }
+        Self {
+            callback: Arc::new(f),
+            label: None,
+        }
     }
 
     /// 带事件名标签构造（快照 actions 挂 press 的 handler 名来源）。
@@ -1326,7 +1340,10 @@ impl<M> ElementHitHandler<M> {
     where
         F: Fn(String) -> M + Send + Sync + 'static,
     {
-        Self { callback: Arc::new(f), label: Some(Arc::from(label)) }
+        Self {
+            callback: Arc::new(f),
+            label: Some(Arc::from(label)),
+        }
     }
 
     pub fn call(&self, element_id: String) -> M {
@@ -1596,7 +1613,9 @@ impl<M: Clone + Debug> ViewBuilder<M> {
         let existing = self.style.take().unwrap_or_default();
         // Merge: keep existing builder-method classes, then add parsed classes
         let mut merged = existing;
-        for c in parsed.classes { merged = merged.add(c); }
+        for c in parsed.classes {
+            merged = merged.add(c);
+        }
         self.style = Some(merged);
         self
     }
@@ -1775,15 +1794,17 @@ impl<M: Clone + Debug> ViewBuilder<M> {
                 spacing: self.spacing,
                 padding: self.padding,
                 style: self.style,
-            onclick: self.button_onclick.take(), on_right_click: self.button_on_right_click.take(),
-        },
+                onclick: self.button_onclick.take(),
+                on_right_click: self.button_on_right_click.take(),
+            },
             ViewBuilderKind::Column => View::Column {
                 children: self.children,
                 spacing: self.spacing,
                 padding: self.padding,
                 style: self.style,
-            onclick: self.button_onclick.take(), on_right_click: self.button_on_right_click.take(),
-        },
+                onclick: self.button_onclick.take(),
+                on_right_click: self.button_on_right_click.take(),
+            },
             ViewBuilderKind::Text => View::Text {
                 content: self.text_content,
                 style: self.style,
@@ -1792,7 +1813,9 @@ impl<M: Clone + Debug> ViewBuilder<M> {
             ViewBuilderKind::Button => View::Button {
                 disabled: false,
                 label: self.button_label,
-                onclick: self.button_onclick.unwrap_or_else(|| panic!("button requires onclick")),
+                onclick: self
+                    .button_onclick
+                    .unwrap_or_else(|| panic!("button requires onclick")),
                 on_right_click: self.button_on_right_click,
                 style: self.style,
                 content: None,
@@ -1865,7 +1888,10 @@ impl<M: Clone + Debug> View<M> {
 
     /// Create image view
     pub fn image(src: impl Into<String>) -> Self {
-        View::Image { src: src.into(), style: None }
+        View::Image {
+            src: src.into(),
+            style: None,
+        }
     }
 
     pub fn image_surface(src: impl Into<String>) -> Self {
@@ -2020,7 +2046,7 @@ impl<M: Clone + Debug> View<M> {
             on_submit: None,
             width: None,
             password: false,
-            style: None,  // ✅ NEW: style field
+            style: None, // ✅ NEW: style field
         }
     }
 
@@ -2067,7 +2093,7 @@ impl<M: Clone + Debug> View<M> {
             is_checked,
             label: label.into(),
             on_toggle: None,
-            style: None,  // ✅ NEW: style field
+            style: None, // ✅ NEW: style field
         }
     }
 
@@ -2077,7 +2103,7 @@ impl<M: Clone + Debug> View<M> {
             label: label.into(),
             is_selected,
             on_select: None,
-            style: None,  // ✅ NEW: style field
+            style: None, // ✅ NEW: style field
         }
     }
 
@@ -2087,7 +2113,7 @@ impl<M: Clone + Debug> View<M> {
             options,
             selected_index: None,
             on_select: None,
-            style: None,  // ✅ NEW: style field
+            style: None, // ✅ NEW: style field
         }
     }
 
@@ -2096,7 +2122,7 @@ impl<M: Clone + Debug> View<M> {
         ViewListBuilder {
             items,
             spacing: 0,
-            style: None,  // ✅ NEW: style field
+            style: None, // ✅ NEW: style field
         }
     }
 
@@ -2107,8 +2133,8 @@ impl<M: Clone + Debug> View<M> {
             rows,
             spacing: 0,
             col_spacing: 0,
-            style: None,  // ✅ NEW: style field
-            col_widths: None,  // Plan 045 T1
+            style: None,      // ✅ NEW: style field
+            col_widths: None, // Plan 045 T1
         }
     }
 
@@ -2193,7 +2219,7 @@ impl<M: Clone + Debug> View<M> {
             height: None,
             center_x: false,
             center_y: false,
-            style: None,  // ✅ NEW: style field
+            style: None, // ✅ NEW: style field
         }
     }
 
@@ -2216,7 +2242,7 @@ impl<M: Clone + Debug> View<M> {
             child,
             width: None,
             height: None,
-            style: None,  // ✅ NEW: style field
+            style: None, // ✅ NEW: style field
             auto_scroll: false,
             offset: None,
             on_scroll: None,
@@ -2341,7 +2367,10 @@ impl<M: Clone + Debug> View<M> {
     /// // EditorPanel has its own EditorPanelMsg, but App needs View<AppMsg>
     /// editor_panel.view().map_msg(|m| AppMsg::EditorPanel(m))
     /// ```
-    pub fn map_msg<N: Clone + Debug + 'static>(self, f: impl Fn(M) -> N + Send + Sync + 'static) -> View<N>
+    pub fn map_msg<N: Clone + Debug + 'static>(
+        self,
+        f: impl Fn(M) -> N + Send + Sync + 'static,
+    ) -> View<N>
     where
         M: 'static,
     {
@@ -2350,7 +2379,10 @@ impl<M: Clone + Debug> View<M> {
     }
 
     /// Internal: recurse with a shared Arc<dyn Fn> to avoid impl Fn type issues.
-    fn map_msg_with_arc<N: Clone + Debug + 'static>(self, f: &std::sync::Arc<dyn Fn(M) -> N + Send + Sync>) -> View<N>
+    fn map_msg_with_arc<N: Clone + Debug + 'static>(
+        self,
+        f: &std::sync::Arc<dyn Fn(M) -> N + Send + Sync>,
+    ) -> View<N>
     where
         M: 'static,
     {
@@ -2359,14 +2391,23 @@ impl<M: Clone + Debug> View<M> {
             // F-UAT-2: Rich 无消息载荷（spans 纯内容），恒等映射。
             View::Rich { spans, style } => View::Rich { spans, style },
             // PLAN-066: Custom 事件消息同源映射（name/props/style 原样透传）。
-            View::Custom { name, props, events, style } => View::Custom {
+            View::Custom {
+                name,
+                props,
+                events,
+                style,
+            } => View::Custom {
                 name,
                 props,
                 events: events.into_iter().map(|(n, m)| (n, f(m))).collect(),
                 style,
             },
             // Plan 409 §10 续 5: Overlay 递归映射 base + content 的 message。
-            View::Overlay { base, content, position } => View::Overlay {
+            View::Overlay {
+                base,
+                content,
+                position,
+            } => View::Overlay {
                 base: Box::new(base.map_msg_with_arc(f)),
                 content: Box::new(content.map_msg_with_arc(f)),
                 position,
@@ -2380,7 +2421,18 @@ impl<M: Clone + Debug> View<M> {
             // Plan 496 M5: 增 on_double_click 映射。
             // Plan 498 M0: 增 on_click 映射。
             // Plan 499 M2: 增 on_move 复合映射(handler 产出 M 经 f 转 N)。
-            View::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => View::MouseArea {
+            View::MouseArea {
+                content,
+                on_enter,
+                on_exit,
+                on_double_click,
+                on_click,
+                on_context_menu,
+                on_release,
+                on_move,
+                logical_extent,
+                style,
+            } => View::MouseArea {
                 content: Box::new(content.map_msg_with_arc(f)),
                 on_enter: on_enter.map(|m| f(m)),
                 on_exit: on_exit.map(|m| f(m)),
@@ -2397,7 +2449,16 @@ impl<M: Clone + Debug> View<M> {
             },
             // Plan 563: Canvas 无子视图;三个 pen handler 复合映射
             // (handler 产出 M 经 f 转 N,MouseArea.on_move 同型)。
-            View::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, on_hit, style } => View::Canvas {
+            View::Canvas {
+                scene,
+                logical_extent,
+                clear,
+                on_pen_start,
+                on_pen_move,
+                on_pen_end,
+                on_hit,
+                style,
+            } => View::Canvas {
                 scene,
                 logical_extent,
                 clear,
@@ -2422,7 +2483,13 @@ impl<M: Clone + Debug> View<M> {
                 style,
             },
             // Plan 422: Popover 递归映射 anchor/widget + content + on_dismiss。
-            View::Popover { anchor, content, placement, open, on_dismiss } => {
+            View::Popover {
+                anchor,
+                content,
+                placement,
+                open,
+                on_dismiss,
+            } => {
                 let anchor = match anchor {
                     PopoverAnchor::Widget(w) => {
                         PopoverAnchor::Widget(Box::new(w.map_msg_with_arc(f)))
@@ -2437,8 +2504,23 @@ impl<M: Clone + Debug> View<M> {
                     on_dismiss: on_dismiss.map(|m| f(m)),
                 }
             }
-            View::Text { content, style, selectable } => View::Text { content, style, selectable },
-            View::Button { label, content, onclick, style, on_right_click, disabled } => View::Button {
+            View::Text {
+                content,
+                style,
+                selectable,
+            } => View::Text {
+                content,
+                style,
+                selectable,
+            },
+            View::Button {
+                label,
+                content,
+                onclick,
+                style,
+                on_right_click,
+                disabled,
+            } => View::Button {
                 label,
                 content: content.map(|c| Box::new(c.map_msg_with_arc(f))),
                 onclick: f(onclick),
@@ -2446,29 +2528,62 @@ impl<M: Clone + Debug> View<M> {
                 on_right_click: on_right_click.map(|rc| f(rc)),
                 disabled,
             },
-            View::Row { children, spacing, padding, style, onclick, on_right_click } => View::Row {
-                children: children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
+            View::Row {
+                children,
+                spacing,
+                padding,
+                style,
+                onclick,
+                on_right_click,
+            } => View::Row {
+                children: children
+                    .into_iter()
+                    .map(|c| c.map_msg_with_arc(f))
+                    .collect(),
                 spacing,
                 padding,
                 style,
                 onclick: onclick.map(|m| f(m)),
                 on_right_click: on_right_click.map(|m| f(m)),
             },
-            View::Column { children, spacing, padding, style, onclick, on_right_click } => View::Column {
-                children: children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
+            View::Column {
+                children,
+                spacing,
+                padding,
+                style,
+                onclick,
+                on_right_click,
+            } => View::Column {
+                children: children
+                    .into_iter()
+                    .map(|c| c.map_msg_with_arc(f))
+                    .collect(),
                 spacing,
                 padding,
                 style,
                 onclick: onclick.map(|m| f(m)),
                 on_right_click: on_right_click.map(|m| f(m)),
             },
-            View::Grid { cols, gap, cells, style } => View::Grid {
+            View::Grid {
+                cols,
+                gap,
+                cells,
+                style,
+            } => View::Grid {
                 cols,
                 gap,
                 cells: cells.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 style,
             },
-            View::Input { placeholder, value, on_change, on_submit, width, password, style } => View::Input {
+            View::Input {
+                placeholder,
+                value,
+                on_change,
+                on_submit,
+                width,
+                password,
+                style,
+            } => View::Input {
                 placeholder,
                 value,
                 on_change: on_change.map(|m| f(m)),
@@ -2477,7 +2592,18 @@ impl<M: Clone + Debug> View<M> {
                 password,
                 style,
             },
-            View::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost, keydown, keymap } => View::Textarea {
+            View::Textarea {
+                placeholder,
+                value,
+                on_change,
+                on_submit,
+                height,
+                style,
+                highlight,
+                ghost,
+                keydown,
+                keymap,
+            } => View::Textarea {
                 placeholder,
                 value,
                 on_change: on_change.map(|m| f(m)),
@@ -2487,9 +2613,25 @@ impl<M: Clone + Debug> View<M> {
                 highlight,
                 ghost,
                 keydown: keydown.into_iter().map(|(k, m)| (k, f(m))).collect(),
-                    keymap,
+                keymap,
             },
-            View::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, readonly, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style } => View::CodeEditor {
+            View::CodeEditor {
+                key,
+                value,
+                lang,
+                line_numbers,
+                wrap,
+                vi,
+                highlight_current_line,
+                readonly,
+                tab_width,
+                font_size,
+                on_change,
+                on_cursor,
+                on_context_menu,
+                search,
+                style,
+            } => View::CodeEditor {
                 key,
                 value,
                 lang,
@@ -2507,10 +2649,34 @@ impl<M: Clone + Debug> View<M> {
                 style,
             },
             // PLAN-656 T-06: managed content 纯数据透传。
-            View::ManagedScrollContent { key, logical_w, logical_h, axes } => {
-                View::ManagedScrollContent { key, logical_w, logical_h, axes }
-            }
-            View::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, history, scheme, shortcuts, style } => View::Terminal {
+            View::ManagedScrollContent {
+                key,
+                logical_w,
+                logical_h,
+                axes,
+            } => View::ManagedScrollContent {
+                key,
+                logical_w,
+                logical_h,
+                axes,
+            },
+            View::Terminal {
+                key,
+                cols,
+                rows,
+                lines,
+                scroll_offset,
+                preedit,
+                on_select,
+                on_menu,
+                on_input,
+                cursor_row,
+                cursor_col,
+                history,
+                scheme,
+                shortcuts,
+                style,
+            } => View::Terminal {
                 key,
                 cols,
                 rows,
@@ -2527,7 +2693,16 @@ impl<M: Clone + Debug> View<M> {
                 shortcuts: shortcuts.into_iter().map(|(k, m)| (k, f(m))).collect(),
                 style,
             },
-            View::AutodownEditor { key, value, is_final, on_change, on_focus, on_link, placeholder, style } => View::AutodownEditor {
+            View::AutodownEditor {
+                key,
+                value,
+                is_final,
+                on_change,
+                on_focus,
+                on_link,
+                placeholder,
+                style,
+            } => View::AutodownEditor {
                 key,
                 value,
                 is_final,
@@ -2546,13 +2721,28 @@ impl<M: Clone + Debug> View<M> {
                 placeholder,
                 style,
             },
-            View::Checkbox { is_checked, label, on_toggle, style } => View::Checkbox {
+            View::Checkbox {
+                is_checked,
+                label,
+                on_toggle,
+                style,
+            } => View::Checkbox {
                 is_checked,
                 label,
                 on_toggle: on_toggle.map(|m| f(m)),
                 style,
             },
-            View::Container { child, padding, width, height, center_x, center_y, style, onclick, on_right_click } => View::Container {
+            View::Container {
+                child,
+                padding,
+                width,
+                height,
+                center_x,
+                center_y,
+                style,
+                onclick,
+                on_right_click,
+            } => View::Container {
                 child: Box::new(child.map_msg_with_arc(f)),
                 padding,
                 width,
@@ -2563,7 +2753,18 @@ impl<M: Clone + Debug> View<M> {
                 onclick: onclick.map(|m| f(m)),
                 on_right_click: on_right_click.map(|m| f(m)),
             },
-            View::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll, axes, scrollbar_policy, controller } => {
+            View::Scrollable {
+                child,
+                width,
+                height,
+                style,
+                auto_scroll,
+                offset,
+                on_scroll,
+                axes,
+                scrollbar_policy,
+                controller,
+            } => {
                 // Plan 043 T1: offset 透传;on_scroll 为 ScrollCallback
                 // newtype,可包装换消息类型(PointerMoveHandler 同款)。
                 // PLAN-656: axes/policy/controller 为纯数据,直接透传。
@@ -2583,7 +2784,12 @@ impl<M: Clone + Debug> View<M> {
                     controller,
                 }
             }
-            View::Radio { label, is_selected, on_select, style } => View::Radio {
+            View::Radio {
+                label,
+                is_selected,
+                on_select,
+                style,
+            } => View::Radio {
                 label,
                 is_selected,
                 on_select: on_select.map(|m| f(m)),
@@ -2592,35 +2798,66 @@ impl<M: Clone + Debug> View<M> {
             View::Image { src, style } => View::Image { src, style },
             // PLAN-712 T-04: Video 携带上行 handler，随消息类型重映射
             //（ScrollCallback 臂同款 Arc 包装）。
-            View::Video { src, paused, position, volume, muted, rate, label, on_time_update, on_loaded_metadata, on_play_state, on_ended, on_media_error, style } =>
-                View::Video {
-                    src,
-                    paused,
-                    position,
-                    volume,
-                    muted,
-                    rate,
-                    label,
-                    on_time_update: on_time_update.map(|cb| {
-                        let f = std::sync::Arc::clone(f);
-                        MediaEventHandler::new(move |p| f(cb.call(p)))
-                    }),
-                    on_loaded_metadata: on_loaded_metadata.map(|cb| {
-                        let f = std::sync::Arc::clone(f);
-                        MediaEventHandler::new(move |p| f(cb.call(p)))
-                    }),
-                    on_play_state: on_play_state.map(|cb| {
-                        let f = std::sync::Arc::clone(f);
-                        MediaEventHandler::new(move |p| f(cb.call(p)))
-                    }),
-                    on_ended: on_ended.map(|m| f(m)),
-                    on_media_error: on_media_error.map(|cb| {
-                        let f = std::sync::Arc::clone(f);
-                        MediaEventHandler::new(move |p| f(cb.call(p)))
-                    }),
-                    style,
-                },
-            View::ImageSurface { src, alt, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, style } => View::ImageSurface {
+            View::Video {
+                src,
+                paused,
+                position,
+                volume,
+                muted,
+                rate,
+                label,
+                on_time_update,
+                on_loaded_metadata,
+                on_play_state,
+                on_ended,
+                on_media_error,
+                style,
+            } => View::Video {
+                src,
+                paused,
+                position,
+                volume,
+                muted,
+                rate,
+                label,
+                on_time_update: on_time_update.map(|cb| {
+                    let f = std::sync::Arc::clone(f);
+                    MediaEventHandler::new(move |p| f(cb.call(p)))
+                }),
+                on_loaded_metadata: on_loaded_metadata.map(|cb| {
+                    let f = std::sync::Arc::clone(f);
+                    MediaEventHandler::new(move |p| f(cb.call(p)))
+                }),
+                on_play_state: on_play_state.map(|cb| {
+                    let f = std::sync::Arc::clone(f);
+                    MediaEventHandler::new(move |p| f(cb.call(p)))
+                }),
+                on_ended: on_ended.map(|m| f(m)),
+                on_media_error: on_media_error.map(|cb| {
+                    let f = std::sync::Arc::clone(f);
+                    MediaEventHandler::new(move |p| f(cb.call(p)))
+                }),
+                style,
+            },
+            View::ImageSurface {
+                src,
+                alt,
+                width,
+                height,
+                quality,
+                fit,
+                zoom,
+                offset_x,
+                offset_y,
+                rotation,
+                filter,
+                on_error,
+                on_loaded,
+                on_wheel,
+                on_pan,
+                on_double_click,
+                style,
+            } => View::ImageSurface {
                 src,
                 alt,
                 width,
@@ -2639,31 +2876,54 @@ impl<M: Clone + Debug> View<M> {
                 on_double_click: on_double_click.map(|m| f(m)),
                 style,
             },
-            View::WindowThumbnail { wid, fallback_icon, style } => {
-                View::WindowThumbnail { wid, fallback_icon, style }
-            }
+            View::WindowThumbnail {
+                wid,
+                fallback_icon,
+                style,
+            } => View::WindowThumbnail {
+                wid,
+                fallback_icon,
+                style,
+            },
             // PLAN-012 W3：显式臂（A1 fence——缺臂落 Empty 兜底）。
-            View::WorkspacePreview { ws, fallback_icon, style } => {
-                View::WorkspacePreview { ws, fallback_icon, style }
-            }
+            View::WorkspacePreview {
+                ws,
+                fallback_icon,
+                style,
+            } => View::WorkspacePreview {
+                ws,
+                fallback_icon,
+                style,
+            },
             // on_seek 是「值 → 消息」的构造器，map 只换消息类型，故按同一
             // 回调重建（PointerMoveHandler 的闭包对 M 泛型，需包一层）。
-            View::ProgressBar { progress, style, on_seek } => View::ProgressBar {
+            View::ProgressBar {
+                progress,
+                style,
+                on_seek,
+            } => View::ProgressBar {
                 progress,
                 style,
                 on_seek: on_seek.map(|h| {
                     let f = std::sync::Arc::clone(f);
-                    crate::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {
-                        f(h.call(x, y))
-                    })
+                    crate::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| f(h.call(x, y)))
                 }),
             },
-            View::List { items, spacing, style } => View::List {
+            View::List {
+                items,
+                spacing,
+                style,
+            } => View::List {
                 items: items.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
                 spacing,
                 style,
             },
-            View::Select { options, selected_index, on_select, style } => View::Select {
+            View::Select {
+                options,
+                selected_index,
+                on_select,
+                style,
+            } => View::Select {
                 options,
                 selected_index,
                 on_select: on_select.map(|cb| {
@@ -2672,9 +2932,19 @@ impl<M: Clone + Debug> View<M> {
                 }),
                 style,
             },
-            View::Table { headers, rows, spacing, col_spacing, style, table_key, col_widths, on_col_resize } => View::Table {
+            View::Table {
+                headers,
+                rows,
+                spacing,
+                col_spacing,
+                style,
+                table_key,
+                col_widths,
+                on_col_resize,
+            } => View::Table {
                 headers: headers.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
-                rows: rows.into_iter()
+                rows: rows
+                    .into_iter()
                     .map(|row| row.into_iter().map(|c| c.map_msg_with_arc(f)).collect())
                     .collect(),
                 spacing,
@@ -2689,7 +2959,14 @@ impl<M: Clone + Debug> View<M> {
                     ColResizeCallback::new(move |m| f(cb.call(m)))
                 }),
             },
-            View::Slider { min, max, value, on_change, step, style } => View::Slider {
+            View::Slider {
+                min,
+                max,
+                value,
+                on_change,
+                step,
+                style,
+            } => View::Slider {
                 min,
                 max,
                 value,
@@ -2702,13 +2979,25 @@ impl<M: Clone + Debug> View<M> {
                     SliderChangeHandler::new(move |v| f(cb.call(v)))
                 }),
             },
-            View::Accordion { items, allow_multiple, on_toggle, style } => View::Accordion {
-                items: items.into_iter().map(|item| AccordionItem {
-                    title: item.title,
-                    icon: item.icon,
-                    children: item.children.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
-                    expanded: item.expanded,
-                }).collect(),
+            View::Accordion {
+                items,
+                allow_multiple,
+                on_toggle,
+                style,
+            } => View::Accordion {
+                items: items
+                    .into_iter()
+                    .map(|item| AccordionItem {
+                        title: item.title,
+                        icon: item.icon,
+                        children: item
+                            .children
+                            .into_iter()
+                            .map(|c| c.map_msg_with_arc(f))
+                            .collect(),
+                        expanded: item.expanded,
+                    })
+                    .collect(),
                 allow_multiple,
                 on_toggle: on_toggle.map(|cb| {
                     let f = std::sync::Arc::clone(f);
@@ -2716,16 +3005,33 @@ impl<M: Clone + Debug> View<M> {
                 }),
                 style,
             },
-            View::Sidebar { content, width, collapsible, position, style } => View::Sidebar {
+            View::Sidebar {
+                content,
+                width,
+                collapsible,
+                position,
+                style,
+            } => View::Sidebar {
                 content: Box::new(content.map_msg_with_arc(f)),
                 width,
                 collapsible,
                 position,
                 style,
             },
-            View::Tabs { labels, contents, selected, position, on_select, style, variant } => View::Tabs {
+            View::Tabs {
                 labels,
-                contents: contents.into_iter().map(|c| c.map_msg_with_arc(f)).collect(),
+                contents,
+                selected,
+                position,
+                on_select,
+                style,
+                variant,
+            } => View::Tabs {
+                labels,
+                contents: contents
+                    .into_iter()
+                    .map(|c| c.map_msg_with_arc(f))
+                    .collect(),
                 selected,
                 position,
                 on_select: on_select.map(|cb| {
@@ -2735,7 +3041,14 @@ impl<M: Clone + Debug> View<M> {
                 style,
                 variant,
             },
-            View::NavigationRail { items, selected, width, show_labels, on_select, style } => View::NavigationRail {
+            View::NavigationRail {
+                items,
+                selected,
+                width,
+                show_labels,
+                on_select,
+                style,
+            } => View::NavigationRail {
                 items,
                 selected,
                 width,
@@ -2755,7 +3068,7 @@ pub struct ViewScrollableBuilder<M: Clone + Debug> {
     child: View<M>,
     width: Option<u16>,
     height: Option<u16>,
-    style: Option<Style>,  // ✅ NEW: Unified styling support
+    style: Option<Style>, // ✅ NEW: Unified styling support
     auto_scroll: bool,
     /// Plan 043 T1: 滚动位置写入绑定（绝对像素偏移）。
     offset: Option<(f32, f32)>,
@@ -2854,7 +3167,7 @@ impl<M: Clone + Debug> ViewScrollableBuilder<M> {
 pub struct ViewListBuilder<M: Clone + Debug> {
     items: Vec<View<M>>,
     spacing: u16,
-    style: Option<Style>,  // ✅ NEW: Unified styling support
+    style: Option<Style>, // ✅ NEW: Unified styling support
 }
 
 impl<M: Clone + Debug> ViewListBuilder<M> {
@@ -2894,7 +3207,7 @@ pub struct ViewInputBuilder<M: Clone + Debug> {
     on_submit: Option<M>,
     width: Option<u16>,
     password: bool,
-    style: Option<Style>,  // ✅ NEW: Unified styling support
+    style: Option<Style>, // ✅ NEW: Unified styling support
 }
 
 impl<M: Clone + Debug> ViewInputBuilder<M> {
@@ -2958,7 +3271,9 @@ impl<M: Clone + Debug> ViewInputBuilder<M> {
         let existing = self.style.take().unwrap_or_default();
         let parsed = Style::parse(style_str).expect("Invalid style string");
         let mut merged = existing;
-        for c in parsed.classes { merged = merged.add(c); }
+        for c in parsed.classes {
+            merged = merged.add(c);
+        }
         self.style = Some(merged);
         self
     }
@@ -3074,7 +3389,9 @@ impl<M: Clone + Debug> ViewTextareaBuilder<M> {
         let existing = self.style.take().unwrap_or_default();
         let parsed = Style::parse(style_str).expect("Invalid style string");
         let mut merged = existing;
-        for c in parsed.classes { merged = merged.add(c); }
+        for c in parsed.classes {
+            merged = merged.add(c);
+        }
         self.style = Some(merged);
         self
     }
@@ -3139,7 +3456,6 @@ impl<M: Clone + Debug> ViewTextareaBuilder<M> {
         }
     }
 }
-
 
 /// Builder for CodeEditor with fluent API (Plan 413).
 pub struct ViewCodeEditorBuilder<M: Clone + Debug> {
@@ -3239,7 +3555,9 @@ impl<M: Clone + Debug> ViewCodeEditorBuilder<M> {
         let existing = self.style.take().unwrap_or_default();
         let parsed = Style::parse(style_str).expect("Invalid style string");
         let mut merged = existing;
-        for c in parsed.classes { merged = merged.add(c); }
+        for c in parsed.classes {
+            merged = merged.add(c);
+        }
         self.style = Some(merged);
         self
     }
@@ -3271,7 +3589,7 @@ pub struct ViewTableBuilder<M: Clone + Debug> {
     rows: Vec<Vec<View<M>>>,
     spacing: u16,
     col_spacing: u16,
-    style: Option<Style>,  // ✅ NEW: Unified styling support
+    style: Option<Style>, // ✅ NEW: Unified styling support
     /// Plan 045 T1: 列宽应用（px）；None = 自然宽（现状）。
     col_widths: Option<Vec<f32>>,
 }
@@ -3315,9 +3633,9 @@ impl<M: Clone + Debug> ViewTableBuilder<M> {
             spacing: self.spacing,
             col_spacing: self.col_spacing,
             style: self.style,
-            table_key: None,  // Plan 045 T7: render 装配面填
+            table_key: None, // Plan 045 T7: render 装配面填
             col_widths: self.col_widths,
-            on_col_resize: None,  // Plan 045 T1: 拖拽通道由 render 装配面直构
+            on_col_resize: None, // Plan 045 T1: 拖拽通道由 render 装配面直构
         }
     }
 }
@@ -3381,7 +3699,7 @@ pub struct ViewContainerBuilder<M: Clone + Debug> {
     height: Option<u16>,
     center_x: bool,
     center_y: bool,
-    style: Option<Style>,  // ✅ NEW: Unified styling support
+    style: Option<Style>, // ✅ NEW: Unified styling support
 }
 
 impl<M: Clone + Debug> ViewContainerBuilder<M> {
@@ -3450,7 +3768,8 @@ impl<M: Clone + Debug> ViewContainerBuilder<M> {
             center_x: self.center_x,
             center_y: self.center_y,
             style: self.style,
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
 }
@@ -3729,14 +4048,22 @@ impl<M: Clone + Debug> TextArg<M> for () {
 impl<M: Clone + Debug> TextArg<M> for &str {
     type Output = View<M>;
     fn into_text(self) -> View<M> {
-        View::Text { content: self.to_string(), style: None, selectable: false }
+        View::Text {
+            content: self.to_string(),
+            style: None,
+            selectable: false,
+        }
     }
 }
 
 impl<M: Clone + Debug> TextArg<M> for String {
     type Output = View<M>;
     fn into_text(self) -> View<M> {
-        View::Text { content: self, style: None, selectable: false }
+        View::Text {
+            content: self,
+            style: None,
+            selectable: false,
+        }
     }
 }
 
@@ -3791,8 +4118,8 @@ impl<M: Clone + Debug> ButtonArg<M> for (String, M) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::style::{Style, StyleClass};
+    use super::*;
 
     #[derive(Clone, Copy, Debug)]
     enum TestMsg {
@@ -3862,7 +4189,9 @@ mod tests {
                 let classes = &style.unwrap().classes;
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::PaddingX(_))));
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::PaddingY(_))));
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::BackgroundColor(_))));
             }
             _ => panic!("Expected View::Button"),
         }
@@ -3870,9 +4199,7 @@ mod tests {
 
     #[test]
     fn test_row_with_style() {
-        let view: TestView = View::row()
-            .style("gap-4 p-4 bg-white")
-            .build();
+        let view: TestView = View::row().style("gap-4 p-4 bg-white").build();
         match view {
             View::Row { style, .. } => {
                 assert!(style.is_some());
@@ -3886,9 +4213,7 @@ mod tests {
 
     #[test]
     fn test_column_with_style() {
-        let view: TestView = View::col()
-            .style("gap-2 p-6 flex flex-col")
-            .build();
+        let view: TestView = View::col().style("gap-2 p-6 flex flex-col").build();
         match view {
             View::Column { style, .. } => {
                 assert!(style.is_some());
@@ -3912,7 +4237,9 @@ mod tests {
                 assert!(style.is_some());
                 let classes = &style.unwrap().classes;
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::Padding(_))));
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::BackgroundColor(_))));
             }
             _ => panic!("Expected View::Container"),
         }
@@ -3939,16 +4266,17 @@ mod tests {
         // Plan 043 T1: offset 绑定写入——builder 面求值出的 (x,y) 落进
         // View::Scrollable.offset，map_msg 换消息类型时原值透传。
         let child = View::text("scroll body");
-        let view: TestView = View::scrollable(child)
-            .offset((0.0, 128.5))
-            .build();
+        let view: TestView = View::scrollable(child).offset((0.0, 128.5)).build();
         match &view {
             View::Scrollable { offset, .. } => assert_eq!(*offset, Some((0.0, 128.5))),
             _ => panic!("Expected View::Scrollable"),
         }
         let mapped = view.map_msg(|m| m);
         match mapped {
-            View::Scrollable { offset: Some((x, y)), .. } => {
+            View::Scrollable {
+                offset: Some((x, y)),
+                ..
+            } => {
                 assert!((x - 0.0).abs() < f32::EPSILON && (y - 128.5).abs() < f32::EPSILON);
             }
             _ => panic!("Expected View::Scrollable with offset"),
@@ -3974,10 +4302,18 @@ mod tests {
             style: None,
         };
         match view {
-            View::AutodownEditor { on_focus: Some(cb), .. } => {
-                let msg = cb.call(FocusMetrics { block: Some(2), height: 128.5 });
+            View::AutodownEditor {
+                on_focus: Some(cb), ..
+            } => {
+                let msg = cb.call(FocusMetrics {
+                    block: Some(2),
+                    height: 128.5,
+                });
                 assert_eq!(msg, FocusMsg::Focused(Some(2), 128.5));
-                let blur = cb.call(FocusMetrics { block: None, height: 0.0 });
+                let blur = cb.call(FocusMetrics {
+                    block: None,
+                    height: 0.0,
+                });
                 assert_eq!(blur, FocusMsg::Focused(None, 0.0));
             }
             _ => panic!("Expected View::AutodownEditor with on_focus"),
@@ -4003,13 +4339,18 @@ mod tests {
             style: None,
         };
         match &view {
-            View::AutodownEditor { on_link: Some(cb), .. } => {
+            View::AutodownEditor {
+                on_link: Some(cb), ..
+            } => {
                 let msg = cb.call(WikiLinkMetrics {
                     target: "目标页".into(),
                     anchor: "锚点甲".into(),
                 });
                 assert_eq!(msg, LinkMsg::Opened("目标页".into(), "锚点甲".into()));
-                let no_anchor = cb.call(WikiLinkMetrics { target: "无锚页".into(), anchor: String::new() });
+                let no_anchor = cb.call(WikiLinkMetrics {
+                    target: "无锚页".into(),
+                    anchor: String::new(),
+                });
                 assert_eq!(no_anchor, LinkMsg::Opened("无锚页".into(), String::new()));
             }
             _ => panic!("Expected View::AutodownEditor with on_link"),
@@ -4017,8 +4358,13 @@ mod tests {
         // map 换型：LinkCallback 经 map_msg 包装后消息类型转换不丢。
         let mapped = view.map_msg(|m| format!("{m:?}"));
         match mapped {
-            View::AutodownEditor { on_link: Some(cb), .. } => {
-                let msg: String = cb.call(WikiLinkMetrics { target: "目标页".into(), anchor: String::new() });
+            View::AutodownEditor {
+                on_link: Some(cb), ..
+            } => {
+                let msg: String = cb.call(WikiLinkMetrics {
+                    target: "目标页".into(),
+                    anchor: String::new(),
+                });
                 assert!(msg.contains("目标页"), "map 换型保真：{msg}");
             }
             _ => panic!("Expected mapped View::AutodownEditor with on_link"),
@@ -4045,17 +4391,27 @@ mod tests {
         // Plan 043 T1: on_scroll 读出回调——fn 指针收 ScrollMetrics 六测量
         // （Slider on_change 同款先例）。
         #[derive(Debug, Clone, PartialEq)]
-        enum ScrollMsg { Scrolled(f32, f32, f32) }
+        enum ScrollMsg {
+            Scrolled(f32, f32, f32),
+        }
         let child = View::<ScrollMsg>::text("scroll body");
         let view = View::scrollable(child)
-            .on_scroll(|m: ScrollMetrics| ScrollMsg::Scrolled(m.offset_y, m.content_h, m.viewport_h))
+            .on_scroll(|m: ScrollMetrics| {
+                ScrollMsg::Scrolled(m.offset_y, m.content_h, m.viewport_h)
+            })
             .build();
         match view {
-            View::Scrollable { on_scroll: Some(cb), .. } => {
+            View::Scrollable {
+                on_scroll: Some(cb),
+                ..
+            } => {
                 let msg = cb.call(ScrollMetrics {
-                    offset_x: 0.0, offset_y: 42.0,
-                    viewport_w: 100.0, viewport_h: 200.0,
-                    content_w: 100.0, content_h: 800.0,
+                    offset_x: 0.0,
+                    offset_y: 42.0,
+                    viewport_w: 100.0,
+                    viewport_h: 200.0,
+                    content_w: 100.0,
+                    content_h: 800.0,
                 });
                 assert_eq!(msg, ScrollMsg::Scrolled(42.0, 800.0, 200.0));
             }
@@ -4072,7 +4428,11 @@ mod tests {
         )
         .build();
         match view {
-            View::Table { col_widths, on_col_resize, .. } => {
+            View::Table {
+                col_widths,
+                on_col_resize,
+                ..
+            } => {
                 assert!(col_widths.is_none());
                 assert!(on_col_resize.is_none());
             }
@@ -4083,7 +4443,10 @@ mod tests {
             .col_widths(vec![120.0])
             .build();
         match view {
-            View::Table { col_widths: Some(w), .. } => assert_eq!(w, vec![120.0]),
+            View::Table {
+                col_widths: Some(w),
+                ..
+            } => assert_eq!(w, vec![120.0]),
             _ => panic!("Expected View::Table with col_widths"),
         }
     }
@@ -4093,7 +4456,9 @@ mod tests {
         // Plan 045 T1: on_col_resize 读出回调——ColResizeMetrics (col, width)
         // 构造消息（FocusCallback 同款 newtype 形态）。
         #[derive(Debug, Clone, PartialEq)]
-        enum ResizeMsg { Resized(usize, f32) }
+        enum ResizeMsg {
+            Resized(usize, f32),
+        }
         let view = View::Table {
             headers: vec![View::text("A"), View::text("B")],
             rows: vec![vec![View::text("1"), View::text("2")]],
@@ -4102,12 +4467,21 @@ mod tests {
             style: None,
             table_key: None,
             col_widths: Some(vec![100.0, 80.0]),
-            on_col_resize: Some(ColResizeCallback::new(|m| ResizeMsg::Resized(m.col, m.width))),
+            on_col_resize: Some(ColResizeCallback::new(|m| {
+                ResizeMsg::Resized(m.col, m.width)
+            })),
         };
         match view {
-            View::Table { col_widths, on_col_resize: Some(cb), .. } => {
+            View::Table {
+                col_widths,
+                on_col_resize: Some(cb),
+                ..
+            } => {
                 assert_eq!(col_widths, Some(vec![100.0, 80.0]));
-                let msg = cb.call(ColResizeMetrics { col: 1, width: 133.0 });
+                let msg = cb.call(ColResizeMetrics {
+                    col: 1,
+                    width: 133.0,
+                });
                 assert_eq!(msg, ResizeMsg::Resized(1, 133.0));
             }
             _ => panic!("Expected View::Table with on_col_resize"),
@@ -4119,9 +4493,13 @@ mod tests {
         // Plan 045 T1: map_msg 换型——on_col_resize 经 newtype 包装不丢，
         // col_widths 原样透传（ScrollCallback/FocusCallback 同款保证）。
         #[derive(Debug, Clone, PartialEq)]
-        enum A { R(usize, f32) }
+        enum A {
+            R(usize, f32),
+        }
         #[derive(Debug, Clone, PartialEq)]
-        enum B { R(usize, f32) }
+        enum B {
+            R(usize, f32),
+        }
         let view = View::Table {
             headers: vec![View::text("A")],
             rows: vec![vec![View::text("1")]],
@@ -4132,11 +4510,23 @@ mod tests {
             col_widths: Some(vec![64.0]),
             on_col_resize: Some(ColResizeCallback::new(|m| A::R(m.col, m.width))),
         };
-        let mapped: View<B> = view.map_msg(|a| match a { A::R(c, w) => B::R(c, w) });
+        let mapped: View<B> = view.map_msg(|a| match a {
+            A::R(c, w) => B::R(c, w),
+        });
         match mapped {
-            View::Table { col_widths, on_col_resize: Some(cb), .. } => {
+            View::Table {
+                col_widths,
+                on_col_resize: Some(cb),
+                ..
+            } => {
                 assert_eq!(col_widths, Some(vec![64.0]));
-                assert_eq!(cb.call(ColResizeMetrics { col: 0, width: 90.0 }), B::R(0, 90.0));
+                assert_eq!(
+                    cb.call(ColResizeMetrics {
+                        col: 0,
+                        width: 90.0
+                    }),
+                    B::R(0, 90.0)
+                );
             }
             _ => panic!("Expected mapped View::Table"),
         }
@@ -4147,7 +4537,13 @@ mod tests {
     #[test]
     fn plan661_t05_canvas_hit_test() {
         use super::{canvas_hit_test, CanvasNode};
-        let node = |id: &str, x: f32, y: f32, shape: &str, r: Option<f32>, w: Option<f32>, h: Option<f32>| CanvasNode {
+        let node = |id: &str,
+                    x: f32,
+                    y: f32,
+                    shape: &str,
+                    r: Option<f32>,
+                    w: Option<f32>,
+                    h: Option<f32>| CanvasNode {
             id: id.to_string(),
             x,
             y,
@@ -4163,36 +4559,61 @@ mod tests {
         ];
         // circle 圆心与含边界命中。
         assert_eq!(canvas_hit_test(&nodes, 100.0, 100.0), Some("a".to_string()));
-        assert_eq!(canvas_hit_test(&nodes, 120.0, 100.0), Some("a".to_string()), "circle 含边界");
+        assert_eq!(
+            canvas_hit_test(&nodes, 120.0, 100.0),
+            Some("a".to_string()),
+            "circle 含边界"
+        );
         assert_eq!(canvas_hit_test(&nodes, 120.1, 100.0), None, "出界不命中");
         // rect 中心 ±w/2、±h/2。
-        assert_eq!(canvas_hit_test(&nodes, 220.0, 110.0), Some("b".to_string()), "rect 边界内");
+        assert_eq!(
+            canvas_hit_test(&nodes, 220.0, 110.0),
+            Some("b".to_string()),
+            "rect 边界内"
+        );
         assert_eq!(canvas_hit_test(&nodes, 220.0, 110.1), None, "rect 高度出界");
         // topmost：重叠时后声明者胜（倒序扫描）。
         let stacked = vec![
             node("bottom", 300.0, 300.0, "circle", Some(30.0), None, None),
             node("top", 300.0, 300.0, "circle", Some(30.0), None, None),
         ];
-        assert_eq!(canvas_hit_test(&stacked, 300.0, 300.0), Some("top".to_string()));
+        assert_eq!(
+            canvas_hit_test(&stacked, 300.0, 300.0),
+            Some("top".to_string())
+        );
         // 空表 = 未命中。
         assert_eq!(canvas_hit_test(&[], 0.0, 0.0), None);
     }
 
     #[test]
-    fn test_slider_map_msg_remaps_change_handler() {        // PLAN-661 T-02: map_msg 换型——on_change 经 SliderChangeHandler
+    fn test_slider_map_msg_remaps_change_handler() {
+        // PLAN-661 T-02: map_msg 换型——on_change 经 SliderChangeHandler
         // newtype 包装不丢（此前 fn 指针形态该臂为 panic 占位）；
         // Clone/Debug 携带；None 透传 None。
         #[derive(Debug, Clone, PartialEq)]
-        enum A { SetVol(f32) }
+        enum A {
+            SetVol(f32),
+        }
         #[derive(Debug, Clone, PartialEq)]
-        enum B { SetVol(f32) }
+        enum B {
+            SetVol(f32),
+        }
         let view = View::slider(0.0..=100.0, 30.0)
             .step(1.0)
             .on_change(|v| A::SetVol(v))
             .build();
-        let mapped: View<B> = view.map_msg(|a| match a { A::SetVol(v) => B::SetVol(v) });
+        let mapped: View<B> = view.map_msg(|a| match a {
+            A::SetVol(v) => B::SetVol(v),
+        });
         match mapped {
-            View::Slider { min, max, value, step, on_change: Some(cb), .. } => {
+            View::Slider {
+                min,
+                max,
+                value,
+                step,
+                on_change: Some(cb),
+                ..
+            } => {
                 assert_eq!((min, max, value, step), (0.0, 100.0, 30.0, Some(1.0)));
                 assert_eq!(cb.call(75.0), B::SetVol(75.0));
             }
@@ -4201,7 +4622,9 @@ mod tests {
         // None（无 onchange）透传——map_msg 不凭空造动作面。
         let bare: View<A> = View::slider(0.0..=1.0, 0.5).build();
         match bare.map_msg(|a| a) {
-            View::Slider { on_change: None, .. } => {}
+            View::Slider {
+                on_change: None, ..
+            } => {}
             _ => panic!("Expected bare View::Slider with on_change None"),
         }
     }
@@ -4212,17 +4635,38 @@ mod tests {
         let widths = [100.0f32, 80.0, 60.0];
         let sp = 8.0f32;
         // 边界位置：col0 右缘 100、col1 右缘 188、col2 右缘 256。
-        assert_eq!(col_boundary_hit(100.0, &widths, sp, COL_RESIZE_BAND), Some(0)); // 正中
-        assert_eq!(col_boundary_hit(104.9, &widths, sp, COL_RESIZE_BAND), Some(0)); // 带内上沿
-        assert_eq!(col_boundary_hit(95.1, &widths, sp, COL_RESIZE_BAND), Some(0)); // 带内下沿
-        assert_eq!(col_boundary_hit(188.0, &widths, sp, COL_RESIZE_BAND), Some(1));
-        assert_eq!(col_boundary_hit(256.0, &widths, sp, COL_RESIZE_BAND), Some(2)); // 末列右边界
+        assert_eq!(
+            col_boundary_hit(100.0, &widths, sp, COL_RESIZE_BAND),
+            Some(0)
+        ); // 正中
+        assert_eq!(
+            col_boundary_hit(104.9, &widths, sp, COL_RESIZE_BAND),
+            Some(0)
+        ); // 带内上沿
+        assert_eq!(
+            col_boundary_hit(95.1, &widths, sp, COL_RESIZE_BAND),
+            Some(0)
+        ); // 带内下沿
+        assert_eq!(
+            col_boundary_hit(188.0, &widths, sp, COL_RESIZE_BAND),
+            Some(1)
+        );
+        assert_eq!(
+            col_boundary_hit(256.0, &widths, sp, COL_RESIZE_BAND),
+            Some(2)
+        ); // 末列右边界
         assert_eq!(col_boundary_hit(105.1, &widths, sp, COL_RESIZE_BAND), None); // 带外
         assert_eq!(col_boundary_hit(10.0, &widths, sp, COL_RESIZE_BAND), None); // 列内远离边界
         assert_eq!(col_boundary_hit(0.0, &widths, sp, COL_RESIZE_BAND), None); // 左缘非命中
-        assert_eq!(col_boundary_hit(300.0, &[] as &[f32], sp, COL_RESIZE_BAND), None); // 空表
-        // 单列：唯一边界即其右缘。
-        assert_eq!(col_boundary_hit(52.0, &[50.0], 0.0, COL_RESIZE_BAND), Some(0));
+        assert_eq!(
+            col_boundary_hit(300.0, &[] as &[f32], sp, COL_RESIZE_BAND),
+            None
+        ); // 空表
+           // 单列：唯一边界即其右缘。
+        assert_eq!(
+            col_boundary_hit(52.0, &[50.0], 0.0, COL_RESIZE_BAND),
+            Some(0)
+        );
     }
 
     #[test]
@@ -4243,7 +4687,9 @@ mod tests {
             View::Scrollable { style, .. } => {
                 assert!(style.is_some());
                 let classes = &style.unwrap().classes;
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::OverflowAuto)));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::OverflowAuto)));
             }
             _ => panic!("Expected View::Scrollable"),
         }
@@ -4251,10 +4697,7 @@ mod tests {
 
     #[test]
     fn test_list_with_style() {
-        let view: TestView = View::list(vec![
-            View::text("Item 1"),
-            View::text("Item 2"),
-        ])
+        let view: TestView = View::list(vec![View::text("Item 1"), View::text("Item 2")])
             .style("gap-2 p-4")
             .build();
         match view {
@@ -4271,12 +4714,8 @@ mod tests {
     #[test]
     fn test_table_with_style() {
         let headers = vec![View::text("Header 1"), View::text("Header 2")];
-        let rows = vec![
-            vec![View::text("Cell 1"), View::text("Cell 2")],
-        ];
-        let view: TestView = View::table(headers, rows)
-            .style("border p-4")
-            .build();
+        let rows = vec![vec![View::text("Cell 1"), View::text("Cell 2")]];
+        let view: TestView = View::table(headers, rows).style("border p-4").build();
         match view {
             View::Table { style, .. } => {
                 assert!(style.is_some());
@@ -4331,7 +4770,11 @@ mod tests {
                 assert!(style.is_some());
                 // Both style calls' classes are kept (merge semantics).
                 let classes = &style.as_ref().unwrap().classes;
-                assert!(classes.len() >= 2, "expected merged classes, got {:?}", classes);
+                assert!(
+                    classes.len() >= 2,
+                    "expected merged classes, got {:?}",
+                    classes
+                );
             }
             _ => panic!("Expected View::Row"),
         }
@@ -4372,7 +4815,12 @@ mod tests {
             .child(View::text("Hello"))
             .build();
         match view {
-            View::Column { spacing, padding, style, .. } => {
+            View::Column {
+                spacing,
+                padding,
+                style,
+                ..
+            } => {
                 assert_eq!(spacing, 10);
                 assert_eq!(padding, 20);
                 assert!(style.is_none()); // No style set
@@ -4391,7 +4839,12 @@ mod tests {
             .child(View::text("Hello"))
             .build();
         match view {
-            View::Row { spacing, padding, style, .. } => {
+            View::Row {
+                spacing,
+                padding,
+                style,
+                ..
+            } => {
                 assert_eq!(spacing, 10); // Legacy field preserved
                 assert_eq!(padding, 20); // Legacy field preserved
                 assert!(style.is_some()); // Style also present
@@ -4403,11 +4856,14 @@ mod tests {
     #[test]
     fn test_legacy_api_default_values() {
         // Test that default values work correctly
-        let view: TestView = View::col()
-            .child(View::text("Hello"))
-            .build();
+        let view: TestView = View::col().child(View::text("Hello")).build();
         match view {
-            View::Column { spacing, padding, style, .. } => {
+            View::Column {
+                spacing,
+                padding,
+                style,
+                ..
+            } => {
                 assert_eq!(spacing, 0); // Default
                 assert_eq!(padding, 0); // Default
                 assert!(style.is_none()); // No style
@@ -4434,21 +4890,27 @@ mod tests {
                     .style("gap-2 p-4 bg-gray-100")
                     .child(View::text_styled("Title", "text-lg font-bold"))
                     .child(View::text("Subtitle"))
-                    .build()
+                    .build(),
             )
-            .child(
-                View::button_styled("Click", TestMsg::Click, "px-4 py-2 bg-blue-500")
-            )
+            .child(View::button_styled(
+                "Click",
+                TestMsg::Click,
+                "px-4 py-2 bg-blue-500",
+            ))
             .build();
 
         match view {
-            View::Column { children, style, .. } => {
+            View::Column {
+                children, style, ..
+            } => {
                 assert!(style.is_some());
                 assert_eq!(children.len(), 2);
 
                 // First child is a styled row
                 match &children[0] {
-                    View::Row { style: row_style, .. } => {
+                    View::Row {
+                        style: row_style, ..
+                    } => {
                         assert!(row_style.is_some());
                     }
                     _ => panic!("Expected View::Row as first child"),
@@ -4456,7 +4918,10 @@ mod tests {
 
                 // Second child is a styled button
                 match &children[1] {
-                    View::Button { style: button_style, .. } => {
+                    View::Button {
+                        style: button_style,
+                        ..
+                    } => {
                         assert!(button_style.is_some());
                     }
                     _ => panic!("Expected View::Button as second child"),
@@ -4512,10 +4977,7 @@ mod tests {
 
     #[test]
     fn test_view_list_builder_style() {
-        let view: View<TestMsg> = View::list(vec![
-            View::text("Item 1"),
-            View::text("Item 2"),
-        ])
+        let view: View<TestMsg> = View::list(vec![View::text("Item 1"), View::text("Item 2")])
             .spacing(5)
             .style("gap-2")
             .build();
@@ -4529,13 +4991,11 @@ mod tests {
 
     #[test]
     fn test_view_table_builder_style() {
-        let view: View<TestMsg> = View::table(
-            vec![View::text("Header")],
-            vec![vec![View::text("Cell")]],
-        )
-            .spacing(2)
-            .style("border p-2")
-            .build();
+        let view: View<TestMsg> =
+            View::table(vec![View::text("Header")], vec![vec![View::text("Cell")]])
+                .spacing(2)
+                .style("border p-2")
+                .build();
         match view {
             View::Table { style, .. } => {
                 assert!(style.is_some());
@@ -4557,7 +5017,9 @@ mod tests {
                 assert!(classes.len() >= 6); // At least 6 style classes
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::Gap(_))));
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::Padding(_))));
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::BackgroundColor(_))));
             }
             _ => panic!("Expected View::Column"),
         }
@@ -4573,7 +5035,9 @@ mod tests {
             View::Container { style, .. } => {
                 let classes = &style.unwrap().classes;
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::Padding(_))));
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::BackgroundColor(_))));
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::Flex)));
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::Rounded)));
             }
@@ -4584,7 +5048,8 @@ mod tests {
     #[test]
     fn test_l2_important_features() {
         // Test L2 important features work
-        let view: View<TestMsg> = View::text_styled("L2 Features", "text-lg font-bold text-center px-4 border");
+        let view: View<TestMsg> =
+            View::text_styled("L2 Features", "text-lg font-bold text-center px-4 border");
         match view {
             View::Text { style, .. } => {
                 let classes = &style.unwrap().classes;
@@ -4611,7 +5076,9 @@ mod tests {
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::Opacity(_))));
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::Relative)));
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::ZIndex(_))));
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::OverflowHidden)));
             }
             _ => panic!("Expected View::Container"),
         }
@@ -4625,7 +5092,9 @@ mod tests {
         match view {
             View::Column { style, .. } => {
                 let classes = &style.unwrap().classes;
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::Padding(SizeValue::Fixed(4)))));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::Padding(SizeValue::Fixed(4)))));
             }
             _ => panic!("Expected View::Column"),
         }
@@ -4637,8 +5106,12 @@ mod tests {
         match view {
             View::Column { style, .. } => {
                 let classes = &style.unwrap().classes;
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::PaddingX(SizeValue::Fixed(4)))));
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::PaddingY(SizeValue::Fixed(2)))));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::PaddingX(SizeValue::Fixed(4)))));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::PaddingY(SizeValue::Fixed(2)))));
             }
             _ => panic!("Expected View::Column"),
         }
@@ -4664,7 +5137,9 @@ mod tests {
         match view {
             View::Column { style, .. } => {
                 let classes = &style.unwrap().classes;
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::Gap(SizeValue::Fixed(4)))));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::Gap(SizeValue::Fixed(4)))));
             }
             _ => panic!("Expected View::Column"),
         }
@@ -4676,8 +5151,12 @@ mod tests {
         match view {
             View::Column { style, .. } => {
                 let classes = &style.unwrap().classes;
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::Width(SizeValue::Full))));
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::Height(SizeValue::Full))));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::Width(SizeValue::Full))));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::Height(SizeValue::Full))));
             }
             _ => panic!("Expected View::Column"),
         }
@@ -4689,7 +5168,9 @@ mod tests {
         match view {
             View::Column { style, .. } => {
                 let classes = &style.unwrap().classes;
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(Color::White))));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::BackgroundColor(Color::White))));
             }
             _ => panic!("Expected View::Column"),
         }
@@ -4701,7 +5182,9 @@ mod tests {
         match view {
             View::Column { style, .. } => {
                 let classes = &style.unwrap().classes;
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::TextColor(Color::Red(500)))));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::TextColor(Color::Red(500)))));
             }
             _ => panic!("Expected View::Column"),
         }
@@ -4721,14 +5204,21 @@ mod tests {
 
     #[test]
     fn test_typed_flex_layout() {
-        let view: TestView = View::row().flex().flex_row().items_center().justify_between().build();
+        let view: TestView = View::row()
+            .flex()
+            .flex_row()
+            .items_center()
+            .justify_between()
+            .build();
         match view {
             View::Row { style, .. } => {
                 let classes = &style.unwrap().classes;
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::Flex)));
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::FlexRow)));
                 assert!(classes.iter().any(|c| matches!(c, StyleClass::ItemsCenter)));
-                assert!(classes.iter().any(|c| matches!(c, StyleClass::JustifyBetween)));
+                assert!(classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::JustifyBetween)));
             }
             _ => panic!("Expected View::Row"),
         }
@@ -4749,7 +5239,9 @@ mod tests {
             .child(View::text("Hello"))
             .build();
         match view {
-            View::Column { style, children, .. } => {
+            View::Column {
+                style, children, ..
+            } => {
                 let classes = &style.unwrap().classes;
                 assert_eq!(classes.len(), 8);
                 assert_eq!(children.len(), 1);
@@ -4886,7 +5378,24 @@ mod tests {
         let view = View::<u8>::image_surface("/api/__auto/media/asset/1");
         let mapped = view.map_msg(|value| value + 1);
         match mapped {
-            View::ImageSurface { src, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, .. } => {
+            View::ImageSurface {
+                src,
+                width,
+                height,
+                quality,
+                fit,
+                zoom,
+                offset_x,
+                offset_y,
+                rotation,
+                filter,
+                on_error,
+                on_loaded,
+                on_wheel,
+                on_pan,
+                on_double_click,
+                ..
+            } => {
                 assert_eq!(src, "/api/__auto/media/asset/1");
                 assert_eq!((width, height, quality), (0, 0, 90));
                 assert_eq!(fit, "contain");

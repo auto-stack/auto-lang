@@ -20,7 +20,13 @@ use std::fs::read_to_string;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const CASES: &[&str] = &["016_dep_abi_matrix", "017_dep_lifecycle", "018_dep_fields", "020_dep_traits_generics", "021_dep_callback"];
+const CASES: &[&str] = &[
+    "016_dep_abi_matrix",
+    "017_dep_lifecycle",
+    "018_dep_fields",
+    "020_dep_traits_generics",
+    "021_dep_callback",
+];
 
 // =============================================================================
 // 公共骨架
@@ -155,7 +161,13 @@ fn fixture_deps(case: &str) -> Vec<(String, PathBuf)> {
             let after = rest[open + "path:".len()..].trim_start();
             let after = after.trim_start_matches('"');
             let path = after.split('"').next().unwrap_or("");
-            let path = path.replace("{{FFI_DUAL_DIR}}", &manifest_dir().join("test/ffi_dual").to_string_lossy().replace('\\', "/"));
+            let path = path.replace(
+                "{{FFI_DUAL_DIR}}",
+                &manifest_dir()
+                    .join("test/ffi_dual")
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
             deps.push((name, PathBuf::from(&path)));
         } else {
             panic!("dep-parity runner only supports path deps; `{name}` in {case} has none");
@@ -165,9 +177,17 @@ fn fixture_deps(case: &str) -> Vec<(String, PathBuf)> {
 }
 
 fn find_bin(dir: &Path, name: &str) -> PathBuf {
-    let exe = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
+    let exe = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
     let bin = dir.join("target/release").join(&exe);
-    assert!(bin.exists(), "binary not found at {} (build step missing?)", bin.display());
+    assert!(
+        bin.exists(),
+        "binary not found at {} (build step missing?)",
+        bin.display()
+    );
     bin
 }
 
@@ -186,7 +206,10 @@ fn a2r_leg(case: &str, src: &str) -> String {
     std::fs::create_dir_all(dir.join("src")).expect("create build_a2r dirs");
 
     let auto_lang_path = manifest_dir().to_string_lossy().replace('\\', "/");
-    let a2r_std_path = manifest_dir().join("../a2r-std").to_string_lossy().replace('\\', "/");
+    let a2r_std_path = manifest_dir()
+        .join("../a2r-std")
+        .to_string_lossy()
+        .replace('\\', "/");
     let mut dep_lines = String::new();
     let mut inputs = Vec::new();
     inputs.extend_from_slice(&main_rs);
@@ -284,7 +307,6 @@ fn dep_parity_017_dep_lifecycle() {
 fn dep_parity_018_dep_fields() {
     test_dep_parity("018_dep_fields");
 }
-
 
 #[test]
 fn dep_parity_020_dep_traits_generics() {

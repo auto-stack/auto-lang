@@ -68,7 +68,10 @@ mod plan446_batch2_http {
             !out.contains("-2147483647"),
             "E1 regression: sentinel -2147483647 leaked instead of wire status, stdout={out:?}"
         );
-        assert!(out.contains("201"), "expected HTTP 201 on stdout, got: {out:?}");
+        assert!(
+            out.contains("201"),
+            "expected HTTP 201 on stdout, got: {out:?}"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -77,16 +80,9 @@ mod plan446_batch2_http {
     // ------------------------------------------------------------------
     #[test]
     fn e2_second_http_call_after_builder_chain_survives() {
-        let port_body = spawn_one_shot_server(
-            "HTTP/1.1 200 OK",
-            "application/json",
-            r#"{"ok":true}"#,
-        );
-        let port_post = spawn_one_shot_server(
-            "HTTP/1.1 204 No Content",
-            "application/json",
-            "",
-        );
+        let port_body =
+            spawn_one_shot_server("HTTP/1.1 200 OK", "application/json", r#"{"ok":true}"#);
+        let port_post = spawn_one_shot_server("HTTP/1.1 204 No Content", "application/json", "");
         let src = format!(
             "use auto.http\n\
              fn main() {{\n\
@@ -105,9 +101,6 @@ mod plan446_batch2_http {
             out.contains("200"),
             "E2 regression: http.get after builder chain failed, stdout={out:?}"
         );
-        assert!(
-            !out.contains("-2147483647"),
-            "sentinel leaked: {out:?}"
-        );
+        assert!(!out.contains("-2147483647"), "sentinel leaked: {out:?}");
     }
 }

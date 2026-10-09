@@ -48,10 +48,12 @@ mod plan446_b1_store_loop {
             })
             .map_err(|e| format!("spawn failed: {}", e))?;
         rx.recv_timeout(std::time::Duration::from_secs(secs))
-            .map_err(|_| format!(
+            .map_err(|_| {
+                format!(
                 "B1 WEDGE: build/render did not finish within {}s (现场 wedge 的 headless 复现)",
                 secs
-            ))?
+            )
+            })?
     }
 
     /// 验收原文：`for x in .store.list { onclick: .F(x.field) }` 正常渲染且
@@ -72,8 +74,11 @@ mod plan446_b1_store_loop {
         );
         // onclick 实参物化：Pick 事件实参必须是字段值 alpha/beta，
         // 不得是字面量回退/空参/VmRef 裸引用。
-        assert!(view.contains("\"Pick\""), "Pick events missing in view: {}",
-            &view[..view.len().min(2000)]);
+        assert!(
+            view.contains("\"Pick\""),
+            "Pick events missing in view: {}",
+            &view[..view.len().min(2000)]
+        );
         assert!(
             view.contains("alpha") && view.contains("beta"),
             "field values must reach the view (button text + onclick args), got: {}",

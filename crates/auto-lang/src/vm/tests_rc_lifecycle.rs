@@ -22,8 +22,8 @@ fn make_vm() -> AutoVM {
 /// 编译并跑一段 Auto 源码到完成,返回 (vm, stdout)。
 /// 跑毕对主任务做残余栈释放,使 live_heap 反映"程序真实留存"。
 async fn run_code_vm(code: &str) -> (AutoVM, String) {
-    let (vm, stdout, entry, _result_type) = crate::create_vm_from_source(code)
-        .expect("compile failed");
+    let (vm, stdout, entry, _result_type) =
+        crate::create_vm_from_source(code).expect("compile failed");
     let tid = vm.spawn_task(entry, 65536);
     vm.run_task_loop().await;
     if let Some(arc) = vm.tasks.get(&tid) {
@@ -58,7 +58,11 @@ fn main() int {
 "#;
     // churn 放大:块尾若不释放,1000 个 Note 全部滞留;正确 → 0。
     let (vm, _out) = run_code_vm(code).await;
-    assert_eq!(vm.rc_stats().live_heap, 0, "block-scoped Notes freed at each block end");
+    assert_eq!(
+        vm.rc_stats().live_heap,
+        0,
+        "block-scoped Notes freed at each block end"
+    );
 }
 
 // ============================================================================
@@ -81,7 +85,11 @@ fn main() int {
 }
 "#;
     let (vm, _out) = run_code_vm(code).await;
-    assert_eq!(vm.rc_stats().live_heap, 0, "fn-local Note freed by RET frame sweep");
+    assert_eq!(
+        vm.rc_stats().live_heap,
+        0,
+        "fn-local Note freed by RET frame sweep"
+    );
 }
 
 // ============================================================================
@@ -104,7 +112,11 @@ fn main() int {
     // churn 放大:覆盖赋值若不释放旧值,999 个 Note 滞留;正确 → 终值 1 个,
     // 主任务收尾后再归零。
     let (vm, _out) = run_code_vm(code).await;
-    assert_eq!(vm.rc_stats().live_heap, 0, "overwritten Notes freed at each store");
+    assert_eq!(
+        vm.rc_stats().live_heap,
+        0,
+        "overwritten Notes freed at each store"
+    );
 }
 
 // ============================================================================
@@ -128,7 +140,11 @@ fn main() int {
     // churn 放大:push+pop 配对若容器侧不释放,1000 个 Note 滞留;正确 → 0
     // (list 本身随主任务收尾释放)。
     let (vm, _out) = run_code_vm(code).await;
-    assert_eq!(vm.rc_stats().live_heap, 0, "popped elements freed (container stake released)");
+    assert_eq!(
+        vm.rc_stats().live_heap,
+        0,
+        "popped elements freed (container stake released)"
+    );
 }
 
 #[tokio::test]
@@ -178,7 +194,11 @@ fn main() int {
     let (vm, out) = run_code_vm(code).await;
     assert_eq!(out.trim(), "999", "captured Note readable through closure");
     let live = vm.rc_stats().live_heap;
-    assert!(live >= 1000, "closure envs hold stakes for all captured Notes: got {}", live);
+    assert!(
+        live >= 1000,
+        "closure envs hold stakes for all captured Notes: got {}",
+        live
+    );
 }
 
 // ============================================================================
@@ -248,7 +268,11 @@ fn main() int {
     // b 在 a 覆盖后仍可读 = 共享对象在一方释放后存活(tier 3);若引用计数
     // 把拷贝当独占,b 的对象会随 a 的覆盖被过早释放 → canary panic/读值错。
     let (vm, _out) = run_code_vm(code).await;
-    assert_eq!(vm.rc_stats().live_heap, 0, "churn of shared pairs fully released at end");
+    assert_eq!(
+        vm.rc_stats().live_heap,
+        0,
+        "churn of shared pairs fully released at end"
+    );
 }
 
 // ============================================================================
@@ -272,7 +296,11 @@ fn main() int {
     let start = std::time::Instant::now();
     let (vm, _out) = run_code_vm(code).await;
     let elapsed = start.elapsed();
-    assert_eq!(vm.rc_stats().live_heap, 0, "churn must return live_heap to baseline");
+    assert_eq!(
+        vm.rc_stats().live_heap,
+        0,
+        "churn must return live_heap to baseline"
+    );
     // 泄漏检测护栏:10 万分配/回收若泄漏,live 会是 100000 量级。
     // (不断言绝对耗时 —— perf 门禁由基准测试承担。)
     eprintln!("churn 100k alloc/free took {:?}", elapsed);
@@ -312,12 +340,17 @@ fn rc_balance_unit() {
     assert!(is_heap_ref_nv(auto_val::encode_list(42)));
     assert!(is_heap_ref_nv(auto_val::encode_bigint(42)));
     assert!(is_heap_ref_nv(auto_val::encode_i32(HEAP_ID_BASE as i32)));
-    assert!(!is_heap_ref_nv(auto_val::encode_i32(HEAP_ID_BASE as i32 - 1)));
+    assert!(!is_heap_ref_nv(auto_val::encode_i32(
+        HEAP_ID_BASE as i32 - 1
+    )));
     assert!(!is_heap_ref_nv(auto_val::encode_i32(-5))); // 字符串负 tag(Phase 2 接管)
     assert!(!is_heap_ref_nv(auto_val::encode_string(3)));
     assert!(!is_heap_ref_nv(auto_val::encode_bool(true)));
     assert_eq!(heap_ref_id(auto_val::encode_object(77)), Some(77));
-    assert_eq!(heap_ref_id(auto_val::encode_i32(HEAP_ID_BASE as i32 + 5)), Some(HEAP_ID_BASE + 5));
+    assert_eq!(
+        heap_ref_id(auto_val::encode_i32(HEAP_ID_BASE as i32 + 5)),
+        Some(HEAP_ID_BASE + 5)
+    );
     assert_eq!(heap_ref_id(auto_val::encode_i32(123)), None);
 
     // ---- 计数平衡:birth(+1) / copy(+1) / death(-1) / 归零释放 ----
@@ -335,7 +368,10 @@ fn rc_balance_unit() {
     vm.rc_release(nv);
     assert_eq!(vm.rc_count(id), 0);
     vm.reap_all(); // PLAN-062 T12: 静止点收割宽限队列。
-    assert!(!vm.contains_heap_object(id), "freed when the only owner dies");
+    assert!(
+        !vm.contains_heap_object(id),
+        "freed when the only owner dies"
+    );
 
     // 无条目的 release(已释放 id 的重复释放)→ 安全跳过,不 panic。
     vm.rc_release_id(id);
@@ -351,7 +387,10 @@ fn rc_balance_unit() {
     assert_eq!(vm.rc_count(id2), 1);
     vm.rc_release_id(id2);
     vm.reap_all(); // PLAN-062 T12
-    assert!(!vm.contains_heap_object(id2), "freed when rc transitions to 0");
+    assert!(
+        !vm.contains_heap_object(id2),
+        "freed when rc transitions to 0"
+    );
 
     // ---- 嵌套图:父回收 → 子传递回收 ----
     let vm2 = make_vm();
@@ -369,7 +408,10 @@ fn rc_balance_unit() {
     vm2.rc_release_id(parent_id);
     vm2.reap_all(); // PLAN-062 T12
     assert!(!vm2.contains_heap_object(parent_id), "parent freed");
-    assert!(!vm2.contains_heap_object(child), "child cascade-freed with parent");
+    assert!(
+        !vm2.contains_heap_object(child),
+        "child cascade-freed with parent"
+    );
 }
 
 // ============================================================================
@@ -402,9 +444,8 @@ fn str_pool_rc_balance_unit() {
     // 墓碑读 → canary(debug)。AutoVM 非 UnwindSafe,用 AssertUnwindSafe。
     #[cfg(debug_assertions)]
     {
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            vm.get_string(idx as u32)
-        }));
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| vm.get_string(idx as u32)));
         assert!(result.is_err(), "tombstone read must panic in debug");
     }
 
@@ -413,7 +454,11 @@ fn str_pool_rc_balance_unit() {
     let idx2 = vm.add_string(b"runtime-str".to_vec());
     assert!(!vm.pool_is_tombstone(idx2), "slot revived");
     assert!(idx2 == idx, "freelist reuse prefers the freed slot");
-    assert_eq!(vm.strings.read().unwrap().len(), len_before, "pool size bounded");
+    assert_eq!(
+        vm.strings.read().unwrap().len(),
+        len_before,
+        "pool size bounded"
+    );
 
     // dedup:活条目内容命中复用索引。
     let idx3 = vm.add_string(b"runtime-str".to_vec());
@@ -436,7 +481,11 @@ fn main() int {
     let (vm, out) = run_code_vm(code).await;
     assert_eq!(out.trim(), "2000", "concat result correct");
     let live = vm.pool_live_count();
-    assert!(live < 64, "intermediate concat strings must be freed: live_pool={}", live);
+    assert!(
+        live < 64,
+        "intermediate concat strings must be freed: live_pool={}",
+        live
+    );
 }
 
 #[tokio::test]
@@ -477,7 +526,11 @@ fn main() int {
     let (vm, out) = run_code_vm(code).await;
     assert_eq!(out.trim(), "999");
     let live = vm.pool_live_count();
-    assert!(live < 128, "field strings must not accumulate: live_pool={}", live);
+    assert!(
+        live < 128,
+        "field strings must not accumulate: live_pool={}",
+        live
+    );
 }
 
 // ============================================================================
@@ -528,14 +581,20 @@ fn main() int {
     };
     // 出错任务的 last_error 携带明确信息(通过任务状态检查)。
     let has_err = vm.tasks.iter().any(|e| {
-        e.value().try_lock().map(|t| {
-            t.last_error
-                .as_ref()
-                .map(|m| m.contains("mutable borrow of shared value"))
-                .unwrap_or(false)
-        }).unwrap_or(false)
+        e.value()
+            .try_lock()
+            .map(|t| {
+                t.last_error
+                    .as_ref()
+                    .map(|m| m.contains("mutable borrow of shared value"))
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false)
     });
-    assert!(has_err, ".mut on shared (rc=2) must raise the dynamic borrow error");
+    assert!(
+        has_err,
+        ".mut on shared (rc=2) must raise the dynamic borrow error"
+    );
 }
 
 #[tokio::test]
@@ -559,8 +618,8 @@ fn main() int {
 
 #[test]
 fn escape_analysis_unit() {
-    use crate::trans::escape::{EscapeAnalyzer, OwnershipTier};
     use crate::ast::Stmt;
+    use crate::trans::escape::{EscapeAnalyzer, OwnershipTier};
 
     // 三类出口标定(plan §4.1):
     let src = r#"
@@ -601,12 +660,22 @@ fn stored_global() {
     }
     // 闭包读捕获:按 Plan 310 模型可保守降为借用(Owned/BorrowView 均合法
     // —— Rust 借用闭包承接);关键是不得误标 write-capture。
-    let (captured_tier, captured_wc) = tiers.get("captured:x").copied()
+    let (captured_tier, captured_wc) = tiers
+        .get("captured:x")
+        .copied()
         .expect("captured:x must be tracked");
-    assert!(matches!(captured_tier,
-            OwnershipTier::Owned | OwnershipTier::BorrowView
-            | OwnershipTier::Clone | OwnershipTier::RcRefCell | OwnershipTier::ArcMutex),
-        "captured local tier must be valid (got {:?})", captured_tier);
+    assert!(
+        matches!(
+            captured_tier,
+            OwnershipTier::Owned
+                | OwnershipTier::BorrowView
+                | OwnershipTier::Clone
+                | OwnershipTier::RcRefCell
+                | OwnershipTier::ArcMutex
+        ),
+        "captured local tier must be valid (got {:?})",
+        captured_tier
+    );
     assert!(!captured_wc, "read-only capture is not a write-capture");
 
     // 写捕获(plan 419 §4.5):tier = RcRefCell 且标记 write_capture。
@@ -622,7 +691,11 @@ fn writer() {
     if let Some(Stmt::Fn(f)) = ast2.stmts.iter().find(|s| matches!(s, Stmt::Fn(_))) {
         let map = EscapeAnalyzer::analyze_fn(f);
         let tier = map.lookup(0, &"w".into()).unwrap_or(OwnershipTier::Owned);
-        assert_eq!(tier, OwnershipTier::RcRefCell, "write-capture upgrades to RcRefCell");
+        assert_eq!(
+            tier,
+            OwnershipTier::RcRefCell,
+            "write-capture upgrades to RcRefCell"
+        );
         assert!(map.is_write_capture(&"w".into()));
     } else {
         panic!("fn writer not found");

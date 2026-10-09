@@ -45,15 +45,13 @@ mod plan046_obj_natives {
     /// dynamic-value semantics not closed end-to-end yet; see ignored WIPs.
     #[test]
     fn object_keys_on_dynamic_value_works() {
-        let out = run(
-            "fn countKeys(m obj) int {\n\
+        let out = run("fn countKeys(m obj) int {\n\
              \x20   let ks = Object.keys(m)\n\
              \x20   return ks.length\n\
              }\n\
              fn main() {\n\
              \x20   print(countKeys({a: 1, b: 2, c: 3}).to_string())\n\
-             }\n",
-        )
+             }\n")
         .expect("program with Object.keys must run");
         // completion-only contract until dyn semantics close (see doc above)
     }
@@ -63,16 +61,14 @@ mod plan046_obj_natives {
     /// outer-captures resolve via param-domain capture slots (E5a).
     #[test]
     fn dynamic_find_with_predicate() {
-        let out = run(
-            "fn findRun(runs obj, id str) obj {\n\
+        let out = run("fn findRun(runs obj, id str) obj {\n\
              \x20   return runs.find(r => r.run_id == id)\n\
              }\n\
              fn main() {\n\
              \x20   let rs = [{run_id: \"r1\", u: \"a\"}, {run_id: \"r2\", u: \"b\"}]\n\
              \x20   let hit = findRun(rs, \"r2\")\n\
              \x20   if hit == None { print(\"miss\") } else { print(hit.u) }\n\
-             }\n",
-        );
+             }\n");
         match out {
             Ok(o) => assert!(o.contains("b"), "expected hit b, got: {o}"),
             Err(e) => panic!("dynamic .find not supported yet (PLAN-046 T2 target): {e}"),
@@ -88,27 +84,26 @@ mod plan046_obj_natives {
     /// receivers stay on the plan-454 WIP track; this pins the typed forms.)
     #[test]
     fn list_length_property_routes_to_len_native() {
-        let out = run(
-            "fn main() {\n\
+        let out = run("fn main() {\n\
              \x20   let xs = [\"a\", \"b\", \"c\"]\n\
              \x20   print(xs.length)\n\
              \x20   let n = xs.length\n\
              \x20   print(n)\n\
-             }\n",
-        )
+             }\n")
         .expect("list .length property must run");
         assert!(out.contains("3"), "expected 3 twice, got: {out}");
-        assert!(!out.contains("0"), "length must not fall through to 0, got: {out}");
+        assert!(
+            !out.contains("0"),
+            "length must not fall through to 0, got: {out}"
+        );
     }
 
     #[test]
     fn str_length_property_routes_to_len_native() {
-        let out = run(
-            "fn main() {\n\
+        let out = run("fn main() {\n\
              \x20   let s = \"abcd\"\n\
              \x20   print(s.length)\n\
-             }\n",
-        )
+             }\n")
         .expect("str .length property must run");
         assert!(out.contains("4"), "expected 4, got: {out}");
     }
@@ -122,15 +117,13 @@ mod plan046_obj_natives {
     /// user-typed receivers keep the GET_FIELD struct branch).
     #[test]
     fn length_property_on_untyped_receiver() {
-        let out = run(
-            "fn linkCount(l obj) int {\n\
+        let out = run("fn linkCount(l obj) int {\n\
              \x20   return l.length\n\
              }\n\
              fn main() {\n\
              \x20   let xs = [\"a\", \"b\", \"c\"]\n\
              \x20   print(linkCount(xs))\n\
-             }\n",
-        )
+             }\n")
         .expect("untyped .length must run");
         assert!(out.contains("3"), "expected 3, got: {out}");
     }
@@ -140,8 +133,7 @@ mod plan046_obj_natives {
     /// channel instead of the iterator mismatch (E5b).
     #[test]
     fn object_values_returns_array() {
-        let out = run(
-            "fn sumUsage(m obj) int {\n\
+        let out = run("fn sumUsage(m obj) int {\n\
              \x20   var total = 0\n\
              \x20   for e in Object.values(m) {\n\
              \x20       total = total + (e.token_usage ?? 0)\n\
@@ -151,8 +143,7 @@ mod plan046_obj_natives {
              fn main() {\n\
              \x20   let m = {e1: {token_usage: 2}, e2: {token_usage: 5}}\n\
              \x20   print(sumUsage(m).to_string())\n\
-             }\n",
-        );
+             }\n");
         match out {
             Ok(o) => assert!(o.contains("7"), "expected 7, got: {o}"),
             Err(e) => panic!("Object.values not supported yet (PLAN-046 T2 target): {e}"),
@@ -166,10 +157,7 @@ mod plan046_window_height_kv {
     /// 且持久化不炸(storage_persist best-effort)。
     #[test]
     fn host_publish_roundtrip() {
-        crate::vm::ffi::stdlib::storage_host_publish(
-            "plan046.test.height",
-            String::from("800"),
-        );
+        crate::vm::ffi::stdlib::storage_host_publish("plan046.test.height", String::from("800"));
         assert_eq!(
             crate::vm::ffi::stdlib::shim_storage_get(String::from("plan046.test.height")),
             "800"

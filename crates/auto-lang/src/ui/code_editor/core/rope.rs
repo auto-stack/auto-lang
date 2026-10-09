@@ -180,7 +180,12 @@ impl Node {
         let chars = text.chars().count();
         let newlines = text.bytes().filter(|&b| b == b'\n').count();
         let hash = poly_digest(text.as_bytes());
-        Arc::new(Node::Leaf { text, chars, newlines, hash })
+        Arc::new(Node::Leaf {
+            text,
+            chars,
+            newlines,
+            hash,
+        })
     }
 
     /// Whole-page chunk — summaries come from the prescan `PageDesc`
@@ -204,12 +209,7 @@ impl Node {
 
     /// Sub-range chunk — summaries computed from the given slice (the
     /// caller resolves the page text; this never IOs on its own).
-    fn chunk_from_slice(
-        store: Arc<PageStore>,
-        page: u32,
-        off: u32,
-        text: &str,
-    ) -> Arc<Node> {
+    fn chunk_from_slice(store: Arc<PageStore>, page: u32, off: u32, text: &str) -> Arc<Node> {
         debug_assert!(
             off as usize + text.len() <= store.page_desc(page).len as usize,
             "chunk slice exceeds its page"
@@ -243,7 +243,17 @@ impl Node {
         };
         let height = left.height().max(right.height()) + 1;
         let hash = combine_hash(left.hash(), right.hash(), right.bytes());
-        Arc::new(Node::Internal { left, right, bytes, chars, newlines, start_chars, end_chars, height, hash })
+        Arc::new(Node::Internal {
+            left,
+            right,
+            bytes,
+            chars,
+            newlines,
+            start_chars,
+            end_chars,
+            height,
+            hash,
+        })
     }
 
     fn bytes(&self) -> usize {
@@ -339,7 +349,9 @@ impl Node {
 
 fn chunk_key(node: &Node) -> (&Arc<PageStore>, u32, u32) {
     match node {
-        Node::Chunk { store, page, off, .. } => (store, *page, *off),
+        Node::Chunk {
+            store, page, off, ..
+        } => (store, *page, *off),
         _ => unreachable!("chunk_key on a non-chunk node"),
     }
 }
@@ -523,7 +535,9 @@ fn split(node: &Arc<Node>, byte: usize) -> (Arc<Node>, Arc<Node>) {
         // PLAN-728: split a chunk by slicing its page text ONCE (fault-in
         // of one page) and building two sub-range descriptors — the base
         // stays untouched; both halves keep page-backed residency.
-        Node::Chunk { store, page, off, .. } => {
+        Node::Chunk {
+            store, page, off, ..
+        } => {
             let text = fault_page(store, *page);
             let abs = *off as usize;
             let (l, r) = text[abs..abs + node.bytes()].split_at(byte);
@@ -586,7 +600,11 @@ fn q_byte_to_point(root: &Node, byte: usize) -> (usize, usize) {
                     line += left.newlines();
                     // After crossing a subtree with newlines, the column
                     // restarts from its last line's char length.
-                    col = if left.newlines() > 0 { left.end_chars() } else { col + left.chars() };
+                    col = if left.newlines() > 0 {
+                        left.end_chars()
+                    } else {
+                        col + left.chars()
+                    };
                     cur = right;
                 }
             }
@@ -625,7 +643,10 @@ fn q_point_to_byte(root: &Node, line: usize, char_col: usize) -> Option<usize> {
 /// Precondition: `line < line_count`.
 fn q_line_start_byte(root: &Node, line: usize) -> usize {
     let line_count = root.newlines() + 1;
-    assert!(line < line_count, "line_start_byte: line {line} out of range ({line_count} lines)");
+    assert!(
+        line < line_count,
+        "line_start_byte: line {line} out of range ({line_count} lines)"
+    );
     if line == 0 {
         return 0;
     }
@@ -690,7 +711,10 @@ fn q_line_end_byte(root: &Node, line: usize) -> usize {
 /// (zero-copy for the common case), gathered otherwise.
 /// O(log n) locate + O(span).
 fn q_slice_bytes<'a>(root: &'a Node, start: usize, end: usize) -> Cow<'a, str> {
-    debug_assert!(start <= end && end <= root.bytes(), "slice_bytes out of range");
+    debug_assert!(
+        start <= end && end <= root.bytes(),
+        "slice_bytes out of range"
+    );
     let mut node_start = 0usize;
     let mut cur = root;
     loop {
@@ -760,7 +784,13 @@ fn q_to_string(root: &Node) -> String {
 /// Collect the aligned pieces covering `[start, end)`: fully-covered
 /// subtrees contribute their cached digest at O(1) each; the at most two
 /// straddling leaves hash their slice. Piece count is O(log n).
-fn collect_digest_pieces(node: &Node, node_start: usize, start: usize, end: usize, pieces: &mut Vec<(u64, usize)>) {
+fn collect_digest_pieces(
+    node: &Node,
+    node_start: usize,
+    start: usize,
+    end: usize,
+    pieces: &mut Vec<(u64, usize)>,
+) {
     let node_end = node_start + node.bytes();
     if start <= node_start && node_end <= end {
         pieces.push((node.hash(), node.bytes()));
@@ -797,7 +827,10 @@ fn collect_digest_pieces(node: &Node, node_start: usize, start: usize, end: usiz
 /// the root digest). O(log n) pieces + O(leaf) boundary hashing. Empty
 /// range = the empty digest (sentinel 1).
 fn q_range_hash(root: &Node, start: usize, end: usize) -> u64 {
-    debug_assert!(start <= end && end <= root.bytes(), "range_hash out of range");
+    debug_assert!(
+        start <= end && end <= root.bytes(),
+        "range_hash out of range"
+    );
     let mut pieces = Vec::new();
     collect_digest_pieces(root, 0, start, end, &mut pieces);
     let mut acc = 1; // empty digest
@@ -834,7 +867,12 @@ fn range_content_equal(a: &Node, a_off: usize, b: &Node, b_off: usize, len: usiz
             // shifted structural sharing across edits.)
             continue;
         }
-        if a.bytes() == len && b.bytes() == len && a.hash() == b.hash() && a.chars() == b.chars() && a.newlines() == b.newlines() {
+        if a.bytes() == len
+            && b.bytes() == len
+            && a.hash() == b.hash()
+            && a.chars() == b.chars()
+            && a.newlines() == b.newlines()
+        {
             continue; // content-determined Merkle verdict
         }
         match (a, b) {
@@ -843,8 +881,16 @@ fn range_content_equal(a: &Node, a_off: usize, b: &Node, b_off: usize, len: usiz
                 let (bl, br) = b.children();
                 // Boundary of each side inside the span (0 = span starts at
                 // or past the left child; len = span ends inside it).
-                let ca = if a_off >= al.bytes() { 0 } else { (al.bytes() - a_off).min(len) };
-                let cb = if b_off >= bl.bytes() { 0 } else { (bl.bytes() - b_off).min(len) };
+                let ca = if a_off >= al.bytes() {
+                    0
+                } else {
+                    (al.bytes() - a_off).min(len)
+                };
+                let cb = if b_off >= bl.bytes() {
+                    0
+                } else {
+                    (bl.bytes() - b_off).min(len)
+                };
                 if ca == 0 {
                     stack.push((ar, a_off - al.bytes(), b, b_off, len));
                 } else if cb == 0 {
@@ -895,7 +941,11 @@ fn range_content_equal(a: &Node, a_off: usize, b: &Node, b_off: usize, len: usiz
                             (b, b_off, a, a_off)
                         };
                         let (il, ir) = inner.children();
-                        let cut = if i_off >= il.bytes() { 0 } else { (il.bytes() - i_off).min(len) };
+                        let cut = if i_off >= il.bytes() {
+                            0
+                        } else {
+                            (il.bytes() - i_off).min(len)
+                        };
                         if cut == 0 {
                             // Span starts at/past the internal side's boundary.
                             if leaf_is_a {
@@ -1005,7 +1055,12 @@ fn collect_prune_spans(
         // The whole-node Merkle shortcut below carries the pruning load
         // (content-determined digest + length ⇒ same content, wherever it
         // sits); everything else classifies by leaf comparison.
-        if a.bytes() == len && b.bytes() == len && a.hash() == b.hash() && a.chars() == b.chars() && a.newlines() == b.newlines() {
+        if a.bytes() == len
+            && b.bytes() == len
+            && a.hash() == b.hash()
+            && a.chars() == b.chars()
+            && a.newlines() == b.newlines()
+        {
             out.shared.push((a_abs, a_abs + len, b_abs, b_abs + len));
             continue;
         }
@@ -1013,8 +1068,16 @@ fn collect_prune_spans(
             (Node::Internal { .. }, Node::Internal { .. }) => {
                 let (al, ar) = a.children();
                 let (bl, br) = b.children();
-                let ca = if a_rel >= al.bytes() { 0 } else { (al.bytes() - a_rel).min(len) };
-                let cb = if b_rel >= bl.bytes() { 0 } else { (bl.bytes() - b_rel).min(len) };
+                let ca = if a_rel >= al.bytes() {
+                    0
+                } else {
+                    (al.bytes() - a_rel).min(len)
+                };
+                let cb = if b_rel >= bl.bytes() {
+                    0
+                } else {
+                    (bl.bytes() - b_rel).min(len)
+                };
                 if ca == 0 {
                     stack.push((ar, a_rel - al.bytes(), a_abs, b, b_rel, b_abs, len));
                 } else if cb == 0 {
@@ -1067,13 +1130,33 @@ fn collect_prune_spans(
                             (b, b_rel, b_abs, a, a_rel, a_abs)
                         };
                         let (il, ir) = inner.children();
-                        let cut = if i_rel >= il.bytes() { 0 } else { (il.bytes() - i_rel).min(len) };
+                        let cut = if i_rel >= il.bytes() {
+                            0
+                        } else {
+                            (il.bytes() - i_rel).min(len)
+                        };
                         if cut == 0 {
                             // Span starts at/past the internal side's boundary.
                             if leaf_is_a {
-                                stack.push((leaf, l_rel, l_abs, ir, i_rel - il.bytes(), i_abs, len));
+                                stack.push((
+                                    leaf,
+                                    l_rel,
+                                    l_abs,
+                                    ir,
+                                    i_rel - il.bytes(),
+                                    i_abs,
+                                    len,
+                                ));
                             } else {
-                                stack.push((ir, i_rel - il.bytes(), i_abs, leaf, l_rel, l_abs, len));
+                                stack.push((
+                                    ir,
+                                    i_rel - il.bytes(),
+                                    i_abs,
+                                    leaf,
+                                    l_rel,
+                                    l_abs,
+                                    len,
+                                ));
                             }
                             continue;
                         }
@@ -1088,10 +1171,26 @@ fn collect_prune_spans(
                         }
                         if leaf_is_a {
                             stack.push((leaf, l_rel, l_abs, il, i_rel, i_abs, cut));
-                            stack.push((leaf, l_rel + cut, l_abs + cut, ir, 0, i_abs + cut, len - cut));
+                            stack.push((
+                                leaf,
+                                l_rel + cut,
+                                l_abs + cut,
+                                ir,
+                                0,
+                                i_abs + cut,
+                                len - cut,
+                            ));
                         } else {
                             stack.push((il, i_rel, i_abs, leaf, l_rel, l_abs, cut));
-                            stack.push((ir, 0, i_abs + cut, leaf, l_rel + cut, l_abs + cut, len - cut));
+                            stack.push((
+                                ir,
+                                0,
+                                i_abs + cut,
+                                leaf,
+                                l_rel + cut,
+                                l_abs + cut,
+                                len - cut,
+                            ));
                         }
                     }
                 }
@@ -1113,7 +1212,9 @@ pub struct Rope {
 
 impl Default for Rope {
     fn default() -> Self {
-        Self { root: Node::leaf(String::new()) }
+        Self {
+            root: Node::leaf(String::new()),
+        }
     }
 }
 
@@ -1123,12 +1224,16 @@ impl Rope {
     }
 
     pub fn from_str(text: &str) -> Self {
-        Self { root: leaf_or_tree(text) }
+        Self {
+            root: leaf_or_tree(text),
+        }
     }
 
     /// O(1) frozen view; further edits to this rope leave it untouched.
     pub fn snapshot(&self) -> RopeSnapshot {
-        RopeSnapshot { root: self.root.clone() }
+        RopeSnapshot {
+            root: self.root.clone(),
+        }
     }
 
     /// Document length in UTF-8 bytes. O(1) (root summary).
@@ -1209,9 +1314,18 @@ impl Rope {
 
     /// Replace `[start, end)` with `text`. Same preconditions/complexity.
     pub fn replace_bytes(&mut self, start: usize, end: usize, text: &str) {
-        debug_assert!(start <= end && end <= self.len_bytes(), "replace_bytes out of range");
-        debug_assert!(self.root.is_char_boundary(start), "replace_bytes: start not a char boundary");
-        debug_assert!(self.root.is_char_boundary(end), "replace_bytes: end not a char boundary");
+        debug_assert!(
+            start <= end && end <= self.len_bytes(),
+            "replace_bytes out of range"
+        );
+        debug_assert!(
+            self.root.is_char_boundary(start),
+            "replace_bytes: start not a char boundary"
+        );
+        debug_assert!(
+            self.root.is_char_boundary(end),
+            "replace_bytes: end not a char boundary"
+        );
         let (left, right) = split(&self.root, end);
         let (left, _) = split(&left, start);
         self.root = concat(concat(left, leaf_or_tree(text)), right);
@@ -1284,7 +1398,9 @@ impl Rope {
             let mut written = 0u64;
             write_node_for_save(&self.root, &mut w, &mut copy_buf, &mut written)?;
             w.flush()?;
-            let file = w.into_inner().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            let file = w
+                .into_inner()
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
             file.sync_all()?;
         }
         // 3. Atomic replace, then re-stamp the baselines we just changed.
@@ -1345,7 +1461,10 @@ fn collect_stores(node: &Arc<Node>) -> Vec<Arc<PageStore>> {
 /// `<dest>.<pid>.p728tmp` in the destination's own directory (same volume
 /// — rename stays atomic).
 fn sibling_temp_path(dest: &Path) -> PathBuf {
-    let mut name = dest.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let mut name = dest
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     name.push_str(&format!(".{}.p728tmp", std::process::id()));
     dest.with_file_name(name)
 }
@@ -1364,7 +1483,13 @@ fn write_node_for_save(
             out.write_all(text.as_bytes())?;
             *written += text.len() as u64;
         }
-        Node::Chunk { store, page, off, len, .. } => {
+        Node::Chunk {
+            store,
+            page,
+            off,
+            len,
+            ..
+        } => {
             let mut offset = store.range_offset(*page, *off);
             let mut remaining = *len as usize;
             while remaining > 0 {
@@ -1464,7 +1589,14 @@ impl RopeSnapshot {
     /// Aligned prune spans vs `other` — see [`Rope::prune_spans`].
     pub(crate) fn prune_spans(&self, other: &RopeSnapshot) -> PruneSpans {
         let mut out = PruneSpans::default();
-        collect_prune_spans(&self.root, 0, &other.root, 0, self.root.bytes().min(other.root.bytes()), &mut out);
+        collect_prune_spans(
+            &self.root,
+            0,
+            &other.root,
+            0,
+            self.root.bytes().min(other.root.bytes()),
+            &mut out,
+        );
         append_length_tails(&self.root, &other.root, &mut out);
         out
     }
@@ -1500,7 +1632,8 @@ mod tests {
 
     /// Alphabet exercising 1/2/3/4-byte UTF-8 plus newlines and spaces.
     const POOL: &[&str] = &[
-        "a", "b", "Z", "0", " ", "~", "\n", "\n", "é", "中", "文", "🦀", "🎉", "ß", "fn ", "{", "}", "\t",
+        "a", "b", "Z", "0", " ", "~", "\n", "\n", "é", "中", "文", "🦀", "🎉", "ß", "fn ", "{",
+        "}", "\t",
     ];
 
     fn random_text(rng: &mut Rng, max_chars: usize) -> String {
@@ -1514,7 +1647,9 @@ mod tests {
 
     /// Char-boundary byte offsets of `s`, ascending (0 and len included).
     fn boundaries(s: &str) -> Vec<usize> {
-        std::iter::once(0).chain(s.char_indices().map(|(i, c)| i + c.len_utf8())).collect()
+        std::iter::once(0)
+            .chain(s.char_indices().map(|(i, c)| i + c.len_utf8()))
+            .collect()
     }
 
     fn assert_invariants(rope: &Rope, model: &str, ctx: &str) {
@@ -1524,7 +1659,11 @@ mod tests {
         let want_lines = model.bytes().filter(|&b| b == b'\n').count() + 1;
         assert_eq!(rope.line_count(), want_lines, "line_count ({ctx})");
         // Root summaries agree with the ground truth.
-        assert_eq!(rope.line(0), model.lines().next().unwrap_or(""), "line(0) ({ctx})");
+        assert_eq!(
+            rope.line(0),
+            model.lines().next().unwrap_or(""),
+            "line(0) ({ctx})"
+        );
     }
 
     /// Randomized differential test vs `String` — the correctness gate.
@@ -1545,7 +1684,8 @@ mod tests {
                 format!("insert({at}, {text:?})")
             } else if kind == 1 && at < model.len() {
                 let pos = bounds.iter().position(|&b| b == at).unwrap();
-                let end = bounds[(pos + 1 + rng.below(bounds.len() - pos - 1)).min(bounds.len() - 1)];
+                let end =
+                    bounds[(pos + 1 + rng.below(bounds.len() - pos - 1)).min(bounds.len() - 1)];
                 model.replace_range(at..end, "");
                 rope.delete_bytes(at, end);
                 format!("delete({at}, {end})")
@@ -1565,7 +1705,11 @@ mod tests {
             assert_invariants(&rope, &model, &ctx);
             // PLAN-703 T-01: digest tracks the model content exactly, and
             // every byte range digests as its flat content digest.
-            assert_eq!(rope.content_hash(), poly_digest(model.as_bytes()), "content_hash ({ctx})");
+            assert_eq!(
+                rope.content_hash(),
+                poly_digest(model.as_bytes()),
+                "content_hash ({ctx})"
+            );
             let bounds = boundaries(&model);
             let bi = rng.below(bounds.len());
             let hi_i = bi + rng.below(bounds.len() - bi);
@@ -1603,7 +1747,10 @@ mod tests {
         for &pos in &boundaries(base) {
             let mut r = Rope::from_str(base);
             r.insert_bytes(pos, "X中");
-            assert_eq!(r.to_string(), format!("{}X中{}", &base[..pos], &base[pos..]));
+            assert_eq!(
+                r.to_string(),
+                format!("{}X中{}", &base[..pos], &base[pos..])
+            );
 
             let mut r = Rope::from_str(base);
             if pos < base.len() {
@@ -1613,7 +1760,10 @@ mod tests {
             }
 
             let mut r = Rope::from_str(base);
-            let end = boundaries(base).into_iter().find(|&b| b > pos).unwrap_or(base.len());
+            let end = boundaries(base)
+                .into_iter()
+                .find(|&b| b > pos)
+                .unwrap_or(base.len());
             r.replace_bytes(pos, end, "🎉");
             assert_eq!(r.to_string(), format!("{}🎉{}", &base[..pos], &base[end..]));
         }
@@ -1623,7 +1773,11 @@ mod tests {
     fn empty_rope_ops() {
         let mut r = Rope::new();
         assert_eq!(r.to_string(), "");
-        assert_eq!(r.line_count(), 1, "empty document is ONE empty line (lines.join convention)");
+        assert_eq!(
+            r.line_count(),
+            1,
+            "empty document is ONE empty line (lines.join convention)"
+        );
         assert_eq!(r.line(0), "");
         r.insert_bytes(0, "hi");
         assert_eq!(r.to_string(), "hi");
@@ -1762,7 +1916,9 @@ mod tests {
     fn leaf_spanning_text() -> String {
         let mut s = String::new();
         for i in 0..80 {
-            s.push_str(&format!("line {i} — some content to spread across leaves 🦀\n"));
+            s.push_str(&format!(
+                "line {i} — some content to spread across leaves 🦀\n"
+            ));
         }
         s
     }
@@ -1770,11 +1926,22 @@ mod tests {
     #[test]
     fn digest_basics_and_range_agreement() {
         let text = leaf_spanning_text();
-        assert!(text.len() > LEAF_MAX_BYTES, "fixture must span multiple leaves");
+        assert!(
+            text.len() > LEAF_MAX_BYTES,
+            "fixture must span multiple leaves"
+        );
         let r = Rope::from_str(&text);
         assert_eq!(r.content_hash(), poly_digest(text.as_bytes()));
-        assert_eq!(r.range_hash(0, r.len_bytes()), r.content_hash(), "full range == root digest");
-        assert_eq!(r.range_hash(0, 0), 1, "empty range = empty digest (sentinel)");
+        assert_eq!(
+            r.range_hash(0, r.len_bytes()),
+            r.content_hash(),
+            "full range == root digest"
+        );
+        assert_eq!(
+            r.range_hash(0, 0),
+            1,
+            "empty range = empty digest (sentinel)"
+        );
         // Sampled subrange agreement (the fold is the concatenation rule, so
         // decomposition cannot change the value); plus an exhaustive sweep
         // over leaf-aligned pieces.
@@ -1785,7 +1952,11 @@ mod tests {
             let bi = rng.below(bounds.len());
             let hi_i = bi + rng.below(bounds.len() - bi);
             let (lo, hi) = (bounds[bi], bounds[hi_i]);
-            assert_eq!(r.range_hash(lo, hi), poly_digest(&bytes[lo..hi]), "range [{lo},{hi})");
+            assert_eq!(
+                r.range_hash(lo, hi),
+                poly_digest(&bytes[lo..hi]),
+                "range [{lo},{hi})"
+            );
         }
         // Snapshots expose the same faces with identical values.
         let s = r.snapshot();
@@ -1804,7 +1975,10 @@ mod tests {
         // share root Arcs → equal at O(1) (ptr_eq shortcut).
         let mut r = Rope::from_str(&text);
         let s1 = r.snapshot();
-        assert!(s1.subtree_equal(&r.snapshot()), "shared snapshot roots equal");
+        assert!(
+            s1.subtree_equal(&r.snapshot()),
+            "shared snapshot roots equal"
+        );
         let clone = r.clone();
         assert!(r.subtree_equal(&clone), "clone shares structure");
 
@@ -1814,7 +1988,10 @@ mod tests {
         fork.insert_bytes(edit_at, "// edited\n");
         assert!(!r.subtree_equal(&fork), "forked content unequal");
         let s_mid = fork.snapshot();
-        assert!(!s1.subtree_equal(&s_mid), "frozen original vs edited snapshot");
+        assert!(
+            !s1.subtree_equal(&s_mid),
+            "frozen original vs edited snapshot"
+        );
 
         // Family 3 — re-edit back to the original content: content-determined
         // digests make the verdict equal again at the root shortcut (the
@@ -1824,7 +2001,10 @@ mod tests {
         assert!(r.subtree_equal(&fork), "re-edit back to equal content");
         // Snapshot-level verdicts agree with rope-level ones.
         let s2 = fork.snapshot();
-        assert!(s2.subtree_equal(&s1), "reverted content equals frozen original");
+        assert!(
+            s2.subtree_equal(&s1),
+            "reverted content equals frozen original"
+        );
 
         // Independent builds of the same content → equal (identical
         // canonical shape → Merkle shortcut fires at the root).
@@ -1850,7 +2030,9 @@ mod tests {
     fn prune_spans_classify_shared_and_diverged() {
         let mut model = String::new();
         for i in 0..300 {
-            model.push_str(&format!("line {i} with padding text to cross leaf boundaries\n"));
+            model.push_str(&format!(
+                "line {i} with padding text to cross leaf boundaries\n"
+            ));
         }
         let mut r = Rope::from_str(&model);
 
@@ -1868,12 +2050,19 @@ mod tests {
         let mut b_model = model.clone();
         b_model.insert_str(insert_at, "INSERTED\n");
         let spans = r.snapshot().prune_spans(&s0);
-        assert!(!spans.diverged.is_empty(), "the edit region must register as diverged");
+        assert!(
+            !spans.diverged.is_empty(),
+            "the edit region must register as diverged"
+        );
         // Shared spans must be byte-identical across the (possibly shifted)
         // coordinate pair. a-coords index the POST tree (self = r = the
         // edited rope), b-coords the PRE snapshot (other = s0).
         for (a1, a2, b1, b2) in &spans.shared {
-            assert_eq!(&b_model[*a1..*a2], &model[*b1..*b2], "shared span a[{a1},{a2}) b[{b1},{b2})");
+            assert_eq!(
+                &b_model[*a1..*a2],
+                &model[*b1..*b2],
+                "shared span a[{a1},{a2}) b[{b1},{b2})"
+            );
         }
         // The inserted text must sit inside some diverged span (post side).
         assert!(
@@ -1920,13 +2109,21 @@ mod tests {
         let t1 = std::time::Instant::now();
         let mid = rope.line_start_byte(n / 2);
         assert_eq!(rope.byte_to_point(mid), (n / 2, 0));
-        assert!(t1.elapsed().as_millis() < 1000, "byte_to_point took {:?}", t1.elapsed());
+        assert!(
+            t1.elapsed().as_millis() < 1000,
+            "byte_to_point took {:?}",
+            t1.elapsed()
+        );
 
         let t2 = std::time::Instant::now();
         rope.insert_bytes(mid, "// inserted\n");
         rope.delete_bytes(mid, mid + 12);
         assert_eq!(rope.to_string(), text, "edits must cancel out");
-        assert!(t2.elapsed().as_secs() < 10, "mid edits took {:?}", t2.elapsed());
+        assert!(
+            t2.elapsed().as_secs() < 10,
+            "mid edits took {:?}",
+            t2.elapsed()
+        );
 
         // O(1) summaries: repeated reads are instant.
         let t3 = std::time::Instant::now();
@@ -1934,10 +2131,13 @@ mod tests {
             std::hint::black_box(rope.line_count());
             std::hint::black_box(rope.len_bytes());
         }
-        assert!(t3.elapsed().as_millis() < 500, "root summaries not O(1): {:?}", t3.elapsed());
+        assert!(
+            t3.elapsed().as_millis() < 500,
+            "root summaries not O(1): {:?}",
+            t3.elapsed()
+        );
     }
 }
-
 
 #[cfg(test)]
 mod p703_debug {
@@ -1949,12 +2149,22 @@ mod p703_debug {
         let (l0, _) = split(&r.root, 600);
         let h1 = poly_digest(&text.as_bytes()[..600]);
         let h2 = poly_digest(&text.as_bytes()[600..]);
-        println!("flat={} root={} left600={} poly600={} poly2={} combine={}",
-            poly_digest(text.as_bytes()), r.content_hash(), l0.hash(), h1, h2,
-            combine_hash(h1, h2, 600));
+        println!(
+            "flat={} root={} left600={} poly600={} poly2={} combine={}",
+            poly_digest(text.as_bytes()),
+            r.content_hash(),
+            l0.hash(),
+            h1,
+            h2,
+            combine_hash(h1, h2, 600)
+        );
         // single leaf vs combine
         let s = Rope::from_str("hello");
-        println!("small: leafhash={} poly={}", s.content_hash(), poly_digest(b"hello"));
+        println!(
+            "small: leafhash={} poly={}",
+            s.content_hash(),
+            poly_digest(b"hello")
+        );
     }
 }
 
@@ -1964,7 +2174,13 @@ mod prune_span_reference {
 
     /// Naive position-aligned reference: shared = equal runs at the same
     /// offset, diverged = the rest.
-    fn naive_spans(a: &str, b: &str) -> (Vec<(usize, usize, usize, usize)>, Vec<(usize, usize, usize, usize)>) {
+    fn naive_spans(
+        a: &str,
+        b: &str,
+    ) -> (
+        Vec<(usize, usize, usize, usize)>,
+        Vec<(usize, usize, usize, usize)>,
+    ) {
         let ab = a.as_bytes();
         let bb = b.as_bytes();
         let common = ab.len().min(bb.len());
@@ -1997,7 +2213,9 @@ mod prune_span_reference {
     fn prune_spans_agree_with_naive_classifier() {
         let mut model = String::new();
         for i in 0..300 {
-            model.push_str(&format!("line {i} with padding text to cross leaf boundaries\n"));
+            model.push_str(&format!(
+                "line {i} with padding text to cross leaf boundaries\n"
+            ));
         }
         let insert_at = 7699;
         let mut b_model = model.clone();
@@ -2018,11 +2236,11 @@ mod prune_span_reference {
         // walk-shared must be a subset of naive-shared (conservative OK)
         for (a1, a2, b1, b2) in &spans.shared {
             assert!(
-                nsh.iter().any(|&(c1, c2, d1, d2)| c1 <= *a1 && *a2 <= c2 && d1 <= *b1 && *b2 <= d2),
+                nsh.iter()
+                    .any(|&(c1, c2, d1, d2)| c1 <= *a1 && *a2 <= c2 && d1 <= *b1 && *b2 <= d2),
                 "shared a[{a1},{a2}) b[{b1},{b2}) not backed by naive classifier"
             );
         }
         let _ = (nsh, ndi);
     }
 }
-

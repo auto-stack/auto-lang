@@ -25,7 +25,9 @@
 use std::path::Path;
 
 use super::dirs::{DirDiffError, DirDiffIter, DirDiffOptions};
-use super::{engine_changes, group_hunks_annotated, intern_lines, split_lines_universal, Change, DiffOpts};
+use super::{
+    engine_changes, group_hunks_annotated, intern_lines, split_lines_universal, Change, DiffOpts,
+};
 
 /// Entry cap (downstream T-00 定参).
 const DIR_ENTRY_CAP: usize = 5000;
@@ -63,7 +65,10 @@ fn hunks_json(out: &mut String, hunks: &[super::Hunk]) {
         if i > 0 {
             out.push(',');
         }
-        out.push_str(&format!("{{\"a1\":{},\"a2\":{},\"b1\":{},\"b2\":{}}}", h.a1, h.a2, h.b1, h.b2));
+        out.push_str(&format!(
+            "{{\"a1\":{},\"a2\":{},\"b1\":{},\"b2\":{}}}",
+            h.a1, h.a2, h.b1, h.b2
+        ));
     }
     out.push(']');
 }
@@ -81,7 +86,10 @@ pub fn diff_files_envelope(a_text: &str, b_text: &str, ctx: usize) -> String {
     let rows = build_rows(&changes, &grouped, &a_lines, &b_lines);
 
     let mut out = String::with_capacity(1024 + rows.len() * 96);
-    hunks_json(&mut out, &grouped.iter().map(|g| g.hunk).collect::<Vec<_>>());
+    hunks_json(
+        &mut out,
+        &grouped.iter().map(|g| g.hunk).collect::<Vec<_>>(),
+    );
     out.push_str(",\"rows\":[");
     for (i, r) in rows.iter().enumerate() {
         if i > 0 {
@@ -119,14 +127,23 @@ pub fn diff_files_envelope_window(
     let adds = changes.iter().filter(|c| !c.del).count();
     let dels = changes.iter().filter(|c| c.del).count();
     let grouped = group_hunks_annotated(&changes, a_lines.len(), b_lines.len(), ctx);
-    let (rows, rows_total) =
-        build_rows_windowed(&changes, &grouped, &a_lines, &b_lines, rows_offset, rows_limit);
+    let (rows, rows_total) = build_rows_windowed(
+        &changes,
+        &grouped,
+        &a_lines,
+        &b_lines,
+        rows_offset,
+        rows_limit,
+    );
     // truncated 语义（011 保留字段激活）：有行被省略即置位——头部省略
     // （offset>0）与尾部省略（offset+len<total）都算。
     let truncated = rows_offset > 0 || rows_offset + rows.len() < rows_total;
 
     let mut out = String::with_capacity(1024 + rows.len() * 96);
-    hunks_json(&mut out, &grouped.iter().map(|g| g.hunk).collect::<Vec<_>>());
+    hunks_json(
+        &mut out,
+        &grouped.iter().map(|g| g.hunk).collect::<Vec<_>>(),
+    );
     out.push_str(",\"rows\":[");
     for (i, r) in rows.iter().enumerate() {
         if i > 0 {
@@ -150,7 +167,10 @@ pub fn diff_files_envelope_from_paths(path_a: &str, path_b: &str, ctx: usize) ->
     if !Path::new(path_b).is_file() {
         return err_envelope(&format!("文件不存在: {path_b}"));
     }
-    match (std::fs::read_to_string(path_a), std::fs::read_to_string(path_b)) {
+    match (
+        std::fs::read_to_string(path_a),
+        std::fs::read_to_string(path_b),
+    ) {
         (Ok(a), Ok(b)) => diff_files_envelope(&a, &b, ctx),
         (Err(e), _) | (_, Err(e)) => err_envelope(&format!("读取失败: {e}")),
     }
@@ -172,7 +192,10 @@ pub fn diff_files_envelope_from_paths_window(
     if !Path::new(path_b).is_file() {
         return err_envelope(&format!("文件不存在: {path_b}"));
     }
-    match (std::fs::read_to_string(path_a), std::fs::read_to_string(path_b)) {
+    match (
+        std::fs::read_to_string(path_a),
+        std::fs::read_to_string(path_b),
+    ) {
         (Ok(a), Ok(b)) => diff_files_envelope_window(&a, &b, ctx, rows_offset, rows_limit),
         (Err(e), _) | (_, Err(e)) => err_envelope(&format!("读取失败: {e}")),
     }
@@ -235,8 +258,17 @@ fn ctx_row(lo: usize, ro: usize, text: &str) -> Row {
 /// mid_end)` + `[mid_end, len)`.
 fn slice_three(s: &str, mid_start: usize, mid_end: usize) -> (String, String, String) {
     let chars: Vec<char> = s.chars().collect();
-    let at = |from: usize, to: usize| chars.get(from..to).map(|c| c.iter().collect()).unwrap_or_default();
-    (at(0, mid_start), at(mid_start, mid_end), at(mid_end, chars.len()))
+    let at = |from: usize, to: usize| {
+        chars
+            .get(from..to)
+            .map(|c| c.iter().collect())
+            .unwrap_or_default()
+    };
+    (
+        at(0, mid_start),
+        at(mid_start, mid_end),
+        at(mid_end, chars.len()),
+    )
 }
 
 /// Expand the change script + annotated hunks into render-ready rows
@@ -328,7 +360,11 @@ fn build_rows_windowed(
         while hi < stream.len() && stream[hi].0 != KEEP {
             hi += 1;
         }
-        while hi < stream.len() && stream[hi].0 == KEEP && stream[hi].1 < h.a2 && stream[hi].2 < h.b2 {
+        while hi < stream.len()
+            && stream[hi].0 == KEEP
+            && stream[hi].1 < h.a2
+            && stream[hi].2 < h.b2
+        {
             hi += 1;
         }
         let mut k = lo;
@@ -484,7 +520,11 @@ pub fn diff_snapshots_envelope(key_a: &str, key_b: &str) -> String {
     let sa = editor_snapshot(key_a);
     let sb = editor_snapshot(key_b);
     let (Some(sa), Some(sb)) = (sa, sb) else {
-        let missing = if editor_snapshot(key_a).is_none() { key_a } else { key_b };
+        let missing = if editor_snapshot(key_a).is_none() {
+            key_a
+        } else {
+            key_b
+        };
         return err_envelope(&format!("编辑器不存在: {missing}"));
     };
     let out = super::diff_snapshots(&sa, &sb, DiffOpts::default());
@@ -523,17 +563,12 @@ mod plan704_rows {
         v.iter().map(|s| s.as_str()).collect()
     }
 
-    fn envelope_rows(
-        a: &[&str],
-        b: &[&str],
-        ctx: usize,
-    ) -> (Vec<Hunk>, Vec<Row>, usize, usize) {
+    fn envelope_rows(a: &[&str], b: &[&str], ctx: usize) -> (Vec<Hunk>, Vec<Row>, usize, usize) {
         let inp = super::super::intern_lines(a, b);
         let changes = super::super::engine_changes(&inp, false);
         let adds = changes.iter().filter(|c| !c.del).count();
         let dels = changes.iter().filter(|c| c.del).count();
-        let grouped =
-            super::super::group_hunks_annotated(&changes, a.len(), b.len(), ctx);
+        let grouped = super::super::group_hunks_annotated(&changes, a.len(), b.len(), ctx);
         let rows = build_rows(&changes, &grouped, a, b);
         let hunks = grouped.iter().map(|g| g.hunk).collect();
         (hunks, rows, adds, dels)
@@ -549,16 +584,30 @@ mod plan704_rows {
         b[4] = "L4-changed".into();
         b[19] = "L19-changed".into();
         b[34] = "L34-changed".into();
-        let (hunks, rows, adds, dels) =
-            envelope_rows(&strings(&a), &strings(&b), 3);
+        let (hunks, rows, adds, dels) = envelope_rows(&strings(&a), &strings(&b), 3);
         assert_eq!(adds, 3);
         assert_eq!(dels, 3);
         assert_eq!(
             hunks,
             vec![
-                Hunk { a1: 1, a2: 8, b1: 1, b2: 8 },
-                Hunk { a1: 16, a2: 23, b1: 16, b2: 23 },
-                Hunk { a1: 31, a2: 38, b1: 31, b2: 38 },
+                Hunk {
+                    a1: 1,
+                    a2: 8,
+                    b1: 1,
+                    b2: 8
+                },
+                Hunk {
+                    a1: 16,
+                    a2: 23,
+                    b1: 16,
+                    b2: 23
+                },
+                Hunk {
+                    a1: 31,
+                    a2: 38,
+                    b1: 31,
+                    b2: 38
+                },
             ]
         );
         assert_eq!(rows.len(), 21, "no duplicated leading context");
@@ -578,7 +627,10 @@ mod plan704_rows {
         }
         // three-segment marking on the first pair: "L5" vs "L4-changed"
         let p = &rows[3];
-        assert_eq!((p.lpre.as_str(), p.lmid.as_str(), p.lpost.as_str()), ("L", "5", ""));
+        assert_eq!(
+            (p.lpre.as_str(), p.lmid.as_str(), p.lpost.as_str()),
+            ("L", "5", "")
+        );
         assert_eq!(
             (p.rpre.as_str(), p.rmid.as_str(), p.rpost.as_str()),
             ("L", "4-changed", "")
@@ -593,8 +645,7 @@ mod plan704_rows {
         let mut b: Vec<String> = a[..6].to_vec();
         b.push("NEW".into());
         b.extend(a[9..].to_vec());
-        let (_, rows, adds, dels) =
-            envelope_rows(&strings(&a), &strings(&b), 3);
+        let (_, rows, adds, dels) = envelope_rows(&strings(&a), &strings(&b), 3);
         assert_eq!(adds, 1);
         assert_eq!(dels, 3);
         assert_eq!(rows.len(), 7, "pair + unpaired dels present");
@@ -617,18 +668,24 @@ mod plan704_rows {
         let mut b: Vec<String> = a[..5].to_vec();
         b.extend(["E1".to_string(), "E2".to_string(), "E3".to_string()]);
         b.extend(a[5..].to_vec());
-        let (_, rows, adds, dels) =
-            envelope_rows(&strings(&a), &strings(&b), 3);
+        let (_, rows, adds, dels) = envelope_rows(&strings(&a), &strings(&b), 3);
         assert_eq!(adds, 3);
         assert_eq!(dels, 0);
         assert_eq!(rows.len(), 9);
-        assert_eq!(rows.iter().filter(|r| r.rk == "add").count(), 3, "add rows present");
+        assert_eq!(
+            rows.iter().filter(|r| r.rk == "add").count(),
+            3,
+            "add rows present"
+        );
         // mirror: pure delete
-        let (_, rows2, adds2, dels2) =
-            envelope_rows(&strings(&b), &strings(&a), 3);
+        let (_, rows2, adds2, dels2) = envelope_rows(&strings(&b), &strings(&a), 3);
         assert_eq!(adds2, 0);
         assert_eq!(dels2, 3);
-        assert_eq!(rows2.iter().filter(|r| r.lk == "del").count(), 3, "del rows present");
+        assert_eq!(
+            rows2.iter().filter(|r| r.lk == "del").count(),
+            3,
+            "del rows present"
+        );
     }
 }
 
@@ -643,14 +700,23 @@ mod plan716_window {
         let mut a = String::new();
         let mut b = String::new();
         for i in 0..hunks * 40 {
-            a.push_str(&format!("L{}
-", i));
+            a.push_str(&format!(
+                "L{}
+",
+                i
+            ));
             if i % 40 == 20 {
-                b.push_str(&format!("L{}-changed
-", i));
+                b.push_str(&format!(
+                    "L{}-changed
+",
+                    i
+                ));
             } else {
-                b.push_str(&format!("L{}
-", i));
+                b.push_str(&format!(
+                    "L{}
+",
+                    i
+                ));
             }
         }
         (a, b)
@@ -665,7 +731,10 @@ mod plan716_window {
             !env.contains("rows_total"),
             "默认形不得携带 rows_total 字段（frozen ③）"
         );
-        assert!(env.contains("\"truncated\":false"), "默认形 truncated 恒 false");
+        assert!(
+            env.contains("\"truncated\":false"),
+            "默认形 truncated 恒 false"
+        );
         // 结构黄金钉：字段顺序与形态。
         assert!(env.starts_with("{\"hunks\":["));
         assert!(env.contains("\"rows\":[{\"lo\":"));
@@ -703,8 +772,7 @@ mod plan716_window {
     fn window_slicing_semantics() {
         let (a, b) = scattered_pair(5);
         let win_full = diff_files_envelope_window(&a, &b, 3, 0, usize::MAX);
-        let total: usize = win_full
-            [win_full.find("rows_total").unwrap()..]
+        let total: usize = win_full[win_full.find("rows_total").unwrap()..]
             .split(":")
             .nth(1)
             .unwrap()
@@ -744,8 +812,7 @@ mod plan716_window {
     fn window_edge_semantics() {
         let (a, b) = scattered_pair(3);
         let win_full = diff_files_envelope_window(&a, &b, 3, 0, usize::MAX);
-        let total: usize = win_full
-            [win_full.find("rows_total").unwrap()..]
+        let total: usize = win_full[win_full.find("rows_total").unwrap()..]
             .split(":")
             .nth(1)
             .unwrap()
@@ -759,7 +826,10 @@ mod plan716_window {
         // offset 越界 → 净形。
         let w = diff_files_envelope_window(&a, &b, 3, total + 10, 5);
         assert!(w.contains("\"rows\":[]"), "越界 offset → 净形 rows:[]");
-        assert!(w.contains("\"truncated\":true"), "越界且 total>0 → truncated");
+        assert!(
+            w.contains("\"truncated\":true"),
+            "越界且 total>0 → truncated"
+        );
         assert!(w.contains(&format!("\"rows_total\":{total}")));
 
         // limit 0 → 空 + truncated（有行被省略）。
@@ -768,11 +838,14 @@ mod plan716_window {
         assert!(w0.contains("\"truncated\":true"));
 
         // 空净形形态（offset=0, limit=0 且无差异对——err 形除外）。
-        let (ca, cb) = ("same
+        let (ca, cb) = (
+            "same
 same
-", "same
+",
+            "same
 same
-");
+",
+        );
         let ident = diff_files_envelope_window(ca, cb, 3, 0, 10);
         assert!(ident.contains("\"rows\":[]"), "零差异 → 空 rows");
         assert!(ident.contains("\"truncated\":false"), "零差异无截断");
@@ -792,8 +865,7 @@ same
         let all = rows_of(&full);
         let w = diff_files_envelope_window(&a, &b, 3, 10, 15);
         let got = rows_of(&w);
-        let want: Vec<serde_json::Value> =
-            all.iter().skip(10).take(15).cloned().collect();
+        let want: Vec<serde_json::Value> = all.iter().skip(10).take(15).cloned().collect();
         assert_eq!(got, want, "跨 hunk 窗口切片");
     }
 }

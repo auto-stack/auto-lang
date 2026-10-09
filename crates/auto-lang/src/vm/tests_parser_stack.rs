@@ -8,7 +8,10 @@ fn run_on_stack<F: FnOnce() + Send + 'static>(stack_bytes: usize, f: F) {
         .spawn(f)
         .expect("spawn small-stack thread");
     let joined = h.join();
-    assert!(joined.is_ok(), "parser must not overflow the stack (plan 419 §8.3)");
+    assert!(
+        joined.is_ok(),
+        "parser must not overflow the stack (plan 419 §8.3)"
+    );
 }
 
 #[test]

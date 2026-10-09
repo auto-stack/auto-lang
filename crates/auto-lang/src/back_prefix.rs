@@ -130,7 +130,10 @@ mod tests {
 
         // 未激活：全透传。
         assert_eq!(
-            apply(&store, "let d = Http.get_json(\"/api/media/scan\")\n".to_string()),
+            apply(
+                &store,
+                "let d = Http.get_json(\"/api/media/scan\")\n".to_string()
+            ),
             "let d = Http.get_json(\"/api/media/scan\")\n"
         );
 
@@ -147,13 +150,17 @@ mod tests {
                 "front 目录下模块源改写"
             );
             let back_code =
-                "#[api(method = \"GET\", path = \"/api/notes\")]\npub fn list() int { return 1 }\n".to_string();
+                "#[api(method = \"GET\", path = \"/api/notes\")]\npub fn list() int { return 1 }\n"
+                    .to_string();
             assert_eq!(apply(&back, back_code.clone()), back_code, "back 目录透传");
         }
 
         // guard drop 后：回归透传。
         assert_eq!(
-            apply(&store, "let d = Http.get_json(\"/api/media/scan\")\n".to_string()),
+            apply(
+                &store,
+                "let d = Http.get_json(\"/api/media/scan\")\n".to_string()
+            ),
             "let d = Http.get_json(\"/api/media/scan\")\n",
             "guard 生命周期外零改写"
         );
@@ -302,8 +309,7 @@ widget detail {
                 root: format!("http://127.0.0.1:{port}"),
                 app_key: "018-book-reader".to_string(),
             });
-            crate::build_dynamic_component(&code, app_path.to_str())
-                .expect("routes app 必须能编译")
+            crate::build_dynamic_component(&code, app_path.to_str()).expect("routes app 必须能编译")
         };
 
         // ④ 驱动 Init（页 Init 是 demand 制——**先渲染**：outlet 挂载路由页
@@ -344,7 +350,9 @@ widget detail {
             "stub 未收到任何请求——路由页取数未到达 proxy 根（前缀化未覆盖 pages/ 装载臂）"
         );
         assert!(
-            paths.iter().any(|p| p.contains(&format!("/apps/018-book-reader/api/books/1"))),
+            paths
+                .iter()
+                .any(|p| p.contains(&format!("/apps/018-book-reader/api/books/1"))),
             "请求行应带 /apps/<key>/api 前缀，实际：{paths:?}"
         );
         assert_eq!(

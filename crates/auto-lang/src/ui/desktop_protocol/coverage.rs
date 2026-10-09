@@ -62,11 +62,25 @@ impl Coverage {
     pub fn target_set() -> Self {
         let kinds: BTreeSet<String> = [
             // 500 基线。
-            "text", "button", "input", "image", "a",
+            "text",
+            "button",
+            "input",
+            "image",
+            "a",
             // Plan 507 T3 —— Tier1 display 族（归一折叠键）。
-            "img", "icon", "badge", "avatar", "progress", "divider", "separator", "spacer",
+            "img",
+            "icon",
+            "badge",
+            "avatar",
+            "progress",
+            "divider",
+            "separator",
+            "spacer",
             // Plan 507 T4 —— Tier1 form 族。
-            "checkbox", "switch", "radio", "textarea",
+            "checkbox",
+            "switch",
+            "radio",
+            "textarea",
             // PLAN-668 R-14：PLAN-661 T-03/T-04 slider 统一（VM/aura 臂
             // 直构 View::Slider + vue 原生 range）落地的漏同步。
             "slider",
@@ -75,9 +89,15 @@ impl Coverage {
         .map(String::from)
         .collect();
         let props: BTreeMap<String, BTreeSet<String>> = [
-            ("text", vec!["text", "label", "style", "selectable", "class"]),
+            (
+                "text",
+                vec!["text", "label", "style", "selectable", "class"],
+            ),
             ("button", vec!["text", "label", "style", "disabled"]),
-            ("input", vec!["value", "placeholder", "type", "style", "disabled"]),
+            (
+                "input",
+                vec!["value", "placeholder", "type", "style", "disabled"],
+            ),
             ("image", vec!["src", "style", "alt"]),
             ("a", vec!["text", "label", "style"]),
             // Plan 507 T3 —— display 族（props = schema 声明面 + style/class）。
@@ -93,9 +113,15 @@ impl Coverage {
             ("checkbox", vec!["checked", "disabled", "style", "class"]),
             ("switch", vec!["checked", "disabled", "style", "class"]),
             ("radio", vec!["checked", "disabled", "style", "class"]),
-            ("textarea", vec!["value", "placeholder", "disabled", "rows", "style", "class"]),
+            (
+                "textarea",
+                vec!["value", "placeholder", "disabled", "rows", "style", "class"],
+            ),
             // PLAN-668 R-14：slider props 面（661 T-04 vue 原生 range 属性集）。
-            ("slider", vec!["value", "min", "max", "step", "style", "class"]),
+            (
+                "slider",
+                vec!["value", "min", "max", "step", "style", "class"],
+            ),
         ]
         .into_iter()
         .map(|(k, ps)| (k.to_string(), ps.into_iter().map(String::from).collect()))
@@ -115,18 +141,43 @@ impl Coverage {
         .collect();
         let layouts: BTreeSet<String> = [
             // 500 基线。
-            "center", "col", "row", "if",
+            "center",
+            "col",
+            "row",
+            "if",
             // Plan 507 T3 —— Tier1 布局容器（catch-all 容器臂本就渲染，
             // 此处登记 = auto 探测放行）。
-            "container", "scroll",
+            "container",
+            "scroll",
             // Plan 507 T5 —— grid（cols 等宽网格臂）+ card 族（表面缺省
             // 档容器；kebab/underscore 折叠键同归）。
-            "grid", "griditem", "card", "cardaction", "cardcontent",
-            "carddescription", "cardfooter", "cardheader", "cardtitle",
+            "grid",
+            "griditem",
+            "card",
+            "cardaction",
+            "cardcontent",
+            "carddescription",
+            "cardfooter",
+            "cardheader",
+            "cardtitle",
             // Plan 507 T6 —— 语义容器（块流纵排；列表标记不载——保真
             // 边界随注）。
-            "article", "aside", "footer", "header", "main", "nav", "section",
-            "figure", "details", "summary", "ul", "ol", "li", "dl", "dt", "dd",
+            "article",
+            "aside",
+            "footer",
+            "header",
+            "main",
+            "nav",
+            "section",
+            "figure",
+            "details",
+            "summary",
+            "ul",
+            "ol",
+            "li",
+            "dl",
+            "dt",
+            "dd",
         ]
         .into_iter()
         .map(String::from)
@@ -137,12 +188,42 @@ impl Coverage {
         // bg- border rounded shadow from- to-（渐变端点）/溢出 overflow-/
         // mx-auto/hover: 交互态。
         let style_prefixes: BTreeSet<String> = [
-            "p-", "px-", "py-", "pt-", "pb-", "pl-", "pr-",
-            "m-", "mx-", "my-", "mt-", "mb-", "ml-", "mr-", "-m",
-            "gap-", "w-", "h-", "max-w-", "min-w-", "min-h-", "flex-1",
-            "items-", "justify-", "overflow-", "mx-auto",
-            "text-", "font-", "leading-", "underline",
-            "bg-", "border", "rounded", "shadow", "from-", "to-",
+            "p-",
+            "px-",
+            "py-",
+            "pt-",
+            "pb-",
+            "pl-",
+            "pr-",
+            "m-",
+            "mx-",
+            "my-",
+            "mt-",
+            "mb-",
+            "ml-",
+            "mr-",
+            "-m",
+            "gap-",
+            "w-",
+            "h-",
+            "max-w-",
+            "min-w-",
+            "min-h-",
+            "flex-1",
+            "items-",
+            "justify-",
+            "overflow-",
+            "mx-auto",
+            "text-",
+            "font-",
+            "leading-",
+            "underline",
+            "bg-",
+            "border",
+            "rounded",
+            "shadow",
+            "from-",
+            "to-",
             // Plan 518 G8：backdrop-* 毛玻璃词汇声明冻结——共享 parser 已
             // 识别（StyleClass::BackdropBlur/Saturate）,queue 臂不触发
             // "未知类 → 整 widget not-yet"误判（BoxLayout 提取天然跳过
@@ -153,7 +234,13 @@ impl Coverage {
         .into_iter()
         .map(String::from)
         .collect();
-        Self { kinds, props, events, layouts, style_prefixes }
+        Self {
+            kinds,
+            props,
+            events,
+            layouts,
+            style_prefixes,
+        }
     }
 
     /// 样式类是否在支持子集（前缀或裸类匹配）。
@@ -161,7 +248,9 @@ impl Coverage {
         if token.is_empty() {
             return true;
         }
-        self.style_prefixes.iter().any(|p| token.starts_with(p.as_str()))
+        self.style_prefixes
+            .iter()
+            .any(|p| token.starts_with(p.as_str()))
     }
 
     /// Plan 020 T-04 —— native queue 臂覆盖集（§5.4 实现设计钉）。
@@ -206,41 +295,45 @@ impl Coverage {
             // not-yet（P026-D1 后半维持）→ 未解析降级同兜底。
             "image",
             "progress",
-        // PLAN-029 T-04/T-05/T-06 —— shell queue 面四 kind（B 前置
-        // 序列第二件）：popover（覆盖序渲染 + on_dismiss 命中，open =
-        // View 态）/ mousearea（透传 + click/contextmenu 命中）/
-        // windowthumbnail·workspacepreview（thumbnail:// ·
-        // workspace:// 虚拟引用桥接，宿主侧解析）。
-        "popover",
-        "mousearea",
-        "windowthumbnail",
-        "workspacepreview",
-        // PLAN-032 T-03（D2）：payload 族 tabs——View::Tabs 投影臂（托盘
-        // /选中态/内容区/on_select 命中全链，native_projector 臂同册）。
-        // a2r 断裂映射同批修复（ui_gen/rust.rs 专属臂）；M7-c②（jade-
-        // garden tab×27 / auto-musk tab×16）依赖解锁。
-        "tabs",
-        // PLAN-034 T-05（D4 裁定）：canvas=位图快照过线——View::Canvas
-        // 投影臂（场景栅格化 → bitmap:// 引用 + on_hit 节点命中；pen
-        // 坐标回传/labels = M7-c 撞面批随注）。像素原生族首个经位图
-        // 通道过线的 kind（043 样板验证）。
-        "canvas",
-        // PLAN-674 T-01（§10-1 裁定 A：结构 DrawOps）：codeeditor 过线
-        // ——View::CodeEditor 投影臂（CODE_EDITORS 注册表 get-or-create，
-        // inproc iced widget 同源）→ core::render 视口虚拟化
-        // EditorDrawList → lower_editor_frame（Plan 386 降层，gutter/
-        // 当前行/选区/搜索/caret/preedit/滚动条全 op 面）；键入/IME/箭标
-        // 走 core handle_input 全键面（editor_frame.rs EditorFrameSource
-        // 映射先例）。041 案册翻案（"两真 not-yet 家族"清偿件）。
-        "codeeditor",
+            // PLAN-029 T-04/T-05/T-06 —— shell queue 面四 kind（B 前置
+            // 序列第二件）：popover（覆盖序渲染 + on_dismiss 命中，open =
+            // View 态）/ mousearea（透传 + click/contextmenu 命中）/
+            // windowthumbnail·workspacepreview（thumbnail:// ·
+            // workspace:// 虚拟引用桥接，宿主侧解析）。
+            "popover",
+            "mousearea",
+            "windowthumbnail",
+            "workspacepreview",
+            // PLAN-032 T-03（D2）：payload 族 tabs——View::Tabs 投影臂（托盘
+            // /选中态/内容区/on_select 命中全链，native_projector 臂同册）。
+            // a2r 断裂映射同批修复（ui_gen/rust.rs 专属臂）；M7-c②（jade-
+            // garden tab×27 / auto-musk tab×16）依赖解锁。
+            "tabs",
+            // PLAN-034 T-05（D4 裁定）：canvas=位图快照过线——View::Canvas
+            // 投影臂（场景栅格化 → bitmap:// 引用 + on_hit 节点命中；pen
+            // 坐标回传/labels = M7-c 撞面批随注）。像素原生族首个经位图
+            // 通道过线的 kind（043 样板验证）。
+            "canvas",
+            // PLAN-674 T-01（§10-1 裁定 A：结构 DrawOps）：codeeditor 过线
+            // ——View::CodeEditor 投影臂（CODE_EDITORS 注册表 get-or-create，
+            // inproc iced widget 同源）→ core::render 视口虚拟化
+            // EditorDrawList → lower_editor_frame（Plan 386 降层，gutter/
+            // 当前行/选区/搜索/caret/preedit/滚动条全 op 面）；键入/IME/箭标
+            // 走 core handle_input 全键面（editor_frame.rs EditorFrameSource
+            // 映射先例）。041 案册翻案（"两真 not-yet 家族"清偿件）。
+            "codeeditor",
         ]
         .into_iter()
         .map(String::from)
         .collect();
         let layouts: BTreeSet<String> = [
-            "col", "row", "container", "list",
+            "col",
+            "row",
+            "container",
+            "list",
             // 透传壳（View::Empty / AnchorSlot 块锚定槽——渲染透明）。
-            "empty", "anchorslot",
+            "empty",
+            "anchorslot",
             // PLAN-025 T-05 —— scrollable（Scissor 裁剪 + on_scroll 滚轮）。
             "scroll",
             // PLAN-026 T-04 —— grid（View::Grid walker 两遍网格）。
@@ -255,12 +348,35 @@ impl Coverage {
         // rounded/渐变端点）。shadow/underline/动画/滤镜/opacity 等渲染
         // 未实现面不入——token 映射见 [`native_style_token`]。
         let style_prefixes: BTreeSet<String> = [
-            "p-", "px-", "py-", "pt-", "pb-", "pl-", "pr-",
-            "m-", "mx-", "my-", "mt-", "mb-", "ml-", "mr-", "-m",
-            "gap-", "w-", "h-", "max-w-",
-            "items-", "justify-", "mx-auto",
-            "text-", "font-",
-            "bg-", "border", "rounded", "from-", "to-",
+            "p-",
+            "px-",
+            "py-",
+            "pt-",
+            "pb-",
+            "pl-",
+            "pr-",
+            "m-",
+            "mx-",
+            "my-",
+            "mt-",
+            "mb-",
+            "ml-",
+            "mr-",
+            "-m",
+            "gap-",
+            "w-",
+            "h-",
+            "max-w-",
+            "items-",
+            "justify-",
+            "mx-auto",
+            "text-",
+            "font-",
+            "bg-",
+            "border",
+            "rounded",
+            "from-",
+            "to-",
             // PLAN-025 T-06（T-01 §5.1 定案 2）：flex-1/shadow 降级放行
             // ——解释态 target_set 同款保真边界（shadow 渲染 no-op、
             // flex 族自然宽——native_projector::node_style_of 随注），
@@ -281,14 +397,24 @@ impl Coverage {
             //   not-yet（Text op 无装饰通道；解释态 target_set 同册
             //   underline）。
             "overflow-",
-            "min-w-", "min-h-",
+            "min-w-",
+            "min-h-",
             "leading-",
-            "flex", "block",
-            "underline", "no-underline", "line-through",
+            "flex",
+            "block",
+            "underline",
+            "no-underline",
+            "line-through",
             // ⑥ 静态帧 no-op 提示类（cursor/outline/transition/抗锯齿/
             // shrink/whitespace——queue 命令帧无对应通道，零视觉差）。
-            "cursor-", "outline-", "transition", "antialiased",
-            "shrink-", "whitespace-", "relative", "tracking-",
+            "cursor-",
+            "outline-",
+            "transition",
+            "antialiased",
+            "shrink-",
+            "whitespace-",
+            "relative",
+            "tracking-",
             "backdrop-",
             // PLAN-034 T-05：ring 族（focus 光圈装饰渲染 not-yet——
             // 043 样板携带 ring-2/ring-primary/ring-offset-2；token
@@ -390,7 +516,13 @@ pub fn scan_view(template: &AuraNode) -> ViewScan {
 
 fn scan_node(node: &AuraNode, scan: &mut ViewScan) {
     match node {
-        AuraNode::Element { tag, props, events, children, .. } => {
+        AuraNode::Element {
+            tag,
+            props,
+            events,
+            children,
+            ..
+        } => {
             let kind = normalize_kind(tag);
             scan.tags.insert(kind.clone());
             for (key, value) in props {
@@ -416,7 +548,11 @@ fn scan_node(node: &AuraNode, scan: &mut ViewScan) {
         AuraNode::Text(_) => {
             scan.tags.insert("text".into());
         }
-        AuraNode::Conditional { then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             scan.tags.insert("if".into());
             for child in then_body {
                 scan_node(child, scan);
@@ -482,7 +618,10 @@ pub fn judge(scan: &ViewScan, coverage: &Coverage) -> Verdict {
             for kp in &scan.tag_props {
                 if let Some((k, prop)) = kp.split_once('.') {
                     if k == tag
-                        && !coverage.props.get(tag).is_some_and(|set| set.contains(prop))
+                        && !coverage
+                            .props
+                            .get(tag)
+                            .is_some_and(|set| set.contains(prop))
                     {
                         missing.push(kp.clone());
                     }
@@ -491,7 +630,10 @@ pub fn judge(scan: &ViewScan, coverage: &Coverage) -> Verdict {
             for ke in &scan.tag_events {
                 if let Some((k, event)) = ke.split_once('.') {
                     if k == tag
-                        && !coverage.events.get(tag).is_some_and(|set| set.contains(event))
+                        && !coverage
+                            .events
+                            .get(tag)
+                            .is_some_and(|set| set.contains(event))
                     {
                         missing.push(format!("{ke}!"));
                     }
@@ -634,12 +776,19 @@ fn scan_native_node<M: Clone + std::fmt::Debug>(
         | View::Container { child, .. }
         | View::Scrollable { child, .. }
         | View::Sidebar { content: child, .. } => scan_native_node(child, scan),
-        View::Row { children, .. } | View::Column { children, .. } | View::List { items: children, .. } => {
+        View::Row { children, .. }
+        | View::Column { children, .. }
+        | View::List {
+            items: children, ..
+        } => {
             for child in children {
                 scan_native_node(child, scan);
             }
         }
-        View::Button { content: Some(child), .. } => scan_native_node(child, scan),
+        View::Button {
+            content: Some(child),
+            ..
+        } => scan_native_node(child, scan),
         View::Grid { cells, .. } => {
             for cell in cells {
                 scan_native_node(cell, scan);
@@ -652,7 +801,9 @@ fn scan_native_node<M: Clone + std::fmt::Debug>(
         View::MouseArea { content, .. } => scan_native_node(content, scan),
         // PLAN-029 T-04：Popover 双子树递归（anchor + content——:562 缺口
         // 清偿；open 闭态 content 子树同扫——覆盖判定与开合态无关）。
-        View::Popover { anchor, content, .. } => {
+        View::Popover {
+            anchor, content, ..
+        } => {
             if let crate::ui::view::PopoverAnchor::Widget(child) = anchor {
                 scan_native_node(child, scan);
             }
@@ -797,7 +948,10 @@ pub fn native_style_token(class: &crate::ui::style::StyleClass) -> String {
         SC::LineHeight(_) | SC::LineHeightNone => "leading-1".into(),
         // PLAN-026 T-06 字重族补全（FontBold 同族——TextStyled weight
         // 700 档近似/正常档随注；判定放行 = font- 前缀）。
-        SC::FontSemiBold | SC::FontLight | SC::FontExtraLight | SC::FontExtraBold
+        SC::FontSemiBold
+        | SC::FontLight
+        | SC::FontExtraLight
+        | SC::FontExtraBold
         | SC::FontThin => "font-bold".into(),
         // backdrop-*（518 G8 冻结词汇——共享 parser 识别，queue 臂渲染
         // no-op；解释态 target_set 同册放行）。
@@ -952,7 +1106,9 @@ mod p034_ring_probe {
     #[test]
     fn p034_ring_tokens_admitted() {
         let parser = crate::ui::style::StyleParser::default();
-        let parsed = parser.parse(" ring-2 ring-primary ring-offset-2 ").unwrap_or_default();
+        let parsed = parser
+            .parse(" ring-2 ring-primary ring-offset-2 ")
+            .unwrap_or_default();
         let cov = super::Coverage::native_queue_set();
         for sc in &parsed {
             let tok = super::native_style_token(sc);
@@ -984,10 +1140,9 @@ mod tests {
             "PLACEHOLDER/src/front/app.at"
         )
         .replace("PLACEHOLDER", dir);
-        let src = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("read {path}: {e}"));
-        let component =
-            crate::build_dynamic_component(&src, None).unwrap_or_else(|e| panic!("build {dir}: {e}"));
+        let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+        let component = crate::build_dynamic_component(&src, None)
+            .unwrap_or_else(|e| panic!("build {dir}: {e}"));
         scan_view(component.view_template())
     }
 
@@ -1045,7 +1200,10 @@ mod tests {
         let Verdict::NotCovered(missing) = verdict else {
             panic!("checkbox/scrollable 应 NotCovered");
         };
-        assert!(missing.iter().any(|m| m == "tag:select"), "缺项列 select: {missing:?}");
+        assert!(
+            missing.iter().any(|m| m == "tag:select"),
+            "缺项列 select: {missing:?}"
+        );
         // 整体缺项（tag 未入表）不逐项列 prop/事件。
         assert!(
             !missing.iter().any(|m| m.starts_with("select.")),
@@ -1072,7 +1230,9 @@ mod tests {
             panic!("带参 handler 应 NotCovered");
         };
         assert!(
-            missing.iter().any(|m| m.starts_with("param-handler:button.onclick")),
+            missing
+                .iter()
+                .any(|m| m.starts_with("param-handler:button.onclick")),
             "缺项列带参 handler: {missing:?}"
         );
     }
@@ -1087,8 +1247,14 @@ mod tests {
         assert!(coverage.style_token_supported("-mt-10"));
         assert!(coverage.style_token_supported("hover:bg-blue-600"));
         assert!(coverage.style_token_supported("bg-gradient-to-r"));
-        assert!(!coverage.style_token_supported("animate-pulse"), "动画类不在 v1 子集");
-        assert!(coverage.style_token_supported("backdrop-blur-xl"), "Plan 518 声明冻结");
+        assert!(
+            !coverage.style_token_supported("animate-pulse"),
+            "动画类不在 v1 子集"
+        );
+        assert!(
+            coverage.style_token_supported("backdrop-blur-xl"),
+            "Plan 518 声明冻结"
+        );
         assert!(coverage.style_token_supported("backdrop-saturate-[1.6]"));
     }
 
@@ -1104,17 +1270,15 @@ mod tests {
         )
         .expect("玻璃样式串可解析");
         assert!(
-            s.classes.iter().any(|c| matches!(
-                c,
-                crate::ui::style::StyleClass::BackdropBlur(24.0)
-            )),
+            s.classes
+                .iter()
+                .any(|c| matches!(c, crate::ui::style::StyleClass::BackdropBlur(24.0))),
             "blur-xl → 24px"
         );
         assert!(
-            s.classes.iter().any(|c| matches!(
-                c,
-                crate::ui::style::StyleClass::BackdropSaturate(1.6)
-            )),
+            s.classes
+                .iter()
+                .any(|c| matches!(c, crate::ui::style::StyleClass::BackdropSaturate(1.6))),
             "saturate-[1.6] → 1.6"
         );
         // ② BoxLayout 提取跳过装饰字段（无布局属性写入）。
@@ -1149,10 +1313,22 @@ mod tests {
         use super::RenderMode as RM;
         assert_eq!(RM::resolve(None, None), RM::Auto, "缺省 Auto");
         assert_eq!(RM::resolve(Some("queue"), None), RM::Queue);
-        assert_eq!(RM::resolve(Some("independent"), Some("queue")), RM::Independent, "spawn 覆盖 manifest");
+        assert_eq!(
+            RM::resolve(Some("independent"), Some("queue")),
+            RM::Independent,
+            "spawn 覆盖 manifest"
+        );
         assert_eq!(RM::resolve(None, Some("queue")), RM::Queue, "manifest 档");
-        assert_eq!(RM::resolve(Some("bogus"), Some("independent")), RM::Independent, "未知 spawn 值回退 manifest");
-        assert_eq!(RM::resolve(Some("bogus"), Some("bogus")), RM::Auto, "双未知回退 Auto");
+        assert_eq!(
+            RM::resolve(Some("bogus"), Some("independent")),
+            RM::Independent,
+            "未知 spawn 值回退 manifest"
+        );
+        assert_eq!(
+            RM::resolve(Some("bogus"), Some("bogus")),
+            RM::Auto,
+            "双未知回退 Auto"
+        );
         assert_eq!(RM::resolve(Some(" Queue "), None), RM::Queue, "空白宽容");
     }
 
@@ -1160,17 +1336,27 @@ mod tests {
     /// 降级观测行（缺项清单随行）；显式档不走探测。
     #[test]
     fn effective_mode_probe_and_downgrade() {
-        use crate::ui::desktop_protocol::message::FrameMode;
         use super::RenderMode as RM;
+        use crate::ui::desktop_protocol::message::FrameMode;
 
         // 覆盖视图（002 计数器形态）。
         let covered = crate::build_dynamic_component(
             "widget C { model { var count int = 0 } view { center { text `n: ${.count}` button \"+\" { onclick: () => {.count += 1} } } } }",
             None,
         ).expect("build");
-        assert_eq!(effective_frame_mode(RM::Auto, &covered), (FrameMode::Commands, None));
-        assert_eq!(effective_frame_mode(RM::Queue, &covered), (FrameMode::Commands, None));
-        assert_eq!(effective_frame_mode(RM::Independent, &covered), (FrameMode::Pixels, None), "显式 independent 不探测");
+        assert_eq!(
+            effective_frame_mode(RM::Auto, &covered),
+            (FrameMode::Commands, None)
+        );
+        assert_eq!(
+            effective_frame_mode(RM::Queue, &covered),
+            (FrameMode::Commands, None)
+        );
+        assert_eq!(
+            effective_frame_mode(RM::Independent, &covered),
+            (FrameMode::Pixels, None),
+            "显式 independent 不探测"
+        );
 
         // PLAN-033 T-04 重录：解释 pixels 降级臂退役——auto 未覆盖视图
         // 仍返 Commands（无降级标记），由 run_dynamic_client 启动覆盖门
@@ -1179,10 +1365,14 @@ mod tests {
         let uncovered = crate::build_dynamic_component(
             "widget U { view { select (value: .mode) { onchange: .Pick } } }",
             None,
-        ).expect("build");
+        )
+        .expect("build");
         let (mode, downgrade) = effective_frame_mode(RM::Auto, &uncovered);
         assert_eq!(mode, FrameMode::Commands, "auto 恒 queue（门权威裁决）");
-        assert!(downgrade.is_none(), "无降级标记（pixels 降级臂退役）: {downgrade:?}");
+        assert!(
+            downgrade.is_none(),
+            "无降级标记（pixels 降级臂退役）: {downgrade:?}"
+        );
     }
 
     /// Plan 507 T2/T3 一致性钉：元素登记表的 covered 条目必须落在
@@ -1214,10 +1404,19 @@ mod tests {
     fn t7_families_all_pass_native_gate() {
         use crate::ui::desktop_protocol::native_projector::RqProjector;
         let cases: &[(&str, &str)] = &[
-            ("overlay 弹层", "widget O { view { select (value: .m) { onchange: .P } } }"),
+            (
+                "overlay 弹层",
+                "widget O { view { select (value: .m) { onchange: .P } } }",
+            ),
             ("chart/diagram", "widget C { view { svg { path {} } } }"),
-            ("复合编辑器", "widget E { view { markdown (content: .doc) } }"),
-            ("nav 系", "widget N { view { nav-item (label: \"x\") { onclick: .Go } } }"),
+            (
+                "复合编辑器",
+                "widget E { view { markdown (content: .doc) } }",
+            ),
+            (
+                "nav 系",
+                "widget N { view { nav-item (label: \"x\") { onclick: .Go } } }",
+            ),
             ("表格族", "widget T { view { table { text \"r\" } } }"),
             ("瞬态浮层", "widget F { view { toaster {} } }"),
         ];
@@ -1236,10 +1435,26 @@ mod tests {
     fn native_gate_accepts_003_style_tokens() {
         let coverage = Coverage::native_queue_set();
         for token in [
-            "flex-1", "gap-1.5", "max-w-md", "p-8", "bg-card", "border",
-            "rounded-2xl", "shadow-sm", "mx-auto", "text-2xl", "font-bold",
-            "text-primary", "text-center", "mb-6", "gap-4", "text-sm",
-            "font-medium", "text-muted-foreground", "text-xs", "mt-6",
+            "flex-1",
+            "gap-1.5",
+            "max-w-md",
+            "p-8",
+            "bg-card",
+            "border",
+            "rounded-2xl",
+            "shadow-sm",
+            "mx-auto",
+            "text-2xl",
+            "font-bold",
+            "text-primary",
+            "text-center",
+            "mb-6",
+            "gap-4",
+            "text-sm",
+            "font-medium",
+            "text-muted-foreground",
+            "text-xs",
+            "mt-6",
         ] {
             assert!(
                 coverage.style_token_supported(token),
@@ -1256,28 +1471,87 @@ mod tests {
         let coverage = Coverage::native_queue_set();
         // PLAN-026 T-06 探针：逐 token 走 typed parse → native_style_token，
         // 无 native-unstyled 混入（未映射类显式排查）。
-        for tok in ["w-full", "h-20", "bg-gradient-to-r", "from-blue-500",
-            "to-purple-600", "rounded-t-lg", "rounded-full", "border-4",
-            "border-border", "shadow-md", "-mt-10", "items-center", "w-3",
-            "h-3", "bg-green-400", "gap-2", "text-xl", "text-sm",
-            "text-center", "font-bold", "font-medium", "px-3", "py-1",
-            "px-4", "py-2", "px-6", "pb-6", "bg-secondary", "w-96",
-            "overflow-hidden", "bg-card", "shadow-lg", "rounded-lg"] {
+        for tok in [
+            "w-full",
+            "h-20",
+            "bg-gradient-to-r",
+            "from-blue-500",
+            "to-purple-600",
+            "rounded-t-lg",
+            "rounded-full",
+            "border-4",
+            "border-border",
+            "shadow-md",
+            "-mt-10",
+            "items-center",
+            "w-3",
+            "h-3",
+            "bg-green-400",
+            "gap-2",
+            "text-xl",
+            "text-sm",
+            "text-center",
+            "font-bold",
+            "font-medium",
+            "px-3",
+            "py-1",
+            "px-4",
+            "py-2",
+            "px-6",
+            "pb-6",
+            "bg-secondary",
+            "w-96",
+            "overflow-hidden",
+            "bg-card",
+            "shadow-lg",
+            "rounded-lg",
+        ] {
             if let Ok(sc) = crate::ui::style::StyleClass::parse_single(tok) {
                 let t = native_style_token(&sc);
                 assert!(t != "native-unstyled", "token {tok} → native-unstyled");
             }
         }
         for token in [
-            "w-full", "h-20", "bg-gradient-to-r", "from-blue-500",
-            "to-purple-600", "rounded-t-lg", "rounded-full", "-mt-10",
-            "items-center", "w-3", "h-3", "bg-green-400", "gap-2", "gap-1",
-            "gap-3", "gap-4", "text-xl", "text-sm", "text-center",
-            "font-bold", "font-medium", "px-3", "py-1", "px-4", "py-2",
-            "px-6", "pb-6", "bg-secondary", "text-secondary-foreground",
-            "text-muted-foreground", "bg-primary", "text-primary-foreground",
-            "bg-card", "shadow-lg", "shadow-md", "border", "border-border",
-            "w-96", "overflow-hidden", "leading-relaxed",
+            "w-full",
+            "h-20",
+            "bg-gradient-to-r",
+            "from-blue-500",
+            "to-purple-600",
+            "rounded-t-lg",
+            "rounded-full",
+            "-mt-10",
+            "items-center",
+            "w-3",
+            "h-3",
+            "bg-green-400",
+            "gap-2",
+            "gap-1",
+            "gap-3",
+            "gap-4",
+            "text-xl",
+            "text-sm",
+            "text-center",
+            "font-bold",
+            "font-medium",
+            "px-3",
+            "py-1",
+            "px-4",
+            "py-2",
+            "px-6",
+            "pb-6",
+            "bg-secondary",
+            "text-secondary-foreground",
+            "text-muted-foreground",
+            "bg-primary",
+            "text-primary-foreground",
+            "bg-card",
+            "shadow-lg",
+            "shadow-md",
+            "border",
+            "border-border",
+            "w-96",
+            "overflow-hidden",
+            "leading-relaxed",
         ] {
             assert!(
                 coverage.style_token_supported(token) || token == "leading-relaxed",
@@ -1305,7 +1579,9 @@ mod tests {
                     .join("src/front")
             })
             .find(|p| p.is_dir())
-            .unwrap_or_else(|| panic!("example {dir} not found under examples/ui or capability-tests"));
+            .unwrap_or_else(|| {
+                panic!("example {dir} not found under examples/ui or capability-tests")
+            });
         let mut srcs: Vec<std::path::PathBuf> = std::fs::read_dir(&front)
             .unwrap_or_else(|e| panic!("read {front:?}: {e}"))
             .filter_map(|e| e.ok())
@@ -1320,7 +1596,9 @@ mod tests {
         }
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(combined.as_str()).with_session(session);
-        let ast = parser.parse().unwrap_or_else(|e| panic!("parse {dir}: {e:?}"));
+        let ast = parser
+            .parse()
+            .unwrap_or_else(|e| panic!("parse {dir}: {e:?}"));
         let mut app_decl: Option<&crate::ast::WidgetDecl> = None;
         let mut first_decl: Option<&crate::ast::WidgetDecl> = None;
         for st in &ast.stmts {
@@ -1339,14 +1617,9 @@ mod tests {
             .unwrap_or_else(|| panic!("{dir} 无 WidgetDecl"));
         let widget = crate::aura::extract::extract_widget_from_decl(decl)
             .unwrap_or_else(|e| panic!("extract {dir}: {e:?}"));
-        let bridge = VmBridge::new_from_decls(
-            decl,
-            &[],
-            vec![],
-            &std::collections::HashMap::new(),
-            false,
-        )
-        .unwrap_or_else(|e| panic!("bridge {dir}: {e:?}"));
+        let bridge =
+            VmBridge::new_from_decls(decl, &[], vec![], &std::collections::HashMap::new(), false)
+                .unwrap_or_else(|e| panic!("bridge {dir}: {e:?}"));
         let view = AuraViewBuilder::new(&bridge, &widget.name).build(&widget.view_tree);
         scan_native_view(&view)
     }
@@ -1378,13 +1651,17 @@ mod tests {
     /// 真扫描缺项清单）。
     #[test]
     fn native_auto_default_flipped_to_queue() {
+        use super::RenderMode as RM;
         use crate::ui::desktop_protocol::client_entry::resolve_native_frame_mode;
         use crate::ui::desktop_protocol::message::FrameMode;
-        use super::RenderMode as RM;
 
         let covered = crate::ui::view::View::<()>::text("t");
         let (mode, downgraded, line) = resolve_native_frame_mode(RM::Auto, "T", &covered);
-        assert_eq!(mode, FrameMode::Commands, "Auto × Covered = queue（flipped@ramp3）");
+        assert_eq!(
+            mode,
+            FrameMode::Commands,
+            "Auto × Covered = queue（flipped@ramp3）"
+        );
         assert!(downgraded, "auto 探测标记维持（观测行随行）");
         let line = line.expect("观测行");
         assert!(line.contains("flipped@ramp3"), "观测行文案: {line}");
@@ -1436,17 +1713,15 @@ mod tests {
                 .map(|root| format!("{base}{root}/{dir}/src/front/app.at"))
                 .find(|p| std::path::Path::new(p).is_file())
                 .unwrap_or_else(|| format!("{base}examples/ui/{dir}/src/front/app.at"));
-            let src = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("read {path}: {e}"));
+            let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
             let comp = crate::build_dynamic_component(&src, Some(&path))
                 .unwrap_or_else(|e| panic!("build {dir}: {e:?}"));
             let view = crate::ui::Component::view(&comp);
             let scan = scan_native_view(&view);
             match judge(&scan, &Coverage::native_queue_set()) {
-                Verdict::Covered => assert!(
-                    missing.is_none(),
-                    "{dir} 运行时应 Covered（口径差入案）"
-                ),
+                Verdict::Covered => {
+                    assert!(missing.is_none(), "{dir} 运行时应 Covered（口径差入案）")
+                }
                 Verdict::NotCovered(m) => {
                     let want = missing.unwrap_or_else(|| panic!("{dir} 应 Covered: {m:?}"));
                     assert!(
@@ -1468,8 +1743,8 @@ mod tests {
         use crate::ui::aura_view_builder::AuraViewBuilder;
         use crate::ui::vm_bridge::VmBridge;
 
-        let examples_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/ui");
+        let examples_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/ui");
         // (name, covered, 缺项/失败原因)
         let mut rows: Vec<(String, bool, String)> = Vec::new();
         let mut dirs: Vec<std::path::PathBuf> = std::fs::read_dir(&examples_dir)
@@ -1543,9 +1818,7 @@ mod tests {
             let scan = scan_native_view(&view);
             match judge(&scan, &Coverage::native_queue_set()) {
                 Verdict::Covered => rows.push((name, true, String::new())),
-                Verdict::NotCovered(missing) => {
-                    rows.push((name, false, missing.join(", ")))
-                }
+                Verdict::NotCovered(missing) => rows.push((name, false, missing.join(", "))),
             }
         }
         let total = rows.len();
@@ -1554,8 +1827,12 @@ mod tests {
         // PLAN-032 T-06（D6）：judged 口径——剔除仪器桶（parse-fail/
         // extract-fail/bridge-fail/no-widget：样本装载失败非覆盖面缺项，
         // 026 D3 沿承；029 报告的剔除行同集）。
-        let instrument_bucket =
-            |why: &str| matches!(why, "parse-fail" | "extract-fail" | "bridge-fail" | "no-widget");
+        let instrument_bucket = |why: &str| {
+            matches!(
+                why,
+                "parse-fail" | "extract-fail" | "bridge-fail" | "no-widget"
+            )
+        };
         let judged: Vec<&(String, bool, String)> = rows
             .iter()
             .filter(|(_, _, why)| !instrument_bucket(why))
@@ -1586,7 +1863,10 @@ mod tests {
         );
         // 缺项清单非空不变式（NotCovered 行必载缺项载荷）。
         for (name, covered_row, why) in &rows {
-            assert!(!(!covered_row && why.is_empty()), "{name} NotCovered 缺项空载荷");
+            assert!(
+                !(!covered_row && why.is_empty()),
+                "{name} NotCovered 缺项空载荷"
+            );
         }
     }
 
@@ -1694,7 +1974,11 @@ mod tests {
             eprintln!("[p674-not-yet] 全集空：双根 judged 样本全覆盖");
         }
         for (kind, dirs) in &census {
-            eprintln!("[p674-not-yet] {kind}: {} 处（{}）", dirs.len(), dirs.join(", "));
+            eprintln!(
+                "[p674-not-yet] {kind}: {} 处（{}）",
+                dirs.len(),
+                dirs.join(", ")
+            );
         }
     }
 
@@ -1715,7 +1999,9 @@ mod tests {
             .nth(2)
             .expect("repo root");
         let candidates: Vec<std::path::PathBuf> = [
-            std::env::var("AUTO_OS_ROOT").ok().map(std::path::PathBuf::from),
+            std::env::var("AUTO_OS_ROOT")
+                .ok()
+                .map(std::path::PathBuf::from),
             repo_root.parent().map(|p| p.join("auto-os")),
             Some(std::path::PathBuf::from("D:/autostack/auto-os")),
         ]
@@ -1819,7 +2105,10 @@ mod tests {
         assert!(verdict.is_covered(), "display 族应 Covered: {verdict:?}");
         assert_eq!(
             effective_frame_mode(RenderMode::Auto, &component),
-            (crate::ui::desktop_protocol::message::FrameMode::Commands, None)
+            (
+                crate::ui::desktop_protocol::message::FrameMode::Commands,
+                None
+            )
         );
     }
 }

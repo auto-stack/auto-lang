@@ -1,10 +1,7 @@
-use crate::{
-    error::AutoResult,
-    trans::rust::transpile_rust,
-};
+use crate::ast::{ApiAttrs, Stmt};
+use crate::parser::{CompileDest, Parser};
+use crate::{error::AutoResult, trans::rust::transpile_rust};
 use std::fs::read_to_string;
-use crate::parser::{Parser, CompileDest};
-use crate::ast::{Stmt, ApiAttrs};
 use std::path::PathBuf;
 
 fn test_a2r_with_base(base: &str, case: &str) -> AutoResult<()> {
@@ -67,11 +64,16 @@ fn a2r_compile_smoke_str_param_borrow() {
         .arg("--crate-name=a2r_compile_smoke_008")
         .arg("--crate-type=lib")
         .arg("--emit=metadata")
-        .arg("-o").arg(&out)
+        .arg("-o")
+        .arg(&out)
         .arg(&rs)
         .status()
         .expect("failed to spawn rustc (is a Rust toolchain on PATH?)");
-    assert!(status.success(), "rustc typecheck failed for {}", rs.display());
+    assert!(
+        status.success(),
+        "rustc typecheck failed for {}",
+        rs.display()
+    );
 }
 
 /// Plan 599 (004 §5④): compile-and-run gate for the four foreign-shape
@@ -105,9 +107,14 @@ fn a2r_foreign_shape_compile_run() {
     let stub = d.join("001_foreign_generic_field/stub_fake_term.rs");
     std::fs::copy(&stub, tmp.join("stub_fake_term.rs")).unwrap();
     rustc(&[
-        "--edition=2021", "-A", "warnings", "--crate-type=lib",
-        "--crate-name=fake_term", "stub_fake_term.rs",
-        "-o", "libfake_term.rlib",
+        "--edition=2021",
+        "-A",
+        "warnings",
+        "--crate-type=lib",
+        "--crate-name=fake_term",
+        "stub_fake_term.rs",
+        "-o",
+        "libfake_term.rlib",
     ]);
     std::fs::copy(
         d.join("001_foreign_generic_field/foreign_generic_field.expected.rs"),
@@ -115,38 +122,73 @@ fn a2r_foreign_shape_compile_run() {
     )
     .unwrap();
     rustc(&[
-        "--edition=2021", "-A", "warnings",
-        "--extern", "fake_term=libfake_term.rlib",
-        "case001.rs", "-o", "case001.exe",
+        "--edition=2021",
+        "-A",
+        "warnings",
+        "--extern",
+        "fake_term=libfake_term.rlib",
+        "case001.rs",
+        "-o",
+        "case001.exe",
     ]);
-    let out = std::process::Command::new(tmp.join("case001.exe")).output().unwrap();
+    let out = std::process::Command::new(tmp.join("case001.exe"))
+        .output()
+        .unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success() && stdout.contains("generic_field_ok  42"),
-        "001 witness mismatch: {stdout:?}");
+    assert!(
+        out.status.success() && stdout.contains("generic_field_ok  42"),
+        "001 witness mismatch: {stdout:?}"
+    );
 
     // 002 foreign trait impl / 003 trait object: shared foreign_shape stub
     // crate + --extern (review F-1: the canonical use.rs import also lets the
     // corpus-wide bare rustc gate skip these as external deps).
-    std::fs::copy(d.join("002_foreign_trait_impl/stub_foreign_shape.rs"),
-                  tmp.join("stub_foreign_shape.rs")).unwrap();
+    std::fs::copy(
+        d.join("002_foreign_trait_impl/stub_foreign_shape.rs"),
+        tmp.join("stub_foreign_shape.rs"),
+    )
+    .unwrap();
     rustc(&[
-        "--edition=2021", "-A", "warnings", "--crate-type=lib",
-        "--crate-name=foreign_shape", "stub_foreign_shape.rs",
-        "-o", "libforeign_shape.rlib",
+        "--edition=2021",
+        "-A",
+        "warnings",
+        "--crate-type=lib",
+        "--crate-name=foreign_shape",
+        "stub_foreign_shape.rs",
+        "-o",
+        "libforeign_shape.rlib",
     ]);
     for (case, stem, witness) in [
-        ("002_foreign_trait_impl", "foreign_trait_impl", "trait_impl_ok  3"),
+        (
+            "002_foreign_trait_impl",
+            "foreign_trait_impl",
+            "trait_impl_ok  3",
+        ),
         ("003_trait_object", "trait_object", "trait_object_ok"),
     ] {
         let fname = format!("{stem}_case.rs");
-        std::fs::copy(d.join(case).join(format!("{stem}.expected.rs")), tmp.join(&fname)).unwrap();
+        std::fs::copy(
+            d.join(case).join(format!("{stem}.expected.rs")),
+            tmp.join(&fname),
+        )
+        .unwrap();
         let exe = format!("{stem}_case.exe");
-        rustc(&["--edition=2021", "-A", "warnings",
-            "--extern", "foreign_shape=libforeign_shape.rlib", &fname, "-o", &exe]);
+        rustc(&[
+            "--edition=2021",
+            "-A",
+            "warnings",
+            "--extern",
+            "foreign_shape=libforeign_shape.rlib",
+            &fname,
+            "-o",
+            &exe,
+        ]);
         let out = std::process::Command::new(tmp.join(&exe)).output().unwrap();
         let stdout = String::from_utf8_lossy(&out.stdout);
-        assert!(out.status.success() && stdout.contains(witness),
-            "{case} witness mismatch: {stdout:?}");
+        assert!(
+            out.status.success() && stdout.contains(witness),
+            "{case} witness mismatch: {stdout:?}"
+        );
     }
 
     // 004 bare thread: pure std, compile product as-is
@@ -155,11 +197,22 @@ fn a2r_foreign_shape_compile_run() {
         tmp.join("case004.rs"),
     )
     .unwrap();
-    rustc(&["--edition=2021", "-A", "warnings", "case004.rs", "-o", "case004.exe"]);
-    let out = std::process::Command::new(tmp.join("case004.exe")).output().unwrap();
+    rustc(&[
+        "--edition=2021",
+        "-A",
+        "warnings",
+        "case004.rs",
+        "-o",
+        "case004.exe",
+    ]);
+    let out = std::process::Command::new(tmp.join("case004.exe"))
+        .output()
+        .unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success() && stdout.contains("bare_thread_ok  41"),
-        "004 witness mismatch: {stdout:?}");
+    assert!(
+        out.status.success() && stdout.contains("bare_thread_ok  41"),
+        "004 witness mismatch: {stdout:?}"
+    );
 }
 
 /// Plan 599 (004 §5④) capstone: term.rs-subset round-trip — the a2r
@@ -181,22 +234,62 @@ fn a2r_capstone_term_subset_parity() {
             .current_dir(&tmp)
             .output()
             .expect("spawn failed");
-        assert!(out.status.success(), "{program} {args:?} failed:
+        assert!(
+            out.status.success(),
+            "{program} {args:?} failed:
 {}",
-            String::from_utf8_lossy(&out.stderr));
+            String::from_utf8_lossy(&out.stderr)
+        );
         out
     };
     // shared stub crate
     std::fs::copy(d.join("stub_fake_core.rs"), tmp.join("stub_fake_core.rs")).unwrap();
-    run("rustc", &["--edition=2021", "-A", "warnings", "--crate-type=lib",
-        "--crate-name=fake_core", "stub_fake_core.rs", "-o", "libfake_core.rlib"]);
+    run(
+        "rustc",
+        &[
+            "--edition=2021",
+            "-A",
+            "warnings",
+            "--crate-type=lib",
+            "--crate-name=fake_core",
+            "stub_fake_core.rs",
+            "-o",
+            "libfake_core.rlib",
+        ],
+    );
     // product + oracle against the same rlib
-    std::fs::copy(d.join("term_session_subset.expected.rs"), tmp.join("product.rs")).unwrap();
+    std::fs::copy(
+        d.join("term_session_subset.expected.rs"),
+        tmp.join("product.rs"),
+    )
+    .unwrap();
     std::fs::copy(d.join("oracle.rs"), tmp.join("oracle.rs")).unwrap();
-    run("rustc", &["--edition=2021", "-A", "warnings",
-        "--extern", "fake_core=libfake_core.rlib", "product.rs", "-o", "product.exe"]);
-    run("rustc", &["--edition=2021", "-A", "warnings",
-        "--extern", "fake_core=libfake_core.rlib", "oracle.rs", "-o", "oracle.exe"]);
+    run(
+        "rustc",
+        &[
+            "--edition=2021",
+            "-A",
+            "warnings",
+            "--extern",
+            "fake_core=libfake_core.rlib",
+            "product.rs",
+            "-o",
+            "product.exe",
+        ],
+    );
+    run(
+        "rustc",
+        &[
+            "--edition=2021",
+            "-A",
+            "warnings",
+            "--extern",
+            "fake_core=libfake_core.rlib",
+            "oracle.rs",
+            "-o",
+            "oracle.exe",
+        ],
+    );
     let prod = run(tmp.join("product.exe").to_str().unwrap(), &[]);
     let oracle = run(tmp.join("oracle.exe").to_str().unwrap(), &[]);
     assert_eq!(
@@ -204,8 +297,10 @@ fn a2r_capstone_term_subset_parity() {
         String::from_utf8_lossy(&oracle.stdout),
         "capstone black-box parity broken"
     );
-    assert!(String::from_utf8_lossy(&prod.stdout).contains("session_ok"),
-        "witness missing");
+    assert!(
+        String::from_utf8_lossy(&prod.stdout).contains("session_ok"),
+        "witness missing"
+    );
 }
 
 /// Run an a2r case on a dedicated large-stack thread. Same rationale as
@@ -218,7 +313,10 @@ fn test_a2r_deep(case: &str) {
         .stack_size(16 * 1024 * 1024)
         .spawn(move || test_a2r(&case))
         .expect("failed to spawn deep-stack test thread");
-    child.join().expect("deep-stack test thread panicked").unwrap();
+    child
+        .join()
+        .expect("deep-stack test thread panicked")
+        .unwrap();
 }
 
 fn test_cookbook(case: &str) -> AutoResult<()> {
@@ -243,7 +341,10 @@ fn test_cookbook_deep(case: &str) {
         .stack_size(16 * 1024 * 1024)
         .spawn(move || test_cookbook(&case))
         .expect("failed to spawn deep-stack test thread");
-    child.join().expect("deep-stack test thread panicked").unwrap();
+    child
+        .join()
+        .expect("deep-stack test thread panicked")
+        .unwrap();
 }
 
 /// Plan 310 Phase 4: Test that transpilation FAILS with an error (for cases
@@ -291,11 +392,13 @@ fn main() {
     let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
     assert!(
         code.contains("apply(handler)"),
-        "expected clean function reference `apply(handler)`, got:\n{}", code
+        "expected clean function reference `apply(handler)`, got:\n{}",
+        code
     );
     assert!(
         !code.contains("handler.clone()"),
-        "function reference should not be cloned, got:\n{}", code
+        "function reference should not be cloned, got:\n{}",
+        code
     );
 }
 
@@ -320,16 +423,19 @@ ext Ledger {
     let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
     assert!(
         code.contains("mut doc: &mut Ledger"),
-        "method `mut` param should emit `&mut Ledger`, got:\n{}", code
+        "method `mut` param should emit `&mut Ledger`, got:\n{}",
+        code
     );
     assert!(
         !code.contains("doc: Ledger"),
-        "method `mut` param must not stay by-value, got:\n{}", code
+        "method `mut` param must not stay by-value, got:\n{}",
+        code
     );
     // In-place field write through the &mut param (no clone-on-LHS).
     assert!(
         code.contains("doc.total = doc.total + delta"),
-        "expected in-place field assignment, got:\n{}", code
+        "expected in-place field assignment, got:\n{}",
+        code
     );
 }
 
@@ -348,11 +454,13 @@ fn fail(name str) Result<bool, str> {
     let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
     assert!(
         !code.contains("Box::new"),
-        "Err concat payload must not be Box-wrapped (Result<_, String>), got:\n{}", code
+        "Err concat payload must not be Box-wrapped (Result<_, String>), got:\n{}",
+        code
     );
     assert!(
         code.contains("return Err(format!"),
-        "expected format!-based Err, got:\n{}", code
+        "expected format!-based Err, got:\n{}",
+        code
     );
 }
 
@@ -389,15 +497,18 @@ ext Store {
     let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
     assert!(
         code.contains("m.insert(key, v.to_string())"),
-        "tuple key must be inserted without .to_string(), got:\n{}", code
+        "tuple key must be inserted without .to_string(), got:\n{}",
+        code
     );
     assert!(
         !code.contains("key.to_string()"),
-        "tuple key must NOT get .to_string() (no Display), got:\n{}", code
+        "tuple key must NOT get .to_string() (no Display), got:\n{}",
+        code
     );
     assert!(
         code.contains("m.get(&key)"),
-        "tuple key lookup must borrow (&key), got:\n{}", code
+        "tuple key lookup must borrow (&key), got:\n{}",
+        code
     );
 }
 
@@ -421,11 +532,13 @@ fn main() {
     let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
     assert!(
         code.contains("std::env::var"),
-        "multi-segment module path must use :: separators, got:\n{}", code
+        "multi-segment module path must use :: separators, got:\n{}",
+        code
     );
     assert!(
         !code.contains("std.env.var"),
-        "must NOT emit dotted module path (std.env.var), got:\n{}", code
+        "must NOT emit dotted module path (std.env.var), got:\n{}",
+        code
     );
 }
 
@@ -461,7 +574,8 @@ ext Store {
     let between = &code[first_lock..second_lock];
     assert!(
         between.contains("drop(guard)"),
-        "guard must be dropped before the second lock(), got:\n{}", code
+        "guard must be dropped before the second lock(), got:\n{}",
+        code
     );
 }
 
@@ -491,7 +605,8 @@ ext Store {
     let code = String::from_utf8_lossy(rcode.done().unwrap()).to_string();
     assert!(
         !code.contains("drop(guard)"),
-        "guard reused later — must NOT drop, got:\n{}", code
+        "guard reused later — must NOT drop, got:\n{}",
+        code
     );
 }
 
@@ -549,7 +664,8 @@ type TermSession {
     let gs = derive_line_before(&code, "GridSize");
     assert_eq!(
         gs, "#[derive(Clone, Copy, Debug)]",
-        "explicit derive passthrough broke, got:\n{}", code
+        "explicit derive passthrough broke, got:\n{}",
+        code
     );
     // TermSession (no attrs) auto-derive must not demand comparison traits
     // that GridSize's explicit derive set lacks — that is exactly the E0369
@@ -558,7 +674,8 @@ type TermSession {
     assert_eq!(
         ts, "#[derive(Clone, Debug)]",
         "auto-derive must drop comparison traits absent from the field \
-         type's explicit derives (E0369), got:\n{}", code
+         type's explicit derives (E0369), got:\n{}",
+        code
     );
 }
 
@@ -588,13 +705,15 @@ type Wrapper {
     let inner = derive_line_before(&code, "Inner");
     assert_eq!(
         inner, "#[derive(Clone, Debug)]",
-        "Inner must drop comparison traits absent on Grid, got:\n{}", code
+        "Inner must drop comparison traits absent on Grid, got:\n{}",
+        code
     );
     let wrapper = derive_line_before(&code, "Wrapper");
     assert_eq!(
         wrapper, "#[derive(Clone, Debug)]",
         "restriction must propagate Wrapper ← Inner ← Grid and survive \
-         post-processing, got:\n{}", code
+         post-processing, got:\n{}",
+        code
     );
 }
 
@@ -620,20 +739,17 @@ enum CacheEvent {
     assert_eq!(
         ev, "#[derive(Clone, Debug)]",
         "enum auto-derive must drop comparison traits absent from payload \
-         type's explicit derives, got:\n{}", code
+         type's explicit derives, got:\n{}",
+        code
     );
 }
-
 
 /// PLAN-009 T8: at-gen 转译产物再生成入口(见 auto-term at-gen/README.md
 /// 「转译再生成规程」;in-process API)。PLAN-010 T3 后 CLI trans 已恢复,
 /// 该入口退居等价备用路径。
 #[test]
 fn temp_plan009_t8_transpile_at_app() {
-    let src = read_to_string(
-        "D:/autostack/auto-term/at/autoterm.at",
-    )
-    .unwrap();
+    let src = read_to_string("D:/autostack/auto-term/at/autoterm.at").unwrap();
     let mut rcode = transpile_rust("autoterm", &src).unwrap();
     std::fs::write(
         "D:/autostack/auto-term/at-gen/src/app_logic.rs",
@@ -734,26 +850,28 @@ fn a2r_rustc_real_compile_gate() {
                         // Plan 610 ⑥: relative use.c JSON manifests resolve
                         // against the case dir (same as test_a2r_with_base).
                         let mut rcode = match crate::trans::rust::transpile_rust_with_source_dir(
-                            case.source_file.parent().unwrap_or(std::path::Path::new(".")),
+                            case.source_file
+                                .parent()
+                                .unwrap_or(std::path::Path::new(".")),
                             &case.name,
                             &src,
                         ) {
                             Ok(r) => r,
                             Err(e) => {
-                                failures.lock().unwrap().push(format!(
-                                    "{}: transpile failed: {e}",
-                                    case.name
-                                ));
+                                failures
+                                    .lock()
+                                    .unwrap()
+                                    .push(format!("{}: transpile failed: {e}", case.name));
                                 continue;
                             }
                         };
                         let rs = match rcode.done() {
                             Ok(b) => b,
                             Err(e) => {
-                                failures.lock().unwrap().push(format!(
-                                    "{}: transpile finish failed: {e}",
-                                    case.name
-                                ));
+                                failures
+                                    .lock()
+                                    .unwrap()
+                                    .push(format!("{}: transpile finish failed: {e}", case.name));
                                 continue;
                             }
                         };
@@ -781,8 +899,10 @@ fn a2r_rustc_real_compile_gate() {
                             .arg(format!("--crate-name={crate_name}"))
                             .arg("--crate-type=lib")
                             .arg("--emit=metadata")
-                            .arg("-A").arg("warnings")
-                            .arg("-o").arg(&rmeta)
+                            .arg("-A")
+                            .arg("warnings")
+                            .arg("-o")
+                            .arg(&rmeta)
                             .arg(&rs_path)
                             .output();
                         match out {
@@ -806,8 +926,7 @@ fn a2r_rustc_real_compile_gate() {
                                 } else if known_broken.contains(&case.name) {
                                     known_broken_hits.lock().unwrap().push(case.name.clone());
                                 } else {
-                                    let tail: Vec<&str> =
-                                        stderr.lines().rev().take(30).collect();
+                                    let tail: Vec<&str> = stderr.lines().rev().take(30).collect();
                                     failures.lock().unwrap().push(format!(
                                         "{}: rustc typecheck failed\n{}",
                                         case.name,
@@ -843,212 +962,685 @@ fn a2r_rustc_real_compile_gate() {
         fails.len()
     ));
     if !skips.is_empty() {
-        message.push_str(&format!("\n\nskipped (external deps):\n  {}", skips.join("\n  ")));
+        message.push_str(&format!(
+            "\n\nskipped (external deps):\n  {}",
+            skips.join("\n  ")
+        ));
     }
     if !fails.is_empty() {
-        message.push_str(&format!("
+        message.push_str(&format!(
+            "
 
 unexpected failures:
-  {}", fails.join("
-  ")));
+  {}",
+            fails.join(
+                "
+  "
+            )
+        ));
     }
-    assert!(fails.is_empty() && ledger_now_green.is_empty(), "{}", message);
+    assert!(
+        fails.is_empty() && ledger_now_green.is_empty(),
+        "{}",
+        message
+    );
 }
 
-
 // === 01_basics ===
-#[test] fn test_01_basics_001_hello() { test_a2r("01_basics/001_hello").unwrap(); }
-#[test] fn test_01_basics_002_sqrt() { test_a2r("01_basics/002_sqrt").unwrap(); }
-#[test] fn test_01_basics_003_func() { test_a2r("01_basics/003_func").unwrap(); }
-#[test] fn test_01_basics_004_doc_comments() { test_a2r("01_basics/004_doc_comments").unwrap(); }
+#[test]
+fn test_01_basics_001_hello() {
+    test_a2r("01_basics/001_hello").unwrap();
+}
+#[test]
+fn test_01_basics_002_sqrt() {
+    test_a2r("01_basics/002_sqrt").unwrap();
+}
+#[test]
+fn test_01_basics_003_func() {
+    test_a2r("01_basics/003_func").unwrap();
+}
+#[test]
+fn test_01_basics_004_doc_comments() {
+    test_a2r("01_basics/004_doc_comments").unwrap();
+}
 
 // === 02_types ===
-#[test] fn test_02_types_001_struct() { test_a2r("02_types/001_struct").unwrap(); }
-#[test] fn test_02_types_002_enum() { test_a2r("02_types/002_enum").unwrap(); }
-#[test] fn test_02_types_003_union() { test_a2r("02_types/003_union").unwrap(); }
-#[test] fn test_02_types_004_pointer() { test_a2r("02_types/004_pointer").unwrap(); }
-#[test] fn test_02_types_005_inheritance() { test_a2r("02_types/005_inheritance").unwrap(); }
-#[test] fn test_02_types_006_object() { test_a2r("02_types/006_object").unwrap(); }
-#[test] fn test_02_types_007_cstr() { test_a2r("02_types/007_cstr").unwrap(); }
-#[test] fn test_02_types_008_mut_self() { test_a2r("02_types/008_mut_self").unwrap(); }
-#[test] fn test_02_types_009_self_field() { test_a2r("02_types/009_self_field").unwrap(); }
-#[test] fn test_02_types_010_ext_keyword() { test_a2r("02_types/010_ext_keyword").unwrap(); }
+#[test]
+fn test_02_types_001_struct() {
+    test_a2r("02_types/001_struct").unwrap();
+}
+#[test]
+fn test_02_types_002_enum() {
+    test_a2r("02_types/002_enum").unwrap();
+}
+#[test]
+fn test_02_types_003_union() {
+    test_a2r("02_types/003_union").unwrap();
+}
+#[test]
+fn test_02_types_004_pointer() {
+    test_a2r("02_types/004_pointer").unwrap();
+}
+#[test]
+fn test_02_types_005_inheritance() {
+    test_a2r("02_types/005_inheritance").unwrap();
+}
+#[test]
+fn test_02_types_006_object() {
+    test_a2r("02_types/006_object").unwrap();
+}
+#[test]
+fn test_02_types_007_cstr() {
+    test_a2r("02_types/007_cstr").unwrap();
+}
+#[test]
+fn test_02_types_008_mut_self() {
+    test_a2r("02_types/008_mut_self").unwrap();
+}
+#[test]
+fn test_02_types_009_self_field() {
+    test_a2r("02_types/009_self_field").unwrap();
+}
+#[test]
+fn test_02_types_010_ext_keyword() {
+    test_a2r("02_types/010_ext_keyword").unwrap();
+}
 
 // === 03_control_flow ===
-#[test] fn test_03_control_flow_001_if_basic() { test_a2r("03_control_flow/001_if_basic").unwrap(); }
-#[test] fn test_03_control_flow_002_if_nested() { test_a2r("03_control_flow/002_if_nested").unwrap(); }
-#[test] fn test_03_control_flow_003_if_multistmt() { test_a2r("03_control_flow/003_if_multistmt").unwrap(); }
-#[test] fn test_03_control_flow_004_if_return() { test_a2r("03_control_flow/004_if_return").unwrap(); }
-#[test] fn test_03_control_flow_005_for_range() { test_a2r("03_control_flow/005_for_range").unwrap(); }
-#[test] fn test_03_control_flow_006_for_conditions() { test_a2r("03_control_flow/006_for_conditions").unwrap(); }
-#[test] fn test_03_control_flow_007_while_loop() { test_a2r("03_control_flow/007_while_loop").unwrap(); }
-#[test] fn test_03_control_flow_008_is_match() { test_a2r("03_control_flow/008_is_match").unwrap(); }
-#[test] fn test_03_control_flow_009_is_multi_stmt() { test_a2r("03_control_flow/009_is_multi_stmt").unwrap(); }
-#[test] fn test_03_control_flow_010_is_non_exhaustive() { test_a2r("03_control_flow/010_is_non_exhaustive").unwrap(); }
-#[test] fn test_03_control_flow_013_if_tail_value() { test_a2r("03_control_flow/013_if_tail_value").unwrap(); }
+#[test]
+fn test_03_control_flow_001_if_basic() {
+    test_a2r("03_control_flow/001_if_basic").unwrap();
+}
+#[test]
+fn test_03_control_flow_002_if_nested() {
+    test_a2r("03_control_flow/002_if_nested").unwrap();
+}
+#[test]
+fn test_03_control_flow_003_if_multistmt() {
+    test_a2r("03_control_flow/003_if_multistmt").unwrap();
+}
+#[test]
+fn test_03_control_flow_004_if_return() {
+    test_a2r("03_control_flow/004_if_return").unwrap();
+}
+#[test]
+fn test_03_control_flow_005_for_range() {
+    test_a2r("03_control_flow/005_for_range").unwrap();
+}
+#[test]
+fn test_03_control_flow_006_for_conditions() {
+    test_a2r("03_control_flow/006_for_conditions").unwrap();
+}
+#[test]
+fn test_03_control_flow_007_while_loop() {
+    test_a2r("03_control_flow/007_while_loop").unwrap();
+}
+#[test]
+fn test_03_control_flow_008_is_match() {
+    test_a2r("03_control_flow/008_is_match").unwrap();
+}
+#[test]
+fn test_03_control_flow_009_is_multi_stmt() {
+    test_a2r("03_control_flow/009_is_multi_stmt").unwrap();
+}
+#[test]
+fn test_03_control_flow_010_is_non_exhaustive() {
+    test_a2r("03_control_flow/010_is_non_exhaustive").unwrap();
+}
+#[test]
+fn test_03_control_flow_013_if_tail_value() {
+    test_a2r("03_control_flow/013_if_tail_value").unwrap();
+}
 
 // === 04_strings ===
-#[test] fn test_04_strings_001_fstring() { test_a2r("04_strings/001_fstring").unwrap(); }
-#[test] fn test_04_strings_002_fstring_edge() { test_a2r("04_strings/002_fstring_edge").unwrap(); }
-#[test] fn test_04_strings_003_multi_str() { test_a2r("04_strings/003_multi_str").unwrap(); }
-#[test] fn test_04_strings_004_backtick_string() { test_a2r("04_strings/004_backtick_string").unwrap(); }
-#[test] fn test_04_strings_005_escaped_quotes() { test_a2r("04_strings/005_escaped_quotes").unwrap(); }
-#[test] fn test_04_strings_006_multi_fstr() { test_a2r("04_strings/006_multi_fstr").unwrap(); }
-#[test] fn test_04_strings_007_char_at_infer() { test_a2r("04_strings/007_char_at_infer").unwrap(); }
-#[test] fn test_04_strings_008_str_param_borrow() { test_a2r("04_strings/008_str_param_borrow").unwrap(); }
+#[test]
+fn test_04_strings_001_fstring() {
+    test_a2r("04_strings/001_fstring").unwrap();
+}
+#[test]
+fn test_04_strings_002_fstring_edge() {
+    test_a2r("04_strings/002_fstring_edge").unwrap();
+}
+#[test]
+fn test_04_strings_003_multi_str() {
+    test_a2r("04_strings/003_multi_str").unwrap();
+}
+#[test]
+fn test_04_strings_004_backtick_string() {
+    test_a2r("04_strings/004_backtick_string").unwrap();
+}
+#[test]
+fn test_04_strings_005_escaped_quotes() {
+    test_a2r("04_strings/005_escaped_quotes").unwrap();
+}
+#[test]
+fn test_04_strings_006_multi_fstr() {
+    test_a2r("04_strings/006_multi_fstr").unwrap();
+}
+#[test]
+fn test_04_strings_007_char_at_infer() {
+    test_a2r("04_strings/007_char_at_infer").unwrap();
+}
+#[test]
+fn test_04_strings_008_str_param_borrow() {
+    test_a2r("04_strings/008_str_param_borrow").unwrap();
+}
 // Plan 032 第七批合并后复验:Phase 4 试点缺口守卫——裸 trim() 族不加 .as_str()
 // (E0658)+ 未知被调者不叠显式 to_string()(E0308)。
-#[test] fn test_04_strings_009_asstr_arg_guards() { test_a2r("04_strings/009_asstr_arg_guards").unwrap(); }
+#[test]
+fn test_04_strings_009_asstr_arg_guards() {
+    test_a2r("04_strings/009_asstr_arg_guards").unwrap();
+}
 
 // === 05_expressions ===
-#[test] fn test_05_expressions_001_arithmetic() { test_a2r("05_expressions/001_arithmetic").unwrap(); }
-#[test] fn test_05_expressions_002_unary() { test_a2r("05_expressions/002_unary").unwrap(); }
-#[test] fn test_05_expressions_003_indexing() { test_a2r("05_expressions/003_indexing").unwrap(); }
-#[test] fn test_05_expressions_004_blocks() { test_a2r("05_expressions/004_blocks").unwrap(); }
-#[test] fn test_05_expressions_005_ref_expr() { test_a2r("05_expressions/005_ref_expr").unwrap(); }
-#[test] fn test_05_expressions_006_range_expr() { test_a2r("05_expressions/006_range_expr").unwrap(); }
-#[test] fn test_05_expressions_007_composition() { test_a2r("05_expressions/007_composition").unwrap(); }
-#[test] fn test_05_expressions_008_field_composition() { test_a2r("05_expressions/008_field_composition").unwrap(); }
-#[test] fn test_05_expressions_009_comprehensive() { test_a2r("05_expressions/009_comprehensive").unwrap(); }
-#[test] fn test_05_expressions_010_or_keyword() { test_a2r("05_expressions/010_or_keyword").unwrap(); }
-#[test] fn test_05_expressions_011_no_left_shift() { test_a2r("05_expressions/011_no_left_shift").unwrap(); }
+#[test]
+fn test_05_expressions_001_arithmetic() {
+    test_a2r("05_expressions/001_arithmetic").unwrap();
+}
+#[test]
+fn test_05_expressions_002_unary() {
+    test_a2r("05_expressions/002_unary").unwrap();
+}
+#[test]
+fn test_05_expressions_003_indexing() {
+    test_a2r("05_expressions/003_indexing").unwrap();
+}
+#[test]
+fn test_05_expressions_004_blocks() {
+    test_a2r("05_expressions/004_blocks").unwrap();
+}
+#[test]
+fn test_05_expressions_005_ref_expr() {
+    test_a2r("05_expressions/005_ref_expr").unwrap();
+}
+#[test]
+fn test_05_expressions_006_range_expr() {
+    test_a2r("05_expressions/006_range_expr").unwrap();
+}
+#[test]
+fn test_05_expressions_007_composition() {
+    test_a2r("05_expressions/007_composition").unwrap();
+}
+#[test]
+fn test_05_expressions_008_field_composition() {
+    test_a2r("05_expressions/008_field_composition").unwrap();
+}
+#[test]
+fn test_05_expressions_009_comprehensive() {
+    test_a2r("05_expressions/009_comprehensive").unwrap();
+}
+#[test]
+fn test_05_expressions_010_or_keyword() {
+    test_a2r("05_expressions/010_or_keyword").unwrap();
+}
+#[test]
+fn test_05_expressions_011_no_left_shift() {
+    test_a2r("05_expressions/011_no_left_shift").unwrap();
+}
 // Plan 395: explicit generic type args on calls (turbofish) — `<Type>` on
 // method/free calls transpiles to Rust `::<T>`; `a < b` comparisons and
 // `List<str>` GenName values are unaffected.
-#[test] fn test_05_expressions_012_turbofish() { test_a2r("05_expressions/012_turbofish").unwrap(); }
+#[test]
+fn test_05_expressions_012_turbofish() {
+    test_a2r("05_expressions/012_turbofish").unwrap();
+}
 
 // === 06_pattern_matching ===
-#[test] fn test_06_pattern_matching_001_enum_pattern() { test_a2r("06_pattern_matching/001_enum_pattern").unwrap(); }
-#[test] fn test_06_pattern_matching_002_struct_destructure() { test_a2r("06_pattern_matching/002_struct_destructure").unwrap(); }
-#[test] fn test_06_pattern_matching_003_empty_variant_match() { test_a2r("06_pattern_matching/003_empty_variant_match").unwrap(); }
-#[test] fn test_06_pattern_matching_004_hetero_enum() { test_a2r("06_pattern_matching/004_hetero_enum").unwrap(); }
-#[test] fn test_06_pattern_matching_005_generic_hetero_enum() { test_a2r("06_pattern_matching/005_generic_hetero_enum").unwrap(); }
-#[test] fn test_06_pattern_matching_006_enum_fn_param() { test_a2r("06_pattern_matching/006_enum_fn_param").unwrap(); }
-#[test] fn test_06_pattern_matching_007_is_in_ext() { test_a2r("06_pattern_matching/007_is_in_ext").unwrap(); }
-#[test] fn test_06_pattern_matching_008_hetero_enum_multistmt() { test_a2r("06_pattern_matching/008_hetero_enum_multistmt").unwrap(); }
-#[test] fn test_06_pattern_matching_009_qualified_unit_variant() { test_a2r("06_pattern_matching/009_qualified_unit_variant").unwrap(); }
+#[test]
+fn test_06_pattern_matching_001_enum_pattern() {
+    test_a2r("06_pattern_matching/001_enum_pattern").unwrap();
+}
+#[test]
+fn test_06_pattern_matching_002_struct_destructure() {
+    test_a2r("06_pattern_matching/002_struct_destructure").unwrap();
+}
+#[test]
+fn test_06_pattern_matching_003_empty_variant_match() {
+    test_a2r("06_pattern_matching/003_empty_variant_match").unwrap();
+}
+#[test]
+fn test_06_pattern_matching_004_hetero_enum() {
+    test_a2r("06_pattern_matching/004_hetero_enum").unwrap();
+}
+#[test]
+fn test_06_pattern_matching_005_generic_hetero_enum() {
+    test_a2r("06_pattern_matching/005_generic_hetero_enum").unwrap();
+}
+#[test]
+fn test_06_pattern_matching_006_enum_fn_param() {
+    test_a2r("06_pattern_matching/006_enum_fn_param").unwrap();
+}
+#[test]
+fn test_06_pattern_matching_007_is_in_ext() {
+    test_a2r("06_pattern_matching/007_is_in_ext").unwrap();
+}
+#[test]
+fn test_06_pattern_matching_008_hetero_enum_multistmt() {
+    test_a2r("06_pattern_matching/008_hetero_enum_multistmt").unwrap();
+}
+#[test]
+fn test_06_pattern_matching_009_qualified_unit_variant() {
+    test_a2r("06_pattern_matching/009_qualified_unit_variant").unwrap();
+}
 
 // === 07_ownership ===
-#[test] fn test_07_ownership_001_borrow_view() { test_a2r("07_ownership/001_borrow_view").unwrap(); }
+#[test]
+fn test_07_ownership_001_borrow_view() {
+    test_a2r("07_ownership/001_borrow_view").unwrap();
+}
 
 // === 25_lifecycle (Plan 419 §4.5: 写捕获自动升级 / 非逃逸直值) ===
-#[test] fn test_25_lifecycle_001_ambiguous_closure_upgrades_rc() { test_a2r("25_lifecycle/001_ambiguous_closure_upgrades_rc").unwrap(); }
-#[test] fn test_25_lifecycle_002_non_escaping_stays_plain() { test_a2r("25_lifecycle/002_non_escaping_stays_plain").unwrap(); }
-#[test] fn test_25_lifecycle_003_copy_type_write_capture() { test_a2r("25_lifecycle/003_copy_type_write_capture").unwrap(); }
-#[test] fn test_25_lifecycle_004_read_capture_stays_plain() { test_a2r("25_lifecycle/004_read_capture_stays_plain").unwrap(); }
+#[test]
+fn test_25_lifecycle_001_ambiguous_closure_upgrades_rc() {
+    test_a2r("25_lifecycle/001_ambiguous_closure_upgrades_rc").unwrap();
+}
+#[test]
+fn test_25_lifecycle_002_non_escaping_stays_plain() {
+    test_a2r("25_lifecycle/002_non_escaping_stays_plain").unwrap();
+}
+#[test]
+fn test_25_lifecycle_003_copy_type_write_capture() {
+    test_a2r("25_lifecycle/003_copy_type_write_capture").unwrap();
+}
+#[test]
+fn test_25_lifecycle_004_read_capture_stays_plain() {
+    test_a2r("25_lifecycle/004_read_capture_stays_plain").unwrap();
+}
 // === 26_plan577 (emitter gap batch: R1 dot-chain str borrow / R4 loop
 // owned-Vec move / Phase 0 five small fixes — DEBTS 016 directed probes) ===
-#[test] fn test_26_plan577_001_block_model() { test_a2r("26_plan577/001_block_model").unwrap(); }
-#[test] fn test_26_plan577_002_r1_dot_chain() { test_a2r("26_plan577/002_r1_dot_chain").unwrap(); }
-#[test] fn test_26_plan577_003_r4_loop_move() { test_a2r("26_plan577/003_r4_loop_move").unwrap(); }
-#[test] fn test_26_plan577_004_phase0_small_fixes() { test_a2r("26_plan577/004_phase0_small_fixes").unwrap(); }
+#[test]
+fn test_26_plan577_001_block_model() {
+    test_a2r("26_plan577/001_block_model").unwrap();
+}
+#[test]
+fn test_26_plan577_002_r1_dot_chain() {
+    test_a2r("26_plan577/002_r1_dot_chain").unwrap();
+}
+#[test]
+fn test_26_plan577_003_r4_loop_move() {
+    test_a2r("26_plan577/003_r4_loop_move").unwrap();
+}
+#[test]
+fn test_26_plan577_004_phase0_small_fixes() {
+    test_a2r("26_plan577/004_phase0_small_fixes").unwrap();
+}
 // === 27_c_abi (Plan 610 ⑤: #[export] cdylib export face) ===
-#[test] fn test_27_c_abi_001_export_basic() { test_a2r("27_c_abi/001_export_basic").unwrap(); }
-#[test] fn test_27_c_abi_002_export_cstr() { test_a2r("27_c_abi/002_export_cstr").unwrap(); }
-#[test] fn test_27_c_abi_005_engine_face_auto() { test_a2r("27_c_abi/005_engine_face_auto").unwrap(); }
-#[test] fn test_27_c_abi_003_use_c_static() { test_a2r("27_c_abi/003_use_c_static").unwrap(); }
-#[test] fn test_27_c_abi_004_use_c_dynamic() { test_a2r("27_c_abi/004_use_c_dynamic").unwrap(); }
-#[test] fn test_07_ownership_002_borrow_mut() { test_a2r("07_ownership/002_borrow_mut").unwrap(); }
-#[test] fn test_07_ownership_003_borrow_move() { test_a2r("07_ownership/003_borrow_move").unwrap(); }
-#[test] fn test_07_ownership_004_borrow_conflicts() { test_a2r("07_ownership/004_borrow_conflicts").unwrap(); }
+#[test]
+fn test_27_c_abi_001_export_basic() {
+    test_a2r("27_c_abi/001_export_basic").unwrap();
+}
+#[test]
+fn test_27_c_abi_002_export_cstr() {
+    test_a2r("27_c_abi/002_export_cstr").unwrap();
+}
+#[test]
+fn test_27_c_abi_005_engine_face_auto() {
+    test_a2r("27_c_abi/005_engine_face_auto").unwrap();
+}
+#[test]
+fn test_27_c_abi_003_use_c_static() {
+    test_a2r("27_c_abi/003_use_c_static").unwrap();
+}
+#[test]
+fn test_27_c_abi_004_use_c_dynamic() {
+    test_a2r("27_c_abi/004_use_c_dynamic").unwrap();
+}
+#[test]
+fn test_07_ownership_002_borrow_mut() {
+    test_a2r("07_ownership/002_borrow_mut").unwrap();
+}
+#[test]
+fn test_07_ownership_003_borrow_move() {
+    test_a2r("07_ownership/003_borrow_move").unwrap();
+}
+#[test]
+fn test_07_ownership_004_borrow_conflicts() {
+    test_a2r("07_ownership/004_borrow_conflicts").unwrap();
+}
 // Plan 032 G2-core: `.get()` ref bindings — key auto-borrow (enum keys),
 // return/Ok(v)/let-init auto-clone, mixed-arm `{ expr; }` normalization.
-#[test] fn test_07_ownership_026_get_ref_binding() { test_a2r("07_ownership/026_get_ref_binding").unwrap(); }
+#[test]
+fn test_07_ownership_026_get_ref_binding() {
+    test_a2r("07_ownership/026_get_ref_binding").unwrap();
+}
 
 // === 08_generics ===
-#[test] fn test_08_generics_001_type_alias() { test_a2r("08_generics/001_type_alias").unwrap(); }
-#[test] fn test_08_generics_002_const_generics() { test_a2r("08_generics/002_const_generics").unwrap(); }
-#[test] fn test_08_generics_003_generic_field() { test_a2r("08_generics/003_generic_field").unwrap(); }
-#[test] fn test_08_generics_004_generic_ptr_field() { test_a2r("08_generics/004_generic_ptr_field").unwrap(); }
-#[test] fn test_08_generics_005_with_constraint() { test_a2r("08_generics/005_with_constraint").unwrap(); }
-#[test] fn test_08_generics_006_map_type() { test_a2r("08_generics/006_map_type").unwrap(); }
-#[test] fn test_08_generics_007_no_tuple_generic() { test_a2r("08_generics/007_no_tuple_generic").unwrap(); }
-#[test] fn test_08_generics_008_bounded_generic_fn() { test_a2r("08_generics/008_bounded_generic_fn").unwrap(); }
+#[test]
+fn test_08_generics_001_type_alias() {
+    test_a2r("08_generics/001_type_alias").unwrap();
+}
+#[test]
+fn test_08_generics_002_const_generics() {
+    test_a2r("08_generics/002_const_generics").unwrap();
+}
+#[test]
+fn test_08_generics_003_generic_field() {
+    test_a2r("08_generics/003_generic_field").unwrap();
+}
+#[test]
+fn test_08_generics_004_generic_ptr_field() {
+    test_a2r("08_generics/004_generic_ptr_field").unwrap();
+}
+#[test]
+fn test_08_generics_005_with_constraint() {
+    test_a2r("08_generics/005_with_constraint").unwrap();
+}
+#[test]
+fn test_08_generics_006_map_type() {
+    test_a2r("08_generics/006_map_type").unwrap();
+}
+#[test]
+fn test_08_generics_007_no_tuple_generic() {
+    test_a2r("08_generics/007_no_tuple_generic").unwrap();
+}
+#[test]
+fn test_08_generics_008_bounded_generic_fn() {
+    test_a2r("08_generics/008_bounded_generic_fn").unwrap();
+}
 
 // === 09_option_result ===
-#[test] fn test_09_option_result_001_option() { test_a2r("09_option_result/001_option").unwrap(); }
-#[test] fn test_09_option_result_002_option_construct() { test_a2r("09_option_result/002_option_construct").unwrap(); }
-#[test] fn test_09_option_result_003_null_coalesce() { test_a2r("09_option_result/003_null_coalesce").unwrap(); }
-#[test] fn test_09_option_result_004_error_propagate() { test_a2r("09_option_result/004_error_propagate").unwrap(); }
-#[test] fn test_09_option_result_005_question_uint() { test_a2r("09_option_result/005_question_uint").unwrap(); }
-#[test] fn test_09_option_result_006_question_float() { test_a2r("09_option_result/006_question_float").unwrap(); }
-#[test] fn test_09_option_result_007_question_double() { test_a2r("09_option_result/007_question_double").unwrap(); }
-#[test] fn test_09_option_result_008_question_return_int() { test_a2r("09_option_result/008_question_return_int").unwrap(); }
-#[test] fn test_09_option_result_009_question_return_str() { test_a2r("09_option_result/009_question_return_str").unwrap(); }
-#[test] fn test_09_option_result_010_question_return_bool() { test_a2r("09_option_result/010_question_return_bool").unwrap(); }
-#[test] fn test_09_option_result_011_question_propagate() { test_a2r("09_option_result/011_question_propagate").unwrap(); }
-#[test] fn test_09_option_result_012_question_return_float() { test_a2r("09_option_result/012_question_return_float").unwrap(); }
-#[test] fn test_09_option_result_013_question_return_double() { test_a2r("09_option_result/013_question_return_double").unwrap(); }
-#[test] fn test_09_option_result_014_question_return_char() { test_a2r("09_option_result/014_question_return_char").unwrap(); }
-#[test] fn test_09_option_result_015_question_return_uint() { test_a2r("09_option_result/015_question_return_uint").unwrap(); }
-#[test] fn test_09_option_result_016_question_return_float_v2() { test_a2r("09_option_result/016_question_return_float_v2").unwrap(); }
-#[test] fn test_09_option_result_017_question_return_double_v2() { test_a2r("09_option_result/017_question_return_double_v2").unwrap(); }
-#[test] fn test_09_option_result_018_question_return_char_v2() { test_a2r("09_option_result/018_question_return_char_v2").unwrap(); }
-#[test] fn test_09_option_result_019_question_nested_call() { test_a2r("09_option_result/019_question_nested_call").unwrap(); }
-#[test] fn test_09_option_result_020_question_arithmetic() { test_a2r("09_option_result/020_question_arithmetic").unwrap(); }
-#[test] fn test_09_option_result_021_question_comparison() { test_a2r("09_option_result/021_question_comparison").unwrap(); }
-#[test] fn test_09_option_result_022_question_literal() { test_a2r("09_option_result/022_question_literal").unwrap(); }
-#[test] fn test_09_option_result_023_question_negation() { test_a2r("09_option_result/023_question_negation").unwrap(); }
-#[test] fn test_09_option_result_024_question_zero() { test_a2r("09_option_result/024_question_zero").unwrap(); }
-#[test] fn test_09_option_result_025_question_negative() { test_a2r("09_option_result/025_question_negative").unwrap(); }
-#[test] fn test_09_option_result_026_list_basic() { test_a2r("09_option_result/026_list_basic").unwrap(); }
-#[test] fn test_09_option_result_027_list_methods() { test_a2r("09_option_result/027_list_methods").unwrap(); }
-#[test] fn test_09_option_result_028_list_may() { test_a2r("09_option_result/028_list_may").unwrap(); }
-#[test] fn test_09_option_result_029_list_propagate() { test_a2r("09_option_result/029_list_propagate").unwrap(); }
-#[test] fn test_09_option_result_030_list_coalesce() { test_a2r("09_option_result/030_list_coalesce").unwrap(); }
-#[test] fn test_09_option_result_031_option_bool_field() { test_a2r("09_option_result/031_option_bool_field").unwrap(); }
-#[test] fn test_09_option_result_032_fn_result_enum() { test_a2r("09_option_result/032_fn_result_enum").unwrap(); }
-#[test] fn test_09_option_result_033_result_is_match() { test_a2r("09_option_result/033_result_is_match").unwrap(); }
-#[test] fn test_09_option_result_034_result_bang_type() { test_a2r("09_option_result/034_result_bang_type").unwrap(); }
+#[test]
+fn test_09_option_result_001_option() {
+    test_a2r("09_option_result/001_option").unwrap();
+}
+#[test]
+fn test_09_option_result_002_option_construct() {
+    test_a2r("09_option_result/002_option_construct").unwrap();
+}
+#[test]
+fn test_09_option_result_003_null_coalesce() {
+    test_a2r("09_option_result/003_null_coalesce").unwrap();
+}
+#[test]
+fn test_09_option_result_004_error_propagate() {
+    test_a2r("09_option_result/004_error_propagate").unwrap();
+}
+#[test]
+fn test_09_option_result_005_question_uint() {
+    test_a2r("09_option_result/005_question_uint").unwrap();
+}
+#[test]
+fn test_09_option_result_006_question_float() {
+    test_a2r("09_option_result/006_question_float").unwrap();
+}
+#[test]
+fn test_09_option_result_007_question_double() {
+    test_a2r("09_option_result/007_question_double").unwrap();
+}
+#[test]
+fn test_09_option_result_008_question_return_int() {
+    test_a2r("09_option_result/008_question_return_int").unwrap();
+}
+#[test]
+fn test_09_option_result_009_question_return_str() {
+    test_a2r("09_option_result/009_question_return_str").unwrap();
+}
+#[test]
+fn test_09_option_result_010_question_return_bool() {
+    test_a2r("09_option_result/010_question_return_bool").unwrap();
+}
+#[test]
+fn test_09_option_result_011_question_propagate() {
+    test_a2r("09_option_result/011_question_propagate").unwrap();
+}
+#[test]
+fn test_09_option_result_012_question_return_float() {
+    test_a2r("09_option_result/012_question_return_float").unwrap();
+}
+#[test]
+fn test_09_option_result_013_question_return_double() {
+    test_a2r("09_option_result/013_question_return_double").unwrap();
+}
+#[test]
+fn test_09_option_result_014_question_return_char() {
+    test_a2r("09_option_result/014_question_return_char").unwrap();
+}
+#[test]
+fn test_09_option_result_015_question_return_uint() {
+    test_a2r("09_option_result/015_question_return_uint").unwrap();
+}
+#[test]
+fn test_09_option_result_016_question_return_float_v2() {
+    test_a2r("09_option_result/016_question_return_float_v2").unwrap();
+}
+#[test]
+fn test_09_option_result_017_question_return_double_v2() {
+    test_a2r("09_option_result/017_question_return_double_v2").unwrap();
+}
+#[test]
+fn test_09_option_result_018_question_return_char_v2() {
+    test_a2r("09_option_result/018_question_return_char_v2").unwrap();
+}
+#[test]
+fn test_09_option_result_019_question_nested_call() {
+    test_a2r("09_option_result/019_question_nested_call").unwrap();
+}
+#[test]
+fn test_09_option_result_020_question_arithmetic() {
+    test_a2r("09_option_result/020_question_arithmetic").unwrap();
+}
+#[test]
+fn test_09_option_result_021_question_comparison() {
+    test_a2r("09_option_result/021_question_comparison").unwrap();
+}
+#[test]
+fn test_09_option_result_022_question_literal() {
+    test_a2r("09_option_result/022_question_literal").unwrap();
+}
+#[test]
+fn test_09_option_result_023_question_negation() {
+    test_a2r("09_option_result/023_question_negation").unwrap();
+}
+#[test]
+fn test_09_option_result_024_question_zero() {
+    test_a2r("09_option_result/024_question_zero").unwrap();
+}
+#[test]
+fn test_09_option_result_025_question_negative() {
+    test_a2r("09_option_result/025_question_negative").unwrap();
+}
+#[test]
+fn test_09_option_result_026_list_basic() {
+    test_a2r("09_option_result/026_list_basic").unwrap();
+}
+#[test]
+fn test_09_option_result_027_list_methods() {
+    test_a2r("09_option_result/027_list_methods").unwrap();
+}
+#[test]
+fn test_09_option_result_028_list_may() {
+    test_a2r("09_option_result/028_list_may").unwrap();
+}
+#[test]
+fn test_09_option_result_029_list_propagate() {
+    test_a2r("09_option_result/029_list_propagate").unwrap();
+}
+#[test]
+fn test_09_option_result_030_list_coalesce() {
+    test_a2r("09_option_result/030_list_coalesce").unwrap();
+}
+#[test]
+fn test_09_option_result_031_option_bool_field() {
+    test_a2r("09_option_result/031_option_bool_field").unwrap();
+}
+#[test]
+fn test_09_option_result_032_fn_result_enum() {
+    test_a2r("09_option_result/032_fn_result_enum").unwrap();
+}
+#[test]
+fn test_09_option_result_033_result_is_match() {
+    test_a2r("09_option_result/033_result_is_match").unwrap();
+}
+#[test]
+fn test_09_option_result_034_result_bang_type() {
+    test_a2r("09_option_result/034_result_bang_type").unwrap();
+}
 
 // === 10_collections ===
-#[test] fn test_10_collections_001_array() { test_a2r("10_collections/001_array").unwrap(); }
-#[test] fn test_10_collections_002_list_storage() { test_a2r("10_collections/002_list_storage").unwrap(); }
-#[test] fn test_10_collections_003_map_func() { test_a2r("10_collections/003_map_func").unwrap(); }
-#[test] fn test_10_collections_004_list_as_cast() { test_a2r("10_collections/004_list_as_cast").unwrap(); }
-#[test] fn test_10_collections_005_method_chain() { test_a2r("10_collections/005_method_chain").unwrap(); }
-#[test] fn test_10_collections_006_map_literal() { test_a2r("10_collections/006_map_literal").unwrap(); }
-#[test] fn test_10_collections_007_list_new() { test_a2r("10_collections/007_list_new").unwrap(); }
-#[test] fn test_10_collections_008_list_set_index() { test_a2r("10_collections/008_list_set_index").unwrap(); }
-#[test] fn test_10_collections_009_global_list_set() { test_a2r("10_collections/009_global_list_set").unwrap(); }
+#[test]
+fn test_10_collections_001_array() {
+    test_a2r("10_collections/001_array").unwrap();
+}
+#[test]
+fn test_10_collections_002_list_storage() {
+    test_a2r("10_collections/002_list_storage").unwrap();
+}
+#[test]
+fn test_10_collections_003_map_func() {
+    test_a2r("10_collections/003_map_func").unwrap();
+}
+#[test]
+fn test_10_collections_004_list_as_cast() {
+    test_a2r("10_collections/004_list_as_cast").unwrap();
+}
+#[test]
+fn test_10_collections_005_method_chain() {
+    test_a2r("10_collections/005_method_chain").unwrap();
+}
+#[test]
+fn test_10_collections_006_map_literal() {
+    test_a2r("10_collections/006_map_literal").unwrap();
+}
+#[test]
+fn test_10_collections_007_list_new() {
+    test_a2r("10_collections/007_list_new").unwrap();
+}
+#[test]
+fn test_10_collections_008_list_set_index() {
+    test_a2r("10_collections/008_list_set_index").unwrap();
+}
+#[test]
+fn test_10_collections_009_global_list_set() {
+    test_a2r("10_collections/009_global_list_set").unwrap();
+}
 
 // === 11_methods ===
-#[test] fn test_11_methods_001_method() { test_a2r("11_methods/001_method").unwrap(); }
-#[test] fn test_11_methods_002_struct_methods() { test_a2r("11_methods/002_struct_methods").unwrap(); }
-#[test] fn test_11_methods_003_closure() { test_a2r("11_methods/003_closure").unwrap(); }
-#[test] fn test_11_methods_004_closure_infer() { test_a2r("11_methods/004_closure_infer").unwrap(); }
-#[test] fn test_11_methods_004_static_fn() { test_a2r("11_methods/004_static_fn").unwrap(); }
-#[test] fn test_11_methods_005_func_literal_return() { test_a2r("11_methods/005_func_literal_return").unwrap(); }
-#[test] fn test_11_methods_006_ext_for() { test_a2r("11_methods/006_ext_for").unwrap(); }
-#[test] fn test_11_methods_007_ext_from() { test_a2r("11_methods/007_ext_from").unwrap(); }
-#[test] fn test_11_methods_008_empty_body() { test_a2r("11_methods/008_empty_body").unwrap(); }
-#[test] fn test_11_methods_009_ext_const() { test_a2r("11_methods/009_ext_const").unwrap(); }
+#[test]
+fn test_11_methods_001_method() {
+    test_a2r("11_methods/001_method").unwrap();
+}
+#[test]
+fn test_11_methods_002_struct_methods() {
+    test_a2r("11_methods/002_struct_methods").unwrap();
+}
+#[test]
+fn test_11_methods_003_closure() {
+    test_a2r("11_methods/003_closure").unwrap();
+}
+#[test]
+fn test_11_methods_004_closure_infer() {
+    test_a2r("11_methods/004_closure_infer").unwrap();
+}
+#[test]
+fn test_11_methods_004_static_fn() {
+    test_a2r("11_methods/004_static_fn").unwrap();
+}
+#[test]
+fn test_11_methods_005_func_literal_return() {
+    test_a2r("11_methods/005_func_literal_return").unwrap();
+}
+#[test]
+fn test_11_methods_006_ext_for() {
+    test_a2r("11_methods/006_ext_for").unwrap();
+}
+#[test]
+fn test_11_methods_007_ext_from() {
+    test_a2r("11_methods/007_ext_from").unwrap();
+}
+#[test]
+fn test_11_methods_008_empty_body() {
+    test_a2r("11_methods/008_empty_body").unwrap();
+}
+#[test]
+fn test_11_methods_009_ext_const() {
+    test_a2r("11_methods/009_ext_const").unwrap();
+}
 
 // === 12_specs ===
-#[test] fn test_12_specs_001_basic_spec() { test_a2r("12_specs/001_basic_spec").unwrap(); }
-#[test] fn test_12_specs_002_spec() { test_a2r("12_specs/002_spec").unwrap(); }
-#[test] fn test_12_specs_003_spec_delegation() { test_a2r("12_specs/003_spec_delegation").unwrap(); }
-#[test] fn test_12_specs_004_default_body() { test_a2r("12_specs/004_default_body").unwrap(); }
-#[test] fn test_12_specs_005_generic_impl() { test_a2r("12_specs/005_generic_impl").unwrap(); }
-#[test] fn test_12_specs_006_spec_param_callsite() { test_a2r("12_specs/006_spec_param_callsite").unwrap(); }
-#[test] fn test_12_specs_007_box_fn() { test_a2r("12_specs/007_box_fn").unwrap(); }
-#[test] fn test_12_specs_008_arc_dyn_spec() { test_a2r("12_specs/008_arc_dyn_spec").unwrap(); }
-#[test] fn test_12_specs_009_arc_fn_spec_param() { test_a2r("12_specs/009_arc_fn_spec_param").unwrap(); }
-#[test] fn test_12_specs_010_spec_supertrait() { test_a2r("12_specs/010_spec_supertrait").unwrap(); }
-#[test] fn test_12_specs_011_associated_types() { test_a2r("12_specs/011_associated_types").unwrap(); }
-#[test] fn test_12_specs_012_generic_spec_assoc() { test_a2r("12_specs/012_generic_spec_assoc").unwrap(); }
-#[test] fn test_12_specs_013_generic_spec_typed_impl() { test_a2r("12_specs/013_generic_spec_typed_impl").unwrap(); }
+#[test]
+fn test_12_specs_001_basic_spec() {
+    test_a2r("12_specs/001_basic_spec").unwrap();
+}
+#[test]
+fn test_12_specs_002_spec() {
+    test_a2r("12_specs/002_spec").unwrap();
+}
+#[test]
+fn test_12_specs_003_spec_delegation() {
+    test_a2r("12_specs/003_spec_delegation").unwrap();
+}
+#[test]
+fn test_12_specs_004_default_body() {
+    test_a2r("12_specs/004_default_body").unwrap();
+}
+#[test]
+fn test_12_specs_005_generic_impl() {
+    test_a2r("12_specs/005_generic_impl").unwrap();
+}
+#[test]
+fn test_12_specs_006_spec_param_callsite() {
+    test_a2r("12_specs/006_spec_param_callsite").unwrap();
+}
+#[test]
+fn test_12_specs_007_box_fn() {
+    test_a2r("12_specs/007_box_fn").unwrap();
+}
+#[test]
+fn test_12_specs_008_arc_dyn_spec() {
+    test_a2r("12_specs/008_arc_dyn_spec").unwrap();
+}
+#[test]
+fn test_12_specs_009_arc_fn_spec_param() {
+    test_a2r("12_specs/009_arc_fn_spec_param").unwrap();
+}
+#[test]
+fn test_12_specs_010_spec_supertrait() {
+    test_a2r("12_specs/010_spec_supertrait").unwrap();
+}
+#[test]
+fn test_12_specs_011_associated_types() {
+    test_a2r("12_specs/011_associated_types").unwrap();
+}
+#[test]
+fn test_12_specs_012_generic_spec_assoc() {
+    test_a2r("12_specs/012_generic_spec_assoc").unwrap();
+}
+#[test]
+fn test_12_specs_013_generic_spec_typed_impl() {
+    test_a2r("12_specs/013_generic_spec_typed_impl").unwrap();
+}
 
 // === 13_delegation ===
-#[test] fn test_13_delegation_001_single() { test_a2r("13_delegation/001_single").unwrap(); }
-#[test] fn test_13_delegation_002_multi_spec() { test_a2r("13_delegation/002_multi_spec").unwrap(); }
-#[test] fn test_13_delegation_003_multi_delegation() { test_a2r("13_delegation/003_multi_delegation").unwrap(); }
+#[test]
+fn test_13_delegation_001_single() {
+    test_a2r("13_delegation/001_single").unwrap();
+}
+#[test]
+fn test_13_delegation_002_multi_spec() {
+    test_a2r("13_delegation/002_multi_spec").unwrap();
+}
+#[test]
+fn test_13_delegation_003_multi_delegation() {
+    test_a2r("13_delegation/003_multi_delegation").unwrap();
+}
 
 // === 14_modules ===
-#[test] fn test_14_modules_001_rust_use() { test_a2r("14_modules/001_rust_use").unwrap(); }
-#[test] fn test_14_modules_002_pub_use() { test_a2r("14_modules/002_pub_use").unwrap(); }
-#[test] fn test_14_modules_003_pub_visibility() { test_a2r("14_modules/003_pub_visibility").unwrap(); }
-#[test] fn test_14_modules_004_wildcard_import() { test_a2r("14_modules/004_wildcard_import").unwrap(); }
+#[test]
+fn test_14_modules_001_rust_use() {
+    test_a2r("14_modules/001_rust_use").unwrap();
+}
+#[test]
+fn test_14_modules_002_pub_use() {
+    test_a2r("14_modules/002_pub_use").unwrap();
+}
+#[test]
+fn test_14_modules_003_pub_visibility() {
+    test_a2r("14_modules/003_pub_visibility").unwrap();
+}
+#[test]
+fn test_14_modules_004_wildcard_import() {
+    test_a2r("14_modules/004_wildcard_import").unwrap();
+}
 
 // Special: multi_file uses transpile_rust_project with its own assertions
 #[test]
@@ -1064,66 +1656,162 @@ fn test_14_modules_005_multi_file() {
     assert!(result.contains_key("main.rs"), "Missing main.rs");
     assert!(result.contains_key("db.rs"), "Missing db.rs");
     assert!(result.contains_key("api/mod.rs"), "Missing api/mod.rs");
-    assert!(result.contains_key("api/handlers.rs"), "Missing api/handlers.rs");
+    assert!(
+        result.contains_key("api/handlers.rs"),
+        "Missing api/handlers.rs"
+    );
 
     // Validate main.rs
     let main_rs = String::from_utf8_lossy(&result["main.rs"].0);
     assert!(main_rs.contains("mod db;"), "main.rs should have 'mod db;'");
-    assert!(main_rs.contains("mod api;"), "main.rs should have 'mod api;'");
-    assert!(main_rs.contains("fn main()"), "main.rs should have fn main()");
+    assert!(
+        main_rs.contains("mod api;"),
+        "main.rs should have 'mod api;'"
+    );
+    assert!(
+        main_rs.contains("fn main()"),
+        "main.rs should have fn main()"
+    );
 
     // Validate api/mod.rs
     let api_mod = String::from_utf8_lossy(&result["api/mod.rs"].0);
-    assert!(api_mod.contains("pub mod handlers;"), "api/mod.rs should have 'pub mod handlers;'");
+    assert!(
+        api_mod.contains("pub mod handlers;"),
+        "api/mod.rs should have 'pub mod handlers;'"
+    );
 
     // Validate db.rs
     let db_rs = String::from_utf8_lossy(&result["db.rs"].0);
-    assert!(db_rs.contains("struct Connection"), "db.rs should have struct Connection");
-    assert!(db_rs.contains("fn connect()"), "db.rs should have fn connect()");
+    assert!(
+        db_rs.contains("struct Connection"),
+        "db.rs should have struct Connection"
+    );
+    assert!(
+        db_rs.contains("fn connect()"),
+        "db.rs should have fn connect()"
+    );
 
     // Validate api/handlers.rs
     let handlers_rs = String::from_utf8_lossy(&result["api/handlers.rs"].0);
-    assert!(handlers_rs.contains("use crate::db::*;"), "api/handlers.rs should have 'use crate::db::*;'");
-    assert!(handlers_rs.contains("fn handle_request"), "api/handlers.rs should have fn handle_request");
+    assert!(
+        handlers_rs.contains("use crate::db::*;"),
+        "api/handlers.rs should have 'use crate::db::*;'"
+    );
+    assert!(
+        handlers_rs.contains("fn handle_request"),
+        "api/handlers.rs should have fn handle_request"
+    );
 
     // Validate Cargo.toml
     assert!(result.contains_key("Cargo.toml"), "Missing Cargo.toml");
     let cargo_toml = String::from_utf8_lossy(&result["Cargo.toml"].0);
-    assert!(cargo_toml.contains("[package]"), "Cargo.toml should have [package]");
-    assert!(cargo_toml.contains("name = \"app-005_multi_file\""), "Cargo.toml should have project name");
-    assert!(cargo_toml.contains("edition = \"2021\""), "Cargo.toml should have edition = 2021");
+    assert!(
+        cargo_toml.contains("[package]"),
+        "Cargo.toml should have [package]"
+    );
+    assert!(
+        cargo_toml.contains("name = \"app-005_multi_file\""),
+        "Cargo.toml should have project name"
+    );
+    assert!(
+        cargo_toml.contains("edition = \"2021\""),
+        "Cargo.toml should have edition = 2021"
+    );
 }
 
-#[test] fn test_14_modules_006_const_decl() { test_a2r("14_modules/006_const_decl").unwrap(); }
-#[test] fn test_14_modules_007_shared_var() { test_a2r("14_modules/007_shared_var").unwrap(); }
-#[test] fn test_14_modules_008_derive_attr() { test_a2r("14_modules/008_derive_attr").unwrap(); }
-#[test] fn test_14_modules_009_const_before_ext() { test_a2r("14_modules/009_const_before_ext").unwrap(); }
+#[test]
+fn test_14_modules_006_const_decl() {
+    test_a2r("14_modules/006_const_decl").unwrap();
+}
+#[test]
+fn test_14_modules_007_shared_var() {
+    test_a2r("14_modules/007_shared_var").unwrap();
+}
+#[test]
+fn test_14_modules_008_derive_attr() {
+    test_a2r("14_modules/008_derive_attr").unwrap();
+}
+#[test]
+fn test_14_modules_009_const_before_ext() {
+    test_a2r("14_modules/009_const_before_ext").unwrap();
+}
 // Plan 470: use.rs canonical spelling — output identical to 001_rust_use
-#[test] fn test_14_modules_010_use_rs() { test_a2r("14_modules/010_use_rs").unwrap(); }
+#[test]
+fn test_14_modules_010_use_rs() {
+    test_a2r("14_modules/010_use_rs").unwrap();
+}
 
 // === 15_type_conversion ===
-#[test] fn test_15_type_conversion_001_type_cast() { test_a2r("15_type_conversion/001_type_cast").unwrap(); }
-#[test] fn test_15_type_conversion_002_to_convert() { test_a2r("15_type_conversion/002_to_convert").unwrap(); }
-#[test] fn test_15_type_conversion_003_ptr_methods() { test_a2r("15_type_conversion/003_ptr_methods").unwrap(); }
-#[test] fn test_15_type_conversion_004_box_arc() { test_a2r("15_type_conversion/004_box_arc").unwrap(); }
+#[test]
+fn test_15_type_conversion_001_type_cast() {
+    test_a2r("15_type_conversion/001_type_cast").unwrap();
+}
+#[test]
+fn test_15_type_conversion_002_to_convert() {
+    test_a2r("15_type_conversion/002_to_convert").unwrap();
+}
+#[test]
+fn test_15_type_conversion_003_ptr_methods() {
+    test_a2r("15_type_conversion/003_ptr_methods").unwrap();
+}
+#[test]
+fn test_15_type_conversion_004_box_arc() {
+    test_a2r("15_type_conversion/004_box_arc").unwrap();
+}
 
 // === 16_interop ===
-#[test] fn test_16_interop_001_async_fn() { test_a2r("16_interop/001_async_fn").unwrap(); }
-#[test] fn test_16_interop_002_tokio_main() { test_a2r("16_interop/002_tokio_main").unwrap(); }
-#[test] fn test_16_interop_003_field_attrs() { test_a2r("16_interop/003_field_attrs").unwrap(); }
-#[test] fn test_16_interop_004_variant_from_attr() { test_a2r("16_interop/004_variant_from_attr").unwrap(); }
-#[test] fn test_16_interop_015_impl_trait_return() { test_a2r("16_interop/015_impl_trait_return").unwrap(); }
-#[test] fn test_16_interop_016_extractor_destructure() { test_a2r("16_interop/016_extractor_destructure").unwrap(); }
-#[test] fn test_16_interop_017_comptime_read_text() { test_a2r("16_interop/017_comptime_read_text").unwrap(); }
-#[test] fn test_16_interop_018_dotted_attrs() { test_a2r("16_interop/018_dotted_attrs").unwrap(); }
-#[test] fn test_16_interop_019_multi_bound() { test_a2r("16_interop/019_multi_bound").unwrap(); }
+#[test]
+fn test_16_interop_001_async_fn() {
+    test_a2r("16_interop/001_async_fn").unwrap();
+}
+#[test]
+fn test_16_interop_002_tokio_main() {
+    test_a2r("16_interop/002_tokio_main").unwrap();
+}
+#[test]
+fn test_16_interop_003_field_attrs() {
+    test_a2r("16_interop/003_field_attrs").unwrap();
+}
+#[test]
+fn test_16_interop_004_variant_from_attr() {
+    test_a2r("16_interop/004_variant_from_attr").unwrap();
+}
+#[test]
+fn test_16_interop_015_impl_trait_return() {
+    test_a2r("16_interop/015_impl_trait_return").unwrap();
+}
+#[test]
+fn test_16_interop_016_extractor_destructure() {
+    test_a2r("16_interop/016_extractor_destructure").unwrap();
+}
+#[test]
+fn test_16_interop_017_comptime_read_text() {
+    test_a2r("16_interop/017_comptime_read_text").unwrap();
+}
+#[test]
+fn test_16_interop_018_dotted_attrs() {
+    test_a2r("16_interop/018_dotted_attrs").unwrap();
+}
+#[test]
+fn test_16_interop_019_multi_bound() {
+    test_a2r("16_interop/019_multi_bound").unwrap();
+}
 // Deep-recursion case: ~{} with for/if drives deep transpiler recursion —
 // run on a dedicated 16 MB thread (see test_a2r_deep).
-#[test] fn test_16_interop_020_async_block_stmts() { test_a2r_deep("16_interop/020_async_block_stmts"); }
+#[test]
+fn test_16_interop_020_async_block_stmts() {
+    test_a2r_deep("16_interop/020_async_block_stmts");
+}
 // Plan 018: regression locks for E0404 — imported concrete types and the
 // `None` unit type must NOT get an `impl` prefix in return position.
-#[test] fn test_16_interop_022_imported_concrete_return() { test_a2r("16_interop/022_imported_concrete_return").unwrap(); }
-#[test] fn test_16_interop_023_unit_none_return() { test_a2r("16_interop/023_unit_none_return").unwrap(); }
+#[test]
+fn test_16_interop_022_imported_concrete_return() {
+    test_a2r("16_interop/022_imported_concrete_return").unwrap();
+}
+#[test]
+fn test_16_interop_023_unit_none_return() {
+    test_a2r("16_interop/023_unit_none_return").unwrap();
+}
 
 // Plan 364 W7: local path deps → structured Cargo.toml [dependencies] lines.
 // Uses transpile_rust_project (multi-file entry) to exercise Cargo.toml gen.
@@ -1140,52 +1828,124 @@ fn test_16_interop_021_path_dep() {
     // path dep → `auto_cosmic_dbus = { path = "..." }`
     assert!(
         cargo_toml.contains("auto_cosmic_dbus = { path = "),
-        "path dep should render as `{{ path = .. }}`, got:\n{}", cargo_toml
+        "path dep should render as `{{ path = .. }}`, got:\n{}",
+        cargo_toml
     );
     // version+features dep → `serde = { version = "1", features = ["derive"] }`
     assert!(
         cargo_toml.contains("serde = { version = \"1\", features = [\"derive\"] }"),
-        "version+features dep should render structured, got:\n{}", cargo_toml
+        "version+features dep should render structured, got:\n{}",
+        cargo_toml
     );
     // bare dep → `log = "*"`
     assert!(
         cargo_toml.contains("log = \"*\""),
-        "bare dep should render as wildcard, got:\n{}", cargo_toml
+        "bare dep should render as wildcard, got:\n{}",
+        cargo_toml
     );
 }
 
 // === 18_rust_std ===
-#[test] fn test_18_rust_std_001_collections() { test_a2r("17_rust_std/001_collections").unwrap(); }
-#[test] fn test_18_rust_std_002_fs() { test_a2r("17_rust_std/002_fs").unwrap(); }
-#[test] fn test_18_rust_std_003_sync() { test_a2r("17_rust_std/003_sync").unwrap(); }
-#[test] fn test_18_rust_std_004_time() { test_a2r("17_rust_std/004_time").unwrap(); }
-#[test] fn test_18_rust_std_005_path() { test_a2r("17_rust_std/005_path").unwrap(); }
-#[test] fn test_18_rust_std_006_box_cell() { test_a2r("17_rust_std/006_box_cell").unwrap(); }
-#[test] fn test_18_rust_std_007_env_process() { test_a2r("17_rust_std/007_env_process").unwrap(); }
-#[test] fn test_18_rust_std_008_thread() { test_a2r("17_rust_std/008_thread").unwrap(); }
-#[test] fn test_18_rust_std_009_serde_json() { test_a2r("17_rust_std/009_serde_json").unwrap(); }
-#[test] fn test_18_rust_std_010_regex() { test_a2r("17_rust_std/010_regex").unwrap(); }
-#[test] fn test_18_rust_std_011_math() { test_a2r("17_rust_std/011_math").unwrap(); }
-#[test] fn test_18_rust_std_012_vec() { test_a2r("17_rust_std/012_vec").unwrap(); }
-#[test] fn test_18_rust_std_013_option_result() { test_a2r("17_rust_std/013_option_result").unwrap(); }
-#[test] fn test_18_rust_std_014_iter() { test_a2r("17_rust_std/014_iter").unwrap(); }
-#[test] fn test_18_rust_std_015_string_methods() { test_a2r("17_rust_std/015_string_methods").unwrap(); }
-#[test] fn test_18_rust_std_016_cmp_ordering() { test_a2r("17_rust_std/016_cmp_ordering").unwrap(); }
-#[test] fn test_18_rust_std_017_hash_map_ops() { test_a2r("17_rust_std/017_hash_map_ops").unwrap(); }
+#[test]
+fn test_18_rust_std_001_collections() {
+    test_a2r("17_rust_std/001_collections").unwrap();
+}
+#[test]
+fn test_18_rust_std_002_fs() {
+    test_a2r("17_rust_std/002_fs").unwrap();
+}
+#[test]
+fn test_18_rust_std_003_sync() {
+    test_a2r("17_rust_std/003_sync").unwrap();
+}
+#[test]
+fn test_18_rust_std_004_time() {
+    test_a2r("17_rust_std/004_time").unwrap();
+}
+#[test]
+fn test_18_rust_std_005_path() {
+    test_a2r("17_rust_std/005_path").unwrap();
+}
+#[test]
+fn test_18_rust_std_006_box_cell() {
+    test_a2r("17_rust_std/006_box_cell").unwrap();
+}
+#[test]
+fn test_18_rust_std_007_env_process() {
+    test_a2r("17_rust_std/007_env_process").unwrap();
+}
+#[test]
+fn test_18_rust_std_008_thread() {
+    test_a2r("17_rust_std/008_thread").unwrap();
+}
+#[test]
+fn test_18_rust_std_009_serde_json() {
+    test_a2r("17_rust_std/009_serde_json").unwrap();
+}
+#[test]
+fn test_18_rust_std_010_regex() {
+    test_a2r("17_rust_std/010_regex").unwrap();
+}
+#[test]
+fn test_18_rust_std_011_math() {
+    test_a2r("17_rust_std/011_math").unwrap();
+}
+#[test]
+fn test_18_rust_std_012_vec() {
+    test_a2r("17_rust_std/012_vec").unwrap();
+}
+#[test]
+fn test_18_rust_std_013_option_result() {
+    test_a2r("17_rust_std/013_option_result").unwrap();
+}
+#[test]
+fn test_18_rust_std_014_iter() {
+    test_a2r("17_rust_std/014_iter").unwrap();
+}
+#[test]
+fn test_18_rust_std_015_string_methods() {
+    test_a2r("17_rust_std/015_string_methods").unwrap();
+}
+#[test]
+fn test_18_rust_std_016_cmp_ordering() {
+    test_a2r("17_rust_std/016_cmp_ordering").unwrap();
+}
+#[test]
+fn test_18_rust_std_017_hash_map_ops() {
+    test_a2r("17_rust_std/017_hash_map_ops").unwrap();
+}
 // Plan 349: http.download / http.upload / http.download_resume a2r parity.
-#[test] fn test_18_rust_std_011_http_download_upload() { test_a2r("17_rust_std/011_http_download_upload").unwrap(); }
+#[test]
+fn test_18_rust_std_011_http_download_upload() {
+    test_a2r("17_rust_std/011_http_download_upload").unwrap();
+}
 
 // === 28_sqlite: sqlite stdlib module (Plan 415-B1) ===
-#[test] fn test_28_sqlite_001_basic() { test_a2r("28_sqlite/001_basic").unwrap(); }
-#[test] fn test_28_sqlite_002_advanced() { test_a2r("28_sqlite/002_advanced").unwrap(); }
+#[test]
+fn test_28_sqlite_001_basic() {
+    test_a2r("28_sqlite/001_basic").unwrap();
+}
+#[test]
+fn test_28_sqlite_002_advanced() {
+    test_a2r("28_sqlite/002_advanced").unwrap();
+}
 
 // === 29_redis: redis stdlib module (Plan 415-B2) ===
-#[test] fn test_29_redis_001_basic() { test_a2r("29_redis/001_basic").unwrap(); }
-#[test] fn test_29_redis_002_advanced() { test_a2r("29_redis/002_advanced").unwrap(); }
+#[test]
+fn test_29_redis_001_basic() {
+    test_a2r("29_redis/001_basic").unwrap();
+}
+#[test]
+fn test_29_redis_002_advanced() {
+    test_a2r("29_redis/002_advanced").unwrap();
+}
 
 // === 18_pure_rust: Pure Rust output (no a2r_std dependency) ===
 
-#[test] fn test_19_pure_rust_001_pure() { test_a2r("18_pure_rust/001_pure").unwrap(); }
+#[test]
+fn test_19_pure_rust_001_pure() {
+    test_a2r("18_pure_rust/001_pure").unwrap();
+}
 
 // === 17_autocode: Real-world integration tests ===
 
@@ -1194,23 +1954,125 @@ fn autocode_src(name: &str) -> String {
 }
 
 // Source files in auto-coder/src/ not yet available — ignore until directory exists
-#[test] #[ignore] fn test_17_autocode_001_types() { let src = autocode_src("types"); let mut r = transpile_rust("types", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_002_permission() { let src = autocode_src("permission"); let mut r = transpile_rust("permission", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_003_tools() { let src = autocode_src("tools"); let mut r = transpile_rust("tools", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_004_sse() { let src = autocode_src("sse"); let mut r = transpile_rust("sse", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_005_context() { let src = autocode_src("context"); let mut r = transpile_rust("context", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_006_settings() { let src = autocode_src("settings"); let mut r = transpile_rust("settings", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_007_agent() { let src = autocode_src("agent"); let mut r = transpile_rust("agent", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_008_anthropic() { let src = autocode_src("anthropic"); let mut r = transpile_rust("anthropic", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_009_openai() { let src = autocode_src("openai"); let mut r = transpile_rust("openai", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_010_session() { let src = autocode_src("session"); let mut r = transpile_rust("session", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_011_repl() { let src = autocode_src("repl"); let mut r = transpile_rust("repl", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_012_main() { let src = autocode_src("main"); let mut r = transpile_rust("main", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_013_mod() { let src = autocode_src("mod"); let mut r = transpile_rust("mod", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_014_tool_bash() { let src = autocode_src("tool_bash"); let mut r = transpile_rust("tool_bash", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_016_tool_file_read() { let src = autocode_src("tool_file_read"); let mut r = transpile_rust("tool_file_read", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_017_tool_file_write() { let src = autocode_src("tool_file_write"); let mut r = transpile_rust("tool_file_write", &src).unwrap(); r.done().unwrap(); }
-#[test] #[ignore] fn test_17_autocode_018_tool_file_edit() { let src = autocode_src("tool_file_edit"); let mut r = transpile_rust("tool_file_edit", &src).unwrap(); r.done().unwrap(); }
+#[test]
+#[ignore]
+fn test_17_autocode_001_types() {
+    let src = autocode_src("types");
+    let mut r = transpile_rust("types", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_002_permission() {
+    let src = autocode_src("permission");
+    let mut r = transpile_rust("permission", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_003_tools() {
+    let src = autocode_src("tools");
+    let mut r = transpile_rust("tools", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_004_sse() {
+    let src = autocode_src("sse");
+    let mut r = transpile_rust("sse", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_005_context() {
+    let src = autocode_src("context");
+    let mut r = transpile_rust("context", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_006_settings() {
+    let src = autocode_src("settings");
+    let mut r = transpile_rust("settings", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_007_agent() {
+    let src = autocode_src("agent");
+    let mut r = transpile_rust("agent", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_008_anthropic() {
+    let src = autocode_src("anthropic");
+    let mut r = transpile_rust("anthropic", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_009_openai() {
+    let src = autocode_src("openai");
+    let mut r = transpile_rust("openai", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_010_session() {
+    let src = autocode_src("session");
+    let mut r = transpile_rust("session", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_011_repl() {
+    let src = autocode_src("repl");
+    let mut r = transpile_rust("repl", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_012_main() {
+    let src = autocode_src("main");
+    let mut r = transpile_rust("main", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_013_mod() {
+    let src = autocode_src("mod");
+    let mut r = transpile_rust("mod", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_014_tool_bash() {
+    let src = autocode_src("tool_bash");
+    let mut r = transpile_rust("tool_bash", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_016_tool_file_read() {
+    let src = autocode_src("tool_file_read");
+    let mut r = transpile_rust("tool_file_read", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_017_tool_file_write() {
+    let src = autocode_src("tool_file_write");
+    let mut r = transpile_rust("tool_file_write", &src).unwrap();
+    r.done().unwrap();
+}
+#[test]
+#[ignore]
+fn test_17_autocode_018_tool_file_edit() {
+    let src = autocode_src("tool_file_edit");
+    let mut r = transpile_rust("tool_file_edit", &src).unwrap();
+    r.done().unwrap();
+}
 
 // tool_grep requires 8MB stack for deep Pratt parser recursion
 #[test]
@@ -1232,7 +2094,7 @@ fn test_17_autocode_015_tool_grep() {
 #[test]
 #[ignore]
 fn test_17_autocode_019_detailed_errors() {
-    use crate::parser::{Parser, CompileDest};
+    use crate::parser::{CompileDest, Parser};
 
     // tool_grep.at is ~442KB and triggers deep recursion in the Pratt parser,
     // overflowing the default test thread stack. Use an explicit 8MB stack.
@@ -1241,9 +2103,21 @@ fn test_17_autocode_019_detailed_errors() {
         .spawn(|| {
             let base = "../../../auto-coder/src/";
             let files = [
-                "tools", "sse", "context", "settings",
-                "agent", "anthropic", "openai", "session", "repl", "main",
-                "tool_bash", "tool_grep", "tool_file_read", "tool_file_write", "tool_file_edit",
+                "tools",
+                "sse",
+                "context",
+                "settings",
+                "agent",
+                "anthropic",
+                "openai",
+                "session",
+                "repl",
+                "main",
+                "tool_bash",
+                "tool_grep",
+                "tool_file_read",
+                "tool_file_write",
+                "tool_file_edit",
             ];
 
             for name in &files {
@@ -1257,7 +2131,10 @@ fn test_17_autocode_019_detailed_errors() {
                         let err_str = format!("{:?}", e);
                         let offset = extract_offset(&err_str);
                         let (line, col, source_line) = offset_to_line_col(&src, offset);
-                        println!("FAIL: {} — byte {} = line {} col {}", name, offset, line, col);
+                        println!(
+                            "FAIL: {} — byte {} = line {} col {}",
+                            name, offset, line, col
+                        );
                         println!("  | {}", source_line.trim_end());
                         println!("  | {:>width$}", "^", width = col);
                     }
@@ -1296,7 +2173,10 @@ fn offset_to_line_col(src: &str, offset: usize) -> (usize, usize, String) {
 
 fn get_line(src: &str, offset: usize) -> String {
     let line_start = src[..offset].rfind('\n').map(|i| i + 1).unwrap_or(0);
-    let line_end = src[offset..].find('\n').map(|i| offset + i).unwrap_or(src.len());
+    let line_end = src[offset..]
+        .find('\n')
+        .map(|i| offset + i)
+        .unwrap_or(src.len());
     src[line_start..line_end].to_string()
 }
 
@@ -1304,130 +2184,334 @@ fn get_line(src: &str, offset: usize) -> String {
 // See docs/plans/240-rust-cookbook-a2r-tests.md for full classification
 
 // -- cookbook/algorithms --
-#[test] fn test_cookbook_algorithms_001_sort_int() { test_cookbook("algorithms/001_sort_int").unwrap(); }
-#[test] fn test_cookbook_algorithms_002_sort_float() { test_cookbook("algorithms/002_sort_float").unwrap(); }
-#[test] fn test_cookbook_algorithms_003_sort_struct() { test_cookbook("algorithms/003_sort_struct").unwrap(); }
+#[test]
+fn test_cookbook_algorithms_001_sort_int() {
+    test_cookbook("algorithms/001_sort_int").unwrap();
+}
+#[test]
+fn test_cookbook_algorithms_002_sort_float() {
+    test_cookbook("algorithms/002_sort_float").unwrap();
+}
+#[test]
+fn test_cookbook_algorithms_003_sort_struct() {
+    test_cookbook("algorithms/003_sort_struct").unwrap();
+}
 
 // -- cookbook/file --
-#[test] fn test_cookbook_file_001_read_lines() { test_cookbook("file/001_read_lines").unwrap(); }
+#[test]
+fn test_cookbook_file_001_read_lines() {
+    test_cookbook("file/001_read_lines").unwrap();
+}
 
 // -- cookbook/os --
-#[test] fn test_cookbook_os_001_env_variable() { test_cookbook("os/001_env_variable").unwrap(); }
-#[test] fn test_cookbook_os_002_process_continuous() { test_cookbook("os/002_process_continuous").unwrap(); }
-#[test] fn test_cookbook_os_003_error_file() { test_cookbook("os/003_error_file").unwrap(); }
+#[test]
+fn test_cookbook_os_001_env_variable() {
+    test_cookbook("os/001_env_variable").unwrap();
+}
+#[test]
+fn test_cookbook_os_002_process_continuous() {
+    test_cookbook("os/002_process_continuous").unwrap();
+}
+#[test]
+fn test_cookbook_os_003_error_file() {
+    test_cookbook("os/003_error_file").unwrap();
+}
 
 // -- cookbook/datetime --
-#[test] fn test_cookbook_datetime_001_elapsed_time() { test_cookbook("datetime/001_elapsed_time").unwrap(); }
+#[test]
+fn test_cookbook_datetime_001_elapsed_time() {
+    test_cookbook("datetime/001_elapsed_time").unwrap();
+}
 
 // -- cookbook/science/mathematics/statistics --
-#[test] fn test_cookbook_science_statistics_001_central_tendency() { test_cookbook("science/mathematics/statistics/001_central_tendency").unwrap(); }
-#[test] fn test_cookbook_science_statistics_002_standard_deviation() { test_cookbook("science/mathematics/statistics/002_standard_deviation").unwrap(); }
+#[test]
+fn test_cookbook_science_statistics_001_central_tendency() {
+    test_cookbook("science/mathematics/statistics/001_central_tendency").unwrap();
+}
+#[test]
+fn test_cookbook_science_statistics_002_standard_deviation() {
+    test_cookbook("science/mathematics/statistics/002_standard_deviation").unwrap();
+}
 
 // -- cookbook/science/mathematics/trigonometry --
-#[test] fn test_cookbook_science_trigonometry_001_tan_sin_cos() { test_cookbook("science/mathematics/trigonometry/001_tan_sin_cos").unwrap(); }
-#[test] fn test_cookbook_science_trigonometry_002_side_length() { test_cookbook("science/mathematics/trigonometry/002_side_length").unwrap(); }
-#[test] fn test_cookbook_science_trigonometry_003_latitude_longitude() { test_cookbook("science/mathematics/trigonometry/003_latitude_longitude").unwrap(); }
+#[test]
+fn test_cookbook_science_trigonometry_001_tan_sin_cos() {
+    test_cookbook("science/mathematics/trigonometry/001_tan_sin_cos").unwrap();
+}
+#[test]
+fn test_cookbook_science_trigonometry_002_side_length() {
+    test_cookbook("science/mathematics/trigonometry/002_side_length").unwrap();
+}
+#[test]
+fn test_cookbook_science_trigonometry_003_latitude_longitude() {
+    test_cookbook("science/mathematics/trigonometry/003_latitude_longitude").unwrap();
+}
 
 // -- cookbook/mem --
-#[test] fn test_cookbook_mem_001_lazy_cell() { test_cookbook("mem/001_lazy_cell").unwrap(); }
+#[test]
+fn test_cookbook_mem_001_lazy_cell() {
+    test_cookbook("mem/001_lazy_cell").unwrap();
+}
 
 // -- cookbook/errors --
-#[test] fn test_cookbook_errors_001_boxed_error() { test_cookbook("errors/001_boxed_error").unwrap(); }
+#[test]
+fn test_cookbook_errors_001_boxed_error() {
+    test_cookbook("errors/001_boxed_error").unwrap();
+}
 
 // === Cookbook B-tier: External crate tests ===
 
 // -- cookbook/algorithms/randomness (B-tier) --
-#[test] fn test_cookbook_algorithms_004_rand() { test_cookbook("algorithms/004_rand").unwrap(); }
-#[test] fn test_cookbook_algorithms_005_rand_choose() { test_cookbook("algorithms/005_rand_choose").unwrap(); }
-#[test] fn test_cookbook_algorithms_006_rand_custom() { test_cookbook("algorithms/006_rand_custom").unwrap(); }
-#[test] fn test_cookbook_algorithms_007_rand_dist() { test_cookbook("algorithms/007_rand_dist").unwrap(); }
-#[test] fn test_cookbook_algorithms_008_rand_passwd() { test_cookbook("algorithms/008_rand_passwd").unwrap(); }
-#[test] fn test_cookbook_algorithms_009_rand_range() { test_cookbook("algorithms/009_rand_range").unwrap(); }
+#[test]
+fn test_cookbook_algorithms_004_rand() {
+    test_cookbook("algorithms/004_rand").unwrap();
+}
+#[test]
+fn test_cookbook_algorithms_005_rand_choose() {
+    test_cookbook("algorithms/005_rand_choose").unwrap();
+}
+#[test]
+fn test_cookbook_algorithms_006_rand_custom() {
+    test_cookbook("algorithms/006_rand_custom").unwrap();
+}
+#[test]
+fn test_cookbook_algorithms_007_rand_dist() {
+    test_cookbook("algorithms/007_rand_dist").unwrap();
+}
+#[test]
+fn test_cookbook_algorithms_008_rand_passwd() {
+    test_cookbook("algorithms/008_rand_passwd").unwrap();
+}
+#[test]
+fn test_cookbook_algorithms_009_rand_range() {
+    test_cookbook("algorithms/009_rand_range").unwrap();
+}
 
 // -- cookbook/cli (B-tier) --
-#[test] fn test_cookbook_cli_001_clap_basic() { test_cookbook("cli/001_clap_basic").unwrap(); }
+#[test]
+fn test_cookbook_cli_001_clap_basic() {
+    test_cookbook("cli/001_clap_basic").unwrap();
+}
 
 // -- cookbook/compression (B-tier) --
-#[test] fn test_cookbook_compression_001_tar_compress() { test_cookbook("compression/001_tar_compress").unwrap(); }
-#[test] fn test_cookbook_compression_002_tar_decompress() { test_cookbook("compression/002_tar_decompress").unwrap(); }
+#[test]
+fn test_cookbook_compression_001_tar_compress() {
+    test_cookbook("compression/001_tar_compress").unwrap();
+}
+#[test]
+fn test_cookbook_compression_002_tar_decompress() {
+    test_cookbook("compression/002_tar_decompress").unwrap();
+}
 
 // -- cookbook/concurrency (B-tier) --
-#[test] fn test_cookbook_concurrency_001_rayon_any_all() { test_cookbook("concurrency/001_rayon_any_all").unwrap(); }
-#[test] fn test_cookbook_concurrency_002_rayon_map_reduce() { test_cookbook("concurrency/002_rayon_map_reduce").unwrap(); }
-#[test] fn test_cookbook_concurrency_003_rayon_parallel_sort() { test_cookbook("concurrency/003_rayon_parallel_sort").unwrap(); }
-#[test] fn test_cookbook_concurrency_004_crossbeam_spsc() { test_cookbook("concurrency/004_crossbeam_spsc").unwrap(); }
+#[test]
+fn test_cookbook_concurrency_001_rayon_any_all() {
+    test_cookbook("concurrency/001_rayon_any_all").unwrap();
+}
+#[test]
+fn test_cookbook_concurrency_002_rayon_map_reduce() {
+    test_cookbook("concurrency/002_rayon_map_reduce").unwrap();
+}
+#[test]
+fn test_cookbook_concurrency_003_rayon_parallel_sort() {
+    test_cookbook("concurrency/003_rayon_parallel_sort").unwrap();
+}
+#[test]
+fn test_cookbook_concurrency_004_crossbeam_spsc() {
+    test_cookbook("concurrency/004_crossbeam_spsc").unwrap();
+}
 
 // -- cookbook/cryptography (B-tier) --
-#[test] fn test_cookbook_cryptography_001_sha_digest() { test_cookbook("cryptography/001_sha_digest").unwrap(); }
+#[test]
+fn test_cookbook_cryptography_001_sha_digest() {
+    test_cookbook("cryptography/001_sha_digest").unwrap();
+}
 
 // -- cookbook/datetime (B-tier, chrono) --
-#[test] fn test_cookbook_datetime_002_checked() { test_cookbook("datetime/002_checked").unwrap(); }
-#[test] fn test_cookbook_datetime_003_timezone() { test_cookbook("datetime/003_timezone").unwrap(); }
-#[test] fn test_cookbook_datetime_004_current() { test_cookbook("datetime/004_current").unwrap(); }
-#[test] fn test_cookbook_datetime_005_format() { test_cookbook("datetime/005_format").unwrap(); }
-#[test] fn test_cookbook_datetime_006_parse_string() { test_cookbook("datetime/006_parse_string").unwrap(); }
-#[test] fn test_cookbook_datetime_007_timestamp() { test_cookbook("datetime/007_timestamp").unwrap(); }
+#[test]
+fn test_cookbook_datetime_002_checked() {
+    test_cookbook("datetime/002_checked").unwrap();
+}
+#[test]
+fn test_cookbook_datetime_003_timezone() {
+    test_cookbook("datetime/003_timezone").unwrap();
+}
+#[test]
+fn test_cookbook_datetime_004_current() {
+    test_cookbook("datetime/004_current").unwrap();
+}
+#[test]
+fn test_cookbook_datetime_005_format() {
+    test_cookbook("datetime/005_format").unwrap();
+}
+#[test]
+fn test_cookbook_datetime_006_parse_string() {
+    test_cookbook("datetime/006_parse_string").unwrap();
+}
+#[test]
+fn test_cookbook_datetime_007_timestamp() {
+    test_cookbook("datetime/007_timestamp").unwrap();
+}
 
 // -- cookbook/versioning (B-tier, semver) --
-#[test] fn test_cookbook_versioning_001_semver_parse() { test_cookbook("versioning/001_semver_parse").unwrap(); }
-#[test] fn test_cookbook_versioning_002_semver_increment() { test_cookbook("versioning/002_semver_increment").unwrap(); }
-#[test] fn test_cookbook_versioning_003_semver_latest() { test_cookbook("versioning/003_semver_latest").unwrap(); }
+#[test]
+fn test_cookbook_versioning_001_semver_parse() {
+    test_cookbook("versioning/001_semver_parse").unwrap();
+}
+#[test]
+fn test_cookbook_versioning_002_semver_increment() {
+    test_cookbook("versioning/002_semver_increment").unwrap();
+}
+#[test]
+fn test_cookbook_versioning_003_semver_latest() {
+    test_cookbook("versioning/003_semver_latest").unwrap();
+}
 
 // -- cookbook/encoding (B-tier) --
-#[test] fn test_cookbook_encoding_001_json() { test_cookbook("encoding/001_json").unwrap(); }
-#[test] fn test_cookbook_encoding_002_toml() { test_cookbook("encoding/002_toml").unwrap(); }
-#[test] fn test_cookbook_encoding_003_csv_read() { test_cookbook("encoding/003_csv_read").unwrap(); }
-#[test] fn test_cookbook_encoding_004_base64() { test_cookbook("encoding/004_base64").unwrap(); }
-#[test] fn test_cookbook_encoding_005_hex() { test_cookbook("encoding/005_hex").unwrap(); }
+#[test]
+fn test_cookbook_encoding_001_json() {
+    test_cookbook("encoding/001_json").unwrap();
+}
+#[test]
+fn test_cookbook_encoding_002_toml() {
+    test_cookbook("encoding/002_toml").unwrap();
+}
+#[test]
+fn test_cookbook_encoding_003_csv_read() {
+    test_cookbook("encoding/003_csv_read").unwrap();
+}
+#[test]
+fn test_cookbook_encoding_004_base64() {
+    test_cookbook("encoding/004_base64").unwrap();
+}
+#[test]
+fn test_cookbook_encoding_005_hex() {
+    test_cookbook("encoding/005_hex").unwrap();
+}
 
 // -- cookbook/errors (B-tier, anyhow) --
-#[test] fn test_cookbook_errors_002_anyhow() { test_cookbook("errors/002_anyhow").unwrap(); }
+#[test]
+fn test_cookbook_errors_002_anyhow() {
+    test_cookbook("errors/002_anyhow").unwrap();
+}
 
 // -- cookbook/file (B-tier, walkdir) --
-#[test] fn test_cookbook_file_002_find_files() { test_cookbook("file/002_find_files").unwrap(); }
+#[test]
+fn test_cookbook_file_002_find_files() {
+    test_cookbook("file/002_find_files").unwrap();
+}
 // Deep-recursion case: transpiler hot path overflows the 2 MB libtest worker
 // stack — run on a dedicated 16 MB thread (see test_cookbook_deep).
-#[test] fn test_cookbook_file_003_recursive_size() { test_cookbook_deep("file/003_recursive_size"); }
-#[test] fn test_cookbook_file_004_modified() { test_cookbook("file/004_modified").unwrap(); }
+#[test]
+fn test_cookbook_file_003_recursive_size() {
+    test_cookbook_deep("file/003_recursive_size");
+}
+#[test]
+fn test_cookbook_file_004_modified() {
+    test_cookbook("file/004_modified").unwrap();
+}
 
 // -- cookbook/science/mathematics/complex_numbers (B-tier, num) --
-#[test] fn test_cookbook_science_complex_001_add_complex() { test_cookbook("science/mathematics/complex_numbers/001_add_complex").unwrap(); }
-#[test] fn test_cookbook_science_complex_002_create_complex() { test_cookbook("science/mathematics/complex_numbers/002_create_complex").unwrap(); }
+#[test]
+fn test_cookbook_science_complex_001_add_complex() {
+    test_cookbook("science/mathematics/complex_numbers/001_add_complex").unwrap();
+}
+#[test]
+fn test_cookbook_science_complex_002_create_complex() {
+    test_cookbook("science/mathematics/complex_numbers/002_create_complex").unwrap();
+}
 
 // -- cookbook/text (B-tier, regex/unicode) --
-#[test] fn test_cookbook_text_001_regex_replace() { test_cookbook("text/001_regex_replace").unwrap(); }
-#[test] fn test_cookbook_text_002_regex_email() { test_cookbook("text/002_regex_email").unwrap(); }
-#[test] fn test_cookbook_text_003_regex_hashtags() { test_cookbook("text/003_regex_hashtags").unwrap(); }
-#[test] fn test_cookbook_text_004_graphemes() { test_cookbook("text/004_graphemes").unwrap(); }
+#[test]
+fn test_cookbook_text_001_regex_replace() {
+    test_cookbook("text/001_regex_replace").unwrap();
+}
+#[test]
+fn test_cookbook_text_002_regex_email() {
+    test_cookbook("text/002_regex_email").unwrap();
+}
+#[test]
+fn test_cookbook_text_003_regex_hashtags() {
+    test_cookbook("text/003_regex_hashtags").unwrap();
+}
+#[test]
+fn test_cookbook_text_004_graphemes() {
+    test_cookbook("text/004_graphemes").unwrap();
+}
 
 // -- cookbook/web/url (B-tier, url) --
-#[test] fn test_cookbook_web_url_001_base() { test_cookbook("web/url/001_base").unwrap(); }
-#[test] fn test_cookbook_web_url_002_parse() { test_cookbook("web/url/002_parse").unwrap(); }
-#[test] fn test_cookbook_web_url_003_fragment() { test_cookbook("web/url/003_fragment").unwrap(); }
+#[test]
+fn test_cookbook_web_url_001_base() {
+    test_cookbook("web/url/001_base").unwrap();
+}
+#[test]
+fn test_cookbook_web_url_002_parse() {
+    test_cookbook("web/url/002_parse").unwrap();
+}
+#[test]
+fn test_cookbook_web_url_003_fragment() {
+    test_cookbook("web/url/003_fragment").unwrap();
+}
 
 // === Cookbook B-tier batch 2: Additional tests ===
 
 // -- cookbook/algorithms --
-#[test] fn test_cookbook_algorithms_010_rand_custom() { test_cookbook("algorithms/010_rand_custom").unwrap(); }
-#[test] fn test_cookbook_algorithms_011_rand_dist() { test_cookbook("algorithms/011_rand_dist").unwrap(); }
+#[test]
+fn test_cookbook_algorithms_010_rand_custom() {
+    test_cookbook("algorithms/010_rand_custom").unwrap();
+}
+#[test]
+fn test_cookbook_algorithms_011_rand_dist() {
+    test_cookbook("algorithms/011_rand_dist").unwrap();
+}
 
 // -- cookbook/cli --
-#[test] fn test_cookbook_cli_002_ansi_term() { test_cookbook("cli/002_ansi_term").unwrap(); }
+#[test]
+fn test_cookbook_cli_002_ansi_term() {
+    test_cookbook("cli/002_ansi_term").unwrap();
+}
 
 // -- cookbook/compression --
-#[test] fn test_cookbook_compression_003_tar_strip_prefix() { test_cookbook("compression/003_tar_strip_prefix").unwrap(); }
+#[test]
+fn test_cookbook_compression_003_tar_strip_prefix() {
+    test_cookbook("compression/003_tar_strip_prefix").unwrap();
+}
 
 // -- cookbook/concurrency --
-#[test] fn test_cookbook_concurrency_005_rayon_iter_mut() { test_cookbook("concurrency/005_rayon_iter_mut").unwrap(); }
-#[test] fn test_cookbook_concurrency_006_rayon_parallel_search() { test_cookbook("concurrency/006_rayon_parallel_search").unwrap(); }
-#[test] fn test_cookbook_concurrency_007_crossbeam_complex() { test_cookbook("concurrency/007_crossbeam_complex").unwrap(); }
-#[test] fn test_cookbook_concurrency_008_crossbeam_spawn() { test_cookbook("concurrency/008_crossbeam_spawn").unwrap(); }
-#[test] fn test_cookbook_concurrency_009_global_mut_state() { test_cookbook("concurrency/009_global_mut_state").unwrap(); }
-#[test] fn test_cookbook_concurrency_010_threadpool_walk() { test_cookbook("concurrency/010_threadpool_walk").unwrap(); }
+#[test]
+fn test_cookbook_concurrency_005_rayon_iter_mut() {
+    test_cookbook("concurrency/005_rayon_iter_mut").unwrap();
+}
+#[test]
+fn test_cookbook_concurrency_006_rayon_parallel_search() {
+    test_cookbook("concurrency/006_rayon_parallel_search").unwrap();
+}
+#[test]
+fn test_cookbook_concurrency_007_crossbeam_complex() {
+    test_cookbook("concurrency/007_crossbeam_complex").unwrap();
+}
+#[test]
+fn test_cookbook_concurrency_008_crossbeam_spawn() {
+    test_cookbook("concurrency/008_crossbeam_spawn").unwrap();
+}
+#[test]
+fn test_cookbook_concurrency_009_global_mut_state() {
+    test_cookbook("concurrency/009_global_mut_state").unwrap();
+}
+#[test]
+fn test_cookbook_concurrency_010_threadpool_walk() {
+    test_cookbook("concurrency/010_threadpool_walk").unwrap();
+}
 
 // -- cookbook/cryptography --
-#[test] fn test_cookbook_cryptography_002_pbkdf2() { test_cookbook("cryptography/002_pbkdf2").unwrap(); }
-#[test] fn test_cookbook_cryptography_003_hmac() { test_cookbook("cryptography/003_hmac").unwrap(); }
+#[test]
+fn test_cookbook_cryptography_002_pbkdf2() {
+    test_cookbook("cryptography/002_pbkdf2").unwrap();
+}
+#[test]
+fn test_cookbook_cryptography_003_hmac() {
+    test_cookbook("cryptography/003_hmac").unwrap();
+}
 
 // -- cookbook/devtools --
 
@@ -1465,30 +2549,93 @@ fn test_escape_analysis_detects_multiple_bindings() {
 }
 
 // === Plan 310 Phase 2: 19_ownership — escape-analysis codegen tests ===
-#[test] fn test_19_ownership_001_local_borrow() { test_a2r("19_ownership/001_local_borrow").unwrap(); }
-#[test] fn test_19_ownership_002_closure_capture() { test_a2r("19_ownership/002_closure_capture").unwrap(); }
-#[test] fn test_19_ownership_003_loopvar_owned_field() { test_a2r("19_ownership/003_loopvar_owned_field").unwrap(); }
-#[test] fn test_19_ownership_003_return_escape() { test_a2r("19_ownership/003_return_escape").unwrap(); }
-#[test] fn test_19_ownership_004_move_hint() { test_a2r("19_ownership/004_move_hint").unwrap(); }
-#[test] fn test_19_ownership_005_async_move() { test_a2r("19_ownership/005_async_move").unwrap(); }
-#[test] fn test_19_ownership_006_go_capture() { test_a2r("19_ownership/006_go_capture").unwrap(); }
+#[test]
+fn test_19_ownership_001_local_borrow() {
+    test_a2r("19_ownership/001_local_borrow").unwrap();
+}
+#[test]
+fn test_19_ownership_002_closure_capture() {
+    test_a2r("19_ownership/002_closure_capture").unwrap();
+}
+#[test]
+fn test_19_ownership_003_loopvar_owned_field() {
+    test_a2r("19_ownership/003_loopvar_owned_field").unwrap();
+}
+#[test]
+fn test_19_ownership_003_return_escape() {
+    test_a2r("19_ownership/003_return_escape").unwrap();
+}
+#[test]
+fn test_19_ownership_004_move_hint() {
+    test_a2r("19_ownership/004_move_hint").unwrap();
+}
+#[test]
+fn test_19_ownership_005_async_move() {
+    test_a2r("19_ownership/005_async_move").unwrap();
+}
+#[test]
+fn test_19_ownership_006_go_capture() {
+    test_a2r("19_ownership/006_go_capture").unwrap();
+}
 // 007: direct self-reference must be rejected (expect error)
-#[test] fn test_19_ownership_007_self_ref() { test_a2r_expect_error("19_ownership/007_self_ref", "self-reference"); }
+#[test]
+fn test_19_ownership_007_self_ref() {
+    test_a2r_expect_error("19_ownership/007_self_ref", "self-reference");
+}
 // 008: indirect self-reference (List<Self>) is legal + W0008 warning
-#[test] fn test_19_ownership_008_indirect_self() { test_a2r("19_ownership/008_indirect_self").unwrap(); }
+#[test]
+fn test_19_ownership_008_indirect_self() {
+    test_a2r("19_ownership/008_indirect_self").unwrap();
+}
 // Plan 364 W5: explicit `move` closure prefix → Rust `move |..| ..`
-#[test] fn test_19_ownership_009_move_closure() { test_a2r("19_ownership/009_move_closure").unwrap(); }
-#[test] fn test_19_ownership_010_fn_closure_params() { test_a2r("19_ownership/010_fn_closure_params").unwrap(); }
-#[test] fn test_cookbook_devtools_001_log_debug() { test_cookbook("devtools/001_log_debug").unwrap(); }
-#[test] fn test_cookbook_devtools_002_log_error() { test_cookbook("devtools/002_log_error").unwrap(); }
-#[test] fn test_cookbook_devtools_003_log_stdout() { test_cookbook("devtools/003_log_stdout").unwrap(); }
-#[test] fn test_cookbook_devtools_004_log_custom() { test_cookbook("devtools/004_log_custom").unwrap(); }
-#[test] fn test_cookbook_devtools_005_log_syslog() { test_cookbook("devtools/005_log_syslog").unwrap(); }
-#[test] fn test_cookbook_devtools_006_log_env() { test_cookbook("devtools/006_log_env").unwrap(); }
-#[test] fn test_cookbook_devtools_007_log_mod() { test_cookbook("devtools/007_log_mod").unwrap(); }
-#[test] fn test_cookbook_devtools_008_log_timestamp() { test_cookbook("devtools/008_log_timestamp").unwrap(); }
-#[test] fn test_cookbook_devtools_009_log_custom_location() { test_cookbook("devtools/009_log_custom_location").unwrap(); }
-#[test] fn test_cookbook_devtools_010_tracing_console() { test_cookbook("devtools/010_tracing_console").unwrap(); }
+#[test]
+fn test_19_ownership_009_move_closure() {
+    test_a2r("19_ownership/009_move_closure").unwrap();
+}
+#[test]
+fn test_19_ownership_010_fn_closure_params() {
+    test_a2r("19_ownership/010_fn_closure_params").unwrap();
+}
+#[test]
+fn test_cookbook_devtools_001_log_debug() {
+    test_cookbook("devtools/001_log_debug").unwrap();
+}
+#[test]
+fn test_cookbook_devtools_002_log_error() {
+    test_cookbook("devtools/002_log_error").unwrap();
+}
+#[test]
+fn test_cookbook_devtools_003_log_stdout() {
+    test_cookbook("devtools/003_log_stdout").unwrap();
+}
+#[test]
+fn test_cookbook_devtools_004_log_custom() {
+    test_cookbook("devtools/004_log_custom").unwrap();
+}
+#[test]
+fn test_cookbook_devtools_005_log_syslog() {
+    test_cookbook("devtools/005_log_syslog").unwrap();
+}
+#[test]
+fn test_cookbook_devtools_006_log_env() {
+    test_cookbook("devtools/006_log_env").unwrap();
+}
+#[test]
+fn test_cookbook_devtools_007_log_mod() {
+    test_cookbook("devtools/007_log_mod").unwrap();
+}
+#[test]
+fn test_cookbook_devtools_008_log_timestamp() {
+    test_cookbook("devtools/008_log_timestamp").unwrap();
+}
+#[test]
+fn test_cookbook_devtools_009_log_custom_location() {
+    test_cookbook("devtools/009_log_custom_location").unwrap();
+}
+#[test]
+fn test_cookbook_devtools_010_tracing_console() {
+    test_cookbook("devtools/010_tracing_console").unwrap();
+}
 
 // === Plan 312 Phase 1: #[api] annotation parsing ===
 #[test]
@@ -1497,9 +2644,11 @@ fn test_312_api_annotation_parsed() {
     let mut parser = Parser::from(src);
     parser.set_dest(CompileDest::TransRust);
     let ast = parser.parse().expect("parse should succeed");
-    let fns: Vec<_> = ast.stmts.iter().filter_map(|s| {
-        if let Stmt::Fn(f) = s { Some(f) } else { None }
-    }).collect();
+    let fns: Vec<_> = ast
+        .stmts
+        .iter()
+        .filter_map(|s| if let Stmt::Fn(f) = s { Some(f) } else { None })
+        .collect();
     assert_eq!(fns.len(), 1, "expected 1 fn");
     let api = fns[0].api_attrs.as_ref().expect("api_attrs should be set");
     assert_eq!(api.method, "GET");
@@ -1512,9 +2661,11 @@ fn test_312_api_post_annotation_parsed() {
     let mut parser = Parser::from(src);
     parser.set_dest(CompileDest::TransRust);
     let ast = parser.parse().expect("parse should succeed");
-    let fns: Vec<_> = ast.stmts.iter().filter_map(|s| {
-        if let Stmt::Fn(f) = s { Some(f) } else { None }
-    }).collect();
+    let fns: Vec<_> = ast
+        .stmts
+        .iter()
+        .filter_map(|s| if let Stmt::Fn(f) = s { Some(f) } else { None })
+        .collect();
     assert_eq!(fns.len(), 1, "expected 1 fn, got {}", fns.len());
     let api = fns[0].api_attrs.as_ref().expect("api_attrs should be set");
     assert_eq!(api.method, "POST");
@@ -1527,10 +2678,15 @@ fn test_312_no_api_annotation_is_none() {
     let mut parser = Parser::from(src);
     parser.set_dest(CompileDest::TransRust);
     let ast = parser.parse().expect("parse should succeed");
-    let fns: Vec<_> = ast.stmts.iter().filter_map(|s| {
-        if let Stmt::Fn(f) = s { Some(f) } else { None }
-    }).collect();
-    assert!(fns[0].api_attrs.is_none(), "non-#[api] fn should have None api_attrs");
+    let fns: Vec<_> = ast
+        .stmts
+        .iter()
+        .filter_map(|s| if let Stmt::Fn(f) = s { Some(f) } else { None })
+        .collect();
+    assert!(
+        fns[0].api_attrs.is_none(),
+        "non-#[api] fn should have None api_attrs"
+    );
 }
 
 /// Plan 312 Phase 4: verify that codegen collects #[api] routes correctly.
@@ -1545,7 +2701,12 @@ fn test_312_codegen_collects_api_routes() {
         codegen.compile_stmt(stmt);
     }
     let routes = &codegen.api_routes;
-    assert_eq!(routes.len(), 2, "expected 2 api routes, got {}", routes.len());
+    assert_eq!(
+        routes.len(),
+        2,
+        "expected 2 api routes, got {}",
+        routes.len()
+    );
     // Check first route
     assert_eq!(routes[0].0, "GET");
     assert_eq!(routes[0].1, "/api/hello");
@@ -1557,89 +2718,236 @@ fn test_312_codegen_collects_api_routes() {
 }
 
 // -- cookbook/encoding --
-#[test] fn test_cookbook_encoding_006_endian_byte() { test_cookbook("encoding/006_endian_byte").unwrap(); }
-#[test] fn test_cookbook_encoding_007_csv_delimiter() { test_cookbook("encoding/007_csv_delimiter").unwrap(); }
-#[test] fn test_cookbook_encoding_008_csv_filter() { test_cookbook("encoding/008_csv_filter").unwrap(); }
-#[test] fn test_cookbook_encoding_009_csv_invalid() { test_cookbook("encoding/009_csv_invalid").unwrap(); }
-#[test] fn test_cookbook_encoding_010_csv_serde_serialize() { test_cookbook("encoding/010_csv_serde_serialize").unwrap(); }
-#[test] fn test_cookbook_encoding_011_csv_serialize() { test_cookbook("encoding/011_csv_serialize").unwrap(); }
-#[test] fn test_cookbook_encoding_012_csv_transform() { test_cookbook("encoding/012_csv_transform").unwrap(); }
-#[test] fn test_cookbook_encoding_013_percent_encode() { test_cookbook("encoding/013_percent_encode").unwrap(); }
-#[test] fn test_cookbook_encoding_014_url_encode() { test_cookbook("encoding/014_url_encode").unwrap(); }
+#[test]
+fn test_cookbook_encoding_006_endian_byte() {
+    test_cookbook("encoding/006_endian_byte").unwrap();
+}
+#[test]
+fn test_cookbook_encoding_007_csv_delimiter() {
+    test_cookbook("encoding/007_csv_delimiter").unwrap();
+}
+#[test]
+fn test_cookbook_encoding_008_csv_filter() {
+    test_cookbook("encoding/008_csv_filter").unwrap();
+}
+#[test]
+fn test_cookbook_encoding_009_csv_invalid() {
+    test_cookbook("encoding/009_csv_invalid").unwrap();
+}
+#[test]
+fn test_cookbook_encoding_010_csv_serde_serialize() {
+    test_cookbook("encoding/010_csv_serde_serialize").unwrap();
+}
+#[test]
+fn test_cookbook_encoding_011_csv_serialize() {
+    test_cookbook("encoding/011_csv_serialize").unwrap();
+}
+#[test]
+fn test_cookbook_encoding_012_csv_transform() {
+    test_cookbook("encoding/012_csv_transform").unwrap();
+}
+#[test]
+fn test_cookbook_encoding_013_percent_encode() {
+    test_cookbook("encoding/013_percent_encode").unwrap();
+}
+#[test]
+fn test_cookbook_encoding_014_url_encode() {
+    test_cookbook("encoding/014_url_encode").unwrap();
+}
 
 // -- cookbook/errors --
-#[test] fn test_cookbook_errors_003_backtrace() { test_cookbook("errors/003_backtrace").unwrap(); }
-#[test] fn test_cookbook_errors_004_retain() { test_cookbook("errors/004_retain").unwrap(); }
+#[test]
+fn test_cookbook_errors_003_backtrace() {
+    test_cookbook("errors/003_backtrace").unwrap();
+}
+#[test]
+fn test_cookbook_errors_004_retain() {
+    test_cookbook("errors/004_retain").unwrap();
+}
 
 // -- cookbook/file --
-#[test] fn test_cookbook_file_005_duplicate_name() { test_cookbook("file/005_duplicate_name").unwrap(); }
-#[test] fn test_cookbook_file_006_find_file() { test_cookbook("file/006_find_file").unwrap(); }
-#[test] fn test_cookbook_file_007_ignore_case() { test_cookbook("file/007_ignore_case").unwrap(); }
-#[test] fn test_cookbook_file_008_loops() { test_cookbook("file/008_loops").unwrap(); }
-#[test] fn test_cookbook_file_009_png() { test_cookbook("file/009_png").unwrap(); }
-#[test] fn test_cookbook_file_010_recursive() { test_cookbook("file/010_recursive").unwrap(); }
-#[test] fn test_cookbook_file_011_sizes() { test_cookbook("file/011_sizes").unwrap(); }
-#[test] fn test_cookbook_file_012_skip_dot() { test_cookbook("file/012_skip_dot").unwrap(); }
-#[test] fn test_cookbook_file_013_same_file() { test_cookbook("file/013_same_file").unwrap(); }
-#[test] fn test_cookbook_file_014_read_lines_temp() { test_cookbook("file/014_read_lines_temp").unwrap(); }
+#[test]
+fn test_cookbook_file_005_duplicate_name() {
+    test_cookbook("file/005_duplicate_name").unwrap();
+}
+#[test]
+fn test_cookbook_file_006_find_file() {
+    test_cookbook("file/006_find_file").unwrap();
+}
+#[test]
+fn test_cookbook_file_007_ignore_case() {
+    test_cookbook("file/007_ignore_case").unwrap();
+}
+#[test]
+fn test_cookbook_file_008_loops() {
+    test_cookbook("file/008_loops").unwrap();
+}
+#[test]
+fn test_cookbook_file_009_png() {
+    test_cookbook("file/009_png").unwrap();
+}
+#[test]
+fn test_cookbook_file_010_recursive() {
+    test_cookbook("file/010_recursive").unwrap();
+}
+#[test]
+fn test_cookbook_file_011_sizes() {
+    test_cookbook("file/011_sizes").unwrap();
+}
+#[test]
+fn test_cookbook_file_012_skip_dot() {
+    test_cookbook("file/012_skip_dot").unwrap();
+}
+#[test]
+fn test_cookbook_file_013_same_file() {
+    test_cookbook("file/013_same_file").unwrap();
+}
+#[test]
+fn test_cookbook_file_014_read_lines_temp() {
+    test_cookbook("file/014_read_lines_temp").unwrap();
+}
 
 // -- cookbook/hardware --
-#[test] fn test_cookbook_hardware_001_cpu_count() { test_cookbook("hardware/001_cpu_count").unwrap(); }
+#[test]
+fn test_cookbook_hardware_001_cpu_count() {
+    test_cookbook("hardware/001_cpu_count").unwrap();
+}
 
 // -- cookbook/os --
-#[test] fn test_cookbook_os_004_piped() { test_cookbook("os/004_piped").unwrap(); }
-#[test] fn test_cookbook_os_005_process_output() { test_cookbook("os/005_process_output").unwrap(); }
-#[test] fn test_cookbook_os_006_send_input() { test_cookbook("os/006_send_input").unwrap(); }
+#[test]
+fn test_cookbook_os_004_piped() {
+    test_cookbook("os/004_piped").unwrap();
+}
+#[test]
+fn test_cookbook_os_005_process_output() {
+    test_cookbook("os/005_process_output").unwrap();
+}
+#[test]
+fn test_cookbook_os_006_send_input() {
+    test_cookbook("os/006_send_input").unwrap();
+}
 
 // -- cookbook/safety --
-#[test] fn test_cookbook_safety_001_heapless() { test_cookbook("safety/001_heapless").unwrap(); }
+#[test]
+fn test_cookbook_safety_001_heapless() {
+    test_cookbook("safety/001_heapless").unwrap();
+}
 // Plan 415-E1: de-stubbed to the real memmap2 crate (dep track); VM tier not
 // registered (no VM mmap native — the old bare-file stub was VM-orphaned).
-#[test] fn test_cookbook_safety_001_memmap() { test_cookbook("safety/001_memmap").unwrap(); }
+#[test]
+fn test_cookbook_safety_001_memmap() {
+    test_cookbook("safety/001_memmap").unwrap();
+}
 
 // -- cookbook/science/mathematics/complex_numbers --
-#[test] fn test_cookbook_science_mathematics_complex_numbers_003_math_functions() { test_cookbook("science/mathematics/complex_numbers/003_math_functions").unwrap(); }
+#[test]
+fn test_cookbook_science_mathematics_complex_numbers_003_math_functions() {
+    test_cookbook("science/mathematics/complex_numbers/003_math_functions").unwrap();
+}
 
 // -- cookbook/science/mathematics/linear_algebra --
 // Deep-recursion cases: nested array indexing c[i][j] drives deep Pratt parser
 // recursion on Windows debug; 001 also overflows since C8/W1/W2 widened frames.
 // Run both on a dedicated 16 MB thread (see test_cookbook_deep).
-#[test] fn test_cookbook_science_mathematics_linear_algebra_001_add_matrices() { test_cookbook_deep("science/mathematics/linear_algebra/001_add_matrices"); }
-#[test] fn test_cookbook_science_mathematics_linear_algebra_002_multiply_matrices() { test_cookbook_deep("science/mathematics/linear_algebra/002_multiply_matrices"); }
-#[test] fn test_cookbook_science_mathematics_linear_algebra_003_multiply_svm() { test_cookbook("science/mathematics/linear_algebra/003_multiply_svm").unwrap(); }
-#[test] fn test_cookbook_science_mathematics_linear_algebra_004_vector_comparison() { test_cookbook("science/mathematics/linear_algebra/004_vector_comparison").unwrap(); }
-#[test] fn test_cookbook_science_mathematics_linear_algebra_005_vector_norm() { test_cookbook("science/mathematics/linear_algebra/005_vector_norm").unwrap(); }
-#[test] fn test_cookbook_science_mathematics_linear_algebra_006_invert_matrix() { test_cookbook("science/mathematics/linear_algebra/006_invert_matrix").unwrap(); }
-#[test] fn test_cookbook_science_mathematics_linear_algebra_007_deserialize_matrix() { test_cookbook("science/mathematics/linear_algebra/007_deserialize_matrix").unwrap(); }
+#[test]
+fn test_cookbook_science_mathematics_linear_algebra_001_add_matrices() {
+    test_cookbook_deep("science/mathematics/linear_algebra/001_add_matrices");
+}
+#[test]
+fn test_cookbook_science_mathematics_linear_algebra_002_multiply_matrices() {
+    test_cookbook_deep("science/mathematics/linear_algebra/002_multiply_matrices");
+}
+#[test]
+fn test_cookbook_science_mathematics_linear_algebra_003_multiply_svm() {
+    test_cookbook("science/mathematics/linear_algebra/003_multiply_svm").unwrap();
+}
+#[test]
+fn test_cookbook_science_mathematics_linear_algebra_004_vector_comparison() {
+    test_cookbook("science/mathematics/linear_algebra/004_vector_comparison").unwrap();
+}
+#[test]
+fn test_cookbook_science_mathematics_linear_algebra_005_vector_norm() {
+    test_cookbook("science/mathematics/linear_algebra/005_vector_norm").unwrap();
+}
+#[test]
+fn test_cookbook_science_mathematics_linear_algebra_006_invert_matrix() {
+    test_cookbook("science/mathematics/linear_algebra/006_invert_matrix").unwrap();
+}
+#[test]
+fn test_cookbook_science_mathematics_linear_algebra_007_deserialize_matrix() {
+    test_cookbook("science/mathematics/linear_algebra/007_deserialize_matrix").unwrap();
+}
 
 // -- cookbook/science/mathematics/miscellaneous --
-#[test] fn test_cookbook_science_mathematics_miscellaneous_001_big_integers() { test_cookbook("science/mathematics/miscellaneous/001_big_integers").unwrap(); }
-#[test] fn test_cookbook_science_mathematics_miscellaneous_002_math_functions() { test_cookbook("science/mathematics/miscellaneous/002_math_functions").unwrap(); }
+#[test]
+fn test_cookbook_science_mathematics_miscellaneous_001_big_integers() {
+    test_cookbook("science/mathematics/miscellaneous/001_big_integers").unwrap();
+}
+#[test]
+fn test_cookbook_science_mathematics_miscellaneous_002_math_functions() {
+    test_cookbook("science/mathematics/miscellaneous/002_math_functions").unwrap();
+}
 
 // -- cookbook/text --
-#[test] fn test_cookbook_text_005_filter_log() { test_cookbook("text/005_filter_log").unwrap(); }
-#[test] fn test_cookbook_text_006_phone() { test_cookbook("text/006_phone").unwrap(); }
-#[test] fn test_cookbook_text_007_from_str() { test_cookbook("text/007_from_str").unwrap(); }
+#[test]
+fn test_cookbook_text_005_filter_log() {
+    test_cookbook("text/005_filter_log").unwrap();
+}
+#[test]
+fn test_cookbook_text_006_phone() {
+    test_cookbook("text/006_phone").unwrap();
+}
+#[test]
+fn test_cookbook_text_007_from_str() {
+    test_cookbook("text/007_from_str").unwrap();
+}
 
 // -- cookbook/versioning --
-#[test] fn test_cookbook_versioning_004_semver_command() { test_cookbook("versioning/004_semver_command").unwrap(); }
-#[test] fn test_cookbook_versioning_005_semver_complex() { test_cookbook("versioning/005_semver_complex").unwrap(); }
-#[test] fn test_cookbook_versioning_006_semver_prerelease() { test_cookbook("versioning/006_semver_prerelease").unwrap(); }
+#[test]
+fn test_cookbook_versioning_004_semver_command() {
+    test_cookbook("versioning/004_semver_command").unwrap();
+}
+#[test]
+fn test_cookbook_versioning_005_semver_complex() {
+    test_cookbook("versioning/005_semver_complex").unwrap();
+}
+#[test]
+fn test_cookbook_versioning_006_semver_prerelease() {
+    test_cookbook("versioning/006_semver_prerelease").unwrap();
+}
 
 // -- cookbook/web/mime --
-#[test] fn test_cookbook_web_mime_001_filename() { test_cookbook("web/mime/001_filename").unwrap(); }
-#[test] fn test_cookbook_web_mime_002_string() { test_cookbook("web/mime/002_string").unwrap(); }
+#[test]
+fn test_cookbook_web_mime_001_filename() {
+    test_cookbook("web/mime/001_filename").unwrap();
+}
+#[test]
+fn test_cookbook_web_mime_002_string() {
+    test_cookbook("web/mime/002_string").unwrap();
+}
 
 // -- cookbook/web/url --
-#[test] fn test_cookbook_web_url_004_new() { test_cookbook("web/url/004_new").unwrap(); }
-#[test] fn test_cookbook_web_url_005_origin() { test_cookbook("web/url/005_origin").unwrap(); }
+#[test]
+fn test_cookbook_web_url_004_new() {
+    test_cookbook("web/url/004_new").unwrap();
+}
+#[test]
+fn test_cookbook_web_url_005_origin() {
+    test_cookbook("web/url/005_origin").unwrap();
+}
 
 // === 21_generators ===
 // Plan 364 W6: first compile-test of ~Stream<T> generator transpilation.
 
-#[test] fn test_21_generators_001_simple_yield() { test_a2r("21_generators/001_simple_yield").unwrap(); }
+#[test]
+fn test_21_generators_001_simple_yield() {
+    test_a2r("21_generators/001_simple_yield").unwrap();
+}
 // Plan 417-D2: ~Iter generator rides the Stream lowering (impl futures::Stream).
-#[test] fn test_21_generators_002_stream_yield() { test_a2r("21_generators/002_stream_yield").unwrap(); }
+#[test]
+fn test_21_generators_002_stream_yield() {
+    test_a2r("21_generators/002_stream_yield").unwrap();
+}
 
 // === 22_actors (Plan 387) ===
 // Auto actor model (`task Name { ... on {...} }`) translated to Rust via Tokio.
@@ -1647,75 +2955,141 @@ fn test_312_codegen_collects_api_routes() {
 // (test/vm/23_actor/) is verified separately by the a2r-actor-tests crate.
 // Uses test_a2r_deep (16MB stack) — the Pratt parser overflows the default
 // 2MB libtest worker stack on these inputs.
-#[test] fn test_22_actors_001_start_hook() { test_a2r_deep("22_actors/001_start_hook"); }
-#[test] fn test_22_actors_002_message_handler() { test_a2r_deep("22_actors/002_message_handler"); }
-#[test] fn test_22_actors_003_multi_message() { test_a2r_deep("22_actors/003_multi_message"); }
-#[test] fn test_22_actors_004_else_handler() { test_a2r_deep("22_actors/004_else_handler"); }
-#[test] fn test_22_actors_005_state_write() { test_a2r_deep("22_actors/005_state_write"); }
-#[test] fn test_22_actors_006_state_increment() { test_a2r_deep("22_actors/006_state_increment"); }
+#[test]
+fn test_22_actors_001_start_hook() {
+    test_a2r_deep("22_actors/001_start_hook");
+}
+#[test]
+fn test_22_actors_002_message_handler() {
+    test_a2r_deep("22_actors/002_message_handler");
+}
+#[test]
+fn test_22_actors_003_multi_message() {
+    test_a2r_deep("22_actors/003_multi_message");
+}
+#[test]
+fn test_22_actors_004_else_handler() {
+    test_a2r_deep("22_actors/004_else_handler");
+}
+#[test]
+fn test_22_actors_005_state_write() {
+    test_a2r_deep("22_actors/005_state_write");
+}
+#[test]
+fn test_22_actors_006_state_increment() {
+    test_a2r_deep("22_actors/006_state_increment");
+}
 // Plan 387 W4: named message variants (Add(val) / Reset) → generated enum.
 // VM does not support named-variant send (its send shim coerces to Value::Int),
 // so this case has no VM golden counterpart; behavior is verified by the
 // a2r-actor-tests parity harness against a hand-written expected output.
-#[test] fn test_22_actors_007_named_variants() { test_a2r_deep("22_actors/007_named_variants"); }
+#[test]
+fn test_22_actors_007_named_variants() {
+    test_a2r_deep("22_actors/007_named_variants");
+}
 // Plan 387 audit: string-message pattern. VM send shim coerces to Value::Int,
 // so this case's .expected.out is hand-written; verified by the parity harness.
-#[test] fn test_22_actors_008_string_pattern() { test_a2r_deep("22_actors/008_string_pattern"); }
+#[test]
+fn test_22_actors_008_string_pattern() {
+    test_a2r_deep("22_actors/008_string_pattern");
+}
 // Plan 387 audit: stop hook with a body. VM's live path does not invoke stop on
 // mailbox close, so its .expected.out (with "stopped") is hand-written and
 // documents a2r's intentional ahead-of-VM stop-hook wiring.
-#[test] fn test_22_actors_009_stop_hook() { test_a2r_deep("22_actors/009_stop_hook"); }
+#[test]
+fn test_22_actors_009_stop_hook() {
+    test_a2r_deep("22_actors/009_stop_hook");
+}
 // Plan 387 §16: spawn works in a regular fn (not just main). P0-1 解除 fn main 耦合。
 // .expected.out hand-written (VM uses different spawn API).
-#[test] fn test_22_actors_010_handle_cross_fn() { test_a2r_deep("22_actors/010_handle_cross_fn"); }
+#[test]
+fn test_22_actors_010_handle_cross_fn() {
+    test_a2r_deep("22_actors/010_handle_cross_fn");
+}
 // Plan 387 §16 P0-3: external enum as actor message (on { ev Event }).
 // .expected.out hand-written (VM send shim coerces to Value::Int).
-#[test] fn test_22_actors_012_external_enum_msg() { test_a2r_deep("22_actors/012_external_enum_msg"); }
+#[test]
+fn test_22_actors_012_external_enum_msg() {
+    test_a2r_deep("22_actors/012_external_enum_msg");
+}
 // Plan 387 §16 P0-2: TaskRef as a function parameter (move, not clone).
 // .expected.out hand-written (VM uses a different spawn/send API).
-#[test] fn test_22_actors_011_handle_param() { test_a2r_deep("22_actors/011_handle_param"); }
+#[test]
+fn test_22_actors_011_handle_param() {
+    test_a2r_deep("22_actors/011_handle_param");
+}
 // Plan 387 follow-up: actor + user-type methods coexist — `type Worker` with a
 // `TaskRef<i64>` field (Debug-only derive, no Clone) + `ext Worker` method that
 // sends through the handle, and a field read that MOVES (no clone). a2r-only
 // (VM has no TaskRef first-class struct field). .expected.out hand-written.
-#[test] fn test_22_actors_016_actor_methods() { test_a2r_deep("22_actors/016_actor_methods"); }
+#[test]
+fn test_22_actors_016_actor_methods() {
+    test_a2r_deep("22_actors/016_actor_methods");
+}
 // Plan 387 follow-up P2: two tasks both declaring an `Add` variant — the
 // receiver's task must pick the right enum (`c.send(Add(1))` → CounterMsg, not
 // LedgerMsg). a2r-only (VM send shim coerces to Value::Int). .expected.out
 // hand-written.
-#[test] fn test_22_actors_017_cross_task_variants() { test_a2r_deep("22_actors/017_cross_task_variants"); }
+#[test]
+fn test_22_actors_017_cross_task_variants() {
+    test_a2r_deep("22_actors/017_cross_task_variants");
+}
 // Plan 389 R1: on-pattern TypeBinding usable as an expression variable — the
 // handler forwards the whole event to a free fn (`handle(ev)`), not just an
 // `is ev {...}` scrutinee. a2r-only (VM has no fn-value call in handler body).
-#[test] fn test_22_actors_013_forward_event() { test_a2r_deep("22_actors/013_forward_event"); }
+#[test]
+fn test_22_actors_013_forward_event() {
+    test_a2r_deep("22_actors/013_forward_event");
+}
 // Plan 389 R3: f-string interpolating a task state field (`f"${log}..."`) parses
 // and accumulates. a2r-only (VM's actor state is i64-backed).
-#[test] fn test_22_actors_014_fstring_state() { test_a2r_deep("22_actors/014_fstring_state"); }
+#[test]
+fn test_22_actors_014_fstring_state() {
+    test_a2r_deep("22_actors/014_fstring_state");
+}
 // Plan 389 R2: fn-pointer task state field (`cb = noop`, reassigned to `show`)
 // infers its fn-pointer type instead of `/* unknown */`, and `(self.cb)(ev)`
 // forwards the event. a2r-only (VM's actor state is i64-backed).
-#[test] fn test_22_actors_015_fnp_state_field() { test_a2r_deep("22_actors/015_fnp_state_field"); }
+#[test]
+fn test_22_actors_015_fnp_state_field() {
+    test_a2r_deep("22_actors/015_fnp_state_field");
+}
 // Plan 387 follow-up P3: declared binding types drive the generated enum —
 // `Greet(name: String)` → `Greet(String)`, untyped bindings default i64, and a
 // string-literal arg is sent as owned String. a2r-only (VM send shim coerces
 // to Value::Int). .expected.out hand-written.
-#[test] fn test_22_actors_018_typed_bindings() { test_a2r_deep("22_actors/018_typed_bindings"); }
+#[test]
+fn test_22_actors_018_typed_bindings() {
+    test_a2r_deep("22_actors/018_typed_bindings");
+}
 // Plan 387 follow-up P5: guard expressions on message handlers
 // (`Add(val) if val > 1 ->`) emit as Rust match-arm guards. a2r-only (VM does
 // not execute guards). .expected.out hand-written.
-#[test] fn test_22_actors_019_guards() { test_a2r_deep("22_actors/019_guards"); }
+#[test]
+fn test_22_actors_019_guards() {
+    test_a2r_deep("22_actors/019_guards");
+}
 // Plan 390 §5 Phase B (M1): Task.spawn with initialization parameters —
 // `Task.spawn("Name", cap, v1, v2)` forwards v1/v2 as positional initializers
 // for the task's state fields (declaration order), overriding the defaults.
 // The spawn helper gains `field: Type = default` params; a no-arg spawn still
 // works via those defaults (see 005/006/015 regenerated goldens).
-#[test] fn test_22_actors_020_spawn_with_state() { test_a2r_deep("22_actors/020_spawn_with_state"); }
+#[test]
+fn test_22_actors_020_spawn_with_state() {
+    test_a2r_deep("22_actors/020_spawn_with_state");
+}
 
 // Plan 387 §16: a struct with a TaskRef field must derive only Debug (not
 // Clone/Eq/Ord) because TaskRef is move-only. Migrated from the plan-387
 // worktree before its removal (013 there → 021 here to avoid number clash).
-#[test] fn test_22_actors_021_handle_struct_field() { test_a2r_deep("22_actors/021_handle_struct_field"); }
-#[test] fn test_22_actors_022_closure_cb() { test_a2r_deep("22_actors/022_closure_cb"); }
+#[test]
+fn test_22_actors_021_handle_struct_field() {
+    test_a2r_deep("22_actors/021_handle_struct_field");
+}
+#[test]
+fn test_22_actors_022_closure_cb() {
+    test_a2r_deep("22_actors/022_closure_cb");
+}
 
 // Plan 541: a2r transpile test for auto.sys / sys module calls
 #[test]
@@ -1740,4 +3114,7 @@ pub fn sample_system() {
     assert!(rs_code.contains("cpu_count()"));
     assert!(rs_code.contains("mem_total_mb()"));
 }
-#[test] fn test_04_strings_010_print_concat() { test_a2r("04_strings/010_print_concat").unwrap(); }
+#[test]
+fn test_04_strings_010_print_concat() {
+    test_a2r("04_strings/010_print_concat").unwrap();
+}

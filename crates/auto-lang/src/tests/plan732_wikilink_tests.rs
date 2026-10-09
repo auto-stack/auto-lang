@@ -47,7 +47,11 @@ mod plan732_wikilink_tests {
     /// 六环一次激活贯通：真实 iced 事件（press+release 同链接区间）→
     /// Shell 消息 → VM handler 双参绑定 → state 落地（target/anchor 逐值、
     /// 调用恰一次）。负例：非链接点完整点击零派发。
-    #[cfg(all(feature = "ui-interpreter", feature = "autodown", feature = "code-editor"))]
+    #[cfg(all(
+        feature = "ui-interpreter",
+        feature = "autodown",
+        feature = "code-editor"
+    ))]
     #[test]
     fn plan732_six_ring_full_click_reaches_vm_handler() {
         use crate::ui::component::Component;
@@ -87,9 +91,9 @@ mod plan732_wikilink_tests {
         let mut messages: Vec<crate::ui::interpreter::DynamicMessage> = Vec::new();
         // RedrawRequested 先行（iced_test snapshot 同款驱动——首帧状态推进）。
         let _ = ui.update(
-            &[iced::event::Event::Window(iced::window::Event::RedrawRequested(
-                iced::time::Instant::now(),
-            ))],
+            &[iced::event::Event::Window(
+                iced::window::Event::RedrawRequested(iced::time::Instant::now()),
+            )],
             iced::mouse::Cursor::Unavailable,
             &mut renderer,
             &mut iced::advanced::clipboard::Null,
@@ -106,9 +110,9 @@ mod plan732_wikilink_tests {
 
         // 环③（widget update 生产事件臂 + Shell.publish）。
         let _ = ui.update(
-            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonPressed(
-                iced::mouse::Button::Left,
-            ))],
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left),
+            )],
             iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
             &mut renderer,
             &mut iced::advanced::clipboard::Null,
@@ -116,9 +120,9 @@ mod plan732_wikilink_tests {
         );
         assert!(messages.is_empty(), "按下零消息：{messages:?}");
         let _ = ui.update(
-            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonReleased(
-                iced::mouse::Button::Left,
-            ))],
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left),
+            )],
             iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
             &mut renderer,
             &mut iced::advanced::clipboard::Null,
@@ -126,12 +130,22 @@ mod plan732_wikilink_tests {
         );
         assert_eq!(messages.len(), 1, "完整点击恰一条消息：{messages:?}");
         match &messages[0] {
-            crate::ui::interpreter::DynamicMessage::Typed { widget_name, event_name, args } => {
+            crate::ui::interpreter::DynamicMessage::Typed {
+                widget_name,
+                event_name,
+                args,
+            } => {
                 assert_eq!(widget_name, "App");
                 assert_eq!(event_name, "OpenWikiLink");
                 assert_eq!(args.len(), 2);
-                assert!(matches!(&args[0], Value::Str(s) if s.as_str() == "目标页"), "{args:?}");
-                assert!(matches!(&args[1], Value::Str(s) if s.as_str() == "锚点甲"), "{args:?}");
+                assert!(
+                    matches!(&args[0], Value::Str(s) if s.as_str() == "目标页"),
+                    "{args:?}"
+                );
+                assert!(
+                    matches!(&args[1], Value::Str(s) if s.as_str() == "锚点甲"),
+                    "{args:?}"
+                );
             }
             other => panic!("expected Typed message, got {other:?}"),
         }
@@ -146,18 +160,18 @@ mod plan732_wikilink_tests {
         let plain = core.block_rects()[0];
         let (px, py) = (plain.x + 4.0, plain.y + 4.0);
         let _ = ui.update(
-            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonPressed(
-                iced::mouse::Button::Left,
-            ))],
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left),
+            )],
             iced::mouse::Cursor::Available(iced::Point::new(px, py)),
             &mut renderer,
             &mut iced::advanced::clipboard::Null,
             &mut messages,
         );
         let _ = ui.update(
-            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonReleased(
-                iced::mouse::Button::Left,
-            ))],
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left),
+            )],
             iced::mouse::Cursor::Available(iced::Point::new(px, py)),
             &mut renderer,
             &mut iced::advanced::clipboard::Null,

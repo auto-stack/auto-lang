@@ -269,5 +269,8 @@ fn main() {
 }
 "#;
     let (_result, out) = crate::run_with_capture(code).unwrap();
-    assert!(out.trim().contains("7"), "pass-through generic dispatches: {out}");
+    assert!(
+        out.trim().contains("7"),
+        "pass-through generic dispatches: {out}"
+    );
 }

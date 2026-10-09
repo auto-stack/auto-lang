@@ -80,12 +80,7 @@ mod bridge {
         }
         let mut buf = vec![0u16; bytes / 2 + 1];
         let got = unsafe {
-            ImmGetCompositionStringW(
-                himc,
-                gcs,
-                Some(buf.as_mut_ptr().cast()),
-                bytes as u32,
-            )
+            ImmGetCompositionStringW(himc, gcs, Some(buf.as_mut_ptr().cast()), bytes as u32)
         };
         if got < 0 {
             return None;
@@ -111,12 +106,10 @@ mod bridge {
         lparam: windows::Win32::Foundation::LPARAM,
     ) -> windows::Win32::Foundation::LRESULT {
         use windows::Win32::UI::Input::Ime::{
-            ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext, GCS_COMPSTR,
-            GCS_CURSORPOS, GCS_RESULTSTR,
+            ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext, GCS_COMPSTR, GCS_CURSORPOS,
+            GCS_RESULTSTR,
         };
-        use windows::Win32::UI::WindowsAndMessaging::{
-            CallWindowProcW, WM_IME_COMPOSITION,
-        };
+        use windows::Win32::UI::WindowsAndMessaging::{CallWindowProcW, WM_IME_COMPOSITION};
 
         let hwnd_addr = hwnd.0 as isize;
         if msg == WM_IME_COMPOSITION {
@@ -129,17 +122,16 @@ mod bridge {
                         commit: None,
                         preedit: None,
                     };
-                if lparam.0 & GCS_RESULTSTR.0 as isize != 0 {
-                    uplink.commit = composition_string(himc, GCS_RESULTSTR);
-                }
-                if lparam.0 & GCS_COMPSTR.0 as isize != 0 {
-                    if let Some(text) = composition_string(himc, GCS_COMPSTR) {
-                        let pos = unsafe {
-                            ImmGetCompositionStringW(himc, GCS_CURSORPOS, None, 0)
-                        };
-                        uplink.preedit = Some((text, pos));
+                    if lparam.0 & GCS_RESULTSTR.0 as isize != 0 {
+                        uplink.commit = composition_string(himc, GCS_RESULTSTR);
                     }
-                }
+                    if lparam.0 & GCS_COMPSTR.0 as isize != 0 {
+                        if let Some(text) = composition_string(himc, GCS_COMPSTR) {
+                            let pos =
+                                unsafe { ImmGetCompositionStringW(himc, GCS_CURSORPOS, None, 0) };
+                            uplink.preedit = Some((text, pos));
+                        }
+                    }
                     if lparam.0 == 0 {
                         // winit 同式：lparam==0 → 清组合态（App 侧 preedit 复位）。
                         uplink.preedit = Some((String::new(), 0));
@@ -171,12 +163,21 @@ mod bridge {
             entry.window = window;
             return;
         }
-        let prev = unsafe { SetWindowLongPtrW(
-            windows::Win32::Foundation::HWND(hwnd as *mut _),
-            GWLP_WNDPROC,
-            ime_wndproc as usize as isize,
-        ) };
-        reg.insert(hwnd, Entry { prev, window, uplinks: Vec::new() });
+        let prev = unsafe {
+            SetWindowLongPtrW(
+                windows::Win32::Foundation::HWND(hwnd as *mut _),
+                GWLP_WNDPROC,
+                ime_wndproc as usize as isize,
+            )
+        };
+        reg.insert(
+            hwnd,
+            Entry {
+                prev,
+                window,
+                uplinks: Vec::new(),
+            },
+        );
     }
 
     /// 摘桥（disable/窗回收路径调用）。恢复原 wndproc。
@@ -249,7 +250,7 @@ fn hwnd_of(window: &dyn iced_runtime::window::Window) -> Option<windows::Win32::
     let handle = window.window_handle().ok()?;
     match handle.as_raw() {
         RawWindowHandle::Win32(h) => Some(windows::Win32::Foundation::HWND(
-            h.hwnd.get() as *mut core::ffi::c_void,
+            h.hwnd.get() as *mut core::ffi::c_void
         )),
         _ => None,
     }
@@ -265,7 +266,7 @@ fn apply_cursor_area(
     use windows::Win32::Foundation::{POINT, RECT};
     use windows::Win32::UI::Input::Ime::{
         ImmAssociateContextEx, ImmGetContext, ImmReleaseContext, ImmSetCandidateWindow,
-        ImmSetCompositionWindow, CANDIDATEFORM, COMPOSITIONFORM, CFS_EXCLUDE, CFS_POINT,
+        ImmSetCompositionWindow, CANDIDATEFORM, CFS_EXCLUDE, CFS_POINT, COMPOSITIONFORM,
         IACE_CHILDREN, IACE_DEFAULT,
     };
 
@@ -304,7 +305,12 @@ fn apply_cursor_area(
             (req.cursor.w as f64 * scale).round() as i32,
             (req.cursor.h as f64 * scale).round() as i32,
         );
-        let rc = RECT { left: px, top: py, right: px + pw, bottom: py + ph };
+        let rc = RECT {
+            left: px,
+            top: py,
+            right: px + pw,
+            bottom: py + ph,
+        };
         let composition = COMPOSITIONFORM {
             dwStyle: CFS_POINT,
             ptCurrentPos: POINT { x: px, y: py + ph },

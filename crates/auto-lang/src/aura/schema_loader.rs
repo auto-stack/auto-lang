@@ -4,8 +4,8 @@
 //! the Rust schema structures used for validation.
 
 use crate::aura::schema::{
-    AuraSchema, BackendMatrix, ElementCategory, ElementDef, ElementMeta, ElementTier,
-    PropDef, PropType, WidgetBlockSchema,
+    AuraSchema, BackendMatrix, ElementCategory, ElementDef, ElementMeta, ElementTier, PropDef,
+    PropType, WidgetBlockSchema,
 };
 use std::collections::HashMap;
 
@@ -113,7 +113,9 @@ fn extract_quoted_list(line: &str, key: &str) -> Option<Vec<String>> {
             .split(',')
             .filter_map(|p| {
                 let p = p.trim();
-                p.strip_prefix('"')?.strip_suffix('"').map(|s| s.to_string())
+                p.strip_prefix('"')?
+                    .strip_suffix('"')
+                    .map(|s| s.to_string())
             })
             .collect(),
     )
@@ -229,15 +231,17 @@ impl SchemaLoader {
         let after_colon = &rest[colon_pos + 1..];
 
         // Find the equals sign
-        let eq_pos = after_colon.find('=').ok_or_else(|| SchemaLoadError::ParseError {
-            line: 0,
-            message: format!("Missing '=' in const definition: {}", line),
-        })?;
+        let eq_pos = after_colon
+            .find('=')
+            .ok_or_else(|| SchemaLoadError::ParseError {
+                line: 0,
+                message: format!("Missing '=' in const definition: {}", line),
+            })?;
 
         // Extract value (handle quoted strings)
         let value_part = after_colon[eq_pos + 1..].trim();
         let value = if value_part.starts_with('"') && value_part.ends_with('"') {
-            value_part[1..value_part.len()-1].to_string()
+            value_part[1..value_part.len() - 1].to_string()
         } else {
             value_part.to_string()
         };
@@ -284,7 +288,11 @@ impl SchemaLoader {
     }
 
     /// Parse element content (key: value pairs)
-    fn parse_element_content(&self, _name: &str, content: &str) -> Result<ElementDefData, SchemaLoadError> {
+    fn parse_element_content(
+        &self,
+        _name: &str,
+        content: &str,
+    ) -> Result<ElementDefData, SchemaLoadError> {
         let mut tag = String::new();
         let mut category = String::new();
         let mut props: Vec<PropDefData> = Vec::new();
@@ -354,13 +362,18 @@ impl SchemaLoader {
         let mut props = Vec::new();
 
         // Find props: [ ... ]
-        let props_start = content.find("props:").ok_or_else(|| SchemaLoadError::InvalidSyntax {
-            message: "props not found".to_string(),
-        })?;
+        let props_start = content
+            .find("props:")
+            .ok_or_else(|| SchemaLoadError::InvalidSyntax {
+                message: "props not found".to_string(),
+            })?;
 
-        let bracket_start = content[props_start..].find('[').ok_or_else(|| SchemaLoadError::InvalidSyntax {
-            message: "props array not found".to_string(),
-        })?;
+        let bracket_start =
+            content[props_start..]
+                .find('[')
+                .ok_or_else(|| SchemaLoadError::InvalidSyntax {
+                    message: "props array not found".to_string(),
+                })?;
 
         let start_pos = props_start + bracket_start + 1;
 
@@ -378,7 +391,7 @@ impl SchemaLoader {
             end_pos += 1;
         }
 
-        let props_content: String = chars[start_pos..end_pos-1].iter().collect();
+        let props_content: String = chars[start_pos..end_pos - 1].iter().collect();
 
         // Parse individual prop objects: { name: "...", type: "...", ... }
         let mut current_obj = String::new();
@@ -435,7 +448,8 @@ impl SchemaLoader {
 
             if let Some(value) = self.extract_string_value(part, "name:") {
                 name = value;
-            } else if let Some(value) = self.extract_string_value(part, "type:")
+            } else if let Some(value) = self
+                .extract_string_value(part, "type:")
                 .or_else(|| self.extract_value(part, "type:"))
             {
                 // Resolve constant reference if needed
@@ -459,7 +473,11 @@ impl SchemaLoader {
     }
 
     /// Parse widget_blocks definition
-    fn parse_widget_blocks(&mut self, lines: &[&str], start: usize) -> Result<usize, SchemaLoadError> {
+    fn parse_widget_blocks(
+        &mut self,
+        lines: &[&str],
+        start: usize,
+    ) -> Result<usize, SchemaLoadError> {
         // Collect content until closing brace
         let mut content = String::new();
         let mut i = start;
@@ -498,9 +516,11 @@ impl SchemaLoader {
         }
 
         // Parse required and optional arrays
-        let required = self.extract_string_array(&content, "required:")
+        let required = self
+            .extract_string_array(&content, "required:")
             .unwrap_or_default();
-        let optional = self.extract_string_array(&content, "optional:")
+        let optional = self
+            .extract_string_array(&content, "optional:")
             .unwrap_or_default();
 
         self.widget_blocks = Some(WidgetBlockData { required, optional });
@@ -517,7 +537,7 @@ impl SchemaLoader {
             // Handle quoted string
             if trimmed.starts_with('"') {
                 if let Some(end) = trimmed[1..].find('"') {
-                    return Some(trimmed[1..end+1].to_string());
+                    return Some(trimmed[1..end + 1].to_string());
                 }
             }
         }
@@ -651,7 +671,7 @@ impl SchemaLoader {
         }
         // Otherwise return as-is (stripping quotes if present)
         if type_str.starts_with('"') && type_str.ends_with('"') {
-            type_str[1..type_str.len()-1].to_string()
+            type_str[1..type_str.len() - 1].to_string()
         } else {
             type_str.to_string()
         }
@@ -679,16 +699,23 @@ impl SchemaLoader {
                 _ => ElementCategory::Content,
             };
 
-            let props: Vec<PropDef> = elem_data.props.iter().map(|p| {
-                let prop_type = self.parse_prop_type(&p.type_str);
-                PropDef {
-                    name: Box::leak(p.name.clone().into_boxed_str()),
-                    type_: prop_type,
-                    required: p.required,
-                    default: p.default.as_ref().map(|d| Box::leak(d.clone().into_boxed_str()) as &'static str),
-                    description: Box::leak(p.description.clone().into_boxed_str()),
-                }
-            }).collect();
+            let props: Vec<PropDef> = elem_data
+                .props
+                .iter()
+                .map(|p| {
+                    let prop_type = self.parse_prop_type(&p.type_str);
+                    PropDef {
+                        name: Box::leak(p.name.clone().into_boxed_str()),
+                        type_: prop_type,
+                        required: p.required,
+                        default: p
+                            .default
+                            .as_ref()
+                            .map(|d| Box::leak(d.clone().into_boxed_str()) as &'static str),
+                        description: Box::leak(p.description.clone().into_boxed_str()),
+                    }
+                })
+                .collect();
 
             let element_def = ElementDef {
                 tag: Box::leak(elem_data.tag.clone().into_boxed_str()),
@@ -726,8 +753,16 @@ impl SchemaLoader {
 
         let widget_blocks = if let Some(wb) = &self.widget_blocks {
             WidgetBlockSchema {
-                required: wb.required.iter().map(|s| Box::leak(s.clone().into_boxed_str()) as &'static str).collect(),
-                optional: wb.optional.iter().map(|s| Box::leak(s.clone().into_boxed_str()) as &'static str).collect(),
+                required: wb
+                    .required
+                    .iter()
+                    .map(|s| Box::leak(s.clone().into_boxed_str()) as &'static str)
+                    .collect(),
+                optional: wb
+                    .optional
+                    .iter()
+                    .map(|s| Box::leak(s.clone().into_boxed_str()) as &'static str)
+                    .collect(),
             }
         } else {
             // Default widget blocks
@@ -748,20 +783,30 @@ impl SchemaLoader {
     fn parse_prop_type(&self, type_str: &str) -> PropType {
         if type_str.starts_with("union:") {
             let types: Vec<&str> = type_str[6..].split(',').collect();
-            PropType::Union(types.iter().map(|t| match *t {
-                "string" => PropType::String,
-                "int" => PropType::Int,
-                "float" => PropType::Float,
-                "bool" => PropType::Bool,
-                "state_ref" => PropType::StateRef,
-                "msg_ref" => PropType::MsgRef,
-                "class_binding" => PropType::StyleBinding,
-                _ => PropType::String,
-            }).collect())
+            PropType::Union(
+                types
+                    .iter()
+                    .map(|t| match *t {
+                        "string" => PropType::String,
+                        "int" => PropType::Int,
+                        "float" => PropType::Float,
+                        "bool" => PropType::Bool,
+                        "state_ref" => PropType::StateRef,
+                        "msg_ref" => PropType::MsgRef,
+                        "class_binding" => PropType::StyleBinding,
+                        _ => PropType::String,
+                    })
+                    .collect(),
+            )
         } else if type_str.starts_with("one_of:") {
             let options: Vec<&str> = type_str[7..].split(',').collect();
             // Leak strings to make them 'static
-            PropType::OneOf(options.iter().map(|s| Box::leak(s.to_string().into_boxed_str()) as &'static str).collect())
+            PropType::OneOf(
+                options
+                    .iter()
+                    .map(|s| Box::leak(s.to_string().into_boxed_str()) as &'static str)
+                    .collect(),
+            )
         } else {
             match type_str {
                 "string" => PropType::String,
@@ -797,8 +842,7 @@ pub fn load_default_schema() -> Result<AuraSchema, SchemaLoadError> {
 /// &'static 数据,逐调用会持续泄漏;高频消费者(render_support / vue import 映射)
 /// 统一走这里)。加载失败缓存 None,消费方自行回落。
 pub fn default_schema_cached() -> Option<&'static AuraSchema> {
-    static CACHED: std::sync::OnceLock<Option<&'static AuraSchema>> =
-        std::sync::OnceLock::new();
+    static CACHED: std::sync::OnceLock<Option<&'static AuraSchema>> = std::sync::OnceLock::new();
     CACHED
         .get_or_init(|| {
             load_default_schema()
@@ -897,7 +941,9 @@ widget_blocks {
     #[test]
     fn test_resolve_type() {
         let mut loader = SchemaLoader::new();
-        loader.constants.insert("MSG_REF_TYPE".to_string(), "msg_ref".to_string());
+        loader
+            .constants
+            .insert("MSG_REF_TYPE".to_string(), "msg_ref".to_string());
 
         assert_eq!(loader.resolve_type("MSG_REF_TYPE"), "msg_ref");
         assert_eq!(loader.resolve_type(r#""string""#), "string");
@@ -938,8 +984,10 @@ widget_blocks {
         assert!(textarea.get_prop("rows").is_some());
 
         // 未在 rs 声明、但生产表存在的元素:存在性断言(props P2 补)
-        for tag in ["select", "table", "thead", "tbody", "tr", "th", "td",
-                    "tabs", "modal", "slider", "radio", "progress", "tooltip"] {
+        for tag in [
+            "select", "table", "thead", "tbody", "tr", "th", "td", "tabs", "modal", "slider",
+            "radio", "progress", "tooltip",
+        ] {
             assert!(
                 schema.get_element(tag).is_some(),
                 "element `{}` should exist in generated schema",

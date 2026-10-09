@@ -1,5 +1,5 @@
+use crate::error::{attach_source, AutoError};
 use crate::parse_preserve_error;
-use crate::error::{AutoError, attach_source};
 
 #[test]
 fn test_simple_generic_tag() {
@@ -19,7 +19,10 @@ fn test_simple_generic_tag() {
         Ok(_) => println!("✓ Generic tag with type param field parsed successfully"),
         Err(e) => {
             let err_with_src = attach_source(e, "test.at".to_string(), code2.to_string());
-            eprintln!("✗ Generic tag with type param field failed:\n{}\n", err_with_src);
+            eprintln!(
+                "✗ Generic tag with type param field failed:\n{}\n",
+                err_with_src
+            );
         }
     }
 

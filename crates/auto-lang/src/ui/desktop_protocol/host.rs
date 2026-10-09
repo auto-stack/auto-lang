@@ -11,7 +11,9 @@ use std::collections::BTreeMap;
 use iced::{Point, Rectangle, Size};
 
 use super::endpoint::{HostAction, HostEndpoint, ProtocolError};
-use super::message::{ControlMsg, DrawList, FrameMsg, InputMsg, MouseButton, ObserveMsg, ProtocolMsg, WRect};
+use super::message::{
+    ControlMsg, DrawList, FrameMsg, InputMsg, MouseButton, ObserveMsg, ProtocolMsg, WRect,
+};
 use crate::ui::dynamic::DynamicComponent;
 use crate::ui::session::{AppId, DesktopSession, Wid};
 
@@ -55,13 +57,18 @@ impl SurfaceStore {
     /// 段名 `autodesk-shm-<pid>-<surface>` 撞名（Windows 同名 = 打开既有
     /// 段；480 压测五 child 同源 App 掩蔽了此缺陷，异源 App 直接串段）。
     pub fn alloc(&mut self, width: f32, height: f32) -> u64 {
-        static GLOBAL_SURFACE: std::sync::atomic::AtomicU64 =
-            std::sync::atomic::AtomicU64::new(0);
+        static GLOBAL_SURFACE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let id = GLOBAL_SURFACE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
         self.next_surface = id;
         self.surfaces.insert(
             id,
-            Surface { slots: [None, None], v2_slots: [None, None], front: 0, width, height },
+            Surface {
+                slots: [None, None],
+                v2_slots: [None, None],
+                front: 0,
+                width,
+                height,
+            },
         );
         id
     }
@@ -179,13 +186,23 @@ impl<'a> ProtocolHost<'a> {
         let actions = self.endpoint.on_message(msg.clone())?;
         for action in actions {
             match action {
-                HostAction::ResolveAndAttach { app_name, title, width, height, .. } => {
+                HostAction::ResolveAndAttach {
+                    app_name,
+                    title,
+                    width,
+                    height,
+                    ..
+                } => {
                     // ① 编译装载（独立模式下这一步 = spawn exe，Stage 2）。
-                    let component = (self.resolver)(&app_name)
-                        .map_err(ProtocolError::ResolveFailed)?;
+                    let component =
+                        (self.resolver)(&app_name).map_err(ProtocolError::ResolveFailed)?;
                     // ② 真实会话登记：App + 虚拟窗（462 孵化语义）。
                     let app_id = self.session.allocate_app(component);
-                    let title = if title.is_empty() { app_name.clone() } else { title };
+                    let title = if title.is_empty() {
+                        app_name.clone()
+                    } else {
+                        title
+                    };
                     let rect = Rectangle::new(Point::new(16.0, 16.0), Size::new(width, height));
                     let wid = self.session.wm_add_win(app_id, title, rect);
                     // ③ 表面（含共享内存段）分配 + Welcome/BufferAlloc 回发。
@@ -193,24 +210,17 @@ impl<'a> ProtocolHost<'a> {
                     self.wid_surface.insert(wid.0, surface);
                     // 全局唯一：pid 前缀防跨进程同名段（Windows
                     // CreateFileMappingW 同名=打开既有段，Plan 480 压测暴露）。
-                    let shm_name =
-                        format!("autodesk-shm-{}-{surface}", std::process::id());
+                    let shm_name = format!("autodesk-shm-{}-{surface}", std::process::id());
                     let shm = super::shm::SharedFrameBuffer::create(&shm_name, 2, 16384)
                         .map_err(ProtocolError::Shm)?;
                     self.shm_buffers.insert(surface, shm);
                     // PLAN-034 D3：位图段双胞胎（专用第二段——槽尺寸
                     // = 表面档 ×4 字节余量（2× 线性），rqhost 同则）。
                     let bm_name = format!("{shm_name}-bm");
-                    let bm_slot_size = width.ceil().max(1.0) as u32
-                        * height.ceil().max(1.0) as u32
-                        * 4
-                        * 4
-                        + 4;
-                    let bm = match super::shm::SharedFrameBuffer::create(
-                        &bm_name,
-                        2,
-                        bm_slot_size,
-                    ) {
+                    let bm_slot_size =
+                        width.ceil().max(1.0) as u32 * height.ceil().max(1.0) as u32 * 4 * 4 + 4;
+                    let bm = match super::shm::SharedFrameBuffer::create(&bm_name, 2, bm_slot_size)
+                    {
                         Ok(seg) => {
                             self.bm_buffers.insert(surface, seg);
                             Some(crate::ui::desktop_protocol::message::BitmapBuffer {
@@ -238,7 +248,14 @@ impl<'a> ProtocolHost<'a> {
                         bm,
                     }));
                 }
-                HostAction::ComposeFrame { surface, wid, frame_id, slot, payload, .. } => {
+                HostAction::ComposeFrame {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    payload,
+                    ..
+                } => {
                     if let Some(freed) = self.surfaces.compose(surface, slot, payload) {
                         self.to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
                             wid,
@@ -248,7 +265,14 @@ impl<'a> ProtocolHost<'a> {
                     }
                 }
                 // PLAN-683（remote 模式）：v2 内嵌帧 → v2 槽合成。
-                HostAction::ComposeFrameV2 { surface, wid, frame_id, slot, payload, .. } => {
+                HostAction::ComposeFrameV2 {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    payload,
+                    ..
+                } => {
                     if let Some(freed) = self.surfaces.compose_v2(surface, slot, payload) {
                         self.to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
                             wid,
@@ -257,7 +281,13 @@ impl<'a> ProtocolHost<'a> {
                         }));
                     }
                 }
-                HostAction::ComposeFrameShared { surface, wid, frame_id, slot, .. } => {
+                HostAction::ComposeFrameShared {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    ..
+                } => {
                     // 从共享内存槽读载荷 → 解码 → 与管道帧同路合成。
                     // PLAN-683：槽内载荷种类 tag 分派（2 = v2 → v2 槽）。
                     let slot_payload = self
@@ -281,9 +311,7 @@ impl<'a> ProtocolHost<'a> {
                     }
                     let ready = slot_payload
                         .as_deref()
-                        .and_then(|payload| {
-                            super::shm::draw_list_from_slot_payload(payload).ok()
-                        });
+                        .and_then(|payload| super::shm::draw_list_from_slot_payload(payload).ok());
                     if let Some(payload) = ready {
                         if let Some(freed) = self.surfaces.compose(surface, slot, payload) {
                             self.to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
@@ -294,7 +322,13 @@ impl<'a> ProtocolHost<'a> {
                         }
                     }
                 }
-                HostAction::ComposeFramePixels { surface, wid, frame_id, slot, .. } => {
+                HostAction::ComposeFramePixels {
+                    surface,
+                    wid,
+                    frame_id,
+                    slot,
+                    ..
+                } => {
                     // v1.3 像素臂（单 client 测试机件的最小处理）：shm 槽读
                     // RGBA 成功即翻面回 ack（像素前缓冲驻留归 stage3 多 client
                     // 宿主——BrokerClient::pixels）。
@@ -326,12 +360,22 @@ impl<'a> ProtocolHost<'a> {
                             }
                         }
                         self.surfaces.release(surface);
-                        self.to_app.push(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface }));
+                        self.to_app
+                            .push(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface }));
                     }
                 }
                 // PLAN-034 T-05（D3）：位图就绪——读槽入宿主缓存 + Ack
                 // 归还（loopback/桌面/rqhost 三宿主同律）。
-                HostAction::BitmapReady { surface, wid, id, w, h, stride, slot, len: _ } => {
+                HostAction::BitmapReady {
+                    surface,
+                    wid,
+                    id,
+                    w,
+                    h,
+                    stride,
+                    slot,
+                    len: _,
+                } => {
                     let key = format!("bitmap://{id}");
                     let rgba = self
                         .bm_buffers
@@ -339,12 +383,10 @@ impl<'a> ProtocolHost<'a> {
                         .and_then(|seg| seg.read_slot(slot).ok());
                     if let Some(rgba) = rgba {
                         crate::ui::iced::broker_surface::bitmap_cache_put(&key, w, h, stride, rgba);
-                        self.bitmap_keys
-                            .entry(surface)
-                            .or_default()
-                            .push(key);
+                        self.bitmap_keys.entry(surface).or_default().push(key);
                     }
-                    self.to_app.push(ProtocolMsg::Frame(FrameMsg::BitmapAck { wid, slot }));
+                    self.to_app
+                        .push(ProtocolMsg::Frame(FrameMsg::BitmapAck { wid, slot }));
                 }
                 HostAction::ObserveUp { msg } => self.observe_inbox.push(msg),
                 // v1.11 命令上行：loopback 路径的收件箱落点在下方的原始
@@ -358,9 +400,11 @@ impl<'a> ProtocolHost<'a> {
         }
         // 控制上行（端点只透传，这里落收件箱）。
         match msg {
-            ProtocolMsg::Control(c @ (ControlMsg::TitleChanged { .. }
-            | ControlMsg::Notify { .. }
-            | ControlMsg::DesktopBus { .. })) => self.control_inbox.push(c.clone()),
+            ProtocolMsg::Control(
+                c @ (ControlMsg::TitleChanged { .. }
+                | ControlMsg::Notify { .. }
+                | ControlMsg::DesktopBus { .. }),
+            ) => self.control_inbox.push(c.clone()),
             _ => {}
         }
         Ok(())
@@ -400,10 +444,7 @@ impl<'a> ProtocolHost<'a> {
 
     /// 当前客户端的 (app_id, wid)。
     pub fn active(&self) -> (Option<AppId>, Option<Wid>) {
-        (
-            self.endpoint.app_id.map(AppId),
-            self.endpoint.wid.map(Wid),
-        )
+        (self.endpoint.app_id.map(AppId), self.endpoint.wid.map(Wid))
     }
 
     /// 孵化连接泵到 Active（Plan 480 S3）：Hello → ResolveAndAttach →
@@ -416,8 +457,8 @@ impl<'a> ProtocolHost<'a> {
         budget_ms: u32,
     ) -> Option<Wid> {
         use super::endpoint::HostState;
-        let deadline = std::time::Instant::now()
-            + std::time::Duration::from_millis(budget_ms as u64);
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_millis(budget_ms as u64);
         while std::time::Instant::now() < deadline {
             if self.endpoint.state == HostState::Active {
                 return self.endpoint.wid.map(Wid);
@@ -443,7 +484,7 @@ impl<'a> ProtocolHost<'a> {
 mod tests {
     use super::*;
     use crate::ui::desktop_protocol::demo::COUNTER_SRC;
-    use crate::ui::desktop_protocol::endpoint::{AppEndpoint, FrameSource, AppState};
+    use crate::ui::desktop_protocol::endpoint::{AppEndpoint, AppState, FrameSource};
     use crate::ui::desktop_protocol::message::{HandshakeMsg, Rgba8};
 
     fn resolver() -> impl FnMut(&str) -> Result<DynamicComponent, String> {
@@ -466,7 +507,11 @@ mod tests {
 
     impl CounterSource {
         fn new(component: DynamicComponent) -> Self {
-            Self { component, button: WRect::new(10.0, 10.0, 120.0, 36.0), rev: 1 }
+            Self {
+                component,
+                button: WRect::new(10.0, 10.0, 120.0, 36.0),
+                rev: 1,
+            }
         }
     }
 
@@ -512,7 +557,13 @@ mod tests {
         }
 
         fn on_input(&mut self, input: &InputMsg) {
-            if let InputMsg::PointerPressed { x, y, button: MouseButton::Left, .. } = input {
+            if let InputMsg::PointerPressed {
+                x,
+                y,
+                button: MouseButton::Left,
+                ..
+            } = input
+            {
                 let b = self.button;
                 if *x >= b.x && *x < b.x + b.w && *y >= b.y && *y < b.y + b.h {
                     // 与直挂完全同一调用：DynamicComponent::on_with_input。
@@ -542,8 +593,14 @@ mod tests {
         host.handle(&hello).unwrap();
         // Welcome + BufferAlloc 都已排队。
         assert_eq!(host.to_app.len(), 2);
-        assert!(matches!(host.to_app[0], ProtocolMsg::Handshake(HandshakeMsg::Welcome { .. })));
-        assert!(matches!(host.to_app[1], ProtocolMsg::Frame(FrameMsg::BufferAlloc { .. })));
+        assert!(matches!(
+            host.to_app[0],
+            ProtocolMsg::Handshake(HandshakeMsg::Welcome { .. })
+        ));
+        assert!(matches!(
+            host.to_app[1],
+            ProtocolMsg::Frame(FrameMsg::BufferAlloc { .. })
+        ));
 
         // 真实 462 对象就位：AppSession + VWinState + 焦点。
         let (app_id, wid) = host.active();
@@ -588,14 +645,19 @@ mod tests {
             panic!("期待 Input");
         };
         assert_eq!(*wid, 1);
-        assert!(((*x) - 44.0).abs() < 1e-4 && ((*y) - 24.0).abs() < 1e-4, "本地坐标 {x},{y}");
+        assert!(
+            ((*x) - 44.0).abs() < 1e-4 && ((*y) - 24.0).abs() < 1e-4,
+            "本地坐标 {x},{y}"
+        );
 
         // app 侧命中按钮区 (10,10,120,36)：本地 (44,24) 在内 → onclick。
         app.on_message(injected).unwrap();
         assert_eq!(count_of(&app.session.component), 1, "VM handler 已执行");
 
         // 窗外按下不注入。
-        assert!(host.pointer_down(4000.0, 4000.0, MouseButton::Left).is_none());
+        assert!(host
+            .pointer_down(4000.0, 4000.0, MouseButton::Left)
+            .is_none());
     }
 
     #[test]
@@ -620,7 +682,10 @@ mod tests {
         let close = host.endpoint.close().unwrap();
         let replies = app.on_message(close).unwrap();
         assert_eq!(app.state, AppState::Closing);
-        assert!(matches!(replies[0], ProtocolMsg::Control(ControlMsg::ExitRequest { .. })));
+        assert!(matches!(
+            replies[0],
+            ProtocolMsg::Control(ControlMsg::ExitRequest { .. })
+        ));
         host.handle(&replies[0]).unwrap();
 
         // 回收落地：462 对象与表面同清，BufferRelease 排队。
@@ -657,12 +722,28 @@ mod tests {
             surfaces: Vec::new(),
         });
         host.handle(&hello).unwrap();
-        assert_eq!(host.endpoint.state, super::super::endpoint::HostState::Active);
+        assert_eq!(
+            host.endpoint.state,
+            super::super::endpoint::HostState::Active
+        );
 
         // 控制上行三形态落收件箱；DesktopBus 载荷与既有 DesktopCommand 解析互通。
-        host.handle(&ProtocolMsg::Control(ControlMsg::TitleChanged { wid: 1, title: "新".into() })).unwrap();
-        host.handle(&ProtocolMsg::Control(ControlMsg::Notify { wid: 1, summary: "s".into(), body: "b".into() })).unwrap();
-        host.handle(&ProtocolMsg::Control(ControlMsg::DesktopBus { wid: 1, record: "launch\u{1f}counter".into() })).unwrap();
+        host.handle(&ProtocolMsg::Control(ControlMsg::TitleChanged {
+            wid: 1,
+            title: "新".into(),
+        }))
+        .unwrap();
+        host.handle(&ProtocolMsg::Control(ControlMsg::Notify {
+            wid: 1,
+            summary: "s".into(),
+            body: "b".into(),
+        }))
+        .unwrap();
+        host.handle(&ProtocolMsg::Control(ControlMsg::DesktopBus {
+            wid: 1,
+            record: "launch\u{1f}counter".into(),
+        }))
+        .unwrap();
         assert_eq!(host.control_inbox.len(), 3);
         let records: Vec<String> = host
             .control_inbox
@@ -675,7 +756,9 @@ mod tests {
         let parsed = crate::ui::session::DesktopCommand::parse_records(&records.join("\n"));
         assert_eq!(
             parsed,
-            vec![crate::ui::session::DesktopCommand::LaunchApp("counter".into())],
+            vec![crate::ui::session::DesktopCommand::LaunchApp(
+                "counter".into()
+            )],
             "DesktopBus 载荷 = DesktopCommand 同格式"
         );
 

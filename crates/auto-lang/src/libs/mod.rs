@@ -1,7 +1,7 @@
 pub mod builtin;
-pub mod string;
-pub mod result;
-pub mod may;
-pub mod std;
 pub mod file;
+pub mod may;
+pub mod result;
+pub mod std;
+pub mod string;
 pub mod sys;

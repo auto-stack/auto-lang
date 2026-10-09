@@ -249,9 +249,7 @@ fn setup_fixture() -> std::path::PathBuf {
 #[test]
 fn p614_vm_flatten_tree_probe() {
     let manifest = setup_fixture();
-    let Some(mut dc) =
-        crate::plan370_test_support::build_component_from_app(&manifest)
-    else {
+    let Some(mut dc) = crate::plan370_test_support::build_component_from_app(&manifest) else {
         eprintln!("p614 probe: fixture build returned None");
         return;
     };
@@ -270,17 +268,35 @@ fn p614_vm_flatten_tree_probe() {
 
     // 微探针:参数到达性逐层隔离
     let exp_dbg = dc.bridge().index_list_all(4000006);
-    let len_v = dc.bridge().call_vm_fn("len_of", &[expanded.clone()]).expect("len_of");
-    println!("[probe] rust-side expanded content = {:?} | vm len_of = {:?}", exp_dbg, len_v);
+    let len_v = dc
+        .bridge()
+        .call_vm_fn("len_of", &[expanded.clone()])
+        .expect("len_of");
+    println!(
+        "[probe] rust-side expanded content = {:?} | vm len_of = {:?}",
+        exp_dbg, len_v
+    );
     let first = dc.bridge().call_vm_fn("first_of", &[expanded.clone()]);
     println!("[probe] first_of = {:?}", first);
-    let manual = dc.bridge().call_vm_fn("contains_manual", &[expanded.clone(), Value::str("a")]).expect("contains_manual");
+    let manual = dc
+        .bridge()
+        .call_vm_fn("contains_manual", &[expanded.clone(), Value::str("a")])
+        .expect("contains_manual");
     println!("[probe] contains_manual(expanded,'a') = {:?}", manual);
-    let nodes_len = dc.bridge().call_vm_fn("len_of", &[nodes.clone()]).expect("len_of nodes");
+    let nodes_len = dc
+        .bridge()
+        .call_vm_fn("len_of", &[nodes.clone()])
+        .expect("len_of nodes");
     println!("[probe] len_of(nodes) = {:?}", nodes_len);
-    let it = dc.bridge().call_vm_fn("iter_last", &[expanded.clone()]).expect("iter_last");
+    let it = dc
+        .bridge()
+        .call_vm_fn("iter_last", &[expanded.clone()])
+        .expect("iter_last");
     println!("[probe] iter_last(expanded) = {:?}", it);
-    let eq = dc.bridge().call_vm_fn("compare_eq", &[Value::str("a"), Value::str("a")]).expect("compare_eq");
+    let eq = dc
+        .bridge()
+        .call_vm_fn("compare_eq", &[Value::str("a"), Value::str("a")])
+        .expect("compare_eq");
     println!("[probe] compare_eq('a','a') = {:?}", eq);
 
     // 2) 隔离调用 flatten_tree:直接传状态值
@@ -288,7 +304,12 @@ fn p614_vm_flatten_tree_probe() {
         .bridge()
         .call_vm_fn(
             "flatten_tree",
-            &[nodes.clone(), expanded.clone(), Value::Bool(false), Value::str("")],
+            &[
+                nodes.clone(),
+                expanded.clone(),
+                Value::Bool(false),
+                Value::str(""),
+            ],
         )
         .expect("flatten_tree call");
     let row_list = match &rows {

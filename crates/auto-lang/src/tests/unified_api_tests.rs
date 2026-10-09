@@ -1,15 +1,23 @@
 // Plan 075 Phase 3: Unified Compilation API Tests
 // Tests for run_with_mode, detect_mode_from_extension, run_file_with_auto_mode
 
-use crate::{CompileMode, run_with_mode, detect_mode_from_extension};
+use crate::{detect_mode_from_extension, run_with_mode, CompileMode};
 use std::path::Path;
 
 #[test]
 fn test_run_with_mode_script() {
     let source = "1 + 2";
     let result = run_with_mode(source, CompileMode::Script).unwrap();
-    assert!(result.contains("script"), "Result should contain 'script': {}", result);
-    assert!(result.contains("bytecode="), "Result should contain bytecode info: {}", result);
+    assert!(
+        result.contains("script"),
+        "Result should contain 'script': {}",
+        result
+    );
+    assert!(
+        result.contains("bytecode="),
+        "Result should contain bytecode info: {}",
+        result
+    );
 }
 
 #[test]
@@ -29,8 +37,16 @@ fn test_run_with_mode_template() {
     let source = r#""Hello, "
 "World!""#;
     let result = run_with_mode(source, CompileMode::Template).unwrap();
-    assert!(result.contains("template"), "Result should contain 'template': {}", result);
-    assert!(result.contains("bytecode="), "Result should contain bytecode info: {}", result);
+    assert!(
+        result.contains("template"),
+        "Result should contain 'template': {}",
+        result
+    );
+    assert!(
+        result.contains("bytecode="),
+        "Result should contain bytecode info: {}",
+        result
+    );
 }
 
 #[test]
@@ -77,7 +93,11 @@ database: { name: "mydb" }
 debug: true
 "#;
     let result = run_with_mode(source, CompileMode::Config);
-    assert!(result.is_ok(), "Config with nested fields should parse, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Config with nested fields should parse, got: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -86,7 +106,11 @@ fn test_template_mode_with_multiple_strings() {
 " "
 "World!""#;
     let result = run_with_mode(source, CompileMode::Template).unwrap();
-    assert!(result.contains("template"), "Result should contain 'template': {}", result);
+    assert!(
+        result.contains("template"),
+        "Result should contain 'template': {}",
+        result
+    );
 }
 
 #[test]
@@ -99,21 +123,31 @@ fn add(a int, b int) int {
 add(1, 2)
 "#;
     let result = run_with_mode(source, CompileMode::Script).unwrap();
-    assert!(result.contains("script"), "Result should contain 'script': {}", result);
+    assert!(
+        result.contains("script"),
+        "Result should contain 'script': {}",
+        result
+    );
 }
 
 #[test]
 fn test_empty_config() {
     let source = "";
     let result = run_with_mode(source, CompileMode::Config).unwrap();
-    assert!(result.contains("config"), "Empty config should still compile");
+    assert!(
+        result.contains("config"),
+        "Empty config should still compile"
+    );
 }
 
 #[test]
 fn test_empty_template() {
     let source = "";
     let result = run_with_mode(source, CompileMode::Template).unwrap();
-    assert!(result.contains("template"), "Empty template should still compile");
+    assert!(
+        result.contains("template"),
+        "Empty template should still compile"
+    );
 }
 
 #[test]
@@ -124,5 +158,9 @@ port: 8080
 max_connections: 100
 "#;
     let result = run_with_mode(source, CompileMode::Config);
-    assert!(result.is_ok(), "Config with simple fields should parse, got: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Config with simple fields should parse, got: {:?}",
+        result
+    );
 }

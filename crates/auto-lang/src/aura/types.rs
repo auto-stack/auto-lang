@@ -255,10 +255,7 @@ impl AuraWidget {
     /// `outlets` maps sub-widget name → its `slot_outlet_names()`.
     /// Instantiations of widgets not present in `outlets` (unknown or
     /// external components) are skipped — their slot surface is unknowable.
-    pub fn slot_children_warnings(
-        &self,
-        outlets: &HashMap<String, Vec<String>>,
-    ) -> Vec<String> {
+    pub fn slot_children_warnings(&self, outlets: &HashMap<String, Vec<String>>) -> Vec<String> {
         let mut warnings = Vec::new();
         collect_slot_children_warnings(&self.view_tree, outlets, &mut warnings);
         warnings
@@ -279,7 +276,12 @@ pub(crate) fn slot_element_name(props: &HashMap<String, AuraPropValue>) -> Strin
 
 fn collect_slot_outlets(node: &AuraNode, names: &mut Vec<String>) {
     match node {
-        AuraNode::Element { tag, props, children, .. } => {
+        AuraNode::Element {
+            tag,
+            props,
+            children,
+            ..
+        } => {
             if tag == "slot" || tag == "Slot" {
                 let name = slot_element_name(props);
                 if !names.contains(&name) {
@@ -295,7 +297,11 @@ fn collect_slot_outlets(node: &AuraNode, names: &mut Vec<String>) {
                 collect_slot_outlets(child, names);
             }
         }
-        AuraNode::Conditional { then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             for child in then_body {
                 collect_slot_outlets(child, names);
             }
@@ -326,7 +332,12 @@ fn collect_slot_children_warnings(
             if let Some(target_outlets) = outlets.get(tag) {
                 let mut default_warned = false;
                 for child in children {
-                    if let AuraNode::Element { tag: ctag, props: cprops, .. } = child {
+                    if let AuraNode::Element {
+                        tag: ctag,
+                        props: cprops,
+                        ..
+                    } = child
+                    {
                         if ctag == "slot" || ctag == "Slot" {
                             let name = slot_element_name(cprops);
                             if !target_outlets.contains(&name) {
@@ -357,7 +368,11 @@ fn collect_slot_children_warnings(
                 collect_slot_children_warnings(child, outlets, warnings);
             }
         }
-        AuraNode::Conditional { then_body, else_body, .. } => {
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
             for child in then_body {
                 collect_slot_children_warnings(child, outlets, warnings);
             }
@@ -375,7 +390,6 @@ fn collect_slot_children_warnings(
         _ => {}
     }
 }
-
 
 // ============================================================================
 // Plan 351 / Design 18: Shared Store (Rung 4)
@@ -512,7 +526,6 @@ pub struct StreamEndpoint {
     pub variants: Vec<(String, String)>,
 }
 
-
 // ============================================================================
 // Router Types (Plan 105)
 // ============================================================================
@@ -640,11 +653,10 @@ impl From<RouteDef> for AuraRoute {
 fn capitalize_module(module: &str) -> String {
     // Common word boundaries to detect
     const WORD_BOUNDARIES: &[&str] = &[
-        "page", "item", "card", "list", "grid", "box", "text", "input",
-        "button", "switch", "slider", "checkbox", "radio", "toggle",
-        "image", "icon", "badge", "chip", "tab", "table", "progress",
-        "header", "footer", "nav", "menu", "sidebar", "panel", "modal",
-        "dialog", "form", "field", "area", "view", "screen", "widget"
+        "page", "item", "card", "list", "grid", "box", "text", "input", "button", "switch",
+        "slider", "checkbox", "radio", "toggle", "image", "icon", "badge", "chip", "tab", "table",
+        "progress", "header", "footer", "nav", "menu", "sidebar", "panel", "modal", "dialog",
+        "form", "field", "area", "view", "screen", "widget",
     ];
 
     let lower = module.to_lowercase();
@@ -666,7 +678,10 @@ fn capitalize_module(module: &str) -> String {
 /// Capitalize the first letter of a string
 fn capitalize_first(s: &str) -> String {
     let mut chars = s.chars();
-    let first = chars.next().map(|c| c.to_uppercase().collect::<String>()).unwrap_or_default();
+    let first = chars
+        .next()
+        .map(|c| c.to_uppercase().collect::<String>())
+        .unwrap_or_default();
     let rest: String = chars.collect();
     format!("{}{}", first, rest)
 }
@@ -826,9 +841,7 @@ pub fn aura_events_get_base<'a>(
     // `onClick:` (Vue convention) while VM lookups use lowercase `onclick`.
     events
         .iter()
-        .find(|(k, _)| {
-            split_aura_event_key(k).0.eq_ignore_ascii_case(base)
-        })
+        .find(|(k, _)| split_aura_event_key(k).0.eq_ignore_ascii_case(base))
         .map(|(_, v)| v)
 }
 
@@ -1044,10 +1057,13 @@ impl AuraNode {
     /// Add an event handler
     pub fn with_event(mut self, event: impl Into<String>, handler: impl Into<String>) -> Self {
         if let AuraNode::Element { events, .. } = &mut self {
-            events.insert(event.into(), AuraEvent {
-                handler: handler.into(),
-                params: Vec::new(),
-            });
+            events.insert(
+                event.into(),
+                AuraEvent {
+                    handler: handler.into(),
+                    params: Vec::new(),
+                },
+            );
         }
         self
     }
@@ -1160,7 +1176,12 @@ mod tests {
             .with_child(AuraNode::text("Hello"));
 
         match node {
-            AuraNode::Element { tag, props, children, .. } => {
+            AuraNode::Element {
+                tag,
+                props,
+                children,
+                ..
+            } => {
                 assert_eq!(tag, "col");
                 assert_eq!(props.len(), 1);
                 assert_eq!(children.len(), 1);
@@ -1202,13 +1223,13 @@ mod tests {
                     name: "Inc".to_string(),
                     quoted: false,
                     payload: vec![],
-                payload_names: vec![],
+                    payload_names: vec![],
                 },
                 AuraMsgVariant {
                     name: "Set".to_string(),
                     quoted: false,
                     payload: vec![Type::Int],
-                 payload_names: vec![None],
+                    payload_names: vec![None],
                 },
             ],
         };

@@ -31,7 +31,12 @@ impl WRect {
     }
 
     pub fn decode(r: &mut Reader<'_>) -> Result<Self, CodecError> {
-        Ok(Self { x: r.f32()?, y: r.f32()?, w: r.f32()?, h: r.f32()? })
+        Ok(Self {
+            x: r.f32()?,
+            y: r.f32()?,
+            w: r.f32()?,
+            h: r.f32()?,
+        })
     }
 }
 
@@ -57,7 +62,12 @@ impl Rgba8 {
     }
 
     pub fn decode(r: &mut Reader<'_>) -> Result<Self, CodecError> {
-        Ok(Self { r: r.u8()?, g: r.u8()?, b: r.u8()?, a: r.u8()? })
+        Ok(Self {
+            r: r.u8()?,
+            g: r.u8()?,
+            b: r.u8()?,
+            a: r.u8()?,
+        })
     }
 }
 
@@ -77,7 +87,14 @@ pub enum DrawOp {
     /// 实心矩形（quad；widget 本地坐标）。
     Quad { rect: WRect, color: Rgba8 },
     /// 单行文本 run（左上角定位；shaping 留宿主——413 §7 约束同款）。
-    Text { x: f32, y: f32, size: f32, line_height: f32, color: Rgba8, text: String },
+    Text {
+        x: f32,
+        y: f32,
+        size: f32,
+        line_height: f32,
+        color: Rgba8,
+        text: String,
+    },
     /// 带字重/斜体的文本 run（Plan 515 G2，tag 5 追加式；既有 `Text`
     /// 线格式冻结不动——weight = 400 且非斜体时投影器仍产 `Text`，旧端
     /// 远程消费面零破坏）。`weight` = CSS 字重刻度 u16（400 normal /
@@ -108,12 +125,20 @@ pub enum DrawOp {
     /// 与占位尺寸盒同位）；filter/border_radius 不入 wire（宿主缺省
     /// Linear/方形，视觉与占位零差）——**op 字段定长不可尾部追加**
     /// （解码共享 Reader 无载荷尾判据），未来呈现参数 = 新 tag。
-    Image { rect: WRect, src: String, fit: ImageFit },
+    Image {
+        rect: WRect,
+        src: String,
+        fit: ImageFit,
+    },
     /// 圆角矩形（PLAN-679 Phase 2，tag 7 追加式）：radius = 圆角半径 px
     ///（rounded-full 语义由编码端解析为 min(w,h)/2 后下发——wire 只收
     /// 具体值）。旧端未知 tag = Err（仓内双端同版发布；跨版本远程端
     /// 升级纪律见协议文档 §1 追加式）。
-    QuadR { rect: WRect, color: Rgba8, radius: f32 },
+    QuadR {
+        rect: WRect,
+        color: Rgba8,
+        radius: f32,
+    },
 }
 
 /// 图像适配语义（PLAN-028 D1 定案：v1 最小集）。线格式 u8：1 Stretch。
@@ -157,7 +182,14 @@ impl DrawList {
                     rect.encode(out);
                     color.encode(out);
                 }
-                DrawOp::Text { x, y, size, line_height, color, text } => {
+                DrawOp::Text {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    color,
+                    text,
+                } => {
                     put_u8(out, 2);
                     put_f32(out, *x);
                     put_f32(out, *y);
@@ -166,7 +198,16 @@ impl DrawList {
                     color.encode(out);
                     put_string(out, text);
                 }
-                DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
+                DrawOp::TextStyled {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    color,
+                    weight,
+                    italic,
+                    text,
+                } => {
                     put_u8(out, 5);
                     put_f32(out, *x);
                     put_f32(out, *y);
@@ -190,7 +231,11 @@ impl DrawList {
                     put_string(out, src);
                     put_u8(out, fit.as_u8());
                 }
-                DrawOp::QuadR { rect, color, radius } => {
+                DrawOp::QuadR {
+                    rect,
+                    color,
+                    radius,
+                } => {
                     put_u8(out, 7);
                     rect.encode(out);
                     color.encode(out);
@@ -205,7 +250,11 @@ impl DrawList {
         if kind != 1 {
             return Err(CodecError::UnknownTag(kind));
         }
-        let clear = if r.bool()? { Some(Rgba8::decode(r)?) } else { None };
+        let clear = if r.bool()? {
+            Some(Rgba8::decode(r)?)
+        } else {
+            None
+        };
         let n = r.u32()? as usize;
         let mut ops = Vec::with_capacity(n.min(1024));
         for _ in 0..n {
@@ -222,7 +271,14 @@ impl DrawList {
                     let line_height = r.f32()?;
                     let color = Rgba8::decode(r)?;
                     let text = r.string()?;
-                    ops.push(DrawOp::Text { x, y, size, line_height, color, text });
+                    ops.push(DrawOp::Text {
+                        x,
+                        y,
+                        size,
+                        line_height,
+                        color,
+                        text,
+                    });
                 }
                 5 => {
                     let x = r.f32()?;
@@ -233,7 +289,16 @@ impl DrawList {
                     let weight = r.u16()?;
                     let italic = r.bool()?;
                     let text = r.string()?;
-                    ops.push(DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text });
+                    ops.push(DrawOp::TextStyled {
+                        x,
+                        y,
+                        size,
+                        line_height,
+                        color,
+                        weight,
+                        italic,
+                        text,
+                    });
                 }
                 3 => {
                     let rect = WRect::decode(r)?;
@@ -250,7 +315,11 @@ impl DrawList {
                     let rect = WRect::decode(r)?;
                     let color = Rgba8::decode(r)?;
                     let radius = r.f32()?;
-                    ops.push(DrawOp::QuadR { rect, color, radius });
+                    ops.push(DrawOp::QuadR {
+                        rect,
+                        color,
+                        radius,
+                    });
                 }
                 tag => return Err(CodecError::UnknownTag(tag)),
             }
@@ -289,7 +358,10 @@ pub struct DisplayList {
 pub enum Fill {
     Color(Rgba8),
     /// 线性渐变：角度（弧度）+ 停点（offset 升序，编码端保证）。
-    LinearGradient { angle: f32, stops: Vec<(f32, Rgba8)> },
+    LinearGradient {
+        angle: f32,
+        stops: Vec<(f32, Rgba8)>,
+    },
 }
 
 /// v2 border 面（内侧描边——iced 语义）。四角半径在 quad 主面。
@@ -330,14 +402,22 @@ pub enum DisplayOp {
         text: String,
     },
     /// 压栈裁剪（v1 Scissor 同语义：与当前有效裁剪取交集）。
-    Scissor { rect: WRect },
+    Scissor {
+        rect: WRect,
+    },
     ScissorPop,
     /// 压栈仿射变换（canvas push/pop_transform 同构）；矩阵 = 行主序
     /// 2×3 [m00, m01, m10, m11, tx, ty]。作用于后续所有 op 直至配对 pop。
-    Transform { matrix: [f32; 6] },
+    Transform {
+        matrix: [f32; 6],
+    },
     TransformPop,
     /// 图像引用（v1 Image 同形：src 引用 + 宿主侧解析）。
-    Image { rect: WRect, src: String, fit: ImageFit },
+    Image {
+        rect: WRect,
+        src: String,
+        fit: ImageFit,
+    },
 }
 
 impl DisplayList {
@@ -355,45 +435,66 @@ impl DisplayList {
                     border: None,
                     shadow: None,
                 },
-                DrawOp::QuadR { rect, color, radius } => DisplayOp::Quad {
+                DrawOp::QuadR {
+                    rect,
+                    color,
+                    radius,
+                } => DisplayOp::Quad {
                     rect: *rect,
                     fill: Fill::Color(*color),
                     radius: [*radius; 4],
                     border: None,
                     shadow: None,
                 },
-                DrawOp::Text { x, y, size, line_height, color, text } => {
-                    DisplayOp::TextStyled {
-                        x: *x,
-                        y: *y,
-                        size: *size,
-                        line_height: *line_height,
-                        color: *color,
-                        weight: 400,
-                        italic: false,
-                        text: text.clone(),
-                    }
-                }
-                DrawOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
-                    DisplayOp::TextStyled {
-                        x: *x,
-                        y: *y,
-                        size: *size,
-                        line_height: *line_height,
-                        color: *color,
-                        weight: *weight,
-                        italic: *italic,
-                        text: text.clone(),
-                    }
-                }
+                DrawOp::Text {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    color,
+                    text,
+                } => DisplayOp::TextStyled {
+                    x: *x,
+                    y: *y,
+                    size: *size,
+                    line_height: *line_height,
+                    color: *color,
+                    weight: 400,
+                    italic: false,
+                    text: text.clone(),
+                },
+                DrawOp::TextStyled {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    color,
+                    weight,
+                    italic,
+                    text,
+                } => DisplayOp::TextStyled {
+                    x: *x,
+                    y: *y,
+                    size: *size,
+                    line_height: *line_height,
+                    color: *color,
+                    weight: *weight,
+                    italic: *italic,
+                    text: text.clone(),
+                },
                 DrawOp::Scissor { rect } => DisplayOp::Scissor { rect: *rect },
                 DrawOp::ScissorPop => DisplayOp::ScissorPop,
-                DrawOp::Image { rect, src, fit } => {
-                    DisplayOp::Image { rect: *rect, src: src.clone(), fit: *fit }
-                }
+                DrawOp::Image { rect, src, fit } => DisplayOp::Image {
+                    rect: *rect,
+                    src: src.clone(),
+                    fit: *fit,
+                },
             })
             .collect();
-        Self { clear: list.clear, ops }
+        Self {
+            clear: list.clear,
+            ops,
+        }
     }
 
     pub fn encode(&self, out: &mut Vec<u8>) {
@@ -408,7 +509,13 @@ impl DisplayList {
         put_u32(out, self.ops.len() as u32);
         for op in &self.ops {
             match op {
-                DisplayOp::Quad { rect, fill, radius, border, shadow } => {
+                DisplayOp::Quad {
+                    rect,
+                    fill,
+                    radius,
+                    border,
+                    shadow,
+                } => {
                     put_u8(out, 1);
                     rect.encode(out);
                     encode_fill(out, fill);
@@ -434,7 +541,16 @@ impl DisplayList {
                         None => put_bool(out, false),
                     }
                 }
-                DisplayOp::TextStyled { x, y, size, line_height, color, weight, italic, text } => {
+                DisplayOp::TextStyled {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    color,
+                    weight,
+                    italic,
+                    text,
+                } => {
                     put_u8(out, 2);
                     put_f32(out, *x);
                     put_f32(out, *y);
@@ -476,7 +592,11 @@ impl DisplayList {
         if kind != 2 {
             return Err(CodecError::UnknownTag(kind));
         }
-        let clear = if r.bool()? { Some(Rgba8::decode(r)?) } else { None };
+        let clear = if r.bool()? {
+            Some(Rgba8::decode(r)?)
+        } else {
+            None
+        };
         let n = r.u32()? as usize;
         let mut ops = Vec::with_capacity(n.min(1024));
         for _ in 0..n {
@@ -500,11 +620,21 @@ impl DisplayList {
                         let ox = r.f32()?;
                         let oy = r.f32()?;
                         let blur = r.f32()?;
-                        Some(ShadowSpec { color, offset: (ox, oy), blur })
+                        Some(ShadowSpec {
+                            color,
+                            offset: (ox, oy),
+                            blur,
+                        })
                     } else {
                         None
                     };
-                    ops.push(DisplayOp::Quad { rect, fill, radius, border, shadow });
+                    ops.push(DisplayOp::Quad {
+                        rect,
+                        fill,
+                        radius,
+                        border,
+                        shadow,
+                    });
                 }
                 2 => {
                     let x = r.f32()?;
@@ -717,7 +847,11 @@ impl SurfaceDecl {
     }
 
     pub fn decode(r: &mut Reader<'_>) -> Result<Self, CodecError> {
-        Ok(Self { role: r.u8()?, width: r.f32()?, height: r.f32()? })
+        Ok(Self {
+            role: r.u8()?,
+            width: r.f32()?,
+            height: r.f32()?,
+        })
     }
 }
 
@@ -740,7 +874,12 @@ impl WelcomeSurface {
     }
 
     pub fn decode(r: &mut Reader<'_>) -> Result<Self, CodecError> {
-        Ok(Self { role: r.u8()?, wid: r.u64()?, surface: r.u64()?, rect: WRect::decode(r)? })
+        Ok(Self {
+            role: r.u8()?,
+            wid: r.u64()?,
+            surface: r.u64()?,
+            rect: WRect::decode(r)?,
+        })
     }
 }
 
@@ -782,7 +921,16 @@ impl HandshakeMsg {
 
     pub fn encode(&self, out: &mut Vec<u8>) {
         match self {
-            Self::Hello { version, app_name, title, icon, width, height, fonts, surfaces } => {
+            Self::Hello {
+                version,
+                app_name,
+                title,
+                icon,
+                width,
+                height,
+                fonts,
+                surfaces,
+            } => {
                 put_u8(out, Self::HELLO);
                 put_u16(out, *version);
                 put_string(out, app_name);
@@ -810,7 +958,14 @@ impl HandshakeMsg {
                     }
                 }
             }
-            Self::Welcome { app_id, wid, surface, rect, frame_mode, extra_surfaces } => {
+            Self::Welcome {
+                app_id,
+                wid,
+                surface,
+                rect,
+                frame_mode,
+                extra_surfaces,
+            } => {
                 put_u8(out, Self::WELCOME);
                 put_u64(out, *app_id);
                 put_u64(out, *wid);
@@ -857,7 +1012,16 @@ impl HandshakeMsg {
                 } else {
                     Vec::new()
                 };
-                Self::Hello { version, app_name, title, icon, width, height, fonts, surfaces }
+                Self::Hello {
+                    version,
+                    app_name,
+                    title,
+                    icon,
+                    width,
+                    height,
+                    fonts,
+                    surfaces,
+                }
             }
             Self::WELCOME => {
                 let app_id = r.u64()?;
@@ -881,7 +1045,14 @@ impl HandshakeMsg {
                 } else {
                     Vec::new()
                 };
-                Self::Welcome { app_id, wid, surface, rect, frame_mode, extra_surfaces }
+                Self::Welcome {
+                    app_id,
+                    wid,
+                    surface,
+                    rect,
+                    frame_mode,
+                    extra_surfaces,
+                }
             }
             Self::READY => Self::Ready,
             tag => return Err(CodecError::UnknownTag(tag)),
@@ -901,14 +1072,32 @@ pub enum FrameMsg {
     /// `bm` = **PLAN-034 位图段尾追**（D3：`autodesk-shm-<pid>-<surface>-bm`
     /// 专用第二段——消息级尾追先例 = `shm` 字段本体 + Welcome frame_mode；
     /// None 不写字节 = 旧 golden 零漂移，decode 以 `remaining()` 条件读）。
-    BufferAlloc { surface: u64, slots: u8, width: f32, height: f32, shm: Option<String>, bm: Option<BitmapBuffer> },
+    BufferAlloc {
+        surface: u64,
+        slots: u8,
+        width: f32,
+        height: f32,
+        shm: Option<String>,
+        bm: Option<BitmapBuffer>,
+    },
     /// host→app。回收全部槽（窗口关闭/独立出去）。
     BufferRelease { surface: u64 },
     /// host→app。虚拟窗尺寸变更（重协商缓冲）。
-    Resize { surface: u64, width: f32, height: f32 },
+    Resize {
+        surface: u64,
+        width: f32,
+        height: f32,
+    },
     /// app→host。帧就绪：写入 `slot`，`damage` = 脏区（None = 全帧），
     /// `revision` = 内容单调版本（宿主/宿主侧缓存键，413 §7.3 同源）。
-    FrameReady { wid: u64, frame_id: u64, slot: u8, damage: Option<WRect>, revision: u64, payload: DrawList },
+    FrameReady {
+        wid: u64,
+        frame_id: u64,
+        slot: u8,
+        damage: Option<WRect>,
+        revision: u64,
+        payload: DrawList,
+    },
     /// host→app。帧合成完毕，归还 `slot` 给 app 的空闲池（双缓冲轮转）。
     FrameAck { wid: u64, frame_id: u64, slot: u8 },
     /// app→host。缓存失效提示（键域由生产者定义；编辑器 = revision×fold
@@ -916,7 +1105,14 @@ pub enum FrameMsg {
     CacheControl { wid: u64, drop_keys: Vec<u64> },
     /// app→host。帧就绪（**共享内存变体**，S9）：payload 在 `slot` 槽内
     /// （`[u32 len][DrawList 编码]`），管道上只过元数据——大帧不走管道。
-    FrameReadyShared { wid: u64, frame_id: u64, slot: u8, damage: Option<WRect>, revision: u64, len: u32 },
+    FrameReadyShared {
+        wid: u64,
+        frame_id: u64,
+        slot: u8,
+        damage: Option<WRect>,
+        revision: u64,
+        len: u32,
+    },
     /// app→host。帧就绪（**像素帧变体**，v1.3 independent 臂）：RGBA 像素
     /// 在 `slot` 槽内（`h × stride` 行序列，格式 = `format`，straight 非
     /// 预乘），管道上只过元数据。槽载荷解释由 `Welcome.frame_mode` 协商。
@@ -1017,7 +1213,14 @@ impl FrameMsg {
 
     pub fn encode(&self, out: &mut Vec<u8>) {
         match self {
-            Self::BufferAlloc { surface, slots, width, height, shm, bm } => {
+            Self::BufferAlloc {
+                surface,
+                slots,
+                width,
+                height,
+                shm,
+                bm,
+            } => {
                 put_u8(out, Self::BUFFER_ALLOC);
                 put_u64(out, *surface);
                 put_u8(out, *slots);
@@ -1043,13 +1246,24 @@ impl FrameMsg {
                 put_u8(out, Self::BUFFER_RELEASE);
                 put_u64(out, *surface);
             }
-            Self::Resize { surface, width, height } => {
+            Self::Resize {
+                surface,
+                width,
+                height,
+            } => {
                 put_u8(out, Self::RESIZE);
                 put_u64(out, *surface);
                 put_f32(out, *width);
                 put_f32(out, *height);
             }
-            Self::FrameReady { wid, frame_id, slot, damage, revision, payload } => {
+            Self::FrameReady {
+                wid,
+                frame_id,
+                slot,
+                damage,
+                revision,
+                payload,
+            } => {
                 put_u8(out, Self::FRAME_READY);
                 put_u64(out, *wid);
                 put_u64(out, *frame_id);
@@ -1064,7 +1278,11 @@ impl FrameMsg {
                 put_u64(out, *revision);
                 payload.encode(out);
             }
-            Self::FrameAck { wid, frame_id, slot } => {
+            Self::FrameAck {
+                wid,
+                frame_id,
+                slot,
+            } => {
                 put_u8(out, Self::FRAME_ACK);
                 put_u64(out, *wid);
                 put_u64(out, *frame_id);
@@ -1078,7 +1296,14 @@ impl FrameMsg {
                     put_u64(out, *k);
                 }
             }
-            Self::FrameReadyShared { wid, frame_id, slot, damage, revision, len } => {
+            Self::FrameReadyShared {
+                wid,
+                frame_id,
+                slot,
+                damage,
+                revision,
+                len,
+            } => {
                 put_u8(out, Self::FRAME_READY_SHARED);
                 put_u64(out, *wid);
                 put_u64(out, *frame_id);
@@ -1093,7 +1318,17 @@ impl FrameMsg {
                 put_u64(out, *revision);
                 put_u32(out, *len);
             }
-            Self::FrameReadyPixels { wid, frame_id, slot, damage, revision, w, h, stride, format } => {
+            Self::FrameReadyPixels {
+                wid,
+                frame_id,
+                slot,
+                damage,
+                revision,
+                w,
+                h,
+                stride,
+                format,
+            } => {
                 put_u8(out, Self::FRAME_READY_PIXELS);
                 put_u64(out, *wid);
                 put_u64(out, *frame_id);
@@ -1121,7 +1356,15 @@ impl FrameMsg {
                     put_string(out, &hit.action);
                 }
             }
-            Self::BitmapReady { wid, id, slot, w, h, stride, len } => {
+            Self::BitmapReady {
+                wid,
+                id,
+                slot,
+                w,
+                h,
+                stride,
+                len,
+            } => {
                 put_u8(out, Self::BITMAP_READY);
                 put_u64(out, *wid);
                 put_string(out, id);
@@ -1136,7 +1379,14 @@ impl FrameMsg {
                 put_u64(out, *wid);
                 put_u8(out, *slot);
             }
-            Self::FrameReadyV2 { wid, frame_id, slot, damage, revision, payload } => {
+            Self::FrameReadyV2 {
+                wid,
+                frame_id,
+                slot,
+                damage,
+                revision,
+                payload,
+            } => {
                 put_u8(out, Self::FRAME_READY_V2);
                 put_u64(out, *wid);
                 put_u64(out, *frame_id);
@@ -1173,29 +1423,55 @@ impl FrameMsg {
                 } else {
                     None
                 };
-                Self::BufferAlloc { surface, slots, width, height, shm, bm }
+                Self::BufferAlloc {
+                    surface,
+                    slots,
+                    width,
+                    height,
+                    shm,
+                    bm,
+                }
             }
             Self::BUFFER_RELEASE => Self::BufferRelease { surface: r.u64()? },
             Self::RESIZE => {
                 let surface = r.u64()?;
                 let width = r.f32()?;
                 let height = r.f32()?;
-                Self::Resize { surface, width, height }
+                Self::Resize {
+                    surface,
+                    width,
+                    height,
+                }
             }
             Self::FRAME_READY => {
                 let wid = r.u64()?;
                 let frame_id = r.u64()?;
                 let slot = r.u8()?;
-                let damage = if r.bool()? { Some(WRect::decode(r)?) } else { None };
+                let damage = if r.bool()? {
+                    Some(WRect::decode(r)?)
+                } else {
+                    None
+                };
                 let revision = r.u64()?;
                 let payload = DrawList::decode(r)?;
-                Self::FrameReady { wid, frame_id, slot, damage, revision, payload }
+                Self::FrameReady {
+                    wid,
+                    frame_id,
+                    slot,
+                    damage,
+                    revision,
+                    payload,
+                }
             }
             Self::FRAME_ACK => {
                 let wid = r.u64()?;
                 let frame_id = r.u64()?;
                 let slot = r.u8()?;
-                Self::FrameAck { wid, frame_id, slot }
+                Self::FrameAck {
+                    wid,
+                    frame_id,
+                    slot,
+                }
             }
             Self::CACHE_CONTROL => {
                 let wid = r.u64()?;
@@ -1210,22 +1486,47 @@ impl FrameMsg {
                 let wid = r.u64()?;
                 let frame_id = r.u64()?;
                 let slot = r.u8()?;
-                let damage = if r.bool()? { Some(WRect::decode(r)?) } else { None };
+                let damage = if r.bool()? {
+                    Some(WRect::decode(r)?)
+                } else {
+                    None
+                };
                 let revision = r.u64()?;
                 let len = r.u32()?;
-                Self::FrameReadyShared { wid, frame_id, slot, damage, revision, len }
+                Self::FrameReadyShared {
+                    wid,
+                    frame_id,
+                    slot,
+                    damage,
+                    revision,
+                    len,
+                }
             }
             Self::FRAME_READY_PIXELS => {
                 let wid = r.u64()?;
                 let frame_id = r.u64()?;
                 let slot = r.u8()?;
-                let damage = if r.bool()? { Some(WRect::decode(r)?) } else { None };
+                let damage = if r.bool()? {
+                    Some(WRect::decode(r)?)
+                } else {
+                    None
+                };
                 let revision = r.u64()?;
                 let w = r.u32()?;
                 let h = r.u32()?;
                 let stride = r.u32()?;
                 let format = PixelFormat::from_u8(r.u8()?)?;
-                Self::FrameReadyPixels { wid, frame_id, slot, damage, revision, w, h, stride, format }
+                Self::FrameReadyPixels {
+                    wid,
+                    frame_id,
+                    slot,
+                    damage,
+                    revision,
+                    w,
+                    h,
+                    stride,
+                    format,
+                }
             }
             Self::HIT_TABLE => {
                 let wid = r.u64()?;
@@ -1247,7 +1548,15 @@ impl FrameMsg {
                 let h = r.u32()?;
                 let stride = r.u32()?;
                 let len = r.u32()?;
-                Self::BitmapReady { wid, id, slot, w, h, stride, len }
+                Self::BitmapReady {
+                    wid,
+                    id,
+                    slot,
+                    w,
+                    h,
+                    stride,
+                    len,
+                }
             }
             Self::BITMAP_ACK => {
                 let wid = r.u64()?;
@@ -1258,10 +1567,21 @@ impl FrameMsg {
                 let wid = r.u64()?;
                 let frame_id = r.u64()?;
                 let slot = r.u8()?;
-                let damage = if r.bool()? { Some(WRect::decode(r)?) } else { None };
+                let damage = if r.bool()? {
+                    Some(WRect::decode(r)?)
+                } else {
+                    None
+                };
                 let revision = r.u64()?;
                 let payload = DisplayList::decode(r)?;
-                Self::FrameReadyV2 { wid, frame_id, slot, damage, revision, payload }
+                Self::FrameReadyV2 {
+                    wid,
+                    frame_id,
+                    slot,
+                    damage,
+                    revision,
+                    payload,
+                }
             }
             tag => return Err(CodecError::UnknownTag(tag)),
         })
@@ -1293,23 +1613,63 @@ impl MouseButton {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputMsg {
-    PointerMoved { wid: u64, x: f32, y: f32 },
-    PointerPressed { wid: u64, button: MouseButton, x: f32, y: f32, modifiers: u8 },
-    PointerReleased { wid: u64, button: MouseButton, x: f32, y: f32, modifiers: u8 },
+    PointerMoved {
+        wid: u64,
+        x: f32,
+        y: f32,
+    },
+    PointerPressed {
+        wid: u64,
+        button: MouseButton,
+        x: f32,
+        y: f32,
+        modifiers: u8,
+    },
+    PointerReleased {
+        wid: u64,
+        button: MouseButton,
+        x: f32,
+        y: f32,
+        modifiers: u8,
+    },
     /// 物理键码（宿主映射前的原始码；语义映射留 app 侧工具层）。
-    KeyPressed { wid: u64, key: u32, modifiers: u8 },
-    KeyReleased { wid: u64, key: u32, modifiers: u8 },
-    CharTyped { wid: u64, ch: char },
-    Scroll { wid: u64, dx: f32, dy: f32 },
+    KeyPressed {
+        wid: u64,
+        key: u32,
+        modifiers: u8,
+    },
+    KeyReleased {
+        wid: u64,
+        key: u32,
+        modifiers: u8,
+    },
+    CharTyped {
+        wid: u64,
+        ch: char,
+    },
+    Scroll {
+        wid: u64,
+        dx: f32,
+        dy: f32,
+    },
     /// 413 §7.1 + PLAN-690 T-03：preedit 组合串 + 组合内光标选区
     ///（字节区间 `(start, end)`——iced 0.14 `Preedit(String,
     /// Option<Range<usize>>)` 第二参的原样透传；`None` = 光标隐藏。
     /// 原字段 `cursor: WRect`（候选窗定位矩形）勘误后由下行
     /// `ControlMsg::ImeRequest` 的 ImeReq.cursor 承担（App 视口
     /// layout 推得的焦点框矩形，daemon 换算定位）。
-    ImePreedit { wid: u64, text: String, selection: Option<(u32, u32)> },
-    ImeCommit { wid: u64, text: String },
-    ImeCancelled { wid: u64 },
+    ImePreedit {
+        wid: u64,
+        text: String,
+        selection: Option<(u32, u32)>,
+    },
+    ImeCommit {
+        wid: u64,
+        text: String,
+    },
+    ImeCancelled {
+        wid: u64,
+    },
 }
 
 impl InputMsg {
@@ -1336,22 +1696,49 @@ impl InputMsg {
                 put_f32(out, *x);
                 put_f32(out, *y);
             }
-            Self::PointerPressed { wid, button, x, y, modifiers }
-            | Self::PointerReleased { wid, button, x, y, modifiers } => {
-                put_u8(out, if matches!(self, Self::PointerPressed { .. }) { 2 } else { 3 });
+            Self::PointerPressed {
+                wid,
+                button,
+                x,
+                y,
+                modifiers,
+            }
+            | Self::PointerReleased {
+                wid,
+                button,
+                x,
+                y,
+                modifiers,
+            } => {
+                put_u8(
+                    out,
+                    if matches!(self, Self::PointerPressed { .. }) {
+                        2
+                    } else {
+                        3
+                    },
+                );
                 put_u64(out, *wid);
                 put_u8(out, *button as u8);
                 put_f32(out, *x);
                 put_f32(out, *y);
                 put_u8(out, *modifiers);
             }
-            Self::KeyPressed { wid, key, modifiers } => {
+            Self::KeyPressed {
+                wid,
+                key,
+                modifiers,
+            } => {
                 put_u8(out, 4);
                 put_u64(out, *wid);
                 put_u32(out, *key);
                 put_u8(out, *modifiers);
             }
-            Self::KeyReleased { wid, key, modifiers } => {
+            Self::KeyReleased {
+                wid,
+                key,
+                modifiers,
+            } => {
                 put_u8(out, 5);
                 put_u64(out, *wid);
                 put_u32(out, *key);
@@ -1369,7 +1756,11 @@ impl InputMsg {
                 put_f32(out, *dx);
                 put_f32(out, *dy);
             }
-            Self::ImePreedit { wid, text, selection } => {
+            Self::ImePreedit {
+                wid,
+                text,
+                selection,
+            } => {
                 put_u8(out, 8);
                 put_u64(out, *wid);
                 put_string(out, text);
@@ -1409,22 +1800,42 @@ impl InputMsg {
                 let y = r.f32()?;
                 let modifiers = r.u8()?;
                 if tag == 2 {
-                    Self::PointerPressed { wid, button, x, y, modifiers }
+                    Self::PointerPressed {
+                        wid,
+                        button,
+                        x,
+                        y,
+                        modifiers,
+                    }
                 } else {
-                    Self::PointerReleased { wid, button, x, y, modifiers }
+                    Self::PointerReleased {
+                        wid,
+                        button,
+                        x,
+                        y,
+                        modifiers,
+                    }
                 }
             }
             4 => {
                 let wid = r.u64()?;
                 let key = r.u32()?;
                 let modifiers = r.u8()?;
-                Self::KeyPressed { wid, key, modifiers }
+                Self::KeyPressed {
+                    wid,
+                    key,
+                    modifiers,
+                }
             }
             5 => {
                 let wid = r.u64()?;
                 let key = r.u32()?;
                 let modifiers = r.u8()?;
-                Self::KeyReleased { wid, key, modifiers }
+                Self::KeyReleased {
+                    wid,
+                    key,
+                    modifiers,
+                }
             }
             6 => {
                 let wid = r.u64()?;
@@ -1447,7 +1858,11 @@ impl InputMsg {
                 } else {
                     None
                 };
-                Self::ImePreedit { wid, text, selection }
+                Self::ImePreedit {
+                    wid,
+                    text,
+                    selection,
+                }
             }
             9 => {
                 let wid = r.u64()?;
@@ -1475,7 +1890,11 @@ pub enum ControlMsg {
     /// app→host。标题变更（虚拟窗 chrome 同步）。
     TitleChanged { wid: u64, title: String },
     /// app→host。通知（桌面通知中心的最小载荷）。
-    Notify { wid: u64, summary: String, body: String },
+    Notify {
+        wid: u64,
+        summary: String,
+        body: String,
+    },
     /// app→host。确认退出 / 主动请求退出（宿主随即回收虚拟窗，462 Close 语义）。
     ExitRequest { wid: u64 },
     /// app→host。DesktopBus 跨进程：载荷 = 既有 `DesktopCommand` 单记录
@@ -1502,7 +1921,11 @@ pub enum ControlMsg {
     ShellProjectionPush { face: u8, payload: Vec<u8> },
     /// host→app（v1.11 壳时钟）。分钟门数据（time = "HH:MM"、date =
     /// "M月D日 周X"）——独立脏帧通道，不入投影指纹门控组。
-    ShellClockTick { face: u8, time: String, date: String },
+    ShellClockTick {
+        face: u8,
+        time: String,
+        date: String,
+    },
     /// host→app（v1.11 壳光标事件）。事件级数据（设计上不入快照——
     /// 空白菜单坐标锚等）；节拍由宿主消费门控制（blank_menu/拖拽期 +
     /// tick 兜底）。坐标 = 宿主视口系。
@@ -1738,7 +2161,10 @@ impl ControlMsg {
                 };
                 Self::ImeRequest { wid, enabled }
             }
-            16 => Self::SetCursor { wid: r.u64()?, kind: r.u8()? },
+            16 => Self::SetCursor {
+                wid: r.u64()?,
+                kind: r.u8()?,
+            },
             tag => return Err(CodecError::UnknownTag(tag)),
         })
     }
@@ -1776,7 +2202,11 @@ pub enum ObserveMsg {
     /// host→app。摘除。
     Detach { wid: u64 },
     /// app→host。日志。
-    Log { wid: u64, level: LogLevel, message: String },
+    Log {
+        wid: u64,
+        level: LogLevel,
+        message: String,
+    },
     /// app→host。指标。
     Metric { wid: u64, key: String, value: f64 },
 }
@@ -1793,7 +2223,11 @@ impl ObserveMsg {
                 put_u8(out, 2);
                 put_u64(out, *wid);
             }
-            Self::Log { wid, level, message } => {
+            Self::Log {
+                wid,
+                level,
+                message,
+            } => {
                 put_u8(out, 3);
                 put_u64(out, *wid);
                 put_u8(out, *level as u8);
@@ -1820,7 +2254,11 @@ impl ObserveMsg {
                 let wid = r.u64()?;
                 let level = LogLevel::from_u8(r.u8()?)?;
                 let message = r.string()?;
-                Self::Log { wid, level, message }
+                Self::Log {
+                    wid,
+                    level,
+                    message,
+                }
             }
             4 => {
                 let wid = r.u64()?;
@@ -1919,8 +2357,14 @@ mod tests {
             width: 480.0,
             height: 320.0,
             fonts: vec![
-                FontBlob { family: "JetBrains Mono".into(), data: vec![1, 2, 3, 4] },
-                FontBlob { family: "Sans".into(), data: Vec::new() },
+                FontBlob {
+                    family: "JetBrains Mono".into(),
+                    data: vec![1, 2, 3, 4],
+                },
+                FontBlob {
+                    family: "Sans".into(),
+                    data: Vec::new(),
+                },
             ],
             surfaces: Vec::new(),
         }));
@@ -1934,8 +2378,16 @@ mod tests {
             fonts: Vec::new(),
             // v1.11 壳双表面声明（Hello 尾段）。
             surfaces: vec![
-                SurfaceDecl { role: surface_role::BACKGROUND, width: 1280.0, height: 800.0 },
-                SurfaceDecl { role: surface_role::CHROME, width: 1280.0, height: 48.0 },
+                SurfaceDecl {
+                    role: surface_role::BACKGROUND,
+                    width: 1280.0,
+                    height: 800.0,
+                },
+                SurfaceDecl {
+                    role: surface_role::CHROME,
+                    width: 1280.0,
+                    height: 48.0,
+                },
             ],
         }));
         round_trip(ProtocolMsg::Handshake(HandshakeMsg::Welcome {
@@ -1990,7 +2442,11 @@ mod tests {
             bm: None,
         }));
         round_trip(ProtocolMsg::Frame(FrameMsg::BufferRelease { surface: 42 }));
-        round_trip(ProtocolMsg::Frame(FrameMsg::Resize { surface: 42, width: 640.0, height: 400.0 }));
+        round_trip(ProtocolMsg::Frame(FrameMsg::Resize {
+            surface: 42,
+            width: 640.0,
+            height: 400.0,
+        }));
         round_trip(ProtocolMsg::Frame(FrameMsg::FrameReady {
             wid: 3,
             frame_id: 7,
@@ -2000,8 +2456,18 @@ mod tests {
             payload: DrawList {
                 clear: Some(Rgba8::new(24, 24, 28, 255)),
                 ops: vec![
-                    DrawOp::Quad { rect: WRect::new(10.0, 10.0, 120.0, 36.0), color: Rgba8::new(48, 96, 200, 255) },
-                    DrawOp::Text { x: 20.0, y: 18.0, size: 14.0, line_height: 20.0, color: Rgba8::new(255, 255, 255, 255), text: "count: 1".into() },
+                    DrawOp::Quad {
+                        rect: WRect::new(10.0, 10.0, 120.0, 36.0),
+                        color: Rgba8::new(48, 96, 200, 255),
+                    },
+                    DrawOp::Text {
+                        x: 20.0,
+                        y: 18.0,
+                        size: 14.0,
+                        line_height: 20.0,
+                        color: Rgba8::new(255, 255, 255, 255),
+                        text: "count: 1".into(),
+                    },
                 ],
             },
         }));
@@ -2013,8 +2479,15 @@ mod tests {
             revision: 10,
             payload: DrawList::default(),
         }));
-        round_trip(ProtocolMsg::Frame(FrameMsg::FrameAck { wid: 3, frame_id: 7, slot: 1 }));
-        round_trip(ProtocolMsg::Frame(FrameMsg::CacheControl { wid: 3, drop_keys: vec![1, 2, 0xDEAD_BEEF] }));
+        round_trip(ProtocolMsg::Frame(FrameMsg::FrameAck {
+            wid: 3,
+            frame_id: 7,
+            slot: 1,
+        }));
+        round_trip(ProtocolMsg::Frame(FrameMsg::CacheControl {
+            wid: 3,
+            drop_keys: vec![1, 2, 0xDEAD_BEEF],
+        }));
         round_trip(ProtocolMsg::Frame(FrameMsg::FrameReadyShared {
             wid: 3,
             frame_id: 11,
@@ -2143,9 +2616,8 @@ mod tests {
         let mut new_bytes = bytes.clone();
         let at = 12 + legacy_payload.len();
         new_bytes.splice(at..at, tail.iter().copied());
-        new_bytes[8..12].copy_from_slice(
-            &((legacy_payload.len() as u32 + tail.len() as u32).to_le_bytes()),
-        );
+        new_bytes[8..12]
+            .copy_from_slice(&((legacy_payload.len() as u32 + tail.len() as u32).to_le_bytes()));
         assert_eq!(
             ProtocolMsg::decode(&new_bytes).expect("新线 BufferAlloc 可解"),
             ProtocolMsg::Frame(FrameMsg::BufferAlloc {
@@ -2170,7 +2642,10 @@ mod tests {
             super::super::codec::Channel::Frame,
             &unknown,
         );
-        assert!(ProtocolMsg::decode(&unknown_bytes).is_err(), "tag 12 未知拒收");
+        assert!(
+            ProtocolMsg::decode(&unknown_bytes).is_err(),
+            "tag 12 未知拒收"
+        );
     }
 
     /// v1.3 追加式兼容：旧端 Welcome 载荷（无 frame_mode 尾字节）解码
@@ -2294,16 +2769,55 @@ mod tests {
     #[test]
     fn input_channel_round_trip() {
         let msgs = vec![
-            InputMsg::PointerMoved { wid: 3, x: 1.5, y: 2.5 },
-            InputMsg::PointerPressed { wid: 3, button: MouseButton::Left, x: 10.0, y: 20.0, modifiers: 0b101 },
-            InputMsg::PointerReleased { wid: 3, button: MouseButton::Middle, x: 10.0, y: 20.0, modifiers: 0 },
-            InputMsg::KeyPressed { wid: 3, key: 0x1B, modifiers: 1 },
-            InputMsg::KeyReleased { wid: 3, key: 0x1B, modifiers: 0 },
+            InputMsg::PointerMoved {
+                wid: 3,
+                x: 1.5,
+                y: 2.5,
+            },
+            InputMsg::PointerPressed {
+                wid: 3,
+                button: MouseButton::Left,
+                x: 10.0,
+                y: 20.0,
+                modifiers: 0b101,
+            },
+            InputMsg::PointerReleased {
+                wid: 3,
+                button: MouseButton::Middle,
+                x: 10.0,
+                y: 20.0,
+                modifiers: 0,
+            },
+            InputMsg::KeyPressed {
+                wid: 3,
+                key: 0x1B,
+                modifiers: 1,
+            },
+            InputMsg::KeyReleased {
+                wid: 3,
+                key: 0x1B,
+                modifiers: 0,
+            },
             InputMsg::CharTyped { wid: 3, ch: '漢' },
-            InputMsg::Scroll { wid: 3, dx: 0.0, dy: -33.5 },
-            InputMsg::ImePreedit { wid: 3, text: "ni hao".into(), selection: Some((5, 9)) },
-            InputMsg::ImePreedit { wid: 3, text: "你好".into(), selection: None },
-            InputMsg::ImeCommit { wid: 3, text: "你好".into() },
+            InputMsg::Scroll {
+                wid: 3,
+                dx: 0.0,
+                dy: -33.5,
+            },
+            InputMsg::ImePreedit {
+                wid: 3,
+                text: "ni hao".into(),
+                selection: Some((5, 9)),
+            },
+            InputMsg::ImePreedit {
+                wid: 3,
+                text: "你好".into(),
+                selection: None,
+            },
+            InputMsg::ImeCommit {
+                wid: 3,
+                text: "你好".into(),
+            },
             InputMsg::ImeCancelled { wid: 3 },
         ];
         for m in msgs {
@@ -2317,21 +2831,44 @@ mod tests {
     fn control_channel_round_trip() {
         let msgs = vec![
             ControlMsg::Close { wid: 3 },
-            ControlMsg::Focus { wid: 3, focused: true },
-            ControlMsg::Resize { wid: 3, width: 100.0, height: 80.0 },
-            ControlMsg::TitleChanged { wid: 3, title: "新标题".into() },
-            ControlMsg::Notify { wid: 3, summary: "编译完成".into(), body: "0 warnings".into() },
+            ControlMsg::Focus {
+                wid: 3,
+                focused: true,
+            },
+            ControlMsg::Resize {
+                wid: 3,
+                width: 100.0,
+                height: 80.0,
+            },
+            ControlMsg::TitleChanged {
+                wid: 3,
+                title: "新标题".into(),
+            },
+            ControlMsg::Notify {
+                wid: 3,
+                summary: "编译完成".into(),
+                body: "0 warnings".into(),
+            },
             ControlMsg::ExitRequest { wid: 3 },
-            ControlMsg::DesktopBus { wid: 3, record: "launch\u{1f}counter".into() },
+            ControlMsg::DesktopBus {
+                wid: 3,
+                record: "launch\u{1f}counter".into(),
+            },
             ControlMsg::L2Detach { wid: 3 },
             ControlMsg::L2Detached { wid: 3 },
             ControlMsg::L2AttachRequest { wid: 3 },
             // PLAN-690 T-02/T-05（remote 模式下行控制族）。
             ControlMsg::ImeRequest {
                 wid: 3,
-                enabled: Some(ImeReq { cursor: WRect::new(12.0, 8.0, 1.0, 16.0), purpose: 1 }),
+                enabled: Some(ImeReq {
+                    cursor: WRect::new(12.0, 8.0, 1.0, 16.0),
+                    purpose: 1,
+                }),
             },
-            ControlMsg::ImeRequest { wid: 3, enabled: None },
+            ControlMsg::ImeRequest {
+                wid: 3,
+                enabled: None,
+            },
             ControlMsg::SetCursor { wid: 3, kind: 2 },
         ];
         for m in msgs {
@@ -2340,9 +2877,20 @@ mod tests {
         }
         // v1.11 壳投影族（连接级寻址——wid() = 0 哨兵）。
         let shell_msgs = vec![
-            ControlMsg::ShellProjectionPush { face: shell_face::SHELL, payload: vec![1, 2, 3] },
-            ControlMsg::ShellClockTick { face: shell_face::SHELL, time: "09:05".into(), date: "9月19日 周六".into() },
-            ControlMsg::ShellCursorMove { face: shell_face::DESKTOP_SURFACE, x: 128.5, y: 300.0 },
+            ControlMsg::ShellProjectionPush {
+                face: shell_face::SHELL,
+                payload: vec![1, 2, 3],
+            },
+            ControlMsg::ShellClockTick {
+                face: shell_face::SHELL,
+                time: "09:05".into(),
+                date: "9月19日 周六".into(),
+            },
+            ControlMsg::ShellCursorMove {
+                face: shell_face::DESKTOP_SURFACE,
+                x: 128.5,
+                y: 300.0,
+            },
         ];
         for m in shell_msgs {
             assert_eq!(m.wid(), 0, "壳投影族连接级寻址");
@@ -2355,23 +2903,54 @@ mod tests {
     #[test]
     fn shell_projection_golden_bytes() {
         let mut p = Vec::new();
-        ControlMsg::ShellProjectionPush { face: shell_face::SHELL, payload: vec![0xde, 0xad] }.encode(&mut p);
+        ControlMsg::ShellProjectionPush {
+            face: shell_face::SHELL,
+            payload: vec![0xde, 0xad],
+        }
+        .encode(&mut p);
         assert_eq!(p, vec![12, 1, 2, 0, 0, 0, 0xde, 0xad]);
         let mut p = Vec::new();
-        ControlMsg::ShellClockTick { face: shell_face::SHELL, time: "09:05".into(), date: "周六".into() }.encode(&mut p);
-        assert_eq!(p, vec![13, 1, 5, 0, 0, 0, b'0', b'9', b':', b'0', b'5', 6, 0, 0, 0, 0xe5, 0x91, 0xa8, 0xe5, 0x85, 0xad]);
+        ControlMsg::ShellClockTick {
+            face: shell_face::SHELL,
+            time: "09:05".into(),
+            date: "周六".into(),
+        }
+        .encode(&mut p);
+        assert_eq!(
+            p,
+            vec![
+                13, 1, 5, 0, 0, 0, b'0', b'9', b':', b'0', b'5', 6, 0, 0, 0, 0xe5, 0x91, 0xa8,
+                0xe5, 0x85, 0xad
+            ]
+        );
         let mut p = Vec::new();
-        ControlMsg::ShellCursorMove { face: shell_face::DESKTOP_SURFACE, x: 0.0, y: 0.0 }.encode(&mut p);
+        ControlMsg::ShellCursorMove {
+            face: shell_face::DESKTOP_SURFACE,
+            x: 0.0,
+            y: 0.0,
+        }
+        .encode(&mut p);
         assert_eq!(p, vec![14, 2, 0, 0, 0, 0, 0, 0, 0, 0]);
     }
 
     #[test]
     fn observe_channel_round_trip() {
         let msgs = vec![
-            ObserveMsg::Attach { wid: 3, sink: "mcp://desktop/app-3".into() },
+            ObserveMsg::Attach {
+                wid: 3,
+                sink: "mcp://desktop/app-3".into(),
+            },
             ObserveMsg::Detach { wid: 3 },
-            ObserveMsg::Log { wid: 3, level: LogLevel::Warn, message: "慢帧 22ms".into() },
-            ObserveMsg::Metric { wid: 3, key: "frame_ms".into(), value: 16.6 },
+            ObserveMsg::Log {
+                wid: 3,
+                level: LogLevel::Warn,
+                message: "慢帧 22ms".into(),
+            },
+            ObserveMsg::Metric {
+                wid: 3,
+                key: "frame_ms".into(),
+                value: 16.6,
+            },
         ];
         for m in msgs {
             round_trip(ProtocolMsg::Observe(m));
@@ -2391,34 +2970,32 @@ mod tests {
         let bytes = ProtocolMsg::Input(InputMsg::ImeCancelled { wid: 1 }).encode();
         assert_eq!(
             bytes,
-            vec![
-                b'A', b'P', b'D', b'L', 1, 0, 3, 0, 9, 0, 0, 0, 10, 1, 0, 0, 0, 0, 0, 0, 0
-            ]
+            vec![b'A', b'P', b'D', b'L', 1, 0, 3, 0, 9, 0, 0, 0, 10, 1, 0, 0, 0, 0, 0, 0, 0]
         );
         // Control::Close{wid:2} —— APDL|0100|04|00|09000000|01|02…
         let bytes = ProtocolMsg::Control(ControlMsg::Close { wid: 2 }).encode();
         assert_eq!(
             bytes,
-            vec![
-                b'A', b'P', b'D', b'L', 1, 0, 4, 0, 9, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0
-            ]
+            vec![b'A', b'P', b'D', b'L', 1, 0, 4, 0, 9, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0]
         );
         // Observe::Detach{wid:5} —— APDL|0100|05|00|09000000|02|05…
         let bytes = ProtocolMsg::Observe(ObserveMsg::Detach { wid: 5 }).encode();
         assert_eq!(
             bytes,
-            vec![
-                b'A', b'P', b'D', b'L', 1, 0, 5, 0, 9, 0, 0, 0, 2, 5, 0, 0, 0, 0, 0, 0, 0
-            ]
+            vec![b'A', b'P', b'D', b'L', 1, 0, 5, 0, 9, 0, 0, 0, 2, 5, 0, 0, 0, 0, 0, 0, 0]
         );
         // Frame::FrameAck{wid:1,frame_id:2,slot:1} —— APDL|0100|02|00|12000000|05|01…|02…|01
-        let bytes =
-            ProtocolMsg::Frame(FrameMsg::FrameAck { wid: 1, frame_id: 2, slot: 1 }).encode();
+        let bytes = ProtocolMsg::Frame(FrameMsg::FrameAck {
+            wid: 1,
+            frame_id: 2,
+            slot: 1,
+        })
+        .encode();
         assert_eq!(
             bytes,
             vec![
-                b'A', b'P', b'D', b'L', 1, 0, 2, 0, 18, 0, 0, 0, 5, 1, 0, 0, 0, 0, 0, 0, 0, 2,
-                0, 0, 0, 0, 0, 0, 0, 1
+                b'A', b'P', b'D', b'L', 1, 0, 2, 0, 18, 0, 0, 0, 5, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0,
+                0, 0, 0, 0, 0, 0, 1
             ]
         );
     }
@@ -2437,7 +3014,9 @@ mod tests {
             payload: DrawList {
                 clear: Some(Rgba8::new(24, 24, 28, 255)),
                 ops: vec![
-                    DrawOp::Scissor { rect: WRect::new(8.0, 8.0, 200.0, 160.0) },
+                    DrawOp::Scissor {
+                        rect: WRect::new(8.0, 8.0, 200.0, 160.0),
+                    },
                     DrawOp::Quad {
                         rect: WRect::new(0.0, 0.0, 400.0, 400.0),
                         color: Rgba8::new(255, 0, 0, 255),
@@ -2451,7 +3030,9 @@ mod tests {
         let list = DrawList {
             clear: None,
             ops: vec![
-                DrawOp::Scissor { rect: WRect::new(1.0, 2.0, 3.0, 4.0) },
+                DrawOp::Scissor {
+                    rect: WRect::new(1.0, 2.0, 3.0, 4.0),
+                },
                 DrawOp::ScissorPop,
             ],
         };
@@ -2625,11 +3206,26 @@ mod tests {
     fn rejects_unknown_tags_and_corruption() {
         // 未知消息 tag（各通道载荷首字节越界）。
         for (ch, mut bytes) in [
-            (Channel::Handshake, ProtocolMsg::Handshake(HandshakeMsg::Ready).encode()),
-            (Channel::Frame, ProtocolMsg::Frame(FrameMsg::BufferRelease { surface: 1 }).encode()),
-            (Channel::Input, ProtocolMsg::Input(InputMsg::ImeCancelled { wid: 1 }).encode()),
-            (Channel::Control, ProtocolMsg::Control(ControlMsg::Close { wid: 1 }).encode()),
-            (Channel::Observe, ProtocolMsg::Observe(ObserveMsg::Detach { wid: 1 }).encode()),
+            (
+                Channel::Handshake,
+                ProtocolMsg::Handshake(HandshakeMsg::Ready).encode(),
+            ),
+            (
+                Channel::Frame,
+                ProtocolMsg::Frame(FrameMsg::BufferRelease { surface: 1 }).encode(),
+            ),
+            (
+                Channel::Input,
+                ProtocolMsg::Input(InputMsg::ImeCancelled { wid: 1 }).encode(),
+            ),
+            (
+                Channel::Control,
+                ProtocolMsg::Control(ControlMsg::Close { wid: 1 }).encode(),
+            ),
+            (
+                Channel::Observe,
+                ProtocolMsg::Observe(ObserveMsg::Detach { wid: 1 }).encode(),
+            ),
         ] {
             bytes[12] = 0xEE; // 载荷首字节 = 消息 tag
             let (_, _, payload) = decode_envelope(&bytes).unwrap();
@@ -2637,7 +3233,10 @@ mod tests {
             match ch {
                 Channel::Handshake => {
                     let mut r = Reader::new(payload);
-                    assert_eq!(HandshakeMsg::decode(&mut r), Err(CodecError::UnknownTag(0xEE)))
+                    assert_eq!(
+                        HandshakeMsg::decode(&mut r),
+                        Err(CodecError::UnknownTag(0xEE))
+                    )
                 }
                 Channel::Frame => {
                     let mut r = Reader::new(payload);
@@ -2649,11 +3248,17 @@ mod tests {
                 }
                 Channel::Control => {
                     let mut r = Reader::new(payload);
-                    assert_eq!(ControlMsg::decode(&mut r), Err(CodecError::UnknownTag(0xEE)))
+                    assert_eq!(
+                        ControlMsg::decode(&mut r),
+                        Err(CodecError::UnknownTag(0xEE))
+                    )
                 }
                 Channel::Observe => {
                     let mut r = Reader::new(payload);
-                    assert_eq!(ObserveMsg::decode(&mut r), Err(CodecError::UnknownTag(0xEE)))
+                    assert_eq!(
+                        ObserveMsg::decode(&mut r),
+                        Err(CodecError::UnknownTag(0xEE))
+                    )
                 }
             }
         }
@@ -2682,7 +3287,10 @@ mod tests {
         assert_eq!(payload[DRAWLIST_AT + 6], 1, "锚点：op tag 位置");
         bytes[12 + DRAWLIST_AT + 6] = 0x7F;
         let err = ProtocolMsg::decode(&bytes);
-        assert!(matches!(err, Err(CodecError::UnknownTag(0x7F))), "got {err:?}");
+        assert!(
+            matches!(err, Err(CodecError::UnknownTag(0x7F))),
+            "got {err:?}"
+        );
         // 版本不符拒收。
         let mut bytes = ProtocolMsg::Control(ControlMsg::Close { wid: 1 }).encode();
         bytes[4] = 9;
@@ -2710,8 +3318,15 @@ mod tests {
                         ],
                     },
                     radius: [12.0, 12.0, 12.0, 12.0],
-                    border: Some(BorderSpec { color: Rgba8::new(39, 39, 42, 255), width: 1.0 }),
-                    shadow: Some(ShadowSpec { color: Rgba8::new(0, 0, 0, 128), offset: (0.0, 4.0), blur: 12.0 }),
+                    border: Some(BorderSpec {
+                        color: Rgba8::new(39, 39, 42, 255),
+                        width: 1.0,
+                    }),
+                    shadow: Some(ShadowSpec {
+                        color: Rgba8::new(0, 0, 0, 128),
+                        offset: (0.0, 4.0),
+                        blur: 12.0,
+                    }),
                 },
                 DisplayOp::Quad {
                     rect: WRect::new(0.0, 80.0, 320.0, 40.0),
@@ -2730,9 +3345,17 @@ mod tests {
                     italic: false,
                     text: "Hello, World!".into(),
                 },
-                DisplayOp::Scissor { rect: WRect::new(0.0, 0.0, 100.0, 100.0) },
-                DisplayOp::Transform { matrix: [1.0, 0.0, 0.0, 1.0, 8.0, 0.0] },
-                DisplayOp::Image { rect: WRect::new(0.0, 0.0, 40.0, 40.0), src: "bitmap://42-avatar".into(), fit: ImageFit::Stretch },
+                DisplayOp::Scissor {
+                    rect: WRect::new(0.0, 0.0, 100.0, 100.0),
+                },
+                DisplayOp::Transform {
+                    matrix: [1.0, 0.0, 0.0, 1.0, 8.0, 0.0],
+                },
+                DisplayOp::Image {
+                    rect: WRect::new(0.0, 0.0, 40.0, 40.0),
+                    src: "bitmap://42-avatar".into(),
+                    fit: ImageFit::Stretch,
+                },
                 DisplayOp::TransformPop,
                 DisplayOp::ScissorPop,
             ],
@@ -2772,7 +3395,10 @@ mod tests {
                     stops: vec![(0.5, Rgba8::new(1, 2, 3, 4))],
                 },
                 radius: [5.0, 6.0, 7.0, 8.0],
-                border: Some(BorderSpec { color: Rgba8::new(9, 10, 11, 12), width: 13.0 }),
+                border: Some(BorderSpec {
+                    color: Rgba8::new(9, 10, 11, 12),
+                    width: 13.0,
+                }),
                 shadow: None,
             }],
         };
@@ -2800,7 +3426,10 @@ mod tests {
         // 未知 op tag 拒收（追加式纪律）。
         let bad: Vec<u8> = vec![2, 0, 1, 0, 0, 0, 0x7F];
         let mut r = Reader::new(&bad);
-        assert!(matches!(DisplayList::decode(&mut r), Err(CodecError::UnknownTag(0x7F))));
+        assert!(matches!(
+            DisplayList::decode(&mut r),
+            Err(CodecError::UnknownTag(0x7F))
+        ));
     }
 
     /// PLAN-683 AC-04 —— v1 帧兼容：v1 载荷 tag=1 解码仍为 DrawList
@@ -2811,13 +3440,42 @@ mod tests {
         let v1 = DrawList {
             clear: Some(Rgba8::new(1, 2, 3, 4)),
             ops: vec![
-                DrawOp::Quad { rect: WRect::new(0.0, 0.0, 10.0, 10.0), color: Rgba8::new(5, 6, 7, 8) },
-                DrawOp::QuadR { rect: WRect::new(0.0, 0.0, 12.0, 12.0), color: Rgba8::new(9, 10, 11, 12), radius: 6.0 },
-                DrawOp::Text { x: 1.0, y: 2.0, size: 3.0, line_height: 4.0, color: Rgba8::new(13, 14, 15, 16), text: "t".into() },
-                DrawOp::TextStyled { x: 1.0, y: 2.0, size: 3.0, line_height: 4.0, color: Rgba8::new(17, 18, 19, 20), weight: 700, italic: true, text: "s".into() },
-                DrawOp::Scissor { rect: WRect::new(0.0, 0.0, 5.0, 5.0) },
+                DrawOp::Quad {
+                    rect: WRect::new(0.0, 0.0, 10.0, 10.0),
+                    color: Rgba8::new(5, 6, 7, 8),
+                },
+                DrawOp::QuadR {
+                    rect: WRect::new(0.0, 0.0, 12.0, 12.0),
+                    color: Rgba8::new(9, 10, 11, 12),
+                    radius: 6.0,
+                },
+                DrawOp::Text {
+                    x: 1.0,
+                    y: 2.0,
+                    size: 3.0,
+                    line_height: 4.0,
+                    color: Rgba8::new(13, 14, 15, 16),
+                    text: "t".into(),
+                },
+                DrawOp::TextStyled {
+                    x: 1.0,
+                    y: 2.0,
+                    size: 3.0,
+                    line_height: 4.0,
+                    color: Rgba8::new(17, 18, 19, 20),
+                    weight: 700,
+                    italic: true,
+                    text: "s".into(),
+                },
+                DrawOp::Scissor {
+                    rect: WRect::new(0.0, 0.0, 5.0, 5.0),
+                },
                 DrawOp::ScissorPop,
-                DrawOp::Image { rect: WRect::new(0.0, 0.0, 6.0, 6.0), src: "bitmap://x".into(), fit: ImageFit::Stretch },
+                DrawOp::Image {
+                    rect: WRect::new(0.0, 0.0, 6.0, 6.0),
+                    src: "bitmap://x".into(),
+                    fit: ImageFit::Stretch,
+                },
             ],
         };
         let mut v1_bytes = Vec::new();
@@ -2827,16 +3485,25 @@ mod tests {
         assert_eq!(DrawList::decode(&mut r).unwrap(), v1);
         // v2 解码器对 v1 载荷 = Err（tag 互斥）。
         let mut r = Reader::new(&v1_bytes);
-        assert!(matches!(DisplayList::decode(&mut r), Err(CodecError::UnknownTag(1))));
+        assert!(matches!(
+            DisplayList::decode(&mut r),
+            Err(CodecError::UnknownTag(1))
+        ));
 
         // 直搬映射：v1 全词汇 → v2 等价（语义保真断言）。
         let lifted = DisplayList::from_v1(&v1);
         assert_eq!(lifted.clear, v1.clear);
-        assert!(matches!(lifted.ops[0], DisplayOp::Quad { ref fill, radius, border: None, shadow: None, .. }
-            if matches!(fill, Fill::Color(c) if *c == Rgba8::new(5, 6, 7, 8)) && radius == [0.0; 4]));
+        assert!(
+            matches!(lifted.ops[0], DisplayOp::Quad { ref fill, radius, border: None, shadow: None, .. }
+            if matches!(fill, Fill::Color(c) if *c == Rgba8::new(5, 6, 7, 8)) && radius == [0.0; 4])
+        );
         assert!(matches!(lifted.ops[1], DisplayOp::Quad { radius, .. } if radius == [6.0; 4]));
-        assert!(matches!(&lifted.ops[2], DisplayOp::TextStyled { weight: 400, italic: false, text, .. } if text == "t"));
-        assert!(matches!(&lifted.ops[3], DisplayOp::TextStyled { weight: 700, italic: true, text, .. } if text == "s"));
+        assert!(
+            matches!(&lifted.ops[2], DisplayOp::TextStyled { weight: 400, italic: false, text, .. } if text == "t")
+        );
+        assert!(
+            matches!(&lifted.ops[3], DisplayOp::TextStyled { weight: 700, italic: true, text, .. } if text == "s")
+        );
         assert!(matches!(lifted.ops[4], DisplayOp::Scissor { .. }));
         assert!(matches!(lifted.ops[5], DisplayOp::ScissorPop));
         assert!(matches!(&lifted.ops[6], DisplayOp::Image { src, .. } if src == "bitmap://x"));

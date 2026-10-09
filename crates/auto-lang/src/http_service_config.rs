@@ -270,7 +270,10 @@ impl HttpServiceConfig {
         let mut s = String::with_capacity(512);
         let lim = &self.limits;
         s.push_str(&format!("profile={};", self.profile.as_str()));
-        s.push_str(&format!("listen={}:{};", self.listen_addr, self.listen_port));
+        s.push_str(&format!(
+            "listen={}:{};",
+            self.listen_addr, self.listen_port
+        ));
         s.push_str(&format!(
             "limits={},{},{},{},{},{},{},{};",
             lim.max_connections,
@@ -286,7 +289,10 @@ impl HttpServiceConfig {
         s.push_str(&format!("methods={:?};", self.cors.allowed_methods));
         s.push_str(&format!("headers={:?};", self.cors.allowed_headers));
         s.push_str(&format!("exposed={:?};", self.cors.exposed_headers));
-        s.push_str(&format!("creds={};maxage={};", self.cors.allow_credentials, self.cors.max_age_seconds));
+        s.push_str(&format!(
+            "creds={};maxage={};",
+            self.cors.allow_credentials, self.cors.max_age_seconds
+        ));
         s.push_str(&format!("hosts={:?};", self.allowed_hosts));
         s.push_str(&format!("proxies={:?};", self.trusted_proxy_ips));
         s.push_str(&format!("auth={};", self.auth_responsibility.as_str()));
@@ -320,14 +326,21 @@ pub struct ConfigError {
 
 impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "http-service config error at `{}`: {}", self.field, self.reason)
+        write!(
+            f,
+            "http-service config error at `{}`: {}",
+            self.field, self.reason
+        )
     }
 }
 
 impl std::error::Error for ConfigError {}
 
 fn err(field: &str, reason: impl Into<String>) -> ConfigError {
-    ConfigError { field: field.to_string(), reason: reason.into() }
+    ConfigError {
+        field: field.to_string(),
+        reason: reason.into(),
+    }
 }
 
 // ============================================================================
@@ -386,7 +399,11 @@ pub fn resolve_service_config(
     let mark = |field: &str, explicit: bool| {
         sources.borrow_mut().push((
             field.to_string(),
-            if explicit { "explicit" } else { "profile_default" },
+            if explicit {
+                "explicit"
+            } else {
+                "profile_default"
+            },
         ));
     };
 
@@ -394,7 +411,12 @@ pub fn resolve_service_config(
     match raw.schema_version {
         None => {}
         Some(1) => mark("schema_version", true),
-        Some(other) => return Err(err("schema_version", format!("unsupported version {other}; this build understands 1 only"))),
+        Some(other) => {
+            return Err(err(
+                "schema_version",
+                format!("unsupported version {other}; this build understands 1 only"),
+            ))
+        }
     }
 
     // ---- profile（必填性按有无显式配置面区分：文件/inline 都必须写）----
@@ -402,9 +424,17 @@ pub fn resolve_service_config(
         Some("development") => ServiceProfile::Development,
         Some("proxy_service") => ServiceProfile::ProxyService,
         Some(other) => {
-            return Err(err("profile", format!("unknown profile `{other}`; expected `development` or `proxy_service`")))
+            return Err(err(
+                "profile",
+                format!("unknown profile `{other}`; expected `development` or `proxy_service`"),
+            ))
         }
-        None => return Err(err("profile", "profile is required (`development` or `proxy_service`)")),
+        None => {
+            return Err(err(
+                "profile",
+                "profile is required (`development` or `proxy_service`)",
+            ))
+        }
     };
     let is_service = profile == ServiceProfile::ProxyService;
 
@@ -444,7 +474,9 @@ pub fn resolve_service_config(
     // CLI 显式 -B 覆盖 config 端口（决策 §3.1：仅显式 CLI 旗标可覆盖）。
     let listen_port = match cli_port_override {
         Some(p) => {
-            sources.borrow_mut().push(("listen.port".to_string(), "cli_override"));
+            sources
+                .borrow_mut()
+                .push(("listen.port".to_string(), "cli_override"));
             p
         }
         None => listen_port,
@@ -462,34 +494,76 @@ pub fn resolve_service_config(
     let (dev_conn, svc_conn) = (128usize, 128usize);
     let limits = {
         let l = raw.limits.clone();
-        let mut take = |field: &str, v: Option<usize>, dev: usize, svc: usize| -> Result<usize, ConfigError> {
-            let (val, explicit) = match v {
-                Some(v) => (v, true),
-                None => (if is_service { svc } else { dev }, false),
+        let mut take =
+            |field: &str, v: Option<usize>, dev: usize, svc: usize| -> Result<usize, ConfigError> {
+                let (val, explicit) = match v {
+                    Some(v) => (v, true),
+                    None => (if is_service { svc } else { dev }, false),
+                };
+                check_range_usize(field, val, range_for_usize(field))?;
+                mark(field, explicit);
+                Ok(val)
             };
-            check_range_usize(field, val, range_for_usize(field))?;
-            mark(field, explicit);
-            Ok(val)
-        };
-        let mut take_u64 = |field: &str, v: Option<u64>, dev: u64, svc: u64| -> Result<u64, ConfigError> {
-            let (val, explicit) = match v {
-                Some(v) => (v, true),
-                None => (if is_service { svc } else { dev }, false),
+        let mut take_u64 =
+            |field: &str, v: Option<u64>, dev: u64, svc: u64| -> Result<u64, ConfigError> {
+                let (val, explicit) = match v {
+                    Some(v) => (v, true),
+                    None => (if is_service { svc } else { dev }, false),
+                };
+                check_range_u64(field, val, range_for_u64(field))?;
+                mark(field, explicit);
+                Ok(val)
             };
-            check_range_u64(field, val, range_for_u64(field))?;
-            mark(field, explicit);
-            Ok(val)
-        };
         // 数值相同/不同按冻结表：
         ServiceLimits {
-            max_connections: take("limits.max_connections", l.as_ref().and_then(|x| x.max_connections), dev_conn, svc_conn)?,
-            max_inflight_requests: take("limits.max_inflight_requests", l.as_ref().and_then(|x| x.max_inflight_requests), 64, 64)?,
-            header_buf_bytes: take("limits.header_buf_bytes", l.as_ref().and_then(|x| x.header_buf_bytes), 65_536, 65_536)?,
-            header_read_timeout_ms: take_u64("limits.header_read_timeout_ms", l.as_ref().and_then(|x| x.header_read_timeout_ms), 10_000, 10_000)?,
-            body_limit_bytes: take("limits.body_limit_bytes", l.as_ref().and_then(|x| x.body_limit_bytes), 10_485_760, 10_485_760)?,
-            body_timeout_ms: take_u64("limits.body_timeout_ms", l.as_ref().and_then(|x| x.body_timeout_ms), 10_000, 10_000)?,
-            request_timeout_ms: take_u64("limits.request_timeout_ms", l.as_ref().and_then(|x| x.request_timeout_ms), 30_000, 30_000)?,
-            drain_timeout_ms: take_u64("limits.drain_timeout_ms", l.as_ref().and_then(|x| x.drain_timeout_ms), 10_000, 10_000)?,
+            max_connections: take(
+                "limits.max_connections",
+                l.as_ref().and_then(|x| x.max_connections),
+                dev_conn,
+                svc_conn,
+            )?,
+            max_inflight_requests: take(
+                "limits.max_inflight_requests",
+                l.as_ref().and_then(|x| x.max_inflight_requests),
+                64,
+                64,
+            )?,
+            header_buf_bytes: take(
+                "limits.header_buf_bytes",
+                l.as_ref().and_then(|x| x.header_buf_bytes),
+                65_536,
+                65_536,
+            )?,
+            header_read_timeout_ms: take_u64(
+                "limits.header_read_timeout_ms",
+                l.as_ref().and_then(|x| x.header_read_timeout_ms),
+                10_000,
+                10_000,
+            )?,
+            body_limit_bytes: take(
+                "limits.body_limit_bytes",
+                l.as_ref().and_then(|x| x.body_limit_bytes),
+                10_485_760,
+                10_485_760,
+            )?,
+            body_timeout_ms: take_u64(
+                "limits.body_timeout_ms",
+                l.as_ref().and_then(|x| x.body_timeout_ms),
+                10_000,
+                10_000,
+            )?,
+            request_timeout_ms: take_u64(
+                "limits.request_timeout_ms",
+                l.as_ref().and_then(|x| x.request_timeout_ms),
+                30_000,
+                30_000,
+            )?,
+            drain_timeout_ms: take_u64(
+                "limits.drain_timeout_ms",
+                l.as_ref().and_then(|x| x.drain_timeout_ms),
+                10_000,
+                10_000,
+            )?,
         }
     };
 
@@ -500,10 +574,16 @@ pub fn resolve_service_config(
             Some(o) => {
                 mark("cors.allowed_origins", true);
                 if o.len() > 1 && o.iter().any(|x| x == "*") {
-                    return Err(err("cors.allowed_origins", "`*` cannot be combined with explicit origins"));
+                    return Err(err(
+                        "cors.allowed_origins",
+                        "`*` cannot be combined with explicit origins",
+                    ));
                 }
                 for origin in &o {
-                    if origin != "*" && (origin.contains('*') || !origin.starts_with("http://") && !origin.starts_with("https://")) {
+                    if origin != "*"
+                        && (origin.contains('*')
+                            || !origin.starts_with("http://") && !origin.starts_with("https://"))
+                    {
                         return Err(err("cors.allowed_origins", format!("`{origin}` is not an exact origin (scheme://host[:port]) or the single `*`")));
                     }
                 }
@@ -519,27 +599,51 @@ pub fn resolve_service_config(
             }
         };
         let credentials = match c.as_ref().and_then(|x| x.allow_credentials) {
-            Some(true) => return Err(err("cors.allow_credentials", "credential CORS is out of scope for PLAN-736 (constant false)")),
+            Some(true) => {
+                return Err(err(
+                    "cors.allow_credentials",
+                    "credential CORS is out of scope for PLAN-736 (constant false)",
+                ))
+            }
             _ => {
                 mark("cors.allow_credentials", false);
                 false
             }
         };
-        let mut take_list = |field: &str, v: Option<Vec<String>>, dev: &[&str], svc: &[&str]| -> Vec<String> {
-            match v {
-                Some(list) => {
-                    mark(field, true);
-                    list
+        let mut take_list =
+            |field: &str, v: Option<Vec<String>>, dev: &[&str], svc: &[&str]| -> Vec<String> {
+                match v {
+                    Some(list) => {
+                        mark(field, true);
+                        list
+                    }
+                    None => {
+                        mark(field, false);
+                        (if is_service { svc } else { dev })
+                            .iter()
+                            .map(|s| s.to_string())
+                            .collect()
+                    }
                 }
-                None => {
-                    mark(field, false);
-                    (if is_service { svc } else { dev }).iter().map(|s| s.to_string()).collect()
-                }
-            }
-        };
-        let methods = take_list("cors.allowed_methods", c.as_ref().and_then(|x| x.allowed_methods.clone()), DEV_CORS_METHODS, SERVICE_CORS_METHODS);
-        let headers = take_list("cors.allowed_headers", c.as_ref().and_then(|x| x.allowed_headers.clone()), DEV_CORS_HEADERS, DEV_CORS_HEADERS);
-        let exposed = take_list("cors.exposed_headers", c.as_ref().and_then(|x| x.exposed_headers.clone()), &[], &[]);
+            };
+        let methods = take_list(
+            "cors.allowed_methods",
+            c.as_ref().and_then(|x| x.allowed_methods.clone()),
+            DEV_CORS_METHODS,
+            SERVICE_CORS_METHODS,
+        );
+        let headers = take_list(
+            "cors.allowed_headers",
+            c.as_ref().and_then(|x| x.allowed_headers.clone()),
+            DEV_CORS_HEADERS,
+            DEV_CORS_HEADERS,
+        );
+        let exposed = take_list(
+            "cors.exposed_headers",
+            c.as_ref().and_then(|x| x.exposed_headers.clone()),
+            &[],
+            &[],
+        );
         let max_age = match c.as_ref().and_then(|x| x.max_age_seconds) {
             Some(v) => {
                 mark("cors.max_age_seconds", true);
@@ -565,7 +669,10 @@ pub fn resolve_service_config(
         Some(h) => {
             mark("allowed_hosts", true);
             if h.is_empty() && is_service {
-                return Err(err("allowed_hosts", "proxy_service profile requires a non-empty allowed_hosts list"));
+                return Err(err(
+                    "allowed_hosts",
+                    "proxy_service profile requires a non-empty allowed_hosts list",
+                ));
             }
             h.into_iter().map(|x| x.to_ascii_lowercase()).collect()
         }
@@ -581,7 +688,14 @@ pub fn resolve_service_config(
             mark("trusted_proxy_ips", true);
             let mut ips = Vec::with_capacity(list.len());
             for s in &list {
-                let ip: IpAddr = s.parse().map_err(|_| err("trusted_proxy_ips", format!("`{s}` is not a numeric IP address (no DNS resolution in PLAN-736)")))?;
+                let ip: IpAddr = s.parse().map_err(|_| {
+                    err(
+                        "trusted_proxy_ips",
+                        format!(
+                            "`{s}` is not a numeric IP address (no DNS resolution in PLAN-736)"
+                        ),
+                    )
+                })?;
                 ips.push(ip);
             }
             ips
@@ -593,22 +707,31 @@ pub fn resolve_service_config(
     };
 
     // ---- auth ----
-    let auth_responsibility = match raw.auth.as_ref().and_then(|a| a.responsibility.as_deref()) {
-        Some("app") => {
-            mark("auth.responsibility", true);
-            AuthResponsibility::App
-        }
-        Some("edge") => {
-            mark("auth.responsibility", true);
-            AuthResponsibility::Edge
-        }
-        Some(other) => return Err(err("auth.responsibility", format!("unknown responsibility `{other}`; expected `app` or `edge`"))),
-        None if is_service => return Err(err("auth.responsibility", "proxy_service profile requires an explicit auth responsibility (`app` or `edge`)")),
-        None => {
-            mark("auth.responsibility", false);
-            AuthResponsibility::App
-        }
-    };
+    let auth_responsibility =
+        match raw.auth.as_ref().and_then(|a| a.responsibility.as_deref()) {
+            Some("app") => {
+                mark("auth.responsibility", true);
+                AuthResponsibility::App
+            }
+            Some("edge") => {
+                mark("auth.responsibility", true);
+                AuthResponsibility::Edge
+            }
+            Some(other) => {
+                return Err(err(
+                    "auth.responsibility",
+                    format!("unknown responsibility `{other}`; expected `app` or `edge`"),
+                ))
+            }
+            None if is_service => return Err(err(
+                "auth.responsibility",
+                "proxy_service profile requires an explicit auth responsibility (`app` or `edge`)",
+            )),
+            None => {
+                mark("auth.responsibility", false);
+                AuthResponsibility::App
+            }
+        };
 
     // ---- rate_limit ----
     let rate_limit = match raw.rate_limit.clone() {
@@ -617,11 +740,18 @@ pub fn resolve_service_config(
             let window = rl.window_ms;
             check_range_u64("rate_limit.window_ms", window, (100, 3_600_000))?;
             let capacity = rl.bucket_capacity.unwrap_or(4096);
-            check_range_usize("rate_limit.bucket_capacity", capacity, range::BUCKET_CAPACITY)?;
+            check_range_usize(
+                "rate_limit.bucket_capacity",
+                capacity,
+                range::BUCKET_CAPACITY,
+            )?;
             let ttl = rl.bucket_ttl_ms.unwrap_or(60_000);
             check_range_u64("rate_limit.bucket_ttl_ms", ttl, range::BUCKET_TTL_MS)?;
             if rl.max_requests == 0 {
-                return Err(err("rate_limit.max_requests", "0 is not legal (no implicit unbounded mode)"));
+                return Err(err(
+                    "rate_limit.max_requests",
+                    "0 is not legal (no implicit unbounded mode)",
+                ));
             }
             Some(RateLimitConfig {
                 max_requests: rl.max_requests,
@@ -644,14 +774,33 @@ pub fn resolve_service_config(
                 }
                 None => {
                     mark(&format!("features.{field_end}"), false);
-                    if is_service { svc } else { dev }
+                    if is_service {
+                        svc
+                    } else {
+                        dev
+                    }
                 }
             }
         };
         ServiceFeatures {
-            websocket_echo: take("websocket_echo", f.as_ref().and_then(|x| x.websocket_echo), true, false),
-            media_scan: take("media_scan", f.as_ref().and_then(|x| x.media_scan), true, false),
-            photo_scan: take("photo_scan", f.as_ref().and_then(|x| x.photo_scan), true, false),
+            websocket_echo: take(
+                "websocket_echo",
+                f.as_ref().and_then(|x| x.websocket_echo),
+                true,
+                false,
+            ),
+            media_scan: take(
+                "media_scan",
+                f.as_ref().and_then(|x| x.media_scan),
+                true,
+                false,
+            ),
+            photo_scan: take(
+                "photo_scan",
+                f.as_ref().and_then(|x| x.photo_scan),
+                true,
+                false,
+            ),
         }
     };
 
@@ -660,7 +809,11 @@ pub fn resolve_service_config(
         let o = raw.observability.clone();
         let sink = match o.as_ref().and_then(|x| x.log_sink_capacity) {
             Some(v) => {
-                check_range_usize("observability.log_sink_capacity", v, range::LOG_SINK_CAPACITY)?;
+                check_range_usize(
+                    "observability.log_sink_capacity",
+                    v,
+                    range::LOG_SINK_CAPACITY,
+                )?;
                 mark("observability.log_sink_capacity", true);
                 v
             }
@@ -670,7 +823,10 @@ pub fn resolve_service_config(
             }
         };
         let health_budget = 8usize; // 决策 §3.1：v1 不从文件配置（固定 8），范围见 range::HEALTH_BUDGET
-        ObservabilityConfig { log_sink_capacity: sink, health_request_budget: health_budget }
+        ObservabilityConfig {
+            log_sink_capacity: sink,
+            health_request_budget: health_budget,
+        }
     };
 
     Ok(HttpServiceConfig {
@@ -717,14 +873,19 @@ fn origin_allowed(cors: &CorsPolicy, origin: &str) -> bool {
     if cors.allowed_origins.iter().any(|o| o == "*") {
         return true;
     }
-    cors.allowed_origins.iter().any(|o| o.eq_ignore_ascii_case(origin))
+    cors.allowed_origins
+        .iter()
+        .any(|o| o.eq_ignore_ascii_case(origin))
 }
 
 /// 实际请求（非 preflight）的 CORS 决策。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CorsOutcome {
     /// 允许：附带的 ACAO 值与是否加 `Vary: Origin`。
-    Allowed { allow_origin: String, vary_origin: bool },
+    Allowed {
+        allow_origin: String,
+        vary_origin: bool,
+    },
     /// 不允许：不产生任何 CORS 头（响应照常走业务语义）。
     Absent,
 }
@@ -738,9 +899,15 @@ impl CorsPolicy {
             return CorsOutcome::Absent;
         }
         if self.allowed_origins.iter().any(|o| o == "*") {
-            CorsOutcome::Allowed { allow_origin: "*".to_string(), vary_origin: false }
+            CorsOutcome::Allowed {
+                allow_origin: "*".to_string(),
+                vary_origin: false,
+            }
         } else {
-            CorsOutcome::Allowed { allow_origin: origin.to_string(), vary_origin: true }
+            CorsOutcome::Allowed {
+                allow_origin: origin.to_string(),
+                vary_origin: true,
+            }
         }
     }
 
@@ -761,11 +928,19 @@ impl CorsPolicy {
         let Some(method) = request_method else {
             return (403, None, false);
         };
-        if !self.allowed_methods.iter().any(|m| m.eq_ignore_ascii_case(method)) {
+        if !self
+            .allowed_methods
+            .iter()
+            .any(|m| m.eq_ignore_ascii_case(method))
+        {
             return (403, None, false);
         }
         for h in request_headers {
-            if !self.allowed_headers.iter().any(|a| a.eq_ignore_ascii_case(h)) {
+            if !self
+                .allowed_headers
+                .iter()
+                .any(|a| a.eq_ignore_ascii_case(h))
+            {
                 return (403, None, false);
             }
         }
@@ -810,20 +985,32 @@ impl HttpServiceConfig {
         let trusted = self.trusted_proxy_ips.iter().any(|ip| *ip == peer);
         if !trusted {
             return (
-                EffectiveClient { client: peer, via_trusted_proxy: false, xff_rejected: false },
+                EffectiveClient {
+                    client: peer,
+                    via_trusted_proxy: false,
+                    xff_rejected: false,
+                },
                 None,
             );
         }
         let Some(xff) = x_forwarded_for.map(str::trim) else {
             return (
-                EffectiveClient { client: peer, via_trusted_proxy: true, xff_rejected: false },
+                EffectiveClient {
+                    client: peer,
+                    via_trusted_proxy: true,
+                    xff_rejected: false,
+                },
                 None,
             );
         };
         // 单一重写 IP 语义：不允许链（多段=歧义拒绝）。
         if xff.is_empty() || xff.contains(',') {
             return (
-                EffectiveClient { client: peer, via_trusted_proxy: true, xff_rejected: true },
+                EffectiveClient {
+                    client: peer,
+                    via_trusted_proxy: true,
+                    xff_rejected: true,
+                },
                 None,
             );
         }
@@ -834,12 +1021,20 @@ impl HttpServiceConfig {
                     .filter(|p| *p == "http" || *p == "https")
                     .map(str::to_string);
                 (
-                    EffectiveClient { client: ip, via_trusted_proxy: true, xff_rejected: false },
+                    EffectiveClient {
+                        client: ip,
+                        via_trusted_proxy: true,
+                        xff_rejected: false,
+                    },
                     proto,
                 )
             }
             Err(_) => (
-                EffectiveClient { client: peer, via_trusted_proxy: true, xff_rejected: true },
+                EffectiveClient {
+                    client: peer,
+                    via_trusted_proxy: true,
+                    xff_rejected: true,
+                },
                 None,
             ),
         }
@@ -897,7 +1092,10 @@ pub struct RateLimiter {
 
 impl RateLimiter {
     pub fn new(cfg: RateLimitConfig) -> Self {
-        Self { cfg, buckets: Mutex::new(HashMap::new()) }
+        Self {
+            cfg,
+            buckets: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn config(&self) -> &RateLimitConfig {
@@ -912,7 +1110,11 @@ impl RateLimiter {
     pub fn check(&self, identity: IpAddr, now_ms: u64) -> RateDecision {
         let mut buckets = match self.buckets.lock() {
             Ok(b) => b,
-            Err(_) => return RateDecision::Limited { retry_after_secs: self.cfg.window_ms / 1000 },
+            Err(_) => {
+                return RateDecision::Limited {
+                    retry_after_secs: self.cfg.window_ms / 1000,
+                }
+            }
         };
         // TTL 回收：先按 last_seen 清理过期桶（有界表的核心约束）。
         if buckets.len() >= self.cfg.bucket_capacity {
@@ -932,7 +1134,9 @@ impl RateLimiter {
                         .cfg
                         .window_ms
                         .saturating_sub(now_ms.saturating_sub(b.window_start_ms));
-                    return RateDecision::Limited { retry_after_secs: (remaining / 1000).max(1) };
+                    return RateDecision::Limited {
+                        retry_after_secs: (remaining / 1000).max(1),
+                    };
                 }
                 b.count += 1;
                 b.last_seen_ms = now_ms;
@@ -941,11 +1145,17 @@ impl RateLimiter {
             None => {
                 if buckets.len() >= self.cfg.bucket_capacity {
                     // 满表且无可回收：保守拒绝新身份（不绕过限速）。
-                    return RateDecision::Limited { retry_after_secs: self.cfg.window_ms / 1000 };
+                    return RateDecision::Limited {
+                        retry_after_secs: self.cfg.window_ms / 1000,
+                    };
                 }
                 buckets.insert(
                     identity,
-                    RateBucket { window_start_ms: now_ms, count: 1, last_seen_ms: now_ms },
+                    RateBucket {
+                        window_start_ms: now_ms,
+                        count: 1,
+                        last_seen_ms: now_ms,
+                    },
                 );
                 RateDecision::Allow
             }
@@ -1028,7 +1238,9 @@ pub fn take_active_service_config() -> Option<Arc<HttpServiceConfig>> {
 /// 由环境注入的配置 JSON 读取（生成轨/子进程形态）：
 /// `AUTO_HTTP_SERVICE_JSON` 为完整配置文档；不存在 = legacy 面（返回 None）。
 pub fn service_config_json_from_env() -> Option<String> {
-    std::env::var("AUTO_HTTP_SERVICE_JSON").ok().filter(|s| !s.trim().is_empty())
+    std::env::var("AUTO_HTTP_SERVICE_JSON")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
 }
 
 #[cfg(test)]
@@ -1055,7 +1267,10 @@ mod tests {
     #[test]
     fn service_profile_requires_hosts_and_auth() {
         let e = resolve_service_config(r#"{"profile":"proxy_service"}"#, None).unwrap_err();
-        assert!(e.field == "allowed_hosts" || e.field == "auth.responsibility", "{e}");
+        assert!(
+            e.field == "allowed_hosts" || e.field == "auth.responsibility",
+            "{e}"
+        );
         let e = resolve_service_config(
             r#"{"profile":"proxy_service","allowed_hosts":["a.com"]}"#,
             None,
@@ -1074,7 +1289,8 @@ mod tests {
 
     #[test]
     fn unknown_field_and_bad_profile_rejected() {
-        let e = resolve_service_config(r#"{"profile":"development","nosuch":1}"#, None).unwrap_err();
+        let e =
+            resolve_service_config(r#"{"profile":"development","nosuch":1}"#, None).unwrap_err();
         assert!(e.reason.contains("unknown field"), "{e}");
         let e = resolve_service_config(r#"{"profile":"prod"}"#, None).unwrap_err();
         assert_eq!(e.field, "profile");
@@ -1088,11 +1304,26 @@ mod tests {
             let json = format!(r#"{{"profile":"development","limits":{patch}}}"#);
             resolve_service_config(&json, None).unwrap_err()
         };
-        assert_eq!(bad(r#"{"max_connections":0}"#).field, "limits.max_connections");
-        assert_eq!(bad(r#"{"max_connections":9999}"#).field, "limits.max_connections");
-        assert_eq!(bad(r#"{"header_buf_bytes":1024}"#).field, "limits.header_buf_bytes");
-        assert_eq!(bad(r#"{"drain_timeout_ms":50}"#).field, "limits.drain_timeout_ms");
-        assert_eq!(bad(r#"{"request_timeout_ms":0}"#).field, "limits.request_timeout_ms");
+        assert_eq!(
+            bad(r#"{"max_connections":0}"#).field,
+            "limits.max_connections"
+        );
+        assert_eq!(
+            bad(r#"{"max_connections":9999}"#).field,
+            "limits.max_connections"
+        );
+        assert_eq!(
+            bad(r#"{"header_buf_bytes":1024}"#).field,
+            "limits.header_buf_bytes"
+        );
+        assert_eq!(
+            bad(r#"{"drain_timeout_ms":50}"#).field,
+            "limits.drain_timeout_ms"
+        );
+        assert_eq!(
+            bad(r#"{"request_timeout_ms":0}"#).field,
+            "limits.request_timeout_ms"
+        );
         // 合法下界可用（低预算测试路径依赖）。
         let c = resolve_service_config(
             r#"{"profile":"development","limits":{"max_connections":1,"max_inflight_requests":1,"request_timeout_ms":1000}}"#,
@@ -1104,14 +1335,28 @@ mod tests {
 
     #[test]
     fn cli_port_override_and_explicit_listen() {
-        let c = resolve_service_config(r#"{"profile":"development","listen":{"port":9000}}"#, Some(7777)).unwrap();
+        let c = resolve_service_config(
+            r#"{"profile":"development","listen":{"port":9000}}"#,
+            Some(7777),
+        )
+        .unwrap();
         assert_eq!(c.listen_port, 7777);
-        assert!(c.sources.iter().any(|(f, s)| f == "listen.port" && *s == "cli_override"));
-        let c = resolve_service_config(r#"{"profile":"development","listen":{"addr":"0.0.0.0","port":9000}}"#, None).unwrap();
+        assert!(c
+            .sources
+            .iter()
+            .any(|(f, s)| f == "listen.port" && *s == "cli_override"));
+        let c = resolve_service_config(
+            r#"{"profile":"development","listen":{"addr":"0.0.0.0","port":9000}}"#,
+            None,
+        )
+        .unwrap();
         assert_eq!(c.listen_addr, IpAddr::from([0, 0, 0, 0]));
         assert_eq!(c.listen_port, 9000);
         // port=0（临时端口）合法。
-        assert!(resolve_service_config(r#"{"profile":"development","listen":{"port":0}}"#, None).is_ok());
+        assert!(
+            resolve_service_config(r#"{"profile":"development","listen":{"port":0}}"#, None)
+                .is_ok()
+        );
     }
 
     #[test]
@@ -1150,27 +1395,57 @@ mod tests {
         // 命中 origin → ACAO=origin + Vary。
         assert_eq!(
             exact.actual_request(Some("http://a.com")),
-            CorsOutcome::Allowed { allow_origin: "http://a.com".into(), vary_origin: true }
+            CorsOutcome::Allowed {
+                allow_origin: "http://a.com".into(),
+                vary_origin: true
+            }
         );
         // 不命中 → 无 CORS 头（不是拒绝响应）。
-        assert_eq!(exact.actual_request(Some("http://evil.com")), CorsOutcome::Absent);
+        assert_eq!(
+            exact.actual_request(Some("http://evil.com")),
+            CorsOutcome::Absent
+        );
         assert_eq!(exact.actual_request(None), CorsOutcome::Absent);
         // preflight 三要素。
-        let ok = exact.preflight(Some("http://a.com"), Some("POST"), &["content-type".to_string()]);
+        let ok = exact.preflight(
+            Some("http://a.com"),
+            Some("POST"),
+            &["content-type".to_string()],
+        );
         assert_eq!(ok, (204, Some("http://a.com".into()), true));
-        assert_eq!(exact.preflight(Some("http://evil.com"), Some("GET"), &[]).0, 403);
-        assert_eq!(exact.preflight(Some("http://a.com"), Some("TRACE"), &[]).0, 403);
-        assert_eq!(exact.preflight(Some("http://a.com"), Some("GET"), &["X-Custom".to_string()]).0, 403);
+        assert_eq!(
+            exact.preflight(Some("http://evil.com"), Some("GET"), &[]).0,
+            403
+        );
+        assert_eq!(
+            exact.preflight(Some("http://a.com"), Some("TRACE"), &[]).0,
+            403
+        );
+        assert_eq!(
+            exact
+                .preflight(Some("http://a.com"), Some("GET"), &["X-Custom".to_string()])
+                .0,
+            403
+        );
         // wildcard：ACAO=* 且无 Vary。
         let star = resolve_service_config(DEV_MINIMAL, None).unwrap().cors;
         assert_eq!(
             star.actual_request(Some("http://any.com")),
-            CorsOutcome::Allowed { allow_origin: "*".into(), vary_origin: false }
+            CorsOutcome::Allowed {
+                allow_origin: "*".into(),
+                vary_origin: false
+            }
         );
-        assert_eq!(star.preflight(Some("http://any.com"), Some("GET"), &[]), (204, Some("*".into()), false));
+        assert_eq!(
+            star.preflight(Some("http://any.com"), Some("GET"), &[]),
+            (204, Some("*".into()), false)
+        );
         // service 空 origins：跨域一律 Absent。
         let svc = resolve_service_config(SVC_MINIMAL, None).unwrap().cors;
-        assert_eq!(svc.actual_request(Some("http://a.com")), CorsOutcome::Absent);
+        assert_eq!(
+            svc.actual_request(Some("http://a.com")),
+            CorsOutcome::Absent
+        );
     }
 
     #[test]
@@ -1229,7 +1504,12 @@ mod tests {
 
     #[test]
     fn rate_limiter_bounded_and_ttl() {
-        let cfg = RateLimitConfig { max_requests: 2, window_ms: 1000, bucket_capacity: 2, bucket_ttl_ms: 500 };
+        let cfg = RateLimitConfig {
+            max_requests: 2,
+            window_ms: 1000,
+            bucket_capacity: 2,
+            bucket_ttl_ms: 500,
+        };
         let rl = RateLimiter::new(cfg);
         let a: IpAddr = "1.1.1.1".parse().unwrap();
         let b: IpAddr = "2.2.2.2".parse().unwrap();
@@ -1252,7 +1532,8 @@ mod tests {
         let a = resolve_service_config(DEV_MINIMAL, None).unwrap();
         let b = resolve_service_config(DEV_MINIMAL, None).unwrap();
         assert_eq!(a.effective_config_hash(), b.effective_config_hash());
-        let c = resolve_service_config(r#"{"profile":"development","listen":{"port":9000}}"#, None).unwrap();
+        let c = resolve_service_config(r#"{"profile":"development","listen":{"port":9000}}"#, None)
+            .unwrap();
         assert_ne!(a.effective_config_hash(), c.effective_config_hash());
     }
 
@@ -1269,7 +1550,10 @@ mod tests {
         assert_eq!(c2.listen_port, 9100);
         assert_eq!(c2.allowed_hosts, vec!["a.com", "b.org"]);
         assert_eq!(c2.rate_limit.unwrap().max_requests, 50);
-        assert_eq!(c2.trusted_proxy_ips, vec!["10.0.0.1".parse::<IpAddr>().unwrap()]);
+        assert_eq!(
+            c2.trusted_proxy_ips,
+            vec!["10.0.0.1".parse::<IpAddr>().unwrap()]
+        );
         // dev 全默认形也 round-trip。
         let d = resolve_service_config(DEV_MINIMAL, None).unwrap();
         let d2 = resolve_service_config(&d.to_json(), None).unwrap();

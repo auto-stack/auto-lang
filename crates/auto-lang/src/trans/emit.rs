@@ -12,7 +12,9 @@
 //! 无分号。发射器**不写尾随换行**（由语句层统一补）——保证 if/else 链
 //! 与块表达式拼接无杂散大括号。
 
-use crate::ast::{Arg, Args, Body, Call, Code, Expr, Fn, For, If, Iter, Stmt, Store, StoreKind, Try, Use, UseKind};
+use crate::ast::{
+    Arg, Args, Body, Call, Code, Expr, Fn, For, If, Iter, Stmt, Store, StoreKind, Try, Use, UseKind,
+};
 use crate::error::{AutoError, AutoResult};
 
 /// 发射整棵 Code（顶层语句逐条）。
@@ -103,10 +105,7 @@ fn type_source(ty: &crate::ast::Type) -> AutoResult<String> {
 /// 类型是否可安全省略（Unit/Unknown=无标注；Store 的推断型省略后
 /// 再解析由推断回填，fn 签名不省略）。
 fn type_omittable(ty: &crate::ast::Type) -> bool {
-    matches!(
-        ty,
-        crate::ast::Type::Void | crate::ast::Type::Unknown
-    )
+    matches!(ty, crate::ast::Type::Void | crate::ast::Type::Unknown)
 }
 
 /// 块体：` {\n ...stmts... \n indent}`——不写尾随换行。
@@ -460,9 +459,7 @@ fn emit_expr(e: &Expr, depth: usize, out: &mut String) -> AutoResult<()> {
                 match &p.key {
                     crate::ast::Key::NamedKey(n) => out.push_str(n.as_str()),
                     crate::ast::Key::IntKey(v) => out.push_str(&v.to_string()),
-                    crate::ast::Key::BoolKey(b) => {
-                        out.push_str(if *b { "true" } else { "false" })
-                    }
+                    crate::ast::Key::BoolKey(b) => out.push_str(if *b { "true" } else { "false" }),
                     crate::ast::Key::StrKey(s) => {
                         out.push('"');
                         out.push_str(s.as_str());
@@ -538,8 +535,11 @@ fn emit_expr(e: &Expr, depth: usize, out: &mut String) -> AutoResult<()> {
             emit_expr(inner, depth, out)?;
         }
         Expr::Closure(c) => {
-            let params: Vec<String> =
-                c.params.iter().map(|p| p.name.as_str().to_string()).collect();
+            let params: Vec<String> = c
+                .params
+                .iter()
+                .map(|p| p.name.as_str().to_string())
+                .collect();
             if params.len() == 1 {
                 out.push_str(&params[0]);
             } else {
@@ -570,9 +570,7 @@ fn emit_call(c: &Call, depth: usize, out: &mut String) -> AutoResult<()> {
             match a {
                 Arg::Pos(e) => expr_to_string(e, depth),
                 Arg::Name(n) => Ok(n.as_str().to_string()),
-                Arg::Pair(n, e) => {
-                    Ok(format!("{}: {}", n.as_str(), expr_to_string(e, depth)?))
-                }
+                Arg::Pair(n, e) => Ok(format!("{}: {}", n.as_str(), expr_to_string(e, depth)?)),
             }
         })
         .collect::<Result<_, _>>()?;

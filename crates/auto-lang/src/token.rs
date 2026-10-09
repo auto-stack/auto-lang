@@ -40,7 +40,7 @@ pub enum TokenKind {
     Add,              // +
     Sub,              // -
     Star,             // *
-    Power,           // ** (Plan 560 T07: 幂算子)
+    Power,            // ** (Plan 560 T07: 幂算子)
     Div,              // /
     Mod,              // %
     Not,              // !
@@ -79,11 +79,11 @@ pub enum TokenKind {
     Tilde,            // ~
 
     // Comptime keywords (compile-time execution) - Plan 095
-    HashIf,      // #if
-    HashFor,     // #for
-    HashIs,      // #is
-    HashBrace,   // #{
-    HashIdent,   // #ident — macro invocation prefix (Plan 212 Phase 2.4)
+    HashIf,    // #if
+    HashFor,   // #for
+    HashIs,    // #is
+    HashBrace, // #{
+    HashIdent, // #ident — macro invocation prefix (Plan 212 Phase 2.4)
 
     // Keywords
     True,
@@ -102,7 +102,7 @@ pub enum TokenKind {
     Catch,  // Plan 010 (MS3-A): catch handler
     While,  // Plan 010 (MS3-A): while (cond) { }
     Is,
-    With,        // Plan 560 T09 (E2): with expr { } / with expr as x { }
+    With, // Plan 560 T09 (E2): with expr { } / with expr as x { }
     Var,
     In,
     Fn,
@@ -126,7 +126,7 @@ pub enum TokenKind {
     Super3, // super3 = three levels up (use super3.types)
     Super4, // super4 = four levels up (use super4.types)
     As,
-    To,   // Plan 162: .to(Type) method keyword for explicit type conversion
+    To, // Plan 162: .to(Type) method keyword for explicit type conversion
     Enum,
     On,
     Alias,
@@ -147,10 +147,10 @@ pub enum TokenKind {
     Nav,
 
     // Plan 120: Option and Result type keywords
-    NoneKW,  // None literal
-    SomeKW,  // Some(value) constructor
-    OkKW,    // Ok(value) constructor
-    ErrKW,   // Err(message) constructor
+    NoneKW, // None literal
+    SomeKW, // Some(value) constructor
+    OkKW,   // Ok(value) constructor
+    ErrKW,  // Err(message) constructor
 
     // Plan 121: Task/Msg system keywords
     Task,  // task keyword
@@ -267,7 +267,7 @@ impl fmt::Display for Token {
             TokenKind::Is => write!(f, "<is>"),
             TokenKind::With => write!(f, "<with>"),
             TokenKind::Return => write!(f, "<return>"),
-    TokenKind::Yield => write!(f, "<yield>"),
+            TokenKind::Yield => write!(f, "<yield>"),
             TokenKind::On => write!(f, "<on>"),
             TokenKind::Question => write!(f, "<?>"),
             TokenKind::QuestionQuestion => write!(f, "??"),
@@ -355,14 +355,12 @@ impl Token {
     /// (LSP completion / syntax docs). A unit test asserts the round trip.
     pub fn all_keywords() -> &'static [&'static str] {
         &[
-            "alias", "as", "await", "break", "catch", "const", "continue", "copy",
-            "dep", "else", "enum", "ext", "false", "fn", "for", "go",
-            "has", "hold", "if", "impl", "in", "is", "let",
-            "link", "loop", "mod", "move", "mut", "nil", "null", "outlet",
-            "pac", "reply", "return", "routes", "shared", "spawn", "spec",
-            "static", "super", "super2", "super3", "super4", "tag", "take", "task",
-            "to", "true", "try", "type", "union", "use", "var", "view",
-            "while", "yield",
+            "alias", "as", "await", "break", "catch", "const", "continue", "copy", "dep", "else",
+            "enum", "ext", "false", "fn", "for", "go", "has", "hold", "if", "impl", "in", "is",
+            "let", "link", "loop", "mod", "move", "mut", "nil", "null", "outlet", "pac", "reply",
+            "return", "routes", "shared", "spawn", "spec", "static", "super", "super2", "super3",
+            "super4", "tag", "take", "task", "to", "true", "try", "type", "union", "use", "var",
+            "view", "while", "yield",
         ]
     }
 
@@ -375,7 +373,7 @@ impl Token {
             "if" => Some(TokenKind::If),
             "else" => Some(TokenKind::Else),
             "for" => Some(TokenKind::For),
-            "loop" => Some(TokenKind::Loop), // Plan 200 Task 1.1
+            "loop" => Some(TokenKind::Loop),   // Plan 200 Task 1.1
             "while" => Some(TokenKind::While), // Plan 010 (MS3-A)
             "try" => Some(TokenKind::Try),     // Plan 010 (MS3-A)
             "catch" => Some(TokenKind::Catch), // Plan 010 (MS3-A)
@@ -399,7 +397,7 @@ impl Token {
             "has" => Some(TokenKind::Has),
             "spec" => Some(TokenKind::Spec),
             "use" => Some(TokenKind::Use),
-            "pac" => Some(TokenKind::Pac),   // Plan 131: package keyword
+            "pac" => Some(TokenKind::Pac), // Plan 131: package keyword
             "super" => Some(TokenKind::Super), // Plan 131: super keyword
             "super2" => Some(TokenKind::Super2),
             "super3" => Some(TokenKind::Super3),

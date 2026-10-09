@@ -45,7 +45,10 @@ pub enum ComponentResolution {
     /// 内置组件;携带 schema canonical tag
     Builtin { canonical: String },
     /// 本地/包组件;携带 widget 名与来源
-    Component { name: String, source: ComponentSource },
+    Component {
+        name: String,
+        source: ComponentSource,
+    },
     /// 无处可解析
     Unknown,
 }
@@ -148,11 +151,7 @@ impl ComponentRegistry {
             .canonicalize()
             .map_err(|e| format!("package dir `{}` not found: {}", dir.display(), e))?;
         if self.packages.iter().any(|p| p.dir == canonical) {
-            return Ok(self
-                .packages
-                .iter()
-                .find(|p| p.dir == canonical)
-                .unwrap());
+            return Ok(self.packages.iter().find(|p| p.dir == canonical).unwrap());
         }
 
         let manifest = Self::parse_manifest(&canonical)?;
@@ -190,7 +189,10 @@ impl ComponentRegistry {
                 if parse_warnings.is_empty() {
                     String::new()
                 } else {
-                    format!(" (all files failed to parse: {})", parse_warnings.join("; "))
+                    format!(
+                        " (all files failed to parse: {})",
+                        parse_warnings.join("; ")
+                    )
                 }
             ));
         }
@@ -218,9 +220,14 @@ impl ComponentRegistry {
     /// ②严格前缀兜底:widget 名以另一更长…更短 widget 名为真前缀
     ///   (Carousel ← CarouselContent),且短者是长子件名时才认定 ——
     ///   避免任意字符串前缀误聚。
-    fn derive_families(widgets: &HashMap<String, String>) -> std::collections::BTreeMap<String, Vec<String>> {
-        let mut families: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
-        let add = |families: &mut std::collections::BTreeMap<String, Vec<String>>, parent: &str, child: &str| {
+    fn derive_families(
+        widgets: &HashMap<String, String>,
+    ) -> std::collections::BTreeMap<String, Vec<String>> {
+        let mut families: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        let add = |families: &mut std::collections::BTreeMap<String, Vec<String>>,
+                   parent: &str,
+                   child: &str| {
             let entry = families.entry(parent.to_string()).or_default();
             if !entry.contains(&child.to_string()) {
                 entry.push(child.to_string());
@@ -230,8 +237,12 @@ impl ComponentRegistry {
         // ① schema sub_widgets 折叠匹配
         if let Some(schema) = crate::aura::default_schema_cached() {
             for (pf, parent) in widgets {
-                let Some((canon, _)) = schema.resolve_tag(parent) else { continue };
-                let Some(meta) = schema.meta.get(canon) else { continue };
+                let Some((canon, _)) = schema.resolve_tag(parent) else {
+                    continue;
+                };
+                let Some(meta) = schema.meta.get(canon) else {
+                    continue;
+                };
                 if meta.sub_widgets.is_empty() {
                     continue;
                 }
@@ -295,7 +306,9 @@ impl ComponentRegistry {
             if line.is_empty() || line.starts_with("//") || line.starts_with("#") {
                 continue;
             }
-            let Some((k, v)) = line.split_once(':') else { continue };
+            let Some((k, v)) = line.split_once(':') else {
+                continue;
+            };
             let v = v.trim().trim_matches('"').to_string();
             match k.trim() {
                 "name" => name = Some(v),
@@ -323,10 +336,12 @@ impl ComponentRegistry {
                     schema.meta.get(canonical).map(|m| m.tier)
                         != Some(crate::aura::schema::ElementTier::PackageOrigin)
                 };
-                schema.elements.keys().any(|t| fold(t) == fold_key && suppressing(t))
+                schema
+                    .elements
+                    .keys()
+                    .any(|t| fold(t) == fold_key && suppressing(t))
                     || schema.meta.iter().any(|(t, m)| {
-                        suppressing(t)
-                            && m.aliases.iter().any(|a| fold(a) == fold_key)
+                        suppressing(t) && m.aliases.iter().any(|a| fold(a) == fold_key)
                     })
             }
             None => false,

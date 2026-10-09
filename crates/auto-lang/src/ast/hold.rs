@@ -70,11 +70,7 @@ mod tests {
 
     #[test]
     fn test_hold_display() {
-        let hold = Hold::new(
-            Expr::Ident("x.y.z".into()),
-            "value".into(),
-            Body::new(),
-        );
+        let hold = Hold::new(Expr::Ident("x.y.z".into()), "value".into(), Body::new());
         let display = format!("{}", hold);
         assert!(display.contains("hold"));
         assert!(display.contains("x.y.z"));

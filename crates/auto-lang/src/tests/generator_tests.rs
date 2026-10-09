@@ -24,9 +24,15 @@ fn main() {
     print(sum)
 }
 "#;
-    let (result, stdout) = run_with_capture(code)
-        .unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
-    assert_eq!(stdout.trim(), "6", "counter sum: got stdout={:?} result={:?}", stdout, result);
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
+    assert_eq!(
+        stdout.trim(),
+        "6",
+        "counter sum: got stdout={:?} result={:?}",
+        stdout,
+        result
+    );
 }
 
 /// Each yielded value must appear exactly once when collected into a list.
@@ -46,10 +52,16 @@ fn main() {
     print(seen)
 }
 "#;
-    let (result, stdout) = run_with_capture(code)
-        .unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
     // Must be "10,20,30," — no duplicate 10, no skip.
-    assert_eq!(stdout.trim(), "10,20,30,", "no duplicates: got stdout={:?} result={:?}", stdout, result);
+    assert_eq!(
+        stdout.trim(),
+        "10,20,30,",
+        "no duplicates: got stdout={:?} result={:?}",
+        stdout,
+        result
+    );
 }
 
 /// String yields (not just int).
@@ -69,9 +81,15 @@ fn main() {
     print(acc)
 }
 "#;
-    let (result, stdout) = run_with_capture(code)
-        .unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
-    assert_eq!(stdout.trim(), "abc", "string yields: got stdout={:?} result={:?}", stdout, result);
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
+    assert_eq!(
+        stdout.trim(),
+        "abc",
+        "string yields: got stdout={:?} result={:?}",
+        stdout,
+        result
+    );
 }
 
 /// Plan 317 §11 Phase 7 (P3): infinite generator inside `for {}` must not hang.
@@ -105,11 +123,17 @@ fn main() {
     print(sum)
 }
 "#;
-    let (result, stdout) = run_with_capture(code)
-        .unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
     // i yields 0,1,2,3,...; sum accumulates 0,1,3,6; breaks when sum>=6 → "6".
     // Pre-fix: this hung forever (stack underflow across lazy resumptions).
-    assert_eq!(stdout.trim(), "6", "infinite generator break: got stdout={:?} result={:?}", stdout, result);
+    assert_eq!(
+        stdout.trim(),
+        "6",
+        "infinite generator break: got stdout={:?} result={:?}",
+        stdout,
+        result
+    );
 }
 
 /// Plan 317 §11 Phase 7 (P3) regression: infinite generator consumed with a
@@ -136,8 +160,14 @@ fn main() {
     print(total)
 }
 "#;
-    let (result, stdout) = run_with_capture(code)
-        .unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
+    let (result, stdout) =
+        run_with_capture(code).unwrap_or_else(|e| (format!("Error: {}", e), String::new()));
     // Three 1s → total 3.
-    assert_eq!(stdout.trim(), "3", "infinite generator take-3: got stdout={:?} result={:?}", stdout, result);
+    assert_eq!(
+        stdout.trim(),
+        "3",
+        "infinite generator take-3: got stdout={:?} result={:?}",
+        stdout,
+        result
+    );
 }

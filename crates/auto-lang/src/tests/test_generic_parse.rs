@@ -1,5 +1,5 @@
+use crate::error::{attach_source, AutoError};
 use crate::parse_preserve_error;
-use crate::error::{AutoError, attach_source};
 
 #[test]
 fn test_show_parse_error() {
@@ -24,7 +24,8 @@ fn main() {
         }
         Err(e) => {
             // Attach source to get detailed error messages
-            let error_with_source = attach_source(e, "test_generic.at".to_string(), code.to_string());
+            let error_with_source =
+                attach_source(e, "test_generic.at".to_string(), code.to_string());
 
             println!("\n=== Parse Error ===\n");
 

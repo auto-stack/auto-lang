@@ -150,7 +150,9 @@ impl TscnGenerator {
                     let p = self.res_path(path);
                     self.add_ext_resource("PackedScene".into(), p);
                 }
-                SceneNode::Node { props, children, .. } => {
+                SceneNode::Node {
+                    props, children, ..
+                } => {
                     self.collect_from_props(props);
                     self.collect_ext_from_nodes(children);
                 }
@@ -196,7 +198,8 @@ impl TscnGenerator {
             Expr::Call(call) => {
                 if let Expr::Ident(name) = call.name.as_ref() {
                     if name.as_str() == "load" {
-                        if let Some(crate::ast::Arg::Pos(Expr::Str(path))) = call.args.args.first() {
+                        if let Some(crate::ast::Arg::Pos(Expr::Str(path))) = call.args.args.first()
+                        {
                             let p = self.res_path(path);
                             let t = Self::infer_type_from_path(&p);
                             self.add_ext_resource(t, p);
@@ -556,7 +559,10 @@ mod tests {
             std::fs::write(&wrong_path, &generated)?;
             panic!(
                 "tscn mismatch for {}\n--- expected ---\n{}\n--- generated ---\n{}\n(wrote {})",
-                case, expected, generated, wrong_path.display()
+                case,
+                expected,
+                generated,
+                wrong_path.display()
             );
         }
         // Touch the sink import so it is not flagged unused across configurations.
@@ -573,7 +579,10 @@ mod tests {
             .stack_size(16 * 1024 * 1024)
             .spawn(move || test_a2tscn(&case).map_err(|e| e.to_string()))
             .expect("failed to spawn deep-stack test thread");
-        child.join().expect("deep-stack test thread panicked").unwrap();
+        child
+            .join()
+            .expect("deep-stack test thread panicked")
+            .unwrap();
     }
 
     #[test]

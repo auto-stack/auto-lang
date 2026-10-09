@@ -2,8 +2,8 @@
 //!
 //! Plan 102 Phase 5.2: Generate Tauri commands from API definitions
 
-use crate::api::{ApiEndpoint, ApiModule};
 use super::TargetGenerator;
+use crate::api::{ApiEndpoint, ApiModule};
 
 /// Tauri command generator
 pub struct TauriGenerator {
@@ -26,7 +26,6 @@ impl Default for TauriGenerator {
 }
 
 impl TauriGenerator {
-
     /// Convert Auto type to Rust type
     fn to_rust_type(&self, auto_type: &str) -> String {
         let trimmed = auto_type.trim();
@@ -107,7 +106,8 @@ impl TauriGenerator {
             == crate::api::contract::ResponseKind::Stream;
 
         // Build function signature
-        let mut params: Vec<String> = endpoint.params
+        let mut params: Vec<String> = endpoint
+            .params
             .iter()
             .map(|p| {
                 let rust_type = self.to_rust_type(&p.ty);
@@ -125,13 +125,14 @@ impl TauriGenerator {
             params.push("on_event: tauri::ipc::Channel".to_string());
         }
 
-        let call_args: Vec<String> = endpoint.params
-            .iter()
-            .map(|p| p.name.to_string())
-            .collect();
+        let call_args: Vec<String> = endpoint.params.iter().map(|p| p.name.to_string()).collect();
 
         let signature = if is_sse {
-            format!("pub async fn {}({}) {{", endpoint.fn_name, params.join(", "))
+            format!(
+                "pub async fn {}({}) {{",
+                endpoint.fn_name,
+                params.join(", ")
+            )
         } else {
             let return_type = self.to_rust_type(&endpoint.return_type);
             let return_sig = if return_type == "()" {
@@ -142,7 +143,12 @@ impl TauriGenerator {
             if return_sig.is_empty() {
                 format!("pub fn {}({}) {{", endpoint.fn_name, params.join(", "))
             } else {
-                format!("pub fn {}({}) {} {{", endpoint.fn_name, params.join(", "), return_sig)
+                format!(
+                    "pub fn {}({}) {} {{",
+                    endpoint.fn_name,
+                    params.join(", "),
+                    return_sig
+                )
             }
         };
         lines.push(signature);
@@ -153,7 +159,8 @@ impl TauriGenerator {
             .params
             .iter()
             .any(|p| crate::api::contract::is_upload_param(&p.ty))
-            || crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type) == crate::api::contract::ResponseKind::Upload;
+            || crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
+                == crate::api::contract::ResponseKind::Upload;
         if is_upload_endpoint {
             lines.clear();
             lines.push(format!(
@@ -176,7 +183,9 @@ impl TauriGenerator {
 
         // PLAN-729 T-05: 文件端点不经 Tauri IPC——描述符不是可序列化数据
         // （明确 Unsupported 诊断 + 改走 HTTP URL 指引，不 opaque 当成功数据）。
-        if crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type) == crate::api::contract::ResponseKind::File {
+        if crate::api::contract::ResponseKind::from_return_string(&endpoint.return_type)
+            == crate::api::contract::ResponseKind::File
+        {
             lines.clear();
             lines.push(format!(
                 "// PLAN-729: file endpoint `{}` — Tauri IPC is unsupported for file responses;",
@@ -193,23 +202,43 @@ impl TauriGenerator {
                 self.indent, endpoint.fn_name
             ));
             lines.push("}".to_string());
-            return lines.join("
-");
+            return lines.join(
+                "
+",
+            );
         }
 
         // Plan 329: SSE handler → for loop + channel.emit (streaming).
         // Non-SSE → call api::fn and return result.
         if is_sse {
             // SSE: iterate the generator stream and emit each item via Channel
-            lines.push(format!("{}for item in api::{}({}) {{", self.indent, endpoint.fn_name, call_args.join(", ")));
-            lines.push(format!("{}{}let _ = on_event.emit(serde_json::json!(item));", self.indent, self.indent));
+            lines.push(format!(
+                "{}for item in api::{}({}) {{",
+                self.indent,
+                endpoint.fn_name,
+                call_args.join(", ")
+            ));
+            lines.push(format!(
+                "{}{}let _ = on_event.emit(serde_json::json!(item));",
+                self.indent, self.indent
+            ));
             lines.push(format!("{}}}", self.indent));
         } else {
             let rt = endpoint.return_type.trim();
             if rt == "()" || rt == "void" {
-                lines.push(format!("{}api::{}({})", self.indent, endpoint.fn_name, call_args.join(", ")));
+                lines.push(format!(
+                    "{}api::{}({})",
+                    self.indent,
+                    endpoint.fn_name,
+                    call_args.join(", ")
+                ));
             } else {
-                lines.push(format!("{}api::{}({})", self.indent, endpoint.fn_name, call_args.join(", ")));
+                lines.push(format!(
+                    "{}api::{}({})",
+                    self.indent,
+                    endpoint.fn_name,
+                    call_args.join(", ")
+                ));
             }
         }
 
@@ -228,7 +257,10 @@ impl TauriGenerator {
         ];
 
         for endpoint in endpoints {
-            lines.push(format!("{}{}{},", self.indent, self.indent, endpoint.fn_name));
+            lines.push(format!(
+                "{}{}{},",
+                self.indent, self.indent, endpoint.fn_name
+            ));
         }
 
         lines.push(format!("{}])", self.indent));
@@ -311,11 +343,17 @@ impl TauriGenerator {
             for field in &api_type.fields {
                 let rust_type = self.to_rust_type(&field.ty);
                 let serde_skip = if field.optional {
-                    format!("#[serde(skip_serializing_if = \"Option::is_none\")]\n{}", self.indent)
+                    format!(
+                        "#[serde(skip_serializing_if = \"Option::is_none\")]\n{}",
+                        self.indent
+                    )
                 } else {
                     "".to_string()
                 };
-                lines.push(format!("{}{}pub {}: {},", self.indent, serde_skip, field.name, rust_type));
+                lines.push(format!(
+                    "{}{}pub {}: {},",
+                    self.indent, serde_skip, field.name, rust_type
+                ));
             }
 
             lines.push("}".to_string());
@@ -391,7 +429,10 @@ mod tests {
             cmd.contains("call the HTTP URL directly"),
             "指引文案: {cmd}"
         );
-        assert!(!cmd.contains("a2r_std::http::FileResponse"), "不得回 opaque 数据: {cmd}");
+        assert!(
+            !cmd.contains("a2r_std::http::FileResponse"),
+            "不得回 opaque 数据: {cmd}"
+        );
     }
 
     use super::*;
@@ -417,9 +458,7 @@ mod tests {
         let endpoint = ApiEndpoint {
             fn_name: "get_user".to_string(),
             attrs: ApiAttrs::new(),
-            params: vec![
-                ApiParam::new("id".to_string(), "int".to_string()),
-            ],
+            params: vec![ApiParam::new("id".to_string(), "int".to_string())],
             return_type: "User".to_string(),
             doc: Some("Get user by ID".to_string()),
             body: None,

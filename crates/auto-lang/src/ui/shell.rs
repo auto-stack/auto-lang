@@ -18,8 +18,7 @@ pub const SHELL_AT: &str = include_str!("../../assets/shell.at");
 
 /// 宿主显式 pack 目录（`DesktopOptions.shell_pack` 经 run_session 注入；
 /// 最特定来源，压过 env 与一切缺省探测）。
-static SHELL_PACK_OVERRIDE: std::sync::OnceLock<std::path::PathBuf> =
-    std::sync::OnceLock::new();
+static SHELL_PACK_OVERRIDE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
 
 /// 注入宿主显式 pack 目录（run_session 期；OnceLock 首值胜——重复注入
 /// 幂等防御，进程内以首个宿主声明为准）。
@@ -100,7 +99,11 @@ pub fn shell_source(name: &str) -> std::borrow::Cow<'static, str> {
             match std::fs::read_to_string(&path) {
                 Ok(src) => return Cow::Owned(src),
                 Err(err) => {
-                    crate::syslog!(crate::ui::syslog::SyslogLevel::Warn, "host", "[shell-pack] {name} read failed ({err}) — embedded fallback");
+                    crate::syslog!(
+                        crate::ui::syslog::SyslogLevel::Warn,
+                        "host",
+                        "[shell-pack] {name} read failed ({err}) — embedded fallback"
+                    );
                 }
             }
         } else {
@@ -244,7 +247,10 @@ mod pack_tests {
         for (name, src) in [
             ("shell", crate::ui::shell::SHELL_AT),
             ("switcher", crate::ui::shell::SWITCHER_AT),
-            ("notification_center", crate::ui::shell::NOTIFICATION_CENTER_AT),
+            (
+                "notification_center",
+                crate::ui::shell::NOTIFICATION_CENTER_AT,
+            ),
             ("desktop", crate::ui::shell::DESKTOP_AT),
             // PLAN-027 T-09'：dashboard.at 补入（PLAN-024 新增第五件，
             // 历史遗漏——本测试此前只扫四件）。

@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 use crate::ui::mpv::contract::VideoContractEvent;
 use crate::ui::mpv::widget::{drain_events, VideoWidgetState};
-use crate::ui::view::{MediaEventPayload, MediaEventHandler};
+use crate::ui::view::{MediaEventHandler, MediaEventPayload};
 
 /// 各 `on*` 上行 handler 的集合（与 [`crate::ui::view::View::Video`] 的
 /// 上行字段一一对应；`None` = 作者未声明，事件被丢弃）。
@@ -210,7 +210,10 @@ where
         viewport: &Rectangle,
     ) {
         // 每次重绘抽干一次事件队列（见模块文档「为什么是 wrapper」）。
-        if matches!(event, Event::Window(iced::window::Event::RedrawRequested(_))) {
+        if matches!(
+            event,
+            Event::Window(iced::window::Event::RedrawRequested(_))
+        ) {
             self.pump(tree, shell);
         }
 
@@ -325,7 +328,11 @@ mod tests {
         );
         assert_eq!(
             out.into_inner(),
-            vec!["time:1.5".to_string(), "ended".to_string(), "time:1.75".to_string()]
+            vec![
+                "time:1.5".to_string(),
+                "ended".to_string(),
+                "time:1.75".to_string()
+            ]
         );
     }
 

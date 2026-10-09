@@ -35,12 +35,7 @@ impl SourceLocation {
 impl std::fmt::Display for SourceLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.line_start == self.line_end {
-            write!(
-                f,
-                "{}:{}",
-                self.file.display(),
-                self.line_start
-            )
+            write!(f, "{}:{}", self.file.display(), self.line_start)
         } else {
             write!(
                 f,
@@ -163,8 +158,14 @@ mod tests {
     #[test]
     fn clear_empties_map() {
         let mut sm = SourceMap::new();
-        sm.add_mapping(VNodeId::new(1), SourceLocation::new(PathBuf::from("a.at"), 1, 1));
-        sm.add_mapping(VNodeId::new(2), SourceLocation::new(PathBuf::from("b.at"), 2, 2));
+        sm.add_mapping(
+            VNodeId::new(1),
+            SourceLocation::new(PathBuf::from("a.at"), 1, 1),
+        );
+        sm.add_mapping(
+            VNodeId::new(2),
+            SourceLocation::new(PathBuf::from("b.at"), 2, 2),
+        );
 
         sm.clear();
         assert!(sm.is_empty());
@@ -195,7 +196,11 @@ mod tests {
             let id = VNodeId::new(i);
             sm.add_mapping(
                 id,
-                SourceLocation::new(PathBuf::from("test.at"), i as usize * 10, i as usize * 10 + 5),
+                SourceLocation::new(
+                    PathBuf::from("test.at"),
+                    i as usize * 10,
+                    i as usize * 10 + 5,
+                ),
             );
         }
         assert_eq!(sm.len(), 5);

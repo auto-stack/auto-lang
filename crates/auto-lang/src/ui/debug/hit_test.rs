@@ -7,8 +7,8 @@
 
 use std::collections::HashMap;
 
-use crate::ui::vnode::VNodeId;
 use super::Rect;
+use crate::ui::vnode::VNodeId;
 
 /// Find the deepest (smallest-area) node whose bounds contain `(px, py)`.
 ///

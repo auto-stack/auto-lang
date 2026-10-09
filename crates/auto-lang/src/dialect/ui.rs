@@ -59,11 +59,7 @@ impl Dialect for UiDialect {
         Ok(Some(stmt))
     }
 
-    fn try_parse_token_stmt(
-        &self,
-        p: &mut Parser,
-        kind: TokenKind,
-    ) -> AutoResult<Option<Stmt>> {
+    fn try_parse_token_stmt(&self, p: &mut Parser, kind: TokenKind) -> AutoResult<Option<Stmt>> {
         match kind {
             // view 是 TokenKind::View。Plan 367 P2-3: peek for 'fn' → view fragment.
             // We need to check if next token after 'view' is 'fn'.

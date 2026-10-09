@@ -291,7 +291,10 @@ impl AutovmReplSession {
         }
 
         let assembly_plan = crate::stdlib_assembly::plan::AssemblyPlan::from_resolved(
-            &use_stmt.module, &root_file, Default::default())?;
+            &use_stmt.module,
+            &root_file,
+            Default::default(),
+        )?;
         let module_source = assembly_plan.source.clone();
 
         // PLAN-738 T-05（§5.5）：persistent 活 VM 的 stdlib ABI 热换守卫。
@@ -320,9 +323,16 @@ impl AutovmReplSession {
         // Parse the combined module source
         let mut parser = Parser::from(&module_source);
         let ast = parser.parse().map_err(|e| assembly_plan.map_error(e))?;
-        if !self.module_fingerprints.iter().any(|(module, _, _)| module == &use_stmt.module) {
-            self.module_fingerprints.push((use_stmt.module.clone(), assembly_plan.fingerprint,
-                stdlib_path.to_string_lossy().to_string()));
+        if !self
+            .module_fingerprints
+            .iter()
+            .any(|(module, _, _)| module == &use_stmt.module)
+        {
+            self.module_fingerprints.push((
+                use_stmt.module.clone(),
+                assembly_plan.fingerprint,
+                stdlib_path.to_string_lossy().to_string(),
+            ));
             self.assembly_selections.push(assembly_plan.selection());
         }
 
@@ -480,9 +490,15 @@ impl AutovmReplSession {
     fn run_inner(&mut self, code: &str) -> AutoResult<String> {
         let stdlib = crate::stdlib_assembly::loader::repo_stdlib_root()?;
         for (module, fingerprint, root) in &self.module_fingerprints {
-            let relative = module.strip_prefix("auto.").unwrap_or(module).replace('.', "/");
+            let relative = module
+                .strip_prefix("auto.")
+                .unwrap_or(module)
+                .replace('.', "/");
             let plan = crate::stdlib_assembly::plan::AssemblyPlan::from_resolved(
-                module, &stdlib.join(relative).with_extension("at"), Default::default())?;
+                module,
+                &stdlib.join(relative).with_extension("at"),
+                Default::default(),
+            )?;
             if plan.fingerprint != *fingerprint || stdlib.to_string_lossy().as_ref() != root {
                 return Err(AutoError::Msg(format!("session_target_mismatch: loaded stdlib {module} changed; rebuild the persistent session")));
             }
@@ -851,15 +867,28 @@ impl AutovmReplSession {
 
         let entry = new_code_start;
         let proofs = match crate::stdlib_assembly::reference::verify_linked_native_closure(
-            &flash, entry, &self.vm.native_interface, &codegen.strings,
+            &flash,
+            entry,
+            &self.vm.native_interface,
+            &codegen.strings,
         ) {
             Ok(proofs) => proofs,
-            Err(error) => { self.codegen = Some(codegen); return Err(AutoError::Msg(error)); }
+            Err(error) => {
+                self.codegen = Some(codegen);
+                return Err(AutoError::Msg(error));
+            }
         };
-        self.assembly_manifest = Some(crate::stdlib_assembly::manifest::AssemblyManifest::freeze(
-            Default::default(), "vm-persistent", std::path::Path::new("."), &stdlib,
-            &self.assembly_selections, proofs,
-        ).with_consumer_input("project/snippet", code));
+        self.assembly_manifest = Some(
+            crate::stdlib_assembly::manifest::AssemblyManifest::freeze(
+                Default::default(),
+                "vm-persistent",
+                std::path::Path::new("."),
+                &stdlib,
+                &self.assembly_selections,
+                proofs,
+            )
+            .with_consumer_input("project/snippet", code),
+        );
 
         // Update VM's flash and strings
         self.vm.flash = Arc::new(flash);

@@ -35,7 +35,9 @@ impl std::fmt::Display for DeclError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DeclError::UnknownToken(t) => write!(f, "未知主题 token `{t}`（封闭词表 31 键外）"),
-            DeclError::UnknownExtends(n) => write!(f, "extends 目标 `{n}` 不是内置主题也不是已声明主题"),
+            DeclError::UnknownExtends(n) => {
+                write!(f, "extends 目标 `{n}` 不是内置主题也不是已声明主题")
+            }
             DeclError::ChainTooDeep => write!(f, "extends 链深度超过 4"),
             DeclError::ExtendsCycle(n) => write!(f, "extends 成环：`{n}`"),
             DeclError::InvalidValue(v) => write!(f, "色值 `{v}` 既非 #rrggbb 也非 h s% l% 形态"),
@@ -94,7 +96,11 @@ pub struct ComposedTheme {
 
 impl ComposedTheme {
     fn palette(&self, dark: bool) -> &[(TokenName, String)] {
-        if dark { &self.dark } else { &self.light }
+        if dark {
+            &self.dark
+        } else {
+            &self.light
+        }
     }
 
     /// VM 面：按 mode 求值（HSL 串解析）。
@@ -219,7 +225,9 @@ pub fn compose(
             }
         }
     }
-    let nearest_mode = chain.first().and_then(|d| d.mode.clone())
+    let nearest_mode = chain
+        .first()
+        .and_then(|d| d.mode.clone())
         .or_else(|| chain.iter().skip(1).find_map(|d| d.mode.clone()));
     let (default_dark, default_auto) = match nearest_mode.as_deref() {
         Some("light") => (Some(false), false),
@@ -229,7 +237,10 @@ pub fn compose(
     };
 
     Ok(ComposedTheme {
-        name: decl.name.clone().unwrap_or_else(|| root_builtin.name.to_string()),
+        name: decl
+            .name
+            .clone()
+            .unwrap_or_else(|| root_builtin.name.to_string()),
         default_dark,
         default_auto,
         light,
@@ -237,7 +248,10 @@ pub fn compose(
     })
 }
 
-fn apply_colors(pal: &mut Vec<(TokenName, String)>, colors: &[(String, String)]) -> Result<(), DeclError> {
+fn apply_colors(
+    pal: &mut Vec<(TokenName, String)>,
+    colors: &[(String, String)],
+) -> Result<(), DeclError> {
     for (k, v) in colors {
         let token = TokenName::from_css_var(k).ok_or_else(|| DeclError::UnknownToken(k.clone()))?;
         let norm = normalize_value(v)?;
@@ -259,7 +273,10 @@ mod tests {
             name: Some("app".into()),
             extends: extends.map(|s| s.to_string()),
             mode: None,
-            colors: colors.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            colors: colors
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
         }
     }
 
@@ -267,13 +284,19 @@ mod tests {
     /// 继承基座；覆盖落双 mode。
     #[test]
     fn compose_overrides_and_normalizes() {
-        let d = decl(Some("stella"), &[("primary", "#8b5cf6"), ("border", "40 24% 85%")]);
+        let d = decl(
+            Some("stella"),
+            &[("primary", "#8b5cf6"), ("border", "40 24% 85%")],
+        );
         let t = compose(&d, &BTreeMap::new()).unwrap();
         assert_eq!(t.name, "app");
         // T-06：JS 对字面量形态（与 CSS 面同值源）
         let js = t.render_pairs_js();
         assert!(js.contains("light: {") && js.contains("dark: {"), "{js}");
-        assert!(js.contains(&format!("'primary': '{}'", normalize_value("#8b5cf6").unwrap())));
+        assert!(js.contains(&format!(
+            "'primary': '{}'",
+            normalize_value("#8b5cf6").unwrap()
+        )));
         let css_l = t.render_core(false);
         let css_d = t.render_core(true);
         let want_primary = format!("--primary: {};", normalize_value("#8b5cf6").unwrap());
@@ -281,7 +304,13 @@ mod tests {
         assert!(css_d.contains(&want_primary), "覆盖落双 mode");
         // 未覆盖键继承 stella 基座 css 值
         let st = registry::builtin("stella").unwrap();
-        let bg = st.light.iter().find(|(t, _)| *t == TokenName::Background).unwrap().1.css_str();
+        let bg = st
+            .light
+            .iter()
+            .find(|(t, _)| *t == TokenName::Background)
+            .unwrap()
+            .1
+            .css_str();
         assert!(css_l.contains(&format!("--background: {bg};")));
         // VM 面可求值（hex 规范化后 HSL 解析）
         assert!(t.resolve_rgb(TokenName::Primary, false).is_some());
@@ -292,13 +321,25 @@ mod tests {
     /// 负用例：未知 token / 未知 extends / 非法值 / 非法 mode。
     #[test]
     fn negative_cases() {
-        let e = compose(&decl(Some("stella"), &[("nope", "#000000")]), &BTreeMap::new());
+        let e = compose(
+            &decl(Some("stella"), &[("nope", "#000000")]),
+            &BTreeMap::new(),
+        );
         assert_eq!(e.unwrap_err(), DeclError::UnknownToken("nope".into()));
         let e = compose(&decl(Some("nonsense"), &[]), &BTreeMap::new());
         assert_eq!(e.unwrap_err(), DeclError::UnknownExtends("nonsense".into()));
-        let e = compose(&decl(Some("stella"), &[("primary", "blue")]), &BTreeMap::new());
+        let e = compose(
+            &decl(Some("stella"), &[("primary", "blue")]),
+            &BTreeMap::new(),
+        );
         assert_eq!(e.unwrap_err(), DeclError::InvalidValue("blue".into()));
-        let e = compose(&ThemeDecl { mode: Some("blue".into()), ..decl(None, &[]) }, &BTreeMap::new());
+        let e = compose(
+            &ThemeDecl {
+                mode: Some("blue".into()),
+                ..decl(None, &[])
+            },
+            &BTreeMap::new(),
+        );
         assert_eq!(e.unwrap_err(), DeclError::InvalidMode("blue".into()));
         // 无 extends：缺省 stella 基座，合法
         assert!(compose(&decl(None, &[]), &BTreeMap::new()).is_ok());
@@ -339,13 +380,20 @@ mod tests {
     fn depth_limit_and_cycle() {
         let mut declared = BTreeMap::new();
         for i in 0..6usize {
-            let ext = if i == 0 { Some("stella".into()) } else { Some(format!("l{}", i - 1)) };
-            declared.insert(format!("l{i}"), ThemeDecl {
-                name: Some(format!("l{i}")),
-                extends: ext,
-                mode: None,
-                colors: vec![],
-            });
+            let ext = if i == 0 {
+                Some("stella".into())
+            } else {
+                Some(format!("l{}", i - 1))
+            };
+            declared.insert(
+                format!("l{i}"),
+                ThemeDecl {
+                    name: Some(format!("l{i}")),
+                    extends: ext,
+                    mode: None,
+                    colors: vec![],
+                },
+            );
         }
         assert_eq!(
             compose(declared.get("l5").unwrap(), &declared).unwrap_err(),
@@ -353,8 +401,24 @@ mod tests {
         );
         // 成环：a → b → a
         let mut cyc = BTreeMap::new();
-        cyc.insert("a".to_string(), ThemeDecl { name: Some("a".into()), extends: Some("b".into()), mode: None, colors: vec![] });
-        cyc.insert("b".to_string(), ThemeDecl { name: Some("b".into()), extends: Some("a".into()), mode: None, colors: vec![] });
+        cyc.insert(
+            "a".to_string(),
+            ThemeDecl {
+                name: Some("a".into()),
+                extends: Some("b".into()),
+                mode: None,
+                colors: vec![],
+            },
+        );
+        cyc.insert(
+            "b".to_string(),
+            ThemeDecl {
+                name: Some("b".into()),
+                extends: Some("a".into()),
+                mode: None,
+                colors: vec![],
+            },
+        );
         assert!(matches!(
             compose(cyc.get("a").unwrap(), &cyc),
             Err(DeclError::ExtendsCycle(_))

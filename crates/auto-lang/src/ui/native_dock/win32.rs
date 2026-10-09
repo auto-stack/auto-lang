@@ -15,7 +15,7 @@ use std::sync::mpsc;
 use std::sync::RwLock;
 use windows::core::HRESULT;
 use windows::Win32::Foundation::{
-    ERROR_ACCESS_DENIED, BOOL, HMODULE, HWND, LPARAM, POINT, RECT, WPARAM,
+    BOOL, ERROR_ACCESS_DENIED, HMODULE, HWND, LPARAM, POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Dwm::{
     DwmGetWindowAttribute, DwmSetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS,
@@ -28,16 +28,15 @@ use windows::Win32::UI::HiDpi::{
     GetDpiForWindow, SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    DispatchMessageW, EnumWindows, EVENT_OBJECT_DESTROY, EVENT_OBJECT_LOCATIONCHANGE,
-    EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZESTART,
-    EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART, GetCursorPos, GetMessageW, GetWindowLongPtrW, GetWindowRect,
-    GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, IsZoomed, MSG,
-    GetForegroundWindow, PostMessageW, PostThreadMessageW, SetForegroundWindow,
-    SetWindowLongPtrW, SetWindowPos,
-    ShowWindow, SW_MAXIMIZE, TranslateMessage, GWL_STYLE, SW_HIDE, SW_MINIMIZE, SW_RESTORE,
-    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_SHOW, WM_CLOSE,
-    WM_QUIT,
-    WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS, WS_CAPTION, WS_THICKFRAME,
+    DispatchMessageW, EnumWindows, GetCursorPos, GetForegroundWindow, GetMessageW,
+    GetWindowLongPtrW, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow,
+    IsWindowVisible, IsZoomed, PostMessageW, PostThreadMessageW, SetForegroundWindow,
+    SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage, EVENT_OBJECT_DESTROY,
+    EVENT_OBJECT_LOCATIONCHANGE, EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZEEND,
+    EVENT_SYSTEM_MINIMIZESTART, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZESTART, GWL_STYLE,
+    MSG, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SW_HIDE,
+    SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOW, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
+    WM_CLOSE, WM_QUIT, WS_CAPTION, WS_THICKFRAME,
 };
 
 /// Win32 dock 操作错误（UIPI 拒绝单独分类，供 shell 层提示）。
@@ -492,7 +491,10 @@ pub fn client_origin(target: NativeHwnd) -> Option<(i32, i32)> {
         let hwnd = hwnd_of(target);
         let mut rc = RECT::default();
         windows::Win32::UI::WindowsAndMessaging::GetClientRect(hwnd, &mut rc).ok()?;
-        let mut pt = POINT { x: rc.left, y: rc.top };
+        let mut pt = POINT {
+            x: rc.left,
+            y: rc.top,
+        };
         windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut pt)
             .as_bool()
             .then_some((pt.x, pt.y))
@@ -505,14 +507,10 @@ pub fn client_origin(target: NativeHwnd) -> Option<(i32, i32)> {
 /// 语义，无同线程限制）。`holes` 为空 → 复位全窗。
 /// 成功后 Region 归系统所有（不 DeleteObject）；失败自清理。
 /// 注：`SetWindowRgn(hwnd, None, false)` 不触发重绘（relayout 高频重申无闪）。
-pub fn apply_hole_regions(
-    target: NativeHwnd,
-    win: Rect,
-    holes: &[Rect],
-) -> Result<(), DockError> {
+pub fn apply_hole_regions(target: NativeHwnd, win: Rect, holes: &[Rect]) -> Result<(), DockError> {
     use windows::Win32::Graphics::Gdi::{
-        CombineRgn, CreateRectRgn, DeleteObject, SetWindowRgn as GdiSetWindowRgn, HGDIOBJ,
-        HRGN, RGN_DIFF,
+        CombineRgn, CreateRectRgn, DeleteObject, SetWindowRgn as GdiSetWindowRgn, HGDIOBJ, HRGN,
+        RGN_DIFF,
     };
     if !alive(target) {
         return Err(DockError::StaleHwnd);
@@ -699,7 +697,7 @@ pub fn window_icon_rgba(target: NativeHwnd) -> Option<(Vec<u8>, u32, u32)> {
             GetClassLongPtrW(hwnd, GCLP_HICON) as isize,
         ];
         candidates.sort_unstable_by(|a, b| b.cmp(a)); // 真柄（大值）优先
-        // 屏幕 DC：GetDIBits 只借 DC 做颜色空间转换，不需要选中位图。
+                                                      // 屏幕 DC：GetDIBits 只借 DC 做颜色空间转换，不需要选中位图。
         let hdc = GetDC(None);
         let mut out = None;
         for c in candidates {
@@ -734,7 +732,13 @@ unsafe fn dib_icon_to_rgba(
     if gi.is_err() {
         // 共享图标 cookie（LoadIconW 标准图标的小值句柄——真窗口亦可能
         // 返回）GetIconInfo 不可解：CopyImage 克隆真句柄重试。
-        let Ok(copy) = CopyImage(windows::Win32::Foundation::HANDLE(icon.0), IMAGE_ICON, 0, 0, IMAGE_FLAGS(0)) else {
+        let Ok(copy) = CopyImage(
+            windows::Win32::Foundation::HANDLE(icon.0),
+            IMAGE_ICON,
+            0,
+            0,
+            IMAGE_FLAGS(0),
+        ) else {
             return None;
         };
         let copy_icon = HICON(copy.0);
@@ -743,7 +747,9 @@ unsafe fn dib_icon_to_rgba(
     }
     if gi.is_err() {
         if let Some(c) = copied {
-            unsafe { let _ = DestroyIcon(c); }
+            unsafe {
+                let _ = DestroyIcon(c);
+            }
         }
         return None;
     }
@@ -751,7 +757,9 @@ unsafe fn dib_icon_to_rgba(
     struct BmpGuard(windows::Win32::Graphics::Gdi::HBITMAP);
     impl Drop for BmpGuard {
         fn drop(&mut self) {
-            unsafe { let _ = DeleteObject(self.0); }
+            unsafe {
+                let _ = DeleteObject(self.0);
+            }
         }
     }
     let color = BmpGuard(info.hbmColor);
@@ -846,8 +854,10 @@ pub struct NativeSlotEventHook {
 impl Drop for NativeSlotEventHook {
     fn drop(&mut self) {
         use std::sync::atomic::Ordering;
-        let thread_id =
-            HOOK_SHARED.read().ok().and_then(|g| g.as_ref().map(|s| s.thread_id));
+        let thread_id = HOOK_SHARED
+            .read()
+            .ok()
+            .and_then(|g| g.as_ref().map(|s| s.thread_id));
         if let Some(tid) = thread_id {
             unsafe {
                 let _ = PostThreadMessageW(tid, WM_QUIT, WPARAM(0), LPARAM(0));
@@ -951,7 +961,12 @@ pub fn spawn_event_hook(
             });
         }
     }
-    Ok((NativeSlotEventHook { thread: Some(thread) }, rx))
+    Ok((
+        NativeSlotEventHook {
+            thread: Some(thread),
+        },
+        rx,
+    ))
 }
 
 unsafe extern "system" fn winevent_proc(
@@ -997,8 +1012,8 @@ pub mod drag_sim {
     use super::{hwnd_of, NativeHwnd};
     use windows::Win32::Foundation::POINT;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN,
-        MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE, MOUSE_EVENT_FLAGS, MOUSEINPUT,
+        SendInput, INPUT, INPUT_0, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+        MOUSEEVENTF_MOVE, MOUSEINPUT, MOUSE_EVENT_FLAGS,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         GetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN,
@@ -1030,7 +1045,10 @@ pub mod drag_sim {
     fn normalize(x: i32, y: i32) -> (i32, i32) {
         let sw = unsafe { GetSystemMetrics(SM_CXSCREEN) }.max(1);
         let sh = unsafe { GetSystemMetrics(SM_CYSCREEN) }.max(1);
-        ((x.clamp(0, sw - 1) * 65535) / (sw - 1), (y.clamp(0, sh - 1) * 65535) / (sh - 1))
+        (
+            (x.clamp(0, sw - 1) * 65535) / (sw - 1),
+            (y.clamp(0, sh - 1) * 65535) / (sh - 1),
+        )
     }
 
     /// 绝对移动光标到主屏 `(x, y)`。
@@ -1070,7 +1088,9 @@ pub mod drag_sim {
     /// TextInputHost；测试支持语境，生产 z 序不变量不适用）。不动几何
     /// 不抢激活。
     pub fn raise_top(hwnd: NativeHwnd) -> bool {
-        use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        };
         unsafe {
             SetWindowPos(
                 hwnd_of(hwnd),
@@ -1087,7 +1107,9 @@ pub mod drag_sim {
 
     /// 撤销 [`raise_top`] 的 topmost 位（清理用）。
     pub fn unraise(hwnd: NativeHwnd) -> bool {
-        use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_NOTOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_NOTOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        };
         unsafe {
             SetWindowPos(
                 hwnd_of(hwnd),
@@ -1118,10 +1140,9 @@ pub mod drag_sim {
         let mut fg_pid = 0u32;
         let fg_tid = unsafe { GetWindowThreadProcessId(fg, Some(&mut fg_pid)) };
         let my_tid = unsafe { GetCurrentThreadId() };
-        let attached = fg_tid != 0 && fg_tid != my_tid && unsafe {
-            AttachThreadInput(my_tid, fg_tid, true)
-        }
-        .as_bool();
+        let attached = fg_tid != 0
+            && fg_tid != my_tid
+            && unsafe { AttachThreadInput(my_tid, fg_tid, true) }.as_bool();
         unsafe {
             let _ = SetForegroundWindow(target);
         }
@@ -1142,9 +1163,7 @@ pub mod drag_sim {
     pub fn syscommand_drag_to(hwnd: NativeHwnd, to: (i32, i32), steps: usize) -> bool {
         use std::time::Duration;
         use windows::Win32::Foundation::{LPARAM, WPARAM};
-        use windows::Win32::UI::WindowsAndMessaging::{
-            PostMessageW, SC_MOVE, WM_SYSCOMMAND,
-        };
+        use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, SC_MOVE, WM_SYSCOMMAND};
         let _ = raise_top(hwnd);
         force_foreground(hwnd);
         std::thread::sleep(Duration::from_millis(80));
@@ -1308,11 +1327,10 @@ pub mod test_support {
         SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, LoadIconW,
-        PeekMessageW, RegisterClassW, SetWindowPos, TranslateMessage, HWND_TOPMOST,
-        IDI_APPLICATION, WINDOW_EX_STYLE, MSG,
-        PM_REMOVE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WNDCLASSW,
-        WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, LoadIconW, PeekMessageW,
+        RegisterClassW, SetWindowPos, TranslateMessage, HWND_TOPMOST, IDI_APPLICATION, MSG,
+        PM_REMOVE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WINDOW_EX_STYLE,
+        WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
     };
 
     fn class_name() -> &'static [u16] {
@@ -1354,7 +1372,8 @@ pub mod test_support {
             };
             let atom = RegisterClassW(&wc);
             assert_ne!(
-                atom, 0,
+                atom,
+                0,
                 "RegisterClassW failed: {:?}",
                 windows::Win32::Foundation::GetLastError()
             );
@@ -1430,10 +1449,9 @@ mod native_dock_geometry {
     };
     use windows::Win32::UI::WindowsAndMessaging::HMENU;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindow,
-        PeekMessageW, RegisterClassW, TranslateMessage, CW_USEDEFAULT, GW_HWNDNEXT, GW_HWNDPREV,
-        MSG,
-        PM_REMOVE, WINDOW_EX_STYLE, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetWindow, PeekMessageW,
+        RegisterClassW, TranslateMessage, CW_USEDEFAULT, GW_HWNDNEXT, GW_HWNDPREV, MSG, PM_REMOVE,
+        WINDOW_EX_STYLE, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
     };
 
     /// 本进程 scratch 窗口（DefWindowProc；Drop 时 DestroyWindow）。
@@ -1483,7 +1501,8 @@ mod native_dock_geometry {
             };
             let atom = RegisterClassW(&wc);
             assert_ne!(
-                atom, 0,
+                atom,
+                0,
                 "RegisterClassW failed: {:?}",
                 windows::Win32::Foundation::GetLastError()
             );
@@ -1557,8 +1576,7 @@ mod native_dock_geometry {
         let s = scratch("minsize");
         let h = NativeHwnd(hwnd_value(s.0));
         // 请求极小尺寸 → min-track 生效 → 读回大于请求 → 产生估计
-        let tiny =
-            probe_bounds(h, Rect::new(50, 50, 40, 30)).expect("probe tiny");
+        let tiny = probe_bounds(h, Rect::new(50, 50, 40, 30)).expect("probe tiny");
         assert!(tiny.w > 40 || tiny.h > 30, "expected clamp, got {tiny:?}");
         assert_eq!(
             crate::ui::native_dock::observe_min_size_estimate(Size::new(40, 30), tiny.size()),
@@ -1566,8 +1584,7 @@ mod native_dock_geometry {
         );
         // 正常尺寸：读回（DWM 可视边界，比窗口矩形小 ~10px 边框内缩）不大于请求
         // → 无新估计
-        let ok = probe_bounds(h, Rect::new(50, 50, 500, 400))
-            .expect("probe ok");
+        let ok = probe_bounds(h, Rect::new(50, 50, 500, 400)).expect("probe ok");
         assert_eq!(
             crate::ui::native_dock::observe_min_size_estimate(Size::new(500, 400), ok.size()),
             None
@@ -1667,12 +1684,20 @@ mod native_dock_geometry {
         let bottom_h = NativeHwnd(hwnd_value(bottom.0));
         let top_h = NativeHwnd(hwnd_value(top.0));
         let hit = |x: i32, y: i32| unsafe {
-            hwnd_value(windows::Win32::UI::WindowsAndMessaging::WindowFromPoint(POINT { x, y }))
+            hwnd_value(windows::Win32::UI::WindowsAndMessaging::WindowFromPoint(
+                POINT { x, y },
+            ))
         };
         // top 完整覆盖 bottom 并压其上（真洞 z 序）；候选摆位到无遮挡点。
         let mut brect = Rect::new(400, 300, 640, 440);
         let mut settled = false;
-        for cand in [(400, 300), (900, 200), (1500, 500), (200, 900), (1400, 1000)] {
+        for cand in [
+            (400, 300),
+            (900, 200),
+            (1500, 500),
+            (200, 900),
+            (1400, 1000),
+        ] {
             brect = Rect::new(cand.0, cand.1, 640, 440);
             set_bounds(bottom_h, brect).expect("place bottom");
             set_bounds(top_h, brect).expect("cover bottom");
@@ -1807,7 +1832,10 @@ mod native_dock_geometry {
             Some(std::process::id()),
             "find 结果 pid 读回核对"
         );
-        assert_eq!(pid_of(NativeHwnd(hwnd_value(s.0))), Some(std::process::id()));
+        assert_eq!(
+            pid_of(NativeHwnd(hwnd_value(s.0))),
+            Some(std::process::id())
+        );
     }
 
     #[test]
@@ -1867,7 +1895,7 @@ fn load_blue_test_icon() -> windows::Win32::UI::WindowsAndMessaging::HICON {
         ico.extend_from_slice(&[0xF6, 0x82, 0x3B, 0xFF]); // BGRA blue-500
     }
     ico.extend_from_slice(&vec![0u8; mask as usize]); // AND 全 0 = 不透明
-    // 唯一文件名（并行测试各写各的——共享路径会互锁 create）。
+                                                      // 唯一文件名（并行测试各写各的——共享路径会互锁 create）。
     static SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
@@ -1896,8 +1924,8 @@ fn load_blue_test_icon() -> windows::Win32::UI::WindowsAndMessaging::HICON {
 
 #[cfg(all(test, windows, feature = "test-native-dock"))]
 mod native_dock_events {
-    use super::*;
     use super::native_dock_geometry::{pump_one, scratch};
+    use super::*;
     use std::time::Duration;
 
     /// 事件测试间互斥：全局钩子槽位同进程仅一个实例，并行调度下自旋等位。
@@ -2030,9 +2058,7 @@ mod native_dock_events {
         // 拖拽序列在后台线程注入；窗口线程（本线程）持续泵消息——
         // caption 模态 move 循环在本线程的 DispatchMessage 内运行。
         let hd = h;
-        let drag = std::thread::spawn(move || {
-            drag_sim::caption_drag_to(hd, (1600, 1200), 20)
-        });
+        let drag = std::thread::spawn(move || drag_sim::caption_drag_to(hd, (1600, 1200), 20));
         while !drag.is_finished() {
             pump_one(s.0);
             std::thread::sleep(std::time::Duration::from_millis(5));
@@ -2040,7 +2066,10 @@ mod native_dock_events {
         assert!(drag.join().expect("drag thread"), "SendInput 链成功");
         let after = get_bounds_window(h).expect("after");
         let moved = (after.x - before.x).abs() > 60 || (after.y - before.y).abs() > 60;
-        assert!(moved, "scratch 窗应被真实拖动（before {before:?} after {after:?}）");
+        assert!(
+            moved,
+            "scratch 窗应被真实拖动（before {before:?} after {after:?}）"
+        );
         assert!(
             wait_for(&rx, h, NativeSlotEventKind::MoveSizeStart),
             "3s 内未收到 MOVESIZESTART（scratch 窗）"
@@ -2060,7 +2089,8 @@ mod native_dock_events {
         // 像素内容证据：blue-500（RGB 0x3B82F6）特征——GDI DDB 位图
         // 不保真 alpha（真 .ico 才有），故验色不验 alpha。
         assert!(
-            rgba.chunks_exact(4).any(|px| px[0] == 0x3B && px[1] == 0x82 && px[2] == 0xF6),
+            rgba.chunks_exact(4)
+                .any(|px| px[0] == 0x3B && px[1] == 0x82 && px[2] == 0xF6),
             "提取像素含 blue-500 特征（内容非空壳）"
         );
     }

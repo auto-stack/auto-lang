@@ -106,14 +106,23 @@ pub fn check_stmt(ctx: &mut InferenceContext, stmt: &Stmt) -> Result<Type, AutoE
         Stmt::Comment(_) | Stmt::EmptyLine(_) => Ok(Type::Void),
 
         // Use, Node, OnEvents, Alias, Is, Dep - no type checking needed
-        Stmt::Use(_) | Stmt::Node(_) | Stmt::OnEvents(_) | Stmt::Alias(_) | Stmt::Is(_) | Stmt::Dep(_) => {
-            Ok(Type::Void)
-        }
+        Stmt::Use(_)
+        | Stmt::Node(_)
+        | Stmt::OnEvents(_)
+        | Stmt::Alias(_)
+        | Stmt::Is(_)
+        | Stmt::Dep(_) => Ok(Type::Void),
 
         // Plan 096: UI scenario statements - no type checking needed
-        Stmt::WidgetDecl(_) | Stmt::StoreDecl(_) | Stmt::ViewFragmentDecl(_) | Stmt::StyleRecipeDecl(_) | Stmt::Try(_) | Stmt::MsgDecl(_) | Stmt::ModelBlock(_) | Stmt::ViewBlock(_) | Stmt::ActionsDecl(_) => {
-            Ok(Type::Void)
-        }
+        Stmt::WidgetDecl(_)
+        | Stmt::StoreDecl(_)
+        | Stmt::ViewFragmentDecl(_)
+        | Stmt::StyleRecipeDecl(_)
+        | Stmt::Try(_)
+        | Stmt::MsgDecl(_)
+        | Stmt::ModelBlock(_)
+        | Stmt::ViewBlock(_)
+        | Stmt::ActionsDecl(_) => Ok(Type::Void),
 
         // Plan 306: Godot scene declaration - declarative, no type checking
         Stmt::SceneDecl(_) => Ok(Type::Void),
@@ -128,7 +137,11 @@ pub fn check_stmt(ctx: &mut InferenceContext, stmt: &Stmt) -> Result<Type, AutoE
         }
 
         // Plan 095: Compile-time execution - no runtime type checking needed
-        Stmt::HashIf(_) | Stmt::HashFor(_) | Stmt::HashIs(_) | Stmt::HashBrace(_) | Stmt::MacroCall(_) => Ok(Type::Void),
+        Stmt::HashIf(_)
+        | Stmt::HashFor(_)
+        | Stmt::HashIs(_)
+        | Stmt::HashBrace(_)
+        | Stmt::MacroCall(_) => Ok(Type::Void),
     }
 }
 
@@ -540,7 +553,10 @@ mod tests {
 
         let result = check_store(&mut ctx, &store);
         assert!(result.is_ok());
-        assert!(matches!(ctx.lookup_type(&Name::from("pi")), Some(Type::Float)));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("pi")),
+            Some(Type::Float)
+        ));
     }
 
     #[test]
@@ -557,7 +573,10 @@ mod tests {
 
         let result = check_store(&mut ctx, &store);
         assert!(result.is_ok());
-        assert!(matches!(ctx.lookup_type(&Name::from("e")), Some(Type::Double)));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("e")),
+            Some(Type::Double)
+        ));
     }
 
     #[test]
@@ -568,7 +587,7 @@ mod tests {
             attrs: vec![],
             is_pub: false,
             name: Name::from("greeting"),
-            ty: Type::StrFixed(5),  // Match actual string length
+            ty: Type::StrFixed(5), // Match actual string length
             expr: Expr::Str("hello".into()),
         };
 
@@ -595,7 +614,10 @@ mod tests {
 
         let result = check_store(&mut ctx, &store);
         assert!(result.is_ok());
-        assert!(matches!(ctx.lookup_type(&Name::from("letter")), Some(Type::Char)));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("letter")),
+            Some(Type::Char)
+        ));
     }
 
     #[test]
@@ -612,7 +634,10 @@ mod tests {
 
         let result = check_store(&mut ctx, &store);
         assert!(result.is_ok());
-        assert!(matches!(ctx.lookup_type(&Name::from("flag")), Some(Type::Bool)));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("flag")),
+            Some(Type::Bool)
+        ));
     }
 
     #[test]
@@ -629,7 +654,10 @@ mod tests {
 
         let result = check_store(&mut ctx, &store);
         assert!(result.is_ok());
-        assert!(matches!(ctx.lookup_type(&Name::from("count")), Some(Type::Uint)));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("count")),
+            Some(Type::Uint)
+        ));
     }
 
     #[test]
@@ -646,7 +674,10 @@ mod tests {
 
         let result = check_store(&mut ctx, &store);
         assert!(result.is_ok());
-        assert!(matches!(ctx.lookup_type(&Name::from("byte_val")), Some(Type::Byte)));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("byte_val")),
+            Some(Type::Byte)
+        ));
     }
 
     #[test]
@@ -663,7 +694,10 @@ mod tests {
 
         let result = check_store(&mut ctx, &store);
         assert!(result.is_ok());
-        assert!(matches!(ctx.lookup_type(&Name::from("dynamic")), Some(Type::Int)));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("dynamic")),
+            Some(Type::Int)
+        ));
     }
 
     #[test]
@@ -680,7 +714,10 @@ mod tests {
 
         let result = check_store(&mut ctx, &store);
         assert!(result.is_ok());
-        assert!(matches!(ctx.lookup_type(&Name::from("c_var")), Some(Type::Int)));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("c_var")),
+            Some(Type::Int)
+        ));
     }
 
     #[test]
@@ -692,12 +729,7 @@ mod tests {
             is_pub: false,
             name: Name::from("matrix"),
             ty: Type::Unknown,
-            expr: Expr::Array(vec![
-                Expr::Int(1),
-                Expr::Int(2),
-                Expr::Int(3),
-                Expr::Int(4),
-            ]),
+            expr: Expr::Array(vec![Expr::Int(1), Expr::Int(2), Expr::Int(3), Expr::Int(4)]),
         };
 
         let result = check_store(&mut ctx, &store);
@@ -815,7 +847,10 @@ mod tests {
         ctx.bind_var(Name::from("x"), Type::Bool);
 
         // Should now find Bool type
-        assert!(matches!(ctx.lookup_type(&Name::from("x")), Some(Type::Bool)));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("x")),
+            Some(Type::Bool)
+        ));
 
         // Pop second scope
         ctx.pop_scope();
@@ -841,9 +876,18 @@ mod tests {
         ctx.bind_var(Name::from("inner"), Type::Bool);
 
         // All variables should be accessible
-        assert!(matches!(ctx.lookup_type(&Name::from("outer")), Some(Type::Int)));
-        assert!(matches!(ctx.lookup_type(&Name::from("middle")), Some(Type::Float)));
-        assert!(matches!(ctx.lookup_type(&Name::from("inner")), Some(Type::Bool)));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("outer")),
+            Some(Type::Int)
+        ));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("middle")),
+            Some(Type::Float)
+        ));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("inner")),
+            Some(Type::Bool)
+        ));
 
         // Pop inner scope
         ctx.pop_scope();
@@ -852,8 +896,14 @@ mod tests {
         assert!(ctx.lookup_type(&Name::from("inner")).is_none());
 
         // Middle and outer still accessible
-        assert!(matches!(ctx.lookup_type(&Name::from("middle")), Some(Type::Float)));
-        assert!(matches!(ctx.lookup_type(&Name::from("outer")), Some(Type::Int)));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("middle")),
+            Some(Type::Float)
+        ));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("outer")),
+            Some(Type::Int)
+        ));
     }
 
     #[test]
@@ -870,7 +920,10 @@ mod tests {
 
         let result = check_store(&mut ctx, &store);
         assert!(result.is_ok());
-        assert!(matches!(ctx.lookup_type(&Name::from("nothing")), Some(Type::Unknown)));
+        assert!(matches!(
+            ctx.lookup_type(&Name::from("nothing")),
+            Some(Type::Unknown)
+        ));
     }
 
     #[test]
@@ -883,7 +936,7 @@ mod tests {
             is_pub: false,
             name: Name::from("coerced"),
             ty: Type::Uint,
-            expr: Expr::Int(42),  // int expr, uint type
+            expr: Expr::Int(42), // int expr, uint type
         };
 
         let result = check_store(&mut ctx, &store);

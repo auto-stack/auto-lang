@@ -3,19 +3,19 @@ use crate::AutoResult;
 use auto_val::AutoStr;
 use std::io::{self, Write};
 
+pub mod auto_s2s; // Plan 555 T07: s2s 改写器（脚本糖 → 正常模式桥）
 pub mod c;
-pub mod rust;
-pub mod python;
+pub mod emit; // Plan 560 T02: AST → Auto 源发射器（s2s 产物面）
+pub mod escape;
 pub mod gdscript;
 pub mod javascript;
-pub mod typescript;
-pub mod r2a;
-pub mod tscn;
-pub mod escape;
-pub mod auto_s2s; // Plan 555 T07: s2s 改写器（脚本糖 → 正常模式桥）
-pub mod emit; // Plan 560 T02: AST → Auto 源发射器（s2s 产物面）
 pub mod py_known; // Plan 560 T05: 静态 py-known 分析（规则/窥孔共用）
-pub mod s2s_rules; // Plan 560 T05+: s2s lowering 规则批
+pub mod python;
+pub mod r2a;
+pub mod rust;
+pub mod s2s_rules;
+pub mod tscn;
+pub mod typescript; // Plan 560 T05+: s2s lowering 规则批
 
 /// A single entry in the source map, mapping a source line to an output line.
 /// Both line numbers are 1-based.
@@ -207,12 +207,16 @@ impl MultiSink {
     }
 
     pub fn add(&mut self, name: &str) -> &mut Sink {
-        self.files.push((name.to_string(), Sink::new(AutoStr::from(name))));
+        self.files
+            .push((name.to_string(), Sink::new(AutoStr::from(name))));
         &mut self.files.last_mut().unwrap().1
     }
 
     pub fn get_mut(&mut self, name: &str) -> Option<&mut Sink> {
-        self.files.iter_mut().find(|(n, _)| n == name).map(|(_, s)| s)
+        self.files
+            .iter_mut()
+            .find(|(n, _)| n == name)
+            .map(|(_, s)| s)
     }
 
     pub fn get(&self, name: &str) -> Option<&Sink> {

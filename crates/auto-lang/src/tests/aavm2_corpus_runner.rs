@@ -49,7 +49,9 @@ pub fn run_corpus_once_compiled(
         gate,
         std::process::id()
     ));
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..");
     let lib_code = crate::aavm2_lib_source(&root)?;
     let program = format!(
         "{}\nfn main() {{\n    print({}(File.read_text(\"{}\")))\n}}\n",
@@ -63,8 +65,7 @@ pub fn run_corpus_once_compiled(
     let ran = std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
         .spawn(move || -> AutoResult<Vec<String>> {
-            let (vm, stdout_buf, entry, _result_type) =
-                crate::create_vm_from_source(&program)?;
+            let (vm, stdout_buf, entry, _result_type) = crate::create_vm_from_source(&program)?;
             let rt = crate::get_global_runtime();
             let mut outs = Vec::with_capacity(cases.len());
             for case in &cases {
@@ -81,16 +82,19 @@ pub fn run_corpus_once_compiled(
             Ok(outs)
         })
         .expect("spawn corpus runner thread");
-    let result = ran
-        .join()
-        .map_err(|_| crate::error::AutoError::Msg(format!("corpus runner thread panicked (gate={gate})")))?;
+    let result = ran.join().map_err(|_| {
+        crate::error::AutoError::Msg(format!("corpus runner thread panicked (gate={gate})"))
+    })?;
     result
 }
 
 /// L1 回归（测试设计节）：同一 once-compiled 批内多语料重跑输出正确
 /// （缓存 VM 重入无状态串台）+ 两次独立批跑输出一致（缓存正确性）。
 #[test]
-#[cfg_attr(windows, ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量")]
+#[cfg_attr(
+    windows,
+    ignore = "avm+aavm/avm+aa2r 双重解释器路径关闭(572 待澄清②裁定 2026-09-06):run_autovm_capture 硬编码 4MB 执行线程被 516KB lib 解释栈需求越过(探针 4MB 爆/5MB 过,与用例规模无关;T6 已修栈,路径维持关闭);重型对拍走⑤腿/at_mode/gen2(a2r 转译+编译+运行);Linux/CI 保留全量"
+)]
 fn test_aavm2_corpus_runner_rerun_consistency() {
     if !crate::tests::heavy_gate::heavy_gate("test_aavm2_corpus_runner_rerun_consistency") {
         return;
@@ -108,8 +112,8 @@ fn test_aavm2_corpus_runner_rerun_consistency() {
     })
     .collect();
 
-    let outs = run_corpus_once_compiled("runner_reg", "parse_dump", &cases)
-        .expect("runner batch 1");
+    let outs =
+        run_corpus_once_compiled("runner_reg", "parse_dump", &cases).expect("runner batch 1");
     // 逐语料：重跑输出与 Rust 参考侧逐字一致（缓存 VM 重入无串台）
     for (case, stdout) in cases.iter().zip(&outs) {
         let mut parser = crate::parser::Parser::from(&case.code);
@@ -125,7 +129,7 @@ fn test_aavm2_corpus_runner_rerun_consistency() {
         );
     }
     // 两次独立批跑输出一致
-    let outs2 = run_corpus_once_compiled("runner_reg", "parse_dump", &cases)
-        .expect("runner batch 2");
+    let outs2 =
+        run_corpus_once_compiled("runner_reg", "parse_dump", &cases).expect("runner batch 2");
     assert_eq!(outs, outs2, "two runner batches diverged");
 }

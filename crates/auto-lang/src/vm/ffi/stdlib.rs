@@ -5,11 +5,11 @@
 //!
 //! These functions use the VMConvertible trait for automatic type conversion.
 
-use std::any::Any;
 use crate::vm::engine::{AutoVM, VMError};
-use crate::vm::task::AutoTask;
 use crate::vm::ffi::convert::VMConvertible;
 use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+use crate::vm::task::AutoTask;
+use std::any::Any;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener as StdTcpListener, TcpStream as StdTcpStream};
@@ -31,9 +31,7 @@ macro_rules! vm_debug {
 #[cfg(all(test, feature = "ui-iced"))]
 mod image_pipeline_vm_http_tests {
     use super::*;
-    use crate::ui::image_pipeline::{
-        MediaAssetKey, MediaAssetState, MediaMetadata, RenditionSpec,
-    };
+    use crate::ui::image_pipeline::{MediaAssetKey, MediaAssetState, MediaMetadata, RenditionSpec};
     use std::sync::Arc;
 
     #[test]
@@ -53,10 +51,18 @@ mod image_pipeline_vm_http_tests {
         let response = media_response_for_vm_request("GET", &path, None).unwrap();
         assert_eq!(response.status, 503);
 
-        registry.transition(ticket.id, MediaAssetState::Reading).unwrap();
-        registry.transition(ticket.id, MediaAssetState::Decoding).unwrap();
-        registry.transition(ticket.id, MediaAssetState::Transforming).unwrap();
-        registry.publish_ready(ticket.id, ticket.revision, Arc::<[u8]>::from([7, 255])).unwrap();
+        registry
+            .transition(ticket.id, MediaAssetState::Reading)
+            .unwrap();
+        registry
+            .transition(ticket.id, MediaAssetState::Decoding)
+            .unwrap();
+        registry
+            .transition(ticket.id, MediaAssetState::Transforming)
+            .unwrap();
+        registry
+            .publish_ready(ticket.id, ticket.revision, Arc::<[u8]>::from([7, 255]))
+            .unwrap();
         let mut wire = Vec::new();
         assert!(write_media_response(&mut wire, "GET", &path, None));
         assert!(String::from_utf8_lossy(&wire).starts_with("HTTP/1.1 200 OK"));
@@ -66,7 +72,9 @@ mod image_pipeline_vm_http_tests {
     #[test]
     fn image_natives_register_opaque_ticket_operations() {
         assert_eq!(IMAGE_NATIVE_NAMES.len(), 17);
-        assert!(IMAGE_NATIVE_NAMES.iter().all(|name| name.starts_with("auto.image.")));
+        assert!(IMAGE_NATIVE_NAMES
+            .iter()
+            .all(|name| name.starts_with("auto.image.")));
     }
 }
 
@@ -276,8 +284,8 @@ pub const NATIVE_TASK_SYSTEM_START: u16 = 2305;
 pub const NATIVE_TASK_SYSTEM_RUN: u16 = 2306; // Plan 124: Sync bridge for async code
 pub const NATIVE_TASK_SYSTEM_STOP: u16 = 2307; // Plan 127: Stop the task system scheduler
 pub const NATIVE_TASK_SEND_AWAIT: u16 = 2308; // Plan 124 Phase 2.2: send().await backpressure
-pub const NATIVE_TASK_ASK: u16 = 2309;        // Plan 124 Phase 2.3: ask/reply RPC
-pub const NATIVE_CTX_REPLY: u16 = 2310;       // Plan 127: ctx.reply() for message handlers
+pub const NATIVE_TASK_ASK: u16 = 2309; // Plan 124 Phase 2.3: ask/reply RPC
+pub const NATIVE_CTX_REPLY: u16 = 2310; // Plan 127: ctx.reply() for message handlers
 pub const NATIVE_TASK_SINGLETON_SEND: u16 = 2311; // Plan 127: Task.send for singleton tasks
 
 // Path functions: 1400-1499
@@ -355,8 +363,12 @@ struct ReadTextRangeOut {
 }
 
 fn read_text_range_json(text: String, total: i64, next_offset: Option<u64>) -> String {
-    serde_json::to_string(&ReadTextRangeOut { text, total, next_offset })
-        .expect("read_text_range envelope serialization cannot fail")
+    serde_json::to_string(&ReadTextRangeOut {
+        text,
+        total,
+        next_offset,
+    })
+    .expect("read_text_range envelope serialization cannot fail")
 }
 
 /// Read at most `limit` bytes of UTF-8 text from `path` starting at byte
@@ -428,12 +440,21 @@ pub fn shim_file_read_text_range(path: String, offset: i32, limit: i32) -> Strin
         Err(_) => return err(),
     };
     let end_abs = (e + win_start as usize) as u64;
-    let next_offset = if end_abs >= total { None } else { Some(end_abs) };
+    let next_offset = if end_abs >= total {
+        None
+    } else {
+        Some(end_abs)
+    };
     read_text_range_json(chunk, total as i64, next_offset)
 }
 
 /// Write text content to a file
-#[auto_macros::rust_fn("File.write_text", "auto.file.write_text", "auto.fs.write_text", "auto.fs.write")]
+#[auto_macros::rust_fn(
+    "File.write_text",
+    "auto.file.write_text",
+    "auto.fs.write_text",
+    "auto.fs.write"
+)]
 pub fn shim_file_write_text(path: String, content: String) -> i32 {
     let _ = fs::write(&path, &content);
     0
@@ -442,7 +463,11 @@ pub fn shim_file_write_text(path: String, content: String) -> i32 {
 /// Check if a file exists
 #[auto_macros::rust_fn("File.exists", "auto.file.exists", "auto.fs.exists")]
 pub fn shim_file_exists(path: String) -> i32 {
-    if fs::metadata(&path).is_ok() { 1 } else { 0 }
+    if fs::metadata(&path).is_ok() {
+        1
+    } else {
+        0
+    }
 }
 
 /// Delete a file
@@ -535,7 +560,10 @@ pub fn shim_file_walk(path: String) -> Result<String, String> {
     if root.is_file() {
         files.push(path.clone());
     } else {
-        for entry in walkdir::WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
+        for entry in walkdir::WalkDir::new(root)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             if entry.file_type().is_file() {
                 if let Some(p) = entry.path().to_str() {
                     files.push(p.to_string());
@@ -585,7 +613,11 @@ pub fn shim_fs_is_binary(path: String) -> i32 {
         Err(_) => return 0,
     };
     let check_len = bytes.len().min(8192);
-    if bytes[..check_len].contains(&0) { 1 } else { 0 }
+    if bytes[..check_len].contains(&0) {
+        1
+    } else {
+        0
+    }
 }
 
 // ============================================================================
@@ -683,9 +715,10 @@ fn storage_file() -> Option<std::path::PathBuf> {
 /// the on-disk snapshot.
 fn storage_load() {
     let Some(path) = storage_file() else { return };
-    let Ok(raw) = std::fs::read_to_string(&path) else { return };
-    let Ok(parsed) = serde_json::from_str::<std::collections::HashMap<String, String>>(&raw)
-    else {
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(parsed) = serde_json::from_str::<std::collections::HashMap<String, String>>(&raw) else {
         return;
     };
     let mut map = STORAGE_MAP.lock().unwrap();
@@ -712,34 +745,30 @@ fn storage_persist() {
         }
         d.iter().cloned().collect()
     };
-    let wrote = crate::state_file::with_lock(
-        &path,
-        crate::state_file::LOCK_TIMEOUT,
-        || {
-            let mut disk = match storage_read_disk(&path) {
-                Ok(m) => m,
-                Err(raw) => {
-                    let _ = std::fs::write(path.with_extension("json.corrupt.bak"), &raw);
-                    std::collections::HashMap::new()
+    let wrote = crate::state_file::with_lock(&path, crate::state_file::LOCK_TIMEOUT, || {
+        let mut disk = match storage_read_disk(&path) {
+            Ok(m) => m,
+            Err(raw) => {
+                let _ = std::fs::write(path.with_extension("json.corrupt.bak"), &raw);
+                std::collections::HashMap::new()
+            }
+        };
+        let map = STORAGE_MAP.lock().unwrap();
+        for k in &dirty {
+            match map.get(k) {
+                Some(v) => {
+                    disk.insert(k.clone(), v.clone());
                 }
-            };
-            let map = STORAGE_MAP.lock().unwrap();
-            for k in &dirty {
-                match map.get(k) {
-                    Some(v) => {
-                        disk.insert(k.clone(), v.clone());
-                    }
-                    None => {
-                        disk.remove(k);
-                    }
+                None => {
+                    disk.remove(k);
                 }
             }
-            match serde_json::to_string_pretty(&disk) {
-                Ok(json) => crate::state_file::atomic_write(&path, json.as_bytes()).is_ok(),
-                Err(_) => false,
-            }
-        },
-    )
+        }
+        match serde_json::to_string_pretty(&disk) {
+            Ok(json) => crate::state_file::atomic_write(&path, json.as_bytes()).is_ok(),
+            Err(_) => false,
+        }
+    })
     .into_inner();
     if wrote {
         // 只清除本次已落盘的脏键（并发线程新标的键保留待下轮）
@@ -770,7 +799,12 @@ fn storage_mark_dirty(key: &str) {
 #[auto_macros::rust_fn("Storage.get")]
 pub fn shim_storage_get(key: String) -> String {
     storage_load();
-    STORAGE_MAP.lock().unwrap().get(&key).cloned().unwrap_or_default()
+    STORAGE_MAP
+        .lock()
+        .unwrap()
+        .get(&key)
+        .cloned()
+        .unwrap_or_default()
 }
 
 /// storage.set(key, value) → persists (file-backed; see Plan 438 M2 note).
@@ -1267,7 +1301,9 @@ pub fn shim_io_lines(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         done: false,
     };
     let iter_id = {
-        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let next_id = vm
+            .iterator_id_gen
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         vm.iterators.insert(
             next_id,
             crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
@@ -1335,7 +1371,9 @@ pub fn shim_io_chunks(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
         done: false,
     };
     let iter_id = {
-        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let next_id = vm
+            .iterator_id_gen
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         vm.iterators.insert(
             next_id,
             crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
@@ -1402,7 +1440,9 @@ pub fn shim_fs_entries(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
                         let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
                         let json = format!(
                             r#"{{"name":"{}","is_dir":{},"size":{}}}"#,
-                            name.replace('"', "\\\""), is_dir, size
+                            name.replace('"', "\\\""),
+                            is_dir,
+                            size
                         );
                         let _ = tx.blocking_send(AsyncStreamEvent::Data(json));
                     }
@@ -1421,10 +1461,18 @@ pub fn shim_fs_entries(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
         map.insert(stream_id, handle);
     }
 
-    let async_iter = crate::vm::engine::AsyncStreamIterator { stream_id, done: false };
+    let async_iter = crate::vm::engine::AsyncStreamIterator {
+        stream_id,
+        done: false,
+    };
     let iter_id = {
-        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        vm.iterators.insert(next_id, crate::vm::engine::Iterator::AsyncHttpStream(async_iter));
+        let next_id = vm
+            .iterator_id_gen
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        vm.iterators.insert(
+            next_id,
+            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
+        );
         next_id
     };
     task.ram.push_i32(iter_id as i32);
@@ -1477,8 +1525,13 @@ pub fn shim_bufwriter_write_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     use std::io::Write;
     if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
-        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
-            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<std::io::BufWriter<std::fs::File>>>() {
+        if let Some(rso) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
+            if let Some(mutex) =
+                rso.downcast_ref::<std::sync::Mutex<std::io::BufWriter<std::fs::File>>>()
+            {
                 if let Ok(mut w) = mutex.lock() {
                     let _ = writeln!(w, "{}", text);
                 }
@@ -1495,8 +1548,13 @@ pub fn shim_bufwriter_flush(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     use std::io::Write;
     if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
-        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
-            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<std::io::BufWriter<std::fs::File>>>() {
+        if let Some(rso) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
+            if let Some(mutex) =
+                rso.downcast_ref::<std::sync::Mutex<std::io::BufWriter<std::fs::File>>>()
+            {
                 if let Ok(mut w) = mutex.lock() {
                     let _ = w.flush();
                 }
@@ -1514,18 +1572,36 @@ pub fn shim_bufreader_read_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     use std::io::BufRead;
     let line = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
-        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
-            if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<std::io::BufReader<std::fs::File>>>() {
+        if let Some(rso) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
+            if let Some(mutex) =
+                rso.downcast_ref::<std::sync::Mutex<std::io::BufReader<std::fs::File>>>()
+            {
                 if let Ok(mut r) = mutex.lock() {
                     let mut s = String::new();
                     let _ = r.read_line(&mut s);
                     // Trim trailing newline.
-                    if s.ends_with('\n') { s.pop(); if s.ends_with('\r') { s.pop(); } }
+                    if s.ends_with('\n') {
+                        s.pop();
+                        if s.ends_with('\r') {
+                            s.pop();
+                        }
+                    }
                     s
-                } else { String::new() }
-            } else { String::new() }
-        } else { String::new() }
-    } else { String::new() };
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
 
     let idx = vm.add_string(line.into_bytes());
     vm.rc_push_str_idx(task, idx as usize);
@@ -1537,12 +1613,14 @@ pub fn shim_bufreader_read_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 pub fn shim_io_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let file = std::fs::OpenOptions::new().read(true).write(true).create(true).open(&path)
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(&path)
         .map_err(|e| VMError::RuntimeError(format!("Failed to open {}: {}", path, e)))?;
-    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
-        "File",
-        std::sync::Mutex::new(file),
-    );
+    let obj =
+        crate::vm::ffi::rust_stdlib::RustStdlibObject::new("File", std::sync::Mutex::new(file));
     let handle = vm.insert_heap_object(obj) as u32;
     vm.rc_push(task, auto_val::encode_object(handle));
     Ok(())
@@ -1556,14 +1634,25 @@ pub fn shim_file_seek(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use std::io::{Seek, SeekFrom};
     let pos = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
-        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<std::fs::File>>() {
                 if let Ok(mut f) = mutex.lock() {
                     f.seek(SeekFrom::Start(offset as u64)).unwrap_or(0) as i64
-                } else { 0 }
-            } else { 0 }
-        } else { 0 }
-    } else { 0 };
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
     task.ram.push_i32(pos as i32);
     Ok(())
 }
@@ -1576,16 +1665,27 @@ pub fn shim_file_read(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     use std::io::Read;
     let data = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
-        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<std::fs::File>>() {
                 if let Ok(mut f) = mutex.lock() {
                     let mut buf = vec![0u8; count.max(0) as usize];
                     let n = f.read(&mut buf).unwrap_or(0);
                     String::from_utf8_lossy(&buf[..n]).to_string()
-                } else { String::new() }
-            } else { String::new() }
-        } else { String::new() }
-    } else { String::new() };
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
     let idx = vm.add_string(data.into_bytes());
     vm.rc_push_str_idx(task, idx as usize);
     Ok(())
@@ -1598,14 +1698,25 @@ pub fn shim_file_position(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     use std::io::Seek;
     let pos = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
-        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<std::fs::File>>() {
                 if let Ok(mut f) = mutex.lock() {
                     f.stream_position().unwrap_or(0) as i64
-                } else { 0 }
-            } else { 0 }
-        } else { 0 }
-    } else { 0 };
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
     task.ram.push_i32(pos as i32);
     Ok(())
 }
@@ -1615,10 +1726,8 @@ pub fn shim_file_position(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 pub fn shim_path_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
-        "Path",
-        std::sync::Mutex::new(path),
-    );
+    let obj =
+        crate::vm::ffi::rust_stdlib::RustStdlibObject::new("Path", std::sync::Mutex::new(path));
     let handle = vm.insert_heap_object(obj) as u32;
     vm.rc_push(task, auto_val::encode_object(handle));
     Ok(())
@@ -1632,17 +1741,30 @@ pub fn shim_path_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle: i32 = crate::vm::native::pop_arg_i32(task);
     let new_path = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
-        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<String>>() {
                 if let Ok(p) = mutex.lock() {
-                    std::path::Path::new(&*p).join(&other).to_string_lossy().to_string()
-                } else { other.clone() }
-            } else { other.clone() }
-        } else { other.clone() }
-    } else { other };
-    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
-        "Path", std::sync::Mutex::new(new_path),
-    );
+                    std::path::Path::new(&*p)
+                        .join(&other)
+                        .to_string_lossy()
+                        .to_string()
+                } else {
+                    other.clone()
+                }
+            } else {
+                other.clone()
+            }
+        } else {
+            other.clone()
+        }
+    } else {
+        other
+    };
+    let obj =
+        crate::vm::ffi::rust_stdlib::RustStdlibObject::new("Path", std::sync::Mutex::new(new_path));
     let new_handle = vm.insert_heap_object(obj) as u32;
     vm.rc_push(task, auto_val::encode_object(new_handle));
     Ok(())
@@ -1653,14 +1775,25 @@ pub fn shim_path_exists(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let handle: i32 = crate::vm::native::pop_arg_i32(task);
     let exists = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
-        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<String>>() {
                 if let Ok(p) = mutex.lock() {
                     std::path::Path::new(&*p).exists()
-                } else { false }
-            } else { false }
-        } else { false }
-    } else { false };
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
     task.ram.push_nv(auto_val::encode_bool(exists));
     Ok(())
 }
@@ -1670,12 +1803,25 @@ pub fn shim_path_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     let handle: i32 = crate::vm::native::pop_arg_i32(task);
     let path_str = if let Some(obj) = vm.get_heap_object(handle as u64) {
         let guard = obj.read().unwrap();
-        if let Some(rso) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<String>>() {
-                if let Ok(p) = mutex.lock() { p.clone() } else { String::new() }
-            } else { String::new() }
-        } else { String::new() }
-    } else { String::new() };
+                if let Ok(p) = mutex.lock() {
+                    p.clone()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
     let idx = vm.add_string(path_str.into_bytes());
     vm.rc_push_str_idx(task, idx as usize);
     Ok(())
@@ -1724,10 +1870,18 @@ pub fn shim_io_scanner(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
         map.insert(stream_id, handle);
     }
 
-    let async_iter = crate::vm::engine::AsyncStreamIterator { stream_id, done: false };
+    let async_iter = crate::vm::engine::AsyncStreamIterator {
+        stream_id,
+        done: false,
+    };
     let iter_id = {
-        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        vm.iterators.insert(next_id, crate::vm::engine::Iterator::AsyncHttpStream(async_iter));
+        let next_id = vm
+            .iterator_id_gen
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        vm.iterators.insert(
+            next_id,
+            crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
+        );
         next_id
     };
     task.ram.push_i32(iter_id as i32);
@@ -1752,10 +1906,7 @@ pub(crate) enum AsyncResult {
     },
     /// Auth-bearing HTTP response (former ASYNC_HTTP_RESULTS_AUTH).
     /// status is i32 to match LAST_HTTP_STATUS.
-    Auth {
-        status: i32,
-        body: String,
-    },
+    Auth { status: i32, body: String },
 }
 
 /// `io.read_text_async(path: String) -> String`
@@ -1943,7 +2094,9 @@ pub fn shim_future_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
                     // PLAN-705 T-02: 完成走统一入口（含完成通知）。
                     crate::vm::ffi::async_http::complete_external_future(
                         &combo_arc,
-                        Ok(auto_val::Value::Str(format!("[{}]", parts.join(", ")).into())),
+                        Ok(auto_val::Value::Str(
+                            format!("[{}]", parts.join(", ")).into(),
+                        )),
                     );
                     break;
                 }
@@ -2020,10 +2173,7 @@ pub fn shim_process_spawn(args: Vec<String>) -> Result<i32, String> {
 ///
 /// This is a manual shim (not `#[rust_fn]`) because it returns a complex JSON value
 /// that doesn't map cleanly to a single primitive type.
-pub fn shim_process_spawn_with_output(
-    task: &mut AutoTask,
-    vm: &AutoVM,
-) -> Result<(), VMError> {
+pub fn shim_process_spawn_with_output(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop args as JSON array string: ["cmd", "arg1", "arg2"]
     let args_json: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
@@ -2043,7 +2193,9 @@ pub fn shim_process_spawn_with_output(
     let output = std::process::Command::new(cmd)
         .args(&cmd_args)
         .output()
-        .map_err(|e| VMError::RuntimeError(format!("Process.spawn_with_output failed: {} - {}", cmd, e)))?;
+        .map_err(|e| {
+            VMError::RuntimeError(format!("Process.spawn_with_output failed: {} - {}", cmd, e))
+        })?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -2051,7 +2203,11 @@ pub fn shim_process_spawn_with_output(
 
     // Truncate stdout at 64KB to avoid excessive memory use
     let stdout_truncated = if stdout.len() > 65536 {
-        format!("{}...(truncated, {} bytes total)", &stdout[..65536], stdout.len())
+        format!(
+            "{}...(truncated, {} bytes total)",
+            &stdout[..65536],
+            stdout.len()
+        )
     } else {
         stdout
     };
@@ -2065,7 +2221,9 @@ pub fn shim_process_spawn_with_output(
     let result_str = serde_json::to_string(&result_json)
         .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
 
-    result_str.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    result_str
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
@@ -2092,7 +2250,11 @@ pub fn shim_sys_exec(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let exit_code = output.status.code().unwrap_or(-1);
 
     let stdout_truncated = if stdout.len() > 65536 {
-        format!("{}...(truncated, {} bytes total)", &stdout[..65536], stdout.len())
+        format!(
+            "{}...(truncated, {} bytes total)",
+            &stdout[..65536],
+            stdout.len()
+        )
     } else {
         stdout
     };
@@ -2106,7 +2268,9 @@ pub fn shim_sys_exec(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let result_str = serde_json::to_string(&result_json)
         .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
 
-    result_str.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    result_str
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let _ = timeout_ms;
     Ok(())
 }
@@ -2216,7 +2380,7 @@ pub fn shim_str_is_digit(s: String) -> bool {
 #[auto_macros::rust_fn("Str.char_at")]
 pub fn shim_str_char_at(s: String, index: i32) -> i32 {
     if index < 0 || index as usize >= s.len() {
-        return 0
+        return 0;
     }
     match s.get(index as usize..).and_then(|t| t.chars().next()) {
         Some(c) => c as i32,
@@ -2248,13 +2412,19 @@ pub fn shim_str_substr(s: String, start: i32, len: i32) -> String {
     let preview: String = s.chars().take(16).collect();
     while lo < s.len() && !s.is_char_boundary(lo) {
         if std::env::var("ASH_DEBUG_SUBSTR").is_ok() {
-            eprintln!("[SUBSTR-CLAMP] start {} inside multi-byte char of {:?}", lo, preview);
+            eprintln!(
+                "[SUBSTR-CLAMP] start {} inside multi-byte char of {:?}",
+                lo, preview
+            );
         }
         lo += 1;
     }
     while hi > 0 && !s.is_char_boundary(hi) {
         if std::env::var("ASH_DEBUG_SUBSTR").is_ok() {
-            eprintln!("[SUBSTR-CLAMP] end {} inside multi-byte char of {:?}", hi, preview);
+            eprintln!(
+                "[SUBSTR-CLAMP] end {} inside multi-byte char of {:?}",
+                hi, preview
+            );
         }
         hi -= 1;
     }
@@ -2353,7 +2523,10 @@ pub fn shim_str_reverse(s: String) -> String {
 /// Find first occurrence of substring with optional start position.
 /// Supports both 2-arg (find(s, needle)) and 3-arg (s.find(needle, start_pos)) calling conventions.
 /// Detects whether top-of-stack is start_pos (i32) or needle (string) to handle both cases.
-pub fn shim_str_find_manual(task: &mut crate::vm::task::AutoTask, vm: &crate::vm::engine::AutoVM) -> Result<(), crate::vm::engine::VMError> {
+pub fn shim_str_find_manual(
+    task: &mut crate::vm::task::AutoTask,
+    vm: &crate::vm::engine::AutoVM,
+) -> Result<(), crate::vm::engine::VMError> {
     use crate::vm::ffi::convert::VMConvertible;
 
     // Peek at top of stack to determine calling convention
@@ -2376,7 +2549,10 @@ pub fn shim_str_find_manual(task: &mut crate::vm::task::AutoTask, vm: &crate::vm
         .map_err(|e| crate::vm::engine::VMError::RuntimeError(e.to_string()))?;
 
     let result = if start_pos > 0 && (start_pos as usize) < s.len() {
-        s[start_pos as usize..].find(&needle).map(|i| start_pos as i32 + i as i32).unwrap_or(-1)
+        s[start_pos as usize..]
+            .find(&needle)
+            .map(|i| start_pos as i32 + i as i32)
+            .unwrap_or(-1)
     } else {
         s.find(&needle).map(|i| i as i32).unwrap_or(-1)
     };
@@ -2396,13 +2572,17 @@ pub fn shim_str_lines(s: String) -> Vec<String> {
 /// Parse string as integer
 #[auto_macros::rust_fn("Str.parse_int")]
 pub fn shim_str_parse_int(s: String) -> Result<i64, String> {
-    s.trim().parse::<i64>().map_err(|e| format!("Str.parse_int failed: {}", e))
+    s.trim()
+        .parse::<i64>()
+        .map_err(|e| format!("Str.parse_int failed: {}", e))
 }
 
 /// Parse string as float
 #[auto_macros::rust_fn("Str.parse_float")]
 pub fn shim_str_parse_float(s: String) -> Result<f64, String> {
-    s.trim().parse::<f64>().map_err(|e| format!("Str.parse_float failed: {}", e))
+    s.trim()
+        .parse::<f64>()
+        .map_err(|e| format!("Str.parse_float failed: {}", e))
 }
 
 /// Split string at first occurrence of delimiter, returns empty list if not found
@@ -2436,8 +2616,13 @@ pub fn shim_str_uuid() -> String {
         .as_nanos() as u64;
     // Simple UUID v4-like: 8-4-4-4-12 hex format using nanos + LCG
     let r1: u64 = nanos;
-    let r2: u64 = nanos.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-    let r3: u64 = nanos.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407).rotate_left(17);
+    let r2: u64 = nanos
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
+    let r3: u64 = nanos
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407)
+        .rotate_left(17);
     format!(
         "{:08x}-{:04x}-{:04x}-{:04x}-{:08x}{:04x}",
         (r1 >> 32) as u32,
@@ -2523,7 +2708,9 @@ pub fn shim_char_to_upper(codepoint: i32) -> i32 {
 /// in c_process_app). Invalid codepoints yield the empty string.
 #[auto_macros::rust_fn("Char.to_str", "char.to_str", "auto.char.to_str")]
 pub fn shim_char_to_str(codepoint: i32) -> String {
-    char::from_u32(codepoint as u32).map(|c| c.to_string()).unwrap_or_default()
+    char::from_u32(codepoint as u32)
+        .map(|c| c.to_string())
+        .unwrap_or_default()
 }
 
 // ============================================================================
@@ -2533,8 +2720,11 @@ pub fn shim_char_to_str(codepoint: i32) -> String {
 /// Option.or(default) / Option.unwrap_or(default) — returns default if None, unwraps Some
 pub fn shim_option_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     // Pop default value
-    let default_val = { let nv = crate::vm::native::pop_arg_nv(task);
- let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv); auto_val::decode_i32(nv) };
+    let default_val = {
+        let nv = crate::vm::native::pop_arg_nv(task);
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        auto_val::decode_i32(nv)
+    };
 
     // Pop option value — check for None (null or -1 sentinel)
     {
@@ -2810,7 +3000,6 @@ pub fn shim_web_math_imul(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
     Ok(())
 }
 
-
 /// Sine function (radians)
 #[auto_macros::rust_fn("Math.sin")]
 pub fn shim_math_sin(n: f64) -> f64 {
@@ -2958,10 +3147,7 @@ pub fn shim_log_error(msg: String) {
 pub fn shim_json_encode(value: String) -> String {
     // rust_fn 编组已把 int 形参转十进制字符串——裸数字串按 JSON 数值输出
     //（json.encode(5000000001) → 5000000001，不再是位型垃圾/带引号串）。
-    if !value.is_empty()
-        && value.parse::<i64>().is_ok()
-        && !value.starts_with('0')
-    {
+    if !value.is_empty() && value.parse::<i64>().is_ok() && !value.starts_with('0') {
         return value;
     }
     serde_json::to_string(&value).unwrap_or_default()
@@ -3003,20 +3189,34 @@ fn json_doc_heap_id(vm: &AutoVM, nv: auto_val::NanoValue) -> Option<u64> {
         auto_val::decode_object(nv) as u64
     } else if auto_val::is_i32(nv) {
         let v = auto_val::decode_i32(nv);
-        if v > 0 { v as u64 } else { return None }
+        if v > 0 {
+            v as u64
+        } else {
+            return None;
+        }
     } else {
         return None;
     };
-    let is_doc = vm.get_heap_object(id)
+    let is_doc = vm
+        .get_heap_object(id)
         .map(|o| {
             let guard = o.read().unwrap();
             let any = guard.as_any();
-            any.downcast_ref::<crate::vm::generic_registry::GenericInstanceData>().is_some()
-                || any.downcast_ref::<crate::vm::types::ListData<auto_val::Value>>().is_some()
-                || any.downcast_ref::<crate::vm::types::ListData<i32>>().is_some()
+            any.downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                .is_some()
+                || any
+                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                    .is_some()
+                || any
+                    .downcast_ref::<crate::vm::types::ListData<i32>>()
+                    .is_some()
         })
         .unwrap_or(false);
-    if is_doc { Some(id) } else { None }
+    if is_doc {
+        Some(id)
+    } else {
+        None
+    }
 }
 
 /// ListData<i32> 的 JSON 序列化（D5）：全负元素 = 字符串池负索引编码
@@ -3031,11 +3231,15 @@ fn json_serialize_i32_list(vm: &AutoVM, id: u64) -> Option<String> {
     let list = guard.as_any().downcast_ref::<ListData<i32>>()?;
     let elems: Vec<J> = if list.elems.iter().all(|i| *i < 0) {
         let strings = vm.strings.read().unwrap();
-        list.elems.iter().map(|i| {
-            strings.get((-*i - 1) as usize)
-                .map(|b| J::String(String::from_utf8_lossy(b).to_string()))
-                .unwrap_or(J::Null)
-        }).collect()
+        list.elems
+            .iter()
+            .map(|i| {
+                strings
+                    .get((-*i - 1) as usize)
+                    .map(|b| J::String(String::from_utf8_lossy(b).to_string()))
+                    .unwrap_or(J::Null)
+            })
+            .collect()
     } else {
         list.elems.iter().map(|i| serde_json::json!(*i)).collect()
     };
@@ -3112,10 +3316,7 @@ pub fn override_json_doc_natives(native_interface: &mut crate::vm::native::Nativ
             Some(f) => f.clone(),
             None => continue,
         };
-        JSON_DOC_ORIGINALS
-            .lock()
-            .unwrap()
-            .insert(id, original);
+        JSON_DOC_ORIGINALS.lock().unwrap().insert(id, original);
         let wrapper = move |task: &mut AutoTask, vm: &AutoVM| -> Result<(), VMError> {
             normalize_json_doc_head(task, vm, *extra)?;
             let original = JSON_DOC_ORIGINALS
@@ -3160,7 +3361,8 @@ pub(crate) fn json_to_vm_value(
     const MAX_DEPTH: u32 = 64;
     if depth >= MAX_DEPTH {
         return Err(VMError::RuntimeError(format!(
-            "json_to_vm_value: nesting depth exceeded ({})", MAX_DEPTH
+            "json_to_vm_value: nesting depth exceeded ({})",
+            MAX_DEPTH
         )));
     }
     use auto_val::Value;
@@ -3204,7 +3406,9 @@ pub(crate) fn json_to_vm_value(
                 // 与 inner 两臂对齐。此前此处漏 retain,顶层容器的直接子引用
                 // 无持有即被 child_refs 声明,父死连坐释放时抵消他人真实
                 // stake(ash-gui UAF:__json_object 子数组被提前释放)。
-                if let Value::VmRef(r) = &v { vm.rc_retain_id(r.id as u64); }
+                if let Value::VmRef(r) = &v {
+                    vm.rc_retain_id(r.id as u64);
+                }
                 list.push(v);
             }
             let id = vm.insert_heap_object(list);
@@ -3218,7 +3422,9 @@ pub(crate) fn json_to_vm_value(
                 field_names.push(k.clone());
                 let fv = json_to_vm_value_inner(vm, v, depth + 1)?;
                 // Plan 419 §9(复活): 同上,外层字段插入即 retain。
-                if let Value::VmRef(r) = &fv { vm.rc_retain_id(r.id as u64); }
+                if let Value::VmRef(r) = &fv {
+                    vm.rc_retain_id(r.id as u64);
+                }
                 fields.push(fv);
             }
             let inst = GenericInstanceData::new_with_names(
@@ -3244,7 +3450,8 @@ fn json_to_vm_value_inner(
     const MAX_DEPTH: u32 = 64;
     if depth >= MAX_DEPTH {
         return Err(VMError::RuntimeError(format!(
-            "json_to_vm_value_inner: nesting depth exceeded ({})", MAX_DEPTH
+            "json_to_vm_value_inner: nesting depth exceeded ({})",
+            MAX_DEPTH
         )));
     }
     use auto_val::Value;
@@ -3267,7 +3474,9 @@ fn json_to_vm_value_inner(
             for elem in arr {
                 let v = json_to_vm_value_inner(vm, elem, depth + 1)?;
                 // Plan 419: 子 VmRef 的持有随父容器建立(插入即 retain)。
-                if let Value::VmRef(r) = &v { vm.rc_retain_id(r.id as u64); }
+                if let Value::VmRef(r) = &v {
+                    vm.rc_retain_id(r.id as u64);
+                }
                 list.push(v);
             }
             let id = vm.insert_heap_object(list);
@@ -3281,7 +3490,9 @@ fn json_to_vm_value_inner(
                 field_names.push(k.clone());
                 let fv = json_to_vm_value_inner(vm, v, depth + 1)?;
                 // Plan 419: 同上。
-                if let Value::VmRef(r) = &fv { vm.rc_retain_id(r.id as u64); }
+                if let Value::VmRef(r) = &fv {
+                    vm.rc_retain_id(r.id as u64);
+                }
                 fields.push(fv);
             }
             let inst = GenericInstanceData::new_with_names(
@@ -3308,7 +3519,11 @@ pub fn shim_json_to_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     // 20 位数字串=NV 位型）。042 修 object/list；043 扩 bool/null
     // （auto-os PLAN-043 Part 2 实证链：双重解析全族根因）。幂等直通
     // 使显式/隐式两种调用形态等价，存量 .at 消费方零改绿。
-    if auto_val::is_object(nv) || auto_val::is_list(nv) || auto_val::is_bool(nv) || auto_val::is_null(nv) {
+    if auto_val::is_object(nv)
+        || auto_val::is_list(nv)
+        || auto_val::is_bool(nv)
+        || auto_val::is_null(nv)
+    {
         task.ram.push_nv(nv);
         return Ok(());
     }
@@ -3323,7 +3538,10 @@ pub fn shim_json_to_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let parsed: serde_json::Value = match serde_json::from_str(&json_str) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("[WARN] json.to_value: invalid JSON {:?} on payload: {:?}", e, json_str);
+            eprintln!(
+                "[WARN] json.to_value: invalid JSON {:?} on payload: {:?}",
+                e, json_str
+            );
             task.ram.push_nv(auto_val::encode_null());
             return Ok(());
         }
@@ -3340,7 +3558,8 @@ fn vm_value_to_json(
     const MAX_DEPTH: u32 = 64;
     if depth >= MAX_DEPTH {
         return Err(VMError::RuntimeError(format!(
-            "vm_value_to_json: nesting depth exceeded ({})", MAX_DEPTH
+            "vm_value_to_json: nesting depth exceeded ({})",
+            MAX_DEPTH
         )));
     }
     use auto_val::Value;
@@ -3375,7 +3594,9 @@ fn vm_value_to_json(
                         }
                     }
                     Ok(serde_json::Value::Object(map))
-                } else if let Some(odata) = obj.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                } else if let Some(odata) =
+                    obj.as_any().downcast_ref::<crate::vm::types::ObjectData>()
+                {
                     // PLAN-057 T6：对象字面量（ObjectData）——此前落末尾 else
                     // 静默序列化成 null（JSON.stringify({a:1}) 现场根因）。
                     // 键序：ObjectData 是 HashMap 无序，按字典序出键保确定性
@@ -3398,7 +3619,8 @@ fn vm_value_to_json(
                         map.insert(key, vm_value_to_json(vm, v, depth + 1)?);
                     }
                     Ok(serde_json::Value::Object(map))
-                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<auto_val::Value>>() {
+                } else if let Some(list) = obj.as_any().downcast_ref::<ListData<auto_val::Value>>()
+                {
                     let mut arr = Vec::with_capacity(list.elems.len());
                     for elem in &list.elems {
                         arr.push(vm_value_to_json(vm, elem, depth + 1)?);
@@ -3412,7 +3634,11 @@ fn vm_value_to_json(
                     Ok(serde_json::Value::Array(arr))
                 } else if let Some(list) = obj.as_any().downcast_ref::<ListData<char>>() {
                     // Plan 340 audit: char list → JSON array of 1-char strings.
-                    let arr = list.elems.iter().map(|c| serde_json::json!(c.to_string())).collect();
+                    let arr = list
+                        .elems
+                        .iter()
+                        .map(|c| serde_json::json!(c.to_string()))
+                        .collect();
                     Ok(serde_json::Value::Array(arr))
                 } else if let Some(list) = obj.as_any().downcast_ref::<ListData<bool>>() {
                     // Plan 340 audit: bool list → JSON array of booleans.
@@ -3661,7 +3887,8 @@ pub fn shim_url_decode_query(_query: String) -> Vec<String> {
 /// Join URL path segments
 #[auto_macros::rust_fn("Url.join_path")]
 pub fn shim_url_join_path(segments: Vec<String>) -> String {
-    let path = segments.iter()
+    let path = segments
+        .iter()
         .map(|s| s.trim_start_matches('/').trim_end_matches('/'))
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
@@ -3704,7 +3931,8 @@ pub fn shim_url_host(url_str: String) -> String {
         without_scheme
     };
     // Take up to : or /
-    let end = after_at.find(|c: char| c == ':' || c == '/' || c == '?' || c == '#')
+    let end = after_at
+        .find(|c: char| c == ':' || c == '/' || c == '?' || c == '#')
         .unwrap_or(after_at.len());
     after_at[..end].to_string()
 }
@@ -3725,7 +3953,8 @@ pub fn shim_url_port(url_str: String) -> i32 {
     // Find the colon after host
     if let Some(colon_pos) = after_at.find(':') {
         let after_colon = &after_at[colon_pos + 1..];
-        let end = after_colon.find(|c: char| c == '/' || c == '?' || c == '#')
+        let end = after_colon
+            .find(|c: char| c == '/' || c == '?' || c == '#')
             .unwrap_or(after_colon.len());
         after_colon[..end].parse::<i32>().unwrap_or(-1)
     } else {
@@ -3799,7 +4028,8 @@ static NET_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 /// Populated at VM startup from CompiledPackage.api_routes, consulted by
 /// shim_http_server_listen to dispatch requests to VM handler functions.
 /// Format: Vec<(method: String, path: String, fn_name: String)>.
-static HTTP_ROUTES: std::sync::Mutex<Vec<(String, String, String)>> = std::sync::Mutex::new(Vec::new());
+static HTTP_ROUTES: std::sync::Mutex<Vec<(String, String, String)>> =
+    std::sync::Mutex::new(Vec::new());
 
 /// Plan 312: Register API routes into the global table. Called at VM startup.
 pub fn register_http_routes(routes: Vec<(String, String, String)>) {
@@ -4030,7 +4260,9 @@ pub fn shim_net_tcp_stream_read_line(stream_handle: i32) -> String {
                 let mut reader = BufReader::new(stream);
                 let mut line = String::new();
                 reader.read_line(&mut line).ok();
-                line.trim_end_matches('\n').trim_end_matches('\r').to_string()
+                line.trim_end_matches('\n')
+                    .trim_end_matches('\r')
+                    .to_string()
             }
             None => String::new(),
         }
@@ -4047,7 +4279,10 @@ pub fn shim_net_tcp_stream_write_str(task: &mut AutoTask, vm: &AutoVM) -> Result
     let result = TCP_STREAMS.with(|streams| {
         let mut streams = streams.borrow_mut();
         match streams.get_mut(&(stream_handle as u64)) {
-            Some(stream) => stream.write_all(s.as_bytes()).map(|_| s.len() as i32).unwrap_or(-1),
+            Some(stream) => stream
+                .write_all(s.as_bytes())
+                .map(|_| s.len() as i32)
+                .unwrap_or(-1),
             None => -1,
         }
     });
@@ -4078,7 +4313,10 @@ pub fn shim_net_tcp_stream_peer_addr(stream_handle: i32) -> String {
 }
 
 /// Set read timeout
-pub fn shim_net_tcp_stream_set_read_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_net_tcp_stream_set_read_timeout(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
     let ms: i32 = crate::vm::native::pop_arg_i32(task);
     let stream_handle: i32 = crate::vm::native::pop_arg_i32(task);
 
@@ -4097,7 +4335,10 @@ pub fn shim_net_tcp_stream_set_read_timeout(task: &mut AutoTask, vm: &AutoVM) ->
 }
 
 /// Set write timeout
-pub fn shim_net_tcp_stream_set_write_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_net_tcp_stream_set_write_timeout(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
     let ms: i32 = crate::vm::native::pop_arg_i32(task);
     let stream_handle: i32 = crate::vm::native::pop_arg_i32(task);
 
@@ -4249,8 +4490,8 @@ struct HttpRequestBuilderData {
     client_cert_path: Option<String>,
     client_key_path: Option<String>,
     // Plan 349: Multipart file upload
-    multipart_files: Vec<(String, String)>,  // (field_name, file_path)
-    multipart_texts: Vec<(String, String)>,  // (field_name, value)
+    multipart_files: Vec<(String, String)>, // (field_name, file_path)
+    multipart_texts: Vec<(String, String)>, // (field_name, value)
     // Plan 349 step 8: Cookie / retry / compression
     cookie_store: bool,
     retry_count: u32,
@@ -4284,27 +4525,48 @@ pub fn shim_http_server(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 const IMAGE_TICKET_HANDLE_CAPACITY: usize = 256;
 #[cfg(feature = "ui-iced")]
 static IMAGE_TICKET_HANDLES: std::sync::LazyLock<
-    std::sync::Mutex<std::collections::VecDeque<(u64, crate::ui::image_pipeline::MediaAssetTicket)>>,
+    std::sync::Mutex<
+        std::collections::VecDeque<(u64, crate::ui::image_pipeline::MediaAssetTicket)>,
+    >,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::VecDeque::new()));
 #[cfg(feature = "ui-iced")]
 static IMAGE_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 #[cfg(feature = "ui-iced")]
 pub const IMAGE_NATIVE_NAMES: &[&str] = &[
-    "auto.image.queue", "auto.image.open", "auto.image.scan", "auto.image.request",
-    "auto.image.retain", "auto.image.release", "auto.image.close", "auto.image.stats",
-    "auto.image.open_session", "auto.image.snapshot", "auto.image.current_uri", "auto.image.names", "auto.image.navigate",
-    "auto.image.request_view", "auto.image.close_session", "auto.image.session_stats",
+    "auto.image.queue",
+    "auto.image.open",
+    "auto.image.scan",
+    "auto.image.request",
+    "auto.image.retain",
+    "auto.image.release",
+    "auto.image.close",
+    "auto.image.stats",
+    "auto.image.open_session",
+    "auto.image.snapshot",
+    "auto.image.current_uri",
+    "auto.image.names",
+    "auto.image.navigate",
+    "auto.image.request_view",
+    "auto.image.close_session",
+    "auto.image.session_stats",
     "auto.image.thumb",
 ];
 
 #[cfg(feature = "ui-iced")]
 fn image_ticket_from_handle(handle: u64) -> Option<crate::ui::image_pipeline::MediaAssetTicket> {
-    IMAGE_TICKET_HANDLES.lock().ok()?.iter().find(|(id, _)| *id == handle).map(|(_, ticket)| *ticket)
+    IMAGE_TICKET_HANDLES
+        .lock()
+        .ok()?
+        .iter()
+        .find(|(id, _)| *id == handle)
+        .map(|(_, ticket)| *ticket)
 }
 
 #[cfg(feature = "ui-iced")]
 fn insert_image_ticket_handle(handle: u64, ticket: crate::ui::image_pipeline::MediaAssetTicket) {
-    let mut handles = IMAGE_TICKET_HANDLES.lock().expect("image handle lock poisoned");
+    let mut handles = IMAGE_TICKET_HANDLES
+        .lock()
+        .expect("image handle lock poisoned");
     if handles.len() >= IMAGE_TICKET_HANDLE_CAPACITY {
         if let Some((_, evicted)) = handles.pop_front() {
             crate::ui::image_pipeline::global_media_registry().release(evicted.id);
@@ -4317,7 +4579,10 @@ fn insert_image_ticket_handle(handle: u64, ticket: crate::ui::image_pipeline::Me
 pub fn shim_image_queue(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let ticket = crate::ui::image_pipeline::queue_media_path(path, crate::ui::image_pipeline::MediaPriority::Current);
+    let ticket = crate::ui::image_pipeline::queue_media_path(
+        path,
+        crate::ui::image_pipeline::MediaPriority::Current,
+    );
     let handle = IMAGE_HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
     insert_image_ticket_handle(handle, ticket);
     task.ram.push_i64(handle as i64);
@@ -4327,7 +4592,12 @@ pub fn shim_image_queue(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 #[cfg(feature = "ui-iced")]
 pub fn shim_image_open(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle = task.ram.pop_i64() as u64;
-    task.ram.push_i64(if image_ticket_from_handle(handle).is_some() { handle as i64 } else { 0 });
+    task.ram
+        .push_i64(if image_ticket_from_handle(handle).is_some() {
+            handle as i64
+        } else {
+            0
+        });
     Ok(())
 }
 
@@ -4356,7 +4626,9 @@ pub fn shim_image_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
     let handle = task.ram.pop_i64() as u64;
     let ticket = {
         let mut handles = IMAGE_TICKET_HANDLES.lock().unwrap();
-        handles.iter().position(|(id, _)| *id == handle)
+        handles
+            .iter()
+            .position(|(id, _)| *id == handle)
             .and_then(|index| handles.remove(index).map(|(_, ticket)| ticket))
     };
     if let Some(ticket) = ticket {
@@ -4385,7 +4657,11 @@ pub fn shim_image_scan(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 
 #[cfg(feature = "ui-iced")]
 pub fn shim_image_stats(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    task.ram.push_i64(crate::ui::image_pipeline::global_media_registry().stats().completed as i64);
+    task.ram.push_i64(
+        crate::ui::image_pipeline::global_media_registry()
+            .stats()
+            .completed as i64,
+    );
     Ok(())
 }
 
@@ -4393,21 +4669,33 @@ pub fn shim_image_stats(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
 pub fn shim_image_open_session(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let root: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    push_string_result(task, vm, crate::ui::image_pipeline::open_media_session(root))
+    push_string_result(
+        task,
+        vm,
+        crate::ui::image_pipeline::open_media_session(root),
+    )
 }
 
 #[cfg(feature = "ui-iced")]
 pub fn shim_image_snapshot(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    push_string_result(task, vm, crate::ui::image_pipeline::media_session_snapshot(&session))
+    push_string_result(
+        task,
+        vm,
+        crate::ui::image_pipeline::media_session_snapshot(&session),
+    )
 }
 
 #[cfg(feature = "ui-iced")]
 pub fn shim_image_current_uri(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    push_string_result(task, vm, crate::ui::image_pipeline::media_session_uri(&session))
+    push_string_result(
+        task,
+        vm,
+        crate::ui::image_pipeline::media_session_uri(&session),
+    )
 }
 
 #[cfg(feature = "ui-iced")]
@@ -4424,7 +4712,11 @@ pub fn shim_image_navigate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     let delta = task.ram.pop_i32();
     let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    push_string_result(task, vm, crate::ui::image_pipeline::navigate_media_session(&session, delta))
+    push_string_result(
+        task,
+        vm,
+        crate::ui::image_pipeline::navigate_media_session(&session, delta),
+    )
 }
 
 #[cfg(feature = "ui-iced")]
@@ -4435,7 +4727,17 @@ pub fn shim_image_request_view(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     let index = task.ram.pop_i32();
     let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    push_string_result(task, vm, crate::ui::image_pipeline::request_media_view(&session, index, viewport_width, viewport_height, quality))
+    push_string_result(
+        task,
+        vm,
+        crate::ui::image_pipeline::request_media_view(
+            &session,
+            index,
+            viewport_width,
+            viewport_height,
+            quality,
+        ),
+    )
 }
 
 #[cfg(feature = "ui-iced")]
@@ -4443,14 +4745,20 @@ pub fn shim_image_close_session(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let closed = crate::ui::image_pipeline::close_media_session(&session);
-    closed.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))
+    closed
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
 }
 
 #[cfg(feature = "ui-iced")]
 pub fn shim_image_session_stats(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    push_string_result(task, vm, crate::ui::image_pipeline::media_session_stats(&session))
+    push_string_result(
+        task,
+        vm,
+        crate::ui::image_pipeline::media_session_stats(&session),
+    )
 }
 
 #[cfg(feature = "ui-iced")]
@@ -4459,7 +4767,11 @@ pub fn shim_image_thumb(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let size = task.ram.pop_i32();
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    push_string_result(task, vm, crate::ui::image_pipeline::queue_media_thumbnail(path, size))
+    push_string_result(
+        task,
+        vm,
+        crate::ui::image_pipeline::queue_media_thumbnail(path, size),
+    )
 }
 
 /// Add GET route (placeholder)
@@ -4559,12 +4871,19 @@ fn write_media_response(
         503 => "Service Unavailable",
         _ => "Error",
     };
-    let body = response.body.map(|bytes| bytes.to_vec()).unwrap_or_default();
+    let body = response
+        .body
+        .map(|bytes| bytes.to_vec())
+        .unwrap_or_default();
     let mut wire = format!(
         "HTTP/1.1 {} {}\r\nContent-Length: {}\r\nConnection: close\r\n",
         response.status,
         reason,
-        response.headers.get("content-length").map(String::as_str).unwrap_or("0"),
+        response
+            .headers
+            .get("content-length")
+            .map(String::as_str)
+            .unwrap_or("0"),
     );
     for (name, value) in response.headers {
         wire.push_str(&format!("{}: {}\r\n", name, value));
@@ -4590,7 +4909,7 @@ fn write_media_response(
 /// Must be called from a non-tokio thread (std::thread::spawn), because it
 /// uses blocking_lock() on handler tasks.
 pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
-    use std::io::{Read, Write, BufRead};
+    use std::io::{BufRead, Read, Write};
     use std::net::TcpListener;
 
     let listener = match TcpListener::bind(addr) {
@@ -4632,9 +4951,13 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
         let mut if_none_match = None;
         loop {
             let mut header = String::new();
-            if reader.read_line(&mut header).is_err() { break; }
+            if reader.read_line(&mut header).is_err() {
+                break;
+            }
             let header = header.trim();
-            if header.is_empty() { break; }
+            if header.is_empty() {
+                break;
+            }
             if header.to_lowercase().starts_with("content-length:") {
                 content_length = header[15..].trim().parse().unwrap_or(0);
             }
@@ -4652,7 +4975,12 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
             String::new()
         };
         drop(reader);
-        if write_media_response(&mut stream, &req_method, &req_path, if_none_match.as_deref()) {
+        if write_media_response(
+            &mut stream,
+            &req_method,
+            &req_path,
+            if_none_match.as_deref(),
+        ) {
             continue;
         }
 
@@ -4669,7 +4997,9 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
 
         // Call VM handler on a fresh task
         let handler_task_id = vm.spawn_task(0, 8192);
-        let result_json: Option<String> = if let Some(handler_task_arc) = vm.tasks.get(&handler_task_id) {
+        let result_json: Option<String> = if let Some(handler_task_arc) =
+            vm.tasks.get(&handler_task_id)
+        {
             // blocking_lock is safe: we're on a std::thread, NOT in tokio context
             let mut ht = handler_task_arc.blocking_lock();
 
@@ -4690,11 +5020,18 @@ pub fn run_http_server_blocking(vm: &AutoVM, addr: &str) {
                     drop(ht);
                     vm.tasks.remove(&handler_task_id);
                     let (status, msg) = match e {
-                        super::http_server::ApiArgBindError::BadRequest(m) => ("400 Bad Request", m),
-                        super::http_server::ApiArgBindError::Internal(m) => ("500 Internal Server Error", m),
+                        super::http_server::ApiArgBindError::BadRequest(m) => {
+                            ("400 Bad Request", m)
+                        }
+                        super::http_server::ApiArgBindError::Internal(m) => {
+                            ("500 Internal Server Error", m)
+                        }
                     };
                     eprintln!("[HTTP] {} {} → {} ({})", req_method, req_path, status, msg);
-                    let err_body = format!("{{\"error\":{}}}", super::http_server::json_escape_string(&msg));
+                    let err_body = format!(
+                        "{{\"error\":{}}}",
+                        super::http_server::json_escape_string(&msg)
+                    );
                     let resp = format!(
                         "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                         status, err_body.len(), err_body
@@ -4744,7 +5081,7 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     // Uses synchronous std::net (not tokio) for simplicity. Each request is
     // handled serially on the listen thread. Handler functions are called via
     // vm.call_fn_by_name on a fresh AutoTask (isolation per request).
-    use std::io::{Read, Write, BufRead};
+    use std::io::{BufRead, Read, Write};
     use std::net::TcpListener;
 
     let listener = TcpListener::bind(&addr)
@@ -4782,9 +5119,13 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         let mut if_none_match = None;
         loop {
             let mut header = String::new();
-            if reader.read_line(&mut header).is_err() { break; }
+            if reader.read_line(&mut header).is_err() {
+                break;
+            }
             let header = header.trim();
-            if header.is_empty() { break; }
+            if header.is_empty() {
+                break;
+            }
             if header.to_lowercase().starts_with("content-length:") {
                 content_length = header[15..].trim().parse().unwrap_or(0);
             }
@@ -4802,7 +5143,12 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
             String::new()
         };
         drop(reader);
-        if write_media_response(&mut stream, &req_method, &req_path, if_none_match.as_deref()) {
+        if write_media_response(
+            &mut stream,
+            &req_method,
+            &req_path,
+            if_none_match.as_deref(),
+        ) {
             continue;
         }
 
@@ -4819,7 +5165,9 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 
         // Call VM handler function on a fresh task
         let handler_task_id = vm.spawn_task(0, 8192);
-        let result_json: Option<String> = if let Some(handler_task_arc) = vm.tasks.get(&handler_task_id) {
+        let result_json: Option<String> = if let Some(handler_task_arc) =
+            vm.tasks.get(&handler_task_id)
+        {
             // tokio::sync::Mutex — use blocking_lock() for sync context
             let mut ht = handler_task_arc.blocking_lock();
 
@@ -4840,11 +5188,18 @@ pub fn shim_http_server_listen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
                     drop(ht);
                     vm.tasks.remove(&handler_task_id);
                     let (status, msg) = match e {
-                        super::http_server::ApiArgBindError::BadRequest(m) => ("400 Bad Request", m),
-                        super::http_server::ApiArgBindError::Internal(m) => ("500 Internal Server Error", m),
+                        super::http_server::ApiArgBindError::BadRequest(m) => {
+                            ("400 Bad Request", m)
+                        }
+                        super::http_server::ApiArgBindError::Internal(m) => {
+                            ("500 Internal Server Error", m)
+                        }
                     };
                     eprintln!("[HTTP] {} {} → {} ({})", req_method, req_path, status, msg);
-                    let err_body = format!("{{\"error\":{}}}", super::http_server::json_escape_string(&msg));
+                    let err_body = format!(
+                        "{{\"error\":{}}}",
+                        super::http_server::json_escape_string(&msg)
+                    );
                     let resp = format!(
                         "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                         status, err_body.len(), err_body
@@ -4944,8 +5299,15 @@ pub fn shim_http_response_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
         if let Some(res) = responses.borrow_mut().get_mut(&(res_handle as u64)) {
             res.body = body.into_bytes();
             // Add Content-Type header if not set
-            if !res.headers.iter().any(|(k, _)| k.to_lowercase() == "content-type") {
-                res.headers.push(("Content-Type".to_string(), "text/plain; charset=utf-8".to_string()));
+            if !res
+                .headers
+                .iter()
+                .any(|(k, _)| k.to_lowercase() == "content-type")
+            {
+                res.headers.push((
+                    "Content-Type".to_string(),
+                    "text/plain; charset=utf-8".to_string(),
+                ));
             }
         }
     });
@@ -4963,8 +5325,15 @@ pub fn shim_http_response_html(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     HTTP_RESPONSES.with(|responses| {
         if let Some(res) = responses.borrow_mut().get_mut(&(res_handle as u64)) {
             res.body = body.into_bytes();
-            if !res.headers.iter().any(|(k, _)| k.to_lowercase() == "content-type") {
-                res.headers.push(("Content-Type".to_string(), "text/html; charset=utf-8".to_string()));
+            if !res
+                .headers
+                .iter()
+                .any(|(k, _)| k.to_lowercase() == "content-type")
+            {
+                res.headers.push((
+                    "Content-Type".to_string(),
+                    "text/html; charset=utf-8".to_string(),
+                ));
             }
         }
     });
@@ -4982,11 +5351,14 @@ pub fn shim_http_response_redirect(task: &mut AutoTask, vm: &AutoVM) -> Result<(
 
     let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
     HTTP_RESPONSES.with(|r| {
-        r.borrow_mut().insert(handle, HttpResponseData {
-            status: if status == 301 { 301 } else { 302 },
-            headers: vec![("Location".to_string(), url)],
-            body: Vec::new(),
-        });
+        r.borrow_mut().insert(
+            handle,
+            HttpResponseData {
+                status: if status == 301 { 301 } else { 302 },
+                headers: vec![("Location".to_string(), url)],
+                body: Vec::new(),
+            },
+        );
     });
     task.ram.push_i32(handle as i32);
     Ok(())
@@ -5010,14 +5382,17 @@ pub fn lookup_http_response(handle: u64) -> Option<(u16, Vec<(String, String)>, 
 /// recognizes the handle and writes status/headers/body directly, instead of
 /// JSON-encoding the raw handle. Mirrors `shim_http_response_redirect`'s
 /// allocation convention (NET_HANDLE_COUNTER + thread-local HTTP_RESPONSES).
-pub fn insert_http_response(
-    status: u16,
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
-) -> u64 {
+pub fn insert_http_response(status: u16, headers: Vec<(String, String)>, body: Vec<u8>) -> u64 {
     let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
     HTTP_RESPONSES.with(|r| {
-        r.borrow_mut().insert(handle, HttpResponseData { status, headers, body });
+        r.borrow_mut().insert(
+            handle,
+            HttpResponseData {
+                status,
+                headers,
+                body,
+            },
+        );
     });
     handle
 }
@@ -5062,7 +5437,8 @@ pub fn shim_session_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let id: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    let data = SESSIONS.lock()
+    let data = SESSIONS
+        .lock()
         .ok()
         .and_then(|sessions| sessions.get(&id).cloned())
         .unwrap_or_else(|| "null".to_string());
@@ -5080,7 +5456,8 @@ pub fn shim_session_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let id: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    let exists = SESSIONS.lock()
+    let exists = SESSIONS
+        .lock()
         .ok()
         .map(|mut sessions| {
             if sessions.contains_key(&id) {
@@ -5102,7 +5479,8 @@ pub fn shim_session_destroy(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let id: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    let existed = SESSIONS.lock()
+    let existed = SESSIONS
+        .lock()
         .ok()
         .map(|mut sessions| sessions.remove(&id).is_some())
         .unwrap_or(false);
@@ -5125,7 +5503,8 @@ pub fn shim_openapi_generate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         let method_lower = method.to_lowercase();
         let openapi_path = convert_path_to_openapi(path);
 
-        let path_entry = paths.entry(openapi_path)
+        let path_entry = paths
+            .entry(openapi_path)
             .or_insert_with(|| serde_json::json!({}));
 
         let summary = fn_name.replace('_', " ");
@@ -5185,7 +5564,8 @@ fn convert_path_to_openapi(path: &str) -> String {
     let mut chars = path.chars().peekable();
     while let Some(c) = chars.next() {
         if c == ':' {
-            let param: String = chars.by_ref()
+            let param: String = chars
+                .by_ref()
                 .take_while(|ch| ch.is_alphanumeric() || *ch == '_')
                 .collect();
             if !param.is_empty() {
@@ -5231,12 +5611,14 @@ pub fn shim_template_render(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let name: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    let template_str = TEMPLATES.lock()
+    let template_str = TEMPLATES
+        .lock()
         .ok()
         .and_then(|t| t.get(&name).cloned())
         .unwrap_or_default();
 
-    let data: serde_json::Value = serde_json::from_str(&data_json).unwrap_or(serde_json::Value::Null);
+    let data: serde_json::Value =
+        serde_json::from_str(&data_json).unwrap_or(serde_json::Value::Null);
     let rendered = render_template(&template_str, &data);
 
     let idx = vm.add_string(rendered.into_bytes());
@@ -5380,7 +5762,10 @@ pub fn shim_http_ok(body: String) -> i64 {
     let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
     let response = HttpResponseData {
         status: 200,
-        headers: vec![("Content-Type".to_string(), "text/plain; charset=utf-8".to_string())],
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/plain; charset=utf-8".to_string(),
+        )],
         body: body.into_bytes(),
     };
 
@@ -5397,7 +5782,10 @@ pub fn shim_http_created(body: String) -> i64 {
     let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
     let response = HttpResponseData {
         status: 201,
-        headers: vec![("Content-Type".to_string(), "text/plain; charset=utf-8".to_string())],
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/plain; charset=utf-8".to_string(),
+        )],
         body: body.into_bytes(),
     };
 
@@ -5414,7 +5802,10 @@ pub fn shim_http_bad_request(msg: String) -> i64 {
     let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
     let response = HttpResponseData {
         status: 400,
-        headers: vec![("Content-Type".to_string(), "text/plain; charset=utf-8".to_string())],
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/plain; charset=utf-8".to_string(),
+        )],
         body: msg.into_bytes(),
     };
 
@@ -5431,7 +5822,10 @@ pub fn shim_http_not_found(msg: String) -> i64 {
     let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
     let response = HttpResponseData {
         status: 404,
-        headers: vec![("Content-Type".to_string(), "text/plain; charset=utf-8".to_string())],
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/plain; charset=utf-8".to_string(),
+        )],
         body: msg.into_bytes(),
     };
 
@@ -5448,7 +5842,10 @@ pub fn shim_http_internal_error(msg: String) -> i64 {
     let handle = NET_HANDLE_COUNTER.fetch_add(1, Ordering::SeqCst);
     let response = HttpResponseData {
         status: 500,
-        headers: vec![("Content-Type".to_string(), "text/plain; charset=utf-8".to_string())],
+        headers: vec![(
+            "Content-Type".to_string(),
+            "text/plain; charset=utf-8".to_string(),
+        )],
         body: msg.into_bytes(),
     };
 
@@ -5618,7 +6015,10 @@ pub fn shim_request_builder_header(task: &mut AutoTask, vm: &AutoVM) -> Result<(
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<HttpRequestBuilderData>>() {
                 if let Ok(mut builder) = mutex.lock() {
                     builder.headers.push((key, value));
@@ -5640,7 +6040,10 @@ pub fn shim_request_builder_body(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<HttpRequestBuilderData>>() {
                 if let Ok(mut builder) = mutex.lock() {
                     builder.body = Some(body);
@@ -5661,7 +6064,10 @@ pub fn shim_request_builder_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<HttpRequestBuilderData>>() {
                 if let Ok(mut builder) = mutex.lock() {
                     builder.timeout_ms = Some(ms as u64);
@@ -5683,12 +6089,21 @@ pub fn shim_request_builder_json(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_ref::<std::sync::Mutex<HttpRequestBuilderData>>() {
                 if let Ok(mut builder) = mutex.lock() {
                     builder.body = Some(data);
-                    if !builder.headers.iter().any(|(k, _)| k.eq_ignore_ascii_case("content-type")) {
-                        builder.headers.push(("Content-Type".to_string(), "application/json".to_string()));
+                    if !builder
+                        .headers
+                        .iter()
+                        .any(|(k, _)| k.eq_ignore_ascii_case("content-type"))
+                    {
+                        builder
+                            .headers
+                            .push(("Content-Type".to_string(), "application/json".to_string()));
                     }
                 }
             }
@@ -5721,15 +6136,20 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     let heap_id = rb_handle as u64;
 
     // Extract builder data and remove from heap
-    let obj = vm.remove_heap_object(heap_id)
-        .ok_or_else(|| VMError::RuntimeError(format!("Invalid RequestBuilder handle: {}", rb_handle)))?;
+    let obj = vm.remove_heap_object(heap_id).ok_or_else(|| {
+        VMError::RuntimeError(format!("Invalid RequestBuilder handle: {}", rb_handle))
+    })?;
     let guard = obj.write().unwrap();
-    let rso = guard.as_any()
+    let rso = guard
+        .as_any()
         .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
         .ok_or_else(|| VMError::RuntimeError("Not a RustStdlibObject".to_string()))?;
-    let mutex = rso.downcast_ref::<std::sync::Mutex<HttpRequestBuilderData>>()
+    let mutex = rso
+        .downcast_ref::<std::sync::Mutex<HttpRequestBuilderData>>()
         .ok_or_else(|| VMError::RuntimeError("Not a RequestBuilder".to_string()))?;
-    let builder_data = mutex.lock().map_err(|e| VMError::RuntimeError(format!("Mutex poison: {}", e)))?;
+    let builder_data = mutex
+        .lock()
+        .map_err(|e| VMError::RuntimeError(format!("Mutex poison: {}", e)))?;
     let method = builder_data.method.clone();
     let url = builder_data.url.clone();
     let body = builder_data.body.clone();
@@ -5791,9 +6211,15 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
             if let Some(ms) = timeout_ms {
                 client_builder = client_builder.timeout(std::time::Duration::from_millis(ms));
             }
-            if cookie_store { client_builder = client_builder.cookie_store(true); }
-            if gzip { client_builder = client_builder.gzip(true); }
-            if brotli { client_builder = client_builder.brotli(true); }
+            if cookie_store {
+                client_builder = client_builder.cookie_store(true);
+            }
+            if gzip {
+                client_builder = client_builder.gzip(true);
+            }
+            if brotli {
+                client_builder = client_builder.brotli(true);
+            }
             let client = client_builder.build().map_err(|e| e.to_string())?;
             let url = append_default_queries(&url); // Plan 446 E4: 默认 query 注入
             let default_headers = snapshot_default_headers(); // Plan 446 E4
@@ -5824,7 +6250,9 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
                         }
                         builder = builder.multipart(form);
                     } else if let Some(ref b) = body {
-                        builder = builder.header("Content-Type", "application/json").body(b.clone());
+                        builder = builder
+                            .header("Content-Type", "application/json")
+                            .body(b.clone());
                     }
                     builder
                 },
@@ -5838,12 +6266,19 @@ pub fn shim_request_builder_send(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
         // 不假成功）；无文件错误时保持原错误文本。
         let mut result = result;
         if let Err(ref mut e) = result {
-            let errs = job_file_errors.lock().map(|g| g.join("; ")).unwrap_or_default();
+            let errs = job_file_errors
+                .lock()
+                .map(|g| g.join("; "))
+                .unwrap_or_default();
             if !errs.is_empty() {
                 *e = format!("{e}; multipart file errors: {errs}");
             }
         }
-        result.map(|(status, headers, body)| AsyncResult::Structured { status, headers, body })
+        result.map(|(status, headers, body)| AsyncResult::Structured {
+            status,
+            headers,
+            body,
+        })
     };
     let _ = super::async_http::submit_client_job(req_id, job);
     task.waiting_http_request_id = Some(req_id);
@@ -5864,7 +6299,10 @@ pub fn shim_request_builder_tls_ca_cert(task: &mut AutoTask, vm: &AutoVM) -> Res
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
                 if let Ok(mut data) = mutex.lock() {
                     data.ca_cert_path = Some(cert_path);
@@ -5878,7 +6316,10 @@ pub fn shim_request_builder_tls_ca_cert(task: &mut AutoTask, vm: &AutoVM) -> Res
 
 /// `RequestBuilder.tls_skip_verify(skip: bool) -> RequestBuilder`
 /// Skip TLS certificate verification (for dev/test).
-pub fn shim_request_builder_tls_skip_verify(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_request_builder_tls_skip_verify(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
     let skip_val = crate::vm::native::pop_arg_i32(task);
 
     let _stake_skip_val = crate::vm::native::StakeGuard::new(vm, skip_val as i64 as u64);
@@ -5887,7 +6328,10 @@ pub fn shim_request_builder_tls_skip_verify(task: &mut AutoTask, vm: &AutoVM) ->
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
                 if let Ok(mut data) = mutex.lock() {
                     data.skip_verify = skip;
@@ -5901,7 +6345,10 @@ pub fn shim_request_builder_tls_skip_verify(task: &mut AutoTask, vm: &AutoVM) ->
 
 /// `RequestBuilder.tls_client_cert(cert_path: String, key_path: String) -> RequestBuilder`
 /// Set client certificate for mTLS (mutual TLS).
-pub fn shim_request_builder_tls_client_cert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_request_builder_tls_client_cert(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
     let key_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let cert_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
@@ -5910,7 +6357,10 @@ pub fn shim_request_builder_tls_client_cert(task: &mut AutoTask, vm: &AutoVM) ->
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
                 if let Ok(mut data) = mutex.lock() {
                     data.client_cert_path = Some(cert_path);
@@ -5936,9 +6386,14 @@ pub fn shim_request_builder_cookie_store(task: &mut AutoTask, vm: &AutoVM) -> Re
     let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
-                if let Ok(mut data) = mutex.lock() { data.cookie_store = enable; }
+                if let Ok(mut data) = mutex.lock() {
+                    data.cookie_store = enable;
+                }
             }
         }
     }
@@ -5955,9 +6410,14 @@ pub fn shim_request_builder_retry(task: &mut AutoTask, vm: &AutoVM) -> Result<()
     let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
-                if let Ok(mut data) = mutex.lock() { data.retry_count = count; }
+                if let Ok(mut data) = mutex.lock() {
+                    data.retry_count = count;
+                }
             }
         }
     }
@@ -5972,9 +6432,14 @@ pub fn shim_request_builder_gzip(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
     let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
-                if let Ok(mut data) = mutex.lock() { data.gzip = enable; }
+                if let Ok(mut data) = mutex.lock() {
+                    data.gzip = enable;
+                }
             }
         }
     }
@@ -5989,9 +6454,14 @@ pub fn shim_request_builder_brotli(task: &mut AutoTask, vm: &AutoVM) -> Result<(
     let rb_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
-                if let Ok(mut data) = mutex.lock() { data.brotli = enable; }
+                if let Ok(mut data) = mutex.lock() {
+                    data.brotli = enable;
+                }
             }
         }
     }
@@ -6094,7 +6564,10 @@ const MULTIPART_MAX_TEXT_FIELDS: usize = 64;
 const MULTIPART_MAX_TEXT_VALUE: usize = 64 * 1024;
 const MULTIPART_MAX_TEXT_TOTAL: usize = 1024 * 1024;
 
-pub fn shim_request_builder_multipart_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_request_builder_multipart_file(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
     let file_path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let field_name: String = super::convert::VMConvertible::pop_from_stack(task, vm)
@@ -6103,7 +6576,10 @@ pub fn shim_request_builder_multipart_file(task: &mut AutoTask, vm: &AutoVM) -> 
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
                 if let Ok(mut data) = mutex.lock() {
                     // PLAN-727 T-05：文件 part 数预算（越界记录，send 终结）。
@@ -6125,7 +6601,10 @@ pub fn shim_request_builder_multipart_file(task: &mut AutoTask, vm: &AutoVM) -> 
 
 /// `RequestBuilder.multipart_text(field_name: String, value: String) -> RequestBuilder`
 /// Attach a text field to a multipart form upload.
-pub fn shim_request_builder_multipart_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+pub fn shim_request_builder_multipart_text(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
     let value: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let field_name: String = super::convert::VMConvertible::pop_from_stack(task, vm)
@@ -6134,7 +6613,10 @@ pub fn shim_request_builder_multipart_text(task: &mut AutoTask, vm: &AutoVM) -> 
 
     if let Some(obj) = vm.get_heap_object(rb_handle as u64) {
         let mut guard = obj.write().unwrap();
-        if let Some(rso) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+        if let Some(rso) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        {
             if let Some(mutex) = rso.downcast_mut::<std::sync::Mutex<HttpRequestBuilderData>>() {
                 if let Ok(mut data) = mutex.lock() {
                     // PLAN-727 T-05：文本字段预算（数量/单值/总量；越界记录，
@@ -6263,7 +6745,9 @@ pub fn shim_http_download_with_progress(task: &mut AutoTask, vm: &AutoVM) -> Res
         done: false,
     };
     let iter_id = {
-        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let next_id = vm
+            .iterator_id_gen
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         vm.iterators.insert(
             next_id,
             crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
@@ -6276,7 +6760,11 @@ pub fn shim_http_download_with_progress(task: &mut AutoTask, vm: &AutoVM) -> Res
 
 /// Plan 349: Spawn a download with progress reporting (PLAN-727 T-05 起
 /// 经共享传输核心执行，观察句柄泵进度/终态进既有通道)。
-fn spawn_download_with_progress(url: String, file_path: String, _stream_id: u64) -> Arc<AsyncStreamHandle> {
+fn spawn_download_with_progress(
+    url: String,
+    file_path: String,
+    _stream_id: u64,
+) -> Arc<AsyncStreamHandle> {
     // PLAN-727 T-05：进度生产者迁移共享传输核心——专用线程/独立
     // current-thread runtime 退役；同步 write_all 退役（核心内增量落盘 +
     // staging 提交）；进度经观察句柄在内核 runtime 上泵入既有通道
@@ -6298,9 +6786,13 @@ fn spawn_download_with_progress(url: String, file_path: String, _stream_id: u64)
 pub fn shim_response_status_code(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
-    let status = HTTP_RESPONSES.with(|r| {
-        r.borrow().get(&(res_handle as u64)).map(|res| res.status as i32)
-    }).unwrap_or(0);
+    let status = HTTP_RESPONSES
+        .with(|r| {
+            r.borrow()
+                .get(&(res_handle as u64))
+                .map(|res| res.status as i32)
+        })
+        .unwrap_or(0);
 
     task.ram.push_i32(status);
     Ok(())
@@ -6313,14 +6805,20 @@ pub fn shim_response_header_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
-    let value = HTTP_RESPONSES.with(|r| {
-        let responses = r.borrow();
-        responses.get(&(res_handle as u64)).and_then(|res| {
-            res.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(&key)).map(|(_, v)| v.clone())
+    let value = HTTP_RESPONSES
+        .with(|r| {
+            let responses = r.borrow();
+            responses.get(&(res_handle as u64)).and_then(|res| {
+                res.headers
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(&key))
+                    .map(|(_, v)| v.clone())
+            })
         })
-    }).unwrap_or_default();
+        .unwrap_or_default();
 
-    value.push_to_stack(task, vm)
+    value
+        .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
@@ -6343,9 +6841,13 @@ pub fn shim_response_body_to_file(task: &mut AutoTask, vm: &AutoVM) -> Result<()
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
-    let body_bytes = HTTP_RESPONSES.with(|r| {
-        r.borrow().get(&(res_handle as u64)).map(|res| res.body.clone())
-    }).unwrap_or_default();
+    let body_bytes = HTTP_RESPONSES
+        .with(|r| {
+            r.borrow()
+                .get(&(res_handle as u64))
+                .map(|res| res.body.clone())
+        })
+        .unwrap_or_default();
 
     std::fs::write(&path, &body_bytes)
         .map_err(|e| VMError::RuntimeError(format!("body_to_file write failed: {}", e)))?;
@@ -6357,18 +6859,30 @@ pub fn shim_response_body_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
     eprintln!("[dbg body_bytes] handle={}", res_handle);
 
-    let body_bytes = HTTP_RESPONSES.with(|r| {
-        r.borrow().get(&(res_handle as u64)).map(|res| res.body.clone())
-    }).unwrap_or_default();
+    let body_bytes = HTTP_RESPONSES
+        .with(|r| {
+            r.borrow()
+                .get(&(res_handle as u64))
+                .map(|res| res.body.clone())
+        })
+        .unwrap_or_default();
     eprintln!("[dbg body_bytes] table entry body len={}", body_bytes.len());
 
     let ints: Vec<i32> = body_bytes.iter().map(|&b| b as i32).collect();
-    eprintln!("[dbg body_bytes] ints.len={} list_id_before={}", ints.len(), {
-        let probe = crate::vm::native::create_list_from_i32(vm, ints.clone());
-        probe
-    });
+    eprintln!(
+        "[dbg body_bytes] ints.len={} list_id_before={}",
+        ints.len(),
+        {
+            let probe = crate::vm::native::create_list_from_i32(vm, ints.clone());
+            probe
+        }
+    );
     let list_id = crate::vm::native::create_list_from_i32(vm, ints.clone());
-    eprintln!("[dbg body_bytes] real list_id={} ints again={}", list_id, ints.len());
+    eprintln!(
+        "[dbg body_bytes] real list_id={} ints again={}",
+        list_id,
+        ints.len()
+    );
     // Plan 432 D26: 新堆 id 入栈必须 rc_push_id（裸 push_i32 零份额，
     // 列表在局部槽引用释放时即死——length 恒 0 的根因）。
     vm.rc_push_id(task, list_id);
@@ -6378,9 +6892,13 @@ pub fn shim_response_body_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 pub fn shim_response_body(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let res_handle: i64 = crate::vm::native::pop_arg_i32(task) as i64;
 
-    let body_bytes = HTTP_RESPONSES.with(|r| {
-        r.borrow().get(&(res_handle as u64)).map(|res| res.body.clone())
-    }).unwrap_or_default();
+    let body_bytes = HTTP_RESPONSES
+        .with(|r| {
+            r.borrow()
+                .get(&(res_handle as u64))
+                .map(|res| res.body.clone())
+        })
+        .unwrap_or_default();
 
     let text = String::from_utf8_lossy(&body_bytes).to_string();
     text.push_to_stack(task, vm)
@@ -6460,7 +6978,9 @@ fn push_stream_next_value(task: &mut AutoTask, vm: &AutoVM, handle: i64) -> Resu
             Ok(())
         }
         super::http_stream::Pull::Eof => {
-            "[DONE]".to_string().push_to_stack(task, vm)
+            "[DONE]"
+                .to_string()
+                .push_to_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(e.to_string()))?;
             Ok(())
         }
@@ -6505,8 +7025,11 @@ pub fn shim_http_stream_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         done: false,
     };
     let iter_id = {
-        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        vm.iterators.insert(next_id, crate::vm::engine::Iterator::HttpStream(hs_iter));
+        let next_id = vm
+            .iterator_id_gen
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        vm.iterators
+            .insert(next_id, crate::vm::engine::Iterator::HttpStream(hs_iter));
         next_id
     };
     task.ram.push_i32(iter_id as i32);
@@ -6547,7 +7070,9 @@ pub fn shim_http_sse_get_stream(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
         done: false,
     };
     let iter_id = {
-        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let next_id = vm
+            .iterator_id_gen
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         vm.iterators.insert(
             next_id,
             crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
@@ -6700,7 +7225,9 @@ pub fn shim_bus_subscribe(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         stream_id,
         done: false,
     };
-    let iter_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let iter_id = vm
+        .iterator_id_gen
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     vm.iterators.insert(
         iter_id,
         crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
@@ -6718,10 +7245,7 @@ pub fn shim_bus_subscribe(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 ///
 /// Returns an HTTP stream handle (i64) on the stack.
 /// PLAN-707 T-04：非阻塞异步建立；VM JSON 字符串头原样透传（决策 D-4）。
-pub fn shim_http_post_stream_with_headers(
-    task: &mut AutoTask,
-    vm: &AutoVM,
-) -> Result<(), VMError> {
+pub fn shim_http_post_stream_with_headers(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let headers_json: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let body: String = VMConvertible::pop_from_stack(task, vm)
@@ -6755,8 +7279,12 @@ pub fn shim_http_post_stream_with_headers(
 /// Returns 1 if match found, 0 otherwise.
 #[auto_macros::rust_fn("Regex.is_match")]
 pub fn shim_regex_is_match(pattern: String, text: String) -> Result<i32, String> {
-    let re = regex::Regex::new(&pattern)
-        .map_err(|e| format!("Regex.is_match failed: invalid pattern '{}': {}", pattern, e))?;
+    let re = regex::Regex::new(&pattern).map_err(|e| {
+        format!(
+            "Regex.is_match failed: invalid pattern '{}': {}",
+            pattern, e
+        )
+    })?;
     Ok(if re.is_match(&text) { 1 } else { 0 })
 }
 
@@ -6769,8 +7297,12 @@ pub fn shim_regex_find_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     let pattern: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
 
-    let re = regex::Regex::new(&pattern)
-        .map_err(|e| VMError::RuntimeError(format!("Regex.find_all failed: invalid pattern '{}': {}", pattern, e)))?;
+    let re = regex::Regex::new(&pattern).map_err(|e| {
+        VMError::RuntimeError(format!(
+            "Regex.find_all failed: invalid pattern '{}': {}",
+            pattern, e
+        ))
+    })?;
 
     let mut matches: Vec<serde_json::Value> = Vec::new();
     for cap in re.find_iter(&text) {
@@ -6788,7 +7320,8 @@ pub fn shim_regex_find_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     let json = serde_json::to_string(&matches)
         .map_err(|e| VMError::RuntimeError(format!("JSON serialization failed: {}", e)))?;
 
-    json.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    json.push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
@@ -6807,7 +7340,14 @@ pub fn shim_regex_match(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let text: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    push_regex_match_list(task, vm, &text, &pattern, flags.contains('g'), flags.contains('i'))
+    push_regex_match_list(
+        task,
+        vm,
+        &text,
+        &pattern,
+        flags.contains('g'),
+        flags.contains('i'),
+    )
 }
 
 /// 匹配结果列表推送（堆 List<Value::Str>；fresh 列表 rc_push(+1) 与
@@ -6874,10 +7414,9 @@ pub fn shim_i18n_t(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// 桩（恒 Nil → if 恒假），musk filteredMessages 的 includes 过滤投影恒
 /// 0 条（聊天搜索/画布投影脸）；t3_filter 脚本层另一分发路故绿。
 pub fn shim_str_includes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let pat = String::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let receiver = String::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let pat = String::pop_from_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let receiver =
+        String::pop_from_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
     VMConvertible::push_to_stack(&receiver.contains(&pat), task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
@@ -7045,7 +7584,12 @@ async fn simple_http_json_async(
     // api-改写家族请求的方法/URL/状态/响应摘要(split 模式排障用)。
     let trace = std::env::var("AUTO_LANG_HTTP_TRACE").ok().as_deref() == Some("1");
     if trace {
-        eprintln!("[HTTP-TRACE] {} {} body={:?}", method, url, body.unwrap_or(""));
+        eprintln!(
+            "[HTTP-TRACE] {} {} body={:?}",
+            method,
+            url,
+            body.unwrap_or("")
+        );
     }
     let client = shared_async_http_client().clone();
     // Plan 446 E4 / PLAN-048: get_json/post_json 是 #[api] 契约改写
@@ -7065,16 +7609,16 @@ async fn simple_http_json_async(
         builder = builder.header(k.as_str(), v.as_str());
     }
     if let Some(b) = body {
-        builder = builder.header("Content-Type", "application/json").body(b.to_string());
+        builder = builder
+            .header("Content-Type", "application/json")
+            .body(b.to_string());
     }
     let resp = builder.send().await.map_err(|e| e.to_string())?;
     let status = resp.status().as_u16();
     // PLAN-705 T-03: 增量响应体预算（text() 换 capped 读）。
-    let bytes = super::async_http::read_body_capped(
-        resp,
-        super::async_http::client_limits().body_limit,
-    )
-    .await?;
+    let bytes =
+        super::async_http::read_body_capped(resp, super::async_http::client_limits().body_limit)
+            .await?;
     let text = String::from_utf8_lossy(&bytes).to_string();
     if trace {
         let summary: String = text.chars().take(120).collect();
@@ -7092,7 +7636,10 @@ async fn simple_http_json_async(
             Ok(text)
         }
     } else {
-        Ok(format!(r#"{{"error":"HTTP {}","status":{}}}"#, status, status))
+        Ok(format!(
+            r#"{{"error":"HTTP {}","status":{}}}"#,
+            status, status
+        ))
     }
 }
 
@@ -7196,9 +7743,12 @@ struct HttpJsonJob {
 /// 线程）整体退役；队满现在=终结性错误（`{"error":"http client queue
 /// full","status":0}`），零临时线程。
 async fn run_http_json_job(job: HttpJsonJob) -> Result<AsyncResult, String> {
-    let text =
-        simple_http_json_async(job.method, &resolve_http_base_url(&job.url), job.body.as_deref())
-            .await?;
+    let text = simple_http_json_async(
+        job.method,
+        &resolve_http_base_url(&job.url),
+        job.body.as_deref(),
+    )
+    .await?;
     Ok(AsyncResult::Body(text))
 }
 
@@ -7212,7 +7762,12 @@ pub(crate) fn spawn_async_http(
     body: Option<String>,
     request_id: u64,
 ) -> bool {
-    let job = HttpJsonJob { method, url, body, req_id: request_id };
+    let job = HttpJsonJob {
+        method,
+        url,
+        body,
+        req_id: request_id,
+    };
     super::async_http::submit_client_job(request_id, run_http_json_job(job))
 }
 
@@ -7229,10 +7784,16 @@ pub(crate) fn spawn_async_http(
 pub(crate) fn check_async_http_result_handle(
     request_id: u64,
 ) -> Option<Result<(u16, Vec<(String, String)>, Vec<u8>), String>> {
-    crate::vm::ffi::async_http::take_live_op(request_id).map(|r| r.and_then(|ar| match ar {
-        AsyncResult::Structured { status, headers, body } => Ok((status, headers, body)),
-        _ => Err("expected Structured async result".to_string()),
-    }))
+    crate::vm::ffi::async_http::take_live_op(request_id).map(|r| {
+        r.and_then(|ar| match ar {
+            AsyncResult::Structured {
+                status,
+                headers,
+                body,
+            } => Ok((status, headers, body)),
+            _ => Err("expected Structured async result".to_string()),
+        })
+    })
 }
 
 /// Decide whether a reqwest error is worth retrying. Connection failures,
@@ -7273,9 +7834,11 @@ async fn send_with_retry_async(
                     .iter()
                     .filter_map(|(k, v)| Some((k.to_string(), v.to_str().ok()?.to_string())))
                     .collect();
-                let body_bytes =
-                    super::async_http::read_body_capped(response, super::async_http::client_limits().body_limit)
-                        .await?;
+                let body_bytes = super::async_http::read_body_capped(
+                    response,
+                    super::async_http::client_limits().body_limit,
+                )
+                .await?;
                 return Ok((status, headers, body_bytes));
             }
             Err(e) => {
@@ -7321,7 +7884,10 @@ struct HttpDefaults {
 fn http_defaults() -> &'static std::sync::Mutex<HttpDefaults> {
     static REG: std::sync::OnceLock<std::sync::Mutex<HttpDefaults>> = std::sync::OnceLock::new();
     REG.get_or_init(|| {
-        std::sync::Mutex::new(HttpDefaults { headers: Vec::new(), queries: Vec::new() })
+        std::sync::Mutex::new(HttpDefaults {
+            headers: Vec::new(),
+            queries: Vec::new(),
+        })
     })
 }
 
@@ -7420,12 +7986,7 @@ pub fn shim_warn_api_noop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     )))
 }
 
-fn spawn_async_http_handle(
-    method: String,
-    url: String,
-    body: Option<String>,
-    request_id: u64,
-) {
+fn spawn_async_http_handle(method: String, url: String, body: Option<String>, request_id: u64) {
     // PLAN-705 T-03: 固定 async executor job（原每请求 detached blocking
     // 线程退役）；迟到完成由 complete_live_op 的 presence 守卫丢弃。
     let job = async move {
@@ -7458,7 +8019,11 @@ fn spawn_async_http_handle(
             0, // plain handle natives have no retry config; RequestBuilder path carries it
         )
         .await;
-        result.map(|(status, headers, body)| AsyncResult::Structured { status, headers, body })
+        result.map(|(status, headers, body)| AsyncResult::Structured {
+            status,
+            headers,
+            body,
+        })
     };
     let _ = super::async_http::submit_client_job(request_id, job);
 }
@@ -7549,12 +8114,18 @@ fn spawn_async_http_msg_get(url: String, widget: String, event: String) {
             Err(e) => (false, 0u16, e.to_string()),
         };
         let (ok, status, body) = result;
-        let payload =
-            serde_json::json!({ "ok": ok, "status": status, "body": body }).to_string();
+        let payload = serde_json::json!({ "ok": ok, "status": status, "body": body }).to_string();
         if let Ok(mut q) = http_msg_queue().lock() {
-            q.push_back(HttpMsgDone { widget: widget.clone(), event: event.clone(), payload });
+            q.push_back(HttpMsgDone {
+                widget: widget.clone(),
+                event: event.clone(),
+                payload,
+            });
             // PLAN-084 诊断打点（临时）：桥线程入队侧。
-            eprintln!("[msg-bridge] queued widget={widget} event={event} qlen={}", q.len());
+            eprintln!(
+                "[msg-bridge] queued widget={widget} event={event} qlen={}",
+                q.len()
+            );
         }
         // fire-and-forget：无 live-op 令牌，返回值被 submit 的守卫丢弃。
         Ok(AsyncResult::Body(String::new()))
@@ -7594,7 +8165,6 @@ pub(crate) fn shim_http_get_msg_spawn_for_test(url: &str, event: &str) {
     let (widget, event) = http_msg_split_target(event);
     spawn_async_http_msg_get(url.to_string(), widget, event);
 }
-
 
 /// Push a response-handle result onto the stack: allocate a NET_HANDLE_COUNTER
 /// id, insert the structured data into the *calling thread's* HTTP_RESPONSES
@@ -7819,13 +8389,13 @@ thread_local! {
 /// Returns `Some(Ok((status, body)))` / `Some(Err(msg))` on completion, `None`
 /// while pending. Plan 349 步骤 7/8 (W1c). PLAN-705 T-02: take 只消费
 /// Completed;Pending 保持 live。
-fn check_async_http_result_auth(
-    request_id: u64,
-) -> Option<Result<(i32, String), String>> {
-    crate::vm::ffi::async_http::take_live_op(request_id).map(|r| r.and_then(|ar| match ar {
-        AsyncResult::Auth { status, body } => Ok((status, body)),
-        _ => Err("expected Auth async result".to_string()),
-    }))
+fn check_async_http_result_auth(request_id: u64) -> Option<Result<(i32, String), String>> {
+    crate::vm::ffi::async_http::take_live_op(request_id).map(|r| {
+        r.and_then(|ar| match ar {
+            AsyncResult::Auth { status, body } => Ok((status, body)),
+            _ => Err("expected Auth async result".to_string()),
+        })
+    })
 }
 
 /// Spawn an auth-bearing async HTTP request (x-api-key style, for Anthropic).
@@ -7839,7 +8409,12 @@ fn spawn_async_http_auth(
     request_id: u64,
 ) {
     let url = resolve_http_base_url(&url); // PLAN-617 T-10: 相对 URL 按基址展开
-    eprintln!("[HTTP_REQ] {} url={} body_len={:?}", method, url, body.as_ref().map(|b| b.len()));
+    eprintln!(
+        "[HTTP_REQ] {} url={} body_len={:?}",
+        method,
+        url,
+        body.as_ref().map(|b| b.len())
+    );
     // PLAN-705 T-03: 固定 async executor job（原每请求 detached 线程退役）。
     let job = async move {
         let client = shared_async_http_client().clone();
@@ -7870,7 +8445,13 @@ fn spawn_async_http_auth(
                 .await
                 .unwrap_or_default();
                 let body_text = String::from_utf8_lossy(&body_bytes).to_string();
-                eprintln!("[HTTP_RESP] {} url={} -> status={} body_len={}", method, url, status, body_text.len());
+                eprintln!(
+                    "[HTTP_RESP] {} url={} -> status={} body_len={}",
+                    method,
+                    url,
+                    status,
+                    body_text.len()
+                );
                 Ok((status, body_text))
             }
             Err(e) => {
@@ -7893,7 +8474,7 @@ fn spawn_async_http_bearer(
     request_id: u64,
 ) {
     let url = resolve_http_base_url(&url); // PLAN-617 T-10: 相对 URL 按基址展开
-    // PLAN-705 T-03: 固定 async executor job。
+                                           // PLAN-705 T-03: 固定 async executor job。
     let job = async move {
         let client = shared_async_http_client().clone();
         let mut builder = match method.as_str() {
@@ -7963,7 +8544,11 @@ pub fn shim_http_post_sync(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let key_opt = if api_key.is_empty() { None } else { Some(api_key) };
+    let key_opt = if api_key.is_empty() {
+        None
+    } else {
+        Some(api_key)
+    };
     let req_id = alloc_async_id();
     // PLAN-705 T-02: 登记先于提交 worker（协议顺序）。
     crate::vm::ffi::async_http::register_live_op(req_id);
@@ -7991,7 +8576,11 @@ pub fn shim_http_post_bearer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let url: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let key_opt = if api_key.is_empty() { None } else { Some(api_key) };
+    let key_opt = if api_key.is_empty() {
+        None
+    } else {
+        Some(api_key)
+    };
     let req_id = alloc_async_id();
     // PLAN-705 T-02: 登记先于提交 worker（协议顺序）。
     crate::vm::ffi::async_http::register_live_op(req_id);
@@ -8077,7 +8666,11 @@ static TASK_HANDLE_COUNTER: AtomicU64 = AtomicU64::new(1);
 /// A handle ID (i32) that can be used to reference the task
 #[auto_macros::rust_fn("Task.spawn")]
 pub fn shim_task_spawn(task_type: String, capacity: i32) -> i32 {
-    vm_debug!("DEBUG shim_task_spawn: task_type='{}', capacity={}", task_type, capacity);
+    vm_debug!(
+        "DEBUG shim_task_spawn: task_type='{}', capacity={}",
+        task_type,
+        capacity
+    );
     let cap = if capacity <= 0 { 64 } else { capacity as usize };
 
     // Create a new task instance
@@ -8093,9 +8686,16 @@ pub fn shim_task_spawn(task_type: String, capacity: i32) -> i32 {
     let registry = get_global_task_registry();
     if let Some(receiver) = instance.take_receiver() {
         registry.store_mailbox_receiver(task_type.clone(), instance.instance_id, receiver);
-        vm_debug!("DEBUG shim_task_spawn: stored receiver for {}#{}", task_type, instance.instance_id);
+        vm_debug!(
+            "DEBUG shim_task_spawn: stored receiver for {}#{}",
+            task_type,
+            instance.instance_id
+        );
     } else {
-        eprintln!("WARN shim_task_spawn: failed to take receiver for {}#{}", task_type, instance.instance_id);
+        eprintln!(
+            "WARN shim_task_spawn: failed to take receiver for {}#{}",
+            task_type, instance.instance_id
+        );
     }
 
     // Register the handle with the global registry
@@ -8144,9 +8744,12 @@ pub fn shim_task_spawn_vm(
 
     let capacity = crate::vm::native::pop_arg_i32(task);
 
-
     let _stake_capacity = crate::vm::native::StakeGuard::new(vm, capacity as i64 as u64);
-    let ram_size = if capacity <= 0 { 8192 } else { (capacity as usize) * 64 };
+    let ram_size = if capacity <= 0 {
+        8192
+    } else {
+        (capacity as usize) * 64
+    };
 
     // Pop task_type string (tagged string index)
     let task_type = {
@@ -8165,7 +8768,12 @@ pub fn shim_task_spawn_vm(
 
     // Look up the start hook offset from exports ("{task_type}#start").
     let start_key = format!("{}#start", task_type);
-    let start_offset = vm.flash.exports_by_name.get(&start_key).copied().unwrap_or(0) as usize;
+    let start_offset = vm
+        .flash
+        .exports_by_name
+        .get(&start_key)
+        .copied()
+        .unwrap_or(0) as usize;
 
     // Spawn an AutoVM task starting at the start hook.
     let task_id = vm.spawn_task(start_offset, ram_size);
@@ -8196,9 +8804,16 @@ pub fn shim_task_spawn_vm(
     }
 
     // Create the mailbox for this task (DashMap<task_id, Mutex<Vec<Value>>).
-    vm.task_mailboxes.insert(task_id, std::sync::Mutex::new(Vec::new()));
+    vm.task_mailboxes
+        .insert(task_id, std::sync::Mutex::new(Vec::new()));
 
-    vm_debug!("DEBUG shim_task_spawn_vm: spawned task_id={} for type {} at offset {} (init_args={})", task_id, task_type, start_offset, n_init);
+    vm_debug!(
+        "DEBUG shim_task_spawn_vm: spawned task_id={} for type {} at offset {} (init_args={})",
+        task_id,
+        task_type,
+        start_offset,
+        n_init
+    );
 
     // Return the AutoVM task id as the handle (send uses it directly).
     task.ram.push_i32(task_id as i32);
@@ -8242,7 +8857,10 @@ pub fn shim_task_send_vm(
     if let Some(mailbox) = vm.task_mailboxes.get(&handle_id) {
         if let Ok(mut q) = mailbox.lock() {
             q.push(msg_value);
-            vm_debug!("DEBUG shim_task_send_vm: delivered msg to task {}", handle_id);
+            vm_debug!(
+                "DEBUG shim_task_send_vm: delivered msg to task {}",
+                handle_id
+            );
             task.ram.push_i32(1); // success
             return Ok(());
         }
@@ -8315,9 +8933,16 @@ pub fn shim_task_singleton_send(task_type: String, msg: i32) -> i32 {
             let registry = get_global_task_registry();
             registry.store_mailbox_receiver(task_type.clone(), instance.instance_id, receiver);
             registry.register_singleton(task_type.clone(), handle.clone());
-            vm_debug!("DEBUG: Stored receiver for singleton {}#{}", task_type, instance.instance_id);
+            vm_debug!(
+                "DEBUG: Stored receiver for singleton {}#{}",
+                task_type,
+                instance.instance_id
+            );
         } else {
-            eprintln!("WARN: Failed to take receiver for singleton {}#{}", task_type, instance.instance_id);
+            eprintln!(
+                "WARN: Failed to take receiver for singleton {}#{}",
+                task_type, instance.instance_id
+            );
             // Still register the singleton even if receiver extraction failed
             let registry = get_global_task_registry();
             registry.register_singleton(task_type.clone(), handle.clone());
@@ -8388,7 +9013,10 @@ pub fn shim_task_send_await(handle_id: i64, msg: String) -> Result<i64, String> 
                 Err(e) => Err(format!("TaskHandle.send_await failed: {}", e)),
             }
         } else {
-            Err(format!("TaskHandle.send_await failed: invalid handle ID {}", id))
+            Err(format!(
+                "TaskHandle.send_await failed: invalid handle ID {}",
+                id
+            ))
         }
     })
 }
@@ -8476,7 +9104,10 @@ pub fn shim_task_handle_type(handle_id: i64) -> Result<String, String> {
         if let Some(handle) = handles.get(&id) {
             Ok(handle.task_type.clone())
         } else {
-            Err(format!("TaskHandle.task_type failed: invalid handle ID {}", id))
+            Err(format!(
+                "TaskHandle.task_type failed: invalid handle ID {}",
+                id
+            ))
         }
     })
 }
@@ -8497,7 +9128,10 @@ pub fn shim_task_handle_id(handle_id: i64) -> Result<u64, String> {
         if let Some(handle) = handles.get(&id) {
             Ok(handle.instance_id)
         } else {
-            Err(format!("TaskHandle.instance_id failed: invalid handle ID {}", id))
+            Err(format!(
+                "TaskHandle.instance_id failed: invalid handle ID {}",
+                id
+            ))
         }
     })
 }
@@ -8519,9 +9153,9 @@ fn get_global_task_registry() -> &'static TaskRegistry {
 /// This is a blocking call that will not return until Ctrl+C is received.
 #[auto_macros::rust_fn("TaskSystem.start")]
 pub fn shim_task_system_start() -> Result<(), String> {
+    use crate::vm::native::NativeInterface;
     use crate::vm::scheduler::GlobalMeta;
     use crate::vm::virt_memory::VirtualFlash;
-    use crate::vm::native::NativeInterface;
     use std::collections::HashMap;
 
     let registry = get_global_task_registry();
@@ -8624,7 +9258,10 @@ pub fn shim_task_system_run(
                 success = true;
                 break;
             }
-            FrameResult::AwaitFuture { future_id: inner_id, body_offset: inner_offset } => {
+            FrameResult::AwaitFuture {
+                future_id: inner_id,
+                body_offset: inner_offset,
+            } => {
                 vm.handle_await_future(task, inner_id, inner_offset)?;
             }
             FrameResult::BudgetExhausted | FrameResult::Yielded => {
@@ -8647,7 +9284,11 @@ pub fn shim_task_system_run(
     // Update future state
     if let Some(fv) = vm.futures.get(&future_id) {
         let mut future = fv.write().unwrap();
-        future.state = if success { FutureState::Ready } else { FutureState::Failed };
+        future.state = if success {
+            FutureState::Ready
+        } else {
+            FutureState::Failed
+        };
         future.result = Some(result_value.clone());
     }
 
@@ -8668,8 +9309,9 @@ pub fn ffi_async_block_on<F, T>(f: F) -> Result<T, crate::vm::engine::VMError>
 where
     F: std::future::Future<Output = Result<T, String>>,
 {
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| crate::vm::engine::VMError::RuntimeError(format!("Failed to create tokio runtime: {}", e)))?;
+    let rt = tokio::runtime::Runtime::new().map_err(|e| {
+        crate::vm::engine::VMError::RuntimeError(format!("Failed to create tokio runtime: {}", e))
+    })?;
     rt.block_on(f)
         .map_err(|e| crate::vm::engine::VMError::RuntimeError(e))
 }
@@ -8725,7 +9367,10 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("str.find", shim_str_find_manual);
 
     // Process functions (manual shims only)
-    natives.register_shim_by_name("auto.process.spawn_with_output", shim_process_spawn_with_output);
+    natives.register_shim_by_name(
+        "auto.process.spawn_with_output",
+        shim_process_spawn_with_output,
+    );
     natives.register_shim_by_name("auto.sys.exec", shim_sys_exec);
 
     // Option functions (manual shims only)
@@ -8736,20 +9381,81 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
 
     // Net/TCP functions (manual shims — use heap objects for TCP state)
     // Note: registry uses underscores in method portion (auto.net.tcp_bind, not auto.net.tcp.bind)
-    natives.register_typed_shim_by_name("auto.net.tcp_bind", shim_net_tcp_bind, &["str"], "TcpListener?");
-    natives.register_method_shim_by_name("auto.net.tcp_listener_accept", shim_net_tcp_listener_accept, "TcpListener", &["TcpListener"], "TcpStream?");
-    natives.register_method_shim_by_name("auto.net.tcp_listener_close", shim_net_tcp_listener_close, "TcpListener", &["TcpListener"], "void");
-    natives.register_typed_shim_by_name("auto.net.tcp_connect", shim_net_tcp_connect, &["str"], "TcpStream?");
+    natives.register_typed_shim_by_name(
+        "auto.net.tcp_bind",
+        shim_net_tcp_bind,
+        &["str"],
+        "TcpListener?",
+    );
+    natives.register_method_shim_by_name(
+        "auto.net.tcp_listener_accept",
+        shim_net_tcp_listener_accept,
+        "TcpListener",
+        &["TcpListener"],
+        "TcpStream?",
+    );
+    natives.register_method_shim_by_name(
+        "auto.net.tcp_listener_close",
+        shim_net_tcp_listener_close,
+        "TcpListener",
+        &["TcpListener"],
+        "void",
+    );
+    natives.register_typed_shim_by_name(
+        "auto.net.tcp_connect",
+        shim_net_tcp_connect,
+        &["str"],
+        "TcpStream?",
+    );
     natives.register_shim_by_name("auto.net.tcp_stream_read", shim_net_tcp_stream_read);
-    natives.register_method_shim_by_name("auto.net.tcp_stream_write", shim_net_tcp_stream_write, "TcpStream", &["TcpStream", "[]byte"], "int");
-    natives.register_method_shim_by_name("auto.net.tcp_stream_read_all", shim_net_tcp_stream_read_all, "TcpStream", &["TcpStream"], "[]byte");
-    natives.register_method_shim_by_name("auto.net.tcp_stream_write_str", shim_net_tcp_stream_write_str, "TcpStream", &["TcpStream", "str"], "int");
-    natives.register_method_shim_by_name("auto.net.tcp_stream_close", shim_net_tcp_stream_close, "TcpStream", &["TcpStream"], "void");
-    natives.register_method_shim_by_name("auto.net.tcp_stream_set_read_timeout", shim_net_tcp_stream_set_read_timeout, "TcpStream", &["TcpStream", "int"], "void");
-    natives.register_method_shim_by_name("auto.net.tcp_stream_set_write_timeout", shim_net_tcp_stream_set_write_timeout, "TcpStream", &["TcpStream", "int"], "void");
+    natives.register_method_shim_by_name(
+        "auto.net.tcp_stream_write",
+        shim_net_tcp_stream_write,
+        "TcpStream",
+        &["TcpStream", "[]byte"],
+        "int",
+    );
+    natives.register_method_shim_by_name(
+        "auto.net.tcp_stream_read_all",
+        shim_net_tcp_stream_read_all,
+        "TcpStream",
+        &["TcpStream"],
+        "[]byte",
+    );
+    natives.register_method_shim_by_name(
+        "auto.net.tcp_stream_write_str",
+        shim_net_tcp_stream_write_str,
+        "TcpStream",
+        &["TcpStream", "str"],
+        "int",
+    );
+    natives.register_method_shim_by_name(
+        "auto.net.tcp_stream_close",
+        shim_net_tcp_stream_close,
+        "TcpStream",
+        &["TcpStream"],
+        "void",
+    );
+    natives.register_method_shim_by_name(
+        "auto.net.tcp_stream_set_read_timeout",
+        shim_net_tcp_stream_set_read_timeout,
+        "TcpStream",
+        &["TcpStream", "int"],
+        "void",
+    );
+    natives.register_method_shim_by_name(
+        "auto.net.tcp_stream_set_write_timeout",
+        shim_net_tcp_stream_set_write_timeout,
+        "TcpStream",
+        &["TcpStream", "int"],
+        "void",
+    );
     // Plan 313: TCP flush + nodelay for SSE/low-latency writes
     natives.register_shim_by_name("auto.net.tcp_stream_flush", shim_net_tcp_stream_flush);
-    natives.register_shim_by_name("auto.net.tcp_stream_set_nodelay", shim_net_tcp_stream_set_nodelay);
+    natives.register_shim_by_name(
+        "auto.net.tcp_stream_set_nodelay",
+        shim_net_tcp_stream_set_nodelay,
+    );
 
     // HTTP server functions (manual shims — heap objects for server state)
     natives.register_shim_by_name("auto.http.server", shim_http_server);
@@ -8843,9 +9549,15 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http.put", shim_http_put);
     natives.register_shim_by_name("auto.http.delete", shim_http_delete);
     natives.register_shim_by_name("auto.http.request", shim_http_request);
-    natives.register_shim_by_name("auto.http.request_builder_header", shim_request_builder_header);
+    natives.register_shim_by_name(
+        "auto.http.request_builder_header",
+        shim_request_builder_header,
+    );
     natives.register_shim_by_name("auto.http.request_builder_body", shim_request_builder_body);
-    natives.register_shim_by_name("auto.http.request_builder_timeout", shim_request_builder_timeout);
+    natives.register_shim_by_name(
+        "auto.http.request_builder_timeout",
+        shim_request_builder_timeout,
+    );
     natives.register_shim_by_name("auto.http.request_builder_json", shim_request_builder_json);
     natives.register_shim_by_name("auto.http.request_builder_send", shim_request_builder_send);
 
@@ -8857,14 +9569,32 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("RequestBuilder.json", shim_request_builder_json);
     natives.register_shim_by_name("RequestBuilder.send", shim_request_builder_send);
     // Plan 350: TLS configuration
-    natives.register_shim_by_name("RequestBuilder.tls_ca_cert", shim_request_builder_tls_ca_cert);
-    natives.register_shim_by_name("RequestBuilder.tls_skip_verify", shim_request_builder_tls_skip_verify);
-    natives.register_shim_by_name("RequestBuilder.tls_client_cert", shim_request_builder_tls_client_cert);
+    natives.register_shim_by_name(
+        "RequestBuilder.tls_ca_cert",
+        shim_request_builder_tls_ca_cert,
+    );
+    natives.register_shim_by_name(
+        "RequestBuilder.tls_skip_verify",
+        shim_request_builder_tls_skip_verify,
+    );
+    natives.register_shim_by_name(
+        "RequestBuilder.tls_client_cert",
+        shim_request_builder_tls_client_cert,
+    );
     // Plan 349: Multipart file upload
-    natives.register_shim_by_name("RequestBuilder.multipart_file", shim_request_builder_multipart_file);
-    natives.register_shim_by_name("RequestBuilder.multipart_text", shim_request_builder_multipart_text);
+    natives.register_shim_by_name(
+        "RequestBuilder.multipart_file",
+        shim_request_builder_multipart_file,
+    );
+    natives.register_shim_by_name(
+        "RequestBuilder.multipart_text",
+        shim_request_builder_multipart_text,
+    );
     // Plan 349 step 8: Cookie / retry / compression
-    natives.register_shim_by_name("RequestBuilder.cookie_store", shim_request_builder_cookie_store);
+    natives.register_shim_by_name(
+        "RequestBuilder.cookie_store",
+        shim_request_builder_cookie_store,
+    );
     natives.register_shim_by_name("RequestBuilder.retry", shim_request_builder_retry);
     natives.register_shim_by_name("RequestBuilder.gzip", shim_request_builder_gzip);
     natives.register_shim_by_name("RequestBuilder.brotli", shim_request_builder_brotli);
@@ -8875,38 +9605,119 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("http.download", shim_http_download);
     natives.register_shim_by_name("auto.http.download_resume", shim_http_download_resume);
     natives.register_shim_by_name("http.download_resume", shim_http_download_resume);
-    natives.register_shim_by_name("auto.http.download_with_progress", shim_http_download_with_progress);
-    natives.register_shim_by_name("http.download_with_progress", shim_http_download_with_progress);
+    natives.register_shim_by_name(
+        "auto.http.download_with_progress",
+        shim_http_download_with_progress,
+    );
+    natives.register_shim_by_name(
+        "http.download_with_progress",
+        shim_http_download_with_progress,
+    );
     // PLAN-727 T-05: 可取消文件传输公共面（共享核心；契约见
     // docs/plans/reports/727-transfer-decision.md）
-    natives.register_shim_by_name("auto.http.transfer_download", super::http_transfer::shim_http_transfer_download);
-    natives.register_shim_by_name("http.transfer_download", super::http_transfer::shim_http_transfer_download);
-    natives.register_shim_by_name("auto.http.transfer_upload", super::http_transfer::shim_http_transfer_upload);
-    natives.register_shim_by_name("http.transfer_upload", super::http_transfer::shim_http_transfer_upload);
-    natives.register_shim_by_name("auto.http.transfer_wait", super::http_transfer::shim_http_transfer_wait);
-    natives.register_shim_by_name("http.transfer_wait", super::http_transfer::shim_http_transfer_wait);
-    natives.register_shim_by_name("auto.http.transfer_next_progress", super::http_transfer::shim_http_transfer_next_progress);
-    natives.register_shim_by_name("http.transfer_next_progress", super::http_transfer::shim_http_transfer_next_progress);
-    natives.register_shim_by_name("auto.http.transfer_cancel", super::http_transfer::shim_http_transfer_cancel);
-    natives.register_shim_by_name("http.transfer_cancel", super::http_transfer::shim_http_transfer_cancel);
-    natives.register_shim_by_name("auto.http.transfer_error", super::http_transfer::shim_http_transfer_error);
-    natives.register_shim_by_name("http.transfer_error", super::http_transfer::shim_http_transfer_error);
+    natives.register_shim_by_name(
+        "auto.http.transfer_download",
+        super::http_transfer::shim_http_transfer_download,
+    );
+    natives.register_shim_by_name(
+        "http.transfer_download",
+        super::http_transfer::shim_http_transfer_download,
+    );
+    natives.register_shim_by_name(
+        "auto.http.transfer_upload",
+        super::http_transfer::shim_http_transfer_upload,
+    );
+    natives.register_shim_by_name(
+        "http.transfer_upload",
+        super::http_transfer::shim_http_transfer_upload,
+    );
+    natives.register_shim_by_name(
+        "auto.http.transfer_wait",
+        super::http_transfer::shim_http_transfer_wait,
+    );
+    natives.register_shim_by_name(
+        "http.transfer_wait",
+        super::http_transfer::shim_http_transfer_wait,
+    );
+    natives.register_shim_by_name(
+        "auto.http.transfer_next_progress",
+        super::http_transfer::shim_http_transfer_next_progress,
+    );
+    natives.register_shim_by_name(
+        "http.transfer_next_progress",
+        super::http_transfer::shim_http_transfer_next_progress,
+    );
+    natives.register_shim_by_name(
+        "auto.http.transfer_cancel",
+        super::http_transfer::shim_http_transfer_cancel,
+    );
+    natives.register_shim_by_name(
+        "http.transfer_cancel",
+        super::http_transfer::shim_http_transfer_cancel,
+    );
+    natives.register_shim_by_name(
+        "auto.http.transfer_error",
+        super::http_transfer::shim_http_transfer_error,
+    );
+    natives.register_shim_by_name(
+        "http.transfer_error",
+        super::http_transfer::shim_http_transfer_error,
+    );
     // PLAN-729 T-04: 服务端文件响应描述符构造（零 I/O；执行在 transport
     // 侧共享宿主服务）。
-    natives.register_shim_by_name("auto.http.file_response", super::http_server_file::shim_http_file_response);
-    natives.register_shim_by_name("http.file_response", super::http_server_file::shim_http_file_response);
+    natives.register_shim_by_name(
+        "auto.http.file_response",
+        super::http_server_file::shim_http_file_response,
+    );
+    natives.register_shim_by_name(
+        "http.file_response",
+        super::http_server_file::shim_http_file_response,
+    );
     // PLAN-730 T-02: 服务端上传公共面（执行在共享宿主 executor，
     // a2r_std::http facade → http_upload_service 注入 hook）。
-    natives.register_shim_by_name("auto.http.upload_receive", super::http_upload::shim_http_upload_receive);
-    natives.register_shim_by_name("http.upload_receive", super::http_upload::shim_http_upload_receive);
-    natives.register_shim_by_name("auto.http.upload_metadata", super::http_upload::shim_http_upload_metadata);
-    natives.register_shim_by_name("http.upload_metadata", super::http_upload::shim_http_upload_metadata);
-    natives.register_shim_by_name("auto.http.upload_commit", super::http_upload::shim_http_upload_commit);
-    natives.register_shim_by_name("http.upload_commit", super::http_upload::shim_http_upload_commit);
-    natives.register_shim_by_name("auto.http.upload_reject", super::http_upload::shim_http_upload_reject);
-    natives.register_shim_by_name("http.upload_reject", super::http_upload::shim_http_upload_reject);
-    natives.register_shim_by_name("auto.http.upload_error", super::http_upload::shim_http_upload_error);
-    natives.register_shim_by_name("http.upload_error", super::http_upload::shim_http_upload_error);
+    natives.register_shim_by_name(
+        "auto.http.upload_receive",
+        super::http_upload::shim_http_upload_receive,
+    );
+    natives.register_shim_by_name(
+        "http.upload_receive",
+        super::http_upload::shim_http_upload_receive,
+    );
+    natives.register_shim_by_name(
+        "auto.http.upload_metadata",
+        super::http_upload::shim_http_upload_metadata,
+    );
+    natives.register_shim_by_name(
+        "http.upload_metadata",
+        super::http_upload::shim_http_upload_metadata,
+    );
+    natives.register_shim_by_name(
+        "auto.http.upload_commit",
+        super::http_upload::shim_http_upload_commit,
+    );
+    natives.register_shim_by_name(
+        "http.upload_commit",
+        super::http_upload::shim_http_upload_commit,
+    );
+    natives.register_shim_by_name(
+        "auto.http.upload_reject",
+        super::http_upload::shim_http_upload_reject,
+    );
+    natives.register_shim_by_name(
+        "http.upload_reject",
+        super::http_upload::shim_http_upload_reject,
+    );
+    natives.register_shim_by_name(
+        "auto.http.upload_error",
+        super::http_upload::shim_http_upload_error,
+    );
+    natives.register_shim_by_name(
+        "http.upload_error",
+        super::http_upload::shim_http_upload_error,
+    );
+    // PLAN-738 §5.3：既有生产能力面的独立逻辑契约在 production() 工厂
+    // build_from_inventory 之后统一声明（inventory 条目会覆盖同 ID 契约），
+    // 见 native.rs production()。
 
     // Plan 350: WebSocket client
     crate::vm::ffi::websocket::register_ws_natives(natives);
@@ -8958,7 +9769,10 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.http_stream.stream_close", shim_http_stream_close);
     // Plan 321: HTTPStream → Iter protocol for for-loop consumption
     natives.register_shim_by_name("auto.http_stream.stream_iter", shim_http_stream_iter);
-    natives.register_shim_by_name("auto.http.post_stream_with_headers", shim_http_post_stream_with_headers);
+    natives.register_shim_by_name(
+        "auto.http.post_stream_with_headers",
+        shim_http_post_stream_with_headers,
+    );
 
     // HTTP client sync with auth (for Anthropic API from AutoVM)
     natives.register_shim_by_name("auto.http.post_sync", shim_http_post_sync);
@@ -9076,7 +9890,10 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("path_inner", shim_path_inner);
 
     // Data-source extern (path (a) forwarding; default = constant).
-    natives.register_shim_by_name("app_config_effective_daemon_url", shim_app_config_effective_daemon_url);
+    natives.register_shim_by_name(
+        "app_config_effective_daemon_url",
+        shim_app_config_effective_daemon_url,
+    );
     // Value-returning data extern (path (a) forwarding; default = empty store).
     natives.register_shim_by_name("relay_runs_list", shim_relay_runs_list);
     // PLAN-044: generic gate for the whole musk extern surface — the
@@ -9122,7 +9939,8 @@ fn format_date_ms(ms: i64, pattern: &str) -> String {
     let dt = match Local.timestamp_millis_opt(ms) {
         chrono::LocalResult::Single(dt) => dt,
         _ => return String::new(),
-    };    let mut out = String::with_capacity(pattern.len() + 8);
+    };
+    let mut out = String::with_capacity(pattern.len() + 8);
     let bytes = pattern.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -9159,7 +9977,8 @@ fn pop_rust_obj(task: &mut AutoTask, vm: &AutoVM, context: &str) -> Result<u64, 
         };
         if vm.get_heap_object(handle).is_none() {
             return Err(VMError::RuntimeError(format!(
-                "Invalid Rust stdlib handle in {} (handle={})", context, handle
+                "Invalid Rust stdlib handle in {} (handle={})",
+                context, handle
             )));
         }
         Ok(handle)
@@ -9199,14 +10018,8 @@ fn shim_rust_stdlib_dispatch_inner(
     type_name: &str,
     method: &str,
 ) -> Result<(), VMError> {
-
     // Plan 430 D1: 生成段(shim-metadata)优先;命中即返回,未命中回退手写臂。
-    match super::generated_std::generated_std_dispatch(
-        type_name,
-        method,
-        task,
-        vm,
-    )? {
+    match super::generated_std::generated_std_dispatch(type_name, method, task, vm)? {
         Some(()) => return Ok(()),
         None => {}
     }
@@ -9226,8 +10039,11 @@ fn shim_rust_stdlib_dispatch_inner(
         ("Router", "serve") => {
             super::axum_adapter::shim_router_serve(task, vm)?;
         }
-        ("MethodRouter", "get") | ("MethodRouter", "post") | ("MethodRouter", "put")
-        | ("MethodRouter", "delete") | ("MethodRouter", "patch") => {
+        ("MethodRouter", "get")
+        | ("MethodRouter", "post")
+        | ("MethodRouter", "put")
+        | ("MethodRouter", "delete")
+        | ("MethodRouter", "patch") => {
             super::axum_adapter::shim_method_chain(task, vm, method)?;
         }
         ("", "get") | ("", "post") | ("", "put") | ("", "delete") | ("", "patch") => {
@@ -9238,7 +10054,9 @@ fn shim_rust_stdlib_dispatch_inner(
         // musk handlers write `specs_load(s.view, q)` — on the VM side `s` is
         // the opaque app_state_handle; `.view` (and any sibling accessor)
         // yields the same handle (the host closure captures the real state).
-        ("AppState", "view") | ("AppState", "registry") | ("AppState", "auth")
+        ("AppState", "view")
+        | ("AppState", "registry")
+        | ("AppState", "auth")
         | ("AppState", "client") => {
             let receiver = task.ram.pop_i32();
             task.ram.push_i32(receiver);
@@ -9271,7 +10089,9 @@ fn shim_rust_stdlib_dispatch_inner(
             // a heap id pushed onto the stack must carry a staked share.
             vm.rc_push_id(task, handle as u64);
         }
-        ("Router", "layer") | ("Router", "with_state") | ("Router", "merge")
+        ("Router", "layer")
+        | ("Router", "with_state")
+        | ("Router", "merge")
         | ("MethodRouter", "layer") => {
             let _layer_arg = task.ram.pop_i32();
             let receiver = task.ram.pop_i32();
@@ -9299,8 +10119,7 @@ fn shim_rust_stdlib_dispatch_inner(
 
         // std::time::Duration(构造器与 as_secs/as_secs_f64 已迁 plan-430 生成段;
         // 残留 u128 返回的访问器,超 i64 槽暂留手写)
-        ("Duration", "as_millis") | ("Duration", "as_micros")
-        | ("Duration", "as_nanos") => {
+        ("Duration", "as_millis") | ("Duration", "as_micros") | ("Duration", "as_nanos") => {
             let handle = task.ram.pop_i32() as u64;
             if let Some(obj) = vm.get_heap_object(handle) {
                 let guard = obj.read().unwrap();
@@ -9328,15 +10147,24 @@ fn shim_rust_stdlib_dispatch_inner(
             let self_handle = pop_rust_obj(task, vm, "PathBuf.join")?;
             let obj = vm.get_heap_object(self_handle).unwrap();
             let mut guard = obj.write().unwrap();
-            if let Some(rust_obj) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(rust_obj) = guard
+                .as_any_mut()
+                .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+            {
                 if let Some(path) = rust_obj.downcast_mut::<StdPathBuf>() {
                     path.push(&other);
                     task.ram.push_i32(self_handle as i32);
                 } else {
-                    return Err(VMError::RuntimeError(format!("PathBuf.join: invalid object at handle {}", self_handle)));
+                    return Err(VMError::RuntimeError(format!(
+                        "PathBuf.join: invalid object at handle {}",
+                        self_handle
+                    )));
                 }
             } else {
-                return Err(VMError::RuntimeError(format!("PathBuf.join: not a RustStdlibObject at handle {}", self_handle)));
+                return Err(VMError::RuntimeError(format!(
+                    "PathBuf.join: not a RustStdlibObject at handle {}",
+                    self_handle
+                )));
             }
         }
 
@@ -9345,16 +10173,14 @@ fn shim_rust_stdlib_dispatch_inner(
         // 匹配形态)。
         ("PathBuf", "parent") => {
             let self_handle = pop_rust_obj(task, vm, "PathBuf.parent")?;
-            let parent = vm
-                .get_heap_object(self_handle)
-                .and_then(|obj| {
-                    let guard = obj.read().unwrap();
-                    guard
-                        .as_any()
-                        .downcast_ref::<RustStdlibObject>()
-                        .and_then(|ro| ro.downcast_ref::<StdPathBuf>())
-                        .and_then(|p| p.parent().map(|pp| pp.to_path_buf()))
-                });
+            let parent = vm.get_heap_object(self_handle).and_then(|obj| {
+                let guard = obj.read().unwrap();
+                guard
+                    .as_any()
+                    .downcast_ref::<RustStdlibObject>()
+                    .and_then(|ro| ro.downcast_ref::<StdPathBuf>())
+                    .and_then(|p| p.parent().map(|pp| pp.to_path_buf()))
+            });
             match parent {
                 Some(p) => push_rust_obj(task, vm, "PathBuf", StdPathBuf::from(p))?,
                 None => task.ram.push_nv(auto_val::encode_null()),
@@ -9364,16 +10190,14 @@ fn shim_rust_stdlib_dispatch_inner(
         // PathBuf::file_stem -> Option<str> — Some 推池字符串,None 推 null。
         ("PathBuf", "file_stem") => {
             let self_handle = pop_rust_obj(task, vm, "PathBuf.file_stem")?;
-            let stem = vm
-                .get_heap_object(self_handle)
-                .and_then(|obj| {
-                    let guard = obj.read().unwrap();
-                    guard
-                        .as_any()
-                        .downcast_ref::<RustStdlibObject>()
-                        .and_then(|ro| ro.downcast_ref::<StdPathBuf>())
-                        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
-                });
+            let stem = vm.get_heap_object(self_handle).and_then(|obj| {
+                let guard = obj.read().unwrap();
+                guard
+                    .as_any()
+                    .downcast_ref::<RustStdlibObject>()
+                    .and_then(|ro| ro.downcast_ref::<StdPathBuf>())
+                    .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
+            });
             match stem {
                 Some(s) => {
                     let idx = vm.add_string(s.into_bytes());
@@ -9507,20 +10331,28 @@ fn shim_rust_stdlib_dispatch_inner(
             push_rust_obj(task, vm, "Duration", chrono::Duration::seconds(secs as i64))?;
         }
         ("NaiveDateTime", "parse_from_str") => {
-            let fmt: String = String::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("NaiveDateTime.parse_from_str: {}", e)))?;
-            let s: String = String::pop_from_stack(task, vm)
-                .map_err(|e| VMError::RuntimeError(format!("NaiveDateTime.parse_from_str: {}", e)))?;
+            let fmt: String = String::pop_from_stack(task, vm).map_err(|e| {
+                VMError::RuntimeError(format!("NaiveDateTime.parse_from_str: {}", e))
+            })?;
+            let s: String = String::pop_from_stack(task, vm).map_err(|e| {
+                VMError::RuntimeError(format!("NaiveDateTime.parse_from_str: {}", e))
+            })?;
             match chrono::NaiveDateTime::parse_from_str(&s, &fmt) {
                 Ok(dt) => push_rust_obj(task, vm, "chrono::NaiveDateTime", dt)?,
-                Err(e) => return Err(VMError::RuntimeError(format!("NaiveDateTime::parse_from_str failed: {}", e))),
+                Err(e) => {
+                    return Err(VMError::RuntimeError(format!(
+                        "NaiveDateTime::parse_from_str failed: {}",
+                        e
+                    )))
+                }
             }
         }
         ("Utc", "timestamp_opt") | ("Local", "timestamp_opt") => {
             let ts: i64 = i64::pop_from_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(format!("timestamp_opt: {}", e)))?;
-            let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0)
-                .ok_or_else(|| VMError::RuntimeError("timestamp_opt: invalid timestamp".to_string()))?;
+            let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(ts, 0).ok_or_else(|| {
+                VMError::RuntimeError("timestamp_opt: invalid timestamp".to_string())
+            })?;
             push_rust_obj(task, vm, "chrono::DateTime<chrono::Utc>", dt)?;
         }
 
@@ -9535,15 +10367,22 @@ fn shim_rust_stdlib_dispatch_inner(
             let handle = pop_rust_obj(task, vm, "ReaderBuilder.delimiter")?;
             let obj = vm.get_heap_object(handle).unwrap();
             let mut guard = obj.write().unwrap();
-            if let Some(rust_obj) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(rust_obj) = guard
+                .as_any_mut()
+                .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+            {
                 if let Some(builder) = rust_obj.downcast_mut::<csv::ReaderBuilder>() {
                     builder.delimiter(delim as u8);
                     task.ram.push_i32(handle as i32);
                 } else {
-                    return Err(VMError::RuntimeError("ReaderBuilder.delimiter: invalid inner object".into()));
+                    return Err(VMError::RuntimeError(
+                        "ReaderBuilder.delimiter: invalid inner object".into(),
+                    ));
                 }
             } else {
-                return Err(VMError::RuntimeError("ReaderBuilder.delimiter: invalid object".into()));
+                return Err(VMError::RuntimeError(
+                    "ReaderBuilder.delimiter: invalid object".into(),
+                ));
             }
         }
         ("ReaderBuilder", "from_reader") => {
@@ -9551,8 +10390,14 @@ fn shim_rust_stdlib_dispatch_inner(
             let bytes: Vec<u8> = {
                 let reader_obj = vm.get_heap_object(reader_handle).unwrap();
                 let reader_guard = reader_obj.read().unwrap();
-                if let Some(rust_obj) = reader_guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
-                    rust_obj.downcast_ref::<Vec<u8>>().cloned().unwrap_or_default()
+                if let Some(rust_obj) = reader_guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>(
+                ) {
+                    rust_obj
+                        .downcast_ref::<Vec<u8>>()
+                        .cloned()
+                        .unwrap_or_default()
                 } else {
                     Vec::new()
                 }
@@ -9560,15 +10405,22 @@ fn shim_rust_stdlib_dispatch_inner(
             let builder_handle = pop_rust_obj(task, vm, "ReaderBuilder.from_reader")?;
             let obj = vm.get_heap_object(builder_handle).unwrap();
             let guard = obj.read().unwrap();
-            if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(rust_obj) = guard
+                .as_any()
+                .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+            {
                 if let Some(builder) = rust_obj.downcast_ref::<csv::ReaderBuilder>() {
                     let reader = builder.from_reader(std::io::Cursor::new(bytes));
                     push_rust_obj(task, vm, "csv::Reader<std::io::Cursor<Vec<u8>>>", reader)?;
                 } else {
-                    return Err(VMError::RuntimeError("ReaderBuilder.from_reader: invalid inner object".into()));
+                    return Err(VMError::RuntimeError(
+                        "ReaderBuilder.from_reader: invalid inner object".into(),
+                    ));
                 }
             } else {
-                return Err(VMError::RuntimeError("ReaderBuilder.from_reader: invalid object".into()));
+                return Err(VMError::RuntimeError(
+                    "ReaderBuilder.from_reader: invalid object".into(),
+                ));
             }
         }
         ("Reader", "from_reader") => {
@@ -9576,8 +10428,14 @@ fn shim_rust_stdlib_dispatch_inner(
             let bytes: Vec<u8> = {
                 let reader_obj = vm.get_heap_object(reader_handle).unwrap();
                 let reader_guard = reader_obj.read().unwrap();
-                if let Some(rust_obj) = reader_guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
-                    rust_obj.downcast_ref::<Vec<u8>>().cloned().unwrap_or_default()
+                if let Some(rust_obj) = reader_guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>(
+                ) {
+                    rust_obj
+                        .downcast_ref::<Vec<u8>>()
+                        .cloned()
+                        .unwrap_or_default()
                 } else {
                     Vec::new()
                 }
@@ -9588,7 +10446,9 @@ fn shim_rust_stdlib_dispatch_inner(
         ("Reader", "records") => {
             let handle = pop_rust_obj(task, vm, "Reader.records")?;
             let Some(obj) = vm.get_heap_object(handle) else {
-                return Err(VMError::RuntimeError("Reader.records: invalid reader handle".into()));
+                return Err(VMError::RuntimeError(
+                    "Reader.records: invalid reader handle".into(),
+                ));
             };
             // Collect all records into a List of record heap objects
             use crate::vm::types::ListData;
@@ -9596,8 +10456,13 @@ fn shim_rust_stdlib_dispatch_inner(
             let mut outer_list: ListData<i32> = ListData::new();
             {
                 let mut guard = obj.write().unwrap();
-                if let Some(rust_obj) = guard.as_any_mut().downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
-                    if let Some(reader) = rust_obj.downcast_mut::<csv::Reader<std::io::Cursor<Vec<u8>>>>() {
+                if let Some(rust_obj) = guard
+                    .as_any_mut()
+                    .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>(
+                ) {
+                    if let Some(reader) =
+                        rust_obj.downcast_mut::<csv::Reader<std::io::Cursor<Vec<u8>>>>()
+                    {
                         for result in reader.records() {
                             if let Ok(record) = result {
                                 // Each record becomes a ListData<i32> of string indices
@@ -9632,7 +10497,10 @@ fn shim_rust_stdlib_dispatch_inner(
                 return Err(VMError::RuntimeError("List.get: invalid handle".into()));
             };
             let guard = obj.read().unwrap();
-            if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+            if let Some(list) = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ListData<i32>>()
+            {
                 let idx = index as usize;
                 if let Some(val) = list.get(idx) {
                     let val = *val;
@@ -9668,11 +10536,20 @@ fn shim_rust_stdlib_dispatch_inner(
                 };
                 if let Some(obj) = vm.get_heap_object(id) {
                     let guard = obj.read().unwrap();
-                    let len = if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+                    let len = if let Some(list) = guard
+                        .as_any()
+                        .downcast_ref::<crate::vm::types::ListData<i32>>()
+                    {
                         list.len() as i32
-                    } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                    } else if let Some(list) = guard
+                        .as_any()
+                        .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                    {
                         list.elems.len() as i32
-                    } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<String>>() {
+                    } else if let Some(list) = guard
+                        .as_any()
+                        .downcast_ref::<crate::vm::types::ListData<String>>()
+                    {
                         list.elems.len() as i32
                     } else {
                         0
@@ -9689,10 +10566,16 @@ fn shim_rust_stdlib_dispatch_inner(
                 return Err(VMError::RuntimeError("List.count: invalid handle".into()));
             };
             let guard = obj.read().unwrap();
-            if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
+            if let Some(list) = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ListData<i32>>()
+            {
                 let len = list.len() as i32;
                 task.ram.push_nv(auto_val::encode_i32(len));
-            } else if let Some(list) = guard.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+            } else if let Some(list) = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+            {
                 let len = list.elems.len() as i32;
                 task.ram.push_nv(auto_val::encode_i32(len));
             } else {
@@ -9701,8 +10584,13 @@ fn shim_rust_stdlib_dispatch_inner(
         }
 
         // ---- ansi_term ----
-        ("Red", "paint") | ("Green", "paint") | ("Yellow", "paint")
-        | ("Blue", "paint") | ("Cyan", "paint") | ("White", "paint") | ("Purple", "paint") => {
+        ("Red", "paint")
+        | ("Green", "paint")
+        | ("Yellow", "paint")
+        | ("Blue", "paint")
+        | ("Cyan", "paint")
+        | ("White", "paint")
+        | ("Purple", "paint") => {
             let s: String = String::pop_from_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(format!("{}.paint: {}", type_name, e)))?;
             let color = match type_name {
@@ -9740,12 +10628,10 @@ fn shim_rust_stdlib_dispatch_inner(
         }
 
         // ---- std::thread ----
-        ("thread", "available_parallelism") => {
-            match std::thread::available_parallelism() {
-                Ok(n) => task.ram.push_i32(n.get() as i32),
-                Err(_) => task.ram.push_i32(1),
-            }
-        }
+        ("thread", "available_parallelism") => match std::thread::available_parallelism() {
+            Ok(n) => task.ram.push_i32(n.get() as i32),
+            Err(_) => task.ram.push_i32(1),
+        },
 
         // ---- std::cell::RefCell (instance methods) ----
         ("cell", "borrow") => {
@@ -9772,8 +10658,7 @@ fn shim_rust_stdlib_dispatch_inner(
         }
 
         // ---- log macros (no-op in VM) ----
-        ("", "info") | ("", "debug") | ("", "warn") | ("", "error")
-        | ("", "trace") => {
+        ("", "info") | ("", "debug") | ("", "warn") | ("", "error") | ("", "trace") => {
             let _msg: Result<String, _> = String::pop_from_stack(task, vm);
         }
 
@@ -9889,9 +10774,7 @@ fn shim_rust_stdlib_dispatch_inner(
         // ---- Backtrace ----
         ("Backtrace", "capture") => {
             let bt = std::backtrace::Backtrace::capture();
-            let handle = vm.insert_heap_object(
-                RustStdlibObject::new("Backtrace", bt)
-            ) as i32;
+            let handle = vm.insert_heap_object(RustStdlibObject::new("Backtrace", bt)) as i32;
             vm.rc_push_id(task, handle as u64); // Plan 419
         }
 
@@ -9938,7 +10821,9 @@ fn shim_rust_stdlib_dispatch_inner(
             let handle = pop_rust_obj(task, vm, "Regex.captures_iter")?;
             let obj = vm.get_heap_object(handle);
             if obj.is_none() {
-                return Err(VMError::RuntimeError("Regex.captures_iter: invalid handle".into()));
+                return Err(VMError::RuntimeError(
+                    "Regex.captures_iter: invalid handle".into(),
+                ));
             }
             // Collect all matches as string pool indices in a flat list
             use crate::vm::types::ListData;
@@ -9970,16 +10855,21 @@ fn shim_rust_stdlib_dispatch_inner(
             };
             let guard = obj.read().unwrap();
             let bytes = if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                rust_obj.downcast_ref::<Vec<u8>>().cloned().unwrap_or_default()
+                rust_obj
+                    .downcast_ref::<Vec<u8>>()
+                    .cloned()
+                    .unwrap_or_default()
             } else {
                 Vec::new()
             };
             drop(guard);
 
             // Percent-encode non-alphanumeric bytes
-            let encoded: String = bytes.iter()
+            let encoded: String = bytes
+                .iter()
                 .flat_map(|&b| {
-                    if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
+                    if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~'
+                    {
                         vec![b]
                     } else {
                         format!("%{:02X}", b).into_bytes()
@@ -10000,7 +10890,10 @@ fn shim_rust_stdlib_dispatch_inner(
                 return Ok(());
             };
             let guard = obj.read().unwrap();
-            if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+            if let Some(rust_obj) = guard
+                .as_any()
+                .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+            {
                 if let Some(bytes) = rust_obj.downcast_ref::<Vec<u8>>() {
                     task.ram.push_i32(bytes.len() as i32);
                 } else {
@@ -10016,7 +10909,12 @@ fn shim_rust_stdlib_dispatch_inner(
             let _inner_handle = task.ram.pop_i32();
             let buffer: Vec<u8> = Vec::new();
             let writer = csv::Writer::from_writer(buffer);
-            push_rust_obj(task, vm, "csv::Writer<Vec<u8>>", std::sync::Mutex::new(writer))?;
+            push_rust_obj(
+                task,
+                vm,
+                "csv::Writer<Vec<u8>>",
+                std::sync::Mutex::new(writer),
+            )?;
         }
         ("Writer", "write_record") => {
             let record: Vec<String> = Vec::<String>::pop_from_stack(task, vm)
@@ -10025,7 +10923,9 @@ fn shim_rust_stdlib_dispatch_inner(
             if let Some(obj) = vm.get_heap_object(writer_handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                    if let Some(writer) = rust_obj.downcast_ref::<std::sync::Mutex<csv::Writer<Vec<u8>>>>() {
+                    if let Some(writer) =
+                        rust_obj.downcast_ref::<std::sync::Mutex<csv::Writer<Vec<u8>>>>()
+                    {
                         let _ = writer.lock().unwrap().write_record(&record);
                         task.ram.push_i32(writer_handle as i32);
                         return Ok(());
@@ -10044,10 +10944,14 @@ fn shim_rust_stdlib_dispatch_inner(
             };
             let writer_handle = task.ram.pop_i32() as u64;
             // Extract fields from ObjectData and serialize as CSV record
-            let mut record_map: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+            let mut record_map: std::collections::BTreeMap<String, String> =
+                std::collections::BTreeMap::new();
             if let Some(obj_arc) = vm.get_heap_object(obj_id) {
                 let obj_guard = obj_arc.read().unwrap();
-                if let Some(od) = obj_guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                if let Some(od) = obj_guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::types::ObjectData>()
+                {
                     for (key, val) in &od.fields {
                         let key_str = format!("{:?}", key);
                         let val_str = match val {
@@ -10065,7 +10969,9 @@ fn shim_rust_stdlib_dispatch_inner(
             if let Some(obj) = vm.get_heap_object(writer_handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                    if let Some(writer) = rust_obj.downcast_ref::<std::sync::Mutex<csv::Writer<Vec<u8>>>>() {
+                    if let Some(writer) =
+                        rust_obj.downcast_ref::<std::sync::Mutex<csv::Writer<Vec<u8>>>>()
+                    {
                         let _ = writer.lock().unwrap().write_record(&record);
                         task.ram.push_i32(writer_handle as i32);
                         return Ok(());
@@ -10083,9 +10989,12 @@ fn shim_rust_stdlib_dispatch_inner(
             if let Some(obj) = vm.get_heap_object(handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                    if let Some(writer) = rust_obj.downcast_ref::<std::sync::Mutex<csv::Writer<Vec<u8>>>>() {
+                    if let Some(writer) =
+                        rust_obj.downcast_ref::<std::sync::Mutex<csv::Writer<Vec<u8>>>>()
+                    {
                         let mut w = writer.lock().unwrap();
-                        let taken = std::mem::replace(&mut *w, csv::Writer::from_writer(Vec::new()));
+                        let taken =
+                            std::mem::replace(&mut *w, csv::Writer::from_writer(Vec::new()));
                         let inner = taken.into_inner().unwrap_or_default();
                         push_rust_obj(task, vm, "Vec<u8>", inner)?;
                         return Ok(());
@@ -10109,7 +11018,9 @@ fn shim_rust_stdlib_dispatch_inner(
                                 return Ok(());
                             }
                             Err(_) => {
-                                return Err(VMError::RuntimeError("String.from_utf8: invalid utf8".into()));
+                                return Err(VMError::RuntimeError(
+                                    "String.from_utf8: invalid utf8".into(),
+                                ));
                             }
                         }
                     }
@@ -10123,7 +11034,12 @@ fn shim_rust_stdlib_dispatch_inner(
             let program: String = String::pop_from_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(format!("Command.new: {}", e)))?;
             let cmd = std::process::Command::new(&program);
-            push_rust_obj(task, vm, "std::process::Command", std::sync::Mutex::new(cmd))?;
+            push_rust_obj(
+                task,
+                vm,
+                "std::process::Command",
+                std::sync::Mutex::new(cmd),
+            )?;
         }
         ("Command", "arg") => {
             let arg: String = String::pop_from_stack(task, vm)
@@ -10132,14 +11048,18 @@ fn shim_rust_stdlib_dispatch_inner(
             if let Some(obj) = vm.get_heap_object(handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                    if let Some(cmd) = rust_obj.downcast_ref::<std::sync::Mutex<std::process::Command>>() {
+                    if let Some(cmd) =
+                        rust_obj.downcast_ref::<std::sync::Mutex<std::process::Command>>()
+                    {
                         cmd.lock().unwrap().arg(&arg);
                         task.ram.push_i32(handle as i32);
                         return Ok(());
                     }
                 }
             }
-            return Err(VMError::RuntimeError("Command.arg: invalid Command handle".into()));
+            return Err(VMError::RuntimeError(
+                "Command.arg: invalid Command handle".into(),
+            ));
         }
         ("Command", "args") => {
             // Pop the args array as Vec<String> (same extraction path as
@@ -10150,7 +11070,9 @@ fn shim_rust_stdlib_dispatch_inner(
             if let Some(obj) = vm.get_heap_object(handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                    if let Some(cmd) = rust_obj.downcast_ref::<std::sync::Mutex<std::process::Command>>() {
+                    if let Some(cmd) =
+                        rust_obj.downcast_ref::<std::sync::Mutex<std::process::Command>>()
+                    {
                         let mut cmd_guard = cmd.lock().unwrap();
                         cmd_guard.args(&args);
                         task.ram.push_i32(handle as i32);
@@ -10158,7 +11080,9 @@ fn shim_rust_stdlib_dispatch_inner(
                     }
                 }
             }
-            return Err(VMError::RuntimeError("Command.args: invalid Command handle".into()));
+            return Err(VMError::RuntimeError(
+                "Command.args: invalid Command handle".into(),
+            ));
         }
         ("Command", "stdout") => {
             let _stdio_val = task.ram.pop_i32();
@@ -10180,30 +11104,42 @@ fn shim_rust_stdlib_dispatch_inner(
             if let Some(obj) = vm.get_heap_object(handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                    if let Some(cmd) = rust_obj.downcast_ref::<std::sync::Mutex<std::process::Command>>() {
-                        let output = cmd.lock().unwrap().output()
-                            .map_err(|e| VMError::RuntimeError(format!("Command.output: {}", e)))?;
+                    if let Some(cmd) =
+                        rust_obj.downcast_ref::<std::sync::Mutex<std::process::Command>>()
+                    {
+                        let output =
+                            cmd.lock().unwrap().output().map_err(|e| {
+                                VMError::RuntimeError(format!("Command.output: {}", e))
+                            })?;
                         push_rust_obj(task, vm, "std::process::Output", output)?;
                         return Ok(());
                     }
                 }
             }
-            return Err(VMError::RuntimeError("Command.output: invalid Command handle".into()));
+            return Err(VMError::RuntimeError(
+                "Command.output: invalid Command handle".into(),
+            ));
         }
         ("Command", "spawn") => {
             let handle = task.ram.pop_i32() as u64;
             if let Some(obj) = vm.get_heap_object(handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                    if let Some(cmd) = rust_obj.downcast_ref::<std::sync::Mutex<std::process::Command>>() {
-                        let child = cmd.lock().unwrap().spawn()
-                            .map_err(|e| VMError::RuntimeError(format!("Command.spawn: {}", e)))?;
+                    if let Some(cmd) =
+                        rust_obj.downcast_ref::<std::sync::Mutex<std::process::Command>>()
+                    {
+                        let child =
+                            cmd.lock().unwrap().spawn().map_err(|e| {
+                                VMError::RuntimeError(format!("Command.spawn: {}", e))
+                            })?;
                         push_rust_obj(task, vm, "std::process::Child", child)?;
                         return Ok(());
                     }
                 }
             }
-            return Err(VMError::RuntimeError("Command.spawn: invalid Command handle".into()));
+            return Err(VMError::RuntimeError(
+                "Command.spawn: invalid Command handle".into(),
+            ));
         }
         ("Command", "status") => {
             let handle = task.ram.pop_i32() as u64;
@@ -10251,7 +11187,11 @@ fn shim_rust_stdlib_dispatch_inner(
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
                     if let Some((real, imag)) = rust_obj.downcast_ref::<(f64, f64)>() {
-                        let val = if method == "norm" { (real * real + imag * imag).sqrt() } else { imag.atan2(*real) };
+                        let val = if method == "norm" {
+                            (real * real + imag * imag).sqrt()
+                        } else {
+                            imag.atan2(*real)
+                        };
                         task.ram.push_f64(val);
                         return Ok(());
                     }
@@ -10274,7 +11214,10 @@ fn shim_rust_stdlib_dispatch_inner(
             let root: String = String::pop_from_stack(task, vm)
                 .map_err(|e| VMError::RuntimeError(format!("WalkDir.new: {}", e)))?;
             let mut paths = Vec::new();
-            for entry in walkdir::WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+            for entry in walkdir::WalkDir::new(&root)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
                 paths.push(entry.path().display().to_string());
             }
             let json = serde_json::to_string(&paths)
@@ -10355,7 +11298,12 @@ fn shim_rust_stdlib_dispatch_inner(
         // ---- std::sync::atomic stubs ----
         ("AtomicUsize", "new") => {
             let _val: i32 = i32::pop_from_stack(task, vm).unwrap_or(0);
-            push_rust_obj(task, vm, "AtomicUsize", std::sync::atomic::AtomicUsize::new(0))?;
+            push_rust_obj(
+                task,
+                vm,
+                "AtomicUsize",
+                std::sync::atomic::AtomicUsize::new(0),
+            )?;
         }
         ("AtomicUsize", "fetch_add") => {
             let _ordering: i32 = i32::pop_from_stack(task, vm).unwrap_or(0);
@@ -10437,7 +11385,10 @@ fn shim_rust_stdlib_dispatch_inner(
                     push_rust_obj(task, vm, "semver::VersionReq", req)?;
                 }
                 Err(e) => {
-                    return Err(VMError::RuntimeError(format!("VersionReq::parse failed: {}", e)));
+                    return Err(VMError::RuntimeError(format!(
+                        "VersionReq::parse failed: {}",
+                        e
+                    )));
                 }
             }
         }
@@ -10463,7 +11414,9 @@ fn shim_rust_stdlib_dispatch_inner(
             if let Some(obj) = vm.get_heap_object(handle) {
                 let guard = obj.read().unwrap();
                 if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
-                    if let Some(dt) = rust_obj.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                    if let Some(dt) =
+                        rust_obj.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>()
+                    {
                         let dt = dt.lock().unwrap();
                         let result = dt.checked_add_signed(chrono::Duration::days(30));
                         match result {
@@ -10477,7 +11430,9 @@ fn shim_rust_stdlib_dispatch_inner(
                             }
                         }
                     }
-                    if let Some(dt) = rust_obj.downcast_ref::<std::sync::Mutex<chrono::DateTime<chrono::Utc>>>() {
+                    if let Some(dt) =
+                        rust_obj.downcast_ref::<std::sync::Mutex<chrono::DateTime<chrono::Utc>>>()
+                    {
                         let dt = dt.lock().unwrap();
                         let result = dt.checked_add_signed(chrono::Duration::days(30));
                         match result {
@@ -10512,12 +11467,18 @@ fn shim_rust_stdlib_dispatch_inner(
         }
         _ => {
             // Fallback: check opaque dispatch table for native shim routing
-            if let Some(native_name) = crate::vm::native_catalog::lookup_opaque_dispatch_by_type(&type_name, &method) {
+            if let Some(native_name) =
+                crate::vm::native_catalog::lookup_opaque_dispatch_by_type(&type_name, &method)
+            {
                 let name_owned = native_name.to_string();
                 let native_id = {
                     let mut reg = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
                     reg.resolve_qualified(&name_owned).or_else(|| {
-                        reg.resolve_qualified(&format!("auto.{}.{}", type_name.to_lowercase().replace("::", "."), method))
+                        reg.resolve_qualified(&format!(
+                            "auto.{}.{}",
+                            type_name.to_lowercase().replace("::", "."),
+                            method
+                        ))
                     })
                 };
                 if let Some(id) = native_id {
@@ -10567,8 +11528,14 @@ mod e4_default_http_tests {
             http_set_default_entry(&mut reg.queries, "workspace".into(), "w2".into());
             http_set_default_entry(&mut reg.queries, "tab".into(), "a b".into());
         }
-        assert_eq!(append_default_queries("http://x/api"), "http://x/api?workspace=w2&tab=a b");
-        assert_eq!(append_default_queries("http://x/api?p=1"), "http://x/api?p=1&workspace=w2&tab=a b");
+        assert_eq!(
+            append_default_queries("http://x/api"),
+            "http://x/api?workspace=w2&tab=a b"
+        );
+        assert_eq!(
+            append_default_queries("http://x/api?p=1"),
+            "http://x/api?p=1&workspace=w2&tab=a b"
+        );
         reset_defaults();
         assert_eq!(append_default_queries("http://x/api"), "http://x/api");
     }
@@ -10590,12 +11557,22 @@ mod e4_default_http_tests {
             http_set_default_entry(&mut reg.queries, "workspace".into(), "w1".into());
             http_set_default_entry(&mut reg.queries, "workspace".into(), "w2".into());
         }
-        assert_eq!(append_default_queries("http://x/api"), "http://x/api?workspace=w2");
-        assert_eq!(append_default_queries("http://x/api?p=1"), "http://x/api?p=1&workspace=w2");
+        assert_eq!(
+            append_default_queries("http://x/api"),
+            "http://x/api?workspace=w2"
+        );
+        assert_eq!(
+            append_default_queries("http://x/api?p=1"),
+            "http://x/api?p=1&workspace=w2"
+        );
         reset_defaults();
         {
             let mut reg = http_defaults().lock().unwrap();
-            http_set_default_entry(&mut reg.headers, "Authorization".into(), "Bearer t-ok".into());
+            http_set_default_entry(
+                &mut reg.headers,
+                "Authorization".into(),
+                "Bearer t-ok".into(),
+            );
             http_set_default_entry(&mut reg.queries, "workspace".into(), "ws-9".into());
         }
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -10620,24 +11597,41 @@ Content-Length: 2
         });
         // 生产协议:先登记 live 令牌再提交(否则被取消竞态守卫中止,见 707 T-02)。
         crate::vm::ffi::async_http::register_live_op(999_001);
-        spawn_async_http_handle("GET".into(), format!("http://127.0.0.1:{port}/api/probe"), None, 999_001);
+        spawn_async_http_handle(
+            "GET".into(),
+            format!("http://127.0.0.1:{port}/api/probe"),
+            None,
+            999_001,
+        );
         let req = rx_req
             .recv_timeout(std::time::Duration::from_secs(30))
             .expect("e4 plain 臂 30s 内 mock 未收到请求——异步 http op 未落线");
-        assert!(req.contains("GET /api/probe?workspace=ws-9 "), "query missing: {req}");
+        assert!(
+            req.contains("GET /api/probe?workspace=ws-9 "),
+            "query missing: {req}"
+        );
         let req_lc = req.to_ascii_lowercase();
-        assert!(req_lc.contains("authorization: bearer t-ok"), "header missing: {req}");
+        assert!(
+            req_lc.contains("authorization: bearer t-ok"),
+            "header missing: {req}"
+        );
         // 消费配对:managed job 完成必须以 Structured 200 落表(登记→完成→消费)。
         let plain_result = e4_wait_live_op(999_001);
         assert!(
-            matches!(&plain_result, Ok(AsyncResult::Structured { status: 200, .. })),
+            matches!(
+                &plain_result,
+                Ok(AsyncResult::Structured { status: 200, .. })
+            ),
             "e4 plain 臂 managed 完成形态不符(status={:?}, err={})",
             match &plain_result {
                 Ok(AsyncResult::Structured { status, .. }) => Some(*status),
                 Ok(AsyncResult::Auth { status, .. }) => Some(*status as u16),
                 _ => None,
             },
-            match &plain_result { Err(e) => e.clone(), _ => String::new() }
+            match &plain_result {
+                Err(e) => e.clone(),
+                _ => String::new(),
+            }
         );
         crate::vm::ffi::async_http::cancel_live_op(999_001); // 幂等清理
         reset_defaults();
@@ -10651,7 +11645,11 @@ Content-Length: 2
         // e4 模块头注),直接驱动 spawn_async_http(Body 汇聚点)。
         {
             let mut reg = http_defaults().lock().unwrap();
-            http_set_default_entry(&mut reg.headers, "Authorization".into(), "Bearer t-json".into());
+            http_set_default_entry(
+                &mut reg.headers,
+                "Authorization".into(),
+                "Bearer t-json".into(),
+            );
             http_set_default_entry(&mut reg.queries, "workspace".into(), "ws-j".into());
         }
         // GET 臂(chats_list_sessions 形态)。
@@ -10664,18 +11662,29 @@ Content-Length: 2
             let mut buf = [0u8; 4096];
             let n = s.read(&mut buf).unwrap();
             let req = String::from_utf8_lossy(&buf[..n]).to_string();
-            let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
+            let resp =
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
             s.write_all(resp.as_bytes()).unwrap();
             let _ = tx_json.send(req);
         });
         crate::vm::ffi::async_http::register_live_op(999_101);
-        spawn_async_http("GET".into(), format!("http://127.0.0.1:{port_json}/api/chats/sessions"), None, 999_101);
+        spawn_async_http(
+            "GET".into(),
+            format!("http://127.0.0.1:{port_json}/api/chats/sessions"),
+            None,
+            999_101,
+        );
         let req_json = rx_json
             .recv_timeout(std::time::Duration::from_secs(30))
             .expect("e4 get_json 臂 30s 内 mock 未收到请求——异步 http op 未落线");
-        assert!(req_json.contains("GET /api/chats/sessions?workspace=ws-j "), "get_json query missing: {req_json}");
         assert!(
-            req_json.to_ascii_lowercase().contains("authorization: bearer t-json"),
+            req_json.contains("GET /api/chats/sessions?workspace=ws-j "),
+            "get_json query missing: {req_json}"
+        );
+        assert!(
+            req_json
+                .to_ascii_lowercase()
+                .contains("authorization: bearer t-json"),
             "get_json header missing: {req_json}"
         );
         crate::vm::ffi::async_http::cancel_live_op(999_101);
@@ -10689,7 +11698,8 @@ Content-Length: 2
             let mut buf = [0u8; 4096];
             let n = s.read(&mut buf).unwrap();
             let req = String::from_utf8_lossy(&buf[..n]).to_string();
-            let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
+            let resp =
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}";
             s.write_all(resp.as_bytes()).unwrap();
             let _ = tx_post.send(req);
         });
@@ -10703,12 +11713,20 @@ Content-Length: 2
         let req_post = rx_post
             .recv_timeout(std::time::Duration::from_secs(30))
             .expect("e4 post_json 臂 30s 内 mock 未收到请求——异步 http op 未落线");
-        assert!(req_post.contains("POST /api/auth/login?workspace=ws-j "), "post_json query missing: {req_post}");
         assert!(
-            req_post.to_ascii_lowercase().contains("authorization: bearer t-json"),
+            req_post.contains("POST /api/auth/login?workspace=ws-j "),
+            "post_json query missing: {req_post}"
+        );
+        assert!(
+            req_post
+                .to_ascii_lowercase()
+                .contains("authorization: bearer t-json"),
             "post_json header missing: {req_post}"
         );
-        assert!(req_post.contains(r#"{"username":"u","password":"p"}"#), "post_json body missing: {req_post}");
+        assert!(
+            req_post.contains(r#"{"username":"u","password":"p"}"#),
+            "post_json body missing: {req_post}"
+        );
         crate::vm::ffi::async_http::cancel_live_op(999_102);
         reset_defaults();
 
@@ -10875,7 +11893,10 @@ mod tests {
             Err("conn refused".to_string())
         ));
         let res = check_async_http_result(id).expect("Err entry must resolve, not None");
-        assert!(matches!(res, Err(ref e) if e.contains("conn refused")), "got: {res:?}");
+        assert!(
+            matches!(res, Err(ref e) if e.contains("conn refused")),
+            "got: {res:?}"
+        );
         // 条目已被消费(二次 check 无结果)。
         assert!(check_async_http_result(id).is_none());
     }
@@ -10940,10 +11961,8 @@ mod tests {
     #[test]
     fn storage_raw_set_persists_to_backing_file() {
         let _serial = lock_storage_for_test();
-        let path = std::env::temp_dir().join(format!(
-            "auto-raw-storage-{}.json",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("auto-raw-storage-{}.json", std::process::id()));
         let _ = std::fs::remove_file(&path);
         std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
 
@@ -10977,10 +11996,8 @@ mod tests {
     #[test]
     fn storage_host_read_fresh_sees_external_writes() {
         let _serial = lock_storage_for_test();
-        let path = std::env::temp_dir().join(format!(
-            "auto-fresh-storage-{}.json",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("auto-fresh-storage-{}.json", std::process::id()));
         let _ = std::fs::remove_file(&path);
         std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
 
@@ -11010,7 +12027,8 @@ mod tests {
     }
 
     #[test]
-    fn test_substr_clamps_to_char_boundaries() {        // str-parity: (start, LEN) semantics — ASCII cases updated from the
+    fn test_substr_clamps_to_char_boundaries() {
+        // str-parity: (start, LEN) semantics — ASCII cases updated from the
         // old (start, END) reading to match a2r_std::str_substr.
         assert_eq!(shim_str_substr("hello".to_string(), 1, 3), "ell");
         assert_eq!(shim_str_substr("hello".to_string(), 2, 2), "ll");
@@ -11047,7 +12065,9 @@ mod tests {
                 shim_str_substr(s.to_string(), start, len),
                 crate::a2r_std::str_substr(s, start, len),
                 "VM shim vs a2r_std mismatch on ({:?}, {}, {})",
-                s, start, len
+                s,
+                start,
+                len
             );
         }
         // The exact audit-B1 divergence case: old END semantics returned "".
@@ -11059,14 +12079,17 @@ mod tests {
     /// matching a2r emission for the same calls.
     #[test]
     fn vm_slice_sub_end_substr_len() {
-        let (_r, out) = crate::run_with_capture(r#"
+        let (_r, out) = crate::run_with_capture(
+            r#"
 fn main() {
     var s str = "hello world"
     print(s.slice(3, 6))
     print(s.sub(3, 6))
     print(s.substr(6, 5))
 }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         let lines: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
         assert_eq!(lines, vec!["lo ", "lo ", "world"]);
     }
@@ -11076,7 +12099,8 @@ fn main() {
     /// .find — matching what a2r emits for the same calls.
     #[test]
     fn vm_substr_slice_find_semantics() {
-        let (_r, out) = crate::run_with_capture(r#"
+        let (_r, out) = crate::run_with_capture(
+            r#"
 fn main() {
     var s str = "hello world"
     print(s.substr(6, 5))
@@ -11086,7 +12110,9 @@ fn main() {
     print(s.find("o", 5))
     print(s.substr(6, 5) == s.slice(6, 11))
 }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         let lines: Vec<&str> = out.lines().filter(|l| !l.trim().is_empty()).collect();
         assert_eq!(
             lines,
@@ -11274,18 +12300,12 @@ fn main() {
         let path = dir.join("append_test.txt");
 
         // First append creates the file
-        shim_file_append_text(
-            path.to_str().unwrap().to_string(),
-            "line one\n".to_string(),
-        )
-        .unwrap();
+        shim_file_append_text(path.to_str().unwrap().to_string(), "line one\n".to_string())
+            .unwrap();
 
         // Second append adds to existing file
-        shim_file_append_text(
-            path.to_str().unwrap().to_string(),
-            "line two\n".to_string(),
-        )
-        .unwrap();
+        shim_file_append_text(path.to_str().unwrap().to_string(), "line two\n".to_string())
+            .unwrap();
 
         let content = fs::read_to_string(&path).unwrap();
         assert_eq!(content, "line one\nline two\n");
@@ -11299,11 +12319,7 @@ fn main() {
         let _ = fs::remove_dir_all(&dir);
 
         let path = dir.join("a/b/c/test.txt");
-        shim_file_append_text(
-            path.to_str().unwrap().to_string(),
-            "hello".to_string(),
-        )
-        .unwrap();
+        shim_file_append_text(path.to_str().unwrap().to_string(), "hello".to_string()).unwrap();
 
         assert!(path.exists());
         assert_eq!(fs::read_to_string(&path).unwrap(), "hello");
@@ -11382,7 +12398,9 @@ pub fn shim_test_run_vm_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         }
     }
 
-    failures.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    failures
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
@@ -11417,7 +12435,9 @@ pub fn shim_test_run_a2c_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         }
     }
 
-    failures.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    failures
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
@@ -11452,7 +12472,9 @@ pub fn shim_test_run_a2ts_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
         }
     }
 
-    failures.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    failures
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
@@ -11488,7 +12510,9 @@ pub fn shim_test_run_a2r_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         }
     }
 
-    failures.push_to_stack(task, vm).map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    failures
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     Ok(())
 }
 
@@ -11527,7 +12551,10 @@ mod plan536_date_format_tests {
     fn p536_seconds_no_1970_garbage() {
         let secs: i64 = 1_788_436_450;
         let label = format_date_ms(secs, "yyyy");
-        assert_eq!(label, "2026", "seconds input must land in 2026, got {label}");
+        assert_eq!(
+            label, "2026",
+            "seconds input must land in 2026, got {label}"
+        );
     }
 
     /// 毫秒口径回归锚:Date.now 产毫秒,1e12 级值仍按毫秒(归一不误伤)。
@@ -11545,7 +12572,11 @@ mod plan536_date_format_tests {
     /// 双义带内被按秒读出,属 1e11 阈值惯例的固有边界,不在承诺内。
     #[test]
     fn p536_normalization_precedes_local_conversion() {
-        for s in [951_782_399i64 /* 2000-02-29 跨日闰日 */, 1_756_857_599 /* 2025-09 跨日 */, 1_788_436_450] {
+        for s in [
+            951_782_399i64, /* 2000-02-29 跨日闰日 */
+            1_756_857_599,  /* 2025-09 跨日 */
+            1_788_436_450,
+        ] {
             assert_eq!(
                 format_date_ms(s, "yyyy/MM/dd HH:mm:ss"),
                 format_date_ms(s.saturating_mul(1000), "yyyy/MM/dd HH:mm:ss"),
@@ -11569,7 +12600,12 @@ mod plan536_date_format_tests {
         let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         manifest
             .ancestors()
-            .map(|a| a.join("auto-term").join("target").join("debug").join("autoterm_core.dll"))
+            .map(|a| {
+                a.join("auto-term")
+                    .join("target")
+                    .join("debug")
+                    .join("autoterm_core.dll")
+            })
             .find(|p| p.is_file())
     }
 
@@ -11578,7 +12614,9 @@ mod plan536_date_format_tests {
     #[test]
     fn term_engine_shims_echo_roundtrip() {
         let Some(dll) = autoterm_dll_for_test() else {
-            eprintln!("[term-engine] autoterm_core.dll not found — skipping (build auto-term first)");
+            eprintln!(
+                "[term-engine] autoterm_core.dll not found — skipping (build auto-term first)"
+            );
             return;
         };
         std::env::set_var("AUTOTERM_ENGINE_DLL", &dll);
@@ -11632,7 +12670,10 @@ fn main() {
         assert_eq!(lines.len(), 6, "got {lines:?}");
         assert_eq!(lines[0], "true", "spawn non-zero");
         let found: i32 = lines[1].parse().unwrap();
-        assert!(found >= 0 && found < 24, "echo marker found at row {found} of 24");
+        assert!(
+            found >= 0 && found < 24,
+            "echo marker found at row {found} of 24"
+        );
         assert_eq!(lines[2], "30", "resize to 100x30");
         assert_eq!(lines[3], "true", "interrupt ok");
         assert_eq!(lines[4], "true", "not exited");
@@ -11646,7 +12687,9 @@ fn main() {
     #[test]
     fn term_engine_shims_bare_call_roundtrip() {
         let Some(dll) = autoterm_dll_for_test() else {
-            eprintln!("[term-engine] autoterm_core.dll not found — skipping (build auto-term first)");
+            eprintln!(
+                "[term-engine] autoterm_core.dll not found — skipping (build auto-term first)"
+            );
             return;
         };
         std::env::set_var("AUTOTERM_ENGINE_DLL", &dll);
@@ -11698,7 +12741,10 @@ fn main() {
         assert_eq!(lines.len(), 6, "got {lines:?}");
         assert_eq!(lines[0], "true", "bare engine_spawn non-zero");
         let found: i32 = lines[1].parse().unwrap();
-        assert!(found >= 0 && found < 24, "bare-call echo marker at row {found} of 24");
+        assert!(
+            found >= 0 && found < 24,
+            "bare-call echo marker at row {found} of 24"
+        );
         assert_eq!(lines[2], "30", "bare engine_resize to 100x30");
         assert_eq!(lines[3], "true", "bare engine_interrupt ok");
         assert_eq!(lines[4], "true", "bare engine_is_exited false");
@@ -11746,7 +12792,10 @@ mod bus_subscribe_tests {
             shim_bus_subscribe(&mut task, &vm).expect("subscribe shim runs");
 
             let iter_id = auto_val::decode_i32(task.ram.peek_nv(0)) as u32;
-            assert!(iter_id >= 0, "subscribe returns a real iterator id, got {iter_id}");
+            assert!(
+                iter_id >= 0,
+                "subscribe returns a real iterator id, got {iter_id}"
+            );
             let stream_id = match vm.iterators.get(&iter_id).map(|it| it.clone()) {
                 Some(crate::vm::engine::Iterator::AsyncHttpStream(a)) => a.stream_id,
                 other => panic!("expected AsyncHttpStream iterator, got {other:?}"),

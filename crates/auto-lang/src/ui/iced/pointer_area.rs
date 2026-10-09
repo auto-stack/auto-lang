@@ -42,11 +42,7 @@ pub struct State {
 /// 返回是否发布。规则:量化坐标不变 → 不发布;距上次发布 < 时间闸 → 不发布
 /// (且**不**回写 last_pub——闸内移动被丢弃,闸过期后下一次移动即发布,
 /// 不积压陈旧坐标)。
-pub fn should_publish(
-    state: &mut State,
-    logical: (f32, f32),
-    now: Instant,
-) -> bool {
+pub fn should_publish(state: &mut State, logical: (f32, f32), now: Instant) -> bool {
     let qx = (logical.0 / QUANTIZE_STEP).round() * QUANTIZE_STEP;
     let qy = (logical.1 / QUANTIZE_STEP).round() * QUANTIZE_STEP;
     if let Some((px, py)) = state.last_logical {
@@ -65,11 +61,7 @@ pub fn should_publish(
 }
 
 /// bounds 局部 px → 组件局部逻辑坐标(extent 缺省 = 恒等/raw px 模式)。
-pub fn to_logical(
-    local: Point,
-    bounds: &Rectangle,
-    extent: Option<(f32, f32)>,
-) -> (f32, f32) {
+pub fn to_logical(local: Point, bounds: &Rectangle, extent: Option<(f32, f32)>) -> (f32, f32) {
     match extent {
         Some((w, h)) if bounds.width > 0.0 && bounds.height > 0.0 => {
             (local.x / bounds.width * w, local.y / bounds.height * h)
@@ -105,10 +97,7 @@ where
         self
     }
 
-    pub fn on_move(
-        mut self,
-        f: Arc<dyn Fn(f32, f32) -> Message + Send + Sync>,
-    ) -> Self {
+    pub fn on_move(mut self, f: Arc<dyn Fn(f32, f32) -> Message + Send + Sync>) -> Self {
         self.on_move = Some(f);
         self
     }
@@ -289,7 +278,11 @@ mod tests {
             "125Hz 流下发布 {} 次,超出 30Hz 限频预算",
             published
         );
-        assert!(published >= 20, "持续移动下不应过度丢弃(实测 {} 次)", published);
+        assert!(
+            published >= 20,
+            "持续移动下不应过度丢弃(实测 {} 次)",
+            published
+        );
     }
 
     #[test]

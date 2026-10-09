@@ -15,9 +15,7 @@ pub struct StyleGenerator {
 impl StyleGenerator {
     /// Create a new style generator
     pub fn new() -> Self {
-        Self {
-            use_tailwind: true,
-        }
+        Self { use_tailwind: true }
     }
 
     /// Create a style generator with Tailwind disabled
@@ -86,7 +84,10 @@ mod tests {
     fn test_tag_to_tailwind() {
         assert_eq!(StyleGenerator::tag_to_tailwind("col"), "flex flex-col");
         assert_eq!(StyleGenerator::tag_to_tailwind("row"), "flex flex-row");
-        assert_eq!(StyleGenerator::tag_to_tailwind("center"), "flex items-center justify-center");
+        assert_eq!(
+            StyleGenerator::tag_to_tailwind("center"),
+            "flex items-center justify-center"
+        );
     }
 
     #[test]

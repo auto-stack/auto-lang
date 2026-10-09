@@ -289,7 +289,7 @@ pub struct RustTrans {
     is_dir_module: bool,
     // Whether we're inside a pub type declaration (methods should be pub)
     inside_pub_type: bool,
-    in_trait_impl: bool,  // Plan 373 G2: true when emitting methods inside `impl Trait for Type`
+    in_trait_impl: bool, // Plan 373 G2: true when emitting methods inside `impl Trait for Type`
     // Modules imported via `use X` → `use super::X::*;` in multi-file mode
     // These should NOT be used as source_crate prefix for type resolution
     glob_imported_modules: HashSet<String>,
@@ -372,7 +372,7 @@ pub struct RustTrans {
     // Full parameter types per function: fn_name -> Vec<Type>
     // Used for precise type-aware call site generation (&mut, &str, etc.)
     fn_param_types: HashMap<AutoStr, Vec<Type>>,
-    fn_ret_types: HashMap<AutoStr, Type>,  // Plan 373: return-type cache for .await insertion
+    fn_ret_types: HashMap<AutoStr, Type>, // Plan 373: return-type cache for .await insertion
     // In merge mode, track which params use &mut (context types like Parser, TypeEnv)
     fn_merge_mut_params: HashMap<AutoStr, Vec<bool>>,
     // C11 (Plan 018 §12 a2r-11): fn_name -> which params are `mut p T` (&mut T).
@@ -548,7 +548,7 @@ impl RustTrans {
             current_impl_type: None,
             current_fn_ret_type: None,
             current_fn_type_params: std::collections::HashSet::new(), // Plan 417-E3
-            current_assoc_bindings: HashMap::new(), // Plan 417-E2 followup
+            current_assoc_bindings: HashMap::new(),                   // Plan 417-E2 followup
             value_if_tail: false,
             local_var_types: HashMap::new(),
             in_async_ctx: std::cell::Cell::new(false),
@@ -575,8 +575,8 @@ impl RustTrans {
             emit_allow_pragma: false,
             is_crate_root: false,
             merge_mode: false,
-            cabi_kit_emitted: false, // Plan 610 
-            source_dir: None, // Plan 610 
+            cabi_kit_emitted: false, // Plan 610
+            source_dir: None,        // Plan 610
             const_names: HashSet::new(),
             module_types: HashMap::new(),
             current_module_name: String::new(),
@@ -656,7 +656,7 @@ impl RustTrans {
             current_impl_type: None,
             current_fn_ret_type: None,
             current_fn_type_params: std::collections::HashSet::new(), // Plan 417-E3
-            current_assoc_bindings: HashMap::new(), // Plan 417-E2 followup
+            current_assoc_bindings: HashMap::new(),                   // Plan 417-E2 followup
             value_if_tail: false,
             local_var_types: HashMap::new(),
             in_async_ctx: std::cell::Cell::new(false),
@@ -683,8 +683,8 @@ impl RustTrans {
             emit_allow_pragma: false,
             is_crate_root: false,
             merge_mode: false,
-            cabi_kit_emitted: false, // Plan 610 
-            source_dir: None, // Plan 610 
+            cabi_kit_emitted: false, // Plan 610
+            source_dir: None,        // Plan 610
             const_names: HashSet::new(),
             module_types: HashMap::new(),
             current_module_name: String::new(),
@@ -723,7 +723,13 @@ impl RustTrans {
         let name_a: AutoStr = AutoStr::from(name);
         let field_names: Vec<AutoStr> = fields.iter().map(|(n, _)| AutoStr::from(*n)).collect();
         self.struct_fields.insert(name_a.clone(), field_names);
-        self.struct_field_types.insert(name_a, fields.into_iter().map(|(n, t)| (AutoStr::from(n), t)).collect());
+        self.struct_field_types.insert(
+            name_a,
+            fields
+                .into_iter()
+                .map(|(n, t)| (AutoStr::from(n), t))
+                .collect(),
+        );
     }
 
     /// Plan musk-022 CRUD 智能扩展: transpile a single `Fn` AST to Rust text
@@ -766,7 +772,8 @@ impl RustTrans {
         }
         self.mutated_let_bindings.clear();
         let rust_types = self.rust_imported_type_names();
-        self.mutated_let_bindings = Self::scan_mutated_bindings(body, &self.all_mut_method_names, &rust_types);
+        self.mutated_let_bindings =
+            Self::scan_mutated_bindings(body, &self.all_mut_method_names, &rust_types);
         self.later_used_locals.clear();
         // PLAN-010 T2: per-statement later-read sets (see the field doc).
         // A None from the collector (unwalked variant) means "assume used".
@@ -778,9 +785,9 @@ impl RustTrans {
         self.current_scope_depth = 0;
         let mut result = Vec::new();
         for (stmt_i, stmt) in body.stmts.iter().enumerate() {
-            self.later_used_locals = body_stmt_reads[stmt_i + 1..]
-                .iter()
-                .fold(std::collections::HashSet::new(), |mut acc, s| {
+            self.later_used_locals = body_stmt_reads[stmt_i + 1..].iter().fold(
+                std::collections::HashSet::new(),
+                |mut acc, s| {
                     match s {
                         Some(names) => {
                             acc.extend(names.iter().cloned());
@@ -792,7 +799,8 @@ impl RustTrans {
                         }
                     }
                     acc
-                });
+                },
+            );
             let mut sink = Sink::new(AutoStr::from("body_stmt"));
             self.stmt(stmt, &mut sink)?;
             let raw = String::from_utf8(sink.done()?.to_vec())
@@ -833,7 +841,10 @@ impl RustTrans {
     }
 
     /// Plan 376D: Set the shared TypeStore for cross-module type inference.
-    pub fn set_shared_type_store(&mut self, store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>) {
+    pub fn set_shared_type_store(
+        &mut self,
+        store: Option<Arc<std::sync::RwLock<crate::types::TypeStore>>>,
+    ) {
         self.shared_type_store = store;
     }
 
@@ -847,7 +858,9 @@ impl RustTrans {
             Expr::Call(call) => {
                 if let Expr::Ident(name) = call.name.as_ref() {
                     Some(name.clone())
-                } else { None }
+                } else {
+                    None
+                }
             }
             _ => None,
         }
@@ -883,9 +896,17 @@ impl RustTrans {
     /// （Rust 1.63+ const Mutex::new，产物零外部依赖——once_cell 导入使
     /// 独立 rustc 产物 E0433，b42/b43 考古）。非字面量保留 Lazy 形态。
     fn global_store_is_const_init(store: &Store) -> bool {
-        matches!(&store.expr,
-            Expr::Int(_) | Expr::Uint(_) | Expr::Float(_, _) | Expr::Double(_, _)
-            | Expr::Bool(_) | Expr::Char(_) | Expr::Str(_) | Expr::CStr(_))
+        matches!(
+            &store.expr,
+            Expr::Int(_)
+                | Expr::Uint(_)
+                | Expr::Float(_, _)
+                | Expr::Double(_, _)
+                | Expr::Bool(_)
+                | Expr::Char(_)
+                | Expr::Str(_)
+                | Expr::CStr(_)
+        )
     }
 
     /// Scan statements for Err(X) calls; if all use the same enum type, return it
@@ -894,12 +915,10 @@ impl RustTrans {
         for stmt in stmts {
             let result = self.scan_stmt_err_enum(stmt);
             match result {
-                Some(Some(enum_name)) => {
-                    match &found_enum {
-                        Some(existing) if *existing != enum_name => return None,
-                        _ => found_enum = Some(enum_name),
-                    }
-                }
+                Some(Some(enum_name)) => match &found_enum {
+                    Some(existing) if *existing != enum_name => return None,
+                    _ => found_enum = Some(enum_name),
+                },
                 Some(None) => return None,
                 None => {}
             }
@@ -914,12 +933,16 @@ impl RustTrans {
             Stmt::If(if_) => {
                 for branch in &if_.branches {
                     for s in &branch.body.stmts {
-                        if let Some(r) = self.scan_stmt_err_enum(s) { return Some(r); }
+                        if let Some(r) = self.scan_stmt_err_enum(s) {
+                            return Some(r);
+                        }
                     }
                 }
                 if let Some(else_body) = &if_.else_ {
                     for s in &else_body.stmts {
-                        if let Some(r) = self.scan_stmt_err_enum(s) { return Some(r); }
+                        if let Some(r) = self.scan_stmt_err_enum(s) {
+                            return Some(r);
+                        }
                     }
                 }
                 None
@@ -984,8 +1007,7 @@ impl RustTrans {
             }
             Expr::Ident(name) => {
                 if let Some(ty) = self.local_var_types.get(name) {
-                    return matches!(ty,
-                        Type::StrOwned | Type::StrFixed(_) | Type::StrSlice);
+                    return matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice);
                 }
                 // Unknown type: conservatively assume string if the name
                 // suggests string content (heuristic to catch let-bound vars)
@@ -1013,15 +1035,25 @@ impl RustTrans {
                     let json_bridge_str = if let Expr::Ident(o) = obj.as_ref() {
                         o.as_str() == "json"
                             && matches!(m.as_str(), "to_string" | "get_str" | "as_string")
-                    } else { false };
+                    } else {
+                        false
+                    };
                     // Plan 016 Phase 4: method-call string producers
                     // (`x.to_string()`, `s.trim()`, ...) on ANY receiver
                     // shape — `list[i].to_string() + a.text` parses the lhs
                     // as Call(Dot(Index(..), to_string)), which the
                     // json-only check above missed (E0308 String + String).
-                    json_bridge_str || matches!(m.as_str(),
-                        "to_string" | "trim" | "trim_start" | "trim_end"
-                        | "replace" | "to_lowercase" | "to_uppercase")
+                    json_bridge_str
+                        || matches!(
+                            m.as_str(),
+                            "to_string"
+                                | "trim"
+                                | "trim_start"
+                                | "trim_end"
+                                | "replace"
+                                | "to_lowercase"
+                                | "to_uppercase"
+                        )
                 } else {
                     false
                 }
@@ -1041,8 +1073,7 @@ impl RustTrans {
                             && matches!(t, Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)))
             }
             Expr::Bina(inner_lhs, _, inner_rhs) => {
-                self.expr_contains_string(inner_lhs)
-                    || self.expr_contains_string(inner_rhs)
+                self.expr_contains_string(inner_lhs) || self.expr_contains_string(inner_rhs)
             }
             _ => false,
         }
@@ -1077,8 +1108,10 @@ impl RustTrans {
                     if let Expr::Dot(obj, m) = call.name.as_ref() {
                         if let Expr::Ident(o) = obj.as_ref() {
                             if o.as_str() == "json" {
-                                return matches!(m.as_str(),
-                                    "get" | "get_at" | "parse" | "get_str" | "get_u64");
+                                return matches!(
+                                    m.as_str(),
+                                    "get" | "get_at" | "parse" | "get_str" | "get_u64"
+                                );
                             }
                         }
                     }
@@ -1208,12 +1241,7 @@ impl RustTrans {
         }
     }
 
-    fn emit_borrow(
-        &mut self,
-        inner: &Expr,
-        is_mut: bool,
-        out: &mut impl Write,
-    ) -> AutoResult<()> {
+    fn emit_borrow(&mut self, inner: &Expr, is_mut: bool, out: &mut impl Write) -> AutoResult<()> {
         use crate::trans::escape::OwnershipTier;
         // Resolve the binding name. Only direct variable references can be
         // tier-checked; anything else (e.g. `f().view`) falls back to default.
@@ -1334,7 +1362,12 @@ impl RustTrans {
     /// Plan 310 Phase 2: Buffer an EscapeFallback (W0007) warning. Never writes
     /// to Sink — warnings go to self.warnings only, preserving .expected.rs
     /// byte-diff integrity.
-    fn emit_escape_warning(&mut self, name: &str, tier: crate::trans::escape::OwnershipTier, reason: &str) {
+    fn emit_escape_warning(
+        &mut self,
+        name: &str,
+        tier: crate::trans::escape::OwnershipTier,
+        reason: &str,
+    ) {
         use crate::trans::escape::report;
         // Source span is unknown during transpilation (we don't carry source
         // positions through to this layer); use a zero-length placeholder.
@@ -1419,8 +1452,7 @@ impl RustTrans {
         if let Expr::Ident(name) = map_expr {
             if let Some(ty) = self.local_var_types.get(name) {
                 if let Some(v) = self.map_value_ty(ty) {
-                    return matches!(v,
-                        Type::StrOwned | Type::StrSlice | Type::StrFixed(_));
+                    return matches!(v, Type::StrOwned | Type::StrSlice | Type::StrFixed(_));
                 }
             }
         }
@@ -1442,13 +1474,10 @@ impl RustTrans {
             Type::GenericInstance(inst) => {
                 let base = inst.base_name.as_str();
                 match base {
-                    "Map" | "HashMap" | "BTreeMap" | "IndexMap" => {
-                        inst.args.get(1).cloned()
-                    }
+                    "Map" | "HashMap" | "BTreeMap" | "IndexMap" => inst.args.get(1).cloned(),
                     // Wrapper generics: unwrap to the inner type and recurse.
-                    "Mutex" | "MutexGuard" | "RwLock" | "RwLockReadGuard"
-                    | "RwLockWriteGuard" | "RefCell" | "Cell" | "Arc" | "Rc"
-                    | "Box" => {
+                    "Mutex" | "MutexGuard" | "RwLock" | "RwLockReadGuard" | "RwLockWriteGuard"
+                    | "RefCell" | "Cell" | "Arc" | "Rc" | "Box" => {
                         inst.args.first().and_then(|inner| self.map_value_ty(inner))
                     }
                     _ => None,
@@ -1463,7 +1492,10 @@ impl RustTrans {
         // PLAN-668 R-24：str 族 let-if 初始化语境同 fn 返回位强制。
         self.let_init_str_coercion
             || self.current_fn_ret_type.as_ref().map_or(false, |ty| {
-                matches!(ty, Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
+                matches!(
+                    ty,
+                    Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit
+                )
             })
     }
 
@@ -1475,9 +1507,18 @@ impl RustTrans {
         match &self.current_fn_ret_type {
             // Copy primitives — returning self.field of these is fine.
             None
-            | Some(Type::Byte | Type::Int | Type::Uint | Type::USize
-                | Type::I64 | Type::U64 | Type::Float | Type::Double
-                | Type::Bool | Type::Char) => false,
+            | Some(
+                Type::Byte
+                | Type::Int
+                | Type::Uint
+                | Type::USize
+                | Type::I64
+                | Type::U64
+                | Type::Float
+                | Type::Double
+                | Type::Bool
+                | Type::Char,
+            ) => false,
             // Everything else (String variants, List, Map, User, Enum, Tag,
             // Option, Result, Tuple, …) is owned and non-Copy.
             Some(_) => true,
@@ -1519,7 +1560,10 @@ impl RustTrans {
                 }
                 matches!(
                     self.local_var_types.get(name),
-                    Some(Type::StrOwned) | Some(Type::StrFixed(_)) | Some(Type::StrSlice) | Some(Type::CStrLit)
+                    Some(Type::StrOwned)
+                        | Some(Type::StrFixed(_))
+                        | Some(Type::StrSlice)
+                        | Some(Type::CStrLit)
                 )
             }
             Expr::Str(_) | Expr::CStr(_) => true,
@@ -1573,17 +1617,24 @@ impl RustTrans {
 
     /// Write a return expression with automatic .to_string() coercion when needed.
     /// `add_semi`: whether to append a semicolon (false for match arm bodies).
-    fn write_return_expr(&mut self, expr: &Expr, out: &mut impl Write, add_semi: bool) -> AutoResult<()> {
+    fn write_return_expr(
+        &mut self,
+        expr: &Expr,
+        out: &mut impl Write,
+        add_semi: bool,
+    ) -> AutoResult<()> {
         // If returning a &str parameter ident directly, wrap in .to_string()
         if let Expr::Ident(name) = expr {
             if self.current_fn_str_params.contains(name) {
                 write!(out, "return {}.to_string()", name)?;
-                if add_semi { out.write(b";")?; }
+                if add_semi {
+                    out.write(b";")?;
+                }
                 return Ok(());
             }
         }
-        let needs_to_string = self.ret_type_needs_string_coercion()
-            && self.expr_needs_string_coercion(expr);
+        let needs_to_string =
+            self.ret_type_needs_string_coercion() && self.expr_needs_string_coercion(expr);
         // Plan 013 (B1/BUG2): returning `self.field` of an owned non-Copy type
         // from a &self method needs `.clone()` (E0507 otherwise).
         let needs_self_clone = Self::is_self_dot(expr) && self.ret_type_is_owned_noncopy();
@@ -1599,7 +1650,9 @@ impl RustTrans {
         if let Some(name) = &global_ret_name {
             let static_name = self.global_var_static_name(name);
             write!(out, "return {}.lock().unwrap().clone()", static_name)?;
-            if add_semi { out.write(b";")?; }
+            if add_semi {
+                out.write(b";")?;
+            }
             return Ok(());
         }
         // Plan 399 Phase 11.4: `return Some(iter_var)` where iter_var is a
@@ -1614,7 +1667,9 @@ impl RustTrans {
                                 write!(out, "return Some(")?;
                                 self.expr(inner, out)?;
                                 write!(out, ".clone())")?;
-                                if add_semi { out.write(b";")?; }
+                                if add_semi {
+                                    out.write(b";")?;
+                                }
                                 return Ok(());
                             }
                         }
@@ -1630,7 +1685,9 @@ impl RustTrans {
         if let Expr::Ident(name) = expr {
             if self.get_ref_bindings.contains(name) {
                 write!(out, "return {}.clone()", name)?;
-                if add_semi { out.write(b";")?; }
+                if add_semi {
+                    out.write(b";")?;
+                }
                 return Ok(());
             }
         }
@@ -1638,7 +1695,9 @@ impl RustTrans {
             if let Expr::Ident(name) = inner.as_ref() {
                 if self.get_ref_bindings.contains(name) {
                     write!(out, "return Ok({}.clone())", name)?;
-                    if add_semi { out.write(b";")?; }
+                    if add_semi {
+                        out.write(b";")?;
+                    }
                     return Ok(());
                 }
             }
@@ -1652,7 +1711,9 @@ impl RustTrans {
             if let Expr::Ident(name) = inner.as_ref() {
                 if self.get_ref_bindings.contains(name) {
                     write!(out, "return Some({}.clone())", name)?;
-                    if add_semi { out.write(b";")?; }
+                    if add_semi {
+                        out.write(b";")?;
+                    }
                     return Ok(());
                 }
             }
@@ -1663,7 +1724,9 @@ impl RustTrans {
                     if let Some(crate::ast::Arg::Pos(Expr::Ident(inner))) = call.args.args.first() {
                         if self.get_ref_bindings.contains(inner) {
                             write!(out, "return {}({}.clone())", callee, inner)?;
-                            if add_semi { out.write(b";")?; }
+                            if add_semi {
+                                out.write(b";")?;
+                            }
                             return Ok(());
                         }
                     }
@@ -1703,15 +1766,30 @@ impl RustTrans {
                 Expr::Ident(n) if matches!(n.as_str(), "Some" | "Ok")),
             _ => false,
         };
-        let expr_bare_scalar = matches!(self.infer_type_from_expr(expr),
-            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
-            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
-            | Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit);
+        let expr_bare_scalar = matches!(
+            self.infer_type_from_expr(expr),
+            Type::Int
+                | Type::Uint
+                | Type::USize
+                | Type::I64
+                | Type::U64
+                | Type::Float
+                | Type::Double
+                | Type::Bool
+                | Type::Char
+                | Type::Byte
+                | Type::StrOwned
+                | Type::StrSlice
+                | Type::StrFixed(_)
+                | Type::CStrLit
+        );
         let may_wrap_bare = matches!(&self.current_fn_ret_type, Some(Type::Option(_)))
             && !already_option_shaped
             && expr_bare_scalar;
         out.write(b"return ")?;
-        if may_wrap_bare { write!(out, "Some(")?; }
+        if may_wrap_bare {
+            write!(out, "Some(")?;
+        }
         self.expr(expr, out)?;
         if needs_to_string {
             out.write(b".to_string()")?;
@@ -1735,8 +1813,12 @@ impl RustTrans {
                 write!(out, "{}", cast)?;
             }
         }
-        if may_wrap_bare { write!(out, ")")?; }
-        if add_semi { out.write(b";")?; }
+        if may_wrap_bare {
+            write!(out, ")")?;
+        }
+        if add_semi {
+            out.write(b";")?;
+        }
         Ok(())
     }
 
@@ -1751,7 +1833,8 @@ impl RustTrans {
         }
     }
 
-    fn rust_type_name(&self, ty: &Type) -> String {        match ty {
+    fn rust_type_name(&self, ty: &Type) -> String {
+        match ty {
             Type::Byte => "u8".to_string(),
             // Plan 399 Phase 11.1: Auto `int` → Rust `i64` (was i64). The HTTP
             // backend's types.rs uses i64 (auto_type_to_rust), so a2r emitting i32
@@ -1947,7 +2030,8 @@ impl RustTrans {
                                 // Not a known spec — fall through to default rendering below.
                             }
                             Type::Fn(params, ret) => {
-                                let param_str: Vec<String> = params.iter().map(|p| self.rust_type_name(p)).collect();
+                                let param_str: Vec<String> =
+                                    params.iter().map(|p| self.rust_type_name(p)).collect();
                                 let ret_str = if matches!(&**ret, Type::Void) {
                                     String::new()
                                 } else {
@@ -1957,7 +2041,12 @@ impl RustTrans {
                                 // into a tokio::spawn'd actor (future must be Send); rust-ref uses
                                 // `Arc<dyn Fn(...) + Send + Sync>`. Generated closures capture only
                                 // fn-pointers/Copy values, so they satisfy the bounds.
-                                return format!("{}<dyn Fn({}){} + Send + Sync>", base, param_str.join(", "), ret_str);
+                                return format!(
+                                    "{}<dyn Fn({}){} + Send + Sync>",
+                                    base,
+                                    param_str.join(", "),
+                                    ret_str
+                                );
                             }
                             _ => {}
                         }
@@ -1984,7 +2073,9 @@ impl RustTrans {
             // current actor handle `a2r_std::task::TaskRef<T>` (the old
             // `std::sync::Arc<TaskHandle<T>>` referenced a type that was removed
             // from a2r-std in §17.1 — any latent use would not compile).
-            Type::Handle { task_type } => format!("a2r_std::task::TaskRef<{}>", self.rust_type_name(task_type)),
+            Type::Handle { task_type } => {
+                format!("a2r_std::task::TaskRef<{}>", self.rust_type_name(task_type))
+            }
             Type::Rust(source) => source.short_name().to_string(),
             Type::Tuple(ts) => {
                 let elems: Vec<String> = ts.iter().map(|t| self.rust_type_name(t)).collect();
@@ -2001,11 +2092,9 @@ impl RustTrans {
     fn qualify_type_name(&self, name: &str) -> String {
         // Skip well-known Rust/std types that should never be qualified
         match name {
-            "String" | "Vec" | "HashMap" | "HashSet" | "Option" | "Result"
-            | "Box" | "Rc" | "Arc" | "Mutex" | "RwLock"
-            | "IoError" | "Error" | "Display" | "Debug"
-            | "Ok" | "Err" | "Some" | "None" | "Self"
-            => return name.to_string(),
+            "String" | "Vec" | "HashMap" | "HashSet" | "Option" | "Result" | "Box" | "Rc"
+            | "Arc" | "Mutex" | "RwLock" | "IoError" | "Error" | "Display" | "Debug" | "Ok"
+            | "Err" | "Some" | "None" | "Self" => return name.to_string(),
             _ => {}
         }
 
@@ -2206,7 +2295,8 @@ impl RustTrans {
                                 // Not a known spec — fall through.
                             }
                             Type::Fn(params, ret) => {
-                                let param_str: Vec<String> = params.iter().map(|p| self.rust_type_name(p)).collect();
+                                let param_str: Vec<String> =
+                                    params.iter().map(|p| self.rust_type_name(p)).collect();
                                 let ret_str = if matches!(&**ret, Type::Void) {
                                     String::new()
                                 } else {
@@ -2216,7 +2306,12 @@ impl RustTrans {
                                 // into a tokio::spawn'd actor (future must be Send); rust-ref uses
                                 // `Arc<dyn Fn(...) + Send + Sync>`. Generated closures capture only
                                 // fn-pointers/Copy values, so they satisfy the bounds.
-                                return format!("{}<dyn Fn({}){} + Send + Sync>", base, param_str.join(", "), ret_str);
+                                return format!(
+                                    "{}<dyn Fn({}){} + Send + Sync>",
+                                    base,
+                                    param_str.join(", "),
+                                    ret_str
+                                );
                             }
                             _ => {}
                         }
@@ -2235,11 +2330,24 @@ impl RustTrans {
                     }
                     // Heuristic: bare PascalCase ident that isn't a concrete type
                     // → likely a trait name → prefix `impl`.
-                    let is_concrete = matches!(base.as_str(),
-                        "String" | "Vec" | "Option" | "Result" | "Box" | "Arc"
-                        | "Rc" | "Cell" | "RefCell" | "Mutex"
+                    let is_concrete = matches!(
+                        base.as_str(),
+                        "String"
+                            | "Vec"
+                            | "Option"
+                            | "Result"
+                            | "Box"
+                            | "Arc"
+                            | "Rc"
+                            | "Cell"
+                            | "RefCell"
+                            | "Mutex"
                     );
-                    let is_pascal = base.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                    let is_pascal = base
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false);
                     // Plan 018: mirror the Type::User guard — local or imported
                     // concrete types are never traits, even when bare + PascalCase.
                     if (is_pascal && !is_concrete)
@@ -2259,7 +2367,10 @@ impl RustTrans {
             // Handle type: recurse for inner type (Plan 387 follow-up P4: maps
             // to the current TaskRef handle; see rust_type_name).
             Type::Handle { task_type } => {
-                format!("a2r_std::task::TaskRef<{}>", self.rust_return_type_name(task_type))
+                format!(
+                    "a2r_std::task::TaskRef<{}>",
+                    self.rust_return_type_name(task_type)
+                )
             }
             // Plan 380 P2: Type::User in return position — if it's a bare
             // PascalCase name (not a known concrete type), treat as trait:
@@ -2275,7 +2386,10 @@ impl RustTrans {
                 }
 
                 // PLAN-730 T-06: 上传三类型返回位（含 ~UploadReceipt 解包后）。
-                if matches!(name.as_str(), "UploadRequest" | "UploadSession" | "UploadReceipt") {
+                if matches!(
+                    name.as_str(),
+                    "UploadRequest" | "UploadSession" | "UploadReceipt"
+                ) {
                     self.a2r_std_used.set(true);
                     return format!("a2r_std::http::{name}");
                 }
@@ -2295,11 +2409,24 @@ impl RustTrans {
                 if self.spec_decls.contains_key(name.as_str()) {
                     return format!("impl {}", name);
                 }
-                let is_concrete = matches!(name.as_str(),
-                    "String" | "Vec" | "Option" | "Result" | "Box" | "Arc"
-                    | "Rc" | "Cell" | "RefCell" | "Mutex"
+                let is_concrete = matches!(
+                    name.as_str(),
+                    "String"
+                        | "Vec"
+                        | "Option"
+                        | "Result"
+                        | "Box"
+                        | "Arc"
+                        | "Rc"
+                        | "Cell"
+                        | "RefCell"
+                        | "Mutex"
                 );
-                let is_pascal = name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                let is_pascal = name
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false);
                 // C8: a type declared in this file is a concrete struct, never a
                 // trait — skip the `impl` prefix (Option<AgentMode> must stay
                 // `Option<AgentMode>`, and `-> AgentMode` must not be `-> impl
@@ -2346,7 +2473,9 @@ impl RustTrans {
     /// Call sites borrow String args with & prefix.
     fn rust_param_type_name(&self, ty: &Type) -> String {
         match ty {
-            Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit => "&str".to_string(),
+            Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit => {
+                "&str".to_string()
+            }
             _ => self.rust_type_name(ty),
         }
     }
@@ -2361,9 +2490,7 @@ impl RustTrans {
         param: &crate::ast::Param,
         result_idents: &std::collections::HashSet<String>,
     ) -> String {
-        if matches!(param.ty, Type::Int)
-            && result_idents.contains(param.name.as_str())
-        {
+        if matches!(param.ty, Type::Int) && result_idents.contains(param.name.as_str()) {
             // Inferred Result type for an untyped param matched against Ok/Err.
             return "Result<String, String>".to_string();
         }
@@ -2399,7 +2526,8 @@ impl RustTrans {
     /// These types are used as mutable state objects in parser/eval/typeinfer chains.
     fn is_merge_mut_type(ty: &Type) -> bool {
         match ty {
-            Type::User(usr) => matches!(usr.name.as_str(),
+            Type::User(usr) => matches!(
+                usr.name.as_str(),
                 "Parser" | "TypeEnv" | "EvalEnv" | "Codegen" | "BVMState"
             ),
             _ => false,
@@ -2428,7 +2556,9 @@ impl RustTrans {
     fn expr_is_char_like(&self, e: &Expr) -> bool {
         match e {
             Expr::Char(_) => true,
-            Expr::Ident(n) => self.local_var_types.get(n.as_str())
+            Expr::Ident(n) => self
+                .local_var_types
+                .get(n.as_str())
                 .map(|t| matches!(t, Type::Char))
                 .unwrap_or(false),
             _ => false,
@@ -2450,7 +2580,9 @@ impl RustTrans {
         }
         if let Expr::Ident(name) = object {
             if let Some(Type::User(td)) = self.local_var_types.get(name.as_str()) {
-                let has_len_field = self.struct_field_types.get(td.name.as_str())
+                let has_len_field = self
+                    .struct_field_types
+                    .get(td.name.as_str())
                     .map(|fields| fields.iter().any(|(f, _)| f.as_str() == "len"))
                     .unwrap_or(false);
                 if has_len_field {
@@ -2483,18 +2615,27 @@ impl RustTrans {
             if let Some(ty) = self.global_var_types.get(name.as_str()) {
                 return matches!(ty, Type::List(_) | Type::Array(_));
             }
-            self.local_var_types.get(name.as_str())
+            self.local_var_types
+                .get(name.as_str())
                 .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
                 .unwrap_or(false)
         } else if let Expr::Dot(base, field) = object {
             if matches!(base.as_ref(), Expr::Ident(n) if n.as_str() == "self") {
-                self.current_impl_type.as_ref()
+                self.current_impl_type
+                    .as_ref()
                     .and_then(|ty| self.struct_field_types.get(ty.as_str()))
-                    .map(|fields| fields.iter().any(|(f, t)|
-                        f == field && matches!(t, Type::List(_) | Type::Array(_))))
+                    .map(|fields| {
+                        fields
+                            .iter()
+                            .any(|(f, t)| f == field && matches!(t, Type::List(_) | Type::Array(_)))
+                    })
                     .unwrap_or(false)
-            } else { false }
-        } else { false }
+            } else {
+                false
+            }
+        } else {
+            false
+        }
     }
 
     fn is_auto_list_expr(&self, obj: &Expr) -> bool {
@@ -2508,7 +2649,8 @@ impl RustTrans {
                 if let Some(ty) = self.global_var_types.get(name.as_str()) {
                     return matches!(ty, Type::List(_) | Type::Array(_));
                 }
-                self.local_var_types.get(name.as_str())
+                self.local_var_types
+                    .get(name.as_str())
                     .map(|ty| matches!(ty, Type::List(_)))
                     .unwrap_or(false)
             }
@@ -2516,8 +2658,10 @@ impl RustTrans {
                 if let Expr::Ident(owner) = inner.as_ref() {
                     if let Some(Type::User(usr)) = self.local_var_types.get(owner.as_str()) {
                         if let Some(fields) = self.struct_field_types.get(usr.name.as_str()) {
-                            if fields.iter().any(|(f, t)|
-                                f == field && matches!(t, Type::List(_))) {
+                            if fields
+                                .iter()
+                                .any(|(f, t)| f == field && matches!(t, Type::List(_)))
+                            {
                                 return true;
                             }
                         }
@@ -2533,8 +2677,9 @@ impl RustTrans {
                 let inner_ty = self.infer_type_from_expr(inner);
                 if let Type::User(usr) = inner_ty {
                     if let Some(fields) = self.struct_field_types.get(usr.name.as_str()) {
-                        return fields.iter().any(|(f, t)|
-                            f == field && matches!(t, Type::List(_)));
+                        return fields
+                            .iter()
+                            .any(|(f, t)| f == field && matches!(t, Type::List(_)));
                     }
                 }
                 false
@@ -2561,7 +2706,8 @@ impl RustTrans {
     /// Slice/Array/List are treated as Copy for call-site purposes (passed by reference in Rust).
     /// Unknown is treated as non-Copy for safety (conservative ownership handling).
     fn is_copy_type(ty: &Type) -> bool {
-        matches!(ty,
+        matches!(
+            ty,
             Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
             | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
             | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
@@ -2592,9 +2738,18 @@ impl RustTrans {
     /// (whose Auto type may not match the generated Rust type) and composite
     /// types. Used by emit_borrow to decide "just copy the value".
     fn is_primitive_copy(ty: &Type) -> bool {
-        matches!(ty,
-            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
-            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
+        matches!(
+            ty,
+            Type::Int
+                | Type::Uint
+                | Type::USize
+                | Type::I64
+                | Type::U64
+                | Type::Float
+                | Type::Double
+                | Type::Bool
+                | Type::Char
+                | Type::Byte
         )
     }
 
@@ -2614,8 +2769,11 @@ impl RustTrans {
             // Other user types: don't recurse (no global analysis).
             Type::User(_) => false,
             // Wrapper types: recurse into inner type(s).
-            Type::List(inner) | Type::Result(inner) | Type::Option(inner)
-            | Type::Reference(inner) | Type::Linear(inner) => {
+            Type::List(inner)
+            | Type::Result(inner)
+            | Type::Option(inner)
+            | Type::Reference(inner)
+            | Type::Linear(inner) => {
                 // inner is Box<Type>
                 Self::type_contains_self_indirect(inner, self_name)
             }
@@ -2626,10 +2784,14 @@ impl RustTrans {
             Type::GenericInstance(inst) => {
                 // Check base name (e.g. Vec<Node> where inst.base_name == "Vec")
                 // and recurse into type args.
-                inst.args.iter().any(|arg| Self::type_contains_self_indirect(arg, self_name))
+                inst.args
+                    .iter()
+                    .any(|arg| Self::type_contains_self_indirect(arg, self_name))
             }
             Type::Array(arr) => Self::type_contains_self_indirect(&arr.elem, self_name),
-            Type::Tuple(types) => types.iter().any(|t| Self::type_contains_self_indirect(t, self_name)),
+            Type::Tuple(types) => types
+                .iter()
+                .any(|t| Self::type_contains_self_indirect(t, self_name)),
             _ => false,
         }
     }
@@ -2716,13 +2878,18 @@ impl RustTrans {
     /// → any known struct field of Map type (owner often unresolvable).
     fn recv_is_map(&self, recv: &Expr) -> bool {
         match recv {
-            Expr::Ident(name) => self.local_var_types.get(name)
+            Expr::Ident(name) => self
+                .local_var_types
+                .get(name)
                 .map(Self::type_is_map_like)
                 .unwrap_or(false),
             Expr::Dot(inner, field) => {
                 if matches!(inner.as_ref(), Expr::Ident(_)) {
-                    self.struct_field_types.values().any(|fields| fields.iter()
-                        .any(|(fname, fty)| fname == field && Self::type_is_map_like(fty)))
+                    self.struct_field_types.values().any(|fields| {
+                        fields
+                            .iter()
+                            .any(|(fname, fty)| fname == field && Self::type_is_map_like(fty))
+                    })
                 } else {
                     false
                 }
@@ -2731,22 +2898,21 @@ impl RustTrans {
         }
     }
 
-    fn rust_ident(name: &str) -> std::borrow::Cow<'_, str> {        // Note: self, super, crate are NOT included — they are path segments
+    fn rust_ident(name: &str) -> std::borrow::Cow<'_, str> {
+        // Note: self, super, crate are NOT included — they are path segments
         // that must not be escaped. "Self" (uppercase) is also not escaped
         // since it's used as a type name.
         const RUST_KEYWORDS: &[&str] = &[
-            "match", "type", "async", "fn", "let", "if", "else", "for",
-            "while", "loop", "return", "break", "continue", "struct", "enum",
-            "trait", "impl", "pub", "mut", "ref", "move",
-            "mod", "use", "where", "as", "in", "static", "const",
-            "unsafe", "extern", "dyn",
+            "match", "type", "async", "fn", "let", "if", "else", "for", "while", "loop", "return",
+            "break", "continue", "struct", "enum", "trait", "impl", "pub", "mut", "ref", "move",
+            "mod", "use", "where", "as", "in", "static", "const", "unsafe", "extern", "dyn",
             // Plan 577 ⑤ (DEBTS 016 Phase 0 / 022 final 行): Rust
             // reserved-for-future words — r#-escapable in all editions;
             // `final` was the 022 breakage (E0530). `gen` (edition-2024
             // keyword) deliberately NOT included: emission targets edition
             // 2021 where `gen` is a valid identifier.
-            "abstract", "become", "box", "do", "final", "macro", "override",
-            "priv", "typeof", "unsized", "virtual", "yield",
+            "abstract", "become", "box", "do", "final", "macro", "override", "priv", "typeof",
+            "unsized", "virtual", "yield",
         ];
         if RUST_KEYWORDS.contains(&name) {
             std::borrow::Cow::Owned(format!("r#{}", name))
@@ -2818,7 +2984,8 @@ impl RustTrans {
                 // Plan 387: inside a task hook/handler body, a bare state-field
                 // identifier reads `self.<field>`.
                 if self.in_task_body && self.task_state_fields.contains(name.as_str()) {
-                    return write!(out, "self.{}", Self::rust_ident(name.as_str())).map_err(Into::into);
+                    return write!(out, "self.{}", Self::rust_ident(name.as_str()))
+                        .map_err(Into::into);
                 }
                 // Plan 151: Global variable access - add .lock().unwrap() pattern.
                 // Plan 347: reads must dereference the MutexGuard (`*G.lock()`)
@@ -2854,8 +3021,11 @@ impl RustTrans {
                 } else {
                     write!(out, "{}", Self::rust_ident(name.as_str()))
                 }
-            }.map_err(Into::into),
-            Expr::GenName(name) => write!(out, "{}", Self::rust_ident(name.as_str())).map_err(Into::into),
+            }
+            .map_err(Into::into),
+            Expr::GenName(name) => {
+                write!(out, "{}", Self::rust_ident(name.as_str())).map_err(Into::into)
+            }
             Expr::Nil => write!(out, "None").map_err(Into::into),
             Expr::Null => write!(out, "None").map_err(Into::into),
 
@@ -2926,15 +3096,21 @@ impl RustTrans {
                                 self.tag_types.contains(type_name)
                                     || self.known_enum_names.contains(type_name)
                                     || self.local_struct_types.contains(type_name)
-                            } else { false }
-                        } else { false }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
                     }
                     Expr::Dot(obj, _) => {
                         if let Expr::Ident(type_name) = obj.as_ref() {
                             self.tag_types.contains(type_name)
                                 || self.known_enum_names.contains(type_name)
                                 || self.local_struct_types.contains(type_name)
-                        } else { false }
+                        } else {
+                            false
+                        }
                     }
                     _ => false,
                 };
@@ -3043,22 +3219,40 @@ impl RustTrans {
                                     // is a value, NOT a type/module — even if its name happens
                                     // to match a `use` path leaf (e.g. local `sse` vs module
                                     // `axum::response::sse`). Short-circuit before the uses check.
-                                    let is_local = name == "self"
-                                        || self.local_var_types.contains_key(name);
-                                    !is_local && (
-                                        name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
-                                        || matches!(name,
-                                            "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
-                                            | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
-                                            | "f32" | "f64" | "bool" | "char"
+                                    let is_local =
+                                        name == "self" || self.local_var_types.contains_key(name);
+                                    !is_local
+                                        && (
+                                            name.chars()
+                                                .next()
+                                                .map(|c| c.is_uppercase())
+                                                .unwrap_or(false)
+                                                || matches!(
+                                                    name,
+                                                    "u8" | "u16"
+                                                        | "u32"
+                                                        | "u64"
+                                                        | "u128"
+                                                        | "usize"
+                                                        | "i8"
+                                                        | "i16"
+                                                        | "i32"
+                                                        | "i64"
+                                                        | "i128"
+                                                        | "isize"
+                                                        | "f32"
+                                                        | "f64"
+                                                        | "bool"
+                                                        | "char"
+                                                )
+                                                || self.uses.iter().any(|u| {
+                                                    let u_str = u.as_str();
+                                                    u_str == name
+                                                        || u_str.ends_with(&format!("::{}", name))
+                                                })
+                                                || self.module_types.contains_key(name)
+                                            // Plan 264: known module name
                                         )
-                                        || self.uses.iter().any(|u| {
-                                            let u_str = u.as_str();
-                                            u_str == name
-                                                || u_str.ends_with(&format!("::{}", name))
-                                        })
-                                        || self.module_types.contains_key(name) // Plan 264: known module name
-                                    )
                                 } else {
                                     false
                                 };
@@ -3075,13 +3269,14 @@ impl RustTrans {
                                         .next()
                                         .map(|c| c.is_uppercase())
                                         .unwrap_or(false);
-                                    let leftmost_is_module = if let Expr::Ident(name) = il.as_ref() {
+                                    let leftmost_is_module = if let Expr::Ident(name) = il.as_ref()
+                                    {
                                         self.uses.iter().any(|u| {
                                             let u_str = u.as_str();
                                             u_str == name.as_str()
                                                 || u_str.ends_with(&format!("::{}", name))
-                                        })
-                                            || self.module_types.contains_key(name.as_str()) // Plan 264
+                                        }) || self.module_types.contains_key(name.as_str())
+                                    // Plan 264
                                     } else {
                                         false
                                     };
@@ -3090,17 +3285,21 @@ impl RustTrans {
                                     // module.Type or module.module.Type chain (nested Dot via Bina)
                                     // Same check: inner field must be type-like or leftmost must be a module
                                     let inner_is_type = if let Expr::Ident(name) = ir.as_ref() {
-                                        name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                                        name.chars()
+                                            .next()
+                                            .map(|c| c.is_uppercase())
+                                            .unwrap_or(false)
                                     } else {
                                         false
                                     };
-                                    let leftmost_is_module = if let Expr::Ident(name) = il.as_ref() {
+                                    let leftmost_is_module = if let Expr::Ident(name) = il.as_ref()
+                                    {
                                         self.uses.iter().any(|u| {
                                             let u_str = u.as_str();
                                             u_str == name.as_str()
                                                 || u_str.ends_with(&format!("::{}", name))
-                                        })
-                                            || self.module_types.contains_key(name.as_str()) // Plan 264
+                                        }) || self.module_types.contains_key(name.as_str())
+                                    // Plan 264
                                     } else {
                                         false
                                     };
@@ -3116,7 +3315,8 @@ impl RustTrans {
                                         if self.module_types.contains_key(lhs_name.as_str()) {
                                             if self.merge_mode {
                                                 write!(out, "{}::", lhs_name.as_str())?;
-                                            } else if lhs_name.as_str() == self.current_module_name {
+                                            } else if lhs_name.as_str() == self.current_module_name
+                                            {
                                                 write!(out, "{}::", lhs_name.as_str())?;
                                             } else {
                                                 write!(out, "crate::{}::", lhs_name.as_str())?;
@@ -3137,12 +3337,17 @@ impl RustTrans {
                                     // Parenthesize lhs if it's a binary op (e.g., (a / b).method())
                                     // or a unary deref (Plan 379: (*x).clone() — otherwise
                                     // `*x.clone()` would parse as *(x.clone()) in Rust).
-                                    let needs_parens = matches!(lhs.as_ref(),
-                                        Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
-                                    ) || matches!(lhs.as_ref(), Expr::Unary(Op::Mul, _));
-                                    if needs_parens { write!(out, "(")?; }
+                                    let needs_parens =
+                                        matches!(lhs.as_ref(),
+                                            Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
+                                        ) || matches!(lhs.as_ref(), Expr::Unary(Op::Mul, _));
+                                    if needs_parens {
+                                        write!(out, "(")?;
+                                    }
                                     self.expr(lhs, out)?;
-                                    if needs_parens { write!(out, ")")?; }
+                                    if needs_parens {
+                                        write!(out, ")")?;
+                                    }
                                     // Auto's list/str length property `.length`
                                     // (field form, no parens) maps to Rust's
                                     // `.len()` (2026-08-23 auto-ai report
@@ -3158,13 +3363,17 @@ impl RustTrans {
                                             // the call() method form (bare
                                             // `.len()` breaks int contexts).
                                             let cast = !self.len_i32_cast_suppressed;
-                                            if cast { write!(out, "(")?; }
+                                            if cast {
+                                                write!(out, "(")?;
+                                            }
                                             if self.expr_is_string_like(lhs) {
                                                 write!(out, ".chars().count()")?;
                                             } else {
                                                 write!(out, ".len()")?;
                                             }
-                                            if cast { write!(out, " as i64)")?; }
+                                            if cast {
+                                                write!(out, " as i64)")?;
+                                            }
                                             return Ok(());
                                         }
                                     }
@@ -3197,13 +3406,21 @@ impl RustTrans {
                         } else {
                             // Default to numeric +
                             let (cast_l, cast_r) = self.bina_char_cast(&lhs, &rhs);
-                            if cast_l { write!(out, "(")?; }
+                            if cast_l {
+                                write!(out, "(")?;
+                            }
                             self.expr(&lhs, out)?;
-                            if cast_l { write!(out, ") as i64")?; }
+                            if cast_l {
+                                write!(out, ") as i64")?;
+                            }
                             write!(out, " + ")?;
-                            if cast_r { write!(out, "(")?; }
+                            if cast_r {
+                                write!(out, "(")?;
+                            }
                             self.expr(&rhs, out)?;
-                            if cast_r { write!(out, ") as i64")?; }
+                            if cast_r {
+                                write!(out, ") as i64")?;
+                            }
                         }
                     }
                     Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq => {
@@ -3238,8 +3455,11 @@ impl RustTrans {
                                 // scope for inner temporaries — verified.)
                                 write!(out, "{{ let __a2r_gv = ")?;
                                 self.expr(rhs, out)?;
-                                write!(out, "; *{}.lock().unwrap() {} __a2r_gv; }}",
-                                       static_name, op_str)?;
+                                write!(
+                                    out,
+                                    "; *{}.lock().unwrap() {} __a2r_gv; }}",
+                                    static_name, op_str
+                                )?;
                                 return Ok(());
                             }
                         }
@@ -3252,19 +3472,27 @@ impl RustTrans {
                         // is String.
                         if matches!(op, Op::Asn) {
                             if let Expr::Index(arr, idx) = lhs.as_ref() {
-                                if !matches!(idx.as_ref(), Expr::Range(_)) && self.recv_is_map(arr) {
+                                if !matches!(idx.as_ref(), Expr::Range(_)) && self.recv_is_map(arr)
+                                {
                                     self.expr(arr, out)?;
                                     write!(out, ".insert(")?;
-                                    let key_is_string_like = matches!(idx.as_ref(),
-                                        Expr::Str(_) | Expr::CStr(_))
-                                        || if let Expr::Ident(n) = idx.as_ref() {
-                                            self.local_var_types.get(n)
-                                                .map(|ty| matches!(ty,
-                                                    Type::StrFixed(_) | Type::StrSlice | Type::StrOwned))
-                                                .unwrap_or(false)
-                                        } else {
-                                            false
-                                        };
+                                    let key_is_string_like =
+                                        matches!(idx.as_ref(), Expr::Str(_) | Expr::CStr(_))
+                                            || if let Expr::Ident(n) = idx.as_ref() {
+                                                self.local_var_types
+                                                    .get(n)
+                                                    .map(|ty| {
+                                                        matches!(
+                                                            ty,
+                                                            Type::StrFixed(_)
+                                                                | Type::StrSlice
+                                                                | Type::StrOwned
+                                                        )
+                                                    })
+                                                    .unwrap_or(false)
+                                            } else {
+                                                false
+                                            };
                                     self.expr(idx, out)?;
                                     if key_is_string_like {
                                         write!(out, ".to_string()")?;
@@ -3311,14 +3539,17 @@ impl RustTrans {
                                 if matches!(self.local_var_types.get(n),
                                     Some(Type::StrOwned) | Some(Type::StrFixed(_))
                                     | Some(Type::StrSlice) | Some(Type::CStrLit)))
-                            && (matches!(self.infer_type_from_expr(rhs),
-                                    Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit)
-                                || matches!(rhs.as_ref(), Expr::Call(c)
+                            && (matches!(
+                                self.infer_type_from_expr(rhs),
+                                Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit
+                            ) || matches!(rhs.as_ref(), Expr::Call(c)
                                     if matches!(c.name.as_ref(),
                                         Expr::Dot(m, f)
                                             if matches!(m.as_ref(), Expr::Ident(mi) if mi.as_str() == "String")
                                                 && f.as_str() == "fromCharCode")));
-                        if addeq_str_borrow { write!(out, "&")?; }
+                        if addeq_str_borrow {
+                            write!(out, "&")?;
+                        }
                         // Plan 391 D1: reassignment `x = <expr>.len()` where x is a
                         // u64/i64/usize local — suppress the `as i32` cast (same
                         // rationale as the let-binding case in store()).
@@ -3334,9 +3565,9 @@ impl RustTrans {
                         // 由 rhs 语义保证为 int 字段)。
                         let narrow_asn = self.expr_has_int_list_index(rhs)
                             && match lhs.as_ref() {
-                                Expr::Ident(n) => matches!(
-                                    self.local_var_types.get(n.as_str()),
-                                    Some(Type::Int)),
+                                Expr::Ident(n) => {
+                                    matches!(self.local_var_types.get(n.as_str()), Some(Type::Int))
+                                }
                                 Expr::Dot(_, _) => true,
                                 _ => false,
                             };
@@ -3350,7 +3581,9 @@ impl RustTrans {
                         self.len_i32_cast_suppressed = saved_suppress;
                         // When assigning &str literal to a variable, add .to_string()
                         // In Auto, all str variables are String in Rust, so this is always correct
-                        if matches!(op, Op::Asn) && matches!(rhs.as_ref(), Expr::Str(_) | Expr::CStr(_)) {
+                        if matches!(op, Op::Asn)
+                            && matches!(rhs.as_ref(), Expr::Str(_) | Expr::CStr(_))
+                        {
                             // Plan 016 Phase A A4 cat 5f: also cover self.field
                             // assignment (Expr::Dot), e.g. self.buf = "" →
                             // self.buf = "".to_string(). Previously only bare idents
@@ -3373,11 +3606,16 @@ impl RustTrans {
                                     // moving out of them is E0507. An OWNED local
                                     // may keep the bare move (19_ownership goldens
                                     // lock `acc = wp.description;` bare).
-                                    let obj_is_mut_ref = self.current_fn_mut_params.contains(obj_name)
-                                        || self.local_var_types.get(obj_name)
-                                            .map(|ty| matches!(ty, Type::Reference(_)))
-                                            .unwrap_or(false);
-                                    let obj_is_copy = self.local_var_types.get(obj_name)
+                                    let obj_is_mut_ref =
+                                        self.current_fn_mut_params.contains(obj_name)
+                                            || self
+                                                .local_var_types
+                                                .get(obj_name)
+                                                .map(|ty| matches!(ty, Type::Reference(_)))
+                                                .unwrap_or(false);
+                                    let obj_is_copy = self
+                                        .local_var_types
+                                        .get(obj_name)
                                         .map(|ty| Self::is_copy_type(ty))
                                         .unwrap_or(true);
                                     if obj_is_mut_ref && !obj_is_copy {
@@ -3389,9 +3627,14 @@ impl RustTrans {
                                 if let Expr::Ident(dst_name) = lhs.as_ref() {
                                     if src_name != dst_name && !self.is_global_var(src_name) {
                                         if let Some(ty) = self.local_var_types.get(src_name) {
-                                            if matches!(ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit) {
+                                            if matches!(
+                                                ty,
+                                                Type::StrFixed(_) | Type::StrSlice | Type::CStrLit
+                                            ) {
                                                 write!(out, ".to_string()")?;
-                                            } else if !matches!(ty, Type::Unknown) && !Self::is_primitive_copy(ty) {
+                                            } else if !matches!(ty, Type::Unknown)
+                                                && !Self::is_primitive_copy(ty)
+                                            {
                                                 write!(out, ".clone()")?;
                                             }
                                         } else if self.current_fn_str_params.contains(src_name) {
@@ -3408,11 +3651,14 @@ impl RustTrans {
                             // (`a.cur_fn = name` … `format!(…, name)`) needs
                             // `.clone()` — the field-READ mirror below covers
                             // the opposite direction only.
-                            if let (Expr::Dot(_, _), Expr::Ident(src_name)) = (lhs.as_ref(), rhs.as_ref()) {
+                            if let (Expr::Dot(_, _), Expr::Ident(src_name)) =
+                                (lhs.as_ref(), rhs.as_ref())
+                            {
                                 if self.current_fn_str_params.contains(src_name) {
                                     write!(out, ".to_string()")?;
                                 } else if let Some(ty) = self.local_var_types.get(src_name) {
-                                    if !matches!(ty, Type::Unknown) && !Self::is_primitive_copy(ty) {
+                                    if !matches!(ty, Type::Unknown) && !Self::is_primitive_copy(ty)
+                                    {
                                         write!(out, ".clone()")?;
                                     }
                                 }
@@ -3426,8 +3672,16 @@ impl RustTrans {
                         // instead of the default i64 (see partner_len_cast).
                         let rhs_is_len = Self::expr_is_len_call(rhs);
                         let lhs_is_len = Self::expr_is_len_call(lhs);
-                        let rhs_cast = if rhs_is_len { self.partner_len_cast(lhs) } else { None };
-                        let lhs_cast = if lhs_is_len { self.partner_len_cast(rhs) } else { None };
+                        let rhs_cast = if rhs_is_len {
+                            self.partner_len_cast(lhs)
+                        } else {
+                            None
+                        };
+                        let lhs_cast = if lhs_is_len {
+                            self.partner_len_cast(rhs)
+                        } else {
+                            None
+                        };
                         let saved_suppress = self.len_i32_cast_suppressed;
                         if rhs_cast.is_some() || lhs_cast.is_some() {
                             self.len_i32_cast_suppressed = true;
@@ -3441,18 +3695,28 @@ impl RustTrans {
                         let ri = self.expr_has_int_list_index(rhs);
                         let narrow_l = li && !ri;
                         let narrow_r = ri && !li;
-                        if char_l || narrow_l { write!(out, "(")?; }
+                        if char_l || narrow_l {
+                            write!(out, "(")?;
+                        }
                         self.expr(lhs, out)?;
-                        if char_l { write!(out, ") as i64")?; }
-                        else if narrow_l { write!(out, ") as i32")?; }
+                        if char_l {
+                            write!(out, ") as i64")?;
+                        } else if narrow_l {
+                            write!(out, ") as i32")?;
+                        }
                         if let Some(c) = lhs_cast {
                             write!(out, "{}", c)?;
                         }
                         write!(out, " {} ", op_str)?;
-                        if char_r || narrow_r { write!(out, "(")?; }
+                        if char_r || narrow_r {
+                            write!(out, "(")?;
+                        }
                         self.expr(rhs, out)?;
-                        if char_r { write!(out, ") as i64")?; }
-                        else if narrow_r { write!(out, ") as i32")?; }
+                        if char_r {
+                            write!(out, ") as i64")?;
+                        } else if narrow_r {
+                            write!(out, ") as i32")?;
+                        }
                         if let Some(c) = rhs_cast {
                             write!(out, "{}", c)?;
                         }
@@ -3490,11 +3754,19 @@ impl RustTrans {
                         }
                         // Plan 433 A1: int vs char-literal mix → cast char side to i64
                         let (char_l, char_r) = self.bina_char_cast(lhs, rhs);
-                        if char_l { write!(out, "(")?; }
-                        if lhs_paren { write!(out, "(")?; }
+                        if char_l {
+                            write!(out, "(")?;
+                        }
+                        if lhs_paren {
+                            write!(out, "(")?;
+                        }
                         self.expr(lhs, out)?;
-                        if lhs_paren { write!(out, ")")?; }
-                        if char_l { write!(out, ") as i64")?; }
+                        if lhs_paren {
+                            write!(out, ")")?;
+                        }
+                        if char_l {
+                            write!(out, ") as i64")?;
+                        }
                         if let Some(c) = lhs_cast {
                             write!(out, "{}", c)?;
                         }
@@ -3507,11 +3779,19 @@ impl RustTrans {
                             _ => op.op(),
                         };
                         write!(out, " {} ", op_str)?;
-                        if char_r { write!(out, "(")?; }
-                        if rhs_paren { write!(out, "(")?; }
+                        if char_r {
+                            write!(out, "(")?;
+                        }
+                        if rhs_paren {
+                            write!(out, "(")?;
+                        }
                         self.expr(rhs, out)?;
-                        if rhs_paren { write!(out, ")")?; }
-                        if char_r { write!(out, ") as i64")?; }
+                        if rhs_paren {
+                            write!(out, ")")?;
+                        }
+                        if char_r {
+                            write!(out, ") as i64")?;
+                        }
                         if let Some(c) = rhs_cast {
                             write!(out, "{}", c)?;
                         }
@@ -3558,9 +3838,7 @@ impl RustTrans {
                 self.emit_borrow(expr, false, out)
             }
 
-            Expr::Mut(expr) => {
-                self.emit_borrow(expr, true, out)
-            }
+            Expr::Mut(expr) => self.emit_borrow(expr, true, out),
 
             Expr::Move(expr) | Expr::Take(expr) => {
                 // e.move / e.take -> e (move semantics, default in Rust)
@@ -3580,7 +3858,9 @@ impl RustTrans {
                     // `.clone()` on non-range Index reads below). Str/List
                     // elements keep the historical move behavior.
                     if let Expr::Ident(name) = elem {
-                        let agg = self.local_var_types.get(name)
+                        let agg = self
+                            .local_var_types
+                            .get(name)
                             .map(|ty| matches!(ty, Type::User(_) | Type::Enum(_)))
                             .unwrap_or(false);
                         if agg {
@@ -3647,8 +3927,7 @@ impl RustTrans {
                 if !matches!(idx.as_ref(), Expr::Range(_)) && self.recv_is_map(arr) {
                     self.expr(arr, out)?;
                     write!(out, "[")?;
-                    let key_already_borrowed = matches!(idx.as_ref(),
-                        Expr::Str(_) | Expr::CStr(_))
+                    let key_already_borrowed = matches!(idx.as_ref(), Expr::Str(_) | Expr::CStr(_))
                         || if let Expr::Ident(n) = idx.as_ref() {
                             self.current_fn_str_params.contains(n)
                         } else {
@@ -3792,7 +4071,9 @@ impl RustTrans {
                                 // Tuple variant needs (_, _, ...): Enum::Variant(_, _, ...)
                                 write!(out, "{}::{}(", tag_cover.kind, tag_cover.tag)?;
                                 for j in 0..arity {
-                                    if j > 0 { write!(out, ", ")?; }
+                                    if j > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     write!(out, "_")?;
                                 }
                                 write!(out, ")").map_err(Into::into)
@@ -3806,15 +4087,21 @@ impl RustTrans {
                             }
                         } else if is_struct {
                             // Struct variant: Enum::Variant { field1, field2 }
-                            let field_names = self.enum_struct_variants.get(&key)
+                            let field_names = self
+                                .enum_struct_variants
+                                .get(&key)
                                 .map(|v| v.as_slice())
                                 .unwrap_or(&[]);
                             write!(out, "{}::{} {{ ", tag_cover.kind, tag_cover.tag)?;
-                            for (i, binding) in tag_cover.bindings.iter()
+                            for (i, binding) in tag_cover
+                                .bindings
+                                .iter()
                                 .filter(|b| b.as_str() != "_")
                                 .enumerate()
                             {
-                                if i > 0 { write!(out, ", ")?; }
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
                                 // Use field name if available, otherwise binding name
                                 if let Some(field_name) = field_names.get(i) {
                                     if field_name.as_str() == binding.as_str() {
@@ -3829,7 +4116,9 @@ impl RustTrans {
                             write!(out, " }}").map_err(Into::into)
                         } else {
                             // Tuple variant or unknown: Enum::Variant(a, b)
-                                let binding_str = tag_cover.bindings.iter()
+                            let binding_str = tag_cover
+                                .bindings
+                                .iter()
                                 .filter(|b| b.as_str() != "_")
                                 .map(|b| b.as_str())
                                 .collect::<Vec<_>>()
@@ -3889,20 +4178,16 @@ impl RustTrans {
             // Plan 120/159: Option/Result patterns (used in is statement branches)
             // These are handled in is_stmt, not as standalone expressions.
             // Provide a fallback for cases where they appear as expressions.
-            Expr::OptionPattern(cover) => {
-                match cover.variant {
-                    crate::ast::cover::OptionVariant::Some => {
-                        if let Some(ref binding) = cover.binding {
-                            write!(out, "Some({})", binding).map_err(Into::into)
-                        } else {
-                            write!(out, "Some(_)").map_err(Into::into)
-                        }
-                    }
-                    crate::ast::cover::OptionVariant::None => {
-                        write!(out, "None").map_err(Into::into)
+            Expr::OptionPattern(cover) => match cover.variant {
+                crate::ast::cover::OptionVariant::Some => {
+                    if let Some(ref binding) = cover.binding {
+                        write!(out, "Some({})", binding).map_err(Into::into)
+                    } else {
+                        write!(out, "Some(_)").map_err(Into::into)
                     }
                 }
-            }
+                crate::ast::cover::OptionVariant::None => write!(out, "None").map_err(Into::into),
+            },
             Expr::ResultPattern(cover) => {
                 // Plan 396/B11(b): nested pattern (e.g. Err(Enum.Variant { x }))
                 // — emit Ok(<pattern>)/Err(<pattern>) via the inner expr.
@@ -3944,7 +4229,9 @@ impl RustTrans {
             Expr::Node(node) => {
                 if node.name == "not" {
                     write!(out, "!(")?;
-                    if !node.id.is_empty() { write!(out, "{}", node.id)?; }
+                    if !node.id.is_empty() {
+                        write!(out, "{}", node.id)?;
+                    }
                     write!(out, ")")?;
                     return Ok(());
                 }
@@ -4201,8 +4488,11 @@ impl RustTrans {
                 for part in &fstr.parts {
                     match part {
                         Expr::Str(s) | Expr::CStr(s) => {
-                            let escaped = s.replace("\\", "\\\\").replace("\"", r##"\""##)
-                                .replace("{", "{{").replace("}", "}}");
+                            let escaped = s
+                                .replace("\\", "\\\\")
+                                .replace("\"", r##"\""##)
+                                .replace("{", "{{")
+                                .replace("}", "}}");
                             write!(out, "{}", escaped)?;
                         }
                         Expr::Char(c) => {
@@ -4262,8 +4552,10 @@ impl RustTrans {
                                 }
                                 Stmt::Expr(expr) => {
                                     self.expr(expr, out)?;
-                                    if is_last && self.ret_type_needs_string_coercion()
-                                        && self.expr_needs_string_coercion(expr) {
+                                    if is_last
+                                        && self.ret_type_needs_string_coercion()
+                                        && self.expr_needs_string_coercion(expr)
+                                    {
                                         write!(out, ".to_string()")?;
                                     }
                                     if !is_last {
@@ -4293,7 +4585,10 @@ impl RustTrans {
                                             out.write(b";\n")?;
                                         }
                                         _ => {
-                                            write!(out, "/* unsupported statement in if body */\n")?;
+                                            write!(
+                                                out,
+                                                "/* unsupported statement in if body */\n"
+                                            )?;
                                         }
                                     }
                                 }
@@ -4323,8 +4618,10 @@ impl RustTrans {
                                 }
                                 Stmt::Expr(expr) => {
                                     self.expr(expr, out)?;
-                                    if is_last && self.ret_type_needs_string_coercion()
-                                        && self.expr_needs_string_coercion(expr) {
+                                    if is_last
+                                        && self.ret_type_needs_string_coercion()
+                                        && self.expr_needs_string_coercion(expr)
+                                    {
                                         write!(out, ".to_string()")?;
                                     }
                                     if !is_last {
@@ -4342,21 +4639,19 @@ impl RustTrans {
                                     self.store(store, out)?;
                                     out.write(b";\n")?;
                                 }
-                                _ => {
-                                    match stmt {
-                                        Stmt::Break => {
-                                            out.write(b"break;\n")?;
-                                        }
-                                        Stmt::Return(ret) => {
-                                            out.write(b"return ")?;
-                                            self.expr(ret, out)?;
-                                            out.write(b";\n")?;
-                                        }
-                                        _ => {
-                                            write!(out, "/* unsupported statement in else body */\n")?;
-                                        }
+                                _ => match stmt {
+                                    Stmt::Break => {
+                                        out.write(b"break;\n")?;
                                     }
-                                }
+                                    Stmt::Return(ret) => {
+                                        out.write(b"return ")?;
+                                        self.expr(ret, out)?;
+                                        out.write(b";\n")?;
+                                    }
+                                    _ => {
+                                        write!(out, "/* unsupported statement in else body */\n")?;
+                                    }
+                                },
                             }
                         }
                         self.dedent();
@@ -4485,8 +4780,12 @@ impl RustTrans {
                 if !captured.is_empty() {
                     write!(out, "{{ ")?;
                     for n in &captured {
-                        write!(out, "let {} = std::rc::Rc::clone(&{}); ",
-                            Self::rust_ident(n.as_str()), Self::rust_ident(n.as_str()))?;
+                        write!(
+                            out,
+                            "let {} = std::rc::Rc::clone(&{}); ",
+                            Self::rust_ident(n.as_str()),
+                            Self::rust_ident(n.as_str())
+                        )?;
                     }
                     write!(out, "move ")?;
                 }
@@ -4530,7 +4829,8 @@ impl RustTrans {
                 // Only fire when the FULL chain (including this `field`) is a
                 // known module path — `obj.field` (a real field access) never
                 // matches use.rust, so it falls through unchanged.
-                if let Some(path) = Self::dot_chain_path(&Expr::Dot(object.clone(), field.clone())) {
+                if let Some(path) = Self::dot_chain_path(&Expr::Dot(object.clone(), field.clone()))
+                {
                     if self.path_matches_use_rust(&path) {
                         write!(out, "{}", path.replace('.', "::"))?;
                         return Ok(());
@@ -4602,8 +4902,7 @@ impl RustTrans {
                         .unwrap_or(false)
                         || self.uses.iter().any(|u| {
                             let u_str = u.as_str();
-                            u_str == type_name
-                                || u_str.ends_with(&format!("::{}", type_name))
+                            u_str == type_name || u_str.ends_with(&format!("::{}", type_name))
                         })
                         || self.module_types.contains_key(type_name.as_str()); // Plan 264
                     if is_type_name {
@@ -4638,10 +4937,8 @@ impl RustTrans {
                     let leftmost_is_module = if let Expr::Ident(name) = il.as_ref() {
                         self.uses.iter().any(|u| {
                             let u_str = u.as_str();
-                            u_str == name.as_str()
-                                || u_str.ends_with(&format!("::{}", name))
-                        })
-                            || self.module_types.contains_key(name.as_str()) // Plan 264
+                            u_str == name.as_str() || u_str.ends_with(&format!("::{}", name))
+                        }) || self.module_types.contains_key(name.as_str()) // Plan 264
                     } else {
                         false
                     };
@@ -4674,14 +4971,18 @@ impl RustTrans {
                     // E0308). Same wide-int suppression gate as call()
                     // (Plan 391 D1).
                     let cast = !self.len_i32_cast_suppressed;
-                    if cast { write!(out, "(")?; }
+                    if cast {
+                        write!(out, "(")?;
+                    }
                     self.expr(object, out)?;
                     if self.expr_is_string_like(object) {
                         write!(out, ".chars().count()")?;
                     } else {
                         write!(out, ".len()")?;
                     }
-                    if cast { write!(out, " as i64)")?; }
+                    if cast {
+                        write!(out, " as i64)")?;
+                    }
                     return Ok(());
                 }
 
@@ -4713,11 +5014,16 @@ impl RustTrans {
                 // to collection receivers (String/Vec property sugar).
                 let object_has_such_field = if let Expr::Ident(var_name) = object.as_ref() {
                     if let Some(Type::User(td)) = self.local_var_types.get(var_name.as_str()) {
-                        self.struct_field_types.get(td.name.as_str())
+                        self.struct_field_types
+                            .get(td.name.as_str())
                             .map(|fields| fields.iter().any(|(f, _)| f.as_str() == field.as_str()))
                             .unwrap_or(false)
-                    } else { false }
-                } else { false };
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
                 if is_rust_method && !object_has_such_field {
                     write!(out, "()")?;
                 }
@@ -4738,7 +5044,10 @@ impl RustTrans {
                 // nil-safe `.get(idx)` (Auto indexing is nil-safe; `[]` panics).
                 match lhs.as_ref() {
                     Expr::Index(base, idx)
-                        if self.expr_type_is_option_like(base).map(|o| !o).unwrap_or(false) =>
+                        if self
+                            .expr_type_is_option_like(base)
+                            .map(|o| !o)
+                            .unwrap_or(false) =>
                     {
                         self.expr(base, out)?;
                         write!(out, ".get((")?;
@@ -4752,9 +5061,11 @@ impl RustTrans {
                         write!(out, ")")?;
                         return Ok(());
                     }
-                    Expr::Ident(n) if self.expr_type_is_known_scalar(lhs)
-                        && !self.borrowed_iter_vars.contains(n)
-                        && !self.by_value_iter_bindings.contains(n) => {
+                    Expr::Ident(n)
+                        if self.expr_type_is_known_scalar(lhs)
+                            && !self.borrowed_iter_vars.contains(n)
+                            && !self.by_value_iter_bindings.contains(n) =>
+                    {
                         self.expr(lhs, out)?;
                         return Ok(());
                     }
@@ -4783,7 +5094,10 @@ impl RustTrans {
                 // as an error; `list[i]?` on a bare index is E0277).
                 match expr.as_ref() {
                     Expr::Index(base, idx)
-                        if self.expr_type_is_option_like(base).map(|o| !o).unwrap_or(false) =>
+                        if self
+                            .expr_type_is_option_like(base)
+                            .map(|o| !o)
+                            .unwrap_or(false) =>
                     {
                         self.expr(base, out)?;
                         write!(out, ".get((")?;
@@ -4792,12 +5106,14 @@ impl RustTrans {
                         write!(out, ".cloned().ok_or(\"index out of bounds\")?")?;
                         return Ok(());
                     }
-                    Expr::Ident(n) if self.expr_type_is_known_scalar(expr)
+                    Expr::Ident(n)
+                        if self.expr_type_is_known_scalar(expr)
                         // Iter-var bindings may carry Rust-side Result items
                         // (read_dir loops) even when Auto types them as
                         // scalars — their `?` is real propagation.
                         && !self.borrowed_iter_vars.contains(n)
-                        && !self.by_value_iter_bindings.contains(n) => {
+                        && !self.by_value_iter_bindings.contains(n) =>
+                    {
                         self.expr(expr, out)?;
                         return Ok(());
                     }
@@ -4828,7 +5144,11 @@ impl RustTrans {
                         // values (PLAN-596 T-07, DIV-DEP-8: three-way parity with
                         // the VM leg); Auto types keep format!("{:?}", x) as the
                         // safe default — existing corpora depend on Debug here.
-                        let fmt = if self.receiver_is_dep_rust_value(expr) { "{}" } else { "{:?}" };
+                        let fmt = if self.receiver_is_dep_rust_value(expr) {
+                            "{}"
+                        } else {
+                            "{:?}"
+                        };
                         write!(out, "format!(\"{}\", ", fmt)?;
                         self.expr(expr, out)?;
                         write!(out, ")")?;
@@ -4866,7 +5186,11 @@ impl RustTrans {
                         if ty_name == "String" || ty_name == "str" || ty_name == "&str" {
                             // x.to(String) / x.to(str) → Display for dep rust-typed
                             // values, Debug fallback otherwise (PLAN-596 T-07, D8).
-                            let fmt = if self.receiver_is_dep_rust_value(expr) { "{}" } else { "{:?}" };
+                            let fmt = if self.receiver_is_dep_rust_value(expr) {
+                                "{}"
+                            } else {
+                                "{:?}"
+                            };
                             write!(out, "format!(\"{}\", ", fmt)?;
                             self.expr(expr, out)?;
                             write!(out, ")")?;
@@ -4882,7 +5206,10 @@ impl RustTrans {
             }
 
             // Plan 124: Async/Future/Await system
-            Expr::AsyncBlock { body, return_type: _ } => {
+            Expr::AsyncBlock {
+                body,
+                return_type: _,
+            } => {
                 // Plan 310 Phase 3: ~{ stmts } -> async move { stmts }
                 // Force move capture: Auto's ownership model defaults async blocks
                 // to owning their captured variables, avoiding lifetime issues
@@ -4934,7 +5261,11 @@ impl RustTrans {
                     if let Expr::Dot(obj, method) = call.name.as_ref() {
                         if let Expr::Ident(obj_name) = obj.as_ref() {
                             let m = method.as_str();
-                            if obj_name.as_str() == "http" && (m == "post_sync" || m == "post_bearer" || m == "post_bearer_sync") {
+                            if obj_name.as_str() == "http"
+                                && (m == "post_sync"
+                                    || m == "post_bearer"
+                                    || m == "post_bearer_sync")
+                            {
                                 // http.post_sync/post_bearer/post_bearer_sync with .await: generate with .as_str() for str args
                                 // PLAN-724 T-06：async 上下文走 *_async 内核面（post_bearer 本就 async）。
                                 let func_name = if self.in_async_ctx.get() && m != "post_bearer" {
@@ -4946,7 +5277,9 @@ impl RustTrans {
                                 let needs_await = m == "post_bearer" || self.in_async_ctx.get();
                                 write!(out, "{{ let __resp = {}(", func_name)?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr_as_str(expr, out)?;
                                     }
@@ -4956,7 +5289,10 @@ impl RustTrans {
                                 } else {
                                     write!(out, ")")?;
                                 }
-                                write!(out, "; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                                write!(
+                                    out,
+                                    "; a2r_std::http::set_last_status(__resp.0); __resp.1 }}"
+                                )?;
                                 return Ok(());
                             }
                         }
@@ -5042,14 +5378,16 @@ impl RustTrans {
                 // keep plain `match v` so arm payload bindings stay owned values
                 // (and a2r goldens stay stable).
                 let needs_ref_match = match &is.target {
-                    Expr::Ident(name) => self
-                        .fn_is_scrutinee_counts
-                        .get(name.as_str())
-                        .copied()
-                        .unwrap_or(0) >= 2,
+                    Expr::Ident(name) => {
+                        self.fn_is_scrutinee_counts
+                            .get(name.as_str())
+                            .copied()
+                            .unwrap_or(0)
+                            >= 2
+                    }
                     _ => false,
                 };
-                
+
                 write!(out, "match ")?;
                 if needs_ref_match {
                     write!(out, "&")?;
@@ -5058,7 +5396,9 @@ impl RustTrans {
                 self.json_parse_as_opt = prev;
                 write!(out, " {{ ")?;
                 for (i, branch) in is.branches.iter().enumerate() {
-                    if i > 0 { write!(out, " ")?; }
+                    if i > 0 {
+                        write!(out, " ")?;
+                    }
                     match branch {
                         crate::ast::IsBranch::EqBranch(patterns, body) => {
                             let saved_get_refs = self.get_ref_bindings.clone();
@@ -5070,9 +5410,12 @@ impl RustTrans {
                             let saved_int_scrut = self.int_match_scrutinee;
                             self.int_match_scrutinee = matches!(
                                 self.infer_type_from_expr(&is.target),
-                                Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::USize);
+                                Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::USize
+                            );
                             for (j, pat) in patterns.iter().enumerate() {
-                                if j > 0 { write!(out, " | ")?; }
+                                if j > 0 {
+                                    write!(out, " | ")?;
+                                }
                                 self.expr(pat, out)?;
                             }
                             self.int_match_scrutinee = saved_int_scrut;
@@ -5110,7 +5453,10 @@ impl RustTrans {
                 if let Expr::Call(call) = inner {
                     if let Expr::Ident(name) = call.name.as_ref() {
                         let fname = name.to_string();
-                        if fname == "read_text" || fname == "read_to_string" || fname == "include_str" {
+                        if fname == "read_text"
+                            || fname == "read_to_string"
+                            || fname == "include_str"
+                        {
                             if let Some(arg) = call.args.args.first() {
                                 let arg_expr = arg.get_expr();
                                 if let Expr::Str(path) = arg_expr {
@@ -5120,7 +5466,11 @@ impl RustTrans {
                                             String::new()
                                         });
                                     // Escape for Rust string literal
-                                    write!(out, "\"{}\"", content.replace('\\', "\\\\").replace('"', "\\\""))?;
+                                    write!(
+                                        out,
+                                        "\"{}\"",
+                                        content.replace('\\', "\\\\").replace('"', "\\\"")
+                                    )?;
                                     return Ok(());
                                 }
                             }
@@ -5173,12 +5523,22 @@ impl RustTrans {
             if let Expr::Ident(module) = object.as_ref() {
                 if !self.local_var_types.contains_key(module)
                     && !self.local_modules.contains(module.as_str())
-                    && !self.sibling_modules.contains(module.as_str()) {
-                    let module = if module.as_str() == "Json" { "json" } else { module.as_str() };
+                    && !self.sibling_modules.contains(module.as_str())
+                {
+                    let module = if module.as_str() == "Json" {
+                        "json"
+                    } else {
+                        module.as_str()
+                    };
                     let text = std::str::from_utf8(&emitted).map_err(|e| e.to_string())?;
                     if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
-                        module, symbol.as_str(), text, self.assembly_runtime,
-                    )? { self.assembly_references.push(proof); }
+                        module,
+                        symbol.as_str(),
+                        text,
+                        self.assembly_runtime,
+                    )? {
+                        self.assembly_references.push(proof);
+                    }
                 }
             }
         }
@@ -5205,7 +5565,9 @@ impl RustTrans {
                 self.a2r_std_used.set(true);
                 write!(out, "{q}(")?;
                 for (i, arg) in call.args.args.iter().enumerate() {
-                    if i > 0 { write!(out, ", ")?; }
+                    if i > 0 {
+                        write!(out, ", ")?;
+                    }
                     if let Arg::Pos(expr) = arg {
                         self.expr(expr, out)?;
                     } else {
@@ -5284,13 +5646,32 @@ impl RustTrans {
                         if let Expr::Ident(macro_name) = obj.as_ref() {
                             if inner.args.args.is_empty() {
                                 // Known Rust macros from log/tracing crates
-                                if matches!(macro_name.as_str(),
-                                    "debug" | "info" | "warn" | "error" | "trace"
-                                    | "println" | "eprintln" | "print" | "eprint"
-                                    | "write" | "writeln" | "format"
-                                    | "panic" | "assert" | "assert_eq" | "assert_ne"
-                                    | "todo" | "unimplemented" | "unreachable"
-                                    | "vec" | "include_str" | "concat" | "env") {
+                                if matches!(
+                                    macro_name.as_str(),
+                                    "debug"
+                                        | "info"
+                                        | "warn"
+                                        | "error"
+                                        | "trace"
+                                        | "println"
+                                        | "eprintln"
+                                        | "print"
+                                        | "eprint"
+                                        | "write"
+                                        | "writeln"
+                                        | "format"
+                                        | "panic"
+                                        | "assert"
+                                        | "assert_eq"
+                                        | "assert_ne"
+                                        | "todo"
+                                        | "unimplemented"
+                                        | "unreachable"
+                                        | "vec"
+                                        | "include_str"
+                                        | "concat"
+                                        | "env"
+                                ) {
                                     write!(out, "{}!(", macro_name)?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
                                         self.arg(arg, out)?;
@@ -5321,7 +5702,9 @@ impl RustTrans {
                     Expr::Ident(n) => matches!(n.as_str(), "List" | "Array"),
                     // `List<Message>` parses as `List < Message` (Bina with Lt) since
                     // `<` is the comparison operator; recognize the generic form.
-                    Expr::Bina(lhs, Op::Lt, _) => matches!(lhs.as_ref(), Expr::Ident(n) if matches!(n.as_str(), "List" | "Array")),
+                    Expr::Bina(lhs, Op::Lt, _) => {
+                        matches!(lhs.as_ref(), Expr::Ident(n) if matches!(n.as_str(), "List" | "Array"))
+                    }
                     _ => false,
                 };
                 if is_collection_ctor {
@@ -5420,8 +5803,7 @@ impl RustTrans {
                         && matches!(rhs.as_ref(), Expr::Ident(m) if m == "decode")
                 }
                 Expr::Dot(obj, field) => {
-                    matches!(obj.as_ref(), Expr::Ident(n) if n == "json")
-                        && field == "decode"
+                    matches!(obj.as_ref(), Expr::Ident(n) if n == "json") && field == "decode"
                 }
                 _ => false,
             };
@@ -5504,33 +5886,60 @@ impl RustTrans {
                 let u_str = u.as_str();
                 u_str.ends_with(&format!("::{}", name_str))
             });
-            if is_imported_macro && matches!(name_str,
-                "debug" | "info" | "warn" | "error" | "trace"
-                | "println" | "eprintln" | "print" | "eprint"
-                | "format" | "vec" | "write" | "writeln"
-                | "log" | "log_enabled") {
+            if is_imported_macro
+                && matches!(
+                    name_str,
+                    "debug"
+                        | "info"
+                        | "warn"
+                        | "error"
+                        | "trace"
+                        | "println"
+                        | "eprintln"
+                        | "print"
+                        | "eprint"
+                        | "format"
+                        | "vec"
+                        | "write"
+                        | "writeln"
+                        | "log"
+                        | "log_enabled"
+                )
+            {
                 write!(out, "{}!(", name)?;
                 for (i, arg) in call.args.args.iter().enumerate() {
-                    if i > 0 { write!(out, ", ")?; }
+                    if i > 0 {
+                        write!(out, ", ")?;
+                    }
                     if let Arg::Pos(Expr::FStr(fstr)) = arg {
                         // Inline f-string as macro format string
                         write!(out, "\"")?;
                         for part in &fstr.parts {
                             match part {
                                 Expr::Str(s) | Expr::CStr(s) => {
-                                    let escaped = s.replace("\\", "\\\\").replace("\"", r##"\""##)
-                                        .replace("{", "{{").replace("}", "}}");
+                                    let escaped = s
+                                        .replace("\\", "\\\\")
+                                        .replace("\"", r##"\""##)
+                                        .replace("{", "{{")
+                                        .replace("}", "}}");
                                     write!(out, "{}", escaped)?;
                                 }
-                                Expr::Char(c) => { write!(out, "{}", c)?; }
-                                _ => { write!(out, "{{}}")?; }
+                                Expr::Char(c) => {
+                                    write!(out, "{}", c)?;
+                                }
+                                _ => {
+                                    write!(out, "{{}}")?;
+                                }
                             }
                         }
                         write!(out, "\"")?;
                         for part in &fstr.parts {
                             match part {
                                 Expr::Str(_) | Expr::CStr(_) | Expr::Char(_) => {}
-                                _ => { write!(out, ", ")?; self.expr(part, out)?; }
+                                _ => {
+                                    write!(out, ", ")?;
+                                    self.expr(part, out)?;
+                                }
                             }
                         }
                     } else {
@@ -5546,18 +5955,26 @@ impl RustTrans {
         // Special: when 2nd arg is an f-string, inline it directly (not format!())
         // because Rust assert! expects a string literal as the format arg.
         if let Expr::Ident(name) = call.name.as_ref() {
-            if matches!(name.as_str(), "assert" | "assert_eq" | "assert_ne" | "panic") {
+            if matches!(
+                name.as_str(),
+                "assert" | "assert_eq" | "assert_ne" | "panic"
+            ) {
                 write!(out, "{}!(", name)?;
                 for (i, arg) in call.args.args.iter().enumerate() {
-                    if i > 0 { write!(out, ", ")?; }
+                    if i > 0 {
+                        write!(out, ", ")?;
+                    }
                     // Check if this arg is an f-string — inline it without format!()
                     if let Arg::Pos(Expr::FStr(fstr)) = arg {
                         write!(out, "\"")?;
                         for part in &fstr.parts {
                             match part {
                                 Expr::Str(s) | Expr::CStr(s) => {
-                                    let escaped = s.replace("\\", "\\\\").replace("\"", r##"\""##)
-                                        .replace("{", "{{").replace("}", "}}");
+                                    let escaped = s
+                                        .replace("\\", "\\\\")
+                                        .replace("\"", r##"\""##)
+                                        .replace("{", "{{")
+                                        .replace("}", "}}");
                                     write!(out, "{}", escaped)?;
                                 }
                                 Expr::Char(c) => {
@@ -5592,41 +6009,58 @@ impl RustTrans {
         if let Expr::Ident(name) = call.name.as_ref() {
             if name == "not" {
                 write!(out, "!(")?;
-                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                    self.expr(expr, out)?;
+                }
                 write!(out, ")")?;
                 return Ok(());
             }
             match name.as_str() {
                 "sleep_ms" => {
                     write!(out, "std::thread::sleep(std::time::Duration::from_millis(")?;
-                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                    if let Some(arg) = call.args.args.first() {
+                        self.arg(arg, out)?;
+                    }
                     write!(out, " as u64))")?;
                     return Ok(());
                 }
                 // PLAN-724 T-06：流自由函数面（707 手工接口）。接收者分型
                 // 决定同步/异步 facade 形态；EOF 哨兵 "" 与 VM 契约一致。
                 "stream_next" | "stream_is_done" | "stream_close" => {
-                    let is_async = call.args.args.first().and_then(|a| match a {
-                        Arg::Pos(Expr::Ident(name)) => Some(self.http_stream_async_vars.contains(name)),
-                        _ => None,
-                    }).unwrap_or(false);
+                    let is_async = call
+                        .args
+                        .args
+                        .first()
+                        .and_then(|a| match a {
+                            Arg::Pos(Expr::Ident(name)) => {
+                                Some(self.http_stream_async_vars.contains(name))
+                            }
+                            _ => None,
+                        })
+                        .unwrap_or(false);
                     self.a2r_std_used.set(true);
                     let m = name.as_str();
                     if is_async {
                         match m {
                             "stream_next" => {
                                 write!(out, "a2r_std::http::stream_next_async(&")?;
-                                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                                    self.expr(expr, out)?;
+                                }
                                 write!(out, ").await")?;
                             }
                             "stream_is_done" => {
                                 write!(out, "a2r_std::http::stream_is_done_async(&")?;
-                                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                                    self.expr(expr, out)?;
+                                }
                                 write!(out, ")")?;
                             }
                             _ => {
                                 write!(out, "a2r_std::http::stream_close_async(&")?;
-                                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                                    self.expr(expr, out)?;
+                                }
                                 write!(out, ")")?;
                             }
                         }
@@ -5634,17 +6068,23 @@ impl RustTrans {
                         match m {
                             "stream_next" => {
                                 write!(out, "a2r_std::http::stream_next(&")?;
-                                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                                    self.expr(expr, out)?;
+                                }
                                 write!(out, ")")?;
                             }
                             "stream_is_done" => {
                                 write!(out, "a2r_std::http::stream_is_done(&")?;
-                                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                                    self.expr(expr, out)?;
+                                }
                                 write!(out, ")")?;
                             }
                             _ => {
                                 write!(out, "a2r_std::http::stream_close(&")?;
-                                if let Some(Arg::Pos(expr)) = call.args.args.first() { self.expr(expr, out)?; }
+                                if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                                    self.expr(expr, out)?;
+                                }
                                 write!(out, ")")?;
                             }
                         }
@@ -5660,27 +6100,43 @@ impl RustTrans {
                 "http_post" => {
                     // http_post(url, body, api_key) → async { let (s,b,e,k) = a2r_std::http_post(...).await; HttpResponse { ... } }
                     self.a2r_std_used.set(true);
-                    write!(out, "async {{ let (status, body, error, kind) = a2r_std::http_post(")?;
+                    write!(
+                        out,
+                        "async {{ let (status, body, error, kind) = a2r_std::http_post("
+                    )?;
                     for (i, arg) in call.args.args.iter().enumerate() {
-                        if i > 0 { write!(out, ", ")?; }
+                        if i > 0 {
+                            write!(out, ", ")?;
+                        }
                         if let Arg::Pos(expr) = arg {
                             self.expr(expr, out)?;
                             // Auto-borrow: add .as_str() for String → &str
                             if !matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
                                 let is_str_slice = if let Expr::Ident(name) = expr {
-                                    self.local_var_types.get(name)
+                                    self.local_var_types
+                                        .get(name)
                                         .map(|ty| matches!(ty, Type::StrSlice))
                                         .unwrap_or(false)
-                                } else { false };
-                                if !is_str_slice { write!(out, ".as_str()")?; }
+                                } else {
+                                    false
+                                };
+                                if !is_str_slice {
+                                    write!(out, ".as_str()")?;
+                                }
                             }
-                        } else { self.arg(arg, out)?; }
+                        } else {
+                            self.arg(arg, out)?;
+                        }
                     }
-                    write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
+                    write!(
+                        out,
+                        ").await; HttpResponse {{ status, body, error, kind }} }}"
+                    )?;
                     return Ok(());
                 }
                 "simple_hash" => {
-                    self.a2r_std_used.set(true); write!(out, "a2r_std::simple_hash(")?;
+                    self.a2r_std_used.set(true);
+                    write!(out, "a2r_std::simple_hash(")?;
                     if let Some(Arg::Pos(a)) = call.args.args.first() {
                         self.expr_as_str(a, out)?;
                     }
@@ -5688,7 +6144,8 @@ impl RustTrans {
                     return Ok(());
                 }
                 "time_now" => {
-                    self.a2r_std_used.set(true); write!(out, "a2r_std::time_now()")?;
+                    self.a2r_std_used.set(true);
+                    write!(out, "a2r_std::time_now()")?;
                     return Ok(());
                 }
                 _ => {}
@@ -5711,21 +6168,30 @@ impl RustTrans {
                         };
                         write!(out, "{{ let __resp = {}(", fname)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
                                 let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
                                     || if let Expr::Ident(name) = expr {
-                                        self.local_var_types.get(name)
+                                        self.local_var_types
+                                            .get(name)
                                             .map(|ty| matches!(ty, Type::StrSlice))
                                             .unwrap_or(false)
-                                    } else { false };
+                                    } else {
+                                        false
+                                    };
                                 if !already_str {
                                     write!(out, ".as_str()")?;
                                 }
                             }
                         }
-                        write!(out, "){}; a2r_std::http::set_last_status(__resp.0); __resp.1 }}", await_suffix)?;
+                        write!(
+                            out,
+                            "){}; a2r_std::http::set_last_status(__resp.0); __resp.1 }}",
+                            await_suffix
+                        )?;
                         return Ok(());
                     }
                     ("http", "get_sync") => {
@@ -5740,38 +6206,56 @@ impl RustTrans {
                             self.expr(expr, out)?;
                             let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
                                 || if let Expr::Ident(name) = expr {
-                                    self.local_var_types.get(name)
+                                    self.local_var_types
+                                        .get(name)
                                         .map(|ty| matches!(ty, Type::StrSlice))
                                         .unwrap_or(false)
-                                } else { false };
-                            if !already_str { write!(out, ".as_str()")?; }
+                                } else {
+                                    false
+                                };
+                            if !already_str {
+                                write!(out, ".as_str()")?;
+                            }
                         }
-                        write!(out, "){}; a2r_std::http::set_last_status(__resp.0); __resp.1 }}", await_suffix)?;
+                        write!(
+                            out,
+                            "){}; a2r_std::http::set_last_status(__resp.0); __resp.1 }}",
+                            await_suffix
+                        )?;
                         return Ok(());
                     }
                     ("http", "last_status") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::http::last_status() as i64")?;
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::http::last_status() as i64")?;
                         return Ok(());
                     }
                     ("http", "post_bearer") => {
                         self.a2r_std_used.set(true);
                         write!(out, "{{ let __resp = a2r_std::http::post_bearer(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
                                 let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
                                     || if let Expr::Ident(name) = expr {
-                                        self.local_var_types.get(name)
+                                        self.local_var_types
+                                            .get(name)
                                             .map(|ty| matches!(ty, Type::StrSlice))
                                             .unwrap_or(false)
-                                    } else { false };
+                                    } else {
+                                        false
+                                    };
                                 if !already_str {
                                     write!(out, ".as_str()")?;
                                 }
                             }
                         }
-                        write!(out, ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                        write!(
+                            out,
+                            ").await; a2r_std::http::set_last_status(__resp.0); __resp.1 }}"
+                        )?;
                         return Ok(());
                     }
                     ("http", "post_bearer_sync") => {
@@ -5783,21 +6267,30 @@ impl RustTrans {
                         };
                         write!(out, "{{ let __resp = {}(", fname)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
                                 let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
                                     || if let Expr::Ident(name) = expr {
-                                        self.local_var_types.get(name)
+                                        self.local_var_types
+                                            .get(name)
                                             .map(|ty| matches!(ty, Type::StrSlice))
                                             .unwrap_or(false)
-                                    } else { false };
+                                    } else {
+                                        false
+                                    };
                                 if !already_str {
                                     write!(out, ".as_str()")?;
                                 }
                             }
                         }
-                        write!(out, "){}; a2r_std::http::set_last_status(__resp.0); __resp.1 }}", await_suffix)?;
+                        write!(
+                            out,
+                            "){}; a2r_std::http::set_last_status(__resp.0); __resp.1 }}",
+                            await_suffix
+                        )?;
                         return Ok(());
                     }
                     ("http", "post") => {
@@ -5806,20 +6299,32 @@ impl RustTrans {
                         // 的 HttpResponse 面）；两参=普通客户端 post（内核
                         // Response）。名称/元数/返回约定按 §5.1 冻结，不冲突。
                         if call.args.args.len() >= 3 {
-                            write!(out, "async {{ let (status, body, error, kind) = a2r_std::http::post(")?;
+                            write!(
+                                out,
+                                "async {{ let (status, body, error, kind) = a2r_std::http::post("
+                            )?;
                             for (i, arg) in call.args.args.iter().enumerate() {
-                                if i > 0 { write!(out, ", ")?; }
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
                                 if let Arg::Pos(expr) = arg {
                                     self.expr(expr, out)?;
                                     if let Expr::Ident(name) = expr {
-                                        if self.local_var_types.get(name)
+                                        if self
+                                            .local_var_types
+                                            .get(name)
                                             .map(|ty| !matches!(ty, Type::StrSlice))
                                             .unwrap_or(true)
-                                        { write!(out, ".as_str()")?; }
+                                        {
+                                            write!(out, ".as_str()")?;
+                                        }
                                     }
                                 }
                             }
-                            write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
+                            write!(
+                                out,
+                                ").await; HttpResponse {{ status, body, error, kind }} }}"
+                            )?;
                             return Ok(());
                         }
                         let (fname, await_suffix) = if self.in_async_ctx.get() {
@@ -5829,8 +6334,12 @@ impl RustTrans {
                         };
                         write!(out, "{}(", fname)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
-                            if let Arg::Pos(expr) = arg { self.expr_as_str(expr, out)?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
+                            if let Arg::Pos(expr) = arg {
+                                self.expr_as_str(expr, out)?;
+                            }
                         }
                         write!(out, "){}", await_suffix)?;
                         return Ok(());
@@ -5858,9 +6367,12 @@ impl RustTrans {
                     ("http", "request") => {
                         // http.request(method, url) → a2r_std::http::request(method, url)
                         // (Plan 013 G6: returns a RequestBuilder for chained .header/.body/.timeout/.send.)
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::http::request(")?;
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::http::request(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr_as_str(expr, out)?;
                             } else {
@@ -5877,7 +6389,9 @@ impl RustTrans {
                         self.a2r_std_used.set(true);
                         write!(out, "a2r_std::http::{}(", method)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr_as_str(expr, out)?;
                             } else {
@@ -5897,7 +6411,9 @@ impl RustTrans {
                             write!(out, "a2r_std::http::transfer_wait(&")?;
                         }
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
                             } else {
@@ -5919,7 +6435,8 @@ impl RustTrans {
                     // 不发射伪同步调用）；metadata/error 纯同步。str 形参按
                     // 位次收敛 `.as_str()`（字面量/String/&str 三形皆合法；
                     // 首参句柄按值 move）。
-                    ("http", "upload_receive") | ("http", "upload_commit")
+                    ("http", "upload_receive")
+                    | ("http", "upload_commit")
                     | ("http", "upload_reject") => {
                         self.a2r_std_used.set(true);
                         if !self.in_async_ctx.get() {
@@ -5931,7 +6448,9 @@ impl RustTrans {
                         // 直传，无需收敛发射。
                         write!(out, "a2r_std::http::{}(", method)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
                             } else {
@@ -5945,7 +6464,9 @@ impl RustTrans {
                         self.a2r_std_used.set(true);
                         write!(out, "a2r_std::http::upload_metadata(&")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
                             } else {
@@ -5960,7 +6481,9 @@ impl RustTrans {
                         // facade message 形参为 impl AsRef<str>——直传。
                         write!(out, "a2r_std::http::upload_error(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
                             } else {
@@ -5974,7 +6497,9 @@ impl RustTrans {
                         self.a2r_std_used.set(true);
                         write!(out, "a2r_std::http::file_response(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr_as_str(expr, out)?;
                             } else {
@@ -5986,11 +6511,15 @@ impl RustTrans {
                     }
                     // PLAN-727 T-06: transfer_next_progress/cancel/error——非阻塞
                     // 观察面，sync/async 同形发射（&句柄 借用形）。
-                    ("http", "transfer_next_progress") | ("http", "transfer_cancel") | ("http", "transfer_error") => {
+                    ("http", "transfer_next_progress")
+                    | ("http", "transfer_cancel")
+                    | ("http", "transfer_error") => {
                         self.a2r_std_used.set(true);
                         write!(out, "a2r_std::http::{}(&", method)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr(expr, out)?;
                             } else {
@@ -6005,7 +6534,9 @@ impl RustTrans {
                         self.a2r_std_used.set(true);
                         write!(out, "a2r_std::http::{}(", method)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr_as_str(expr, out)?;
                             } else {
@@ -6019,7 +6550,9 @@ impl RustTrans {
                         self.a2r_std_used.set(true);
                         write!(out, "a2r_std::http::download_resume(")?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 if i < 2 {
                                     self.expr_as_str(expr, out)?;
@@ -6045,7 +6578,9 @@ impl RustTrans {
                         };
                         write!(out, "{}(", fname)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr_as_str(expr, out)?;
                             } else {
@@ -6058,16 +6593,22 @@ impl RustTrans {
                     ("json", "encode") | ("Json", "encode") => {
                         // json.encode(value) → serde_json::to_string(&value).unwrap_or_default()
                         // (Plan 013 G6: typed serialization for transpiled client.)
-                        self.a2r_std_used.set(true); write!(out, "serde_json::to_string(&")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        self.a2r_std_used.set(true);
+                        write!(out, "serde_json::to_string(&")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            self.expr(a, out)?;
+                        }
                         write!(out, ").unwrap_or_default()")?;
                         return Ok(());
                     }
                     ("str", "from_bytes") => {
                         // str.from_bytes(bytes) → a2r_std::str::from_bytes(bytes)
                         // (Plan 013 G6: UTF-8 lossy decode of an HTTP body.)
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::str::from_bytes(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::str::from_bytes(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            self.expr(a, out)?;
+                        }
                         write!(out, ")")?;
                         return Ok(());
                     }
@@ -6075,8 +6616,11 @@ impl RustTrans {
                         // process.spawn(args) → a2r_std::process::spawn(args)
                         // (Plan 013 G6: detached spawn for daemon bootstrap. `args` is a
                         // Vec<String> whose [0] element is the program path.)
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::process::spawn(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::process::spawn(")?;
+                        if let Some(Arg::Pos(a)) = call.args.args.first() {
+                            self.expr(a, out)?;
+                        }
                         write!(out, ")")?;
                         return Ok(());
                     }
@@ -6088,50 +6632,71 @@ impl RustTrans {
         // Plan 223: Method call mappings for env.x / fs.x
         if let Expr::Bina(lhs, op, rhs) = call.name.as_ref() {
             if matches!(op, Op::Dot) {
-                if let (Expr::Bina(inner_lhs, Op::Dot, inner_rhs), Expr::Ident(method)) = (lhs.as_ref(), rhs.as_ref()) {
+                if let (Expr::Bina(inner_lhs, Op::Dot, inner_rhs), Expr::Ident(method)) =
+                    (lhs.as_ref(), rhs.as_ref())
+                {
                     // Handle auto.module.method(args) → a2r_std::module::method(args)
-                    if let (Expr::Ident(auto_name), Expr::Ident(module)) = (inner_lhs.as_ref(), inner_rhs.as_ref()) {
+                    if let (Expr::Ident(auto_name), Expr::Ident(module)) =
+                        (inner_lhs.as_ref(), inner_rhs.as_ref())
+                    {
                         if auto_name == "auto" {
                             match (module.as_str(), method.as_str()) {
                                 ("env", "get") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::env::get(")?;
-                                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::env::get(")?;
+                                    if let Some(arg) = call.args.args.first() {
+                                        self.arg(arg, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("env", "args") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::env::args()")?;
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::env::args()")?;
                                     return Ok(());
                                 }
                                 ("io", "read_line") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::io::read_line()")?;
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::io::read_line()")?;
                                     return Ok(());
                                 }
                                 // Plan 415-B1: auto.sqlite.* mirrors the bare
                                 // `sqlite.*` dispatch (open takes &str).
                                 ("sqlite", "open") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::open(")?;
-                                    if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::sqlite::open(")?;
+                                    if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                                        write!(out, "&")?;
+                                    }
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr_as_str(a, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("sqlite", "last_error") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::last_error()")?;
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::sqlite::last_error()")?;
                                     return Ok(());
                                 }
                                 // PLAN-714 r3 R3-T2: fs.metadata/copy_recursive
                                 // （tuple 分发器——语句位 ns.method 调用面）。
                                 ("fs", "metadata") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::file_size(")?;
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::fs::file_size(")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr_as_str(a, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("fs", "copy_recursive") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::copy_recursive(")?;
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::fs::copy_recursive(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
-                                        if i > 0 { write!(out, ", ")?; }
+                                        if i > 0 {
+                                            write!(out, ", ")?;
+                                        }
                                         if let Arg::Pos(expr) = arg {
                                             self.expr_as_str(expr, out)?;
                                         } else {
@@ -6144,15 +6709,27 @@ impl RustTrans {
                                 ("json", "from_value") => {
                                     self.a2r_std_used.set(true);
                                     write!(out, "a2r_std::json::from_value(a2r_std::json!({{")?;
-                                    if let Some(Arg::Pos(Expr::Object(pairs))) = call.args.args.first() {
+                                    if let Some(Arg::Pos(Expr::Object(pairs))) =
+                                        call.args.args.first()
+                                    {
                                         for (i, pair) in pairs.iter().enumerate() {
-                                            if i > 0 { write!(out, ", ")?; }
+                                            if i > 0 {
+                                                write!(out, ", ")?;
+                                            }
                                             match &pair.key {
-                                            crate::ast::Key::NamedKey(n) => write!(out, "\"{}\": ", n)?,
-                                            crate::ast::Key::StrKey(k) => write!(out, "\"{}\": ", k)?,
-                                            crate::ast::Key::IntKey(i) => write!(out, "\"{}\": ", i)?,
-                                            crate::ast::Key::BoolKey(b) => write!(out, "\"{}\": ", b)?,
-                                        }
+                                                crate::ast::Key::NamedKey(n) => {
+                                                    write!(out, "\"{}\": ", n)?
+                                                }
+                                                crate::ast::Key::StrKey(k) => {
+                                                    write!(out, "\"{}\": ", k)?
+                                                }
+                                                crate::ast::Key::IntKey(i) => {
+                                                    write!(out, "\"{}\": ", i)?
+                                                }
+                                                crate::ast::Key::BoolKey(b) => {
+                                                    write!(out, "\"{}\": ", b)?
+                                                }
+                                            }
                                             self.expr(&pair.value, out)?;
                                         }
                                     } else if let Some(Arg::Pos(a)) = call.args.args.first() {
@@ -6163,9 +6740,12 @@ impl RustTrans {
                                     return Ok(());
                                 }
                                 ("Regex", "test") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::re::test(")?;
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::re::test(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
-                                        if i > 0 { write!(out, ", ")?; }
+                                        if i > 0 {
+                                            write!(out, ", ")?;
+                                        }
                                         if let Arg::Pos(expr) = arg {
                                             self.expr_as_str(expr, out)?;
                                         } else {
@@ -6176,15 +6756,21 @@ impl RustTrans {
                                     return Ok(());
                                 }
                                 ("File", "read_bytes") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_bytes_list(")?;
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::fs::read_bytes_list(")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr_as_str(a, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("File", "write_bytes") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_bytes_list(")?;
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::fs::write_bytes_list(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
-                                        if i > 0 { write!(out, ", ")?; }
+                                        if i > 0 {
+                                            write!(out, ", ")?;
+                                        }
                                         if let Arg::Pos(expr) = arg {
                                             self.expr(expr, out)?;
                                         } else {
@@ -6195,25 +6781,33 @@ impl RustTrans {
                                     return Ok(());
                                 }
                                 ("env", "set") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::env::set(")?;
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::env::set(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
-                                        if i > 0 { write!(out, ", ")?; }
+                                        if i > 0 {
+                                            write!(out, ", ")?;
+                                        }
                                         self.arg(arg, out)?;
                                     }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("fs", "read_text") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_text(")?;
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::fs::read_text(")?;
                                     if let Some(arg) = call.args.args.first() {
-                                        if let Arg::Pos(a) = arg { self.expr_as_str(a, out)?; }
-                                        else { self.arg(arg, out)?; }
+                                        if let Arg::Pos(a) = arg {
+                                            self.expr_as_str(a, out)?;
+                                        } else {
+                                            self.arg(arg, out)?;
+                                        }
                                     }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("fs", "read_to_string") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_to_string(")?;
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::fs::read_to_string(")?;
                                     if let Some(arg) = call.args.args.first() {
                                         // Plan 396 §2.3: a bare ident arg (a
                                         // PathBuf local/param) must be BORROWED —
@@ -6222,33 +6816,47 @@ impl RustTrans {
                                         if let Arg::Pos(Expr::Ident(_)) = arg {
                                             write!(out, "&")?;
                                         }
-                                        if let Arg::Pos(a) = arg { self.expr_as_str(a, out)?; }
-                                        else { self.arg(arg, out)?; }
+                                        if let Arg::Pos(a) = arg {
+                                            self.expr_as_str(a, out)?;
+                                        } else {
+                                            self.arg(arg, out)?;
+                                        }
                                     }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("fs", "write") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write(")?;
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::fs::write(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
-                                        if i > 0 { write!(out, ", ")?; }
-                                        if i == 1 { write!(out, "&")?; }
+                                        if i > 0 {
+                                            write!(out, ", ")?;
+                                        }
+                                        if i == 1 {
+                                            write!(out, "&")?;
+                                        }
                                         self.arg(arg, out)?;
                                     }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("fs", "exists") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::fs::exists(")?;
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::fs::exists(")?;
                                     // Plan 016 Phase A A.4: borrow arg as &str (fs.exists takes &str).
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                                    else if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr_as_str(a, out)?;
+                                    } else if let Some(arg) = call.args.args.first() {
+                                        self.arg(arg, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("fs", "delete") | ("File", "delete") => {
                                     write!(out, "File::delete(")?;
-                                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    if let Some(arg) = call.args.args.first() {
+                                        self.arg(arg, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
@@ -6257,11 +6865,15 @@ impl RustTrans {
                                     self.a2r_std_used.set(true);
                                     write!(out, "async {{ let (status, body, error, kind) = a2r_std::http::post(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
-                                        if i > 0 { write!(out, ", ")?; }
+                                        if i > 0 {
+                                            write!(out, ", ")?;
+                                        }
                                         if let Arg::Pos(expr) = arg {
                                             self.expr(expr, out)?;
                                             if let Expr::Ident(name) = expr {
-                                                if self.local_var_types.get(name)
+                                                if self
+                                                    .local_var_types
+                                                    .get(name)
                                                     .map(|ty| !matches!(ty, Type::StrSlice))
                                                     .unwrap_or(true)
                                                 {
@@ -6270,94 +6882,146 @@ impl RustTrans {
                                             }
                                         }
                                     }
-                                    write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
+                                    write!(
+                                        out,
+                                        ").await; HttpResponse {{ status, body, error, kind }} }}"
+                                    )?;
                                     return Ok(());
                                 }
                                 ("http", "post_sync") => {
                                     self.a2r_std_used.set(true);
                                     write!(out, "{{ let __resp = a2r_std::http::post_sync(")?;
                                     for (i, arg) in call.args.args.iter().enumerate() {
-                                        if i > 0 { write!(out, ", ")?; }
+                                        if i > 0 {
+                                            write!(out, ", ")?;
+                                        }
                                         if let Arg::Pos(expr) = arg {
                                             self.expr(expr, out)?;
-                                            let already_str = matches!(expr, Expr::Str(_) | Expr::CStr(_))
-                                                || if let Expr::Ident(name) = expr {
-                                                    self.local_var_types.get(name)
-                                                        .map(|ty| matches!(ty, Type::StrSlice))
-                                                        .unwrap_or(false)
-                                                } else { false };
+                                            let already_str =
+                                                matches!(expr, Expr::Str(_) | Expr::CStr(_))
+                                                    || if let Expr::Ident(name) = expr {
+                                                        self.local_var_types
+                                                            .get(name)
+                                                            .map(|ty| matches!(ty, Type::StrSlice))
+                                                            .unwrap_or(false)
+                                                    } else {
+                                                        false
+                                                    };
                                             if !already_str {
                                                 write!(out, ".as_str()")?;
                                             }
                                         }
                                     }
-                                    write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                                    write!(
+                                        out,
+                                        "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}"
+                                    )?;
                                     return Ok(());
                                 }
                                 ("http", "last_status") => {
                                     // http.last_status() → a2r_std::http::last_status()
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::http::last_status()")?;
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::http::last_status()")?;
                                     return Ok(());
                                 }
                                 ("json", "parse") => {
-                                    self.a2r_std_used.set(true); write!(out, "{}", if self.json_parse_as_opt { "a2r_std::json::parse_opt(" } else { "a2r_std::json::parse(" })?;
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(
+                                        out,
+                                        "{}",
+                                        if self.json_parse_as_opt {
+                                            "a2r_std::json::parse_opt("
+                                        } else {
+                                            "a2r_std::json::parse("
+                                        }
+                                    )?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr_as_str(a, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("json", "get") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::get(&")?;
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::json::get(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr(a, out)?;
+                                    }
                                     write!(out, ", ")?;
                                     if call.args.args.len() > 1 {
-                                        if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                                        if let Arg::Pos(a) = &call.args.args[1] {
+                                            self.expr(a, out)?;
+                                        }
                                     }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("json", "get_str") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_str(&")?;
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::json::get_str(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr(a, out)?;
+                                    }
                                     write!(out, ", ")?;
                                     if call.args.args.len() > 1 {
-                                        if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                                        if let Arg::Pos(a) = &call.args.args[1] {
+                                            self.expr(a, out)?;
+                                        }
                                     }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("json", "as_int") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int(&")?;
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::json::as_int(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr(a, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("json", "as_string") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string(&")?;
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::json::as_string(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr(a, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("json", "as_bool") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_bool(&")?;
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::json::as_bool(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr(a, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("json", "len") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::len(&")?;
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::json::len(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr(a, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("json", "is_valid") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_valid(")?;
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::json::is_valid(")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr_as_str(a, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
                                 ("json", "is_null") => {
-                                    self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_null(&")?;
-                                    if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::json::is_null(&")?;
+                                    if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                        self.expr(a, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
@@ -6372,15 +7036,21 @@ impl RustTrans {
                         // form (Env.get), same normalization as Json→json above.
                         "env" | "Env" => match method.as_str() {
                             "get" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::env::get(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::env::get(")?;
+                                if let Some(arg) = call.args.args.first() {
+                                    self.arg(arg, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "set" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::env::set(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::env::set(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     self.arg(arg, out)?;
                                 }
                                 write!(out, ")")?;
@@ -6393,14 +7063,20 @@ impl RustTrans {
                         // read_text precedent); `last_error` is nullary.
                         "sqlite" => match method.as_str() {
                             "open" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::open(")?;
-                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::sqlite::open(")?;
+                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                                    write!(out, "&")?;
+                                }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "last_error" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::last_error()")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::sqlite::last_error()")?;
                                 return Ok(());
                             }
                             _ => {}
@@ -6409,39 +7085,58 @@ impl RustTrans {
                         // the sqlite arm (open takes &str; last_error nullary).
                         "redis" => match method.as_str() {
                             "open" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::redis::open(")?;
-                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::redis::open(")?;
+                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                                    write!(out, "&")?;
+                                }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "last_error" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::redis::last_error()")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::redis::last_error()")?;
                                 return Ok(());
                             }
                             _ => {}
                         },
                         "fs" => match method.as_str() {
                             "read_to_string" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_to_string(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::read_to_string(")?;
                                 // Plan 396 §2.3: borrow bare-ident PathBuf args (see the
                                 // (fs, read_to_string) dispatch above).
-                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                                    write!(out, "&")?;
+                                }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "read_text" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_text(")?;
-                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::read_text(")?;
+                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                                    write!(out, "&")?;
+                                }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "write" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::write(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         // Plan 368: borrow both path (i==0) and content (i==1)
                                         // as &str so owned strings (e.g. from concatenation) are
@@ -6455,29 +7150,41 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "exists" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::exists(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::exists(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "create_dir" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::create_dir(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::create_dir(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "metadata" => {
                                 // PLAN-714 r3 R3-T2: fs.metadata→file_size（auto.fs.size
                                 // int 字节长语义——缺失 -1，census §92 口径）。
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::file_size(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::file_size(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "copy_recursive" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::copy_recursive(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::copy_recursive(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr_as_str(expr, out)?;
                                     } else {
@@ -6488,9 +7195,12 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "write_text" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_text(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::write_text(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     // Plan 368: borrow both path (i==0) and content (i==1) as
                                     // &str (a2r_std::fs::write_text takes (&str, &str)). Borrowing
                                     // instead of moving lets an owned path String (e.g. built from
@@ -6505,36 +7215,53 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "append_text" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::append_text(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::append_text(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
-                                    if i == 1 { write!(out, "&")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
+                                    if i == 1 {
+                                        write!(out, "&")?;
+                                    }
                                     self.arg(arg, out)?;
                                 }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "is_dir" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::is_dir(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::is_dir(")?;
+                                if let Some(arg) = call.args.args.first() {
+                                    self.arg(arg, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "is_binary" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::is_binary(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::is_binary(")?;
+                                if let Some(arg) = call.args.args.first() {
+                                    self.arg(arg, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "file_size" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::file_size(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::file_size(")?;
+                                if let Some(arg) = call.args.args.first() {
+                                    self.arg(arg, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "walk" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::walk(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::walk(")?;
+                                if let Some(arg) = call.args.args.first() {
+                                    self.arg(arg, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -6543,8 +7270,11 @@ impl RustTrans {
                                 // (JSON aligned with the VM fs_tree_walk shape).
                                 // PLAN-681 T-05: host 签名 max_depth: i32——Auto
                                 // int 实参（i64）窄化 as i32（宿主契约对齐）。
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::tree(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::tree(")?;
+                                if let Some(arg) = call.args.args.first() {
+                                    self.arg(arg, out)?;
+                                }
                                 if let Some(arg) = call.args.args.get(1) {
                                     write!(out, ", (")?;
                                     self.arg(arg, out)?;
@@ -6554,21 +7284,30 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "mkdir_all" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::mkdir_all(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::mkdir_all(")?;
+                                if let Some(arg) = call.args.args.first() {
+                                    self.arg(arg, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "remove_file" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::remove_file(")?;
-                                if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::remove_file(")?;
+                                if let Some(arg) = call.args.args.first() {
+                                    self.arg(arg, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "copy" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::copy(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::copy(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     self.arg(arg, out)?;
                                 }
                                 write!(out, ")")?;
@@ -6579,7 +7318,8 @@ impl RustTrans {
                         // time module: time.sleep(n) → a2r_std::sleep_ms(n as u64)
                         "time" => match method.as_str() {
                             "sleep" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::sleep_ms(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::sleep_ms(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                     write!(out, " as u64")?;
@@ -6588,21 +7328,25 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "now" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::time_now()")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::time_now()")?;
                                 return Ok(());
                             }
                             "now_secs" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::time::now_sec().to_string()")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::time::now_sec().to_string()")?;
                                 return Ok(());
                             }
                             "now_sec" => {
                                 // Plan 376U: bare numeric now_sec() (i32) for
                                 // timestamp math (no .to_string() — caller casts).
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::time::now_sec()")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::time::now_sec()")?;
                                 return Ok(());
                             }
                             "now_ms" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::time::now_ms()")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::time::now_ms()")?;
                                 return Ok(());
                             }
                             _ => {}
@@ -6610,7 +7354,8 @@ impl RustTrans {
                         // str module: str.uuid() → a2r_std::uuid(), str.from_uint(x) → x.to_string()
                         "str" => match method.as_str() {
                             "uuid" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::uuid()")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::uuid()")?;
                                 return Ok(());
                             }
                             "from_uint" | "from_int" => {
@@ -6624,8 +7369,11 @@ impl RustTrans {
                             "from_bytes" => {
                                 // str.from_bytes(bytes) -> a2r_std::str::from_bytes(bytes)
                                 // (Plan 013 G6: UTF-8 lossy decode of an HTTP body.)
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::str::from_bytes(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::str::from_bytes(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -6634,7 +7382,16 @@ impl RustTrans {
                         "Json" => match method.as_str() {
                             "parse" => {
                                 // Json.parse(text) -> a2r_std::json::parse(text)
-                                self.a2r_std_used.set(true); write!(out, "{}", if self.json_parse_as_opt { "a2r_std::json::parse_opt(" } else { "a2r_std::json::parse(" })?;
+                                self.a2r_std_used.set(true);
+                                write!(
+                                    out,
+                                    "{}",
+                                    if self.json_parse_as_opt {
+                                        "a2r_std::json::parse_opt("
+                                    } else {
+                                        "a2r_std::json::parse("
+                                    }
+                                )?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -6643,7 +7400,8 @@ impl RustTrans {
                             }
                             "get" => {
                                 // Json.get(val, key) -> a2r_std::json::get(&val, key)
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get(&")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::get(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -6658,7 +7416,8 @@ impl RustTrans {
                             }
                             "get_str" => {
                                 // Json.get_str(val, key) -> a2r_std::json::get_str(&val, key)
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_str(&")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::get_str(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -6673,7 +7432,8 @@ impl RustTrans {
                             }
                             "as_string" => {
                                 // Json.as_string(val) -> a2r_std::json::as_string(val)
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::as_string(")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -6682,7 +7442,8 @@ impl RustTrans {
                             }
                             "get_at" => {
                                 // Json.get_at(val, idx) -> a2r_std::json::get_at(&val, idx as usize)
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_at(&")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::get_at(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -6698,7 +7459,8 @@ impl RustTrans {
                             }
                             "get_u64" => {
                                 // Json.get_u64(val, key) -> a2r_std::json::get_u64(&val, key)
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_u64(&")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::get_u64(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -6713,7 +7475,8 @@ impl RustTrans {
                             }
                             "as_int" => {
                                 // Json.as_int(val) -> a2r_std::json::as_int(&val) as i32
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int(&")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::as_int(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -6722,7 +7485,8 @@ impl RustTrans {
                             }
                             "is_null" => {
                                 // Json.is_null(val) -> a2r_std::json::is_null(&val)
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_null(&")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::is_null(&")?;
                                 if let Some(Arg::Pos(a)) = call.args.args.first() {
                                     self.expr(a, out)?;
                                 }
@@ -6733,8 +7497,19 @@ impl RustTrans {
                         },
                         "json" | "Json" => match method.as_str() {
                             "parse" => {
-                                self.a2r_std_used.set(true); write!(out, "{}", if self.json_parse_as_opt { "a2r_std::json::parse_opt(" } else { "a2r_std::json::parse(" })?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(
+                                    out,
+                                    "{}",
+                                    if self.json_parse_as_opt {
+                                        "a2r_std::json::parse_opt("
+                                    } else {
+                                        "a2r_std::json::parse("
+                                    }
+                                )?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -6744,14 +7519,25 @@ impl RustTrans {
                                 // Serialize；宏经 a2r_std::json 再导出）。
                                 self.a2r_std_used.set(true);
                                 write!(out, "a2r_std::json::from_value(a2r_std::json!({{")?;
-                                if let Some(Arg::Pos(Expr::Object(pairs))) = call.args.args.first() {
+                                if let Some(Arg::Pos(Expr::Object(pairs))) = call.args.args.first()
+                                {
                                     for (i, pair) in pairs.iter().enumerate() {
-                                        if i > 0 { write!(out, ", ")?; }
+                                        if i > 0 {
+                                            write!(out, ", ")?;
+                                        }
                                         match &pair.key {
-                                            crate::ast::Key::NamedKey(n) => write!(out, "\"{}\": ", n)?,
-                                            crate::ast::Key::StrKey(k) => write!(out, "\"{}\": ", k)?,
-                                            crate::ast::Key::IntKey(i) => write!(out, "\"{}\": ", i)?,
-                                            crate::ast::Key::BoolKey(b) => write!(out, "\"{}\": ", b)?,
+                                            crate::ast::Key::NamedKey(n) => {
+                                                write!(out, "\"{}\": ", n)?
+                                            }
+                                            crate::ast::Key::StrKey(k) => {
+                                                write!(out, "\"{}\": ", k)?
+                                            }
+                                            crate::ast::Key::IntKey(i) => {
+                                                write!(out, "\"{}\": ", i)?
+                                            }
+                                            crate::ast::Key::BoolKey(b) => {
+                                                write!(out, "\"{}\": ", b)?
+                                            }
                                         }
                                         self.expr(&pair.value, out)?;
                                     }
@@ -6766,68 +7552,102 @@ impl RustTrans {
                                 // json.encode(value) → serde_json::to_string(&value).unwrap_or_default()
                                 // (Plan 013 G6: typed serialization for transpiled client. The value
                                 // is any Serialize — e.g. CompletionRequest.)
-                                self.a2r_std_used.set(true); write!(out, "serde_json::to_string(&")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "serde_json::to_string(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, ").unwrap_or_default()")?;
                                 return Ok(());
                             }
                             "get" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get(&")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::get(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, ", ")?;
                                 if call.args.args.len() > 1 {
-                                    if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                                    if let Arg::Pos(a) = &call.args.args[1] {
+                                        self.expr(a, out)?;
+                                    }
                                 }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "get_str" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_str(&")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::get_str(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, ", ")?;
                                 if call.args.args.len() > 1 {
-                                    if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                                    if let Arg::Pos(a) = &call.args.args[1] {
+                                        self.expr(a, out)?;
+                                    }
                                 }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "as_string" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_string(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::as_string(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "as_int" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int(&")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::as_int(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, ") as i64")?;
                                 return Ok(());
                             }
                             "as_bool" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_bool(&")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::as_bool(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "is_valid" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_valid(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::is_valid(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "get_at" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_at(&")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::get_at(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, ", ")?;
                                 if call.args.args.len() > 1 {
-                                    if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; write!(out, " as usize")?; }
+                                    if let Arg::Pos(a) = &call.args.args[1] {
+                                        self.expr(a, out)?;
+                                        write!(out, " as usize")?;
+                                    }
                                 }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "keys" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::keys(&")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::keys(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -6835,16 +7655,26 @@ impl RustTrans {
                                 // Choose len_str (for &str) or len (for &Value) based on arg type
                                 if let Some(Arg::Pos(expr)) = call.args.args.first() {
                                     let is_str_type = if let Expr::Ident(name) = expr {
-                                        self.local_var_types.get(name)
-                                            .map(|ty| matches!(ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                                        self.local_var_types
+                                            .get(name)
+                                            .map(|ty| {
+                                                matches!(
+                                                    ty,
+                                                    Type::StrSlice
+                                                        | Type::StrOwned
+                                                        | Type::StrFixed(_)
+                                                )
+                                            })
                                             .unwrap_or(true) // default to str for unknown vars
                                     } else {
                                         matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
                                     };
                                     if is_str_type {
-                                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::len_str(")?;
+                                        self.a2r_std_used.set(true);
+                                        write!(out, "a2r_std::json::len_str(")?;
                                     } else {
-                                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::len(")?;
+                                        self.a2r_std_used.set(true);
+                                        write!(out, "a2r_std::json::len(")?;
                                     }
                                     self.expr(expr, out)?;
                                 }
@@ -6855,41 +7685,65 @@ impl RustTrans {
                                 // Choose has_key (for &Value) or has_key_str (for &str)
                                 if let Some(Arg::Pos(first)) = call.args.args.first() {
                                     let use_str = if let Expr::Ident(name) = first {
-                                        self.local_var_types.get(name)
-                                            .map(|ty| matches!(ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                                        self.local_var_types
+                                            .get(name)
+                                            .map(|ty| {
+                                                matches!(
+                                                    ty,
+                                                    Type::StrSlice
+                                                        | Type::StrOwned
+                                                        | Type::StrFixed(_)
+                                                )
+                                            })
                                             .unwrap_or(true)
                                     } else {
-                                        matches!(first, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                                        matches!(
+                                            first,
+                                            Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_)
+                                        )
                                     };
                                     if use_str {
-                                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::has_key_str(")?;
+                                        self.a2r_std_used.set(true);
+                                        write!(out, "a2r_std::json::has_key_str(")?;
                                     } else {
-                                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::has_key(&")?;
+                                        self.a2r_std_used.set(true);
+                                        write!(out, "a2r_std::json::has_key(&")?;
                                     }
                                     self.expr(first, out)?;
                                 }
                                 write!(out, ", ")?;
                                 if call.args.args.len() > 1 {
-                                    if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
+                                    if let Arg::Pos(a) = &call.args.args[1] {
+                                        self.expr(a, out)?;
+                                    }
                                 }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "as_int" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::as_int(&")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::as_int(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, ") as i64")?;
                                 return Ok(());
                             }
                             "is_null" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_null(&")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::is_null(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "type_of" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::value_type(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::value_type(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -6900,66 +7754,97 @@ impl RustTrans {
                                 self.a2r_std_used.set(true);
                                 write!(out, "async {{ let (status, body, error, kind) = a2r_std::http::post(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr(expr, out)?;
                                         if let Expr::Ident(name) = expr {
-                                            if self.local_var_types.get(name)
+                                            if self
+                                                .local_var_types
+                                                .get(name)
                                                 .map(|ty| !matches!(ty, Type::StrSlice))
                                                 .unwrap_or(true)
-                                            { write!(out, ".as_str()")?; }
+                                            {
+                                                write!(out, ".as_str()")?;
+                                            }
                                         }
                                     }
                                 }
-                                write!(out, ").await; HttpResponse {{ status, body, error, kind }} }}")?;
+                                write!(
+                                    out,
+                                    ").await; HttpResponse {{ status, body, error, kind }} }}"
+                                )?;
                                 return Ok(());
                             }
                             "post_sync" => {
                                 self.a2r_std_used.set(true);
                                 write!(out, "{{ let __resp = a2r_std::http::post_sync(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr(expr, out)?;
                                         if let Expr::Ident(name) = expr {
-                                            if self.local_var_types.get(name)
+                                            if self
+                                                .local_var_types
+                                                .get(name)
                                                 .map(|ty| !matches!(ty, Type::StrSlice))
                                                 .unwrap_or(true)
-                                            { write!(out, ".as_str()")?; }
+                                            {
+                                                write!(out, ".as_str()")?;
+                                            }
                                         }
                                     }
                                 }
-                                write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                                write!(
+                                    out,
+                                    "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}"
+                                )?;
                                 return Ok(());
                             }
                             "last_status" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::http::last_status()")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::http::last_status()")?;
                                 return Ok(());
                             }
                             "post_bearer" => {
                                 self.a2r_std_used.set(true);
                                 write!(out, "{{ let __resp = a2r_std::http::post_bearer(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr(expr, out)?;
                                         if let Expr::Ident(name) = expr {
-                                            if self.local_var_types.get(name)
+                                            if self
+                                                .local_var_types
+                                                .get(name)
                                                 .map(|ty| !matches!(ty, Type::StrSlice))
                                                 .unwrap_or(true)
-                                            { write!(out, ".as_str()")?; }
+                                            {
+                                                write!(out, ".as_str()")?;
+                                            }
                                         }
                                     }
                                 }
-                                write!(out, "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}")?;
+                                write!(
+                                    out,
+                                    "); a2r_std::http::set_last_status(__resp.0); __resp.1 }}"
+                                )?;
                                 return Ok(());
                             }
                             "request" => {
                                 // http.request(method, url) → a2r_std::http::request(method, url)
                                 // (Plan 013 G6: returns a RequestBuilder for chained .header/.body/.timeout/.send.)
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::http::request(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::http::request(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr_as_str(expr, out)?;
                                     } else {
@@ -6972,9 +7857,12 @@ impl RustTrans {
                             "post_stream_with_headers" => {
                                 // http.post_stream_with_headers(url, body, headers) → a2r_std::http::post_stream_with_headers(...)
                                 // (Plan 013 G6: returns an HTTPStream for SSE.)
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::http::post_stream_with_headers(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::http::post_stream_with_headers(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr_as_str(expr, out)?;
                                     } else {
@@ -6988,9 +7876,12 @@ impl RustTrans {
                         },
                         "shell" => match method.as_str() {
                             "exec" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::shell::exec(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::shell::exec(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr(expr, out)?;
                                         if !matches!(expr, Expr::Int(_) | Expr::Float(_, _)) {
@@ -7005,9 +7896,12 @@ impl RustTrans {
                         },
                         "regex" => match method.as_str() {
                             "match" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::re::r#match(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::re::r#match(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr(expr, out)?;
                                     }
@@ -7030,7 +7924,9 @@ impl RustTrans {
                 Expr::Bina(lhs, op, rhs) if matches!(op, Op::Dot) => {
                     if let Expr::Ident(method) = rhs.as_ref() {
                         Some((lhs.as_ref(), method))
-                    } else { None }
+                    } else {
+                        None
+                    }
                 }
                 Expr::Dot(obj, field) => Some((obj.as_ref(), field)),
                 _ => None,
@@ -7049,9 +7945,12 @@ impl RustTrans {
                         // PLAN-714 r3 R3-T2: Regex.test(text, pat)→bool（VM 实参序）。
                         "Regex" => match method_name.as_str() {
                             "test" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::re::test(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::re::test(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr_as_str(expr, out)?;
                                     } else {
@@ -7062,9 +7961,12 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "replace" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::re::replace(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::re::replace(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr_as_str(expr, out)?;
                                     } else {
@@ -7079,15 +7981,21 @@ impl RustTrans {
                         "File" => match method_name.as_str() {
                             "read_text" | "read_to_string" => {
                                 write!(out, "std::fs::read_to_string(")?;
-                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                                    write!(out, "&")?;
+                                }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ").unwrap_or_default()")?;
                                 return Ok(());
                             }
                             "write_text" | "write" => {
                                 write!(out, "if std::fs::write(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     write!(out, "&")?;
                                     if let Arg::Pos(expr) = arg {
                                         self.expr_as_str(expr, out)?;
@@ -7100,22 +8008,30 @@ impl RustTrans {
                             }
                             "exists" => {
                                 write!(out, "std::fs::metadata(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ").is_ok()")?;
                                 return Ok(());
                             }
                             "read_bytes" => {
                                 // PLAN-714 r3 R3-T2: read_bytes 的 list 形（Vec<Value>
                                 // ——VM int-list 同源；配 `list` 动态型映射）。
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::read_bytes_list(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::read_bytes_list(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "write_bytes" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_bytes_list(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::write_bytes_list(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr(expr, out)?;
                                     } else {
@@ -7155,15 +8071,21 @@ impl RustTrans {
                         // 分发器——corpus fsys.at 两段形调用面）。
                         "fs" => match method_name.as_str() {
                             "metadata" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::file_size(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::file_size(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "copy_recursive" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::copy_recursive(")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::copy_recursive(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     if let Arg::Pos(expr) = arg {
                                         self.expr_as_str(expr, out)?;
                                     } else {
@@ -7174,16 +8096,22 @@ impl RustTrans {
                                 return Ok(());
                             }
                             "remove_dir" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::remove_dir(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::remove_dir(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
                             "list_dir" => {
                                 // VM fs.list_dir → JSON 目录清单——a2r 轨走
                                 // fs::walk 的 JSON 串形（Plan 626 面同源）。
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::fs::walk(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::fs::walk(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
                                 write!(out, ")")?;
                                 return Ok(());
                             }
@@ -7195,14 +8123,25 @@ impl RustTrans {
                             "from_value" => {
                                 self.a2r_std_used.set(true);
                                 write!(out, "a2r_std::json::from_value(a2r_std::json!({{")?;
-                                if let Some(Arg::Pos(Expr::Object(pairs))) = call.args.args.first() {
+                                if let Some(Arg::Pos(Expr::Object(pairs))) = call.args.args.first()
+                                {
                                     for (i, pair) in pairs.iter().enumerate() {
-                                        if i > 0 { write!(out, ", ")?; }
+                                        if i > 0 {
+                                            write!(out, ", ")?;
+                                        }
                                         match &pair.key {
-                                            crate::ast::Key::NamedKey(n) => write!(out, "\"{}\": ", n)?,
-                                            crate::ast::Key::StrKey(k) => write!(out, "\"{}\": ", k)?,
-                                            crate::ast::Key::IntKey(i) => write!(out, "\"{}\": ", i)?,
-                                            crate::ast::Key::BoolKey(b) => write!(out, "\"{}\": ", b)?,
+                                            crate::ast::Key::NamedKey(n) => {
+                                                write!(out, "\"{}\": ", n)?
+                                            }
+                                            crate::ast::Key::StrKey(k) => {
+                                                write!(out, "\"{}\": ", k)?
+                                            }
+                                            crate::ast::Key::IntKey(i) => {
+                                                write!(out, "\"{}\": ", i)?
+                                            }
+                                            crate::ast::Key::BoolKey(b) => {
+                                                write!(out, "\"{}\": ", b)?
+                                            }
                                         }
                                         self.expr(&pair.value, out)?;
                                     }
@@ -7216,8 +8155,11 @@ impl RustTrans {
                             "to_value" => {
                                 // json.to_value(json-text) → list（VM 语义）——
                                 // a2r 轨=parse_list 的 Vec<Value>（for 直迭代面）。
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::parse_str_list(&(")?;
-                                if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::json::parse_str_list(&(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
                                 write!(out, "))")?;
                                 return Ok(());
                             }
@@ -7236,14 +8178,17 @@ impl RustTrans {
                                 method_name.as_str(),
                                 "cpu_count" | "mem_total_mb" | "mem_used_mb" | "uptime_s"
                             );
-                            let arg_i32_first = matches!(method_name.as_str(), "cpu_core_usage" | "kill");
+                            let arg_i32_first =
+                                matches!(method_name.as_str(), "cpu_core_usage" | "kill");
                             if ret_i32 {
                                 write!(out, "((a2r_std::sys::{}(", method_name)?;
                             } else {
                                 write!(out, "(a2r_std::sys::{}(", method_name)?;
                             }
                             for (i, arg) in call.args.args.iter().enumerate() {
-                                if i > 0 { write!(out, ", ")?; }
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
                                 if arg_i32_first && i == 0 {
                                     write!(out, "(")?;
                                     self.arg(arg, out)?;
@@ -7277,7 +8222,8 @@ impl RustTrans {
                         }
                         "str" => match method_name.as_str() {
                             "uuid" => {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::uuid()")?;
+                                self.a2r_std_used.set(true);
+                                write!(out, "a2r_std::uuid()")?;
                                 return Ok(());
                             }
                             "from_uint" | "from_int" => {
@@ -7355,17 +8301,28 @@ impl RustTrans {
                             // `set` (99_idiom2/m09 Holder.set) must pass
                             // through unchanged (Plan 393 E1 append guard).
                             let lhs_is_struct = if let Expr::Ident(name) = lhs.as_ref() {
-                                self.local_var_types.get(name)
-                                    .map(|ty| matches!(ty,
-                                        Type::User(_) | Type::Tag(_) | Type::Enum(_)
-                                        | Type::GenericInstance(_)))
+                                self.local_var_types
+                                    .get(name)
+                                    .map(|ty| {
+                                        matches!(
+                                            ty,
+                                            Type::User(_)
+                                                | Type::Tag(_)
+                                                | Type::Enum(_)
+                                                | Type::GenericInstance(_)
+                                        )
+                                    })
                                     .unwrap_or(false)
-                            } else { false };
+                            } else {
+                                false
+                            };
                             if lhs_is_struct {
                                 self.expr(lhs, out)?;
                                 write!(out, ".set(")?;
                                 for (i, arg) in call.args.args.iter().enumerate() {
-                                    if i > 0 { write!(out, ", ")?; }
+                                    if i > 0 {
+                                        write!(out, ", ")?;
+                                    }
                                     self.arg(arg, out)?;
                                 }
                                 write!(out, ")")?;
@@ -7374,7 +8331,9 @@ impl RustTrans {
                             self.expr(lhs, out)?;
                             write!(out, ".insert(")?;
                             for (i, arg) in call.args.args.iter().enumerate() {
-                                if i > 0 { write!(out, ", ")?; }
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
                                 self.arg(arg, out)?;
                             }
                             write!(out, ")")?;
@@ -7385,13 +8344,17 @@ impl RustTrans {
                             // For other cases (e.g., plan.content which is String), fall through
                             // to the later handler which decides based on type info.
                             if let Expr::Ident(name) = lhs.as_ref() {
-                                let is_map = self.local_var_types.get(name)
+                                let is_map = self
+                                    .local_var_types
+                                    .get(name)
                                     .map(|ty| matches!(ty, Type::Map(_, _)))
                                     .unwrap_or(false);
                                 if is_map {
                                     self.expr(lhs, out)?;
                                     write!(out, ".contains_key(")?;
-                                    if let Some(arg) = call.args.args.first() { self.arg(arg, out)?; }
+                                    if let Some(arg) = call.args.args.first() {
+                                        self.arg(arg, out)?;
+                                    }
                                     write!(out, ")")?;
                                     return Ok(());
                                 }
@@ -7403,7 +8366,7 @@ impl RustTrans {
                         // `.sar`, `.not`). Rust has no inherent methods with these
                         // names on integers, so map them to the equivalent Rust
                         // operator expressions. The VM uses wrapping/unsigned
-        // semantics (see vm/native.rs shims), which we mirror here.
+                        // semantics (see vm/native.rs shims), which we mirror here.
                         "and" | "or" | "xor" => {
                             // val.and(mask) -> (val & mask), etc.
                             let op = match method_name.as_str() {
@@ -7562,7 +8525,8 @@ impl RustTrans {
                             // Plan 016 Phase A A4 cat 7: borrow lhs (e.g. self.buf)
                             // via as_str to avoid moving a &mut self field (E0507).
                             // str_find accepts AsRef<str> so &str/&String both work.
-                            self.a2r_std_used.set(true); write!(out, "a2r_std::str_find(")?;
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::str_find(")?;
                             self.expr_as_str(lhs, out)?;
                             for arg in &call.args.args {
                                 write!(out, ", ")?;
@@ -7587,15 +8551,32 @@ impl RustTrans {
                             return Ok(());
                         }
                         // Tuple field access: .get_0() -> .0, .get_1() -> .1, etc.
-                        "get_0" => { self.expr(lhs, out)?; write!(out, ".0")?; return Ok(()); }
-                        "get_1" => { self.expr(lhs, out)?; write!(out, ".1")?; return Ok(()); }
-                        "get_2" => { self.expr(lhs, out)?; write!(out, ".2")?; return Ok(()); }
+                        "get_0" => {
+                            self.expr(lhs, out)?;
+                            write!(out, ".0")?;
+                            return Ok(());
+                        }
+                        "get_1" => {
+                            self.expr(lhs, out)?;
+                            write!(out, ".1")?;
+                            return Ok(());
+                        }
+                        "get_2" => {
+                            self.expr(lhs, out)?;
+                            write!(out, ".2")?;
+                            return Ok(());
+                        }
                         _ => {} // fall through to simple name-remap table
                     }
 
                     // Plan 433 A1: struct `len` field read (Tok.len) — property,
                     // not the collection-length method.
-                    if self.try_emit_struct_len_field(lhs, method_name, call.args.args.len(), out)? {
+                    if self.try_emit_struct_len_field(
+                        lhs,
+                        method_name,
+                        call.args.args.len(),
+                        out,
+                    )? {
                         return Ok(());
                     }
 
@@ -7647,21 +8628,34 @@ impl RustTrans {
                         let lhs_parens = matches!(lhs.as_ref(),
                             Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
                         ) || Self::is_char_at_call(lhs.as_ref());
-                        if lhs_parens { write!(out, "(")?; }
+                        if lhs_parens {
+                            write!(out, "(")?;
+                        }
                         self.expr(lhs, out)?;
-                        if lhs_parens { write!(out, ")")?; }
+                        if lhs_parens {
+                            write!(out, ")")?;
+                        }
                         write!(out, ".{}(", rust_name)?;
                         // Auto-borrow string args for pattern-matching methods
                         // P532 W1 G19: replace 族同入(String::replace 首参
                         // Pattern 界;次参 &str——&String 双参 coerce 均合;
                         // ⑤腿 engine nat#1510 变量实参 E0277 实证)
-                        if matches!(method_name.as_str(), "contains" | "starts_with" | "ends_with" | "replace" | "replace_first") {
+                        if matches!(
+                            method_name.as_str(),
+                            "contains" | "starts_with" | "ends_with" | "replace" | "replace_first"
+                        ) {
                             for (i, arg) in call.args.args.iter().enumerate() {
                                 // Plan 380: char/&str literals are already valid
                                 // Patterns — `&'"'` would be `&char` (E0277).
-                                let already_pattern = matches!(arg,
-                                    Arg::Pos(Expr::Char(_)) | Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_)));
-                                if !already_pattern { write!(out, "&")?; }
+                                let already_pattern = matches!(
+                                    arg,
+                                    Arg::Pos(Expr::Char(_))
+                                        | Arg::Pos(Expr::Str(_))
+                                        | Arg::Pos(Expr::CStr(_))
+                                );
+                                if !already_pattern {
+                                    write!(out, "&")?;
+                                }
                                 self.arg(arg, out)?;
                                 if i < call.args.args.len() - 1 {
                                     write!(out, ", ")?;
@@ -7683,7 +8677,9 @@ impl RustTrans {
                         // Plan 380: skip when the callee `trim` returns void
                         // (e.g. Memory.trim() — `.to_string()` on `()` is E0599).
                         if matches!(method_name.as_str(), "trim" | "trim_left" | "trim_right") {
-                            let trim_ret_is_void = self.fn_ret_types.get(method_name.as_str())
+                            let trim_ret_is_void = self
+                                .fn_ret_types
+                                .get(method_name.as_str())
                                 .map(|t| matches!(t, Type::Void))
                                 .unwrap_or(false);
                             if !trim_ret_is_void {
@@ -7710,7 +8706,10 @@ impl RustTrans {
                 && matches!(object.as_ref(), Expr::Call(c) if matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "get"))
             {
                 self.expr(object, out)?;
-                write!(out, ".and_then(|v| v.as_str()).unwrap_or_default().to_string()")?;
+                write!(
+                    out,
+                    ".and_then(|v| v.as_str()).unwrap_or_default().to_string()"
+                )?;
                 return Ok(());
             }
             // Plan 162: Pointer intrinsic methods (only unique names that won't conflict)
@@ -7740,13 +8739,19 @@ impl RustTrans {
                             self.local_var_types.get(name)
                                 .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "RedisClient"))
                                 .unwrap_or(false)
-                        } else { false };
+                        } else {
+                            false
+                        };
                         if is_redis {
                             self.a2r_std_used.set(true);
                             self.expr(object, out)?;
                             write!(out, ".get(")?;
-                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
-                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                                write!(out, "&")?;
+                            }
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
                             write!(out, ")")?;
                             return Ok(());
                         }
@@ -7896,15 +8901,19 @@ impl RustTrans {
                 "multipart_file" | "multipart_text" => {
                     let is_builder = match object.as_ref() {
                         Expr::Ident(name) => self.http_builder_vars.contains(name),
-                        other => expr_root_is_http_request(other)
-                            || expr_root_is_builder_var(self, other),
+                        other => {
+                            expr_root_is_http_request(other)
+                                || expr_root_is_builder_var(self, other)
+                        }
                     };
                     if is_builder {
                         self.a2r_std_used.set(true);
                         self.expr(object, out)?;
                         write!(out, ".{}(", method_name)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             if let Arg::Pos(expr) = arg {
                                 self.expr_as_str(expr, out)?;
                             } else {
@@ -7950,13 +8959,17 @@ impl RustTrans {
                         self.local_var_types.get(name)
                             .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "StringBuilder"))
                             .unwrap_or(false)
-                    } else { false };
+                    } else {
+                        false
+                    };
                     if is_sb {
                         self.a2r_std_used.set(true);
                         self.expr(object, out)?;
                         write!(out, ".{}(", method_name)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
                             self.arg(arg, out)?;
                         }
                         write!(out, ")")?;
@@ -7975,17 +8988,25 @@ impl RustTrans {
                         self.local_var_types.get(name)
                             .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "SqliteDb"))
                             .unwrap_or(false)
-                    } else { false };
+                    } else {
+                        false
+                    };
                     if is_sqlitedb {
                         self.a2r_std_used.set(true);
                         self.expr(object, out)?;
                         write!(out, ".{}(", method_name)?;
                         if method_name == "exec" {
-                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
-                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                                write!(out, "&")?;
+                            }
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
                         } else {
                             for (i, arg) in call.args.args.iter().enumerate() {
-                                if i > 0 { write!(out, ", ")?; }
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
                                 self.arg(arg, out)?;
                             }
                         }
@@ -8007,14 +9028,20 @@ impl RustTrans {
                         self.local_var_types.get(name)
                             .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "RedisClient"))
                             .unwrap_or(false)
-                    } else { false };
+                    } else {
+                        false
+                    };
                     if is_redis {
                         self.a2r_std_used.set(true);
                         self.expr(object, out)?;
                         write!(out, ".{}(", method_name)?;
                         if method_name != "ping" {
-                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
-                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                                write!(out, "&")?;
+                            }
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
                         }
                         write!(out, ")")?;
                         return Ok(());
@@ -8123,19 +9150,34 @@ impl RustTrans {
                             if let Expr::Dot(obj, method) = c.name.as_ref() {
                                 if let Expr::Ident(name) = obj.as_ref() {
                                     name == "json" && (method == "get" || method == "get_at")
-                                } else { false }
-                            } else { false }
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
                         }
                         Expr::Ident(name) => {
-                            self.local_var_types.get(name)
-                                .map(|ty| matches!(ty, Type::User(_) | Type::Enum(_) | Type::Tag(_) | Type::GenericInstance(_) | Type::Void))
+                            self.local_var_types
+                                .get(name)
+                                .map(|ty| {
+                                    matches!(
+                                        ty,
+                                        Type::User(_)
+                                            | Type::Enum(_)
+                                            | Type::Tag(_)
+                                            | Type::GenericInstance(_)
+                                            | Type::Void
+                                    )
+                                })
                                 .unwrap_or(false)
                                 || self.json_value_vars.contains(name.as_str())
                         }
                         _ => false,
                     };
                     if use_value_helper {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::value_to_int(&")?;
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::value_to_int(&")?;
                         self.expr(object, out)?;
                         write!(out, ")")?;
                     } else {
@@ -8151,7 +9193,9 @@ impl RustTrans {
                     if method_name.as_str() == "len" && call.args.args.is_empty() {
                         if let Expr::Ident(name) = object.as_ref() {
                             if let Some(Type::User(td)) = self.local_var_types.get(name.as_str()) {
-                                let has_len_field = self.struct_field_types.get(td.name.as_str())
+                                let has_len_field = self
+                                    .struct_field_types
+                                    .get(td.name.as_str())
                                     .map(|fields| fields.iter().any(|(f, _)| f.as_str() == "len"))
                                     .unwrap_or(false);
                                 if has_len_field {
@@ -8166,8 +9210,14 @@ impl RustTrans {
                     // But if the name is a known local variable (e.g. param named "json"), it's NOT a module.
                     let is_stdlib_module = if let Expr::Ident(name) = object.as_ref() {
                         let name_is_local = self.local_var_types.contains_key(name);
-                        !name_is_local && matches!(name.as_str(), "json" | "Json" | "shell" | "fs" | "regex" | "env" | "http")
-                    } else { false };
+                        !name_is_local
+                            && matches!(
+                                name.as_str(),
+                                "json" | "Json" | "shell" | "fs" | "regex" | "env" | "http"
+                            )
+                    } else {
+                        false
+                    };
 
                     if !is_stdlib_module {
                         // Check if object is json.get() result or known non-string type variable
@@ -8176,19 +9226,34 @@ impl RustTrans {
                                 if let Expr::Dot(obj, method) = c.name.as_ref() {
                                     if let Expr::Ident(name) = obj.as_ref() {
                                         name == "json" && (method == "get" || method == "get_at")
-                                    } else { false }
-                                } else { false }
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    false
+                                }
                             }
                             Expr::Ident(name) => {
-                                self.local_var_types.get(name)
-                                    .map(|ty| matches!(ty, Type::User(_) | Type::Enum(_) | Type::Tag(_) | Type::GenericInstance(_) | Type::Void))
+                                self.local_var_types
+                                    .get(name)
+                                    .map(|ty| {
+                                        matches!(
+                                            ty,
+                                            Type::User(_)
+                                                | Type::Enum(_)
+                                                | Type::Tag(_)
+                                                | Type::GenericInstance(_)
+                                                | Type::Void
+                                        )
+                                    })
                                     .unwrap_or(false)
                                     || self.json_value_vars.contains(name.as_str())
                             }
                             _ => false,
                         };
                         if use_value_helper {
-                            self.a2r_std_used.set(true); write!(out, "a2r_std::value_len(&")?;
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::value_len(&")?;
                             self.expr(object, out)?;
                             write!(out, ")")?;
                             return Ok(());
@@ -8198,7 +9263,8 @@ impl RustTrans {
                 }
                 "match_count" => {
                     // s.match_count(pattern) -> a2r_std::str::match_count(s, pattern)
-                    self.a2r_std_used.set(true); write!(out, "a2r_std::str::match_count(")?;
+                    self.a2r_std_used.set(true);
+                    write!(out, "a2r_std::str::match_count(")?;
                     self.expr(object, out)?;
                     for arg in &call.args.args {
                         write!(out, ", ")?;
@@ -8209,7 +9275,8 @@ impl RustTrans {
                 }
                 "replace_first" => {
                     // s.replace_first(from, to) -> a2r_std::str::replace_first(s, from, to)
-                    self.a2r_std_used.set(true); write!(out, "a2r_std::str::replace_first(")?;
+                    self.a2r_std_used.set(true);
+                    write!(out, "a2r_std::str::replace_first(")?;
                     self.expr(object, out)?;
                     for arg in &call.args.args {
                         write!(out, ", ")?;
@@ -8220,7 +9287,8 @@ impl RustTrans {
                 }
                 "substr" => {
                     // s.substr(start, end) -> a2r_std::str_substr(&s, start, end)
-                    self.a2r_std_used.set(true); write!(out, "a2r_std::str_substr(")?;
+                    self.a2r_std_used.set(true);
+                    write!(out, "a2r_std::str_substr(")?;
                     self.expr_as_str(object, out)?;
                     for arg in &call.args.args {
                         write!(out, ", ")?;
@@ -8232,15 +9300,22 @@ impl RustTrans {
                 "contains" => {
                     // Only intercept for string types; map.contains() falls through to method remap
                     let obj_is_string = if let Expr::Ident(name) = object.as_ref() {
-                        self.local_var_types.get(name)
-                            .map(|ty| matches!(ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                        self.local_var_types
+                            .get(name)
+                            .map(|ty| {
+                                matches!(ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_))
+                            })
                             .unwrap_or(false)
                     } else {
-                        matches!(object.as_ref(), Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                        matches!(
+                            object.as_ref(),
+                            Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_)
+                        )
                     };
                     if obj_is_string {
                         // s.contains(needle) -> a2r_std::str_contains(&s, &needle)
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::str_contains(")?;
+                        self.a2r_std_used.set(true);
+                        write!(out, "a2r_std::str_contains(")?;
                         self.expr_as_str(object, out)?;
                         for arg in &call.args.args {
                             write!(out, ", ")?;
@@ -8260,8 +9335,13 @@ impl RustTrans {
                     // use the native `obj.ends_with(arg)` (a2r_std::str_ends_with
                     // takes only &str — a char arg is E0308).
                     if call.args.args.len() == 1
-                        && matches!(call.args.args[0],
-                            Arg::Pos(Expr::Char(_)) | Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_))) {
+                        && matches!(
+                            call.args.args[0],
+                            Arg::Pos(Expr::Char(_))
+                                | Arg::Pos(Expr::Str(_))
+                                | Arg::Pos(Expr::CStr(_))
+                        )
+                    {
                         self.expr(object, out)?;
                         write!(out, ".ends_with(")?;
                         self.arg(&call.args.args[0], out)?;
@@ -8269,7 +9349,8 @@ impl RustTrans {
                         return Ok(());
                     }
                     // s.ends_with(suffix) -> a2r_std::str_ends_with(&s, &suffix) returns i32
-                    self.a2r_std_used.set(true); write!(out, "a2r_std::str_ends_with(")?;
+                    self.a2r_std_used.set(true);
+                    write!(out, "a2r_std::str_ends_with(")?;
                     self.expr_as_str(object, out)?;
                     for arg in &call.args.args {
                         write!(out, ", ")?;
@@ -8286,9 +9367,12 @@ impl RustTrans {
                     // Check if object is 'env' — env.get_or("KEY", default) -> a2r_std::env::get_or("KEY", default)
                     if let Expr::Ident(type_name) = object.as_ref() {
                         if type_name == "env" {
-                            self.a2r_std_used.set(true); write!(out, "a2r_std::env::get_or(")?;
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::env::get_or(")?;
                             for (i, arg) in call.args.args.iter().enumerate() {
-                                if i > 0 { write!(out, ", ")?; }
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
                                 self.arg(arg, out)?;
                             }
                             write!(out, ")")?;
@@ -8298,10 +9382,17 @@ impl RustTrans {
                     // map.get_or(key, default)
                     // For string maps: .get(key).map(|s| s.as_str()).unwrap_or(default)
                     // For non-string maps: .get(key).cloned().unwrap_or(default)
-                    let is_string_default = call.args.args.get(1)
-                        .map(|a| if let Arg::Pos(e) = a {
-                            matches!(e, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
-                        } else { true })
+                    let is_string_default = call
+                        .args
+                        .args
+                        .get(1)
+                        .map(|a| {
+                            if let Arg::Pos(e) = a {
+                                matches!(e, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                            } else {
+                                true
+                            }
+                        })
                         .unwrap_or(true);
                     self.expr(object, out)?;
                     write!(out, ".get(")?;
@@ -8341,10 +9432,18 @@ impl RustTrans {
                     self.expr(object, out)?;
                     write!(out, ".replace(")?;
                     for (i, arg) in call.args.args.iter().enumerate() {
-                        if i > 0 { write!(out, ", ")?; }
-                        let already_pattern = matches!(arg,
-                            Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_)) | Arg::Pos(Expr::Char(_)));
-                        if !already_pattern { write!(out, "&")?; }
+                        if i > 0 {
+                            write!(out, ", ")?;
+                        }
+                        let already_pattern = matches!(
+                            arg,
+                            Arg::Pos(Expr::Str(_))
+                                | Arg::Pos(Expr::CStr(_))
+                                | Arg::Pos(Expr::Char(_))
+                        );
+                        if !already_pattern {
+                            write!(out, "&")?;
+                        }
                         self.arg(arg, out)?;
                     }
                     write!(out, ")")?;
@@ -8388,15 +9487,23 @@ impl RustTrans {
                             self.local_var_types.get(name)
                                 .map(|ty| matches!(ty, Type::User(usr) if usr.name.as_str() == "RedisClient"))
                                 .unwrap_or(false)
-                        } else { false };
+                        } else {
+                            false
+                        };
                         if is_redis {
                             self.a2r_std_used.set(true);
                             self.expr(object, out)?;
                             write!(out, ".set(")?;
                             for (i, arg) in call.args.args.iter().enumerate() {
-                                if i > 0 { write!(out, ", ")?; }
-                                if let Arg::Pos(Expr::Ident(_)) = arg { write!(out, "&")?; }
-                                if let Arg::Pos(a) = arg { self.expr_as_str(a, out)?; }
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
+                                if let Arg::Pos(Expr::Ident(_)) = arg {
+                                    write!(out, "&")?;
+                                }
+                                if let Arg::Pos(a) = arg {
+                                    self.expr_as_str(a, out)?;
+                                }
                             }
                             write!(out, ")")?;
                             return Ok(());
@@ -8444,53 +9551,66 @@ impl RustTrans {
                     if receiver_is_stdlib_module || receiver_is_user_type {
                         // fall through to the stdlib (module, method) routing.
                     } else {
-                    // Map.set(key, val) -> HashMap::insert(key, val)
-                    self.expr(object, out)?;
-                    write!(out, ".insert(")?;
-                    for (i, arg) in call.args.args.iter().enumerate() {
-                        if i > 0 { write!(out, ", ")?; }
-                        self.arg(arg, out)?;
-                        // First arg: add as usize only for clearly integer expressions
-                        if i == 0 {
-                            if let Arg::Pos(expr) = arg {
-                                match expr {
-                                    Expr::Int(_) => { write!(out, " as usize")?; }
-                                    Expr::Ident(name) => {
-                                        let ty = self.local_var_types.get(name);
-                                        let is_str = ty.map_or(false, |t| 
-                                            matches!(t, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)));
-                                        if !is_str {
-                                            // Not a known string; check if known int
-                                            let is_int = ty.map_or(false, |t| 
-                                                matches!(t, Type::Int | Type::Uint));
-                                            if is_int {
-                                                write!(out, " as usize")?;
-                                            }
-                                            // Unknown type: skip, let post-processing handle
+                        // Map.set(key, val) -> HashMap::insert(key, val)
+                        self.expr(object, out)?;
+                        write!(out, ".insert(")?;
+                        for (i, arg) in call.args.args.iter().enumerate() {
+                            if i > 0 {
+                                write!(out, ", ")?;
+                            }
+                            self.arg(arg, out)?;
+                            // First arg: add as usize only for clearly integer expressions
+                            if i == 0 {
+                                if let Arg::Pos(expr) = arg {
+                                    match expr {
+                                        Expr::Int(_) => {
+                                            write!(out, " as usize")?;
                                         }
+                                        Expr::Ident(name) => {
+                                            let ty = self.local_var_types.get(name);
+                                            let is_str = ty.map_or(false, |t| {
+                                                matches!(
+                                                    t,
+                                                    Type::StrSlice
+                                                        | Type::StrOwned
+                                                        | Type::StrFixed(_)
+                                                )
+                                            });
+                                            if !is_str {
+                                                // Not a known string; check if known int
+                                                let is_int = ty.map_or(false, |t| {
+                                                    matches!(t, Type::Int | Type::Uint)
+                                                });
+                                                if is_int {
+                                                    write!(out, " as usize")?;
+                                                }
+                                                // Unknown type: skip, let post-processing handle
+                                            }
+                                        }
+                                        _ => {} // Other exprs (calls, etc): no cast
                                     }
-                                    _ => {} // Other exprs (calls, etc): no cast
                                 }
                             }
-                        }
-                        // Auto-borrow: key/value might be &str, but HashMap<String,V> needs String
-                        if let Arg::Pos(expr) = arg {
-                            if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
-                                write!(out, ".to_string()")?;
-                            } else if let Expr::Ident(name) = expr {
-                                let is_str = self.local_var_types.get(name)
-                                    .map(|ty| matches!(ty, Type::StrSlice))
-                                    .unwrap_or(false);
-                                if is_str {
+                            // Auto-borrow: key/value might be &str, but HashMap<String,V> needs String
+                            if let Arg::Pos(expr) = arg {
+                                if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
                                     write!(out, ".to_string()")?;
+                                } else if let Expr::Ident(name) = expr {
+                                    let is_str = self
+                                        .local_var_types
+                                        .get(name)
+                                        .map(|ty| matches!(ty, Type::StrSlice))
+                                        .unwrap_or(false);
+                                    if is_str {
+                                        write!(out, ".to_string()")?;
+                                    }
                                 }
                             }
                         }
-                    }
-                    write!(out, ")")?;
-                    return Ok(());
+                        write!(out, ")")?;
+                        return Ok(());
                     } // end else (non-stdlib Map.set rewrite)
-                    // (stdlib module receiver: fall through to _ => {} below)
+                      // (stdlib module receiver: fall through to _ => {} below)
                 }
                 _ => {} // fall through to regular method handling
             }
@@ -8506,15 +9626,21 @@ impl RustTrans {
                 if type_name == "env" {
                     match method_name.as_str() {
                         "get" => {
-                            self.a2r_std_used.set(true); write!(out, "a2r_std::env::get(")?;
-                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::env::get(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
                             write!(out, ")")?;
                             return Ok(());
                         }
                         "set" => {
-                            self.a2r_std_used.set(true); write!(out, "a2r_std::env::set(")?;
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::env::set(")?;
                             for (i, arg) in call.args.args.iter().enumerate() {
-                                if i > 0 { write!(out, ", ")?; }
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
                                 if let Arg::Pos(expr) = arg {
                                     // env::set takes (&str, &str) — borrow owned
                                     // string args (e.g. a path/key built from concat)
@@ -8528,9 +9654,12 @@ impl RustTrans {
                             return Ok(());
                         }
                         "get_or" => {
-                            self.a2r_std_used.set(true); write!(out, "a2r_std::env::get_or(")?;
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::env::get_or(")?;
                             for (i, arg) in call.args.args.iter().enumerate() {
-                                if i > 0 { write!(out, ", ")?; }
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
                                 if let Arg::Pos(expr) = arg {
                                     self.expr_as_str(expr, out)?;
                                 } else {
@@ -8541,7 +9670,8 @@ impl RustTrans {
                             return Ok(());
                         }
                         "args" => {
-                            self.a2r_std_used.set(true); write!(out, "a2r_std::env::args()")?;
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::env::args()")?;
                             return Ok(());
                         }
                         _ => {}
@@ -8556,456 +9686,608 @@ impl RustTrans {
             if let Expr::Ident(type_name) = object.as_ref() {
                 // If the identifier is a known local variable, skip stdlib routing
                 let is_local_var = self.local_var_types.contains_key(type_name);
-                if !is_local_var && !self.local_modules.contains(type_name.as_str())
-                    && !self.sibling_modules.contains(type_name.as_str()) {
-                // Plan 368: Normalize "Json" → "json" for consistent module dispatch.
-                // PLAN-681: "Env" → "env" — the VM builtin object is capitalized
-                // (Env.get); the a2r dispatch tables key on lowercase.
-                let normalized_type = match type_name.as_str() {
-                    "Json" => "json",
-                    "Env" => "env",
-                    _ => type_name.as_str(),
-                };
-                crate::stdlib_assembly::providers::require_reference_provider(
-                    normalized_type, method_name.as_str(), "rust")?;
-                match (normalized_type, method_name.as_str()) {
-                    ("json", "parse") => {
-                        self.a2r_std_used.set(true); write!(out, "{}", if self.json_parse_as_opt { "a2r_std::json::parse_opt(" } else { "a2r_std::json::parse(" })?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() {
-                            self.expr_as_str(a, out)?;
-                        }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("json", "get") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::get(&")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                        write!(out, ", ")?;
-                        if call.args.args.len() > 1 {
-                            if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
-                        }
-                        // Plan 381 (Layer 2): `json.get(v, k)` returns the
-                        // bridged Value — do NOT append .to_string() (that made
-                        // every get() a String, breaking json.len/get_at/
-                        // to_string/as_* chaining → E0308 &Value vs &String).
-                        // Use `json.get_str` for string extraction.
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("json", "get_str") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_str(&")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                        write!(out, ", ")?;
-                        if call.args.args.len() > 1 {
-                            if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
-                        }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("json", "as_string") => {
-                        // Plan 381 (Layer 2): Value arg → as_string(&Value);
-                        // string arg → as_string_str(&str). The unconditional
-                        // _str variant broke `json.as_string(json.get(...))`
-                        // (E0308 Option<&str>).
-                        let is_value = call.args.args.first().map_or(false, |a| self.json_arg_is_value(a));
-                        self.a2r_std_used.set(true);
-                        if is_value {
-                            write!(out, "a2r_std::json::as_string(&")?;
-                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                            write!(out, ")")?;
-                        } else {
-                            write!(out, "a2r_std::json::as_string_str(")?;
-                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                            write!(out, ")")?;
-                        }
-                        return Ok(());
-                    }
-                    ("json", "to_string") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::to_string(&")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("json", "get_at") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_at(&")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                        write!(out, ", ")?;
-                        if call.args.args.len() > 1 {
-                            if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; write!(out, " as usize")?; }
-                        }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("json", "get_u64") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::get_u64(&")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                        write!(out, ", ")?;
-                        if call.args.args.len() > 1 {
-                            if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
-                        }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("json", "keys") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::keys(&")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("json", "len") => {
-                        // Auto's json.len() returns int, but Rust returns usize — cast to i32
-                        if let Some(Arg::Pos(expr)) = call.args.args.first() {
-                            let is_str_type = if let Expr::Ident(name) = expr {
-                                self.local_var_types.get(name)
-                                    .map(|ty| matches!(ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
-                                    .unwrap_or(true)
-                            } else {
-                                matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
-                            };
-                            if is_str_type {
-                                self.a2r_std_used.set(true);
-                                write!(out, "(a2r_std::json::len_str(")?;
-                                self.expr_as_str(expr, out)?;
-                                write!(out, ") as i64)")?;
-                            } else {
-                                self.a2r_std_used.set(true);
-                                write!(out, "(a2r_std::json::len(&")?;
-                                self.expr(expr, out)?;
-                                write!(out, ") as i64)")?;
+                if !is_local_var
+                    && !self.local_modules.contains(type_name.as_str())
+                    && !self.sibling_modules.contains(type_name.as_str())
+                {
+                    // Plan 368: Normalize "Json" → "json" for consistent module dispatch.
+                    // PLAN-681: "Env" → "env" — the VM builtin object is capitalized
+                    // (Env.get); the a2r dispatch tables key on lowercase.
+                    let normalized_type = match type_name.as_str() {
+                        "Json" => "json",
+                        "Env" => "env",
+                        _ => type_name.as_str(),
+                    };
+                    crate::stdlib_assembly::providers::require_reference_provider(
+                        normalized_type,
+                        method_name.as_str(),
+                        "rust",
+                    )?;
+                    match (normalized_type, method_name.as_str()) {
+                        ("json", "parse") => {
+                            self.a2r_std_used.set(true);
+                            write!(
+                                out,
+                                "{}",
+                                if self.json_parse_as_opt {
+                                    "a2r_std::json::parse_opt("
+                                } else {
+                                    "a2r_std::json::parse("
+                                }
+                            )?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
                             }
+                            write!(out, ")")?;
+                            return Ok(());
                         }
-                        return Ok(());
-                    }
-                    ("json", "has_key") => {
-                        // Auto's json.has_key() returns int (0 or 1), but Rust's returns bool.
-                        // Wrap in if/else to convert bool -> i32.
-                        if let Some(Arg::Pos(first)) = call.args.args.first() {
-                            let use_str = if let Expr::Ident(name) = first {
-                                self.local_var_types.get(name)
-                                    .map(|ty| matches!(ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
-                                    .unwrap_or(true)
-                            } else {
-                                matches!(first, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
-                            };
-                            write!(out, "if ")?;
-                            if use_str {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::has_key_str(")?;
-                                self.expr_as_str(first, out)?;
-                            } else {
-                                self.a2r_std_used.set(true); write!(out, "a2r_std::json::has_key(&")?;
-                                self.expr(first, out)?;
+                        ("json", "get") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::json::get(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
                             }
                             write!(out, ", ")?;
                             if call.args.args.len() > 1 {
-                                if let Arg::Pos(a) = &call.args.args[1] { self.expr(a, out)?; }
-                            }
-                            if !use_str { write!(out, ")")?; }
-                            write!(out, ") {{ 1 }} else {{ 0 }}")?;
-                        }
-                        return Ok(());
-                    }
-                    ("json", "as_int") => {
-                        // Plan 381 (Layer 2): Value arg → as_int(&Value).
-                        let is_value = call.args.args.first().map_or(false, |a| self.json_arg_is_value(a));
-                        self.a2r_std_used.set(true);
-                        if is_value {
-                            write!(out, "a2r_std::json::as_int(&")?;
-                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                            write!(out, ")")?;
-                        } else {
-                            write!(out, "a2r_std::json::as_int_str(")?;
-                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                            write!(out, ") as i64")?;
-                        }
-                        return Ok(());
-                    }
-                    ("json", "as_bool") => {
-                        // Plan 381 (Layer 2): Value arg → as_bool(&Value).
-                        let is_value = call.args.args.first().map_or(false, |a| self.json_arg_is_value(a));
-                        self.a2r_std_used.set(true);
-                        if is_value {
-                            write!(out, "a2r_std::json::as_bool(&")?;
-                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                            write!(out, ")")?;
-                        } else {
-                            write!(out, "a2r_std::json::as_bool_str(")?;
-                            if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                            write!(out, ")")?;
-                        }
-                        return Ok(());
-                    }
-                    ("json", "is_valid") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_valid(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("json", "is_null") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::is_null(&")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("json", "type_of") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::json::value_type(&a2r_std::json::parse(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, "))")?;
-                        return Ok(());
-                    }
-                    ("shell", "exec") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::shell::exec(")?;
-                        for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
-                            if let Arg::Pos(expr) = arg {
-                                self.expr(expr, out)?;
-                                let skip_as_str = matches!(expr, Expr::Int(_) | Expr::Float(_, _))
-                                    || if let Expr::Ident(name) = expr {
-                                        self.local_var_types.get(name)
-                                            .map(|ty| matches!(ty, Type::StrSlice))
-                                            .unwrap_or(false)
-                                    } else { false };
-                                if !skip_as_str {
-                                    write!(out, ".as_str()")?;
+                                if let Arg::Pos(a) = &call.args.args[1] {
+                                    self.expr(a, out)?;
                                 }
                             }
+                            // Plan 381 (Layer 2): `json.get(v, k)` returns the
+                            // bridged Value — do NOT append .to_string() (that made
+                            // every get() a String, breaking json.len/get_at/
+                            // to_string/as_* chaining → E0308 &Value vs &String).
+                            // Use `json.get_str` for string extraction.
+                            write!(out, ")")?;
+                            return Ok(());
                         }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("regex", "match") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::re::r#match(")?;
-                        for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
-                            if let Arg::Pos(expr) = arg {
-                                self.expr_as_str(expr, out)?;
+                        ("json", "get_str") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::json::get_str(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, ", ")?;
+                            if call.args.args.len() > 1 {
+                                if let Arg::Pos(a) = &call.args.args[1] {
+                                    self.expr(a, out)?;
+                                }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("json", "as_string") => {
+                            // Plan 381 (Layer 2): Value arg → as_string(&Value);
+                            // string arg → as_string_str(&str). The unconditional
+                            // _str variant broke `json.as_string(json.get(...))`
+                            // (E0308 Option<&str>).
+                            let is_value = call
+                                .args
+                                .args
+                                .first()
+                                .map_or(false, |a| self.json_arg_is_value(a));
+                            self.a2r_std_used.set(true);
+                            if is_value {
+                                write!(out, "a2r_std::json::as_string(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ")")?;
                             } else {
+                                write!(out, "a2r_std::json::as_string_str(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
+                                write!(out, ")")?;
+                            }
+                            return Ok(());
+                        }
+                        ("json", "to_string") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::json::to_string(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("json", "get_at") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::json::get_at(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, ", ")?;
+                            if call.args.args.len() > 1 {
+                                if let Arg::Pos(a) = &call.args.args[1] {
+                                    self.expr(a, out)?;
+                                    write!(out, " as usize")?;
+                                }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("json", "get_u64") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::json::get_u64(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, ", ")?;
+                            if call.args.args.len() > 1 {
+                                if let Arg::Pos(a) = &call.args.args[1] {
+                                    self.expr(a, out)?;
+                                }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("json", "keys") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::json::keys(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("json", "len") => {
+                            // Auto's json.len() returns int, but Rust returns usize — cast to i32
+                            if let Some(Arg::Pos(expr)) = call.args.args.first() {
+                                let is_str_type = if let Expr::Ident(name) = expr {
+                                    self.local_var_types
+                                        .get(name)
+                                        .map(|ty| {
+                                            matches!(
+                                                ty,
+                                                Type::StrSlice | Type::StrOwned | Type::StrFixed(_)
+                                            )
+                                        })
+                                        .unwrap_or(true)
+                                } else {
+                                    matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                                };
+                                if is_str_type {
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "(a2r_std::json::len_str(")?;
+                                    self.expr_as_str(expr, out)?;
+                                    write!(out, ") as i64)")?;
+                                } else {
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "(a2r_std::json::len(&")?;
+                                    self.expr(expr, out)?;
+                                    write!(out, ") as i64)")?;
+                                }
+                            }
+                            return Ok(());
+                        }
+                        ("json", "has_key") => {
+                            // Auto's json.has_key() returns int (0 or 1), but Rust's returns bool.
+                            // Wrap in if/else to convert bool -> i32.
+                            if let Some(Arg::Pos(first)) = call.args.args.first() {
+                                let use_str = if let Expr::Ident(name) = first {
+                                    self.local_var_types
+                                        .get(name)
+                                        .map(|ty| {
+                                            matches!(
+                                                ty,
+                                                Type::StrSlice | Type::StrOwned | Type::StrFixed(_)
+                                            )
+                                        })
+                                        .unwrap_or(true)
+                                } else {
+                                    matches!(first, Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_))
+                                };
+                                write!(out, "if ")?;
+                                if use_str {
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::json::has_key_str(")?;
+                                    self.expr_as_str(first, out)?;
+                                } else {
+                                    self.a2r_std_used.set(true);
+                                    write!(out, "a2r_std::json::has_key(&")?;
+                                    self.expr(first, out)?;
+                                }
+                                write!(out, ", ")?;
+                                if call.args.args.len() > 1 {
+                                    if let Arg::Pos(a) = &call.args.args[1] {
+                                        self.expr(a, out)?;
+                                    }
+                                }
+                                if !use_str {
+                                    write!(out, ")")?;
+                                }
+                                write!(out, ") {{ 1 }} else {{ 0 }}")?;
+                            }
+                            return Ok(());
+                        }
+                        ("json", "as_int") => {
+                            // Plan 381 (Layer 2): Value arg → as_int(&Value).
+                            let is_value = call
+                                .args
+                                .args
+                                .first()
+                                .map_or(false, |a| self.json_arg_is_value(a));
+                            self.a2r_std_used.set(true);
+                            if is_value {
+                                write!(out, "a2r_std::json::as_int(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ")")?;
+                            } else {
+                                write!(out, "a2r_std::json::as_int_str(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
+                                write!(out, ") as i64")?;
+                            }
+                            return Ok(());
+                        }
+                        ("json", "as_bool") => {
+                            // Plan 381 (Layer 2): Value arg → as_bool(&Value).
+                            let is_value = call
+                                .args
+                                .args
+                                .first()
+                                .map_or(false, |a| self.json_arg_is_value(a));
+                            self.a2r_std_used.set(true);
+                            if is_value {
+                                write!(out, "a2r_std::json::as_bool(&")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr(a, out)?;
+                                }
+                                write!(out, ")")?;
+                            } else {
+                                write!(out, "a2r_std::json::as_bool_str(")?;
+                                if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                    self.expr_as_str(a, out)?;
+                                }
+                                write!(out, ")")?;
+                            }
+                            return Ok(());
+                        }
+                        ("json", "is_valid") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::json::is_valid(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("json", "is_null") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::json::is_null(&")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("json", "type_of") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::json::value_type(&a2r_std::json::parse(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
+                            write!(out, "))")?;
+                            return Ok(());
+                        }
+                        ("shell", "exec") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::shell::exec(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
+                                if let Arg::Pos(expr) = arg {
+                                    self.expr(expr, out)?;
+                                    let skip_as_str =
+                                        matches!(expr, Expr::Int(_) | Expr::Float(_, _))
+                                            || if let Expr::Ident(name) = expr {
+                                                self.local_var_types
+                                                    .get(name)
+                                                    .map(|ty| matches!(ty, Type::StrSlice))
+                                                    .unwrap_or(false)
+                                            } else {
+                                                false
+                                            };
+                                    if !skip_as_str {
+                                        write!(out, ".as_str()")?;
+                                    }
+                                }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("regex", "match") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::re::r#match(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
+                                if let Arg::Pos(expr) = arg {
+                                    self.expr_as_str(expr, out)?;
+                                } else {
+                                    self.arg(arg, out)?;
+                                }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("regex", "find_all") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::re::find_all(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
+                                if let Arg::Pos(expr) = arg {
+                                    self.expr_as_str(expr, out)?;
+                                } else {
+                                    self.arg(arg, out)?;
+                                }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("fs", "exists") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::fs::exists(")?;
+                            // Plan 016 Phase A A.4: use expr_as_str (handles owned
+                            // String, &str params, str literals, and loop vars
+                            // tracked as StrSlice — avoids the unstable str_as_str
+                            // and the E0308 String-vs-&str mismatch).
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            } else if let Some(arg) = call.args.args.first() {
                                 self.arg(arg, out)?;
                             }
+                            write!(out, ")")?;
+                            return Ok(());
                         }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("regex", "find_all") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::re::find_all(")?;
-                        for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
-                            if let Arg::Pos(expr) = arg {
-                                self.expr_as_str(expr, out)?;
-                            } else {
+                        ("fs", "create_dir") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::fs::create_dir(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("fs", "write_text") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::fs::write_text(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
+                                if let Arg::Pos(expr) = arg {
+                                    self.expr_as_str(expr, out)?;
+                                } else {
+                                    self.arg(arg, out)?;
+                                }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("fs", "append_text") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::fs::append_text(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
+                                if let Arg::Pos(expr) = arg {
+                                    self.expr_as_str(expr, out)?;
+                                } else {
+                                    self.arg(arg, out)?;
+                                }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("fs", "is_dir") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::fs::is_dir(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("fs", "is_binary") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::fs::is_binary(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("fs", "file_size") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::fs::file_size(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("fs", "walk") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::fs::walk(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("fs", "tree") => {
+                            // PLAN-681: fs.tree(path, depth) → a2r_std::fs::tree —
+                            // nested-JSON tree aligned byte-for-byte with the VM
+                            // fs_tree_walk shape (TreeView node schema).
+                            // PLAN-681 T-05: host 签名 max_depth: i32——Auto int
+                            // 实参（i64）窄化 as i32（宿主契约对齐）。
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::fs::tree(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
+                            if let Some(Arg::Pos(a)) = call.args.args.get(1) {
+                                write!(out, ", (")?;
+                                self.expr(a, out)?;
+                                write!(out, ") as i32")?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("fs", "read_to_string") | ("fs", "read_text") => {
+                            let fn_name = method_name;
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::fs::{}(", fn_name)?;
+                            // Plan 368 R-AREG: use shared expr_as_str instead of stale
+                            // local_var_types/StrSlice check, so owned String locals
+                            // correctly get .as_str() appended.
+                            // Plan 396 §2.3: borrow bare-ident PathBuf args — moving
+                            // them breaks later uses (E0382); &PathBuf → &Path coercion.
+                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                                write!(out, "&")?;
+                            }
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("fs", "write") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::fs::write(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
+                                if let Arg::Pos(expr) = arg {
+                                    self.expr_as_str(expr, out)?;
+                                } else {
+                                    self.arg(arg, out)?;
+                                }
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
+                        }
+                        ("fs", "delete") | ("File", "delete") => {
+                            write!(out, "File::delete(")?;
+                            for (i, arg) in call.args.args.iter().enumerate() {
+                                if i > 0 {
+                                    write!(out, ", ")?;
+                                }
                                 self.arg(arg, out)?;
                             }
+                            write!(out, ")")?;
+                            return Ok(());
                         }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "exists") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::exists(")?;
-                        // Plan 016 Phase A A.4: use expr_as_str (handles owned
-                        // String, &str params, str literals, and loop vars
-                        // tracked as StrSlice — avoids the unstable str_as_str
-                        // and the E0308 String-vs-&str mismatch).
-                        if let Some(Arg::Pos(a)) = call.args.args.first() {
-                            self.expr_as_str(a, out)?;
-                        } else if let Some(arg) = call.args.args.first() {
-                            self.arg(arg, out)?;
-                        }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "create_dir") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::create_dir(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "write_text") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write_text(")?;
-                        for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
-                            if let Arg::Pos(expr) = arg {
-                                self.expr_as_str(expr, out)?;
-                            } else {
-                                self.arg(arg, out)?;
+                        ("env", "get") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::env::get(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
                             }
+                            write!(out, ")")?;
+                            return Ok(());
                         }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "append_text") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::append_text(")?;
-                        for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
-                            if let Arg::Pos(expr) = arg {
-                                self.expr_as_str(expr, out)?;
-                            } else {
-                                self.arg(arg, out)?;
+                        ("io", "read_line") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::io::read_line()")?;
+                            return Ok(());
+                        }
+                        // Plan 415-B1: sqlite module fns on the Dot-path dispatch
+                        // (mirrors the Bina-path arms; open takes &str).
+                        ("sqlite", "open") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::sqlite::open(")?;
+                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                                write!(out, "&")?;
                             }
-                        }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "is_dir") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::is_dir(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "is_binary") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::is_binary(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "file_size") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::file_size(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "walk") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::walk(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "tree") => {
-                        // PLAN-681: fs.tree(path, depth) → a2r_std::fs::tree —
-                        // nested-JSON tree aligned byte-for-byte with the VM
-                        // fs_tree_walk shape (TreeView node schema).
-                        // PLAN-681 T-05: host 签名 max_depth: i32——Auto int
-                        // 实参（i64）窄化 as i32（宿主契约对齐）。
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::tree(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        if let Some(Arg::Pos(a)) = call.args.args.get(1) {
-                            write!(out, ", (")?;
-                            self.expr(a, out)?;
-                            write!(out, ") as i32")?;
-                        }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "read_to_string") | ("fs", "read_text") => {
-                        let fn_name = method_name;
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::{}(", fn_name)?;
-                        // Plan 368 R-AREG: use shared expr_as_str instead of stale
-                        // local_var_types/StrSlice check, so owned String locals
-                        // correctly get .as_str() appended.
-                        // Plan 396 §2.3: borrow bare-ident PathBuf args — moving
-                        // them breaks later uses (E0382); &PathBuf → &Path coercion.
-                        if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
-                            write!(out, "&")?;
-                        }
-                        if let Some(Arg::Pos(a)) = call.args.args.first() {
-                            self.expr_as_str(a, out)?;
-                        }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "write") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::fs::write(")?;
-                        for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
-                            if let Arg::Pos(expr) = arg {
-                                self.expr_as_str(expr, out)?;
-                            } else {
-                                self.arg(arg, out)?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
                             }
+                            write!(out, ")")?;
+                            return Ok(());
                         }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("fs", "delete") | ("File", "delete") => {
-                        write!(out, "File::delete(")?;
-                        for (i, arg) in call.args.args.iter().enumerate() {
-                            if i > 0 { write!(out, ", ")?; }
-                            self.arg(arg, out)?;
+                        ("sqlite", "last_error") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::sqlite::last_error()")?;
+                            return Ok(());
                         }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("env", "get") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::env::get(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr(a, out)?; }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("io", "read_line") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::io::read_line()")?;
-                        return Ok(());
-                    }
-                    // Plan 415-B1: sqlite module fns on the Dot-path dispatch
-                    // (mirrors the Bina-path arms; open takes &str).
-                    ("sqlite", "open") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::open(")?;
-                        if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("sqlite", "last_error") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::sqlite::last_error()")?;
-                        return Ok(());
-                    }
-                    // Plan 415-B2: redis module fns on the Dot-path dispatch
-                    // (mirrors the sqlite arms; open takes &str).
-                    ("redis", "open") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::redis::open(")?;
-                        if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() { write!(out, "&")?; }
-                        if let Some(Arg::Pos(a)) = call.args.args.first() { self.expr_as_str(a, out)?; }
-                        write!(out, ")")?;
-                        return Ok(());
-                    }
-                    ("redis", "last_error") => {
-                        self.a2r_std_used.set(true); write!(out, "a2r_std::redis::last_error()")?;
-                        return Ok(());
-                    }
-                    ("Map", "new") => {
-                        write!(out, "std::collections::HashMap::new()")?;
-                        return Ok(());
-                    }
-                    // Plan 016 Phase A A4 cat 1: time builtin Dot-path dispatch
-                    // (mirrors the Bina-path arms). Without this, `time.now_ms()`
-                    // emits literally → E0423 "found module time".
-                    ("time", "now_ms") => {
-                        self.a2r_std_used.set(true);
-                        write!(out, "a2r_std::time::now_ms()")?;
-                        return Ok(());
-                    }
-                    ("time", "sleep_ms") => {
-                        self.a2r_std_used.set(true);
-                        write!(out, "a2r_std::time::sleep_ms(")?;
-                        if let Some(Arg::Pos(a)) = call.args.args.first() {
-                            self.expr(a, out)?;
+                        // Plan 415-B2: redis module fns on the Dot-path dispatch
+                        // (mirrors the sqlite arms; open takes &str).
+                        ("redis", "open") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::redis::open(")?;
+                            if let Some(Arg::Pos(Expr::Ident(_))) = call.args.args.first() {
+                                write!(out, "&")?;
+                            }
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr_as_str(a, out)?;
+                            }
+                            write!(out, ")")?;
+                            return Ok(());
                         }
-                        write!(out, " as u64)")?;
-                        return Ok(());
+                        ("redis", "last_error") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::redis::last_error()")?;
+                            return Ok(());
+                        }
+                        ("Map", "new") => {
+                            write!(out, "std::collections::HashMap::new()")?;
+                            return Ok(());
+                        }
+                        // Plan 016 Phase A A4 cat 1: time builtin Dot-path dispatch
+                        // (mirrors the Bina-path arms). Without this, `time.now_ms()`
+                        // emits literally → E0423 "found module time".
+                        ("time", "now_ms") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::time::now_ms()")?;
+                            return Ok(());
+                        }
+                        ("time", "sleep_ms") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::time::sleep_ms(")?;
+                            if let Some(Arg::Pos(a)) = call.args.args.first() {
+                                self.expr(a, out)?;
+                            }
+                            write!(out, " as u64)")?;
+                            return Ok(());
+                        }
+                        ("time", "now_sec") | ("time", "now_secs") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::time::now_sec()")?;
+                            return Ok(());
+                        }
+                        ("time", "now") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::time::now()")?;
+                            return Ok(());
+                        }
+                        // PLAN-716 Phase 2 (供⑨-b): frame 二段名 Dot-path 臂
+                        // （time A4 先例同款——缺失时原文发射 → E0425 cannot
+                        // find value `frame`，下游 plan-022 实录；裸名姊妹臂
+                        // 在 call() 的 Expr::Ident 映射表）。
+                        ("frame", "begin_ms") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::frame::begin_ms()")?;
+                            return Ok(());
+                        }
+                        ("frame", "present_ms") => {
+                            self.a2r_std_used.set(true);
+                            write!(out, "a2r_std::frame::present_ms()")?;
+                            return Ok(());
+                        }
+                        _ => {} // fall through to remap table
                     }
-                    ("time", "now_sec") | ("time", "now_secs") => {
-                        self.a2r_std_used.set(true);
-                        write!(out, "a2r_std::time::now_sec()")?;
-                        return Ok(());
-                    }
-                    ("time", "now") => {
-                        self.a2r_std_used.set(true);
-                        write!(out, "a2r_std::time::now()")?;
-                        return Ok(());
-                    }
-                    // PLAN-716 Phase 2 (供⑨-b): frame 二段名 Dot-path 臂
-                    // （time A4 先例同款——缺失时原文发射 → E0425 cannot
-                    // find value `frame`，下游 plan-022 实录；裸名姊妹臂
-                    // 在 call() 的 Expr::Ident 映射表）。
-                    ("frame", "begin_ms") => {
-                        self.a2r_std_used.set(true);
-                        write!(out, "a2r_std::frame::begin_ms()")?;
-                        return Ok(());
-                    }
-                    ("frame", "present_ms") => {
-                        self.a2r_std_used.set(true);
-                        write!(out, "a2r_std::frame::present_ms()")?;
-                        return Ok(());
-                    }
-                    _ => {} // fall through to remap table
-                }
                 } // if !is_local_var
             }
 
@@ -9027,7 +10309,10 @@ impl RustTrans {
                     self.expr(object, out)?;
                     write!(out, ".get(&")?;
                     self.arg(&call.args.args[0], out)?;
-                    write!(out, ".to_string()).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0))")?;
+                    write!(
+                        out,
+                        ".to_string()).and_then(|v| v.parse::<i64>().ok()).unwrap_or(0))"
+                    )?;
                     return Ok(());
                 }
                 "insert_str" => {
@@ -9068,7 +10353,11 @@ impl RustTrans {
                             if self.tag_types.contains(inner_type_name)
                                 || self.module_types.contains_key(mod_name.as_str())
                             {
-                                dot_tag_match = Some((Some(mod_name.clone()), inner_type_name.clone(), method_name.clone()));
+                                dot_tag_match = Some((
+                                    Some(mod_name.clone()),
+                                    inner_type_name.clone(),
+                                    method_name.clone(),
+                                ));
                             }
                         }
                     }
@@ -9082,7 +10371,11 @@ impl RustTrans {
                                     if self.tag_types.contains(type_name)
                                         || self.module_types.contains_key(mod_name.as_str())
                                     {
-                                        dot_tag_match = Some((Some(mod_name.clone()), type_name.clone(), method_name.clone()));
+                                        dot_tag_match = Some((
+                                            Some(mod_name.clone()),
+                                            type_name.clone(),
+                                            method_name.clone(),
+                                        ));
                                     }
                                 }
                             }
@@ -9092,12 +10385,16 @@ impl RustTrans {
                 if let Some((mod_prefix, type_name, variant_name)) = dot_tag_match {
                     // Validate: variant name must start with uppercase (Tag.Variant convention)
                     // or be a known enum variant. Method names (lowercase) are not tag constructions.
-                    let variant_is_upper = variant_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+                    let variant_is_upper = variant_name
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false);
                     let key = (type_name.clone(), variant_name.clone());
                     let has_struct_fields = self.enum_struct_variants.contains_key(&key);
                     let has_tuple_fields = self.enum_tuple_field_types.contains_key(&key);
                     if variant_is_upper || has_struct_fields || has_tuple_fields {
-                            let struct_fields = self.enum_struct_variants.get(&key).cloned();
+                        let struct_fields = self.enum_struct_variants.get(&key).cloned();
                         if let Some(ref mp) = mod_prefix {
                             if self.merge_mode || mp.as_str() == self.current_module_name {
                                 write!(out, "{}::{}::{}", mp, type_name, variant_name)?;
@@ -9111,7 +10408,9 @@ impl RustTrans {
                         }
                         if let Some(fields) = struct_fields {
                             write!(out, " {{ ")?;
-                            for (i, (arg, field_name)) in call.args.args.iter().zip(fields.iter()).enumerate() {
+                            for (i, (arg, field_name)) in
+                                call.args.args.iter().zip(fields.iter()).enumerate()
+                            {
                                 match arg {
                                     Arg::Pos(expr) => {
                                         write!(out, "{}: ", field_name)?;
@@ -9132,7 +10431,9 @@ impl RustTrans {
                                     }
                                     Arg::Name(_) => {}
                                 }
-                                if i < call.args.args.len().min(fields.len()) - 1 { write!(out, ", ")?; }
+                                if i < call.args.args.len().min(fields.len()) - 1 {
+                                    write!(out, ", ")?;
+                                }
                             }
                             write!(out, " }}")?;
                         } else {
@@ -9144,11 +10445,21 @@ impl RustTrans {
                                     if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
                                         write!(out, ".to_string()")?;
                                     } else if let Expr::Ident(name) = expr {
-                                        let field_is_string = tuple_field_types.as_ref()
+                                        let field_is_string = tuple_field_types
+                                            .as_ref()
                                             .and_then(|types| types.get(i))
-                                            .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
+                                            .map(|ty| {
+                                                matches!(
+                                                    ty,
+                                                    Type::StrOwned
+                                                        | Type::StrFixed(_)
+                                                        | Type::StrSlice
+                                                )
+                                            })
                                             .unwrap_or(false);
-                                        let var_is_str_slice = self.local_var_types.get(name)
+                                        let var_is_str_slice = self
+                                            .local_var_types
+                                            .get(name)
                                             .map(|ty| matches!(ty, Type::StrSlice))
                                             .unwrap_or(false);
                                         if field_is_string && var_is_str_slice {
@@ -9156,7 +10467,9 @@ impl RustTrans {
                                         }
                                     }
                                 }
-                                if i < call.args.args.len() - 1 { write!(out, ", ")?; }
+                                if i < call.args.args.len() - 1 {
+                                    write!(out, ", ")?;
+                                }
                             }
                             write!(out, ")")?;
                         }
@@ -9176,8 +10489,8 @@ impl RustTrans {
             // foreign builder setter (memmap2 MmapOptions::len) returning Self;
             // casting that to i64 breaks the method chain. (Mirror of the
             // Bina-path flag above.)
-            let needs_i32_cast = matches!(method_name.as_str(), "len" | "length")
-                && call.args.args.is_empty();
+            let needs_i32_cast =
+                matches!(method_name.as_str(), "len" | "length") && call.args.args.is_empty();
 
             // For "contains", choose between str::contains and map::contains_key
             // Only use contains_key when we KNOW the object is a Map.
@@ -9185,24 +10498,39 @@ impl RustTrans {
             let contains_rust = if method_name.as_str() == "contains" {
                 match object.as_ref() {
                     Expr::Ident(name) => {
-                        let obj_is_map = self.local_var_types.get(name)
+                        let obj_is_map = self
+                            .local_var_types
+                            .get(name)
                             .map(|ty| matches!(ty, Type::Map(_, _)))
                             .unwrap_or(false);
-                        if obj_is_map { Some("contains_key") } else { Some("contains") }
+                        if obj_is_map {
+                            Some("contains_key")
+                        } else {
+                            Some("contains")
+                        }
                     }
                     Expr::Dot(inner_obj, inner_field) => {
                         // Check if the inner field is a known Map type in any struct
                         let field_is_map = if let Expr::Ident(_) = inner_obj.as_ref() {
-                            self.struct_field_types.values()
-                                .any(|fields| fields.iter()
-                                    .any(|(fname, fty)| fname == inner_field
-                                        && matches!(fty, Type::Map(_, _))))
-                        } else { false };
-                        if field_is_map { Some("contains_key") } else { Some("contains") }
+                            self.struct_field_types.values().any(|fields| {
+                                fields.iter().any(|(fname, fty)| {
+                                    fname == inner_field && matches!(fty, Type::Map(_, _))
+                                })
+                            })
+                        } else {
+                            false
+                        };
+                        if field_is_map {
+                            Some("contains_key")
+                        } else {
+                            Some("contains")
+                        }
                     }
                     _ => Some("contains"),
                 }
-            } else { None };
+            } else {
+                None
+            };
 
             let rust_method = match method_name.as_str() {
                 // String methods
@@ -9223,13 +10551,26 @@ impl RustTrans {
                 // remap (String is the common case for .append).
                 "append" => {
                     let lhs_is_struct = if let Expr::Ident(name) = object.as_ref() {
-                        self.local_var_types.get(name)
-                            .map(|ty| matches!(ty,
-                                Type::User(_) | Type::Tag(_) | Type::Enum(_)
-                                | Type::GenericInstance(_)))
+                        self.local_var_types
+                            .get(name)
+                            .map(|ty| {
+                                matches!(
+                                    ty,
+                                    Type::User(_)
+                                        | Type::Tag(_)
+                                        | Type::Enum(_)
+                                        | Type::GenericInstance(_)
+                                )
+                            })
                             .unwrap_or(false)
-                    } else { false };
-                    if !lhs_is_struct { Some("push_str") } else { None }
+                    } else {
+                        false
+                    };
+                    if !lhs_is_struct {
+                        Some("push_str")
+                    } else {
+                        None
+                    }
                 }
                 // Collection methods
                 "push" => Some("push"),
@@ -9252,13 +10593,26 @@ impl RustTrans {
                         Some("__list_set_idx__")
                     } else {
                         let lhs_is_struct = if let Expr::Ident(name) = object.as_ref() {
-                            self.local_var_types.get(name)
-                                .map(|ty| matches!(ty,
-                                    Type::User(_) | Type::Tag(_) | Type::Enum(_)
-                                    | Type::GenericInstance(_)))
+                            self.local_var_types
+                                .get(name)
+                                .map(|ty| {
+                                    matches!(
+                                        ty,
+                                        Type::User(_)
+                                            | Type::Tag(_)
+                                            | Type::Enum(_)
+                                            | Type::GenericInstance(_)
+                                    )
+                                })
                                 .unwrap_or(false)
-                        } else { false };
-                        if !lhs_is_struct { Some("insert") } else { None }
+                        } else {
+                            false
+                        };
+                        if !lhs_is_struct {
+                            Some("insert")
+                        } else {
+                            None
+                        }
                     }
                 }
                 // Plan 384 A9: keep `.delete()` as-is (see note at the other
@@ -9320,22 +10674,43 @@ impl RustTrans {
                 let obj_parens = matches!(object.as_ref(),
                     Expr::Bina(_, op, _) if !matches!(op, Op::Dot)
                 ) || matches!(object.as_ref(), Expr::Unary(Op::Mul, _))
-                || Self::is_char_at_call(object.as_ref());
+                    || Self::is_char_at_call(object.as_ref());
                 // PLAN-681 T-05（N2）：str 族方法的接收器是 Value 读
                 // （`nd.label.contains(kw)`——P2 发射 nd["label"] 为 Value,
                 // Value 自身无 contains/starts_with 等 str 方法）——接收器
                 // 与方法之间插 as_str 降链。仅 str 方法族触发,其余方法
                 // （Value/JSON 语义）直发。
-                let recv_is_value_read_str_method = matches!(method_name.as_str(),
-                    "contains" | "contains_key" | "starts_with" | "ends_with"
-                    | "to_lower" | "lower" | "to_upper" | "upper"
-                    | "trim" | "trim_left" | "trim_right" | "split" | "replace"
-                    | "replace_first" | "find_last" | "is_empty" | "length" | "len")
-                    && self.expr_is_json_value_read(object);
-                if needs_i32_cast && !self.len_i32_cast_suppressed { write!(out, "(")?; }
-                if obj_parens { write!(out, "(")?; }
+                let recv_is_value_read_str_method = matches!(
+                    method_name.as_str(),
+                    "contains"
+                        | "contains_key"
+                        | "starts_with"
+                        | "ends_with"
+                        | "to_lower"
+                        | "lower"
+                        | "to_upper"
+                        | "upper"
+                        | "trim"
+                        | "trim_left"
+                        | "trim_right"
+                        | "split"
+                        | "replace"
+                        | "replace_first"
+                        | "find_last"
+                        | "is_empty"
+                        | "length"
+                        | "len"
+                ) && self.expr_is_json_value_read(object);
+                if needs_i32_cast && !self.len_i32_cast_suppressed {
+                    write!(out, "(")?;
+                }
+                if obj_parens {
+                    write!(out, "(")?;
+                }
                 self.expr(object, out)?;
-                if obj_parens { write!(out, ")")?; }
+                if obj_parens {
+                    write!(out, ")")?;
+                }
                 if recv_is_value_read_str_method {
                     write!(out, ".as_str().unwrap_or_default()")?;
                 }
@@ -9345,7 +10720,10 @@ impl RustTrans {
                 write!(out, "(")?;
                 // Auto-borrow string args for pattern-matching and map lookup methods
                 // P532 W1 G19: replace 同入(同上 Pattern 界)
-                if matches!(rust_name, "contains" | "contains_key" | "starts_with" | "ends_with" | "split" | "replace") {
+                if matches!(
+                    rust_name,
+                    "contains" | "contains_key" | "starts_with" | "ends_with" | "split" | "replace"
+                ) {
                     for (i, arg) in call.args.args.iter().enumerate() {
                         // Only add & for String-typed args, not &str params or literals
                         // Note: local_var_types has StrSlice for ALL str vars (params AND locals),
@@ -9353,10 +10731,13 @@ impl RustTrans {
                         // Local vars of type str are String in Rust and still need &.
                         // Plan 380: char/&str literals are already valid Patterns —
                         // `&'"'` would be `&char` (E0277).
-                        let already_borrowed = matches!(arg, Arg::Pos(Expr::Str(_) | Expr::CStr(_) | Expr::Char(_)))
-                            || if let Arg::Pos(Expr::Ident(name)) = arg {
-                                self.current_fn_str_params.contains(name)
-                            } else { false };
+                        let already_borrowed =
+                            matches!(arg, Arg::Pos(Expr::Str(_) | Expr::CStr(_) | Expr::Char(_)))
+                                || if let Arg::Pos(Expr::Ident(name)) = arg {
+                                    self.current_fn_str_params.contains(name)
+                                } else {
+                                    false
+                                };
                         if !already_borrowed {
                             write!(out, "&")?;
                         }
@@ -9399,12 +10780,23 @@ impl RustTrans {
                                     // borrowing is always safe. Int/Uint stay
                                     // excluded (Vec::get takes usize by value).
                                     !self.current_fn_str_params.contains(name)
-                                        && self.local_var_types.get(name)
-                                            .map(|ty| matches!(ty,
-                                                Type::StrOwned | Type::StrSlice | Type::StrFixed(_)
-                                                | Type::CStrLit | Type::Tuple(_)
-                                                | Type::User(_) | Type::Tag(_) | Type::Enum(_)
-                                                | Type::GenericInstance(_)))
+                                        && self
+                                            .local_var_types
+                                            .get(name)
+                                            .map(|ty| {
+                                                matches!(
+                                                    ty,
+                                                    Type::StrOwned
+                                                        | Type::StrSlice
+                                                        | Type::StrFixed(_)
+                                                        | Type::CStrLit
+                                                        | Type::Tuple(_)
+                                                        | Type::User(_)
+                                                        | Type::Tag(_)
+                                                        | Type::Enum(_)
+                                                        | Type::GenericInstance(_)
+                                                )
+                                            })
                                             .unwrap_or(true)
                                 }
                                 // Field access (cfg.default_provider) — a String
@@ -9413,7 +10805,9 @@ impl RustTrans {
                                 Expr::Dot(_, _) => !recv_is_list,
                                 _ => false,
                             }
-                        } else { false };
+                        } else {
+                            false
+                        };
                         if is_owned_string_arg {
                             write!(out, "&")?;
                         }
@@ -9443,7 +10837,8 @@ impl RustTrans {
                         // 非 Value 型表达式（String/int 局部、Vec 局部、算术）
                         // 同样包 json! 构造 Value；Value 型读（推断 Value）
                         // 与 Unknown（可能是 Value 读）保持直发。
-                        let is_json_value_push = is_push_or_insert && !is_insert
+                        let is_json_value_push = is_push_or_insert
+                            && !is_insert
                             && self.receiver_elem_is_json_value(object)
                             && matches!(arg, Arg::Pos(e) if self.value_push_arg_needs_json_wrap(e));
                         if is_json_value_push {
@@ -9472,7 +10867,9 @@ impl RustTrans {
                                 if let Expr::Int(_) = expr {
                                     write!(out, " as usize")?;
                                 } else if let Expr::Ident(name) = expr {
-                                    let is_int_type = self.local_var_types.get(name)
+                                    let is_int_type = self
+                                        .local_var_types
+                                        .get(name)
                                         .map(|ty| matches!(ty, Type::Int | Type::Uint))
                                         .unwrap_or(false);
                                     if is_int_type {
@@ -9503,16 +10900,27 @@ impl RustTrans {
                                 // Vec needs `.to_string()` (`.clone()` keeps
                                 // &str; is_copy_type treats str as Copy so
                                 // neither clone branch below fires).
-                                let is_str_ty = self.local_var_types.get(name)
-                                    .map(|ty| matches!(ty,
-                                        Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit))
+                                let is_str_ty = self
+                                    .local_var_types
+                                    .get(name)
+                                    .map(|ty| {
+                                        matches!(
+                                            ty,
+                                            Type::StrFixed(_)
+                                                | Type::StrSlice
+                                                | Type::StrOwned
+                                                | Type::CStrLit
+                                        )
+                                    })
                                     .unwrap_or(false)
                                     || (self.local_var_types.get(name).is_none()
                                         && self.current_fn_str_params.contains(name));
                                 if is_str_ty {
                                     write!(out, ".to_string()")?;
                                 } else {
-                                    let is_copy = self.local_var_types.get(name)
+                                    let is_copy = self
+                                        .local_var_types
+                                        .get(name)
                                         .map(|ty| Self::is_copy_type(ty))
                                         .unwrap_or(false);
                                     if !is_copy {
@@ -9535,7 +10943,9 @@ impl RustTrans {
                 // method named trim, e.g. Memory.trim() — `.to_string()` on `()`
                 // is E0599).
                 if matches!(method_name.as_str(), "trim" | "trim_left" | "trim_right") {
-                    let trim_ret_is_void = self.fn_ret_types.get(method_name.as_str())
+                    let trim_ret_is_void = self
+                        .fn_ret_types
+                        .get(method_name.as_str())
                         .map(|t| matches!(t, Type::Void))
                         .unwrap_or(false);
                     if !trim_ret_is_void {
@@ -9587,10 +10997,24 @@ impl RustTrans {
                         .next()
                         .map(|c| c.is_uppercase())
                         .unwrap_or(false)
-                        || matches!(type_name.as_str(),
-                            "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
-                            | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
-                            | "f32" | "f64" | "bool" | "char" | "str"
+                        || matches!(
+                            type_name.as_str(),
+                            "u8" | "u16"
+                                | "u32"
+                                | "u64"
+                                | "u128"
+                                | "usize"
+                                | "i8"
+                                | "i16"
+                                | "i32"
+                                | "i64"
+                                | "i128"
+                                | "isize"
+                                | "f32"
+                                | "f64"
+                                | "bool"
+                                | "char"
+                                | "str"
                         )
                         || Self::auto_type_to_rust(type_name.as_str()).is_some());
                 if is_type {
@@ -9614,7 +11038,8 @@ impl RustTrans {
                     } else if self.local_struct_types.contains(type_name.as_str())
                         || self.tag_types.contains(type_name.as_str())
                         || self.known_enum_names.contains(type_name.as_str())
-                        || self.union_types.contains(type_name.as_str()) {
+                        || self.union_types.contains(type_name.as_str())
+                    {
                         // Plan 013 (B1/BUG3): the type is declared locally in
                         // this file (struct/enum/tag/union). Never qualify it
                         // with an external crate prefix — a `use.rust <crate>`
@@ -9632,10 +11057,14 @@ impl RustTrans {
                         } else {
                             // Type not in uses at all — qualify with the best matching
                             // external crate. Prefer the most specific (longest named) crate.
-                            let source_crate = self.uses.iter()
+                            let source_crate = self
+                                .uses
+                                .iter()
                                 .filter(|u| {
                                     let u_str = u.as_str();
-                                    !u_str.contains("::") && !u_str.contains('.') && u_str != "a2r_std"
+                                    !u_str.contains("::")
+                                        && !u_str.contains('.')
+                                        && u_str != "a2r_std"
                                         && !u_str.starts_with("std")
                                         && !u_str.starts_with("auto_lang")
                                         && !Self::auto_type_to_rust(u_str).is_some()
@@ -9662,7 +11091,9 @@ impl RustTrans {
                         if let Some(fields) = struct_fields {
                             // Struct variant: Type::Variant { field1: val1, field2: val2 }
                             write!(out, " {{ ")?;
-                            for (i, (arg, field_name)) in call.args.args.iter().zip(fields.iter()).enumerate() {
+                            for (i, (arg, field_name)) in
+                                call.args.args.iter().zip(fields.iter()).enumerate()
+                            {
                                 write!(out, "{}: ", field_name)?;
                                 match arg {
                                     Arg::Pos(expr) => {
@@ -9681,7 +11112,9 @@ impl RustTrans {
                                         write!(out, "{}", name)?;
                                     }
                                 }
-                                if i < call.args.args.len().min(fields.len()) - 1 { write!(out, ", ")?; }
+                                if i < call.args.args.len().min(fields.len()) - 1 {
+                                    write!(out, ", ")?;
+                                }
                             }
                             write!(out, " }}")?;
                         } else if call.args.args.is_empty()
@@ -9701,11 +11134,21 @@ impl RustTrans {
                                     if matches!(expr, Expr::Str(_) | Expr::CStr(_)) {
                                         write!(out, ".to_string()")?;
                                     } else if let Expr::Ident(name) = expr {
-                                        let field_is_string = tuple_field_types.as_ref()
+                                        let field_is_string = tuple_field_types
+                                            .as_ref()
                                             .and_then(|types| types.get(i))
-                                            .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
+                                            .map(|ty| {
+                                                matches!(
+                                                    ty,
+                                                    Type::StrOwned
+                                                        | Type::StrFixed(_)
+                                                        | Type::StrSlice
+                                                )
+                                            })
                                             .unwrap_or(false);
-                                        let var_is_str_slice = self.local_var_types.get(name)
+                                        let var_is_str_slice = self
+                                            .local_var_types
+                                            .get(name)
                                             .map(|ty| matches!(ty, Type::StrSlice))
                                             .unwrap_or(false);
                                         if field_is_string && var_is_str_slice {
@@ -9713,7 +11156,9 @@ impl RustTrans {
                                         }
                                     }
                                 }
-                                if i < call.args.args.len() - 1 { write!(out, ", ")?; }
+                                if i < call.args.args.len() - 1 {
+                                    write!(out, ", ")?;
+                                }
                             }
                             write!(out, ")")?;
                         }
@@ -9729,10 +11174,18 @@ impl RustTrans {
                     // calling a unit variant is E0618. The CamelCase gate
                     // keeps real snake_case associated fns untouched.
                     if call.args.args.is_empty()
-                        && method_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                        && method_name
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false)
                         && self.known_enum_names.contains(type_name.as_str())
-                        && !self.enum_struct_variants.contains_key(&(type_name.clone(), method_name.clone()))
-                        && !self.enum_tuple_variants.contains_key(&(type_name.clone(), method_name.clone()))
+                        && !self
+                            .enum_struct_variants
+                            .contains_key(&(type_name.clone(), method_name.clone()))
+                        && !self
+                            .enum_tuple_variants
+                            .contains_key(&(type_name.clone(), method_name.clone()))
                     {
                         return Ok(());
                     }
@@ -9741,26 +11194,35 @@ impl RustTrans {
                     // Plan 599: skip when the closure already opted in via
                     // `move (..) => ..` — emitting both produced `move move ||`.
                     if method_name == "spawn"
-                        && call.args.args.first().map_or(false, |a| {
-                            matches!(a, Arg::Pos(Expr::Closure(c)) if !c.is_move)
-                        })
+                        && call.args.args.first().map_or(
+                            false,
+                            |a| matches!(a, Arg::Pos(Expr::Closure(c)) if !c.is_move),
+                        )
                     {
                         write!(out, "move ")?;
                     }
                     // Prefer qualified key "Type.method" for accurate lookup
                     let qualified_key: AutoStr = format!("{}.{}", type_name, method_name).into();
-                    let static_str_flags = self.fn_str_param_indices.get(&qualified_key)
+                    let static_str_flags = self
+                        .fn_str_param_indices
+                        .get(&qualified_key)
                         .cloned()
                         .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned());
                     for (i, arg) in call.args.args.iter().enumerate() {
                         if let Arg::Pos(expr) = arg {
                             self.expr(expr, out)?;
                             // Auto-borrow for str params
-                            let is_str_param = static_str_flags.as_ref()
+                            let is_str_param = static_str_flags
+                                .as_ref()
                                 .and_then(|f| f.get(i))
                                 .copied()
                                 .unwrap_or(false);
-                            if is_str_param && !matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::Float(_, _)) {
+                            if is_str_param
+                                && !matches!(
+                                    expr,
+                                    Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::Float(_, _)
+                                )
+                            {
                                 let is_fn_str_param = if let Expr::Ident(name) = expr {
                                     self.current_fn_str_params.contains(name)
                                 } else {
@@ -9779,7 +11241,9 @@ impl RustTrans {
                             let is_enum_ctor = self.known_enum_names.contains(type_name.as_str());
                             if !is_str_param && !is_enum_ctor {
                                 if let Expr::Ident(name) = expr {
-                                    if self.local_var_types.get(name)
+                                    if self
+                                        .local_var_types
+                                        .get(name)
                                         .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_)))
                                         .unwrap_or(false)
                                     {
@@ -9830,7 +11294,8 @@ impl RustTrans {
                                     u_str == name || u_str.ends_with(&format!("::{}", name))
                                 })
                                 || self.dep_crates.contains(id)
-                                || self.module_types.contains_key(name) // Plan 264
+                                || self.module_types.contains_key(name)
+                            // Plan 264
                         )
                 }
                 Expr::Dot(il, _) => {
@@ -9880,18 +11345,20 @@ impl RustTrans {
             // when the method name is NOT a generic Rust method (get, insert, push, etc.)
             // to avoid false positive .as_str() on non-string args.
             let generic_rust_methods = [
-                "get", "insert", "push", "remove", "contains", "len",
-                "is_empty", "iter", "keys", "values", "clone", "new",
+                "get", "insert", "push", "remove", "contains", "len", "is_empty", "iter", "keys",
+                "values", "clone", "new",
             ];
             let method_str_flags = if let Expr::Ident(obj_name) = object.as_ref() {
                 // Try to infer the type from local_var_types
-                let obj_type: String = self.local_var_types.get(obj_name).map(|ty| {
-                    match ty {
+                let obj_type: String = self
+                    .local_var_types
+                    .get(obj_name)
+                    .map(|ty| match ty {
                         Type::User(name) => name.to_string(),
                         Type::Enum(decl) => decl.borrow().name.to_string(),
                         _ => String::new(),
-                    }
-                }).unwrap_or_default();
+                    })
+                    .unwrap_or_default();
                 let qualified: AutoStr = format!("{}.{}", obj_type, method_name).into();
                 let from_qualified = self.fn_str_param_indices.get(&qualified).cloned();
                 if from_qualified.is_some() {
@@ -9907,13 +11374,15 @@ impl RustTrans {
                 // Only use qualified lookups.
                 if let Expr::Dot(inner, type_field) = object.as_ref() {
                     if let Expr::Ident(obj_name) = inner.as_ref() {
-                        let obj_type: String = self.local_var_types.get(obj_name).map(|ty| {
-                            match ty {
+                        let obj_type: String = self
+                            .local_var_types
+                            .get(obj_name)
+                            .map(|ty| match ty {
                                 Type::User(name) => name.to_string(),
                                 Type::Enum(decl) => decl.borrow().name.to_string(),
                                 _ => String::new(),
-                            }
-                        }).unwrap_or_default();
+                            })
+                            .unwrap_or_default();
                         // Try "obj_type.method" first, then "type_field.method"
                         let qualified: AutoStr = format!("{}.{}", obj_type, method_name).into();
                         let result = self.fn_str_param_indices.get(&qualified).cloned();
@@ -9921,15 +11390,25 @@ impl RustTrans {
                             result
                         } else {
                             // module.Type.method() — try "Type.method"
-                            let type_qualified: AutoStr = format!("{}.{}", type_field, method_name).into();
-                            self.fn_str_param_indices.get(&type_qualified).cloned()
-                                .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned())
+                            let type_qualified: AutoStr =
+                                format!("{}.{}", type_field, method_name).into();
+                            self.fn_str_param_indices
+                                .get(&type_qualified)
+                                .cloned()
+                                .or_else(|| {
+                                    self.fn_str_param_indices.get(method_name.as_str()).cloned()
+                                })
                         }
                     } else {
                         // Nested: expr.Type.method() — try "Type.method"
-                        let type_qualified: AutoStr = format!("{}.{}", type_field, method_name).into();
-                        self.fn_str_param_indices.get(&type_qualified).cloned()
-                            .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned())
+                        let type_qualified: AutoStr =
+                            format!("{}.{}", type_field, method_name).into();
+                        self.fn_str_param_indices
+                            .get(&type_qualified)
+                            .cloned()
+                            .or_else(|| {
+                                self.fn_str_param_indices.get(method_name.as_str()).cloned()
+                            })
                     }
                 } else if let Expr::Bina(_inner, Op::Dot, rhs) = object.as_ref() {
                     // module.Type.method() via Bina — try "Type.method"
@@ -9939,9 +11418,14 @@ impl RustTrans {
                         String::new()
                     };
                     if !type_name.is_empty() {
-                        let type_qualified: AutoStr = format!("{}.{}", type_name, method_name).into();
-                        self.fn_str_param_indices.get(&type_qualified).cloned()
-                            .or_else(|| self.fn_str_param_indices.get(method_name.as_str()).cloned())
+                        let type_qualified: AutoStr =
+                            format!("{}.{}", type_name, method_name).into();
+                        self.fn_str_param_indices
+                            .get(&type_qualified)
+                            .cloned()
+                            .or_else(|| {
+                                self.fn_str_param_indices.get(method_name.as_str()).cloned()
+                            })
                     } else {
                         None
                     }
@@ -9960,7 +11444,9 @@ impl RustTrans {
             // "field, not a method"). The parser drops the source parens, so
             // re-add them around `self.cb` for known task state fields.
             let is_task_state_field = self.task_state_fields.contains(method_name.as_str());
-            if obj_needs_parens || is_task_state_field { write!(out, "(")?; }
+            if obj_needs_parens || is_task_state_field {
+                write!(out, "(")?;
+            }
             // Plan 264: When object is a known module name and this is a type chain,
             // output crate::module instead of bare module name
             if obj_is_type_chain {
@@ -9980,18 +11466,29 @@ impl RustTrans {
             } else {
                 self.expr(object, out)?;
             }
-            if obj_needs_parens { write!(out, ")")?; }
-            write!(out, "{}{}", if obj_is_type_chain { "::" } else { "." }, method_name)?;
-            if is_task_state_field { write!(out, ")")?; }
+            if obj_needs_parens {
+                write!(out, ")")?;
+            }
+            write!(
+                out,
+                "{}{}",
+                if obj_is_type_chain { "::" } else { "." },
+                method_name
+            )?;
+            if is_task_state_field {
+                write!(out, ")")?;
+            }
             // Plan 395: explicit generic type args → Rust turbofish
             self.emit_turbofish_args(call, out)?;
             write!(out, "(")?;
             // Add `move` for thread::spawn closures (captured locals need 'static).
             // Plan 599: skip when already `move (..) => ..` (double `move move ||`).
-            if obj_is_type_chain && method_name == "spawn"
-                && call.args.args.first().map_or(false, |a| {
-                    matches!(a, Arg::Pos(Expr::Closure(c)) if !c.is_move)
-                })
+            if obj_is_type_chain
+                && method_name == "spawn"
+                && call.args.args.first().map_or(
+                    false,
+                    |a| matches!(a, Arg::Pos(Expr::Closure(c)) if !c.is_move),
+                )
             {
                 write!(out, "move ")?;
             }
@@ -10005,7 +11502,8 @@ impl RustTrans {
             // cloned; a concrete struct value is moved — mirroring the free-fn path.
             let method_spec_flags = self.fn_spec_param_indices.get(method_name).cloned();
             for (i, arg) in call.args.args.iter().enumerate() {
-                let is_method_spec_param = method_spec_flags.as_ref()
+                let is_method_spec_param = method_spec_flags
+                    .as_ref()
                     .and_then(|f| f.get(i))
                     .copied()
                     .unwrap_or(false);
@@ -10014,7 +11512,9 @@ impl RustTrans {
                         // Auto-borrow for HashMap.contains_key(): key arg needs &
                         if i == 0 && method_name.as_str() == "contains_key" {
                             if let Expr::Ident(name) = expr {
-                                let is_str_slice = self.local_var_types.get(name)
+                                let is_str_slice = self
+                                    .local_var_types
+                                    .get(name)
                                     .map(|ty| matches!(ty, Type::StrSlice))
                                     .unwrap_or(false);
                                 if !is_str_slice {
@@ -10030,7 +11530,9 @@ impl RustTrans {
                         // ident is a known &str slice (already a reference).
                         if i == 0 && method_name.as_str() == "get" {
                             if let Expr::Ident(name) = expr {
-                                let is_str_slice = self.local_var_types.get(name)
+                                let is_str_slice = self
+                                    .local_var_types
+                                    .get(name)
                                     .map(|ty| matches!(ty, Type::StrSlice))
                                     .unwrap_or(false);
                                 if !is_str_slice {
@@ -10041,19 +11543,22 @@ impl RustTrans {
                         // Plan 514 W3-15: is_str_param 上提(原在发射后计算,
                         // `.str()` 分支需要先行判定)+已 stringify 旗标。
                         let is_str_param = if obj_is_type_chain {
-                            method_str_flags.as_ref()
+                            method_str_flags
+                                .as_ref()
                                 .and_then(|f| f.get(i))
                                 .copied()
                                 .unwrap_or(false)
                         } else {
-                            method_str_flags.as_ref()
+                            method_str_flags
+                                .as_ref()
                                 .and_then(|f| f.get(i))
                                 .copied()
                                 .unwrap_or(false)
-                            || method_str_flags.as_ref()
-                                .and_then(|f| f.get(i + 1))
-                                .copied()
-                                .unwrap_or(false)
+                                || method_str_flags
+                                    .as_ref()
+                                    .and_then(|f| f.get(i + 1))
+                                    .copied()
+                                    .unwrap_or(false)
                         };
                         let mut m_str_stringified_here = false;
                         // Plan 514 W3-15: Auto 通用 `.str()` 入 &str 方法参数位
@@ -10069,15 +11574,23 @@ impl RustTrans {
                             if let Expr::Call(c2) = expr {
                                 if let Expr::Dot(recv2, _) = c2.name.as_ref() {
                                     let recv_ty = self.infer_type_from_expr(recv2);
-                                    let borrow_direct = matches!(recv_ty,
-                                        Type::StrOwned | Type::StrSlice
-                                        | Type::StrFixed(_) | Type::CStrLit);
+                                    let borrow_direct = matches!(
+                                        recv_ty,
+                                        Type::StrOwned
+                                            | Type::StrSlice
+                                            | Type::StrFixed(_)
+                                            | Type::CStrLit
+                                    );
                                     let recv_parens = matches!(recv2.as_ref(),
                                         Expr::Bina(_, op3, _) if !matches!(op3, Op::Dot));
                                     if borrow_direct {
-                                        if recv_parens { write!(out, "(")?; }
+                                        if recv_parens {
+                                            write!(out, "(")?;
+                                        }
                                         self.expr(recv2, out)?;
-                                        if recv_parens { write!(out, ")")?; }
+                                        if recv_parens {
+                                            write!(out, ")")?;
+                                        }
                                         write!(out, ".as_str()")?;
                                     } else {
                                         write!(out, "format!(\"{{}}\", ")?;
@@ -10135,10 +11648,17 @@ impl RustTrans {
                             let should_to_string = if i == 0 {
                                 matches!(expr, Expr::Str(_) | Expr::CStr(_))
                                     || if let Expr::Ident(name) = expr {
-                                        self.local_var_types.get(name).map(|ty| matches!(
-                                            ty,
-                                            Type::StrFixed(_) | Type::StrSlice | Type::StrOwned
-                                        )).unwrap_or(false)
+                                        self.local_var_types
+                                            .get(name)
+                                            .map(|ty| {
+                                                matches!(
+                                                    ty,
+                                                    Type::StrFixed(_)
+                                                        | Type::StrSlice
+                                                        | Type::StrOwned
+                                                )
+                                            })
+                                            .unwrap_or(false)
                                     } else {
                                         false
                                     }
@@ -10208,11 +11728,14 @@ impl RustTrans {
                                 // 真是 &str;StrSlice 注册的局部来自 str 返回值
                                 // 调用(lib `var name = p.text()` 族)在 Rust 侧
                                 // 是 String——需要 .as_str(),不得跳过。
-                                self.local_var_types.get(name)
+                                self.local_var_types
+                                    .get(name)
                                     .map(|ty| matches!(ty, Type::StrSlice))
                                     .unwrap_or(false)
                                     && self.current_fn_str_params.contains(name)
-                            } else { false };
+                            } else {
+                                false
+                            };
                             if !arg_already_str_slice {
                                 write!(out, ".as_str()")?;
                             }
@@ -10222,7 +11745,9 @@ impl RustTrans {
                         // APIs accept &str rather than String.
                         if obj_is_type_chain && !is_str_param {
                             if let Expr::Ident(name) = expr {
-                                if self.local_var_types.get(name)
+                                if self
+                                    .local_var_types
+                                    .get(name)
                                     .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_)))
                                     .unwrap_or(false)
                                 {
@@ -10237,15 +11762,27 @@ impl RustTrans {
                                 // &str at runtime (str param / str-return fn) —
                                 // pushing into a String element Vec needs
                                 // `.to_string()` (`.clone()` keeps &str).
-                                let str_slice = self.local_var_types.get(name)
-                                    .map(|ty| matches!(ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit))
+                                let str_slice = self
+                                    .local_var_types
+                                    .get(name)
+                                    .map(|ty| {
+                                        matches!(
+                                            ty,
+                                            Type::StrFixed(_)
+                                                | Type::StrSlice
+                                                | Type::StrOwned
+                                                | Type::CStrLit
+                                        )
+                                    })
                                     .unwrap_or(false)
                                     || (self.local_var_types.get(name).is_none()
                                         && self.current_fn_str_params.contains(name));
                                 if str_slice {
                                     write!(out, ".to_string()")?;
                                 } else {
-                                    let is_copy = self.local_var_types.get(name)
+                                    let is_copy = self
+                                        .local_var_types
+                                        .get(name)
                                         .map(|ty| Self::is_copy_type(ty))
                                         .unwrap_or(false);
                                     if !is_copy {
@@ -10258,7 +11795,9 @@ impl RustTrans {
                         // Skip 1st arg (key) — it's usually String/Copy. Only clone the value arg.
                         if is_insert && i >= 1 {
                             if let Expr::Ident(name) = expr {
-                                let is_copy = self.local_var_types.get(name)
+                                let is_copy = self
+                                    .local_var_types
+                                    .get(name)
                                     .map(|ty| Self::is_copy_type(ty))
                                     .unwrap_or(false);
                                 if !is_copy {
@@ -10269,7 +11808,9 @@ impl RustTrans {
                     }
                     other => self.arg(other, out)?,
                 }
-                if i < call.args.args.len() - 1 { write!(out, ", ")?; }
+                if i < call.args.args.len() - 1 {
+                    write!(out, ", ")?;
+                }
             }
             write!(out, ")")?;
             // Don't unconditionally append .cloned() on .get() calls —
@@ -10308,7 +11849,11 @@ impl RustTrans {
                                             if self.tag_types.contains(type_name)
                                                 || self.module_types.contains_key(mod_name.as_str())
                                             {
-                                                tag_match = Some((Some(mod_name.clone()), type_name.clone(), variant_name.clone()));
+                                                tag_match = Some((
+                                                    Some(mod_name.clone()),
+                                                    type_name.clone(),
+                                                    variant_name.clone(),
+                                                ));
                                             }
                                         }
                                     }
@@ -10336,7 +11881,11 @@ impl RustTrans {
                                         if self.tag_types.contains(type_name)
                                             || self.module_types.contains_key(mod_name.as_str())
                                         {
-                                            tag_match = Some((Some(mod_name.clone()), type_name.clone(), field_name.clone()));
+                                            tag_match = Some((
+                                                Some(mod_name.clone()),
+                                                type_name.clone(),
+                                                field_name.clone(),
+                                            ));
                                         }
                                     }
                                 }
@@ -10350,7 +11899,11 @@ impl RustTrans {
                                 if self.tag_types.contains(inner_type_name)
                                     || self.module_types.contains_key(mod_name.as_str())
                                 {
-                                    tag_match = Some((Some(mod_name.clone()), inner_type_name.clone(), field_name.clone()));
+                                    tag_match = Some((
+                                        Some(mod_name.clone()),
+                                        inner_type_name.clone(),
+                                        field_name.clone(),
+                                    ));
                                 }
                             }
                         }
@@ -10375,7 +11928,9 @@ impl RustTrans {
                 if let Some(fields) = struct_fields {
                     // Struct variant: Type::Variant { field1: val1, field2: val2 }
                     write!(out, " {{ ")?;
-                    for (i, (arg, field_name)) in call.args.args.iter().zip(fields.iter()).enumerate() {
+                    for (i, (arg, field_name)) in
+                        call.args.args.iter().zip(fields.iter()).enumerate()
+                    {
                         if let Arg::Pos(expr) = arg {
                             write!(out, "{}: ", field_name)?;
                             self.expr(expr, out)?;
@@ -10383,11 +11938,12 @@ impl RustTrans {
                                 write!(out, ".to_string()")?;
                             }
                         }
-                        if i < call.args.args.len().min(fields.len()) - 1 { write!(out, ", ")?; }
+                        if i < call.args.args.len().min(fields.len()) - 1 {
+                            write!(out, ", ")?;
+                        }
                     }
                     write!(out, " }}")?;
-                } else if call.args.args.is_empty()
-                    && !self.enum_tuple_variants.contains_key(&key)
+                } else if call.args.args.is_empty() && !self.enum_tuple_variants.contains_key(&key)
                 {
                     // Plan 016 Phase 4: zero-arg call on a variant with no
                     // registered payload is a UNIT variant (Auto spells it
@@ -10404,11 +11960,19 @@ impl RustTrans {
                                 write!(out, ".to_string()")?;
                             } else if let Expr::Ident(name) = expr {
                                 // Check if tuple field is String but arg is &str
-                                let field_is_string = tuple_field_types.as_ref()
+                                let field_is_string = tuple_field_types
+                                    .as_ref()
                                     .and_then(|types| types.get(i))
-                                    .map(|ty| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
+                                    .map(|ty| {
+                                        matches!(
+                                            ty,
+                                            Type::StrOwned | Type::StrFixed(_) | Type::StrSlice
+                                        )
+                                    })
                                     .unwrap_or(false);
-                                let var_is_str_slice = self.local_var_types.get(name)
+                                let var_is_str_slice = self
+                                    .local_var_types
+                                    .get(name)
                                     .map(|ty| matches!(ty, Type::StrSlice))
                                     .unwrap_or(false);
                                 if field_is_string && var_is_str_slice {
@@ -10416,7 +11980,9 @@ impl RustTrans {
                                 }
                             }
                         }
-                        if i < call.args.args.len() - 1 { write!(out, ", ")?; }
+                        if i < call.args.args.len() - 1 {
+                            write!(out, ", ")?;
+                        }
                     }
                     write!(out, ")")?;
                 }
@@ -10434,7 +12000,9 @@ impl RustTrans {
                 .next()
                 .map(|c| c.is_uppercase())
                 .unwrap_or(false);
-            let is_screaming_case = type_name.chars().all(|c| c.is_uppercase() || c.is_ascii_digit() || c == '_')
+            let is_screaming_case = type_name
+                .chars()
+                .all(|c| c.is_uppercase() || c.is_ascii_digit() || c == '_')
                 && type_name.contains('_');
             if first_char_upper && !is_screaming_case {
                 // This is a struct construction: Type { field1: value1, ... }
@@ -10447,7 +12015,8 @@ impl RustTrans {
             match fn_name.as_str() {
                 "min" => {
                     // min(a, b) -> a2r_std::math::min(a, b)
-                    self.a2r_std_used.set(true); write!(out, "a2r_std::math::min(")?;
+                    self.a2r_std_used.set(true);
+                    write!(out, "a2r_std::math::min(")?;
                     for (i, arg) in call.args.args.iter().enumerate() {
                         self.arg(arg, out)?;
                         if i < call.args.args.len() - 1 {
@@ -10459,7 +12028,8 @@ impl RustTrans {
                 }
                 "max" => {
                     // max(a, b) -> a2r_std::math::max(a, b)
-                    self.a2r_std_used.set(true); write!(out, "a2r_std::math::max(")?;
+                    self.a2r_std_used.set(true);
+                    write!(out, "a2r_std::math::max(")?;
                     for (i, arg) in call.args.args.iter().enumerate() {
                         self.arg(arg, out)?;
                         if i < call.args.args.len() - 1 {
@@ -10477,7 +12047,12 @@ impl RustTrans {
         // e.g., types.ToolChatRequest(a, b, c) → crate::types::ToolChatRequest { field1: a, ... }
         if let Expr::Dot(obj, type_name) = call.name.as_ref() {
             if let Expr::Ident(module_name) = obj.as_ref() {
-                if type_name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                if type_name
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
+                {
                     let is_module = self.module_types.contains_key(module_name.as_str())
                         || self.uses.iter().any(|u| {
                             let u_str = u.as_str();
@@ -10485,14 +12060,24 @@ impl RustTrans {
                                 || u_str.ends_with(&format!("::{}", module_name))
                         });
                     if is_module {
-                        let qualified = if self.merge_mode || module_name.as_str() == self.current_module_name {
+                        let qualified = if self.merge_mode
+                            || module_name.as_str() == self.current_module_name
+                        {
                             format!("{}::{}", module_name, type_name)
                         } else {
                             format!("crate::{}::{}", module_name, type_name)
                         };
                         // Use bare type name for struct_fields lookup
-                        let field_names = self.struct_fields.get(type_name).cloned().unwrap_or_default();
-                        let field_types = self.struct_field_types.get(type_name).cloned().unwrap_or_default();
+                        let field_names = self
+                            .struct_fields
+                            .get(type_name)
+                            .cloned()
+                            .unwrap_or_default();
+                        let field_types = self
+                            .struct_field_types
+                            .get(type_name)
+                            .cloned()
+                            .unwrap_or_default();
 
                         if call.args.args.is_empty() {
                             write!(out, "{} {{}}", qualified)?;
@@ -10500,7 +12085,8 @@ impl RustTrans {
                         }
                         write!(out, "{} {{ ", qualified)?;
                         for (i, arg) in call.args.args.iter().enumerate() {
-                            let field_name = field_names.get(i)
+                            let field_name = field_names
+                                .get(i)
                                 .map(|n| n.as_str())
                                 .unwrap_or_else(|| if i == 0 { "field0" } else { "fieldN" });
                             write!(out, "{}: ", field_name)?;
@@ -10549,7 +12135,11 @@ impl RustTrans {
             let last_seg = match call.name.as_ref() {
                 Expr::Dot(_, field) => Some(field.as_str()),
                 Expr::Bina(_, Op::Dot, rhs) => {
-                    if let Expr::Ident(name) = rhs.as_ref() { Some(name.as_str()) } else { None }
+                    if let Expr::Ident(name) = rhs.as_ref() {
+                        Some(name.as_str())
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             };
@@ -10574,7 +12164,9 @@ impl RustTrans {
             } else {
                 None
             }
-        } else { None };
+        } else {
+            None
+        };
 
         // C11 (Plan 018 §12 a2r-11): callee `mut p T` params → pass `&mut arg`.
         let mut_param_flags = if let Expr::Ident(fn_name) = call.name.as_ref() {
@@ -10594,7 +12186,11 @@ impl RustTrans {
             let last_seg = match call.name.as_ref() {
                 Expr::Dot(_, field) => Some(field.as_str()),
                 Expr::Bina(_, Op::Dot, rhs) => {
-                    if let Expr::Ident(name) = rhs.as_ref() { Some(name.as_str()) } else { None }
+                    if let Expr::Ident(name) = rhs.as_ref() {
+                        Some(name.as_str())
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             };
@@ -10620,12 +12216,13 @@ impl RustTrans {
         };
 
         for (i, arg) in call.args.args.iter().enumerate() {
-            let is_str_param = str_flags.as_ref()
+            let is_str_param = str_flags
+                .as_ref()
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
-            let needs_borrow = is_str_param && !Self::is_string_literal_arg(arg)
-                && !self.is_str_slice_var(arg);
+            let needs_borrow =
+                is_str_param && !Self::is_string_literal_arg(arg) && !self.is_str_slice_var(arg);
 
             // Plan 384 A3: reference-param borrow injection. When the callee's
             // declared param type is `Type::Reference(T)` (e.g. extern_impl
@@ -10633,7 +12230,8 @@ impl RustTrans {
             // argument (`&arg`) so the call compiles against `&T` params.
             // String literals, already-`&str` slice vars, and `self` are left
             // untouched (they coerce or are already borrowed).
-            let needs_ref_borrow = param_types.as_ref()
+            let needs_ref_borrow = param_types
+                .as_ref()
                 .and_then(|pts| pts.get(i))
                 .map(|pt| matches!(pt, Type::Reference(_)))
                 .unwrap_or(false)
@@ -10641,12 +12239,16 @@ impl RustTrans {
                 && if let Arg::Pos(Expr::Ident(name)) = arg {
                     // Borrow owned locals/params; skip str-slice vars (already &str)
                     // and `self` (autoref) and already-clone suffixed.
-                    name.as_str() != "self"
-                        && !self.is_str_slice_var(arg)
+                    name.as_str() != "self" && !self.is_str_slice_var(arg)
                 } else if let Arg::Pos(expr) = arg {
                     // Borrow struct-literal / method-call / field-access args
-                    !matches!(expr, Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::Float(_,_))
-                } else { false };
+                    !matches!(
+                        expr,
+                        Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::Float(_, _)
+                    )
+                } else {
+                    false
+                };
 
             // Plan 347: Fallback auto-borrow for cross-module / imported
             // function calls. When the callee's parameter types are not in the
@@ -10672,10 +12274,18 @@ impl RustTrans {
                     // local declared `str` is recorded as StrSlice but renders
                     // as an owned `String` in Rust, so it still needs borrowing.
                     !self.current_fn_str_params.contains(name)
-                        && self.local_var_types.get(name)
-                            .map(|ty| matches!(ty,
-                                Type::StrOwned | Type::StrFixed(_) | Type::CStrLit
-                                | Type::StrSlice))
+                        && self
+                            .local_var_types
+                            .get(name)
+                            .map(|ty| {
+                                matches!(
+                                    ty,
+                                    Type::StrOwned
+                                        | Type::StrFixed(_)
+                                        | Type::CStrLit
+                                        | Type::StrSlice
+                                )
+                            })
                             .unwrap_or(false)
                 } else if let Arg::Pos(expr) = arg {
                     // Plan 368 FU-2: an inline string concatenation
@@ -10685,39 +12295,46 @@ impl RustTrans {
                     // branch above. expr_contains_string detects any concat
                     // involving a string operand.
                     self.expr_contains_string(expr)
-                } else { false };
+                } else {
+                    false
+                };
 
             // Auto-cast enum→i32 when passing an enum variable to an Int param
-            let is_int_param = int_flags.as_ref()
+            let is_int_param = int_flags
+                .as_ref()
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
             let needs_enum_cast = is_int_param
                 && if let Arg::Pos(Expr::Ident(name)) = arg {
-                    self.local_var_types.get(name)
+                    self.local_var_types
+                        .get(name)
                         .map(|ty| match ty {
                             Type::Enum(_) => true,
-                            Type::User(td) => {
-                                self.known_enum_names.contains(&td.name)
-                            }
+                            Type::User(td) => self.known_enum_names.contains(&td.name),
                             _ => false,
                         })
                         .unwrap_or(false)
-                } else { false };
+                } else {
+                    false
+                };
 
             // Auto-clone when passing a variable to a function that takes a struct param
-            let is_struct_param = struct_flags.as_ref()
+            let is_struct_param = struct_flags
+                .as_ref()
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
             // C11 (Plan 018 §12 a2r-11): callee param is `mut p T` (&mut T) →
             // pass `&mut arg` (never arg.clone()).
-            let is_mut_param = mut_param_flags.as_ref()
+            let is_mut_param = mut_param_flags
+                .as_ref()
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
             // Skip .clone() for merge-mode context types (they use &mut instead)
-            let is_merge_mut = merge_mut_flags.as_ref()
+            let is_merge_mut = merge_mut_flags
+                .as_ref()
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
@@ -10726,29 +12343,41 @@ impl RustTrans {
             // must pass `&mut sb` (never `sb.clone()` — that would break the
             // shared accumulator). This is independent of merge_mode.
             let is_sb_param = if matches!(arg, Arg::Pos(Expr::Ident(_))) {
-                param_types.as_ref()
+                param_types
+                    .as_ref()
                     .and_then(|pts| pts.get(i))
                     .map(|pt| Self::is_sb_ref_type(pt))
                     .unwrap_or(false)
-            } else { false };
+            } else {
+                false
+            };
             // Check param type from fn_param_types for auto &mut insertion
             // Skip if the variable is already a &mut param of the current function
             let is_already_mut_param = if let Arg::Pos(Expr::Ident(name)) = arg {
                 self.current_fn_mut_params.contains(name)
-            } else { false };
-            let needs_mut_borrow = if self.merge_mode && matches!(arg, Arg::Pos(Expr::Ident(_)))
+            } else {
+                false
+            };
+            let needs_mut_borrow = if self.merge_mode
+                && matches!(arg, Arg::Pos(Expr::Ident(_)))
                 && !is_already_mut_param
             {
-                param_types.as_ref()
+                param_types
+                    .as_ref()
                     .and_then(|pts| pts.get(i))
                     .map(|pt| Self::is_merge_mut_type(pt))
                     .unwrap_or(false)
-            } else { false };
+            } else {
+                false
+            };
             // Plan 433 A1: passing an &mut param of the current fn to a
             // BY-VALUE param (non-mut callee) must deref-clone (&mut Vec<T> →
             // Vec<T>); a raw ident would move the reference (E0308).
-            let needs_mut_param_clone = is_already_mut_param && !is_mut_param
-                && !needs_mut_borrow && !is_merge_mut && !is_sb_param
+            let needs_mut_param_clone = is_already_mut_param
+                && !is_mut_param
+                && !needs_mut_borrow
+                && !is_merge_mut
+                && !is_sb_param
                 && matches!(arg, Arg::Pos(Expr::Ident(_)));
             // Plan 016 (auto-down R4): passing an owned `Vec<T>` ident (e.g.
             // the current fn's own `List` param, `repl` in a recursive tree
@@ -10758,7 +12387,8 @@ impl RustTrans {
             // Guarded to idents whose local type is itself an owned List (so
             // &T/&mut params and iter vars are untouched).
             let is_owned_list_arg = !is_struct_param
-                && param_types.as_ref()
+                && param_types
+                    .as_ref()
                     .and_then(|pts| pts.get(i))
                     .map(|pt| matches!(pt, Type::List(_)))
                     .unwrap_or(false)
@@ -10774,7 +12404,9 @@ impl RustTrans {
                         || self.global_var_types.get(name.as_str())
                             .map(|ty| matches!(ty, Type::List(_) | Type::Array(_)))
                             .unwrap_or(false)
-                } else { false };
+                } else {
+                    false
+                };
             // Plan 016 Phase 4: a field-read (`s.marks`, `node.attrs`, `a.sel`)
             // passed to a by-value OWNED param (Vec/struct/enum/Map — anything
             // param_takes_ownership flags) MOVES the field out of its binding;
@@ -10788,7 +12420,8 @@ impl RustTrans {
             // (cast cannot be followed by a method call),排除出本支路。
             let dot_arg_owned_param = matches!(arg, Arg::Pos(Expr::Dot(_, f)) if f.as_str() != "@")
                 && !needs_ref_borrow
-                && param_types.as_ref()
+                && param_types
+                    .as_ref()
                     .and_then(|pts| pts.get(i))
                     .map(|pt| Self::param_takes_ownership(pt))
                     .unwrap_or(false);
@@ -10824,7 +12457,8 @@ impl RustTrans {
                 } else { false });
 
             // Auto-box when passing a value to a function that takes a spec param
-            let is_spec_param = spec_flags.as_ref()
+            let is_spec_param = spec_flags
+                .as_ref()
                 .and_then(|f| f.get(i))
                 .copied()
                 .unwrap_or(false);
@@ -10867,9 +12501,15 @@ impl RustTrans {
                 if let Arg::Pos(Expr::Ident(name)) = arg {
                     if self.bridge_pattern_bound_idents.contains(name) {
                         Some(name.clone())
-                    } else { None }
-                } else { None }
-            } else { None };
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             // Plan 447 ③-前置: set when a branch below already emitted the arg
             // WITH its `.as_str()` borrow — the generic borrow append at the end
             // of the loop iteration must not fire again.
@@ -10887,7 +12527,9 @@ impl RustTrans {
                 // returns &str (`clean_field_value(r.trim())` → E0308 String).
                 let trim_arg = if let Arg::Pos(expr) = arg {
                     Self::is_trim_method_call(expr)
-                } else { false };
+                } else {
+                    false
+                };
                 if is_str_param && trim_arg {
                     if let Arg::Pos(expr) = arg {
                         self.expr_as_str(expr, out)?;
@@ -10917,15 +12559,20 @@ impl RustTrans {
                             // (E0599 on i64). Str-typed receivers keep the
                             // direct borrow (byte-identical to the collapsed
                             // legacy form, zero golden drift).
-                            let borrow_direct = matches!(recv_ty,
-                                Type::StrOwned | Type::StrSlice
-                                | Type::StrFixed(_) | Type::CStrLit);
+                            let borrow_direct = matches!(
+                                recv_ty,
+                                Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit
+                            );
                             let recv_parens = matches!(recv.as_ref(),
                                 Expr::Bina(_, op, _) if !matches!(op, Op::Dot));
                             if borrow_direct {
-                                if recv_parens { write!(out, "(")?; }
+                                if recv_parens {
+                                    write!(out, "(")?;
+                                }
                                 self.expr(recv, out)?;
-                                if recv_parens { write!(out, ")")?; }
+                                if recv_parens {
+                                    write!(out, ")")?;
+                                }
                                 write!(out, ".as_str()")?;
                             } else {
                                 write!(out, "format!(\"{{}}\", ")?;
@@ -10959,7 +12606,9 @@ impl RustTrans {
                     let iter_field = matches!(arg, Arg::Pos(Expr::Dot(_, _)))
                         && if let Arg::Pos(Expr::Dot(obj, _)) = arg {
                             matches!(obj.as_ref(), Expr::Ident(n) if self.borrowed_iter_vars.contains(n))
-                        } else { false };
+                        } else {
+                            false
+                        };
                     iter_field
                         && match param_types.as_ref().and_then(|pts| pts.get(i)) {
                             // Known callee signature: skip the clone only
@@ -11020,8 +12669,11 @@ impl RustTrans {
                 // on locals → E0308 (String vs &str). Check the fn-param set
                 // (mirrors is_str_slice_var).
                 self.current_fn_str_params.contains(name)
-            } else { false };
-            let arg_is_str_literal = matches!(arg, Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_)));
+            } else {
+                false
+            };
+            let arg_is_str_literal =
+                matches!(arg, Arg::Pos(Expr::Str(_)) | Arg::Pos(Expr::CStr(_)));
             // Plan 380: only add .as_str() for plain String-typed locals or
             // string-concat exprs. Method-call results (trim(), to_str().unwrap(),
             // ...) and char literals must NOT get .as_str() — they're already
@@ -11029,7 +12681,9 @@ impl RustTrans {
             let arg_is_ident = matches!(arg, Arg::Pos(Expr::Ident(_)));
             let arg_is_concat = if let Arg::Pos(expr) = arg {
                 self.expr_contains_string(expr)
-            } else { false };
+            } else {
+                false
+            };
             // Plan 417-E1 rider: a plain call to a user fn whose DECLARED
             // return is `str` renders as an owned String — borrowing it for
             // a &str param needs the same `.as_str()` as ident args. Plan
@@ -11040,10 +12694,14 @@ impl RustTrans {
             // and stay excluded).
             let arg_is_str_returning_call = if let Arg::Pos(Expr::Call(c)) = arg {
                 if let Expr::Ident(fname) = c.name.as_ref() {
-                    self.fn_ret_types.get(fname)
-                        .map(|ty| matches!(ty,
-                            Type::StrOwned | Type::StrFixed(_) | Type::CStrLit
-                            | Type::StrSlice))
+                    self.fn_ret_types
+                        .get(fname)
+                        .map(|ty| {
+                            matches!(
+                                ty,
+                                Type::StrOwned | Type::StrFixed(_) | Type::CStrLit | Type::StrSlice
+                            )
+                        })
                         .unwrap_or(false)
                 } else if let Expr::Dot(_, m) = c.name.as_ref() {
                     // Plan 433 A1: `.str()` / `.to_string()` method calls return
@@ -11062,7 +12720,9 @@ impl RustTrans {
                 } else {
                     false
                 }
-            } else { false };
+            } else {
+                false
+            };
             // Plan 433 A1: a struct-field read of a str field is an owned
             // String (t.kind) — borrow it for &str params.
             let arg_is_str_field = if let Arg::Pos(Expr::Dot(obj, field)) = arg {
@@ -11074,11 +12734,21 @@ impl RustTrans {
                 let is_borrowed_iter_field = matches!(obj.as_ref(),
                     Expr::Ident(n) if self.borrowed_iter_vars.contains(n));
                 !is_borrowed_iter_field
-                    && self.struct_field_types.values()
-                        .any(|fields| fields.iter()
-                            .any(|(f, t)| f.as_str() == field.as_str()
-                                && matches!(t, Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)))
-            } else { false };
+                    && self.struct_field_types.values().any(|fields| {
+                        fields.iter().any(|(f, t)| {
+                            f.as_str() == field.as_str()
+                                && matches!(
+                                    t,
+                                    Type::StrOwned
+                                        | Type::StrSlice
+                                        | Type::StrFixed(_)
+                                        | Type::CStrLit
+                                )
+                        })
+                    })
+            } else {
+                false
+            };
             // Plan 032 第七批合并后复验发现的 plan 016 Phase 4 试点缺口（两处，
             // auto-ai 轨暴露，autodown-core 无此形态）：
             // (a) 裸 `x.trim()` 家族方法调用本来就产 `&str`——Phase 4 把 trim 加进
@@ -11094,10 +12764,14 @@ impl RustTrans {
                 matches!(c.name.as_ref(), Expr::Dot(_, m)
                     if matches!(m.as_str(),
                         "trim" | "trim_start" | "trim_end" | "trim_matches" | "to_str"))
-            } else { false };
+            } else {
+                false
+            };
             let arg_is_explicit_to_string = if let Arg::Pos(Expr::Call(c)) = arg {
                 matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "to_string")
-            } else { false };
+            } else {
+                false
+            };
             // Plan 447 ③-前置(②列基线修复): `xs.get(i)` on a List<str> —
             // the get→index conversion emits `xs[i as usize].clone()` (an
             // owned String); a &str param slot needs the same borrow as
@@ -11107,32 +12781,51 @@ impl RustTrans {
                 matches!(expr, Expr::Call(c)
                     if c.args.args.len() == 1
                         && matches!(c.name.as_ref(), Expr::Dot(_, m) if m.as_str() == "get"))
-                    && matches!(self.infer_type_from_expr(expr),
-                        Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
-            } else { false };
+                    && matches!(
+                        self.infer_type_from_expr(expr),
+                        Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit
+                    )
+            } else {
+                false
+            };
             // Plan 019 Phase 1: `lines[i]` on a List<str> — the index
             // conversion emits an owned String (`.clone()`); a &str param
             // slot needs the same borrow as the get-arm above.
             let arg_is_str_index = if let Arg::Pos(expr) = arg {
                 matches!(expr, Expr::Index(_, _))
-                    && matches!(self.infer_type_from_expr(expr),
-                        Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
-            } else { false };
+                    && matches!(
+                        self.infer_type_from_expr(expr),
+                        Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit
+                    )
+            } else {
+                false
+            };
             // Plan 019 Phase 1: `x.field ?? fallback` yields an owned String
             // (the coalesce strips the Option) — a &str param slot needs the
             // borrow, same as the field read itself.
             let arg_is_str_coalesce = if let Arg::Pos(expr) = arg {
                 matches!(expr, Expr::NullCoalesce(_, _))
-                    && matches!(self.infer_type_from_expr(expr),
-                        Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit)
-            } else { false };
-            if (needs_borrow || needs_borrow_unknown_callee) && !arg_is_str_slice && !arg_is_str_literal
+                    && matches!(
+                        self.infer_type_from_expr(expr),
+                        Type::StrOwned | Type::StrSlice | Type::StrFixed(_) | Type::CStrLit
+                    )
+            } else {
+                false
+            };
+            if (needs_borrow || needs_borrow_unknown_callee)
+                && !arg_is_str_slice
+                && !arg_is_str_literal
                 && !arg_is_bare_refstr_method
                 && !(needs_borrow_unknown_callee && !needs_borrow && arg_is_explicit_to_string)
                 && !str_stringified_here
-                && (arg_is_ident || arg_is_concat || arg_is_str_returning_call
-                    || arg_is_str_field || arg_is_str_get || arg_is_str_index
-                    || arg_is_str_coalesce) {
+                && (arg_is_ident
+                    || arg_is_concat
+                    || arg_is_str_returning_call
+                    || arg_is_str_field
+                    || arg_is_str_get
+                    || arg_is_str_index
+                    || arg_is_str_coalesce)
+            {
                 write!(out, ".as_str()")?;
             }
 
@@ -11170,12 +12863,16 @@ impl RustTrans {
                 if let Some(pts) = &param_types {
                     if let Some(pt) = pts.get(i) {
                         let param_is_owned_str = matches!(pt, Type::StrOwned | Type::StrFixed(_));
-                        let arg_is_str_value = arg_is_str_slice || arg_is_str_literal
+                        let arg_is_str_value = arg_is_str_slice
+                            || arg_is_str_literal
                             || (if let Arg::Pos(Expr::Ident(name)) = arg {
-                                self.local_var_types.get(name)
+                                self.local_var_types
+                                    .get(name)
                                     .map(|ty| matches!(ty, Type::StrSlice))
                                     .unwrap_or(false)
-                            } else { false });
+                            } else {
+                                false
+                            });
                         if param_is_owned_str && arg_is_str_value {
                             write!(out, ".to_string()")?;
                         }
@@ -11199,8 +12896,8 @@ impl RustTrans {
                         if let Some(aty) = arg_ty {
                             // Option<T> → T: need .unwrap() or .cloned().unwrap_or_default()
                             if matches!(pt, Type::User(td) if td.name.as_str() != "Option")
-                               && matches!(aty, Type::Option(_))
-                               && !matches!(pt, Type::Option(_))
+                                && matches!(aty, Type::Option(_))
+                                && !matches!(pt, Type::Option(_))
                             {
                                 write!(out, ".unwrap()")?;
                             }
@@ -11213,7 +12910,9 @@ impl RustTrans {
                                 write!(out, " as i64")?;
                             }
                             // usize param, i32/u32 arg: cast
-                            else if matches!(pt, Type::USize) && (matches!(aty, Type::Int) || matches!(aty, Type::Uint)) {
+                            else if matches!(pt, Type::USize)
+                                && (matches!(aty, Type::Int) || matches!(aty, Type::Uint))
+                            {
                                 write!(out, " as usize")?;
                             }
                         }
@@ -11267,8 +12966,8 @@ impl RustTrans {
     /// ("Future"). Treating `!T` as async made sync functions async + inserted
     /// `.await` (regression since d269a92d). Exclude Type::Result here.
     fn type_is_async(ty: &Type) -> bool {
-        matches!(ty, Type::Handle { .. }) ||
-        matches!(ty, Type::GenericInstance(inst) if inst.base_name == "Future")
+        matches!(ty, Type::Handle { .. })
+            || matches!(ty, Type::GenericInstance(inst) if inst.base_name == "Future")
     }
 
     /// Plan 364 Phase 8 F1: Does this for-loop iterable produce a `~Stream<T>`
@@ -11363,15 +13062,24 @@ impl RustTrans {
             Stmt::If(if_) => {
                 if_.branches.iter().any(|b| {
                     Self::expr_references_ident(&b.cond, ident)
-                        || b.body.stmts.iter().any(|s| Self::stmt_references_ident(s, ident))
+                        || b.body
+                            .stmts
+                            .iter()
+                            .any(|s| Self::stmt_references_ident(s, ident))
                 }) || if_.else_.as_ref().map_or(false, |e| {
-                    e.stmts.iter().any(|s| Self::stmt_references_ident(s, ident))
+                    e.stmts
+                        .iter()
+                        .any(|s| Self::stmt_references_ident(s, ident))
                 })
             }
             Stmt::Is(is_stmt) => Self::expr_references_ident(&is_stmt.target, ident),
             Stmt::For(for_stmt) => {
                 Self::expr_references_ident(&for_stmt.range, ident)
-                    || for_stmt.body.stmts.iter().any(|s| Self::stmt_references_ident(s, ident))
+                    || for_stmt
+                        .body
+                        .stmts
+                        .iter()
+                        .any(|s| Self::stmt_references_ident(s, ident))
             }
             _ => false,
         }
@@ -11389,12 +13097,10 @@ impl RustTrans {
             Expr::Closure(c) => Self::expr_references_ident(&c.body, ident),
             Expr::Call(call) => {
                 Self::expr_references_ident(&call.name, ident)
-                    || call.args.args.iter().any(|a| {
-                        match a {
-                            Arg::Pos(e) => Self::expr_references_ident(e, ident),
-                            Arg::Pair(_, e) => Self::expr_references_ident(e, ident),
-                            Arg::Name(_) => false,
-                        }
+                    || call.args.args.iter().any(|a| match a {
+                        Arg::Pos(e) => Self::expr_references_ident(e, ident),
+                        Arg::Pair(_, e) => Self::expr_references_ident(e, ident),
+                        Arg::Name(_) => false,
                     })
             }
             Expr::Dot(obj, _) => Self::expr_references_ident(obj, ident),
@@ -11522,8 +13228,14 @@ impl RustTrans {
     fn value_push_arg_needs_json_wrap(&self, e: &Expr) -> bool {
         match e {
             Expr::Object(_) | Expr::Array(_) => true,
-            Expr::Str(_) | Expr::CStr(_) | Expr::Int(_) | Expr::I64(_)
-            | Expr::Uint(_) | Expr::U64(_) | Expr::Float(_, _) | Expr::Double(_, _)
+            Expr::Str(_)
+            | Expr::CStr(_)
+            | Expr::Int(_)
+            | Expr::I64(_)
+            | Expr::Uint(_)
+            | Expr::U64(_)
+            | Expr::Float(_, _)
+            | Expr::Double(_, _)
             | Expr::Bool(_) => true,
             _ => match self.infer_type_from_expr(e) {
                 Type::Unknown => false,
@@ -11596,7 +13308,8 @@ impl RustTrans {
                 // self.field.method() — resolve field's type.
                 if let Expr::Ident(name) = inner.as_ref() {
                     if name.as_str() == "self" {
-                        self.local_var_types.get(field.as_str())
+                        self.local_var_types
+                            .get(field.as_str())
                             .and_then(Self::type_name_of)
                     } else {
                         None
@@ -11649,8 +13362,19 @@ impl RustTrans {
             },
             _ => self.infer_type_from_expr(e),
         };
-        matches!(ty, Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
-            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte)
+        matches!(
+            ty,
+            Type::Int
+                | Type::Uint
+                | Type::USize
+                | Type::I64
+                | Type::U64
+                | Type::Float
+                | Type::Double
+                | Type::Bool
+                | Type::Char
+                | Type::Byte
+        )
     }
 
     /// Plan 384: does this return type (possibly wrapped in Future/async)
@@ -11658,15 +13382,22 @@ impl RustTrans {
     /// Expr::Ok emission arm for reuse by the Ok(str-param) coercion.)
     fn ret_is_result_string(ty: &Type) -> bool {
         match ty {
-            Type::Result(inner) => matches!(inner.as_ref(),
-                Type::StrSlice | Type::StrOwned | Type::StrFixed(_)),
+            Type::Result(inner) => matches!(
+                inner.as_ref(),
+                Type::StrSlice | Type::StrOwned | Type::StrFixed(_)
+            ),
             Type::GenericInstance(inst) => {
                 if inst.base_name == "Result" {
-                    inst.args.first().map(|i| matches!(i,
-                        Type::StrSlice | Type::StrOwned | Type::StrFixed(_))).unwrap_or(false)
+                    inst.args
+                        .first()
+                        .map(|i| matches!(i, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                        .unwrap_or(false)
                 } else {
                     // Future<Result<String,_>> / other wrapper: recurse into first arg
-                    inst.args.first().map(Self::ret_is_result_string).unwrap_or(false)
+                    inst.args
+                        .first()
+                        .map(Self::ret_is_result_string)
+                        .unwrap_or(false)
                 }
             }
             _ => false,
@@ -11714,21 +13445,24 @@ impl RustTrans {
     /// Check if an arg is an integer-typed variable (i32/u32/usize)
     fn is_int_var(arg: &Arg, local_var_types: &HashMap<AutoStr, Type>) -> bool {
         match arg {
-            Arg::Pos(Expr::Ident(name)) => {
-                local_var_types.get(name)
-                    .map(|ty| matches!(ty, Type::Int | Type::Uint))
-                    .unwrap_or(false)
-            }
+            Arg::Pos(Expr::Ident(name)) => local_var_types
+                .get(name)
+                .map(|ty| matches!(ty, Type::Int | Type::Uint))
+                .unwrap_or(false),
             Arg::Pos(Expr::Dot(obj, field)) => {
                 // self.uint_field → check if it's a known uint struct field
                 if let Expr::Ident(_) = obj.as_ref() {
                     // Check struct_field_types for this field
                     // Heuristic: if field name ends with common integer suffixes
                     let fname = field.as_str();
-                    fname == "current_step" || fname == "cumulative_tokens"
-                        || fname == "step_count" || fname == "run_id"
-                        || fname.ends_with("_count") || fname.ends_with("_index")
-                        || fname.ends_with("_idx") || fname.ends_with("_id")
+                    fname == "current_step"
+                        || fname == "cumulative_tokens"
+                        || fname == "step_count"
+                        || fname == "run_id"
+                        || fname.ends_with("_count")
+                        || fname.ends_with("_index")
+                        || fname.ends_with("_idx")
+                        || fname.ends_with("_id")
                 } else {
                     false
                 }
@@ -11760,9 +13494,9 @@ impl RustTrans {
                     // method is AutoStr, obj is Expr
                     match method.as_str() {
                         // Methods that return String
-                        "substr" | "sub" | "slice" | "to_lower" | "to_upper"
-                        | "trim" | "trim_left" | "trim_right" | "to_string"
-                        | "replace" | "replace_first" | "repeat" => {
+                        "substr" | "sub" | "slice" | "to_lower" | "to_upper" | "trim"
+                        | "trim_left" | "trim_right" | "to_string" | "replace"
+                        | "replace_first" | "repeat" => {
                             return Type::StrOwned;
                         }
                         // Plan 417-E1 (DIV-A2R-CHAR-AT-1): `char_at` returns the
@@ -11834,12 +13568,18 @@ impl RustTrans {
                         _ => {
                             if let Expr::Ident(module) = obj.as_ref() {
                                 match (module.as_str(), method.as_str()) {
-                                    ("json", "as_string") | ("json", "get_str")
-                                    | ("json", "to_string") | ("json", "keys")
-                                    | ("fs", "read_text") | ("fs", "read_to_string")
-                                    | ("fs", "walk") | ("shell", "exec")
+                                    ("json", "as_string")
+                                    | ("json", "get_str")
+                                    | ("json", "to_string")
+                                    | ("json", "keys")
+                                    | ("fs", "read_text")
+                                    | ("fs", "read_to_string")
+                                    | ("fs", "walk")
+                                    | ("shell", "exec")
                                     | ("regex", "find_all")
-                                    | ("io", "read_line") | ("env", "args") | ("env", "get") => {
+                                    | ("io", "read_line")
+                                    | ("env", "args")
+                                    | ("env", "get") => {
                                         return Type::StrOwned;
                                     }
                                     _ => {}
@@ -11920,7 +13660,8 @@ impl RustTrans {
                 // this, `let key = (a, b, c)` is Unknown, so the HashMap insert
                 // key handler's "key is String" assumption wrongly appends
                 // `.to_string()` (E0277: tuple has no Display).
-                let elem_types: Vec<Type> = items.iter().map(|e| self.infer_type_from_expr(e)).collect();
+                let elem_types: Vec<Type> =
+                    items.iter().map(|e| self.infer_type_from_expr(e)).collect();
                 Type::Tuple(elem_types)
             }
             Expr::Str(_) | Expr::CStr(_) | Expr::FStr(_) => Type::StrSlice,
@@ -12009,17 +13750,22 @@ impl RustTrans {
                 let lt = self.infer_type_from_expr(lhs);
                 let rt = self.infer_type_from_expr(rhs);
                 match op {
-                    auto_val::Op::Add | auto_val::Op::Sub | auto_val::Op::Mul | auto_val::Op::Div
+                    auto_val::Op::Add
+                    | auto_val::Op::Sub
+                    | auto_val::Op::Mul
+                    | auto_val::Op::Div
                     | auto_val::Op::Mod => {
                         // If either is float, result is float; otherwise follow int/uint
-                        if matches!(lt, Type::Float | Type::Double) || matches!(rt, Type::Float | Type::Double) {
+                        if matches!(lt, Type::Float | Type::Double)
+                            || matches!(rt, Type::Float | Type::Double)
+                        {
                             Type::Float
                         } else if matches!(lt, Type::Uint) && matches!(rt, Type::Uint) {
                             Type::Uint
                         } else if matches!(lt, Type::Int) && matches!(rt, Type::Int) {
                             Type::Int
                         } else if matches!(lt, Type::Uint) || matches!(rt, Type::Uint) {
-                            Type::Uint  // mixed int/uint → uint (Auto semantics)
+                            Type::Uint // mixed int/uint → uint (Auto semantics)
                         } else if matches!(lt, Type::Int) || matches!(rt, Type::Int) {
                             Type::Int
                         } else if !matches!(lt, Type::Unknown) {
@@ -12072,8 +13818,10 @@ impl RustTrans {
                 if let Some(ty) = self.local_var_types.get(name) {
                     if let Type::User(decl) = ty {
                         let n = decl.name.as_str();
-                        if n == "PathBuf" || n == "Path"
-                            || n == "std::path::PathBuf" || n == "std::path::Path"
+                        if n == "PathBuf"
+                            || n == "Path"
+                            || n == "std::path::PathBuf"
+                            || n == "std::path::Path"
                         {
                             return false;
                         }
@@ -12089,8 +13837,11 @@ impl RustTrans {
             // Plan 368 R-AREG: Dot access that returns &str
             Expr::Dot(_, field) => {
                 let f = field.as_str();
-                f == "trim" || f == "trim_start" || f == "trim_end"
-                || f == "trim_matches" || f == "as_str"
+                f == "trim"
+                    || f == "trim_start"
+                    || f == "trim_end"
+                    || f == "trim_matches"
+                    || f == "as_str"
             }
             // Plan 368 R-AREG: Method calls that return &str don't need .as_str()
             // (calling .as_str() on &str triggers E0658 unstable str_as_str).
@@ -12104,9 +13855,14 @@ impl RustTrans {
                 };
                 if let Some(m) = method_name {
                     // trim* methods and as_str return &str in Rust
-                    if m == "trim" || m == "trim_start" || m == "trim_end"
-                        || m == "trim_matches" || m == "trim_start_matches"
-                        || m == "trim_end_matches" || m == "as_str" {
+                    if m == "trim"
+                        || m == "trim_start"
+                        || m == "trim_end"
+                        || m == "trim_matches"
+                        || m == "trim_start_matches"
+                        || m == "trim_end_matches"
+                        || m == "as_str"
+                    {
                         return false;
                     }
                     // C9 codegen (Plan 018): `join` on a PathBuf returns a
@@ -12140,8 +13896,11 @@ impl RustTrans {
         if let Expr::Call(call) = expr {
             if let Expr::Dot(_, m) = call.name.as_ref() {
                 let f = m.as_str();
-                return f == "trim" || f == "trim_start" || f == "trim_end"
-                    || f == "trim_matches" || f == "as_str";
+                return f == "trim"
+                    || f == "trim_start"
+                    || f == "trim_end"
+                    || f == "trim_matches"
+                    || f == "as_str";
             }
         }
         false
@@ -12216,7 +13975,10 @@ impl RustTrans {
         // broke this: `Assistant()` (empty members, not in struct_fields) got
         // `Assistant()`, which also broke fix_spec_trait_boxing's
         // `Some(X {})` regex, so builtin_roles regeneration failed to compile.
-        let has_named_field = args.args.iter().any(|a| matches!(a, Arg::Name(_) | Arg::Pair(_, _)));
+        let has_named_field = args
+            .args
+            .iter()
+            .any(|a| matches!(a, Arg::Name(_) | Arg::Pair(_, _)));
         let known_fields = self.struct_fields.get(type_name.as_str()).is_some();
         if !has_named_field && !known_fields && !args.args.is_empty() {
             write!(out, "{}(", type_name)?;
@@ -12282,7 +14044,10 @@ impl RustTrans {
                     };
                     // Check if field type is String but expr is &str
                     let needs_ts = i < field_types.len()
-                        && matches!(field_types[i].1, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice)
+                        && matches!(
+                            field_types[i].1,
+                            Type::StrOwned | Type::StrFixed(_) | Type::StrSlice
+                        )
                         && !matches!(expr, Expr::Str(_) | Expr::CStr(_));
                     (name, needs_ts)
                 }
@@ -12291,16 +14056,22 @@ impl RustTrans {
                     // `field: field` (same-name local). If the field is a String
                     // type, the local must be .to_string()'d (a2r fn params are
                     // &str). Mirrors the Arg::Pair logic below.
-                    let needs_ts = field_types.iter()
+                    let needs_ts = field_types
+                        .iter()
                         .find(|(n, _)| n == name)
-                        .map(|(_, ty)| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
+                        .map(|(_, ty)| {
+                            matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice)
+                        })
                         .unwrap_or(false);
                     (name.clone(), needs_ts)
                 }
                 Arg::Pair(key, expr) => {
-                    let needs_ts = field_types.iter()
+                    let needs_ts = field_types
+                        .iter()
                         .find(|(n, _)| n == key)
-                        .map(|(_, ty)| matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice))
+                        .map(|(_, ty)| {
+                            matches!(ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice)
+                        })
                         .unwrap_or(false)
                         && !matches!(expr, Expr::Str(_) | Expr::CStr(_));
                     (key.clone(), needs_ts)
@@ -12314,29 +14085,35 @@ impl RustTrans {
             // for `self.field` / borrowed-iter-var roots (the inner
             // write_expr_for_struct_field already clones those), and for
             // shorthand `Type { field }` idents.
-            let needs_field_clone = !needs_to_string && {
-                let dot_nonborrowed = match arg {
-                    Arg::Pos(expr) | Arg::Pair(_, expr) => {
-                        matches!(expr, Expr::Dot(_, _))
-                            && !Self::is_self_dot(expr)
-                            && !(if let Expr::Dot(obj, _) = expr {
-                                matches!(obj.as_ref(), Expr::Ident(n) if self.borrowed_iter_vars.contains(n))
-                            } else { false })
-                    }
-                    Arg::Name(_) => false,
+            let needs_field_clone = !needs_to_string
+                && {
+                    let dot_nonborrowed = match arg {
+                        Arg::Pos(expr) | Arg::Pair(_, expr) => {
+                            matches!(expr, Expr::Dot(_, _))
+                                && !Self::is_self_dot(expr)
+                                && !(if let Expr::Dot(obj, _) = expr {
+                                    matches!(obj.as_ref(), Expr::Ident(n) if self.borrowed_iter_vars.contains(n))
+                                } else {
+                                    false
+                                })
+                        }
+                        Arg::Name(_) => false,
+                    };
+                    let field_owned = match arg {
+                        Arg::Pos(_) => field_types.get(i).map(|(_, t)| t),
+                        Arg::Pair(key, _) => {
+                            field_types.iter().find(|(n, _)| n == key).map(|(_, t)| t)
+                        }
+                        Arg::Name(_) => None,
+                    };
+                    dot_nonborrowed
+                        && field_owned
+                            .map(|t| {
+                                !Self::is_primitive_copy(t)
+                                    && !matches!(t, Type::Fn(_, _) | Type::Void)
+                            })
+                            .unwrap_or(false)
                 };
-                let field_owned = match arg {
-                    Arg::Pos(_) => field_types.get(i).map(|(_, t)| t),
-                    Arg::Pair(key, _) => field_types.iter()
-                        .find(|(n, _)| n == key)
-                        .map(|(_, t)| t),
-                    Arg::Name(_) => None,
-                };
-                dot_nonborrowed && field_owned
-                    .map(|t| !Self::is_primitive_copy(t)
-                        && !matches!(t, Type::Fn(_, _) | Type::Void))
-                    .unwrap_or(false)
-            };
             // Plan 019 Phase 1: keyword-colliding field names (`type`) get
             // raw-identifier escaping in construction literals.
             write!(out, "{}: ", Self::rust_ident(field_name.as_str()))?;
@@ -12348,12 +14125,16 @@ impl RustTrans {
                     // — E0308 against the HashMap/Vec field type.
                     let empty_node_field_ty = match arg {
                         Arg::Pos(_) => field_types.get(i).map(|(_, t)| t.clone()),
-                        Arg::Pair(k, _) => field_types.iter()
-                            .find(|(n, _)| n == k).map(|(_, t)| t.clone()),
+                        Arg::Pair(k, _) => field_types
+                            .iter()
+                            .find(|(n, _)| n == k)
+                            .map(|(_, t)| t.clone()),
                         Arg::Name(_) => None,
                     };
                     if !Self::write_collection_default_for_empty_node(
-                        expr, empty_node_field_ty.as_ref(), out,
+                        expr,
+                        empty_node_field_ty.as_ref(),
+                        out,
                     )? {
                         self.write_expr_for_struct_field(expr, out)?;
                     }
@@ -12378,8 +14159,10 @@ impl RustTrans {
             } {
                 let field_ty = match arg {
                     Arg::Pos(_) => field_types.get(i).map(|(_, t)| t.clone()),
-                    Arg::Pair(k, _) => field_types.iter()
-                        .find(|(n, _)| n == k).map(|(_, t)| t.clone()),
+                    Arg::Pair(k, _) => field_types
+                        .iter()
+                        .find(|(n, _)| n == k)
+                        .map(|(_, t)| t.clone()),
                     Arg::Name(_) => None,
                 };
                 if matches!(field_ty, Some(Type::Uint)) {
@@ -12393,10 +14176,9 @@ impl RustTrans {
                                     if m.as_str() == "as_int"
                                         && matches!(obj.as_ref(), Expr::Ident(o) if o.as_str() == "json"))
                         }
-                        Expr::Ident(n) => matches!(
-                            self.local_var_types.get(n.as_str()),
-                            Some(Type::Int)
-                        ),
+                        Expr::Ident(n) => {
+                            matches!(self.local_var_types.get(n.as_str()), Some(Type::Int))
+                        }
                         _ => false,
                     };
                     if expr_is_i64 {
@@ -12458,12 +14240,9 @@ impl RustTrans {
                 let base_ty = self.local_var_types.get(base_name.as_str())?;
                 match base_ty {
                     Type::User(type_decl) => {
-                        let fields = self
-                            .struct_field_types
-                            .get(type_decl.name.as_str())?;
-                        let (_, f_ty) = fields
-                            .iter()
-                            .find(|(n, _)| n.as_str() == field.as_str())?;
+                        let fields = self.struct_field_types.get(type_decl.name.as_str())?;
+                        let (_, f_ty) =
+                            fields.iter().find(|(n, _)| n.as_str() == field.as_str())?;
                         elem_of(f_ty)
                     }
                     other => elem_of(other),
@@ -12480,11 +14259,7 @@ impl RustTrans {
     /// String clone would break the call site. Unknown inferred types clone
     /// conservatively (mirrors the struct-field site in
     /// write_expr_for_struct_field, Plan 399 P11.4).
-    fn maybe_clone_borrowed_iter_field(
-        &self,
-        expr: &Expr,
-        out: &mut impl Write,
-    ) -> AutoResult<()> {
+    fn maybe_clone_borrowed_iter_field(&self, expr: &Expr, out: &mut impl Write) -> AutoResult<()> {
         // Plan 396 §2.1 (bare loop var): passing the borrowed loop variable
         // ITSELF (`for t in &coll { f(t) }` with t: &Arc<..>) to an owned
         // param also needs .clone() — same gate as fields below.
@@ -12577,7 +14352,9 @@ impl RustTrans {
                 // aggregate-typed idents (mirrors the Expr::Array arm in
                 // expr(), which this field-specific path bypasses).
                 if let Expr::Ident(name) = elem {
-                    let agg = self.local_var_types.get(name)
+                    let agg = self
+                        .local_var_types
+                        .get(name)
                         .map(|ty| matches!(ty, Type::User(_) | Type::Enum(_)))
                         .unwrap_or(false);
                     if agg {
@@ -12684,7 +14461,11 @@ impl RustTrans {
                     }
                     _ => {
                         // Single non-string argument: use {:?} for non-Display types
-                        let fmt = if self.needs_debug_format(expr) { "{:?}" } else { "{}" };
+                        let fmt = if self.needs_debug_format(expr) {
+                            "{:?}"
+                        } else {
+                            "{}"
+                        };
                         write!(out, "{}!(\"{}\", ", macro_name, fmt)?;
                         self.expr(expr, out)?;
                         write!(out, ")")?;
@@ -12703,7 +14484,11 @@ impl RustTrans {
                 // Add placeholders for remaining args — use {:?} for non-Display types
                 for arg in call.args.args.iter().skip(1) {
                     if let Arg::Pos(e) = arg {
-                        format_string.push_str(if self.needs_debug_format(e) { " {:?}" } else { " {}" });
+                        format_string.push_str(if self.needs_debug_format(e) {
+                            " {:?}"
+                        } else {
+                            " {}"
+                        });
                     } else {
                         format_string.push_str(" {}");
                     }
@@ -12741,8 +14526,15 @@ impl RustTrans {
     fn try_body_has_return(stmts: &[Stmt]) -> bool {
         stmts.iter().any(|st| match st {
             Stmt::Return(_) => true,
-            Stmt::If(if_) => if_.branches.iter().any(|b| Self::try_body_has_return(&b.body.stmts))
-                || if_.else_.as_ref().is_some_and(|b| Self::try_body_has_return(&b.stmts)),
+            Stmt::If(if_) => {
+                if_.branches
+                    .iter()
+                    .any(|b| Self::try_body_has_return(&b.body.stmts))
+                    || if_
+                        .else_
+                        .as_ref()
+                        .is_some_and(|b| Self::try_body_has_return(&b.stmts))
+            }
             Stmt::For(f) => Self::try_body_has_return(&f.body.stmts),
             Stmt::Block(b) => Self::try_body_has_return(&b.stmts),
             _ => false,
@@ -12780,7 +14572,6 @@ impl RustTrans {
             }
         }
     }
-
 
     fn stmt(&mut self, stmt: &Stmt, sink: &mut Sink) -> AutoResult<bool> {
         match stmt {
@@ -13268,7 +15059,7 @@ impl RustTrans {
         for (p, _, _) in &on.handlers {
             match p {
                 P::Simple(_) | P::WithBindings { .. } => has_named = true,
-                P::Literal(LiteralValue::Int(_,)) => has_int_lit = true,
+                P::Literal(LiteralValue::Int(_)) => has_int_lit = true,
                 P::Literal(LiteralValue::String(_)) => has_str_lit = true,
                 P::Literal(LiteralValue::Bool(_)) => has_bool_lit = true,
                 P::TypeBinding { type_expr, .. } => {
@@ -13317,12 +15108,13 @@ impl RustTrans {
                         // when given (`Add(val: String)` → `Add(String)`); fall
                         // back to i64 for untyped bindings (most common; VM
                         // tests use ints).
-                        let fields: Vec<String> = bindings.iter().map(|(_, bty)| {
-                            match bty {
+                        let fields: Vec<String> = bindings
+                            .iter()
+                            .map(|(_, bty)| match bty {
                                 Some(ty) => self.rust_type_name(ty),
                                 None => "i64".to_string(),
-                            }
-                        }).collect();
+                            })
+                            .collect();
                         if fields.is_empty() {
                             src.push_str(&format!("    {},\n", n));
                         } else {
@@ -13353,7 +15145,10 @@ impl RustTrans {
         // default) can't derive Clone/Debug — `dyn Fn` implements neither. The
         // actor is moved into the spawned task (no Clone/Debug needed), so emit
         // no derive for such structs.
-        let has_closure_field = td.state.iter().any(|(_f, _m, init)| matches!(init, Expr::Closure(_)));
+        let has_closure_field = td
+            .state
+            .iter()
+            .any(|(_f, _m, init)| matches!(init, Expr::Closure(_)));
         if !has_closure_field {
             self.print_indent(&mut sink.body)?;
             writeln!(sink.body, "#[derive(Clone, Debug)]")?;
@@ -13390,9 +15185,11 @@ impl RustTrans {
     /// special case so the output is byte-identical to an explicit `Box<Fn>`
     /// annotation.
     fn closure_field_rust_type(&self, closure: &crate::ast::Closure) -> String {
-        let params: Vec<crate::ast::Type> = closure.params.iter().map(|p| {
-            p.ty.clone().unwrap_or(crate::ast::Type::Unknown)
-        }).collect();
+        let params: Vec<crate::ast::Type> = closure
+            .params
+            .iter()
+            .map(|p| p.ty.clone().unwrap_or(crate::ast::Type::Unknown))
+            .collect();
         let ret = closure.ret.clone().unwrap_or(crate::ast::Type::Void);
         let boxed_ty = crate::ast::Type::GenericInstance(crate::ast::GenericInstance {
             base_name: "Box".into(),
@@ -13403,12 +15200,7 @@ impl RustTrans {
     }
 
     /// Emit `impl Name { fn new() -> Self; async fn start; async fn stop; async fn handle_msg }`.
-    fn emit_task_impl(
-        &mut self,
-        td: &TaskDef,
-        sink: &mut Sink,
-        msg_type: &str,
-    ) -> AutoResult<()> {
+    fn emit_task_impl(&mut self, td: &TaskDef, sink: &mut Sink, msg_type: &str) -> AutoResult<()> {
         let name = name_of(&td.name);
 
         // new() — initialize state fields from their `= init` expressions.
@@ -13490,7 +15282,12 @@ impl RustTrans {
                 // (body() does this for fn_decl, but hooks compile via compile_task_body,
                 // so we mirror body()'s tail logic here.)
                 let needs_ok = f.body.stmts.is_empty()
-                    || !f.body.stmts.last().map(|s| self.is_returnable(s)).unwrap_or(false);
+                    || !f
+                        .body
+                        .stmts
+                        .last()
+                        .map(|s| self.is_returnable(s))
+                        .unwrap_or(false);
                 if needs_ok {
                     self.print_indent(&mut sink.body)?;
                     sink.body.write(b"Ok(())\n")?;
@@ -13613,7 +15410,7 @@ impl RustTrans {
     ) -> AutoResult<()> {
         use TaskMsgPattern as P;
         match p {
-            P::Literal(LiteralValue::Int(n,)) => {
+            P::Literal(LiteralValue::Int(n)) => {
                 if let Some(en) = enum_name {
                     write!(out, "{}::Literal({}i64)", en, n)?;
                 } else {
@@ -13741,13 +15538,29 @@ impl RustTrans {
                 construct_fields.push_str(&field_str);
             }
             // spawn_<name>_with — takes all state fields as required params.
-            self.emit_spawn_body(&snake, "_with", Some(&params_str), &name,
-                &format!("{} {{ {} }}", name, construct_fields), msg_type, has_stop, sink)?;
+            self.emit_spawn_body(
+                &snake,
+                "_with",
+                Some(&params_str),
+                &name,
+                &format!("{} {{ {} }}", name, construct_fields),
+                msg_type,
+                has_stop,
+                sink,
+            )?;
         }
         // spawn_<name> — no args, default-constructs via ::new() (always emitted;
         // matches the no-init Task.spawn call site).
-        self.emit_spawn_body(&snake, "", None, &name,
-            &format!("{}::new()", name), msg_type, has_stop, sink)?;
+        self.emit_spawn_body(
+            &snake,
+            "",
+            None,
+            &name,
+            &format!("{}::new()", name),
+            msg_type,
+            has_stop,
+            sink,
+        )?;
         Ok(())
     }
 
@@ -13780,7 +15593,11 @@ impl RustTrans {
         // end of generated main) can wait until every sent message is fully
         // handled — the old fixed-16-yield drain silently lost messages when a
         // handler awaited internally.
-        writeln!(sink.body, "let (taskref, mut rx) = a2r_std::task::channel::<{}>();", msg_type)?;
+        writeln!(
+            sink.body,
+            "let (taskref, mut rx) = a2r_std::task::channel::<{}>();",
+            msg_type
+        )?;
         self.print_indent(&mut sink.body)?;
         writeln!(sink.body, "let join = tokio::spawn(async move {{")?;
         self.indent();
@@ -13827,11 +15644,23 @@ impl RustTrans {
     /// receiver task is unknown, a variant declared by exactly ONE task still
     /// resolves (backward compat); a variant declared by several falls back to
     /// None (left unrewritten → the compile error names the ambiguity).
-    fn rewrite_msg_variant_arg(&mut self, arg: &Expr, receiver_task: Option<&str>) -> Option<String> {
+    fn rewrite_msg_variant_arg(
+        &mut self,
+        arg: &Expr,
+        receiver_task: Option<&str>,
+    ) -> Option<String> {
         // Resolve variant → (task, enum_name), preferring the receiver's task.
-        fn enum_for<'a>(task_variants: &'a std::collections::HashMap<String, std::collections::HashSet<String>>, variant: &str, receiver_task: Option<&str>) -> Option<String> {
+        fn enum_for<'a>(
+            task_variants: &'a std::collections::HashMap<String, std::collections::HashSet<String>>,
+            variant: &str,
+            receiver_task: Option<&str>,
+        ) -> Option<String> {
             if let Some(task) = receiver_task {
-                if task_variants.get(task).map(|vs| vs.contains(variant)).unwrap_or(false) {
+                if task_variants
+                    .get(task)
+                    .map(|vs| vs.contains(variant))
+                    .unwrap_or(false)
+                {
                     return Some(format!("{}Msg", task));
                 }
             }
@@ -13849,10 +15678,8 @@ impl RustTrans {
 
         match arg {
             // Reset → EnumName::Reset
-            Expr::Ident(name) => {
-                enum_for(&self.task_variants, name.as_str(), receiver_task)
-                    .map(|enum_name| format!("{}::{}", enum_name, name.as_str()))
-            }
+            Expr::Ident(name) => enum_for(&self.task_variants, name.as_str(), receiver_task)
+                .map(|enum_name| format!("{}::{}", enum_name, name.as_str())),
             // Add(5) → EnumName::Add(5); the call name is an Ident equal to a variant.
             Expr::Call(c) => {
                 let variant_name = match c.name.as_ref() {
@@ -14038,10 +15865,7 @@ impl RustTrans {
             if let Expr::Ident(n) = &patched.expr {
                 let name = n.clone();
                 patched.expr = Expr::Call(crate::ast::Call {
-                    name: Box::new(Expr::Dot(
-                        Box::new(Expr::Ident(name)),
-                        "clone".into(),
-                    )),
+                    name: Box::new(Expr::Dot(Box::new(Expr::Ident(name)), "clone".into())),
                     args: crate::ast::Args::default(),
                     ret: Type::Unknown,
                     type_args: Vec::new(),
@@ -14086,21 +15910,23 @@ impl RustTrans {
         // PLAN-681 T-05（N2/P1a）：无注解 let 从 bare List 索引派生（含
         // .clone() 链）或 Value 局部字段读——元素是动态记录桶,登记
         // User("Value") 占位（后续字段读走 name["field"] 索引形,P2）。
-        let effective_ty = if matches!(effective_ty, Type::Unknown)
-            && self.expr_is_json_value_read(&store.expr)
-        {
-            Self::placeholder_user_type("Value".into())
-        } else {
-            effective_ty
-        };
+        let effective_ty =
+            if matches!(effective_ty, Type::Unknown) && self.expr_is_json_value_read(&store.expr) {
+                Self::placeholder_user_type("Value".into())
+            } else {
+                effective_ty
+            };
         // Plan 433 A1: a prior fn-call-inferred entry (scan_call_init_bindings
         // at fn_decl) is more precise than a fresh Unknown inference — keep it.
         let keep_existing = matches!(effective_ty, Type::Unknown)
-            && self.local_var_types.get(store.name.as_str())
+            && self
+                .local_var_types
+                .get(store.name.as_str())
                 .map(|t| !matches!(t, Type::Unknown))
                 .unwrap_or(false);
         if !keep_existing {
-            self.local_var_types.insert(store.name.clone(), effective_ty.clone());
+            self.local_var_types
+                .insert(store.name.clone(), effective_ty.clone());
         }
         // PLAN-724 T-06: HTTP 客户端变量分型登记——流生产者绑定（async/
         // sync 面按当前上下文定型，决定 .next()/.is_done()/.close()/for-in
@@ -14159,7 +15985,8 @@ impl RustTrans {
                         if receiver.as_str() == "Task" {
                             if let Some(Arg::Pos(Expr::Str(name))) = call.args.args.first() {
                                 let task_name_str: &str = name_of(name);
-                                self.handle_task_map.insert(store.name.clone(), task_name_str.to_string());
+                                self.handle_task_map
+                                    .insert(store.name.clone(), task_name_str.to_string());
                             }
                         }
                     }
@@ -14169,7 +15996,17 @@ impl RustTrans {
 
         // Detect json.get() assignments and mark the variable as JSON value type
         // so that .to_int() and .len() use value_to_int/value_len helpers
-        if !matches!(store.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_) | Type::CStrLit | Type::List(_) | Type::Int | Type::Float | Type::Bool) {
+        if !matches!(
+            store.ty,
+            Type::StrSlice
+                | Type::StrOwned
+                | Type::StrFixed(_)
+                | Type::CStrLit
+                | Type::List(_)
+                | Type::Int
+                | Type::Float
+                | Type::Bool
+        ) {
             if let Expr::Call(call) = &store.expr {
                 if let Expr::Dot(obj, method) = call.name.as_ref() {
                     if let Expr::Ident(name) = obj.as_ref() {
@@ -14185,7 +16022,8 @@ impl RustTrans {
         // record var_name -> spec_name for later spec array inference
         if let Some(type_name) = Self::extract_tag_or_ctor_type(&store.expr) {
             if let Some(spec_name) = self.struct_to_spec.get(&type_name) {
-                self.var_spec_map.insert(store.name.clone(), spec_name.clone());
+                self.var_spec_map
+                    .insert(store.name.clone(), spec_name.clone());
             }
         }
 
@@ -14233,14 +16071,23 @@ impl RustTrans {
                         ""
                     };
                     let ty_name = self.rust_type_name(&store.ty);
-                    write!(out, "let {}{}: {} = std::collections::HashMap::new()",
-                        mut_kw, Self::rust_ident(store.name.as_str()), ty_name)?;
+                    write!(
+                        out,
+                        "let {}{}: {} = std::collections::HashMap::new()",
+                        mut_kw,
+                        Self::rust_ident(store.name.as_str()),
+                        ty_name
+                    )?;
                     return Ok(());
                 }
-                let k_is_str = matches!(k_ty,
-                    Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit);
-                let v_is_str = matches!(v_ty,
-                    Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit);
+                let k_is_str = matches!(
+                    k_ty,
+                    Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit
+                );
+                let v_is_str = matches!(
+                    v_ty,
+                    Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit
+                );
                 let mut_kw = if matches!(store.kind, StoreKind::Var)
                     || (matches!(store.kind, StoreKind::Let)
                         && self.mutated_let_bindings.contains(store.name.as_ref()))
@@ -14250,11 +16097,18 @@ impl RustTrans {
                     ""
                 };
                 let ty_name = self.rust_type_name(&store.ty);
-                write!(out, "let {}{}: {} = std::collections::HashMap::from([",
-                    mut_kw, Self::rust_ident(store.name.as_str()), ty_name)?;
+                write!(
+                    out,
+                    "let {}{}: {} = std::collections::HashMap::from([",
+                    mut_kw,
+                    Self::rust_ident(store.name.as_str()),
+                    ty_name
+                )?;
                 if let Expr::Object(pairs) = &store.expr {
                     for (i, pair) in pairs.iter().enumerate() {
-                        if i > 0 { write!(out, ", ")?; }
+                        if i > 0 {
+                            write!(out, ", ")?;
+                        }
                         write!(out, "(")?;
                         match (&pair.key, k_is_str) {
                             (crate::ast::Key::StrKey(s), true) => {
@@ -14287,7 +16141,10 @@ impl RustTrans {
         if matches!(store.kind, StoreKind::Shared) {
             let static_name = self.global_var_static_name(&store.name);
             if Self::global_store_is_const_init(store) {
-                let ty = if matches!(store.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit) {
+                let ty = if matches!(
+                    store.ty,
+                    Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit
+                ) {
                     "&str".to_string()
                 } else {
                     self.rust_type_name(&store.ty)
@@ -14298,8 +16155,11 @@ impl RustTrans {
                 return Ok(());
             }
             let ty = self.rust_type_name(&store.ty);
-            write!(out, "static {}: Lazy<Mutex<{}>> = Lazy::new(|| Mutex::new(",
-                   static_name, ty)?;
+            write!(
+                out,
+                "static {}: Lazy<Mutex<{}>> = Lazy::new(|| Mutex::new(",
+                static_name, ty
+            )?;
             self.expr(&store.expr, out)?;
             write!(out, "))")?;
             return Ok(());
@@ -14309,7 +16169,10 @@ impl RustTrans {
         if matches!(store.kind, StoreKind::Const) {
             // C8: `str`-typed consts emit `&str` (string literals are the only
             // const-evaluable values; matches hand-written `&'static str`).
-            let ty_name = if matches!(store.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned) {
+            let ty_name = if matches!(
+                store.ty,
+                Type::StrFixed(_) | Type::StrSlice | Type::StrOwned
+            ) {
                 "&str".to_string()
             } else {
                 self.rust_type_name(&store.ty)
@@ -14339,7 +16202,10 @@ impl RustTrans {
         if self.is_global_var(&store.name) {
             let static_name = self.global_var_static_name(&store.name);
             if Self::global_store_is_const_init(store) {
-                let ty = if matches!(store.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit) {
+                let ty = if matches!(
+                    store.ty,
+                    Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit
+                ) {
                     "&str".to_string()
                 } else {
                     self.rust_type_name(&store.ty)
@@ -14355,8 +16221,11 @@ impl RustTrans {
             // NOTE: no trailing ';' here — the caller (Stmt::Store handler) adds
             // exactly one ';'. Emitting one here produced `static ...();;`
             // (double semicolon), which is a compile error in Rust.
-            write!(out, "static {}: Lazy<Mutex<{}>> = Lazy::new(|| Mutex::new(",
-                   static_name, ty)?;
+            write!(
+                out,
+                "static {}: Lazy<Mutex<{}>> = Lazy::new(|| Mutex::new(",
+                static_name, ty
+            )?;
             self.expr(&store.expr, out)?;
             write!(out, "))")?;
             return Ok(());
@@ -14406,15 +16275,19 @@ impl RustTrans {
         let option_inner_from_get: Option<&Type> = if init_is_borrowing_get {
             match &store.ty {
                 Type::Option(inner) => Some(inner.as_ref()),
-                Type::GenericInstance(inst) if inst.base_name.as_str() == "Option"
-                    && inst.args.len() == 1 => Some(&inst.args[0]),
+                Type::GenericInstance(inst)
+                    if inst.base_name.as_str() == "Option" && inst.args.len() == 1 =>
+                {
+                    Some(&inst.args[0])
+                }
                 _ => None,
             }
-        } else { None };
+        } else {
+            None
+        };
         let ty_name = if let Some(inner) = option_inner_from_get {
             if !Self::is_primitive_copy(inner)
-                && !matches!(inner,
-                    Type::Reference(_) | Type::Unknown | Type::Void)
+                && !matches!(inner, Type::Reference(_) | Type::Unknown | Type::Void)
             {
                 format!("Option<&{}>", self.rust_type_name(inner))
             } else {
@@ -14425,7 +16298,9 @@ impl RustTrans {
         };
         // Skip type annotation for: Unknown types, error propagation (?), closures, or unknown placeholders
         let is_error_propagate = matches!(&store.expr, Expr::ErrorPropagate(_));
-        let mut has_unknown = matches!(store.ty, Type::Unknown) || ty_name.contains("/* unknown */") || is_error_propagate;
+        let mut has_unknown = matches!(store.ty, Type::Unknown)
+            || ty_name.contains("/* unknown */")
+            || is_error_propagate;
 
         // Check if the expression is a closure - closures should not have explicit type annotations
         // because Rust infers closure types automatically
@@ -14461,7 +16336,10 @@ impl RustTrans {
                         .map(|n| self.current_escape_tier(n))
                         .unwrap_or(OwnershipTier::Owned);
                     let is_real_borrow = tier.is_borrow();
-                    (is_real_borrow && !is_mut_form, is_real_borrow && is_mut_form)
+                    (
+                        is_real_borrow && !is_mut_form,
+                        is_real_borrow && is_mut_form,
+                    )
                 }
             }
             None => (false, false),
@@ -14485,11 +16363,17 @@ impl RustTrans {
                 let spec_name = elems.iter().find_map(|e| {
                     if let Expr::Ident(name) = e {
                         self.var_spec_map.get(name).cloned()
-                    } else { None }
+                    } else {
+                        None
+                    }
                 });
                 spec_name.map(|sn| format!("Vec<Box<dyn {}>>", sn))
-            } else { None }
-        } else { None };
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         // PLAN-010 T2 (009 ledger 026_list_basic): `let list = List.new()`
         // with no element type anywhere in scope renders `let list = Vec::new()`
@@ -14511,7 +16395,8 @@ impl RustTrans {
             Type::List(inner) => matches!(inner.as_ref(), Type::Unknown),
             _ => false,
         };
-        if init_is_bare_list_new && list_ty_unconstrained
+        if init_is_bare_list_new
+            && list_ty_unconstrained
             && !self.later_used_locals.contains(store.name.as_str())
         {
             ty_name = "Vec<i64>".to_string();
@@ -14529,7 +16414,8 @@ impl RustTrans {
             Type::Option(inner) => matches!(inner.as_ref(), Type::Unknown),
             _ => false,
         };
-        if init_is_bare_none && none_ty_unconstrained
+        if init_is_bare_none
+            && none_ty_unconstrained
             && !self.later_used_locals.contains(store.name.as_str())
         {
             ty_name = "Option<i64>".to_string();
@@ -14549,14 +16435,17 @@ impl RustTrans {
                 if matches!(call.name.as_ref(),
                     Expr::Dot(_, m) if m.as_str() == "split"));
         let skip_type_annotation =
-            ((has_unknown || is_closure) && spec_array_type.is_none())
-            || is_borrowed_split_source;
+            ((has_unknown || is_closure) && spec_array_type.is_none()) || is_borrowed_split_source;
 
         let safe_name = Self::rust_ident(store.name.as_str());
         // Plan 419 §4.5: 闭包写捕获绑定 —— 声明升级 Rc<RefCell<T>>
         // (全限定路径,免 use 前导;访问点由 Ident 改写 borrow/borrow_mut)。
         if self.is_write_captured(store.name.as_str()) {
-            write!(out, "let {} = std::rc::Rc::new(std::cell::RefCell::new(", safe_name)?;
+            write!(
+                out,
+                "let {} = std::rc::Rc::new(std::cell::RefCell::new(",
+                safe_name
+            )?;
             self.expr(&store.expr, out)?;
             write!(out, "))")?;
             return Ok(());
@@ -14612,7 +16501,8 @@ impl RustTrans {
         }
 
         // Plan 159 6B-2.2: Wrap array elements in Box::new() for []Spec types
-        let is_spec_slice = matches!(&store.ty, Type::Slice(slice) if matches!(&*slice.elem, Type::Spec(_)));
+        let is_spec_slice =
+            matches!(&store.ty, Type::Slice(slice) if matches!(&*slice.elem, Type::Spec(_)));
         if is_spec_slice {
             // [b1, b2] → vec![Box::new(b1), Box::new(b2)]
             if let Expr::Array(elems) = &store.expr {
@@ -14639,7 +16529,9 @@ impl RustTrans {
                     Type::Array(arr) => Some(&arr.elem as &Type),
                     _ => None,
                 };
-                let elem_is_string = elem_ty.map_or(false, |ty| matches!(ty, Type::StrOwned | Type::StrSlice | Type::StrFixed(_)));
+                let elem_is_string = elem_ty.map_or(false, |ty| {
+                    matches!(ty, Type::StrOwned | Type::StrSlice | Type::StrFixed(_))
+                });
                 for (i, elem) in elems.iter().enumerate() {
                     self.expr(elem, out)?;
                     if elem_is_string && matches!(elem, Expr::Str(_) | Expr::CStr(_)) {
@@ -14688,8 +16580,8 @@ impl RustTrans {
             // PLAN-026 T-03 配套: int let 绑定 + List<int> 索引 rhs ——
             // db 层元素 i64,窄化 as i32(否则 let x = ns[i] 推断 i64,
             // 与 i32 语境(模型字段/字面比较)连环 E0308/E0277)。
-            let narrow_i32 = matches!(store.ty, Type::Int)
-                && self.expr_has_int_list_index(&store.expr);
+            let narrow_i32 =
+                matches!(store.ty, Type::Int) && self.expr_has_int_list_index(&store.expr);
             if narrow_i32 {
                 write!(out, "(")?;
             }
@@ -14707,7 +16599,9 @@ impl RustTrans {
             if !matches!(store.ty, Type::Ptr(_)) && !self.expr_is_taskref(&store.expr) {
                 if let Expr::Dot(obj, _field) = &store.expr {
                     if let Expr::Ident(obj_name) = obj.as_ref() {
-                        let obj_is_copy = self.local_var_types.get(obj_name)
+                        let obj_is_copy = self
+                            .local_var_types
+                            .get(obj_name)
                             .map(|ty| Self::is_copy_type(ty))
                             .unwrap_or(true);
                         if !obj_is_copy {
@@ -14770,7 +16664,10 @@ impl RustTrans {
 
         // When assigning a string literal to a String/Str type, add .to_string()
         // because Rust string literals are &str, but String type needs conversion
-        if matches!(store.ty, Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit) {
+        if matches!(
+            store.ty,
+            Type::StrOwned | Type::StrFixed(_) | Type::StrSlice | Type::CStrLit
+        ) {
             if matches!(&store.expr, Expr::Str(_) | Expr::CStr(_)) {
                 write!(out, ".to_string()")?;
             }
@@ -14843,7 +16740,11 @@ impl RustTrans {
         out: &mut Vec<(AutoStr, Type)>,
     ) {
         use crate::ast::Stmt;
-        fn visit(stmts: &[Stmt], ret_types: &HashMap<AutoStr, Type>, out: &mut Vec<(AutoStr, Type)>) {
+        fn visit(
+            stmts: &[Stmt],
+            ret_types: &HashMap<AutoStr, Type>,
+            out: &mut Vec<(AutoStr, Type)>,
+        ) {
             for stmt in stmts {
                 match stmt {
                     Stmt::Store(store) => {
@@ -14865,14 +16766,20 @@ impl RustTrans {
                                     // 两种调用名形态都认。
                                     Expr::Dot(obj, m) if m.as_str() == "new" => {
                                         if let Expr::Ident(tname) = obj.as_ref() {
-                                            out.push((store.name.clone(), RustTrans::placeholder_user_type(tname.clone())));
+                                            out.push((
+                                                store.name.clone(),
+                                                RustTrans::placeholder_user_type(tname.clone()),
+                                            ));
                                         }
                                     }
                                     Expr::Bina(obj, Op::Dot, m) => {
                                         let is_new = matches!(m.as_ref(), Expr::Ident(id) if id.as_str() == "new");
                                         if is_new {
                                             if let Expr::Ident(tname) = obj.as_ref() {
-                                                out.push((store.name.clone(), RustTrans::placeholder_user_type(tname.clone())));
+                                                out.push((
+                                                    store.name.clone(),
+                                                    RustTrans::placeholder_user_type(tname.clone()),
+                                                ));
                                             }
                                         }
                                     }
@@ -14937,7 +16844,12 @@ impl RustTrans {
     fn infer_fn_ret_type(&self, body: &crate::ast::Body) -> Type {
         let mut found: Option<Type> = None;
         let mut conflict = false;
-        fn visit_stmts(tr: &RustTrans, stmts: &[Stmt], found: &mut Option<Type>, conflict: &mut bool) {
+        fn visit_stmts(
+            tr: &RustTrans,
+            stmts: &[Stmt],
+            found: &mut Option<Type>,
+            conflict: &mut bool,
+        ) {
             for stmt in stmts {
                 match stmt {
                     Stmt::Return(ret) => {
@@ -14954,8 +16866,12 @@ impl RustTrans {
                         }
                     }
                     Stmt::If(if_) => {
-                        for b in &if_.branches { visit_stmts(tr, &b.body.stmts, found, conflict); }
-                        if let Some(e) = &if_.else_ { visit_stmts(tr, &e.stmts, found, conflict); }
+                        for b in &if_.branches {
+                            visit_stmts(tr, &b.body.stmts, found, conflict);
+                        }
+                        if let Some(e) = &if_.else_ {
+                            visit_stmts(tr, &e.stmts, found, conflict);
+                        }
                     }
                     Stmt::For(f) => visit_stmts(tr, &f.body.stmts, found, conflict),
                     Stmt::Block(b) => visit_stmts(tr, &b.stmts, found, conflict),
@@ -14984,12 +16900,37 @@ impl RustTrans {
         /// 已知 &self 语义的面(方法调用不需接收者 mut)——由既有 a2r/cookbook
         /// golden 校准(全量 golden 扫描:immutable let + 方法调用的 init 类型)
         const STD_EXEMPT: &[&str] = &[
-            "String", "Vec", "Arc", "Mutex", "Box", "Rc", "RefCell", "OnceCell",
-            "Cell", "Duration", "Instant", "PathBuf", "Path", "Command",
-            "SystemTime", "Option", "Result", "Cow",
+            "String",
+            "Vec",
+            "Arc",
+            "Mutex",
+            "Box",
+            "Rc",
+            "RefCell",
+            "OnceCell",
+            "Cell",
+            "Duration",
+            "Instant",
+            "PathBuf",
+            "Path",
+            "Command",
+            "SystemTime",
+            "Option",
+            "Result",
+            "Cow",
             // chrono / io / regex / url / semver / num 家族(golden 校准)
-            "Utc", "Local", "DateTime", "NaiveDateTime", "NaiveDate", "NaiveTime",
-            "BufReader", "BufWriter", "Regex", "Url", "Version", "VersionReq",
+            "Utc",
+            "Local",
+            "DateTime",
+            "NaiveDateTime",
+            "NaiveDate",
+            "NaiveTime",
+            "BufReader",
+            "BufWriter",
+            "Regex",
+            "Url",
+            "Version",
+            "VersionReq",
             "Complex",
         ];
         self.uses
@@ -15013,9 +16954,14 @@ impl RustTrans {
     ) -> std::collections::HashSet<AutoStr> {
         let mut out = std::collections::HashSet::new();
         let mut methods: std::collections::HashSet<AutoStr> = mut_method_names.clone();
-        methods.extend(["push", "insert", "extend", "pop", "remove", "retain", "next",
-            "clear", "sort_by", "sort", "swap", "truncate", "drain", "splice", "resize"]
-            .iter().map(|m| AutoStr::from(*m)));
+        methods.extend(
+            [
+                "push", "insert", "extend", "pop", "remove", "retain", "next", "clear", "sort_by",
+                "sort", "swap", "truncate", "drain", "splice", "resize",
+            ]
+            .iter()
+            .map(|m| AutoStr::from(*m)),
+        );
         // methods now carries the built-in mutating methods PLUS every user
         // `mut fn` name (PLAN-010 T2: `x.mutFn()` needs `let mut x`, E0596).
 
@@ -15077,22 +17023,27 @@ impl RustTrans {
             }
         }
 
-        fn visit_expr(expr: &crate::ast::Expr, out: &mut std::collections::HashSet<AutoStr>, methods: &std::collections::HashSet<AutoStr>, rust_typed: &std::collections::HashSet<AutoStr>) {
+        fn visit_expr(
+            expr: &crate::ast::Expr,
+            out: &mut std::collections::HashSet<AutoStr>,
+            methods: &std::collections::HashSet<AutoStr>,
+            rust_typed: &std::collections::HashSet<AutoStr>,
+        ) {
             // `name.push(...)` etc → name is mutated
             if let crate::ast::Expr::Call(call) = expr {
                 if let crate::ast::Expr::Dot(obj, method) = call.name.as_ref() {
                     if let crate::ast::Expr::Ident(name) = obj.as_ref() {
                         // PLAN-592: rust 型绑定的任意方法调用保守视作 mutating
-                        if methods.contains(method.as_str())
-                            || rust_typed.contains(name.as_str())
-                        {
+                        if methods.contains(method.as_str()) || rust_typed.contains(name.as_str()) {
                             out.insert(name.clone());
                         }
                     }
                 }
                 // Recurse into call args
                 for arg in &call.args.args {
-                    if let crate::ast::Arg::Pos(e) = arg { visit_expr(e, out, methods, rust_typed); }
+                    if let crate::ast::Arg::Pos(e) = arg {
+                        visit_expr(e, out, methods, rust_typed);
+                    }
                 }
             }
             // Plan 523 H2: 赋值 place 根(任意深度)——`x = e`/`x.f = e`/
@@ -15101,29 +17052,62 @@ impl RustTrans {
             // `\b{name}\.\w+\s*=` 不匹配两级 place——b36 考古:
             // `o.first.v = ...` 后 `let o` 缺 mut,rustc E0594)。
             if let crate::ast::Expr::Bina(lhs, op, _) = expr {
-                if matches!(op, Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq) {
+                if matches!(
+                    op,
+                    Op::Asn | Op::AddEq | Op::SubEq | Op::MulEq | Op::DivEq | Op::ModEq
+                ) {
                     let mut root = lhs.as_ref();
                     loop {
                         match root {
-                            crate::ast::Expr::Ident(n) => { out.insert(n.clone()); break; }
-                            crate::ast::Expr::Dot(o, _) | crate::ast::Expr::Index(o, _) => root = o.as_ref(),
+                            crate::ast::Expr::Ident(n) => {
+                                out.insert(n.clone());
+                                break;
+                            }
+                            crate::ast::Expr::Dot(o, _) | crate::ast::Expr::Index(o, _) => {
+                                root = o.as_ref()
+                            }
                             _ => break,
                         }
                     }
                 }
             }
         }
-        fn visit_stmt(stmt: &Stmt, out: &mut std::collections::HashSet<AutoStr>, methods: &std::collections::HashSet<AutoStr>, rust_typed: &std::collections::HashSet<AutoStr>) {
+        fn visit_stmt(
+            stmt: &Stmt,
+            out: &mut std::collections::HashSet<AutoStr>,
+            methods: &std::collections::HashSet<AutoStr>,
+            rust_typed: &std::collections::HashSet<AutoStr>,
+        ) {
             match stmt {
                 Stmt::Expr(expr) => visit_expr(expr, out, methods, rust_typed),
                 Stmt::Store(store) => visit_expr(&store.expr, out, methods, rust_typed),
                 Stmt::If(if_) => {
-                    for b in &if_.branches { for s in &b.body.stmts { visit_stmt(s, out, methods, rust_typed); } }
-                    if let Some(e) = &if_.else_ { for s in &e.stmts { visit_stmt(s, out, methods, rust_typed); } }
+                    for b in &if_.branches {
+                        for s in &b.body.stmts {
+                            visit_stmt(s, out, methods, rust_typed);
+                        }
+                    }
+                    if let Some(e) = &if_.else_ {
+                        for s in &e.stmts {
+                            visit_stmt(s, out, methods, rust_typed);
+                        }
+                    }
                 }
-                Stmt::For(for_) => { for s in &for_.body.stmts { visit_stmt(s, out, methods, rust_typed); } }
-                Stmt::Block(b) => { for s in &b.stmts { visit_stmt(s, out, methods, rust_typed); } }
-                Stmt::Try(t) => { for s in &t.body.stmts { visit_stmt(s, out, methods, rust_typed); } }
+                Stmt::For(for_) => {
+                    for s in &for_.body.stmts {
+                        visit_stmt(s, out, methods, rust_typed);
+                    }
+                }
+                Stmt::Block(b) => {
+                    for s in &b.stmts {
+                        visit_stmt(s, out, methods, rust_typed);
+                    }
+                }
+                Stmt::Try(t) => {
+                    for s in &t.body.stmts {
+                        visit_stmt(s, out, methods, rust_typed);
+                    }
+                }
                 _ => {}
             }
         }
@@ -15186,7 +17170,10 @@ impl RustTrans {
             Expr::Index(b, i) => {
                 Self::expr_read_idents_into(b, out) && Self::expr_read_idents_into(i, out)
             }
-            Expr::Some(x) | Expr::Ok(x) | Expr::Err(x) | Expr::ErrorPropagate(x)
+            Expr::Some(x)
+            | Expr::Ok(x)
+            | Expr::Err(x)
+            | Expr::ErrorPropagate(x)
             | Expr::View(x) => Self::expr_read_idents_into(x, out),
             Expr::NullCoalesce(l, r) => {
                 Self::expr_read_idents_into(l, out) && Self::expr_read_idents_into(r, out)
@@ -15196,10 +17183,22 @@ impl RustTrans {
                 Self::expr_read_idents_into(expr, out)
             }
             // Leaves with no idents (all literal kinds + nil family).
-            Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_) | Expr::I64(_)
-            | Expr::U64(_) | Expr::Byte(_) | Expr::Float(_, _) | Expr::Double(_, _)
-            | Expr::Bool(_) | Expr::Char(_) | Expr::Str(_) | Expr::CStr(_)
-            | Expr::Nil | Expr::Null | Expr::None => true,
+            Expr::Int(_)
+            | Expr::Uint(_)
+            | Expr::I8(_)
+            | Expr::U8(_)
+            | Expr::I64(_)
+            | Expr::U64(_)
+            | Expr::Byte(_)
+            | Expr::Float(_, _)
+            | Expr::Double(_, _)
+            | Expr::Bool(_)
+            | Expr::Char(_)
+            | Expr::Str(_)
+            | Expr::CStr(_)
+            | Expr::Nil
+            | Expr::Null
+            | Expr::None => true,
             _ => false,
         }
     }
@@ -15220,7 +17219,9 @@ impl RustTrans {
                         crate::ast::IsBranch::IfBranch(_, body) => body,
                         crate::ast::IsBranch::ElseBranch(body) => body,
                     };
-                    for s in &body.stmts { visit_stmt(s, out); }
+                    for s in &body.stmts {
+                        visit_stmt(s, out);
+                    }
                 }
             }
         }
@@ -15237,22 +17238,46 @@ impl RustTrans {
                             crate::ast::IsBranch::IfBranch(_, body) => body,
                             crate::ast::IsBranch::ElseBranch(body) => body,
                         };
-                        for s in &body.stmts { visit_stmt(s, out); }
+                        for s in &body.stmts {
+                            visit_stmt(s, out);
+                        }
                     }
                 }
                 Stmt::If(if_) => {
                     for b in &if_.branches {
                         visit_expr(&b.cond, out);
-                        for s in &b.body.stmts { visit_stmt(s, out); }
+                        for s in &b.body.stmts {
+                            visit_stmt(s, out);
+                        }
                     }
-                    if let Some(e) = &if_.else_ { for s in &e.stmts { visit_stmt(s, out); } }
+                    if let Some(e) = &if_.else_ {
+                        for s in &e.stmts {
+                            visit_stmt(s, out);
+                        }
+                    }
                 }
-                Stmt::For(for_) => { for s in &for_.body.stmts { visit_stmt(s, out); } }
-                Stmt::Block(b) => { for s in &b.stmts { visit_stmt(s, out); } }
+                Stmt::For(for_) => {
+                    for s in &for_.body.stmts {
+                        visit_stmt(s, out);
+                    }
+                }
+                Stmt::Block(b) => {
+                    for s in &b.stmts {
+                        visit_stmt(s, out);
+                    }
+                }
                 Stmt::Try(t) => {
-                    for s in &t.body.stmts { visit_stmt(s, out); }
-                    for s in &t.catch_body.stmts { visit_stmt(s, out); }
-                    if let Some(f) = &t.finally_body { for s in &f.stmts { visit_stmt(s, out); } }
+                    for s in &t.body.stmts {
+                        visit_stmt(s, out);
+                    }
+                    for s in &t.catch_body.stmts {
+                        visit_stmt(s, out);
+                    }
+                    if let Some(f) = &t.finally_body {
+                        for s in &f.stmts {
+                            visit_stmt(s, out);
+                        }
+                    }
                 }
                 _ => {}
             }
@@ -15295,7 +17320,7 @@ impl RustTrans {
         self.cabi_kit_emitted = true;
         writeln!(
             sink.body,
-r#"/// Plan 610 ⑤: pointer bridge kit — raw-buffer/out-param access from #[export]
+            r#"/// Plan 610 ⑤: pointer bridge kit — raw-buffer/out-param access from #[export]
 /// bodies is confined here (004 §3.5: unsafe lives in generated code only;
 /// Auto bodies stay safe). All writes are null-tolerant no-ops.
 mod auto_cabi_kit {{
@@ -15448,8 +17473,7 @@ pub use auto_cabi_kit::*;"#
                 // unsafe is scoped to CStr::from_ptr exactly (wrapper fns
                 // without cstr params emit no unsafe block at all).
                 Type::CStrLit => {
-                    abi_params
-                        .push(format!("{}: *const std::os::raw::c_char", name));
+                    abi_params.push(format!("{}: *const std::os::raw::c_char", name));
                     conv_prelude.push(format!(
                         "let {n}_conv: String = if {n}.is_null() {{ String::new() }} else {{ unsafe {{ std::ffi::CStr::from_ptr({n}) }}.to_string_lossy().into_owned() }};",
                         n = name
@@ -15578,11 +17602,7 @@ pub use auto_cabi_kit::*;"#
             "/// Plan 610 ⑤: C ABI export face for `{}` — the sibling wrapper bridges C widths\n/// to the safe body below; the exported symbol equals the fn name (no_mangle\n/// ignores the module path).",
             fn_decl.name
         )?;
-        writeln!(
-            sink.body,
-            "mod {}_c_export {{",
-            fn_decl.name
-        )?;
+        writeln!(sink.body, "mod {}_c_export {{", fn_decl.name)?;
         // Bring the outer scope in (handle pointee types like the session
         // struct live outside this module).
         writeln!(sink.body, "    use super::*;")?;
@@ -15629,7 +17649,8 @@ pub use auto_cabi_kit::*;"#
         self.borrowed_iter_vars.clear();
         self.by_value_iter_bindings.clear();
         for param in &fn_decl.params {
-            self.local_var_types.insert(param.name.clone(), param.ty.clone());
+            self.local_var_types
+                .insert(param.name.clone(), param.ty.clone());
         }
         // Plan 514 W3:方法体注册 `self` 的宿主类型(占位 User)——
         // 使 str 参数 as_str 强转/struct 守卫等按接收者类型的机制对
@@ -15732,7 +17753,8 @@ pub use auto_cabi_kit::*;"#
         let is_main_with_await = !is_method
             && fn_decl.name.as_ref() == "main"
             && (Self::has_await(&fn_decl.body.stmts) || self.body_has_stream_for(&main_refs));
-        let is_main_actor = !is_method && fn_decl.name.as_ref() == "main" && self.program_has_actors;
+        let is_main_actor =
+            !is_method && fn_decl.name.as_ref() == "main" && self.program_has_actors;
         if is_main_actor {
             if is_method {
                 // already indented
@@ -15855,8 +17877,13 @@ pub use auto_cabi_kit::*;"#
         // values, so emit them as `Result<String, String>`.
         let result_idents = Self::result_pattern_idents(&fn_decl.body.stmts);
         // Add &self as first parameter for methods (except constructors)
-        let skip_first_self = is_method && !fn_decl.is_static && fn_decl.name.as_str() != "new"
-            && fn_decl.params.first().map_or(false, |p| p.name.as_str() == "self");
+        let skip_first_self = is_method
+            && !fn_decl.is_static
+            && fn_decl.name.as_str() != "new"
+            && fn_decl
+                .params
+                .first()
+                .map_or(false, |p| p.name.as_str() == "self");
         if is_method && !fn_decl.is_static && fn_decl.name.as_str() != "new" {
             // Plan 163: &mut self for mut methods
             // Plan 373: also auto-detect self-mutation (self.field = ... or
@@ -15877,7 +17904,10 @@ pub use auto_cabi_kit::*;"#
             // method gets `&mut self` and `return self` returns the borrow →
             // E0308 "expected Self, found &mut Self".
             let is_builder = needs_mut && {
-                let ret_is_parent = fn_decl.parent.as_ref().map(|p| p.to_string())
+                let ret_is_parent = fn_decl
+                    .parent
+                    .as_ref()
+                    .map(|p| p.to_string())
                     .map(|parent_name| {
                         // ret is the enclosing type (User named like the parent,
                         // or the implicit Self).
@@ -15887,10 +17917,16 @@ pub use auto_cabi_kit::*;"#
                         }
                     })
                     .unwrap_or(false);
-                let ends_with_return_self = fn_decl.body.stmts.iter().last().map(|s| {
-                    matches!(s, Stmt::Return(expr)
+                let ends_with_return_self = fn_decl
+                    .body
+                    .stmts
+                    .iter()
+                    .last()
+                    .map(|s| {
+                        matches!(s, Stmt::Return(expr)
                         if matches!(expr.as_ref(), Expr::Ident(name) if name.as_str() == "self"))
-                }).unwrap_or(false);
+                    })
+                    .unwrap_or(false);
                 ret_is_parent && ends_with_return_self
             };
             if is_builder {
@@ -16010,11 +18046,21 @@ pub use auto_cabi_kit::*;"#
         // Cache which params are str (&str) type for auto-borrow at call sites
         self.current_fn_str_params.clear();
         self.current_fn_mut_params.clear();
-        let str_param_flags: Vec<bool> = fn_decl.params.iter()
-            .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit))
+        let str_param_flags: Vec<bool> = fn_decl
+            .params
+            .iter()
+            .map(|p| {
+                matches!(
+                    p.ty,
+                    Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit
+                )
+            })
             .collect();
         for param in &fn_decl.params {
-            if matches!(param.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit) {
+            if matches!(
+                param.ty,
+                Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit
+            ) {
                 self.current_fn_str_params.insert(param.name.clone());
                 self.fn_param_str_slice.insert(param.name.clone());
             }
@@ -16035,23 +18081,29 @@ pub use auto_cabi_kit::*;"#
                 self.spec_bound_idents.insert(param.name.clone());
             }
         }
-        self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
+        self.fn_str_param_indices
+            .insert(fn_decl.name.clone(), str_param_flags);
 
         // Cache which params are non-Copy types (need .clone() at call sites).
         // Plan 387 §16 P0-2: TaskRef<T> is a move-only single-owner type (not
         // Clone) — passing it must MOVE, never clone. Exclude it from the
         // struct-param clone set so call sites emit `forward(h)` not `forward(h.clone())`.
-        let struct_param_flags: Vec<bool> = fn_decl.params.iter()
+        let struct_param_flags: Vec<bool> = fn_decl
+            .params
+            .iter()
             .map(|p| {
-                let is_taskref = matches!(&p.ty, Type::GenericInstance(inst) if inst.base_name == "TaskRef");
+                let is_taskref =
+                    matches!(&p.ty, Type::GenericInstance(inst) if inst.base_name == "TaskRef");
                 !Self::is_copy_type(&p.ty) && !is_taskref
             })
             .collect();
-        self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+        self.fn_struct_param_indices
+            .insert(fn_decl.name.clone(), struct_param_flags);
 
         // Cache full parameter types for type-aware call site generation
         let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
-        self.fn_param_types.insert(fn_decl.name.clone(), param_types.clone());
+        self.fn_param_types
+            .insert(fn_decl.name.clone(), param_types.clone());
         if let Some(parent) = &fn_decl.parent {
             let qualified: AutoStr = format!("{}.{}", parent, fn_decl.name).into();
             self.fn_param_types.insert(qualified, param_types);
@@ -16062,16 +18114,20 @@ pub use auto_cabi_kit::*;"#
         // 体无显式 return 表达式时推断回 Unknown → 维持 Void 原样。
         // main 排除（Rust 要求 fn main 返回 ()；main 体内 return 值仅作
         // 退出语义，002_const_generics/002_list_storage 金样实证）。
-        let inferred_ret: Type = if matches!(fn_decl.ret, Type::Void)
-            && fn_decl.name.as_str() != "main"
-        {
-            let t = self.infer_fn_ret_type(&fn_decl.body);
-            if matches!(t, Type::Unknown | Type::Void) { fn_decl.ret.clone() } else { t }
-        } else {
-            fn_decl.ret.clone()
-        };
+        let inferred_ret: Type =
+            if matches!(fn_decl.ret, Type::Void) && fn_decl.name.as_str() != "main" {
+                let t = self.infer_fn_ret_type(&fn_decl.body);
+                if matches!(t, Type::Unknown | Type::Void) {
+                    fn_decl.ret.clone()
+                } else {
+                    t
+                }
+            } else {
+                fn_decl.ret.clone()
+            };
         // Plan 373: Cache return type for .await insertion (keyed same as params).
-        self.fn_ret_types.insert(fn_decl.name.clone(), inferred_ret.clone());
+        self.fn_ret_types
+            .insert(fn_decl.name.clone(), inferred_ret.clone());
         if let Some(parent) = &fn_decl.parent {
             let qualified: AutoStr = format!("{}.{}", parent, fn_decl.name).into();
             self.fn_ret_types.insert(qualified, inferred_ret.clone());
@@ -16079,39 +18135,48 @@ pub use auto_cabi_kit::*;"#
 
         // In merge mode, track which params are context types (need &mut instead of .clone())
         if self.merge_mode {
-            let merge_mut_flags: Vec<bool> = fn_decl.params.iter()
+            let merge_mut_flags: Vec<bool> = fn_decl
+                .params
+                .iter()
                 .map(|p| Self::is_merge_mut_type(&p.ty))
                 .collect();
-            self.fn_merge_mut_params.insert(fn_decl.name.clone(), merge_mut_flags);
+            self.fn_merge_mut_params
+                .insert(fn_decl.name.clone(), merge_mut_flags);
         }
 
         // C11 (Plan 018 §12 a2r-11): track `mut p T` params → call sites pass `&mut arg`.
-        let mut_param_flags: Vec<bool> = fn_decl.params.iter()
+        let mut_param_flags: Vec<bool> = fn_decl
+            .params
+            .iter()
             .map(|p| p.mode == crate::ast::ParamMode::Mut)
             .collect();
-        self.fn_mut_params.insert(fn_decl.name.clone(), mut_param_flags);
+        self.fn_mut_params
+            .insert(fn_decl.name.clone(), mut_param_flags);
 
         // Cache which params are spec types (need Box::new() at call sites)
-        let spec_param_flags: Vec<bool> = fn_decl.params.iter()
+        let spec_param_flags: Vec<bool> = fn_decl
+            .params
+            .iter()
             .map(|p| matches!(p.ty, Type::Spec(_)))
             .collect();
-        self.fn_spec_param_indices.insert(fn_decl.name.clone(), spec_param_flags);
+        self.fn_spec_param_indices
+            .insert(fn_decl.name.clone(), spec_param_flags);
 
         // Cache which params are Int type (need enum→i32 cast at call sites).
         // Plan 347: exclude params whose effective type was inferred as Result
         // from Ok/Err pattern matching (they are not really Int).
-        let int_param_flags: Vec<bool> = fn_decl.params.iter()
-            .map(|p| {
-                matches!(p.ty, Type::Int)
-                    && !result_idents.contains(p.name.as_str())
-            })
+        let int_param_flags: Vec<bool> = fn_decl
+            .params
+            .iter()
+            .map(|p| matches!(p.ty, Type::Int) && !result_idents.contains(p.name.as_str()))
             .collect();
-        self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
+        self.fn_int_param_indices
+            .insert(fn_decl.name.clone(), int_param_flags);
 
         // Plan 240: If function returns void but body uses .? (ErrorPropagate),
         // auto-wrap return type as Result<(), Box<dyn std::error::Error>>
-        let fn_body_has_try = matches!(fn_decl.ret, Type::Void)
-            && Self::has_error_propagate(&fn_decl.body.stmts);
+        let fn_body_has_try =
+            matches!(fn_decl.ret, Type::Void) && Self::has_error_propagate(&fn_decl.body.stmts);
         // Plan 347: If a void-declared function body returns explicit
         // `Ok(...)` / `Err(...)` values, infer a `Result<String, String>`
         // return type. This covers library functions written without an
@@ -16167,7 +18232,8 @@ pub use auto_cabi_kit::*;"#
             // unregistered for exactly this reason). ~Iter maps onto the
             // same lazy-sequence lowering; Auto-side semantics are identical.
             let stream_or_iter = if matches!(&fn_decl.ret, Type::GenericInstance(inst)
-                if matches!(inst.base_name.as_str(), "Stream" | "Iter")) {
+                if matches!(inst.base_name.as_str(), "Stream" | "Iter"))
+            {
                 "impl futures::Stream<Item = "
             } else {
                 "impl Iterator<Item = "
@@ -16208,17 +18274,16 @@ pub use auto_cabi_kit::*;"#
         if is_main_actor {
             // No prologue needed (no __rt to declare).
             self.main_actor_prologue = None;
-            self.main_actor_epilogue =
-                Some("a2r_std::task::drain_all().await;\n".to_string());
+            self.main_actor_epilogue = Some("a2r_std::task::drain_all().await;\n".to_string());
         }
 
         // Plan 091: scope removed
         self.in_fn_body = true; // Plan 523 W3:fn 内全局 store 走写块形
-        // PLAN-724 T-06: HTTP 分派的 async 上下文窗口（async fn / async
-        // main / generator body 内 await 合法；同步 fn 内回落同步桥接面）。
-        let prev_async_ctx = self.in_async_ctx.replace(
-            is_async_fn || (is_generator_fn && body_yields),
-        );
+                                // PLAN-724 T-06: HTTP 分派的 async 上下文窗口（async fn / async
+                                // main / generator body 内 await 合法；同步 fn 内回落同步桥接面）。
+        let prev_async_ctx = self
+            .in_async_ctx
+            .replace(is_async_fn || (is_generator_fn && body_yields));
         self.body(&fn_decl.body, sink, &effective_ret_type, "")?;
         self.in_async_ctx.set(prev_async_ctx);
         self.in_fn_body = false;
@@ -16245,9 +18310,15 @@ pub use auto_cabi_kit::*;"#
         match stmt {
             Stmt::Expr(e) => Self::expr_has_yield(e),
             Stmt::Return(e) => Self::expr_has_yield(e),
-            Stmt::If(iff) => iff.branches.iter().any(|br| {
-                Self::expr_has_yield(&br.cond) || Self::scan_body_has_yield(&br.body)
-            }) || iff.else_.as_ref().map_or(false, |b| Self::scan_body_has_yield(b)),
+            Stmt::If(iff) => {
+                iff.branches
+                    .iter()
+                    .any(|br| Self::expr_has_yield(&br.cond) || Self::scan_body_has_yield(&br.body))
+                    || iff
+                        .else_
+                        .as_ref()
+                        .map_or(false, |b| Self::scan_body_has_yield(b))
+            }
             Stmt::For(f) => Self::expr_has_yield(&f.range) || Self::scan_body_has_yield(&f.body),
             Stmt::Block(b) => Self::scan_body_has_yield(b),
             _ => false,
@@ -16257,17 +18328,29 @@ pub use auto_cabi_kit::*;"#
     fn expr_has_yield(expr: &Expr) -> bool {
         match expr {
             Expr::Yield(_) => true,
-            Expr::View(e) | Expr::Mut(e) | Expr::Move(e) | Expr::Take(e)
-            | Expr::Unary(_, e) | Expr::Some(e) | Expr::Ok(e) | Expr::Err(e)
-            | Expr::ErrorPropagate(e) | Expr::BoxExpr(e) | Expr::ArcExpr(e) => Self::expr_has_yield(e),
+            Expr::View(e)
+            | Expr::Mut(e)
+            | Expr::Move(e)
+            | Expr::Take(e)
+            | Expr::Unary(_, e)
+            | Expr::Some(e)
+            | Expr::Ok(e)
+            | Expr::Err(e)
+            | Expr::ErrorPropagate(e)
+            | Expr::BoxExpr(e)
+            | Expr::ArcExpr(e) => Self::expr_has_yield(e),
             Expr::Bina(lhs, _, rhs) => Self::expr_has_yield(lhs) || Self::expr_has_yield(rhs),
             Expr::NullCoalesce(a, b) => Self::expr_has_yield(a) || Self::expr_has_yield(b),
             Expr::Dot(receiver, _) => Self::expr_has_yield(receiver),
-            Expr::Call(call) => Self::expr_has_yield(&call.name)
-                || call.args.args.iter().any(|arg| match arg {
-                    crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => Self::expr_has_yield(e),
-                    _ => false,
-                }),
+            Expr::Call(call) => {
+                Self::expr_has_yield(&call.name)
+                    || call.args.args.iter().any(|arg| match arg {
+                        crate::ast::Arg::Pos(e) | crate::ast::Arg::Pair(_, e) => {
+                            Self::expr_has_yield(e)
+                        }
+                        _ => false,
+                    })
+            }
             Expr::Index(t, i) => Self::expr_has_yield(t) || Self::expr_has_yield(i),
             Expr::Array(elems) | Expr::Tuple(elems) => elems.iter().any(Self::expr_has_yield),
             Expr::Await { expr: e } | Expr::Go { expr: e } => Self::expr_has_yield(e),
@@ -16334,8 +18417,10 @@ pub use auto_cabi_kit::*;"#
                     if owned_temp {
                         write!(sink.body, "let __hs = ")?;
                         self.expr(&for_stmt.range, &mut sink.body)?;
-                        sink.body.write(b";
-")?;
+                        sink.body.write(
+                            b";
+",
+                        )?;
                         recv_expr = "__hs".to_string();
                     } else if let Expr::Call(c) = &for_stmt.range {
                         if let Expr::Dot(obj, _) = c.name.as_ref() {
@@ -16350,20 +18435,31 @@ pub use auto_cabi_kit::*;"#
                             }
                         }
                     }
-                    sink.body.write(b"loop {
-")?;
+                    sink.body.write(
+                        b"loop {
+",
+                    )?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
                     if stream_is_async {
-                        write!(sink.body, "let {var} = a2r_std::http::stream_next_async(&{recv_expr}).await;
-")?;
+                        write!(
+                            sink.body,
+                            "let {var} = a2r_std::http::stream_next_async(&{recv_expr}).await;
+"
+                        )?;
                     } else {
-                        write!(sink.body, "let {var} = a2r_std::http::stream_next(&{recv_expr});
-")?;
+                        write!(
+                            sink.body,
+                            "let {var} = a2r_std::http::stream_next(&{recv_expr});
+"
+                        )?;
                     }
                     self.print_indent(&mut sink.body)?;
-                    write!(sink.body, "if {var}.is_empty() {{ break; }}
-")?;
+                    write!(
+                        sink.body,
+                        "if {var}.is_empty() {{ break; }}
+"
+                    )?;
                     self.emit_loop_body(&for_stmt.body, sink)?;
                     self.dedent();
                     self.print_indent(&mut sink.body)?;
@@ -16387,7 +18483,11 @@ pub use auto_cabi_kit::*;"#
                     // Fully-qualified futures::StreamExt::next avoids needing a
                     // `use futures::StreamExt;` import in the generated file.
                     self.print_indent(&mut sink.body)?;
-                    write!(sink.body, "while let Some({}) = futures::StreamExt::next(&mut __s).await {{\n", name)?;
+                    write!(
+                        sink.body,
+                        "while let Some({}) = futures::StreamExt::next(&mut __s).await {{\n",
+                        name
+                    )?;
                     self.indent();
                     self.emit_loop_body(&for_stmt.body, sink)?;
                     self.dedent();
@@ -16429,15 +18529,21 @@ pub use auto_cabi_kit::*;"#
                         Expr::Call(c) => {
                             if let Expr::Dot(_, m) = c.name.as_ref() {
                                 matches!(m.as_str(), "split" | "lines" | "split_whitespace")
-                            } else { false }
+                            } else {
+                                false
+                            }
                         }
                         // split().collect::<Vec<_>>() wrapper
                         Expr::Index(inner, _) => {
                             if let Expr::Call(c) = inner.as_ref() {
                                 if let Expr::Dot(_, m) = c.name.as_ref() {
                                     matches!(m.as_str(), "split" | "lines" | "split_whitespace")
-                                } else { false }
-                            } else { false }
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
                         }
                         _ => false,
                     };
@@ -16452,10 +18558,8 @@ pub use auto_cabi_kit::*;"#
                     //   `for x in some_vec`      → `for x in &some_vec`
                     // This mirrors the Destructured branch. Method calls
                     // (e.g. `.clone()`, iterator-yielding fns) stay un-borrowed.
-                    let is_borrowable = matches!(
-                        &for_stmt.range,
-                        Expr::Ident(_) | Expr::Dot(_, _)
-                    ) && !matches!(&for_stmt.range, Expr::Ident(n)
+                    let is_borrowable = matches!(&for_stmt.range, Expr::Ident(_) | Expr::Dot(_, _))
+                        && !matches!(&for_stmt.range, Expr::Ident(n)
                         if self.by_value_iter_bindings.contains(n));
                     if is_borrowable {
                         sink.body.write(b"&")?;
@@ -16491,10 +18595,8 @@ pub use auto_cabi_kit::*;"#
                         ) && matches!(&for_stmt.range, Expr::Ident(_)
                             if self.receiver_elem_is_json_value(&for_stmt.range))
                         {
-                            self.local_var_types.insert(
-                                name.clone(),
-                                Self::placeholder_user_type("Value".into()),
-                            );
+                            self.local_var_types
+                                .insert(name.clone(), Self::placeholder_user_type("Value".into()));
                         }
                     }
                     self.expr(&for_stmt.range, &mut sink.body)?;
@@ -16599,8 +18701,14 @@ pub use auto_cabi_kit::*;"#
                     write!(out, "; tokio::pin!(__s); while let Some({}) = futures::StreamExt::next(&mut __s).await {{", name)?;
                     for stmt in &for_stmt.body.stmts {
                         match stmt {
-                            Stmt::Expr(expr) => { self.expr(expr, out)?; write!(out, "; ")?; }
-                            Stmt::Store(store) => { self.store(store, out)?; write!(out, "; ")?; }
+                            Stmt::Expr(expr) => {
+                                self.expr(expr, out)?;
+                                write!(out, "; ")?;
+                            }
+                            Stmt::Store(store) => {
+                                self.store(store, out)?;
+                                write!(out, "; ")?;
+                            }
                             _ => {}
                         }
                     }
@@ -16695,8 +18803,10 @@ pub use auto_cabi_kit::*;"#
                     }
                     Stmt::Expr(expr) => {
                         self.expr(expr, &mut sink.body)?;
-                        if is_last && self.ret_type_needs_string_coercion()
-                            && self.expr_needs_string_coercion(expr) {
+                        if is_last
+                            && self.ret_type_needs_string_coercion()
+                            && self.expr_needs_string_coercion(expr)
+                        {
                             sink.body.write(b".to_string()")?;
                         }
                         if !is_last {
@@ -16738,8 +18848,10 @@ pub use auto_cabi_kit::*;"#
                     }
                     _ => {
                         self.stmt(stmt, sink)?;
-                        sink.body.write(b"
-")?;
+                        sink.body.write(
+                            b"
+",
+                        )?;
                     }
                 }
             }
@@ -16769,8 +18881,10 @@ pub use auto_cabi_kit::*;"#
                     }
                     Stmt::Expr(expr) => {
                         self.expr(expr, &mut sink.body)?;
-                        if is_last && self.ret_type_needs_string_coercion()
-                            && self.expr_needs_string_coercion(expr) {
+                        if is_last
+                            && self.ret_type_needs_string_coercion()
+                            && self.expr_needs_string_coercion(expr)
+                        {
                             sink.body.write(b".to_string()")?;
                         }
                         // Plan 393 E3: else 分支尾表达式也一律 `;` (语句上下文)
@@ -16804,15 +18918,18 @@ pub use auto_cabi_kit::*;"#
                         // String-returning fn returning a &str expr in an
                         // else branch needs the .to_string() coercion.
                         if self.ret_type_needs_string_coercion()
-                            && self.expr_needs_string_coercion(ret) {
+                            && self.expr_needs_string_coercion(ret)
+                        {
                             sink.body.write(b".to_string()")?;
                         }
                         sink.body.write(b";\n")?;
                     }
                     _ => {
                         self.stmt(stmt, sink)?;
-                        sink.body.write(b"
-")?;
+                        sink.body.write(
+                            b"
+",
+                        )?;
                     }
                 }
             }
@@ -16834,7 +18951,8 @@ pub use auto_cabi_kit::*;"#
                     self.expr(expr, out)?;
                     // Auto-coerce &str literal to String in String-returning match arms
                     if self.ret_type_needs_string_coercion()
-                        && self.expr_needs_string_coercion(expr) {
+                        && self.expr_needs_string_coercion(expr)
+                    {
                         write!(out, ".to_string()")?;
                     }
                 }
@@ -16849,8 +18967,14 @@ pub use auto_cabi_kit::*;"#
             write!(out, "{{ ")?;
             for stmt in &body.stmts {
                 match stmt {
-                    Stmt::Expr(expr) => { self.expr(expr, out)?; write!(out, "; ")?; }
-                    Stmt::Return(ret) => { self.write_return_expr(ret, out, true)?; write!(out, " ")?; }
+                    Stmt::Expr(expr) => {
+                        self.expr(expr, out)?;
+                        write!(out, "; ")?;
+                    }
+                    Stmt::Return(ret) => {
+                        self.write_return_expr(ret, out, true)?;
+                        write!(out, " ")?;
+                    }
                     Stmt::Break => write!(out, "break; ")?,
                     Stmt::Continue => write!(out, "continue; ")?,
                     _ => {}
@@ -16878,10 +19002,7 @@ pub use auto_cabi_kit::*;"#
             Some(Stmt::Expr(Expr::Call(c)))
                 if matches!(c.name.as_ref(),
                     Expr::Dot(_, _) | Expr::Bina(_, Op::Dot, _)));
-        if has_block_arm
-            && body.stmts.len() == 1
-            && is_value_bearing_method_call
-        {
+        if has_block_arm && body.stmts.len() == 1 && is_value_bearing_method_call {
             sink.body.write(b"{ ")?;
             self.write_match_arm_body(body, sink)?;
             sink.body.write(b"; }")?;
@@ -16902,7 +19023,8 @@ pub use auto_cabi_kit::*;"#
                     self.expr(expr, &mut sink.body)?;
                     // Auto-coerce &str literal to String in String-returning match arms
                     if self.ret_type_needs_string_coercion()
-                        && self.expr_needs_string_coercion(expr) {
+                        && self.expr_needs_string_coercion(expr)
+                    {
                         sink.body.write(b".to_string()")?;
                     }
                 }
@@ -16969,7 +19091,10 @@ pub use auto_cabi_kit::*;"#
                 Expr::Ident(n) => Some(n.as_str()),
                 _ => None,
             };
-            matches!(m, Some("strip_prefix") | Some("strip_suffix") | Some("to_str"))
+            matches!(
+                m,
+                Some("strip_prefix") | Some("strip_suffix") | Some("to_str")
+            )
         } else {
             false
         }
@@ -16987,7 +19112,11 @@ pub use auto_cabi_kit::*;"#
             let m = match call.name.as_ref() {
                 Expr::Dot(_, method) => Some(method.as_str()),
                 Expr::Bina(_, Op::Dot, method) => {
-                    if let Expr::Ident(m) = method.as_ref() { Some(m.as_str()) } else { None }
+                    if let Expr::Ident(m) = method.as_ref() {
+                        Some(m.as_str())
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             };
@@ -17015,7 +19144,8 @@ pub use auto_cabi_kit::*;"#
                         self.get_ref_bindings.insert(b.clone());
                     }
                 }
-                Expr::Call(c) if matches!(c.name.as_ref(),
+                Expr::Call(c)
+                    if matches!(c.name.as_ref(),
                     Expr::Ident(n) if n.as_str() == "Some") =>
                 {
                     if let Some(crate::ast::Arg::Pos(Expr::Ident(b))) = c.args.args.first() {
@@ -17038,11 +19168,14 @@ pub use auto_cabi_kit::*;"#
                 _ => None,
             };
             if let Some(n) = name {
-                return self.fn_ret_types.get(n.as_str()).map(|t| {
-                    match t {
-                        Type::Spec(_) => true,
-                        Type::Option(inner) | Type::Result(inner) => {
-                            matches!(inner.as_ref(), Type::Spec(_))
+                return self
+                    .fn_ret_types
+                    .get(n.as_str())
+                    .map(|t| {
+                        match t {
+                            Type::Spec(_) => true,
+                            Type::Option(inner) | Type::Result(inner) => {
+                                matches!(inner.as_ref(), Type::Spec(_))
                                 // Plan 380: on the single-file CLI path a
                                 // cross-module spec can be typed `User(Role)`
                                 // (spec_decls knows it's a spec) rather than
@@ -17050,10 +19183,11 @@ pub use auto_cabi_kit::*;"#
                                 || (if let Type::User(usr) = inner.as_ref() {
                                     self.spec_decls.contains_key(&usr.name)
                                 } else { false })
+                            }
+                            _ => false,
                         }
-                        _ => false,
-                    }
-                }).unwrap_or(false);
+                    })
+                    .unwrap_or(false);
             }
         }
         false
@@ -17080,14 +19214,16 @@ pub use auto_cabi_kit::*;"#
         // returns Value. Use parse_opt (which returns Option<Value>) when the
         // scrutinee is json.parse AND branches include Some/None patterns.
         let is_jp = self.is_json_parse_scrutinee(&is_stmt.target);
-        let has_some_none = is_stmt.branches.iter().any(|b| matches!(b, IsBranch::EqBranch(patterns, _)
+        let has_some_none = is_stmt.branches.iter().any(|b| {
+            matches!(b, IsBranch::EqBranch(patterns, _)
             if patterns.iter().any(|p| match p {
                 Expr::Ident(n) => n.as_str() == "Some" || n.as_str() == "None",
                 Expr::Call(c) => matches!(c.name.as_ref(), Expr::Ident(n) if n.as_str() == "Some"),
                 // Auto's Some(x)/None patterns are Expr::OptionPattern
                 Expr::OptionPattern(_) => true,
                 _ => false,
-            })));
+            }))
+        });
         let parse_as_opt = is_jp && has_some_none;
         let prev = self.json_parse_as_opt;
         self.json_parse_as_opt = parse_as_opt;
@@ -17101,21 +19237,20 @@ pub use auto_cabi_kit::*;"#
             .branches
             .iter()
             .any(|b| matches!(b, IsBranch::IfBranch(_, _)));
-        let hoisted_scrutinee: Option<AutoStr> = if has_guard_arm
-            && !matches!(is_stmt.target, Expr::Ident(_))
-        {
-            let name: AutoStr = format!("__is_{}", self.is_hoist_counter).into();
-            self.is_hoist_counter += 1;
-            sink.body.write(b"let ")?;
-            sink.body.write(name.as_bytes())?;
-            sink.body.write(b" = ")?;
-            self.expr(&is_stmt.target, &mut sink.body)?;
-            sink.body.write(b";\n")?;
-            self.print_indent(&mut sink.body)?;
-            Some(name)
-        } else {
-            None
-        };
+        let hoisted_scrutinee: Option<AutoStr> =
+            if has_guard_arm && !matches!(is_stmt.target, Expr::Ident(_)) {
+                let name: AutoStr = format!("__is_{}", self.is_hoist_counter).into();
+                self.is_hoist_counter += 1;
+                sink.body.write(b"let ")?;
+                sink.body.write(name.as_bytes())?;
+                sink.body.write(b" = ")?;
+                self.expr(&is_stmt.target, &mut sink.body)?;
+                sink.body.write(b";\n")?;
+                self.print_indent(&mut sink.body)?;
+                Some(name)
+            } else {
+                None
+            };
 
         sink.body.write(b"match ")?;
 
@@ -17124,7 +19259,9 @@ pub use auto_cabi_kit::*;"#
         // `&` would double-reference — `match &text.as_str()` is E0308)
         let has_str_pattern = is_stmt.branches.iter().any(|branch| {
             if let IsBranch::EqBranch(patterns, _) = branch {
-                patterns.iter().any(|p| matches!(p, Expr::Str(_) | Expr::CStr(_)))
+                patterns
+                    .iter()
+                    .any(|p| matches!(p, Expr::Str(_) | Expr::CStr(_)))
             } else {
                 false
             }
@@ -17133,52 +19270,56 @@ pub use auto_cabi_kit::*;"#
         if let Some(name) = &hoisted_scrutinee {
             sink.body.write(name.as_bytes())?;
         } else {
-        // Plan 447 H5: Fix double match E0382 — `match &v` only when the same
-        // identifier scrutinee is matched >= 2 times in this function (first
-        // by-value match would move it). Single-use keeps plain `match v` so
-        // arm payload bindings stay owned (and goldens stay stable).
-        // str-pattern arms borrow via .as_str() already — skip the `&`.
-        let needs_ref_match = match &is_stmt.target {
-            Expr::Ident(name) if !has_str_pattern => self
-                .fn_is_scrutinee_counts
-                .get(name.as_str())
-                .copied()
-                .unwrap_or(0) >= 2,
-            _ => false,
-        };
-
-        if needs_ref_match {
-            sink.body.write(b"&")?;
-        }
-
-        // Check if scrutinee is self.field (needs .clone() in &self methods)
-        let is_self_field = Self::is_self_dot(&is_stmt.target);
-
-        if has_str_pattern {
-            // Use match target.as_str() to allow &str patterns against String —
-            // but NOT when the target is already `&str` (a str param / StrSlice
-            // local): `.as_str()` on `&str` is E0658 (str_as_str, unstable).
-            // e.g. `match name.as_str()` where `name: &str` (load_builtin).
-            self.expr(&is_stmt.target, &mut sink.body)?;
-            let target_is_str = match &is_stmt.target {
-                Expr::Ident(name) => {
-                    self.current_fn_str_params.contains(name)
-                        || self.local_var_types.get(name)
-                            .map(|t| matches!(t, Type::StrSlice))
-                            .unwrap_or(false)
+            // Plan 447 H5: Fix double match E0382 — `match &v` only when the same
+            // identifier scrutinee is matched >= 2 times in this function (first
+            // by-value match would move it). Single-use keeps plain `match v` so
+            // arm payload bindings stay owned (and goldens stay stable).
+            // str-pattern arms borrow via .as_str() already — skip the `&`.
+            let needs_ref_match = match &is_stmt.target {
+                Expr::Ident(name) if !has_str_pattern => {
+                    self.fn_is_scrutinee_counts
+                        .get(name.as_str())
+                        .copied()
+                        .unwrap_or(0)
+                        >= 2
                 }
                 _ => false,
             };
-            if !target_is_str {
-                sink.body.write(b".as_str()")?;
+
+            if needs_ref_match {
+                sink.body.write(b"&")?;
             }
-        } else if is_self_field {
-            // self.field needs .clone() to avoid move in &self methods
-            self.expr(&is_stmt.target, &mut sink.body)?;
-            sink.body.write(b".clone()")?;
-        } else {
-            self.expr(&is_stmt.target, &mut sink.body)?;
-        }
+
+            // Check if scrutinee is self.field (needs .clone() in &self methods)
+            let is_self_field = Self::is_self_dot(&is_stmt.target);
+
+            if has_str_pattern {
+                // Use match target.as_str() to allow &str patterns against String —
+                // but NOT when the target is already `&str` (a str param / StrSlice
+                // local): `.as_str()` on `&str` is E0658 (str_as_str, unstable).
+                // e.g. `match name.as_str()` where `name: &str` (load_builtin).
+                self.expr(&is_stmt.target, &mut sink.body)?;
+                let target_is_str = match &is_stmt.target {
+                    Expr::Ident(name) => {
+                        self.current_fn_str_params.contains(name)
+                            || self
+                                .local_var_types
+                                .get(name)
+                                .map(|t| matches!(t, Type::StrSlice))
+                                .unwrap_or(false)
+                    }
+                    _ => false,
+                };
+                if !target_is_str {
+                    sink.body.write(b".as_str()")?;
+                }
+            } else if is_self_field {
+                // self.field needs .clone() to avoid move in &self methods
+                self.expr(&is_stmt.target, &mut sink.body)?;
+                sink.body.write(b".clone()")?;
+            } else {
+                self.expr(&is_stmt.target, &mut sink.body)?;
+            }
         }
         sink.body.write(b" {\n")?;
         self.indent();
@@ -17207,9 +19348,12 @@ pub use auto_cabi_kit::*;"#
                     let saved_int_scrut = self.int_match_scrutinee;
                     self.int_match_scrutinee = matches!(
                         self.infer_type_from_expr(&is_stmt.target),
-                        Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::USize);
+                        Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::USize
+                    );
                     for (i, pat) in patterns.iter().enumerate() {
-                        if i > 0 { sink.body.write(b" | ")?; }
+                        if i > 0 {
+                            sink.body.write(b" | ")?;
+                        }
                         // In match patterns, Some(ident) binds by value (Auto semantics)
                         if let Expr::Some(inner) = pat {
                             sink.body.write(b"Some(")?;
@@ -17269,11 +19413,8 @@ pub use auto_cabi_kit::*;"#
                                                 .enum_tuple_field_types
                                                 .get(&(kind.clone(), tag.clone()))
                                             {
-                                                for (arg, ty) in call
-                                                    .args
-                                                    .args
-                                                    .iter()
-                                                    .zip(field_types.iter())
+                                                for (arg, ty) in
+                                                    call.args.args.iter().zip(field_types.iter())
                                                 {
                                                     if let Arg::Pos(Expr::Ident(name)) = arg {
                                                         if name.as_str() != "_" {
@@ -17301,7 +19442,8 @@ pub use auto_cabi_kit::*;"#
                                         // call-site auto-borrow doesn't append
                                         // `.as_str()` (E0658 str_as_str).
                                         if Self::is_str_returning_scrutinee(&is_stmt.target) {
-                                            self.local_var_types.insert(binding.clone(), Type::StrSlice);
+                                            self.local_var_types
+                                                .insert(binding.clone(), Type::StrSlice);
                                             // Plan 427: the precise &str marker
                                             // consumed by is_str_slice_var.
                                             self.str_slice_pattern_bindings.insert(binding.clone());
@@ -17444,38 +19586,57 @@ pub use auto_cabi_kit::*;"#
         for stmt in &code.stmts {
             if let crate::ast::Stmt::Fn(fn_decl) = stmt {
                 let wanted = use_stmt.is_wildcard
-                    || use_stmt.items.iter().any(|i| i.as_str() == fn_decl.name.as_str());
+                    || use_stmt
+                        .items
+                        .iter()
+                        .any(|i| i.as_str() == fn_decl.name.as_str());
                 if !wanted {
                     continue;
                 }
                 let str_flags: Vec<bool> = fn_decl
                     .params
                     .iter()
-                    .map(|p| matches!(p.ty,
-                        Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit))
+                    .map(|p| {
+                        matches!(
+                            p.ty,
+                            Type::StrFixed(_) | Type::StrSlice | Type::StrOwned | Type::CStrLit
+                        )
+                    })
                     .collect();
                 if str_flags.iter().any(|f| *f) {
-                    self.fn_str_param_indices.insert(fn_decl.name.clone(), str_flags);
+                    self.fn_str_param_indices
+                        .insert(fn_decl.name.clone(), str_flags);
                 }
-                self.fn_ret_types.insert(fn_decl.name.clone(), fn_decl.ret.clone());
+                self.fn_ret_types
+                    .insert(fn_decl.name.clone(), fn_decl.ret.clone());
                 // Plan 016 Phase 4: register the FULL signature, not just
                 // str/ret — the Dot-arg clone decision (param takes ownership)
                 // and the defect-4 borrowed-iter-field gate key off
                 // fn_param_types, which stayed None for imported fns.
                 let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
-                self.fn_param_types.insert(fn_decl.name.clone(), param_types);
-                let struct_param_flags: Vec<bool> = fn_decl.params.iter()
+                self.fn_param_types
+                    .insert(fn_decl.name.clone(), param_types);
+                let struct_param_flags: Vec<bool> = fn_decl
+                    .params
+                    .iter()
                     .map(|p| !Self::is_copy_type(&p.ty))
                     .collect();
-                self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
-                let int_param_flags: Vec<bool> = fn_decl.params.iter()
+                self.fn_struct_param_indices
+                    .insert(fn_decl.name.clone(), struct_param_flags);
+                let int_param_flags: Vec<bool> = fn_decl
+                    .params
+                    .iter()
                     .map(|p| matches!(p.ty, Type::Int))
                     .collect();
-                self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
-                let mut_param_flags: Vec<bool> = fn_decl.params.iter()
+                self.fn_int_param_indices
+                    .insert(fn_decl.name.clone(), int_param_flags);
+                let mut_param_flags: Vec<bool> = fn_decl
+                    .params
+                    .iter()
                     .map(|p| p.mode == crate::ast::ParamMode::Mut)
                     .collect();
-                self.fn_mut_params.insert(fn_decl.name.clone(), mut_param_flags);
+                self.fn_mut_params
+                    .insert(fn_decl.name.clone(), mut_param_flags);
             }
             // Plan 016 Phase 4: imported STRUCT field types — the call-site
             // str-field borrow (`node.id` → `node.id.as_str()`, Plan 433 A1)
@@ -17483,11 +19644,16 @@ pub use auto_cabi_kit::*;"#
             // which stayed empty for types from another module (E0308).
             if let crate::ast::Stmt::TypeDecl(td) = &stmt {
                 let wanted = use_stmt.is_wildcard
-                    || use_stmt.items.iter().any(|i| i.as_str() == td.name.as_str());
+                    || use_stmt
+                        .items
+                        .iter()
+                        .any(|i| i.as_str() == td.name.as_str());
                 if !wanted {
                     continue;
                 }
-                let fields: Vec<(AutoStr, Type)> = td.members.iter()
+                let fields: Vec<(AutoStr, Type)> = td
+                    .members
+                    .iter()
                     .map(|m| (m.name.clone(), m.ty.clone()))
                     .collect();
                 if !fields.is_empty() {
@@ -17500,7 +19666,10 @@ pub use auto_cabi_kit::*;"#
             // payload literals need the enum-ctor `.to_string()` (E0308).
             if let crate::ast::Stmt::EnumDecl(ed) = &stmt {
                 let wanted = use_stmt.is_wildcard
-                    || use_stmt.items.iter().any(|i| i.as_str() == ed.name.as_str());
+                    || use_stmt
+                        .items
+                        .iter()
+                        .any(|i| i.as_str() == ed.name.as_str());
                 if !wanted {
                     continue;
                 }
@@ -17508,25 +19677,18 @@ pub use auto_cabi_kit::*;"#
                 for item in &ed.items {
                     let item_key = (ed.name.clone(), item.name.clone());
                     if item.has_fields() {
-                        let field_names: Vec<AutoStr> = item.fields.iter()
-                            .map(|f| f.name.clone())
-                            .collect();
+                        let field_names: Vec<AutoStr> =
+                            item.fields.iter().map(|f| f.name.clone()).collect();
                         self.enum_struct_variants.insert(item_key, field_names);
                     } else if item.has_tuple_payload() {
-                        self.enum_tuple_variants.insert(
-                            item_key.clone(),
-                            item.payload_types.len(),
-                        );
-                        self.enum_tuple_field_types.insert(
-                            item_key,
-                            item.payload_types.clone(),
-                        );
+                        self.enum_tuple_variants
+                            .insert(item_key.clone(), item.payload_types.len());
+                        self.enum_tuple_field_types
+                            .insert(item_key, item.payload_types.clone());
                     } else if let Some(ref payload) = item.payload_type {
                         self.enum_tuple_variants.insert(item_key.clone(), 1);
-                        self.enum_tuple_field_types.insert(
-                            item_key,
-                            vec![payload.clone()],
-                        );
+                        self.enum_tuple_field_types
+                            .insert(item_key, vec![payload.clone()]);
                     }
                 }
             }
@@ -17556,9 +19718,7 @@ pub use auto_cabi_kit::*;"#
     /// Plan 610 ⑥: the wrapper (Auto-side) parameter type for one manifest
     /// param when it differs from the ffi type (Auto int is i64; the ABI edge
     /// is i32 with a width cast at the raw call).
-    fn c_abi_wrapper_param(
-        ty: &auto_bindgen::manifest::CTypeDesc,
-    ) -> Option<&'static str> {
+    fn c_abi_wrapper_param(ty: &auto_bindgen::manifest::CTypeDesc) -> Option<&'static str> {
         use auto_bindgen::manifest::CTypeDesc as T;
         match ty {
             T::Int => Some("i64"),
@@ -17576,7 +19736,11 @@ pub use auto_cabi_kit::*;"#
     /// stays inside the generated module; Auto call sites use the bare
     /// manifest function names.
     fn emit_use_c_ffi(&mut self, use_stmt: &Use, out: &mut impl Write) -> AutoResult<()> {
-        let raw = use_stmt.paths.first().map(|s| s.to_string()).unwrap_or_default();
+        let raw = use_stmt
+            .paths
+            .first()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
         let clean = raw
             .trim_start_matches('<')
             .trim_end_matches('>')
@@ -17623,7 +19787,11 @@ pub use auto_cabi_kit::*;"#
             }
         }
 
-        let suffix = if manifest.link == "dynamic" { "_dyn" } else { "" };
+        let suffix = if manifest.link == "dynamic" {
+            "_dyn"
+        } else {
+            ""
+        };
         let module = format!(
             "{}_c{}",
             manifest
@@ -17635,7 +19803,11 @@ pub use auto_cabi_kit::*;"#
         )
         .trim_matches('_')
         .to_string();
-        let abi = if manifest.abi == "system" { "system" } else { "C" };
+        let abi = if manifest.abi == "system" {
+            "system"
+        } else {
+            "C"
+        };
 
         writeln!(
             out,
@@ -17775,7 +19947,13 @@ pub use auto_cabi_kit::*;"#
                 _ => format!("unsafe {{\n            {}\n        }}", raw_call),
             };
             match &ret_sig {
-                Some(rt) => writeln!(out, "    pub fn {}({}) -> {} {{", f.name, sig.join(", "), rt)?,
+                Some(rt) => writeln!(
+                    out,
+                    "    pub fn {}({}) -> {} {{",
+                    f.name,
+                    sig.join(", "),
+                    rt
+                )?,
                 None => writeln!(out, "    pub fn {}({}) {{", f.name, sig.join(", "))?,
             }
             for line in &prelude {
@@ -17799,23 +19977,56 @@ pub use auto_cabi_kit::*;"#
             })
         });
         if has_ptr {
-            writeln!(out, "    // Plan 610 ⑥ helper kit: pointer/buffer access from safe Auto code.")?;
-            writeln!(out, "    pub fn cffi_handle_is_null(h: *const std::os::raw::c_void) -> bool {{")?;
+            writeln!(
+                out,
+                "    // Plan 610 ⑥ helper kit: pointer/buffer access from safe Auto code."
+            )?;
+            writeln!(
+                out,
+                "    pub fn cffi_handle_is_null(h: *const std::os::raw::c_void) -> bool {{"
+            )?;
             writeln!(out, "        h.is_null()")?;
             writeln!(out, "    }}")?;
-            writeln!(out, "    pub fn cffi_buf_new_u32(len: i64) -> *mut std::os::raw::c_void {{")?;
-            writeln!(out, "        if len <= 0 {{ return std::ptr::null_mut(); }}")?;
-            writeln!(out, "        Box::into_raw(vec![0u32; len as usize].into_boxed_slice()) as *mut _")?;
+            writeln!(
+                out,
+                "    pub fn cffi_buf_new_u32(len: i64) -> *mut std::os::raw::c_void {{"
+            )?;
+            writeln!(
+                out,
+                "        if len <= 0 {{ return std::ptr::null_mut(); }}"
+            )?;
+            writeln!(
+                out,
+                "        Box::into_raw(vec![0u32; len as usize].into_boxed_slice()) as *mut _"
+            )?;
             writeln!(out, "    }}")?;
-            writeln!(out, "    pub fn cffi_buf_get_u32(p: *const std::os::raw::c_void, idx: i64) -> u32 {{")?;
+            writeln!(
+                out,
+                "    pub fn cffi_buf_get_u32(p: *const std::os::raw::c_void, idx: i64) -> u32 {{"
+            )?;
             writeln!(out, "        if p.is_null() {{ return 0; }}")?;
-            writeln!(out, "        unsafe {{ *(p as *const u32).add(idx as usize) }}")?;
+            writeln!(
+                out,
+                "        unsafe {{ *(p as *const u32).add(idx as usize) }}"
+            )?;
             writeln!(out, "    }}")?;
-            writeln!(out, "    pub fn cffi_buf_new_u8(len: i64) -> *mut std::os::raw::c_void {{")?;
-            writeln!(out, "        if len <= 0 {{ return std::ptr::null_mut(); }}")?;
-            writeln!(out, "        Box::into_raw(vec![0u8; len as usize].into_boxed_slice()) as *mut _")?;
+            writeln!(
+                out,
+                "    pub fn cffi_buf_new_u8(len: i64) -> *mut std::os::raw::c_void {{"
+            )?;
+            writeln!(
+                out,
+                "        if len <= 0 {{ return std::ptr::null_mut(); }}"
+            )?;
+            writeln!(
+                out,
+                "        Box::into_raw(vec![0u8; len as usize].into_boxed_slice()) as *mut _"
+            )?;
             writeln!(out, "    }}")?;
-            writeln!(out, "    pub fn cffi_cstr_read(p: *const std::os::raw::c_void) -> String {{")?;
+            writeln!(
+                out,
+                "    pub fn cffi_cstr_read(p: *const std::os::raw::c_void) -> String {{"
+            )?;
             writeln!(out, "        if p.is_null() {{ return String::new(); }}")?;
             writeln!(out, "        unsafe {{ std::ffi::CStr::from_ptr(p as *const std::os::raw::c_char) }}.to_string_lossy().into_owned()")?;
             writeln!(out, "    }}")?;
@@ -17833,7 +20044,11 @@ pub use auto_cabi_kit::*;"#
         // as public re-exports, so render `pub use` even when the source has no
         // explicit `pub` prefix. (Mirrors Rust's `pub use` in lib.rs / mod.rs.)
         let is_reexport = self.is_crate_root && !use_stmt.is_pub;
-        let pub_kw = if use_stmt.is_pub || is_reexport { "pub " } else { "" };
+        let pub_kw = if use_stmt.is_pub || is_reexport {
+            "pub "
+        } else {
+            ""
+        };
         match use_stmt.kind {
             UseKind::Auto => {
                 let module = use_stmt.paths.join(".");
@@ -17842,13 +20057,26 @@ pub use auto_cabi_kit::*;"#
                     if use_stmt.is_wildcard {
                         write!(out, "{pub_kw}use crate::{module}::*;")?;
                     } else if !use_stmt.items.is_empty() {
-                        write!(out, "{pub_kw}use crate::{module}::{{{}}};", use_stmt.items.join(", "))?;
+                        write!(
+                            out,
+                            "{pub_kw}use crate::{module}::{{{}}};",
+                            use_stmt.items.join(", ")
+                        )?;
                     }
                     return Ok(());
                 }
+                // PLAN-738 §5.3：Rust 目录声明 unsupported（a2r-std 无该宿主
+                // 模块，如 io/net——金样时代的 a2r_std::io 属幻影映射）时不
+                // 发射导入，不冒称宿主 provider；逐符号调用点仍由 provider
+                // 门拒绝。模块级 unsupported 是目录结论，非逐符号面。
                 if use_stmt.paths.first().is_some_and(|p| p.as_str() == "auto") {
                     if let Some(module) = use_stmt.paths.get(1) {
-                        if crate::stdlib_assembly::providers::unsupported_reason(module.as_str(), "rust").is_some() {
+                        if crate::stdlib_assembly::providers::unsupported_reason(
+                            module.as_str(),
+                            "rust",
+                        )
+                        .is_some()
+                        {
                             return Ok(());
                         }
                     }
@@ -17891,11 +20119,17 @@ pub use auto_cabi_kit::*;"#
                 // Map Auto stdlib to Rust modules
                 // Join all path segments into a single Rust path
                 if !use_stmt.paths.is_empty() {
-                    let full_path = use_stmt.paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("::");
+                    let full_path = use_stmt
+                        .paths
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join("::");
                     // In multi-file mode, bare module names (e.g., "types") that are
                     // NOT in local_modules → generate correct cross-module reference
                     let mod_name = use_stmt.paths[0].as_str();
-                    let is_multi_file_bare = (!self.local_modules.is_empty() || !self.sibling_modules.is_empty())
+                    let is_multi_file_bare = (!self.local_modules.is_empty()
+                        || !self.sibling_modules.is_empty())
                         && use_stmt.paths.len() == 1
                         && !mod_name.contains("::")
                         && !self.local_modules.contains(mod_name);
@@ -17914,7 +20148,11 @@ pub use auto_cabi_kit::*;"#
                             self.glob_imported_modules.insert(mod_name.to_string());
                             format!("crate::{}", mod_name)
                         }
-                    } else if full_path.starts_with("super::") && (!self.local_modules.is_empty() || !self.sibling_modules.is_empty() || self.is_dir_module) {
+                    } else if full_path.starts_with("super::")
+                        && (!self.local_modules.is_empty()
+                            || !self.sibling_modules.is_empty()
+                            || self.is_dir_module)
+                    {
                         // In multi-file mode, Auto's `use super.X` means "parent directory's X"
                         // Extract just the module name (first segment after super::) for dir_children lookup
                         let after_super = &full_path[7..];
@@ -17925,13 +20163,15 @@ pub use auto_cabi_kit::*;"#
                         };
                         self.glob_imported_modules.insert(crate_mod.to_string());
                         // Build the replacement prefix based on whether it's a dir child
-                        let prefix = if self.is_dir_module && self.dir_children.contains(crate_mod) {
+                        let prefix = if self.is_dir_module && self.dir_children.contains(crate_mod)
+                        {
                             // Directory module: X is a child module → self::X
                             format!("self::{}", crate_mod)
                         } else if !self.is_dir_module && self.sibling_modules.contains(crate_mod) {
                             // Non-dir module: X is a known sibling (same directory) → super::X
                             format!("super::{}", crate_mod)
-                        } else if !self.is_dir_module && !self.module_types.contains_key(crate_mod) {
+                        } else if !self.is_dir_module && !self.module_types.contains_key(crate_mod)
+                        {
                             // Non-dir module: X is not a top-level module → likely a sibling
                             format!("super::{}", crate_mod)
                         } else {
@@ -17948,15 +20188,17 @@ pub use auto_cabi_kit::*;"#
                         let rest = &full_path[6..];
                         match rest {
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
-                            | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
-                            | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" | "sqlite" | "redis" => {
+                            | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque" | "char"
+                            | "conv" | "io" | "log" | "path" | "net" | "process" | "sys"
+                            | "sse" | "may" | "sqlite" | "redis" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", rest)
                             }
                             _ => format!("crate::{}", rest),
                         }
-                    } else if use_stmt.paths.len() == 1 && !use_stmt.paths[0].as_str().contains("::") {
+                    } else if use_stmt.paths.len() == 1
+                        && !use_stmt.paths[0].as_str().contains("::")
+                    {
                         // Single-file mode: bare module name (e.g., "types", "settings")
                         // Check if it's a known stdlib module or a local crate module.
                         //
@@ -17970,9 +20212,9 @@ pub use auto_cabi_kit::*;"#
                         let mod_name = use_stmt.paths[0].as_str();
                         match mod_name {
                             "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
-                            | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
-                            | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" | "sqlite" | "redis" => {
+                            | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque" | "char"
+                            | "conv" | "io" | "log" | "path" | "net" | "process" | "sys"
+                            | "sse" | "may" | "sqlite" | "redis" => {
                                 self.a2r_std_used.set(true);
                                 format!("a2r_std::{}", mod_name)
                             }
@@ -17981,18 +20223,41 @@ pub use auto_cabi_kit::*;"#
                     } else {
                         // Check if the first segment is a known crate module or stdlib
                         let first_seg = use_stmt.paths[0].as_str();
-                        let is_stdlib = matches!(first_seg,
-                            "math" | "str" | "time" | "env" | "json" | "file" | "fs" | "http"
-                            | "list" | "hashmap" | "hashset" | "btreemap" | "vecdeque"
-                            | "char" | "conv" | "io" | "log" | "path" | "net"
-                            | "process" | "sys" | "sse" | "may" | "sqlite" | "redis"
+                        let is_stdlib = matches!(
+                            first_seg,
+                            "math"
+                                | "str"
+                                | "time"
+                                | "env"
+                                | "json"
+                                | "file"
+                                | "fs"
+                                | "http"
+                                | "list"
+                                | "hashmap"
+                                | "hashset"
+                                | "btreemap"
+                                | "vecdeque"
+                                | "char"
+                                | "conv"
+                                | "io"
+                                | "log"
+                                | "path"
+                                | "net"
+                                | "process"
+                                | "sys"
+                                | "sse"
+                                | "may"
+                                | "sqlite"
+                                | "redis"
                         );
                         if is_stdlib {
                             self.a2r_std_used.set(true);
                             format!("a2r_std::{}", full_path)
                         } else if self.module_types.contains_key(first_seg)
                             || self.dep_crates.contains(&AutoStr::from(first_seg))
-                            || first_seg == "serde" || first_seg == "chrono"
+                            || first_seg == "serde"
+                            || first_seg == "chrono"
                         {
                             // Known crate module → prefix with crate::
                             format!("crate::{}", full_path)
@@ -18003,14 +20268,24 @@ pub use auto_cabi_kit::*;"#
                     if use_stmt.is_wildcard {
                         write!(out, "{}use {}::*;", pub_kw, rust_path)?;
                     } else if !use_stmt.items.is_empty() {
-                        write!(out, "{}use {}::{{{}}};", pub_kw, rust_path, use_stmt.items.join(", "))?;
+                        write!(
+                            out,
+                            "{}use {}::{{{}}};",
+                            pub_kw,
+                            rust_path,
+                            use_stmt.items.join(", ")
+                        )?;
                     } else if is_multi_file_bare {
                         // Plan 545: bare module import = namespace-only —
                         // `use super::X;` / `use crate::X;` brings the module
                         // name in scope for qualified `X::foo()` paths; flat
                         // glob requires explicit `use X: *` (wildcard arm).
                         write!(out, "{}use {};", pub_kw, rust_path)?;
-                    } else if full_path.starts_with("super::") && (!self.local_modules.is_empty() || !self.sibling_modules.is_empty() || self.is_dir_module) {
+                    } else if full_path.starts_with("super::")
+                        && (!self.local_modules.is_empty()
+                            || !self.sibling_modules.is_empty()
+                            || self.is_dir_module)
+                    {
                         // Multi-segment super:: path in directory module context.
                         // Only add wildcard if the last segment is a known module name,
                         // NOT if it's a type/function name (e.g., GateType, AgentTurn).
@@ -18057,7 +20332,12 @@ pub use auto_cabi_kit::*;"#
             UseKind::Rust => {
                 // Direct Rust imports: join paths with :: to form full Rust path
                 if !use_stmt.paths.is_empty() {
-                    let full_path = use_stmt.paths.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("::");
+                    let full_path = use_stmt
+                        .paths
+                        .iter()
+                        .map(|s| s.as_str())
+                        .collect::<Vec<_>>()
+                        .join("::");
 
                     // Companion trait imports that methods on this crate require
                     let companion_imports: &[(&str, &str)] = &[
@@ -18067,10 +20347,16 @@ pub use auto_cabi_kit::*;"#
                         ("sha2", "use sha2::Digest;"),
                         ("clap", "use clap::Parser;"),
                         ("serde_json", "use serde_json::Value;"),
-                        ("unicode_segmentation", "use unicode_segmentation::UnicodeSegmentation;"),
+                        (
+                            "unicode_segmentation",
+                            "use unicode_segmentation::UnicodeSegmentation;",
+                        ),
                         ("toml", "use toml::Value;"),
                         ("mime_guess", "use mime_guess::MimeGuess;"),
-                        ("percent_encoding", "use percent_encoding::{percent_encode, NON_ALPHANUMERIC};"),
+                        (
+                            "percent_encoding",
+                            "use percent_encoding::{percent_encode, NON_ALPHANUMERIC};",
+                        ),
                         ("urlencoding", "use urlencoding::encode;"),
                         ("hex", "use hex;"),
                         // Plan 013 (B14): bridge crates whose many types are
@@ -18084,9 +20370,15 @@ pub use auto_cabi_kit::*;"#
                     let already_emitted = self.uses.contains(full_path.as_str());
                     if !already_emitted {
                         // Check if a companion import upgrades this to a wildcard
-                        let companion_wildcard = companion_imports.iter()
-                            .find(|(prefix, _)| full_path == *prefix || full_path.starts_with(&format!("{}::", prefix)))
-                            .and_then(|(_, line)| line.strip_prefix("use ").and_then(|s| s.strip_suffix(';')))
+                        let companion_wildcard = companion_imports
+                            .iter()
+                            .find(|(prefix, _)| {
+                                full_path == *prefix
+                                    || full_path.starts_with(&format!("{}::", prefix))
+                            })
+                            .and_then(|(_, line)| {
+                                line.strip_prefix("use ").and_then(|s| s.strip_suffix(';'))
+                            })
                             .filter(|companion| {
                                 // Only upgrade for wildcard companions (e.g., rayon::prelude::*)
                                 // Don't upgrade for specific trait imports (e.g., rand::Rng)
@@ -18101,7 +20393,13 @@ pub use auto_cabi_kit::*;"#
                             // Track the wildcard path so companion loop doesn't re-emit it
                             self.uses.insert(wc.to_string().into());
                         } else if !use_stmt.items.is_empty() {
-                            write!(out, "{}use {}::{{{}}};", pub_kw, full_path, use_stmt.items.join(", "))?;
+                            write!(
+                                out,
+                                "{}use {}::{{{}}};",
+                                pub_kw,
+                                full_path,
+                                use_stmt.items.join(", ")
+                            )?;
                         } else {
                             write!(out, "{}use {};", pub_kw, full_path)?;
                         }
@@ -18117,7 +20415,9 @@ pub use auto_cabi_kit::*;"#
                     }
                     for (prefix, import_line) in companion_imports {
                         if full_path == *prefix || full_path.starts_with(&format!("{}::", prefix)) {
-                            if !import_line.is_empty() && *import_line != format!("use {};", full_path) {
+                            if !import_line.is_empty()
+                                && *import_line != format!("use {};", full_path)
+                            {
                                 let companion_path = import_line
                                     .strip_prefix("use ")
                                     .and_then(|s| s.strip_suffix(';'))
@@ -18130,9 +20430,13 @@ pub use auto_cabi_kit::*;"#
                                     }
                                     // Existing import is a wildcard covering the companion:
                                     // e.g. "rand::*" covers "rand::Rng"
-                                    if u_str.starts_with(&format!("{}::*", companion_path.split("::").next().unwrap_or("")))
-                                        && companion_path.starts_with(&format!("{}::", u_str.trim_end_matches("::*")))
-                                    {
+                                    if u_str.starts_with(&format!(
+                                        "{}::*",
+                                        companion_path.split("::").next().unwrap_or("")
+                                    )) && companion_path.starts_with(&format!(
+                                        "{}::",
+                                        u_str.trim_end_matches("::*")
+                                    )) {
                                         return true;
                                     }
                                     // Brace-expansion dedup: "crate::{a, b}" vs existing "crate::a"
@@ -18141,12 +20445,17 @@ pub use auto_cabi_kit::*;"#
                                         if u_str == crate_path {
                                             return true;
                                         }
-                                        if let Some(items_str) = companion_path.strip_prefix(&format!("{}::{{", crate_path)) {
-                                            let items_str = items_str.strip_suffix('}').unwrap_or(items_str);
+                                        if let Some(items_str) = companion_path
+                                            .strip_prefix(&format!("{}::{{", crate_path))
+                                        {
+                                            let items_str =
+                                                items_str.strip_suffix('}').unwrap_or(items_str);
                                             let companion_items: Vec<&str> =
                                                 items_str.split(',').map(|s| s.trim()).collect();
                                             if u_str.starts_with(&format!("{}::", crate_path)) {
-                                                let item_name = u_str.strip_prefix(&format!("{}::", crate_path)).unwrap_or("");
+                                                let item_name = u_str
+                                                    .strip_prefix(&format!("{}::", crate_path))
+                                                    .unwrap_or("");
                                                 if companion_items.contains(&item_name) {
                                                     return true;
                                                 }
@@ -18167,7 +20476,7 @@ pub use auto_cabi_kit::*;"#
             }
             UseKind::Py => {
                 return Err(AutoError::Msg(
-                    "use.py imports are not supported in Rust target".to_string()
+                    "use.py imports are not supported in Rust target".to_string(),
                 ));
             }
         }
@@ -18181,7 +20490,8 @@ pub use auto_cabi_kit::*;"#
         self.local_struct_types.insert(type_decl.name.clone());
         // Register struct→spec mapping for spec array inference
         for spec_name in &type_decl.specs {
-            self.struct_to_spec.insert(type_decl.name.clone(), spec_name.clone());
+            self.struct_to_spec
+                .insert(type_decl.name.clone(), spec_name.clone());
         }
 
         // Plan 373 G2 + Plan 379: `has Spec` generates a real `impl Trait for
@@ -18249,11 +20559,7 @@ pub use auto_cabi_kit::*;"#
                 // If this is a trait-only type (no struct definition), also generate a default impl
                 if is_trait_only && !has_decl.methods.is_empty() {
                     let trait_name = format!("{}Trait", has_decl.name);
-                    write!(
-                        sink.body,
-                        "impl {} for {} {{\n",
-                        trait_name, has_decl.name
-                    )?;
+                    write!(sink.body, "impl {} for {} {{\n", trait_name, has_decl.name)?;
                     self.indent();
 
                     for method in &has_decl.methods {
@@ -18304,19 +20610,31 @@ pub use auto_cabi_kit::*;"#
         // T6: Add Eq, PartialOrd, Ord if no float/HashMap fields present
         if type_decl.attrs.is_empty() {
             // Recursively check field types for float/map/enum
-            let has_float_field = type_decl.members.iter().any(|m| Self::type_has_float(&m.ty));
+            let has_float_field = type_decl
+                .members
+                .iter()
+                .any(|m| Self::type_has_float(&m.ty));
             let has_map_field = type_decl.members.iter().any(|m| Self::type_has_map(&m.ty));
             // Enums don't derive Eq, so struct fields containing enum types can't derive Eq either
             // Also check nested types: List<EnumType>, Option<EnumType>, etc.
-            let has_enum_field = type_decl.members.iter().any(|m| Self::type_contains_enum(&m.ty));
+            let has_enum_field = type_decl
+                .members
+                .iter()
+                .any(|m| Self::type_contains_enum(&m.ty));
             // Plan 384 A5: detect `dyn Trait` fields (incl. inside Arc<dyn T> /
             // Box<dyn T>). `dyn Trait` does not implement PartialEq/Eq/Ord, so
             // structs containing such fields must derive only Clone, Debug.
-            let has_dyn_field = type_decl.members.iter().any(|m| Self::type_contains_dyn(&m.ty));
+            let has_dyn_field = type_decl
+                .members
+                .iter()
+                .any(|m| Self::type_contains_dyn(&m.ty));
             // Plan 387 follow-up: a `TaskRef<T>` field is move-only (RAII sole
             // owner — not Clone/Debug/PartialEq/Eq/Ord), so structs containing
             // one can only derive Debug.
-            let has_taskref_field = type_decl.members.iter().any(|m| Self::type_is_taskref(&m.ty));
+            let has_taskref_field = type_decl
+                .members
+                .iter()
+                .any(|m| Self::type_is_taskref(&m.ty));
             // PLAN-009 T1 (F1, 006 S2): the shape heuristics above grant a
             // comparison-trait set; intersect it with what the field types'
             // own derive surfaces actually provide. A field type that
@@ -18388,18 +20706,18 @@ pub use auto_cabi_kit::*;"#
                 }
                 match param {
                     GenericParam::Type(tp) => {
-                            write!(sink.body, "{}", tp.name)?;
-                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
-                            if !tp.constraint.is_empty() {
-                                write!(sink.body, ": ")?;
-                                for (ci, ct) in tp.constraint.iter().enumerate() {
-                                    if ci > 0 {
-                                        write!(sink.body, " + ")?;
-                                    }
-                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                        write!(sink.body, "{}", tp.name)?;
+                        // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                        if !tp.constraint.is_empty() {
+                            write!(sink.body, ": ")?;
+                            for (ci, ct) in tp.constraint.iter().enumerate() {
+                                if ci > 0 {
+                                    write!(sink.body, " + ")?;
                                 }
+                                write!(sink.body, "{}", self.rust_bound_name(ct))?;
                             }
                         }
+                    }
                     GenericParam::Const(cp) => {
                         write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                     }
@@ -18450,7 +20768,8 @@ pub use auto_cabi_kit::*;"#
             .insert(type_decl.name.clone(), field_names);
 
         // Cache struct field types for .to_string() auto-insertion
-        let field_types: Vec<(AutoStr, Type)> = all_members.iter()
+        let field_types: Vec<(AutoStr, Type)> = all_members
+            .iter()
             .map(|m| (m.name.clone(), m.ty.clone()))
             .collect();
         self.struct_field_types
@@ -18461,9 +20780,9 @@ pub use auto_cabi_kit::*;"#
         // Direct Type::User(self_name) is rejected; indirect (List<Self>,
         // Option<Self>) is legal and gets a W0008 warning (Phase 4.2 below).
         let self_name = type_decl.name.clone();
-        let has_direct_self = all_members.iter().any(|m| {
-            matches!(&m.ty, Type::User(td) if td.name == self_name)
-        });
+        let has_direct_self = all_members
+            .iter()
+            .any(|m| matches!(&m.ty, Type::User(td) if td.name == self_name));
         if has_direct_self {
             return Err(AutoError::Msg(format!(
                 "type '{}' contains a direct self-reference in a field; \
@@ -18476,14 +20795,15 @@ pub use auto_cabi_kit::*;"#
         // Plan 310 Phase 4.2: Warn about indirect self-reference (potential
         // reference cycle). E.g. `type Tree { children List<Tree> }` compiles
         // but may form an Rc/Arc cycle if shared — suggest Weak<T>.
-        let has_indirect_self = all_members.iter().any(|m| {
-            Self::type_contains_self_indirect(&m.ty, &self_name)
-        });
+        let has_indirect_self = all_members
+            .iter()
+            .any(|m| Self::type_contains_self_indirect(&m.ty, &self_name));
         if has_indirect_self {
             self.warnings.push(crate::error::Warning::RcCycle {
                 name: self_name.to_string(),
                 reason: "field contains indirect self-reference (e.g. List<Self>); \
-                         shared references may form a cycle".to_string(),
+                         shared references may form a cycle"
+                    .to_string(),
                 span: crate::error::span_from(0, 0),
             });
         }
@@ -18495,7 +20815,10 @@ pub use auto_cabi_kit::*;"#
             self.struct_delegation_types
                 .entry(type_decl.name.clone())
                 .or_default()
-                .push((delegation.member_name.clone(), delegation.member_type.clone()));
+                .push((
+                    delegation.member_name.clone(),
+                    delegation.member_type.clone(),
+                ));
             seen_fields.insert(delegation.member_name.clone());
         }
 
@@ -18564,13 +20887,16 @@ pub use auto_cabi_kit::*;"#
                     let spec = spec.borrow();
                     Some((
                         spec.name.clone(),
-                        type_decl.methods.iter()
+                        type_decl
+                            .methods
+                            .iter()
                             .filter(|m| spec.methods.iter().any(|s| s.name == m.name))
                             .collect(),
                     ))
                 }
                 Type::User(has_decl) => {
-                    let spec_method_names: Vec<AutoStr> = self.spec_decls
+                    let spec_method_names: Vec<AutoStr> = self
+                        .spec_decls
                         .get(has_decl.name.as_str())
                         .map(|ms| ms.iter().map(|s| s.name.clone()).collect())
                         .unwrap_or_default();
@@ -18579,7 +20905,9 @@ pub use auto_cabi_kit::*;"#
                     } else {
                         Some((
                             has_decl.name.clone(),
-                            type_decl.methods.iter()
+                            type_decl
+                                .methods
+                                .iter()
                                 .filter(|m| spec_method_names.contains(&m.name))
                                 .collect(),
                         ))
@@ -18595,7 +20923,8 @@ pub use auto_cabi_kit::*;"#
 
                 // Insert spec method names into the cache so they get filtered
                 // out of the `impl Type` block (generated below).
-                let method_names: Vec<SpecMethod> = spec_has_methods.iter()
+                let method_names: Vec<SpecMethod> = spec_has_methods
+                    .iter()
                     .map(|m| SpecMethod {
                         name: m.name.clone(),
                         params: m.params.clone(),
@@ -18609,9 +20938,9 @@ pub use auto_cabi_kit::*;"#
                 // Future<Result<...>>), the trait uses #[async_trait] and the
                 // impl block must carry it too.
                 // Plan 382 (A.1): `!T` → Type::Result is SYNC — excluded.
-                let has_async = spec_has_methods.iter().any(|m| {
-                    matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
-                });
+                let has_async = spec_has_methods.iter().any(
+                    |m| matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future"),
+                );
                 if has_async {
                     write!(sink.body, "\n#[async_trait::async_trait]")?;
                 }
@@ -18620,22 +20949,26 @@ pub use auto_cabi_kit::*;"#
                 if !type_decl.generic_params.is_empty() {
                     write!(sink.body, "<")?;
                     for (i, param) in type_decl.generic_params.iter().enumerate() {
-                        if i > 0 { write!(sink.body, ", ")?; }
+                        if i > 0 {
+                            write!(sink.body, ", ")?;
+                        }
                         match param {
                             GenericParam::Type(tp) => {
-                            write!(sink.body, "{}", tp.name)?;
-                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
-                            if !tp.constraint.is_empty() {
-                                write!(sink.body, ": ")?;
-                                for (ci, ct) in tp.constraint.iter().enumerate() {
-                                    if ci > 0 {
-                                        write!(sink.body, " + ")?;
+                                write!(sink.body, "{}", tp.name)?;
+                                // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                                if !tp.constraint.is_empty() {
+                                    write!(sink.body, ": ")?;
+                                    for (ci, ct) in tp.constraint.iter().enumerate() {
+                                        if ci > 0 {
+                                            write!(sink.body, " + ")?;
+                                        }
+                                        write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                     }
-                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                 }
                             }
-                        }
-                            GenericParam::Const(cp) => write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?,
+                            GenericParam::Const(cp) => {
+                                write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
+                            }
                         }
                     }
                     write!(sink.body, ">")?;
@@ -18664,7 +20997,6 @@ pub use auto_cabi_kit::*;"#
             // Unknown specs keep the synthetic {Name}Trait path. Same-file
             // specs parse as Type::Spec (handled above) and never reach here.
             if let Type::User(has_decl) = has_type {
-
                 // Original path for unknown specs: synthetic {Name}Trait
                 // Build the impl signature with generic parameters
                 // Use {Name}Trait to avoid conflict with struct name
@@ -18680,18 +21012,18 @@ pub use auto_cabi_kit::*;"#
                         }
                         match param {
                             GenericParam::Type(tp) => {
-                            write!(sink.body, "{}", tp.name)?;
-                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
-                            if !tp.constraint.is_empty() {
-                                write!(sink.body, ": ")?;
-                                for (ci, ct) in tp.constraint.iter().enumerate() {
-                                    if ci > 0 {
-                                        write!(sink.body, " + ")?;
+                                write!(sink.body, "{}", tp.name)?;
+                                // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                                if !tp.constraint.is_empty() {
+                                    write!(sink.body, ": ")?;
+                                    for (ci, ct) in tp.constraint.iter().enumerate() {
+                                        if ci > 0 {
+                                            write!(sink.body, " + ")?;
+                                        }
+                                        write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                     }
-                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                 }
                             }
-                        }
                             GenericParam::Const(cp) => {
                                 write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                             }
@@ -18711,18 +21043,18 @@ pub use auto_cabi_kit::*;"#
                         }
                         match param {
                             GenericParam::Type(tp) => {
-                            write!(sink.body, "{}", tp.name)?;
-                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
-                            if !tp.constraint.is_empty() {
-                                write!(sink.body, ": ")?;
-                                for (ci, ct) in tp.constraint.iter().enumerate() {
-                                    if ci > 0 {
-                                        write!(sink.body, " + ")?;
+                                write!(sink.body, "{}", tp.name)?;
+                                // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                                if !tp.constraint.is_empty() {
+                                    write!(sink.body, ": ")?;
+                                    for (ci, ct) in tp.constraint.iter().enumerate() {
+                                        if ci > 0 {
+                                            write!(sink.body, " + ")?;
+                                        }
+                                        write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                     }
-                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                 }
                             }
-                        }
                             GenericParam::Const(cp) => {
                                 write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                             }
@@ -18785,17 +21117,18 @@ pub use auto_cabi_kit::*;"#
             // Database (which is empty in the single-file transpile_rust path).
             // Prefer the spec_decls cache populated during the pre-scan (handles
             // forward declarations); fall back to lookup_meta for multi-file/db.
-            let spec_methods: Vec<SpecMethod> = if let Some(methods) = self.spec_decls.get(spec_name.as_str()) {
-                methods.clone()
-            } else if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
-                if let crate::scope::Meta::Spec(spec_decl) = meta.as_ref() {
-                    spec_decl.methods.clone()
+            let spec_methods: Vec<SpecMethod> =
+                if let Some(methods) = self.spec_decls.get(spec_name.as_str()) {
+                    methods.clone()
+                } else if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
+                    if let crate::scope::Meta::Spec(spec_decl) = meta.as_ref() {
+                        spec_decl.methods.clone()
+                    } else {
+                        Vec::new()
+                    }
                 } else {
                     Vec::new()
-                }
-            } else {
-                Vec::new()
-            };
+                };
 
             // Now generate the delegation impl if we found any spec methods
             if !spec_methods.is_empty() {
@@ -18812,18 +21145,18 @@ pub use auto_cabi_kit::*;"#
                         }
                         match param {
                             GenericParam::Type(tp) => {
-                            write!(sink.body, "{}", tp.name)?;
-                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
-                            if !tp.constraint.is_empty() {
-                                write!(sink.body, ": ")?;
-                                for (ci, ct) in tp.constraint.iter().enumerate() {
-                                    if ci > 0 {
-                                        write!(sink.body, " + ")?;
+                                write!(sink.body, "{}", tp.name)?;
+                                // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                                if !tp.constraint.is_empty() {
+                                    write!(sink.body, ": ")?;
+                                    for (ci, ct) in tp.constraint.iter().enumerate() {
+                                        if ci > 0 {
+                                            write!(sink.body, " + ")?;
+                                        }
+                                        write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                     }
-                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                 }
                             }
-                        }
                             GenericParam::Const(cp) => {
                                 write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                             }
@@ -18852,7 +21185,11 @@ pub use auto_cabi_kit::*;"#
 
                     // Return type
                     if !matches!(spec_method.ret, Type::Void) {
-                        write!(sink.body, ") -> {}", self.rust_return_type_name(&spec_method.ret))?;
+                        write!(
+                            sink.body,
+                            ") -> {}",
+                            self.rust_return_type_name(&spec_method.ret)
+                        )?;
                     } else {
                         write!(sink.body, ")")?;
                     }
@@ -18889,14 +21226,18 @@ pub use auto_cabi_kit::*;"#
             let mut names = HashSet::new();
             for spec_name in &type_decl.specs {
                 if let Some(methods) = self.spec_decls.get(spec_name) {
-                    for m in methods { names.insert(m.name.clone()); }
+                    for m in methods {
+                        names.insert(m.name.clone());
+                    }
                 }
             }
             for has_type in &type_decl.has {
                 match has_type {
                     Type::User(has_decl) => {
                         if let Some(methods) = self.spec_decls.get(&has_decl.name) {
-                            for m in methods { names.insert(m.name.clone()); }
+                            for m in methods {
+                                names.insert(m.name.clone());
+                            }
                         }
                     }
                     // Plan 379: same-file specs parse as Type::Spec — their
@@ -18905,7 +21246,9 @@ pub use auto_cabi_kit::*;"#
                     Type::Spec(spec) => {
                         let spec_name = spec.borrow().name.clone();
                         if let Some(methods) = self.spec_decls.get(&spec_name) {
-                            for m in methods { names.insert(m.name.clone()); }
+                            for m in methods {
+                                names.insert(m.name.clone());
+                            }
                         }
                     }
                     _ => {}
@@ -18965,7 +21308,8 @@ pub use auto_cabi_kit::*;"#
             // C8: associated consts (`[pub] const NAME TYPE = value`)
             for c in &type_decl.consts {
                 self.print_indent(&mut sink.body)?;
-                let ty_name = if matches!(c.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned) {
+                let ty_name = if matches!(c.ty, Type::StrFixed(_) | Type::StrSlice | Type::StrOwned)
+                {
                     "&str".to_string()
                 } else {
                     self.rust_type_name(&c.ty)
@@ -18981,9 +21325,9 @@ pub use auto_cabi_kit::*;"#
 
             // Plan 514 W3: 预计算传递性可变方法集,供 fn_decl 接收者判定。
             self.current_type_mut_methods = Some(Self::compute_type_mut_methods(&own_methods));
-        if let Some(s) = &self.current_type_mut_methods {
-            self.all_mut_method_names.extend(s.iter().cloned());
-        }
+            if let Some(s) = &self.current_type_mut_methods {
+                self.all_mut_method_names.extend(s.iter().cloned());
+            }
             self.current_impl_type = Some(type_decl.name.clone());
             for method in &own_methods {
                 self.fn_decl(method, sink)?;
@@ -19040,10 +21384,7 @@ pub use auto_cabi_kit::*;"#
                     .methods
                     .iter()
                     .filter(|spec_method| {
-                        type_decl
-                            .methods
-                            .iter()
-                            .any(|m| m.name == spec_method.name)
+                        type_decl.methods.iter().any(|m| m.name == spec_method.name)
                     })
                     .collect();
 
@@ -19053,9 +21394,9 @@ pub use auto_cabi_kit::*;"#
 
                 // Plan 380 P7: if any matched method is async (~T → Future),
                 // the impl block needs #[async_trait] (same as trait decl).
-                let has_async = matched_methods.iter().any(|m| {
-                    matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
-                });
+                let has_async = matched_methods.iter().any(
+                    |m| matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future"),
+                );
 
                 sink.body.write(b"\n")?;
 
@@ -19089,18 +21430,18 @@ pub use auto_cabi_kit::*;"#
                         }
                         match param {
                             GenericParam::Type(tp) => {
-                            write!(sink.body, "{}", tp.name)?;
-                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
-                            if !tp.constraint.is_empty() {
-                                write!(sink.body, ": ")?;
-                                for (ci, ct) in tp.constraint.iter().enumerate() {
-                                    if ci > 0 {
-                                        write!(sink.body, " + ")?;
+                                write!(sink.body, "{}", tp.name)?;
+                                // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                                if !tp.constraint.is_empty() {
+                                    write!(sink.body, ": ")?;
+                                    for (ci, ct) in tp.constraint.iter().enumerate() {
+                                        if ci > 0 {
+                                            write!(sink.body, " + ")?;
+                                        }
+                                        write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                     }
-                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                 }
                             }
-                        }
                             GenericParam::Const(cp) => {
                                 write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                             }
@@ -19120,18 +21461,18 @@ pub use auto_cabi_kit::*;"#
                         }
                         match param {
                             GenericParam::Type(tp) => {
-                            write!(sink.body, "{}", tp.name)?;
-                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
-                            if !tp.constraint.is_empty() {
-                                write!(sink.body, ": ")?;
-                                for (ci, ct) in tp.constraint.iter().enumerate() {
-                                    if ci > 0 {
-                                        write!(sink.body, " + ")?;
+                                write!(sink.body, "{}", tp.name)?;
+                                // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                                if !tp.constraint.is_empty() {
+                                    write!(sink.body, ": ")?;
+                                    for (ci, ct) in tp.constraint.iter().enumerate() {
+                                        if ci > 0 {
+                                            write!(sink.body, " + ")?;
+                                        }
+                                        write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                     }
-                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                 }
                             }
-                        }
                             GenericParam::Const(cp) => {
                                 write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                             }
@@ -19202,7 +21543,9 @@ pub use auto_cabi_kit::*;"#
                             let ret_str = if method_is_async {
                                 match &method.ret {
                                     Type::GenericInstance(inst) if inst.base_name == "Future" => {
-                                        self.rust_return_type_name(inst.args.first().unwrap_or(&Type::Unknown))
+                                        self.rust_return_type_name(
+                                            inst.args.first().unwrap_or(&Type::Unknown),
+                                        )
                                     }
                                     other => self.rust_return_type_name(other),
                                 }
@@ -19276,12 +21619,19 @@ pub use auto_cabi_kit::*;"#
     /// Convert a Heterogeneous EnumDecl to a Tag for reusing tag code generation.
     #[allow(dead_code)]
     fn enum_decl_to_tag(enum_decl: &EnumDecl) -> Tag {
-        let fields: Vec<TagField> = enum_decl.items.iter().map(|item| TagField {
-            name: item.name.clone().into(),
-            ty: item.payload_type.clone().unwrap_or(Type::Void),
-        }).collect();
+        let fields: Vec<TagField> = enum_decl
+            .items
+            .iter()
+            .map(|item| TagField {
+                name: item.name.clone().into(),
+                ty: item.payload_type.clone().unwrap_or(Type::Void),
+            })
+            .collect();
         let (generic_params, methods) = match &enum_decl.kind {
-            EnumKind::Heterogeneous { generic_params, methods } => (generic_params.clone(), methods.clone()),
+            EnumKind::Heterogeneous {
+                generic_params,
+                methods,
+            } => (generic_params.clone(), methods.clone()),
             _ => (vec![], vec![]),
         };
         Tag {
@@ -19318,7 +21668,9 @@ pub use auto_cabi_kit::*;"#
         // heterogeneous enums, not the common fieldless/scalar case.
         let all_variants_empty = matches!(&enum_decl.kind, EnumKind::Heterogeneous { .. })
             && enum_decl.items.iter().all(|item| {
-                item.fields.is_empty() && item.payload_type.is_none() && item.payload_types.is_empty()
+                item.fields.is_empty()
+                    && item.payload_type.is_none()
+                    && item.payload_types.is_empty()
             });
 
         // Collect every payload Type the enum carries (Homogeneous shared type,
@@ -19340,9 +21692,9 @@ pub use auto_cabi_kit::*;"#
             }
         }
 
-        let payload_is_eq_safe = payload_types
-            .iter()
-            .all(|ty| !Self::type_has_float(ty) && !Self::type_has_map(ty) && !Self::type_contains_enum(ty));
+        let payload_is_eq_safe = payload_types.iter().all(|ty| {
+            !Self::type_has_float(ty) && !Self::type_has_map(ty) && !Self::type_contains_enum(ty)
+        });
 
         let derive_attrs = match &enum_decl.kind {
             EnumKind::Scalar { repr_type: Some(_) } if payload_is_eq_safe => {
@@ -19364,7 +21716,9 @@ pub use auto_cabi_kit::*;"#
                 "#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]"
             }
             _ if all_variants_empty => "#[derive(Clone, Copy, Debug, PartialEq)]",
-            _ if payload_is_eq_safe => "#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]",
+            _ if payload_is_eq_safe => {
+                "#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]"
+            }
             _ => "#[derive(Clone, Debug, PartialEq)]",
         };
         // Plan 376: If the user supplied explicit attrs (e.g. `#[derive(Debug)]`),
@@ -19462,17 +21816,10 @@ pub use auto_cabi_kit::*;"#
                 writeln!(sink.body, "}}")?;
 
                 // Generate from_id() method: EnumType::from_id(name) → Option<EnumType>
-                writeln!(
-                    sink.body,
-                    "impl {} {{",
-                    enum_decl.name
-                )?;
+                writeln!(sink.body, "impl {} {{", enum_decl.name)?;
                 self.indent();
                 self.print_indent(&mut sink.body)?;
-                writeln!(
-                    sink.body,
-                    "pub fn from_id(id: &str) -> Self {{"
-                )?;
+                writeln!(sink.body, "pub fn from_id(id: &str) -> Self {{")?;
                 self.indent();
                 self.print_indent(&mut sink.body)?;
                 writeln!(sink.body, "match id {{")?;
@@ -19489,7 +21836,16 @@ pub use auto_cabi_kit::*;"#
                     )?;
                 }
                 self.print_indent(&mut sink.body)?;
-                writeln!(sink.body, "_ => {}::{}", enum_decl.name, enum_decl.items.first().map(|i| i.name.as_str()).unwrap_or("Unknown"))?;
+                writeln!(
+                    sink.body,
+                    "_ => {}::{}",
+                    enum_decl.name,
+                    enum_decl
+                        .items
+                        .first()
+                        .map(|i| i.name.as_str())
+                        .unwrap_or("Unknown")
+                )?;
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
                 writeln!(sink.body, "}}")?;
@@ -19506,7 +21862,12 @@ pub use auto_cabi_kit::*;"#
                 self.indent();
                 for item in &enum_decl.items {
                     self.print_indent(&mut sink.body)?;
-                    writeln!(sink.body, "{}({}),", item.name, self.rust_type_name(payload_type))?;
+                    writeln!(
+                        sink.body,
+                        "{}({}),",
+                        item.name,
+                        self.rust_type_name(payload_type)
+                    )?;
                 }
                 self.dedent();
                 self.print_indent(&mut sink.body)?;
@@ -19527,18 +21888,18 @@ pub use auto_cabi_kit::*;"#
                         }
                         match param {
                             GenericParam::Type(tp) => {
-                            write!(sink.body, "{}", tp.name)?;
-                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
-                            if !tp.constraint.is_empty() {
-                                write!(sink.body, ": ")?;
-                                for (ci, ct) in tp.constraint.iter().enumerate() {
-                                    if ci > 0 {
-                                        write!(sink.body, " + ")?;
+                                write!(sink.body, "{}", tp.name)?;
+                                // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                                if !tp.constraint.is_empty() {
+                                    write!(sink.body, ": ")?;
+                                    for (ci, ct) in tp.constraint.iter().enumerate() {
+                                        if ci > 0 {
+                                            write!(sink.body, " + ")?;
+                                        }
+                                        write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                     }
-                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
                                 }
                             }
-                        }
                             GenericParam::Const(cp) => {
                                 write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                             }
@@ -19564,20 +21925,22 @@ pub use auto_cabi_kit::*;"#
                     self.print_indent(&mut sink.body)?;
                     if item.has_fields() {
                         // Register struct variant for pattern matching
-                        let field_names: Vec<AutoStr> = item.fields.iter()
-                            .map(|f| f.name.clone())
-                            .collect();
-                        self.enum_struct_variants.insert(
-                            (enum_decl.name.clone(), item.name.clone()),
-                            field_names,
-                        );
+                        let field_names: Vec<AutoStr> =
+                            item.fields.iter().map(|f| f.name.clone()).collect();
+                        self.enum_struct_variants
+                            .insert((enum_decl.name.clone(), item.name.clone()), field_names);
                         // Multi-field struct variant: Name { field1: Type1, field2: Type2 }
                         write!(sink.body, "{} {{ ", item.name)?;
                         for (j, field) in item.fields.iter().enumerate() {
                             if j > 0 {
                                 write!(sink.body, ", ")?;
                             }
-                            write!(sink.body, "{}: {}", field.name, self.rust_type_name(&field.field_type))?;
+                            write!(
+                                sink.body,
+                                "{}: {}",
+                                field.name,
+                                self.rust_type_name(&field.field_type)
+                            )?;
                         }
                         writeln!(sink.body, " }},")?;
                     } else if item.has_tuple_payload() {
@@ -19602,17 +21965,20 @@ pub use auto_cabi_kit::*;"#
                         writeln!(sink.body, "),")?;
                     } else if let Some(ref payload) = item.payload_type {
                         // Register single-payload tuple variant
-                        self.enum_tuple_variants.insert(
-                            (enum_decl.name.clone(), item.name.clone()),
-                            1,
-                        );
+                        self.enum_tuple_variants
+                            .insert((enum_decl.name.clone(), item.name.clone()), 1);
                         // Cache single-payload type for .to_string() auto-insertion
                         self.enum_tuple_field_types.insert(
                             (enum_decl.name.clone(), item.name.clone()),
                             vec![payload.clone()],
                         );
                         // Single-payload tuple variant: Name(Type)
-                        writeln!(sink.body, "{}({}),", item.name, self.rust_type_name(payload))?;
+                        writeln!(
+                            sink.body,
+                            "{}({}),",
+                            item.name,
+                            self.rust_type_name(payload)
+                        )?;
                     } else {
                         // Unit variant (no data): Name
                         writeln!(sink.body, "{},", item.name)?;
@@ -19632,7 +21998,9 @@ pub use auto_cabi_kit::*;"#
                     if !item.attrs.iter().any(|a| a.as_str() == "from") {
                         continue;
                     }
-                    let Some(payload) = &item.payload_type else { continue; };
+                    let Some(payload) = &item.payload_type else {
+                        continue;
+                    };
                     let pty = self.rust_type_name(payload);
                     writeln!(sink.body, "impl From<{}> for {} {{", pty, enum_decl.name)?;
                     self.indent();
@@ -19652,21 +22020,34 @@ pub use auto_cabi_kit::*;"#
                 // For heterogeneous enums that are all unit variants (like SpecStatus with methods),
                 // generate Display and from_id similar to scalar enums
                 let all_unit = enum_decl.items.iter().all(|item| {
-                    item.payload_type.is_none() && item.payload_types.is_empty() && !item.has_fields()
+                    item.payload_type.is_none()
+                        && item.payload_types.is_empty()
+                        && !item.has_fields()
                 });
                 if all_unit {
                     // Display impl
-                    writeln!(sink.body, "impl std::fmt::Display for {} {{", enum_decl.name)?;
+                    writeln!(
+                        sink.body,
+                        "impl std::fmt::Display for {} {{",
+                        enum_decl.name
+                    )?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
-                    writeln!(sink.body, "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{")?;
+                    writeln!(
+                        sink.body,
+                        "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{"
+                    )?;
                     self.indent();
                     self.print_indent(&mut sink.body)?;
                     writeln!(sink.body, "match self {{")?;
                     self.indent();
                     for item in &enum_decl.items {
                         self.print_indent(&mut sink.body)?;
-                        writeln!(sink.body, "{}::{} => write!(f, \"{}\"),", enum_decl.name, item.name, item.name)?;
+                        writeln!(
+                            sink.body,
+                            "{}::{} => write!(f, \"{}\"),",
+                            enum_decl.name, item.name, item.name
+                        )?;
                     }
                     self.dedent();
                     self.print_indent(&mut sink.body)?;
@@ -19688,10 +22069,21 @@ pub use auto_cabi_kit::*;"#
                     self.indent();
                     for item in &enum_decl.items {
                         self.print_indent(&mut sink.body)?;
-                        writeln!(sink.body, "\"{}\" | \"{}\" => {}::{},", item.name, item.name.to_lowercase(), enum_decl.name, item.name)?;
+                        writeln!(
+                            sink.body,
+                            "\"{}\" | \"{}\" => {}::{},",
+                            item.name,
+                            item.name.to_lowercase(),
+                            enum_decl.name,
+                            item.name
+                        )?;
                     }
                     self.print_indent(&mut sink.body)?;
-                    let first = enum_decl.items.first().map(|i| i.name.as_str()).unwrap_or("Unknown");
+                    let first = enum_decl
+                        .items
+                        .first()
+                        .map(|i| i.name.as_str())
+                        .unwrap_or("Unknown");
                     writeln!(sink.body, "_ => {}::{}", enum_decl.name, first)?;
                     self.dedent();
                     self.print_indent(&mut sink.body)?;
@@ -19788,18 +22180,18 @@ pub use auto_cabi_kit::*;"#
                 }
                 match param {
                     GenericParam::Type(tp) => {
-                            write!(sink.body, "{}", tp.name)?;
-                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
-                            if !tp.constraint.is_empty() {
-                                write!(sink.body, ": ")?;
-                                for (ci, ct) in tp.constraint.iter().enumerate() {
-                                    if ci > 0 {
-                                        write!(sink.body, " + ")?;
-                                    }
-                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                        write!(sink.body, "{}", tp.name)?;
+                        // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                        if !tp.constraint.is_empty() {
+                            write!(sink.body, ": ")?;
+                            for (ci, ct) in tp.constraint.iter().enumerate() {
+                                if ci > 0 {
+                                    write!(sink.body, " + ")?;
                                 }
+                                write!(sink.body, "{}", self.rust_bound_name(ct))?;
                             }
                         }
+                    }
                     GenericParam::Const(cp) => {
                         write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                     }
@@ -19872,18 +22264,18 @@ pub use auto_cabi_kit::*;"#
                 }
                 match param {
                     GenericParam::Type(tp) => {
-                            write!(sink.body, "{}", tp.name)?;
-                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
-                            if !tp.constraint.is_empty() {
-                                write!(sink.body, ": ")?;
-                                for (ci, ct) in tp.constraint.iter().enumerate() {
-                                    if ci > 0 {
-                                        write!(sink.body, " + ")?;
-                                    }
-                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                        write!(sink.body, "{}", tp.name)?;
+                        // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                        if !tp.constraint.is_empty() {
+                            write!(sink.body, ": ")?;
+                            for (ci, ct) in tp.constraint.iter().enumerate() {
+                                if ci > 0 {
+                                    write!(sink.body, " + ")?;
                                 }
+                                write!(sink.body, "{}", self.rust_bound_name(ct))?;
                             }
                         }
+                    }
                     GenericParam::Const(cp) => {
                         write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                     }
@@ -19937,13 +22329,16 @@ pub use auto_cabi_kit::*;"#
         // This makes transpiled error enums real `std::error::Error` values
         // (interop with `?` chains / Box<dyn Error> / logging), matching the
         // Rust reference's `#[derive(Error)]` without a thiserror dependency.
-        let has_message = ext.trait_name.is_none()
-            && ext.methods.iter().any(|m| m.name.as_str() == "message");
+        let has_message =
+            ext.trait_name.is_none() && ext.methods.iter().any(|m| m.name.as_str() == "message");
         if has_message && self.known_enum_names.contains(ext.target.as_str()) {
             writeln!(sink.body, "impl std::fmt::Display for {} {{", ext.target)?;
             self.indent();
             self.print_indent(&mut sink.body)?;
-            writeln!(sink.body, "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{")?;
+            writeln!(
+                sink.body,
+                "fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {{"
+            )?;
             self.indent();
             self.print_indent(&mut sink.body)?;
             writeln!(sink.body, "write!(f, \"{{}}\", self.message())")?;
@@ -19963,7 +22358,8 @@ pub use auto_cabi_kit::*;"#
     // Plan 204 Phase 4: spec → Rust trait mapping
     fn spec_decl(&mut self, spec_decl: &SpecDecl, sink: &mut Sink) -> AutoResult<()> {
         // Cache spec methods for later use in impl Trait for Type
-        self.spec_decls.insert(spec_decl.name.clone(), spec_decl.methods.clone());
+        self.spec_decls
+            .insert(spec_decl.name.clone(), spec_decl.methods.clone());
 
         // Plan 390 §15.10: `spec Fn` is a phantom spec — it maps to Rust's
         // builtin `Fn` trait (std prelude). Emitting a local `trait Fn {}`
@@ -19979,9 +22375,10 @@ pub use auto_cabi_kit::*;"#
         // on the TRAIT declaration too — a bare `-> Future<...>` return type in
         // a trait is E0782. Plan 373 G2 only annotated the impl blocks.
         // Plan 382 (A.1): `!T` → Type::Result is SYNC — excluded.
-        let has_async_method = spec_decl.methods.iter().any(|m| {
-            matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future")
-        });
+        let has_async_method = spec_decl
+            .methods
+            .iter()
+            .any(|m| matches!(&m.ret, Type::GenericInstance(inst) if inst.base_name == "Future"));
         if has_async_method {
             write!(sink.body, "#[async_trait::async_trait]\n")?;
         }
@@ -20003,18 +22400,18 @@ pub use auto_cabi_kit::*;"#
                 }
                 match param {
                     GenericParam::Type(tp) => {
-                            write!(sink.body, "{}", tp.name)?;
-                            // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
-                            if !tp.constraint.is_empty() {
-                                write!(sink.body, ": ")?;
-                                for (ci, ct) in tp.constraint.iter().enumerate() {
-                                    if ci > 0 {
-                                        write!(sink.body, " + ")?;
-                                    }
-                                    write!(sink.body, "{}", self.rust_bound_name(ct))?;
+                        write!(sink.body, "{}", tp.name)?;
+                        // Plan 364 W3: multi-bound `#[with(T as A + B)]` → `T: A + B`
+                        if !tp.constraint.is_empty() {
+                            write!(sink.body, ": ")?;
+                            for (ci, ct) in tp.constraint.iter().enumerate() {
+                                if ci > 0 {
+                                    write!(sink.body, " + ")?;
                                 }
+                                write!(sink.body, "{}", self.rust_bound_name(ct))?;
                             }
                         }
+                    }
                     GenericParam::Const(cp) => {
                         write!(sink.body, "{}: {}", cp.name, self.rust_type_name(&cp.typ))?
                     }
@@ -20090,11 +22487,9 @@ pub use auto_cabi_kit::*;"#
         // heuristic misfires on single-letter params). Restored after the
         // method loop (see the assignment just below the loop).
         let saved_spec_type_params = std::mem::take(&mut self.current_fn_type_params);
-        for tp_name in spec_decl.generic_params.iter().filter_map(|gp| {
-            match gp {
-                GenericParam::Type(tp) => Some(tp.name.clone()),
-                _ => None,
-            }
+        for tp_name in spec_decl.generic_params.iter().filter_map(|gp| match gp {
+            GenericParam::Type(tp) => Some(tp.name.clone()),
+            _ => None,
         }) {
             self.current_fn_type_params.insert(tp_name);
         }
@@ -20104,7 +22499,8 @@ pub use auto_cabi_kit::*;"#
             // bare `-> Future<...>` in the trait would be E0782 — async_trait
             // rewrites `async fn -> Result<...>` into the boxed-Future form.
             // Plan 382 (A.1): `!T` → Type::Result is SYNC — excluded.
-            let method_is_async = matches!(&method.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
+            let method_is_async =
+                matches!(&method.ret, Type::GenericInstance(inst) if inst.base_name == "Future");
             self.print_indent(&mut sink.body)?;
             if method_is_async {
                 write!(sink.body, "async ")?;
@@ -20212,25 +22608,25 @@ pub use auto_cabi_kit::*;"#
 
         // Process statements
         for (i, stmt) in body.stmts.iter().enumerate() {
-            self.later_used_locals = stmt_reads[i + 1..]
-                .iter()
-                .fold(std::collections::HashSet::new(), |mut acc, s| {
-                    match s {
-                        Some(names) => {
-                            acc.extend(names.iter().cloned());
+            self.later_used_locals =
+                stmt_reads[i + 1..]
+                    .iter()
+                    .fold(std::collections::HashSet::new(), |mut acc, s| {
+                        match s {
+                            Some(names) => {
+                                acc.extend(names.iter().cloned());
+                            }
+                            // Unwalkable stmt later in the body — assume everything
+                            // might be referenced; suppress the type defaults.
+                            None => {
+                                acc.insert(AutoStr::from("\u{0}unwalkable"));
+                            }
                         }
-                        // Unwalkable stmt later in the body — assume everything
-                        // might be referenced; suppress the type defaults.
-                        None => {
-                            acc.insert(AutoStr::from("\u{0}unwalkable"));
-                        }
-                    }
-                    acc
-                });
+                        acc
+                    });
             // W2: record guard bindings from `var g = ...lock().unwrap()`
             if let Stmt::Store(store) = stmt {
-                if Self::store_is_lock_guard(store)
-                {
+                if Self::store_is_lock_guard(store) {
                     lock_guards.insert(store.name.clone());
                 }
             }
@@ -20312,8 +22708,10 @@ pub use auto_cabi_kit::*;"#
                         self.value_if_tail = true;
                         self.if_stmt(inner_if, sink)?;
                         self.value_if_tail = saved;
-                        sink.body.write(b"
-")?;
+                        sink.body.write(
+                            b"
+",
+                        )?;
                     }
                     Stmt::Is(is_stmt) => {
                         // `is` (match) as tail expression — emit WITHOUT the
@@ -20469,7 +22867,11 @@ pub use auto_cabi_kit::*;"#
         let known: &[(&str, &str, &[&str])] = &[
             ("ContentBlock", "Text", &["text"]),
             ("ContentBlock", "ToolUse", &["id", "name", "input"]),
-            ("ContentBlock", "ToolResult", &["tool_use_id", "content", "is_error"]),
+            (
+                "ContentBlock",
+                "ToolResult",
+                &["tool_use_id", "content", "is_error"],
+            ),
             // Plan 018 §Phase 3.3: auto_atom::AtomError::InvalidType is a
             // struct variant ({ expected, found }). Register it so .at
             // construction `AtomError.InvalidType("String", format!(...))`
@@ -20505,7 +22907,10 @@ pub use auto_cabi_kit::*;"#
         let code = match std::fs::read_to_string(&path) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("[a2r] warning: A2R_EXTERN_SIGS read failed ({}): {}", path, e);
+                eprintln!(
+                    "[a2r] warning: A2R_EXTERN_SIGS read failed ({}): {}",
+                    path, e
+                );
                 return;
             }
         };
@@ -20521,12 +22926,14 @@ pub use auto_cabi_kit::*;"#
         for stmt in &ast.stmts {
             if let Stmt::Fn(fn_decl) = stmt {
                 let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
-                self.fn_param_types.insert(fn_decl.name.clone(), param_types.clone());
+                self.fn_param_types
+                    .insert(fn_decl.name.clone(), param_types.clone());
                 if let Some(parent) = &fn_decl.parent {
                     let qualified: AutoStr = format!("{}.{}", parent, fn_decl.name).into();
                     self.fn_param_types.insert(qualified, param_types);
                 }
-                self.fn_ret_types.insert(fn_decl.name.clone(), fn_decl.ret.clone());
+                self.fn_ret_types
+                    .insert(fn_decl.name.clone(), fn_decl.ret.clone());
             }
         }
     }
@@ -20595,7 +23002,15 @@ pub use auto_cabi_kit::*;"#
         match expr {
             // self.field = value  (Op::Asn, AddEq, SubEq, etc.)
             Expr::Bina(lhs, op, _) => {
-                if matches!(op, auto_val::Op::Asn | auto_val::Op::AddEq | auto_val::Op::SubEq | auto_val::Op::MulEq | auto_val::Op::DivEq | auto_val::Op::ModEq) {
+                if matches!(
+                    op,
+                    auto_val::Op::Asn
+                        | auto_val::Op::AddEq
+                        | auto_val::Op::SubEq
+                        | auto_val::Op::MulEq
+                        | auto_val::Op::DivEq
+                        | auto_val::Op::ModEq
+                ) {
                     // Plan 514 W3-16: 索引位赋值 self.scopes[i] = v 的根
                     // 也是 self——Index 基座为 self 点链同列(vpush 实证)。
                     if Self::is_self_dot(lhs) {
@@ -20612,12 +23027,14 @@ pub use auto_cabi_kit::*;"#
             // self.field.push(...) / self.field.insert(...) / etc.
             Expr::Call(call) => {
                 if let Expr::Dot(obj, method) = call.name.as_ref() {
-                    let mut_methods = ["push", "pop", "insert", "remove", "clear", "next",
-                        "extend", "truncate", "retain", "sort", "sort_by", "reverse",
-                        "dedup", "swap", "splice", "drain", "append", "resize",
+                    let mut_methods = [
+                        "push", "pop", "insert", "remove", "clear", "next", "extend", "truncate",
+                        "retain", "sort", "sort_by", "reverse", "dedup", "swap", "splice", "drain",
+                        "append", "resize",
                         // Plan 514 W3-16: .set(i, v) 在发射期转索引赋值——
                         // 同为接收者变异(vpush 的 self.scopes.set 实证)。
-                        "set"];
+                        "set",
+                    ];
                     // Plan 514 W3: 裸 `self.method()`(obj 即 Ident self)与
                     // 字段中介形 `self.field.method()` 同列——此前只匹配后者,
                     // 方法体内 `.next()`/`self.next()` 语句漏判 → 接收者误发
@@ -20657,13 +23074,14 @@ pub use auto_cabi_kit::*;"#
                         return true;
                     }
                 }
-                call.args.args.iter().any(|a| matches!(a,
-                    Arg::Pos(e) if Self::expr_calls_self_method(e, targets)))
+                call.args.args.iter().any(|a| {
+                    matches!(a,
+                    Arg::Pos(e) if Self::expr_calls_self_method(e, targets))
+                })
             }
             Expr::Dot(o, _) => Self::expr_calls_self_method(o, targets),
             Expr::Bina(a, _, b) | Expr::Index(a, b) | Expr::NullCoalesce(a, b) => {
-                Self::expr_calls_self_method(a, targets)
-                    || Self::expr_calls_self_method(b, targets)
+                Self::expr_calls_self_method(a, targets) || Self::expr_calls_self_method(b, targets)
             }
             Expr::Unary(_, e)
             | Expr::ErrorPropagate(e)
@@ -20683,7 +23101,10 @@ pub use auto_cabi_kit::*;"#
     }
 
     /// Plan 514 W3: 语句体内是否存在对 targets 中方法的 self 接收者调用。
-    fn body_calls_self_method(stmts: &[Stmt], targets: &std::collections::HashSet<AutoStr>) -> bool {
+    fn body_calls_self_method(
+        stmts: &[Stmt],
+        targets: &std::collections::HashSet<AutoStr>,
+    ) -> bool {
         for stmt in stmts {
             let hit = match stmt {
                 Stmt::Expr(e) => Self::expr_calls_self_method(e, targets),
@@ -20693,9 +23114,10 @@ pub use auto_cabi_kit::*;"#
                     i.branches.iter().any(|b| {
                         Self::expr_calls_self_method(&b.cond, targets)
                             || Self::body_calls_self_method(&b.body.stmts, targets)
-                    }) || i.else_.as_ref().map_or(false, |e| {
-                        Self::body_calls_self_method(&e.stmts, targets)
-                    })
+                    }) || i
+                        .else_
+                        .as_ref()
+                        .map_or(false, |e| Self::body_calls_self_method(&e.stmts, targets))
                 }
                 Stmt::For(f) => {
                     Self::expr_calls_self_method(&f.range, targets)
@@ -20713,9 +23135,9 @@ pub use auto_cabi_kit::*;"#
                 Stmt::Try(t) => {
                     Self::body_calls_self_method(&t.body.stmts, targets)
                         || Self::body_calls_self_method(&t.catch_body.stmts, targets)
-                        || t.finally_body.as_ref().map_or(false, |f| {
-                            Self::body_calls_self_method(&f.stmts, targets)
-                        })
+                        || t.finally_body
+                            .as_ref()
+                            .map_or(false, |f| Self::body_calls_self_method(&f.stmts, targets))
                 }
                 _ => false,
             };
@@ -20861,27 +23283,41 @@ pub use auto_cabi_kit::*;"#
         for stmt in stmts {
             match stmt {
                 Stmt::Expr(expr) => {
-                    if Self::expr_has_error_propagate(expr) { return true; }
+                    if Self::expr_has_error_propagate(expr) {
+                        return true;
+                    }
                 }
                 Stmt::Store(store) => {
-                    if Self::expr_has_error_propagate(&store.expr) { return true; }
+                    if Self::expr_has_error_propagate(&store.expr) {
+                        return true;
+                    }
                 }
                 Stmt::Return(expr) => {
-                    if Self::expr_has_error_propagate(expr) { return true; }
+                    if Self::expr_has_error_propagate(expr) {
+                        return true;
+                    }
                 }
                 Stmt::Block(body) => {
-                    if Self::has_error_propagate(&body.stmts) { return true; }
+                    if Self::has_error_propagate(&body.stmts) {
+                        return true;
+                    }
                 }
                 Stmt::If(if_stmt) => {
                     for branch in &if_stmt.branches {
-                        if Self::has_error_propagate(&branch.body.stmts) { return true; }
+                        if Self::has_error_propagate(&branch.body.stmts) {
+                            return true;
+                        }
                     }
                     if let Some(else_body) = &if_stmt.else_ {
-                        if Self::has_error_propagate(&else_body.stmts) { return true; }
+                        if Self::has_error_propagate(&else_body.stmts) {
+                            return true;
+                        }
                     }
                 }
                 Stmt::For(for_stmt) => {
-                    if Self::has_error_propagate(&for_stmt.body.stmts) { return true; }
+                    if Self::has_error_propagate(&for_stmt.body.stmts) {
+                        return true;
+                    }
                 }
                 Stmt::Is(is_stmt) => {
                     for branch in &is_stmt.branches {
@@ -20890,7 +23326,9 @@ pub use auto_cabi_kit::*;"#
                             crate::ast::IsBranch::IfBranch(_, body) => body,
                             crate::ast::IsBranch::ElseBranch(body) => body,
                         };
-                        if Self::has_error_propagate(&body.stmts) { return true; }
+                        if Self::has_error_propagate(&body.stmts) {
+                            return true;
+                        }
                     }
                 }
                 _ => {}
@@ -20910,21 +23348,31 @@ pub use auto_cabi_kit::*;"#
         for stmt in stmts {
             match stmt {
                 Stmt::Return(expr) => {
-                    if matches!(&**expr, Expr::Ok(_) | Expr::Err(_)) { return true; }
+                    if matches!(&**expr, Expr::Ok(_) | Expr::Err(_)) {
+                        return true;
+                    }
                 }
                 Stmt::Block(body) => {
-                    if Self::body_returns_result(&body.stmts) { return true; }
+                    if Self::body_returns_result(&body.stmts) {
+                        return true;
+                    }
                 }
                 Stmt::If(if_stmt) => {
                     for branch in &if_stmt.branches {
-                        if Self::body_returns_result(&branch.body.stmts) { return true; }
+                        if Self::body_returns_result(&branch.body.stmts) {
+                            return true;
+                        }
                     }
                     if let Some(else_body) = &if_stmt.else_ {
-                        if Self::body_returns_result(&else_body.stmts) { return true; }
+                        if Self::body_returns_result(&else_body.stmts) {
+                            return true;
+                        }
                     }
                 }
                 Stmt::For(for_stmt) => {
-                    if Self::body_returns_result(&for_stmt.body.stmts) { return true; }
+                    if Self::body_returns_result(&for_stmt.body.stmts) {
+                        return true;
+                    }
                 }
                 Stmt::Is(is_stmt) => {
                     for branch in &is_stmt.branches {
@@ -20933,7 +23381,9 @@ pub use auto_cabi_kit::*;"#
                             crate::ast::IsBranch::IfBranch(_, body) => body,
                             crate::ast::IsBranch::ElseBranch(body) => body,
                         };
-                        if Self::body_returns_result(&body.stmts) { return true; }
+                        if Self::body_returns_result(&body.stmts) {
+                            return true;
+                        }
                     }
                 }
                 _ => {}
@@ -21055,18 +23505,13 @@ pub use auto_cabi_kit::*;"#
         out
     }
 
-    fn collect_result_pattern_idents(
-        stmts: &[Stmt],
-        out: &mut std::collections::HashSet<String>,
-    ) {
+    fn collect_result_pattern_idents(stmts: &[Stmt], out: &mut std::collections::HashSet<String>) {
         for stmt in stmts {
             match stmt {
                 Stmt::Is(is_stmt) => {
                     let has_ok_err = is_stmt.branches.iter().any(|branch| {
                         if let crate::ast::IsBranch::EqBranch(patterns, _) = branch {
-                            patterns.iter().any(|p| {
-                                matches!(p, Expr::ResultPattern(_))
-                            })
+                            patterns.iter().any(|p| matches!(p, Expr::ResultPattern(_)))
                         } else {
                             false
                         }
@@ -21110,11 +23555,15 @@ pub use auto_cabi_kit::*;"#
         match expr {
             Expr::ErrorPropagate(_) => true,
             Expr::Call(call) => {
-                if Self::expr_has_error_propagate(call.name.as_ref()) { return true; }
+                if Self::expr_has_error_propagate(call.name.as_ref()) {
+                    return true;
+                }
                 for arg in &call.args.args {
                     match arg {
                         Arg::Pos(e) | Arg::Pair(_, e) => {
-                            if Self::expr_has_error_propagate(e) { return true; }
+                            if Self::expr_has_error_propagate(e) {
+                                return true;
+                            }
                         }
                         Arg::Name(_) => {}
                     }
@@ -21149,8 +23598,13 @@ pub use auto_cabi_kit::*;"#
     fn needs_usize_cast(expr: &Expr) -> bool {
         match expr {
             // Integer literals: Rust infers correct type in index position
-            Expr::Int(_) | Expr::Uint(_) | Expr::I8(_) | Expr::U8(_)
-            | Expr::I64(_) | Expr::U64(_) | Expr::Byte(_) => false,
+            Expr::Int(_)
+            | Expr::Uint(_)
+            | Expr::I8(_)
+            | Expr::U8(_)
+            | Expr::I64(_)
+            | Expr::U64(_)
+            | Expr::Byte(_) => false,
             // Range: bounds are handled individually, not the range itself
             Expr::Range(_) => false,
             // Non-integer literals: not used as indices
@@ -21258,30 +23712,39 @@ pub use auto_cabi_kit::*;"#
                 // Duration, Instant, DirEntry, etc. Common variable names like "count",
                 // "value", "avg" are often primitives (i32, f64) that implement Display.
                 let lower = name.as_str().to_lowercase();
-                if lower.contains("duration") || lower.contains("elapsed") || lower.contains("instant")
+                if lower.contains("duration")
+                    || lower.contains("elapsed")
+                    || lower.contains("instant")
                     || lower.contains("dir_entry")
                 {
                     return true;
                 }
                 // Check local_var_types for non-Display types
                 if let Some(ty) = self.local_var_types.get(name) {
-                    return matches!(ty,
-                        Type::List(_) | Type::Map(_, _) | Type::Array(_)
-                        | Type::RuntimeArray(_) | Type::Slice(_)
-                        | Type::Option(_) | Type::Result(_)
-                        | Type::Tuple(_) | Type::Tag(_) | Type::Enum(_)
+                    return matches!(
+                        ty,
+                        Type::List(_)
+                            | Type::Map(_, _)
+                            | Type::Array(_)
+                            | Type::RuntimeArray(_)
+                            | Type::Slice(_)
+                            | Type::Option(_)
+                            | Type::Result(_)
+                            | Type::Tuple(_)
+                            | Type::Tag(_)
+                            | Type::Enum(_)
                     );
                 }
                 false
             }
-            Expr::Dot(obj, method) => {
-                method == "elapsed" || self.needs_debug_format(obj)
-            }
+            Expr::Dot(obj, method) => method == "elapsed" || self.needs_debug_format(obj),
             Expr::Bina(lhs, op, rhs) => {
                 if matches!(op, Op::Dot) {
                     // Check for expr.elapsed()
                     if let Expr::Ident(m) = rhs.as_ref() {
-                        if m.as_str() == "elapsed" { return true; }
+                        if m.as_str() == "elapsed" {
+                            return true;
+                        }
                     }
                     self.needs_debug_format(lhs)
                 } else {
@@ -21351,25 +23814,15 @@ pub use auto_cabi_kit::*;"#
                 false
             }
             Expr::Block(body) => Self::has_await(&body.stmts),
-            Expr::Bina(left, _, right) => {
-                Self::expr_has_await(left) || Self::expr_has_await(right)
-            }
+            Expr::Bina(left, _, right) => Self::expr_has_await(left) || Self::expr_has_await(right),
             Expr::Unary(_, expr) => Self::expr_has_await(expr),
             Expr::Dot(obj, _) => Self::expr_has_await(obj),
-            Expr::Index(arr, idx) => {
-                Self::expr_has_await(arr) || Self::expr_has_await(idx)
-            }
-            Expr::View(e) | Expr::Mut(e) | Expr::Move(e) | Expr::Take(e) => {
-                Self::expr_has_await(e)
-            }
+            Expr::Index(arr, idx) => Self::expr_has_await(arr) || Self::expr_has_await(idx),
+            Expr::View(e) | Expr::Mut(e) | Expr::Move(e) | Expr::Take(e) => Self::expr_has_await(e),
             Expr::AsyncBlock { body, .. } => Self::has_await(&body.stmts),
             Expr::Cast { expr, .. } | Expr::To { expr, .. } => Self::expr_has_await(expr),
-            Expr::NullCoalesce(l, r) => {
-                Self::expr_has_await(l) || Self::expr_has_await(r)
-            }
-            Expr::ErrorPropagate(e) => {
-                Self::expr_has_await(e)
-            }
+            Expr::NullCoalesce(l, r) => Self::expr_has_await(l) || Self::expr_has_await(r),
+            Expr::ErrorPropagate(e) => Self::expr_has_await(e),
             _ => false,
         }
     }
@@ -21466,25 +23919,53 @@ pub use auto_cabi_kit::*;"#
         Self::fix_counted(&mut content, "fix_vec_i32_index", Self::fix_vec_i32_index);
 
         // A8: HashMap.get(key).field → HashMap.get(key).unwrap().field
-        Self::fix_counted(&mut content, "fix_option_unwrapping", Self::fix_option_unwrapping);
+        Self::fix_counted(
+            &mut content,
+            "fix_option_unwrapping",
+            Self::fix_option_unwrapping,
+        );
 
         // A9: vec.get(0.as_str()) → vec[0], vec.get(N.as_str()) → vec[N as usize]
-        Self::fix_counted(&mut content, "fix_numeric_get_as_str", Self::fix_numeric_get_as_str);
+        Self::fix_counted(
+            &mut content,
+            "fix_numeric_get_as_str",
+            Self::fix_numeric_get_as_str,
+        );
 
         // A10: self.sessions.get(X) { Some(var) => → self.sessions.get(X).cloned() { Some(var) =>
-        Self::fix_counted(&mut content, "fix_get_cloned_for_match", Self::fix_get_cloned_for_match);
+        Self::fix_counted(
+            &mut content,
+            "fix_get_cloned_for_match",
+            Self::fix_get_cloned_for_match,
+        );
 
         // B2: String/&str heuristic fixes
-        Self::fix_counted(&mut content, "fix_string_str_mismatches", Self::fix_string_str_mismatches);
+        Self::fix_counted(
+            &mut content,
+            "fix_string_str_mismatches",
+            Self::fix_string_str_mismatches,
+        );
 
         // B13: Fix derive macros on structs with dyn Trait fields
-        Self::fix_counted(&mut content, "fix_dyn_trait_derives", Self::fix_dyn_trait_derives);
+        Self::fix_counted(
+            &mut content,
+            "fix_dyn_trait_derives",
+            Self::fix_dyn_trait_derives,
+        );
 
         // B14: Fix integer type mismatches (u32 vs i32 vs usize)
-        Self::fix_counted(&mut content, "fix_integer_type_mismatches", Self::fix_integer_type_mismatches);
+        Self::fix_counted(
+            &mut content,
+            "fix_integer_type_mismatches",
+            Self::fix_integer_type_mismatches,
+        );
 
         // B16: Add `mut` to let bindings that are later reassigned
-        Self::fix_counted(&mut content, "fix_mutable_bindings", Self::fix_mutable_bindings);
+        Self::fix_counted(
+            &mut content,
+            "fix_mutable_bindings",
+            Self::fix_mutable_bindings,
+        );
 
         // B16b: Add `mut` to fn params that are mutated in the body
         // (a2r only handles `let` locals; Rust params default to immutable →
@@ -21492,31 +23973,59 @@ pub use auto_cabi_kit::*;"#
         Self::fix_counted(&mut content, "fix_mutable_params", Self::fix_mutable_params);
 
         // B17: Fix return None; in void functions → return;
-        Self::fix_counted(&mut content, "fix_void_return_none", Self::fix_void_return_none);
+        Self::fix_counted(
+            &mut content,
+            "fix_void_return_none",
+            Self::fix_void_return_none,
+        );
 
         // B18: Fix borrowing issues (&Vec → Vec.clone(), etc.)
-        Self::fix_counted(&mut content, "fix_borrowing_issues", Self::fix_borrowing_issues);
+        Self::fix_counted(
+            &mut content,
+            "fix_borrowing_issues",
+            Self::fix_borrowing_issues,
+        );
 
         // B19: Fix HashMap.keys() used as indexable collection (Auto List → Rust iterator)
-        Self::fix_counted(&mut content, "fix_map_keys_indexing", Self::fix_map_keys_indexing);
+        Self::fix_counted(
+            &mut content,
+            "fix_map_keys_indexing",
+            Self::fix_map_keys_indexing,
+        );
 
         // B20: Fix push move errors — add .clone() when pushing reused variables
         Self::fix_counted(&mut content, "fix_push_move", Self::fix_push_move);
 
         // B21: Fix &str params assigned to String fields / pushed to Vec<String>
-        Self::fix_counted(&mut content, "fix_str_to_string_assignments", Self::fix_str_to_string_assignments);
+        Self::fix_counted(
+            &mut content,
+            "fix_str_to_string_assignments",
+            Self::fix_str_to_string_assignments,
+        );
 
         // B22: Fix Option<String>.unwrap_or("") → .unwrap_or_default()
-        Self::fix_counted(&mut content, "fix_option_unwrap_or_empty", Self::fix_option_unwrap_or_empty);
+        Self::fix_counted(
+            &mut content,
+            "fix_option_unwrap_or_empty",
+            Self::fix_option_unwrap_or_empty,
+        );
 
         // B23: Fix String passed where &_ is expected (map.get(var) → map.get(&var))
         Self::fix_counted(&mut content, "fix_string_to_ref", Self::fix_string_to_ref);
 
         // B15: Fix enum == "str" comparisons — Auto enums can compare with str, Rust can't
-        Self::fix_counted(&mut content, "fix_enum_str_comparisons", Self::fix_enum_str_comparisons);
+        Self::fix_counted(
+            &mut content,
+            "fix_enum_str_comparisons",
+            Self::fix_enum_str_comparisons,
+        );
 
         // B7: Fix vec![(str, str, str)] where return type is Vec<(String,...)>
-        Self::fix_counted(&mut content, "fix_vec_tuple_string_literals", Self::fix_vec_tuple_string_literals);
+        Self::fix_counted(
+            &mut content,
+            "fix_vec_tuple_string_literals",
+            Self::fix_vec_tuple_string_literals,
+        );
 
         // B8: Fix tuple.get_N() -> tuple.N
         Self::fix_counted(&mut content, "fix_tuple_get_n", Self::fix_tuple_get_n);
@@ -21528,7 +24037,11 @@ pub use auto_cabi_kit::*;"#
         Self::fix_counted(&mut content, "fix_insert_usize", Self::fix_insert_usize);
 
         // B6: Fix bool-returning functions used with == 0 / != 0
-        Self::fix_counted(&mut content, "fix_bool_int_comparisons", Self::fix_bool_int_comparisons);
+        Self::fix_counted(
+            &mut content,
+            "fix_bool_int_comparisons",
+            Self::fix_bool_int_comparisons,
+        );
 
         // B9: Fix map.get(key).as_str() → map.get(key).map(|s| s.as_str()).unwrap_or("")
         Self::fix_counted(&mut content, "fix_map_get_as_str", Self::fix_map_get_as_str);
@@ -21543,10 +24056,26 @@ pub use auto_cabi_kit::*;"#
         // Plan 373 backports — additional B1 codegen papercuts.
         // Lower Auto-VM str/numeric methods + structural fixes that the main
         // trans() pass doesn't emit correctly yet (see docs/plans/373).
-        Self::fix_counted(&mut content, "fix_substring_method", Self::fix_substring_method);
-        Self::fix_counted(&mut content, "fix_numeric_conversion_methods", Self::fix_numeric_conversion_methods);
-        Self::fix_counted(&mut content, "fix_residual_error_box", Self::fix_residual_error_box);
-        Self::fix_counted(&mut content, "fix_result_none_unit", Self::fix_result_none_unit);
+        Self::fix_counted(
+            &mut content,
+            "fix_substring_method",
+            Self::fix_substring_method,
+        );
+        Self::fix_counted(
+            &mut content,
+            "fix_numeric_conversion_methods",
+            Self::fix_numeric_conversion_methods,
+        );
+        Self::fix_counted(
+            &mut content,
+            "fix_residual_error_box",
+            Self::fix_residual_error_box,
+        );
+        Self::fix_counted(
+            &mut content,
+            "fix_result_none_unit",
+            Self::fix_result_none_unit,
+        );
         Self::fix_counted(&mut content, "fix_fn_field_calls", Self::fix_fn_field_calls);
         // fix_non_ord_derives carries PLAN-009 F1 state (restricted type
         // names), so it can't go through the fn-pointer fix_counted helper;
@@ -21560,14 +24089,42 @@ pub use auto_cabi_kit::*;"#
                 }
             }
         }
-        Self::fix_counted(&mut content, "fix_missing_trait_impl_uses", Self::fix_missing_trait_impl_uses);
-        Self::fix_counted(&mut content, "fix_string_literal_enum_args", Self::fix_string_literal_enum_args);
+        Self::fix_counted(
+            &mut content,
+            "fix_missing_trait_impl_uses",
+            Self::fix_missing_trait_impl_uses,
+        );
+        Self::fix_counted(
+            &mut content,
+            "fix_string_literal_enum_args",
+            Self::fix_string_literal_enum_args,
+        );
         // Plan 376: Type-flow analysis post_process passes
-        Self::fix_counted(&mut content, "fix_for_in_self_field_borrow", Self::fix_for_in_self_field_borrow);
-        Self::fix_counted(&mut content, "fix_option_get_field_access", Self::fix_option_get_field_access);
-        Self::fix_counted(&mut content, "fix_some_str_to_string", Self::fix_some_str_to_string);
-        Self::fix_counted(&mut content, "fix_a2r_std_fs_result_patterns", Self::fix_a2r_std_fs_result_patterns);
-        Self::fix_counted(&mut content, "fix_spec_trait_boxing", Self::fix_spec_trait_boxing);
+        Self::fix_counted(
+            &mut content,
+            "fix_for_in_self_field_borrow",
+            Self::fix_for_in_self_field_borrow,
+        );
+        Self::fix_counted(
+            &mut content,
+            "fix_option_get_field_access",
+            Self::fix_option_get_field_access,
+        );
+        Self::fix_counted(
+            &mut content,
+            "fix_some_str_to_string",
+            Self::fix_some_str_to_string,
+        );
+        Self::fix_counted(
+            &mut content,
+            "fix_a2r_std_fs_result_patterns",
+            Self::fix_a2r_std_fs_result_patterns,
+        );
+        Self::fix_counted(
+            &mut content,
+            "fix_spec_trait_boxing",
+            Self::fix_spec_trait_boxing,
+        );
         Self::fix_counted(&mut content, "fix_pathbuf_as_str", Self::fix_pathbuf_as_str);
         Self::fix_counted(&mut content, "fix_tuple_index", Self::fix_tuple_index);
 
@@ -21576,7 +24133,10 @@ pub use auto_cabi_kit::*;"#
         }
 
         // Plan 014 Layer 3: A2R_FIX_COUNTS=1 → print which fixes rewrote output.
-        if std::env::var("A2R_FIX_COUNTS").map(|v| v == "1").unwrap_or(false) {
+        if std::env::var("A2R_FIX_COUNTS")
+            .map(|v| v == "1")
+            .unwrap_or(false)
+        {
             if let Ok(m) = FIX_COUNTS.lock() {
                 for (k, v) in m.iter() {
                     eprintln!("[fix-count] {}={}", k, v);
@@ -21592,7 +24152,9 @@ pub use auto_cabi_kit::*;"#
         use std::collections::HashSet;
         let pub_mods: HashSet<String> = regex_captures(content, r"pub mod (\w+);");
 
-        if pub_mods.is_empty() { return; }
+        if pub_mods.is_empty() {
+            return;
+        }
 
         let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
         let mut new_lines = Vec::new();
@@ -21619,10 +24181,14 @@ pub use auto_cabi_kit::*;"#
     /// Remove `use` statements that import symbols already defined locally.
     fn remove_duplicate_imports(content: &mut String) {
         // Find locally defined symbols (fn, struct, enum, trait, const, static, type names)
-        let local_syms: Vec<String> = regex_captures_vec(content,
-            r"\b(?:pub\s+)?(?:fn|struct|enum|trait|const|static|type)\s+(\w+)");
+        let local_syms: Vec<String> = regex_captures_vec(
+            content,
+            r"\b(?:pub\s+)?(?:fn|struct|enum|trait|const|static|type)\s+(\w+)",
+        );
 
-        if local_syms.is_empty() { return; }
+        if local_syms.is_empty() {
+            return;
+        }
 
         let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
         let mut new_lines = Vec::new();
@@ -21631,14 +24197,17 @@ pub use auto_cabi_kit::*;"#
             let stripped = line.trim();
             if stripped.starts_with("use ") && stripped.ends_with(';') {
                 // Extract symbol from use path
-                let path = &stripped[4..stripped.len()-1]; // strip "use " and ";"
+                let path = &stripped[4..stripped.len() - 1]; // strip "use " and ";"
                 let last_part = path.rsplit("::").next().unwrap_or(path);
                 // Handle braced imports: use crate::module::{A, B};
                 if last_part.starts_with('{') && last_part.ends_with('}') {
-                    let inner = &last_part[1..last_part.len()-1];
+                    let inner = &last_part[1..last_part.len() - 1];
                     let syms: Vec<&str> = inner.split(',').map(|s| s.trim()).collect();
                     let any_local = syms.iter().any(|s| local_syms.contains(&s.to_string()));
-                    if any_local { removed += 1; continue; }
+                    if any_local {
+                        removed += 1;
+                        continue;
+                    }
                 } else if local_syms.contains(&last_part.to_string()) && path.contains("::") {
                     removed += 1;
                     continue;
@@ -21654,66 +24223,98 @@ pub use auto_cabi_kit::*;"#
     /// Fix Vec.get(i32_var) → Vec[i32_var as usize] using heuristic i32 variable names.
     fn fix_vec_i32_index(content: &mut String) {
         let hash_map_names = [
-            "map", "dict", "env", "vars", "cache", "sessions", "entries",
-            "headers", "params", "options", "metadata", "config",
-            "routes", "data", "properties", "fields",
-            "professions", "souls", "flows", "agents", "providers",
-            "runs", "checkpoints", "project_locks",
+            "map",
+            "dict",
+            "env",
+            "vars",
+            "cache",
+            "sessions",
+            "entries",
+            "headers",
+            "params",
+            "options",
+            "metadata",
+            "config",
+            "routes",
+            "data",
+            "properties",
+            "fields",
+            "professions",
+            "souls",
+            "flows",
+            "agents",
+            "providers",
+            "runs",
+            "checkpoints",
+            "project_locks",
             // Plan 376: ToolRegistry.tools is HashMap<String, Arc<...>>;
             // lookups are string-keyed, never integer-indexed.
             "tools",
         ];
         let vec_field_names = [
-            "tool_call_ids", "tool_call_names", "tool_call_args", "tool_call_started",
-            "items", "steps", "events", "messages",
+            "tool_call_ids",
+            "tool_call_names",
+            "tool_call_args",
+            "tool_call_started",
+            "items",
+            "steps",
+            "events",
+            "messages",
         ];
 
         // Pattern 1: self.field.get(var) → self.field[var as usize] for known Vec fields
         // But ONLY when `var` is NOT a string type (String vars can't cast to usize)
         if let Some(re) = cached_regex(r"(self\.(\w+))\.get\((\w+)\)") {
-            let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let full = caps.get(1).unwrap().as_str();
-                let field = caps.get(2).unwrap().as_str();
-                let var = caps.get(3).unwrap().as_str();
-                if vec_field_names.contains(&field) {
-                    // Check if var looks like a string (starts with a letter and isn't i/idx/n/index)
-                    let is_likely_index = var.starts_with('i') || var == "idx" || var == "index" || var == "n";
-                    if is_likely_index {
-                        format!("{}[{} as usize]", full, var)
+            let new_content = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let full = caps.get(1).unwrap().as_str();
+                    let field = caps.get(2).unwrap().as_str();
+                    let var = caps.get(3).unwrap().as_str();
+                    if vec_field_names.contains(&field) {
+                        // Check if var looks like a string (starts with a letter and isn't i/idx/n/index)
+                        let is_likely_index =
+                            var.starts_with('i') || var == "idx" || var == "index" || var == "n";
+                        if is_likely_index {
+                            format!("{}[{} as usize]", full, var)
+                        } else {
+                            // Keep .get() for string-keyed lookups
+                            format!("{}.get({})", full, var)
+                        }
                     } else {
-                        // Keep .get() for string-keyed lookups
                         format!("{}.get({})", full, var)
                     }
-                } else {
-                    format!("{}.get({})", full, var)
-                }
-            }).to_string();
-            if new_content != *content { *content = new_content; }
+                })
+                .to_string();
+            if new_content != *content {
+                *content = new_content;
+            }
         }
 
         // Pattern 2: vecname.get(var) → vecname[var as usize] for non-HashMap, non-self.field
         let int_like_vars = [
-            "i", "j", "k", "ci", "ti", "ki", "ri", "ei", "pi", "si",
-            "ti2", "ri2", "tri", "tc_i", "step_idx", "idx", "offset",
-            "pos", "n", "count", "len", "start", "end", "index", "from",
-            "slot", "col", "gii", "pii", "ppi", "ii", "iii", "di",
-            "li", "mi", "ni", "qi", "vi", "wi", "xi", "yi", "zi",
-            "gi", "si2", "hi", "fi", "ai", "bi", "ci2", "no",
+            "i", "j", "k", "ci", "ti", "ki", "ri", "ei", "pi", "si", "ti2", "ri2", "tri", "tc_i",
+            "step_idx", "idx", "offset", "pos", "n", "count", "len", "start", "end", "index",
+            "from", "slot", "col", "gii", "pii", "ppi", "ii", "iii", "di", "li", "mi", "ni", "qi",
+            "vi", "wi", "xi", "yi", "zi", "gi", "si2", "hi", "fi", "ai", "bi", "ci2", "no",
         ];
 
         for var in &int_like_vars {
             // vecname.get(var.as_str()) → vecname[var as usize]
             let pattern_str = format!(r"(\w+)\.get\({}\.as_str\(\)\)", regex::escape(var));
             if let Some(re) = cached_regex(&pattern_str) {
-                let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    let vec_name = caps.get(1).unwrap().as_str();
-                    if hash_map_names.contains(&vec_name) {
-                        format!("{}.get({}.as_str())", vec_name, var)
-                    } else {
-                        format!("{}[{} as usize]", vec_name, var)
-                    }
-                }).to_string();
-                if new_content != *content { *content = new_content; }
+                let new_content = re
+                    .replace_all(content.as_str(), |caps: &regex::Captures| {
+                        let vec_name = caps.get(1).unwrap().as_str();
+                        if hash_map_names.contains(&vec_name) {
+                            format!("{}.get({}.as_str())", vec_name, var)
+                        } else {
+                            format!("{}[{} as usize]", vec_name, var)
+                        }
+                    })
+                    .to_string();
+                if new_content != *content {
+                    *content = new_content;
+                }
             }
 
             // vecname.get(var) where not already followed by .as_str or as usize
@@ -21721,20 +24322,22 @@ pub use auto_cabi_kit::*;"#
             // and filter in the replacement callback
             let pattern = format!(r"(\w+)\.get\({}\)", regex::escape(var));
             if let Some(re) = cached_regex(&pattern) {
-                let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    let full_match = caps.get(0).unwrap();
-                    let after = &content[full_match.end()..];
-                    // Skip if already followed by " as usize" or ".as_str"
-                    if after.starts_with(" as usize") || after.starts_with(".as_str") {
-                        return full_match.as_str().to_string();
-                    }
-                    let vec_name = caps.get(1).unwrap().as_str();
-                    if hash_map_names.contains(&vec_name) {
-                        format!("{}.get({})", vec_name, var)
-                    } else {
-                        format!("{}[{} as usize]", vec_name, var)
-                    }
-                }).to_string();
+                let new_content = re
+                    .replace_all(content.as_str(), |caps: &regex::Captures| {
+                        let full_match = caps.get(0).unwrap();
+                        let after = &content[full_match.end()..];
+                        // Skip if already followed by " as usize" or ".as_str"
+                        if after.starts_with(" as usize") || after.starts_with(".as_str") {
+                            return full_match.as_str().to_string();
+                        }
+                        let vec_name = caps.get(1).unwrap().as_str();
+                        if hash_map_names.contains(&vec_name) {
+                            format!("{}.get({})", vec_name, var)
+                        } else {
+                            format!("{}[{} as usize]", vec_name, var)
+                        }
+                    })
+                    .to_string();
                 if new_content != *content {
                     *content = new_content;
                 }
@@ -21751,16 +24354,20 @@ pub use auto_cabi_kit::*;"#
         for var in &int_like_vars {
             let pattern = format!(r"(\w+)\.(\w+)\.get\({}\)", regex::escape(var));
             if let Some(re) = cached_regex(&pattern) {
-                let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    let obj = caps.get(1).unwrap().as_str();
-                    let field = caps.get(2).unwrap().as_str();
-                    if vec_field_names.contains(&field) {
-                        format!("{}.{}[{} as usize]", obj, field, var)
-                    } else {
-                        format!("{}.{}.get({})", obj, field, var)
-                    }
-                }).to_string();
-                if new_content != *content { *content = new_content; }
+                let new_content = re
+                    .replace_all(content.as_str(), |caps: &regex::Captures| {
+                        let obj = caps.get(1).unwrap().as_str();
+                        let field = caps.get(2).unwrap().as_str();
+                        if vec_field_names.contains(&field) {
+                            format!("{}.{}[{} as usize]", obj, field, var)
+                        } else {
+                            format!("{}.{}.get({})", obj, field, var)
+                        }
+                    })
+                    .to_string();
+                if new_content != *content {
+                    *content = new_content;
+                }
             }
         }
     }
@@ -21779,40 +24386,73 @@ pub use auto_cabi_kit::*;"#
     /// Fix HashMap.get(key).field → HashMap.get(key).unwrap().field
     fn fix_option_unwrapping(content: &mut String) {
         let known_fields = [
-            "id", "name", "status", "content", "section_type", "items",
-            "profession_id", "title", "model", "role", "kind", "stop_reason",
-            "provider", "api_key_env", "base_url", "is_available", "models",
-            "soul_id", "api_source_id", "model_tier", "is_default", "temperature",
-            "max_tokens", "description", "steps", "exit", "gate", "avatar_url",
-            "project_path", "messages", "system_prompt", "tools",
-            "input_tokens", "output_tokens", "usage", "error",
+            "id",
+            "name",
+            "status",
+            "content",
+            "section_type",
+            "items",
+            "profession_id",
+            "title",
+            "model",
+            "role",
+            "kind",
+            "stop_reason",
+            "provider",
+            "api_key_env",
+            "base_url",
+            "is_available",
+            "models",
+            "soul_id",
+            "api_source_id",
+            "model_tier",
+            "is_default",
+            "temperature",
+            "max_tokens",
+            "description",
+            "steps",
+            "exit",
+            "gate",
+            "avatar_url",
+            "project_path",
+            "messages",
+            "system_prompt",
+            "tools",
+            "input_tokens",
+            "output_tokens",
+            "usage",
+            "error",
         ];
 
         for field in &known_fields {
             let pattern = format!(r"\.get\(([^)]+)\)\.{}\b", regex::escape(field));
             if let Some(re) = cached_regex(&pattern) {
-                let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    let inner = caps.get(1).unwrap().as_str();
-                    if inner.contains(".unwrap()") {
-                        caps.get(0).unwrap().as_str().to_string()
-                    } else {
-                        format!(".get({}).unwrap().{}", inner, field)
-                    }
-                }).to_string();
+                let new_content = re
+                    .replace_all(content.as_str(), |caps: &regex::Captures| {
+                        let inner = caps.get(1).unwrap().as_str();
+                        if inner.contains(".unwrap()") {
+                            caps.get(0).unwrap().as_str().to_string()
+                        } else {
+                            format!(".get({}).unwrap().{}", inner, field)
+                        }
+                    })
+                    .to_string();
                 *content = new_content;
             }
         }
         // Also handle .get(X).as_str() → .get(X).unwrap().as_str()
         // (Option<&String> doesn't have .as_str(), need to unwrap first)
         if let Some(re) = cached_regex(r"\.get\(([^)]+)\)\.as_str\(\)") {
-            let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let inner = caps.get(1).unwrap().as_str();
-                if inner.contains(".unwrap()") {
-                    caps.get(0).unwrap().as_str().to_string()
-                } else {
-                    format!(".get({}).unwrap().as_str()", inner)
-                }
-            }).to_string();
+            let new_content = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let inner = caps.get(1).unwrap().as_str();
+                    if inner.contains(".unwrap()") {
+                        caps.get(0).unwrap().as_str().to_string()
+                    } else {
+                        format!(".get({}).unwrap().as_str()", inner)
+                    }
+                })
+                .to_string();
             *content = new_content;
         }
     }
@@ -21822,33 +24462,52 @@ pub use auto_cabi_kit::*;"#
     fn fix_get_cloned_for_match(content: &mut String) {
         // Pattern: self.field.get(X) { Some(var) => { let ... = var; → add .cloned()
         // Also: self.field.get(X) { Some(var) -> { var.field → add .cloned()
-        let fields_needing_cloned = [
-            "sessions", "run", "checkpoint",
-        ];
+        let fields_needing_cloned = ["sessions", "run", "checkpoint"];
         for field in &fields_needing_cloned {
             let pattern = format!(r"self\.{}\.get\(([^)]+)\) \{{", regex::escape(field));
             if let Some(re) = cached_regex(&pattern) {
-                let new_content = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    format!("self.{}.get({}).cloned() {{", field, caps.get(1).unwrap().as_str())
-                }).to_string();
-                if new_content != *content { *content = new_content; }
+                let new_content = re
+                    .replace_all(content.as_str(), |caps: &regex::Captures| {
+                        format!(
+                            "self.{}.get({}).cloned() {{",
+                            field,
+                            caps.get(1).unwrap().as_str()
+                        )
+                    })
+                    .to_string();
+                if new_content != *content {
+                    *content = new_content;
+                }
             }
         }
         // Also fix: return self.field.get(X); → return self.field.get(X).cloned();
         // HashMap::get returns Option<&T>, but Auto expects Option<T> for return types
         if let Some(re) = cached_regex(r"return self\.(\w+)\.get\(([^)]+)\);") {
-            let map_fields = ["sessions", "run", "checkpoint", "pages", "wiki_dirs",
-                "project_locks", "professions", "souls", "agents"];
-            let new_content = re.replace_all(content, |caps: &regex::Captures| {
-                let field = caps.get(1).unwrap().as_str();
-                let key = caps.get(2).unwrap().as_str();
-                if map_fields.contains(&field) {
-                    format!("return self.{}.get({}).cloned();", field, key)
-                } else {
-                    caps.get(0).unwrap().as_str().to_string()
-                }
-            }).to_string();
-            if new_content != *content { *content = new_content; }
+            let map_fields = [
+                "sessions",
+                "run",
+                "checkpoint",
+                "pages",
+                "wiki_dirs",
+                "project_locks",
+                "professions",
+                "souls",
+                "agents",
+            ];
+            let new_content = re
+                .replace_all(content, |caps: &regex::Captures| {
+                    let field = caps.get(1).unwrap().as_str();
+                    let key = caps.get(2).unwrap().as_str();
+                    if map_fields.contains(&field) {
+                        format!("return self.{}.get({}).cloned();", field, key)
+                    } else {
+                        caps.get(0).unwrap().as_str().to_string()
+                    }
+                })
+                .to_string();
+            if new_content != *content {
+                *content = new_content;
+            }
         }
     }
 
@@ -21867,15 +24526,21 @@ pub use auto_cabi_kit::*;"#
             }
             map
         };
-        if u32_vars.is_empty() { return; }
+        if u32_vars.is_empty() {
+            return;
+        }
 
         // Pattern 1: `let ... : u32 = (... as i64)` → `as u32`
-        if let Some(re) = cached_regex(r"(let\s+(?:mut\s+)?\w+\s*:\s*u32\s*=\s*\()(.+?)\s+as\s+i32\)") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let prefix = caps.get(1).unwrap().as_str();
-                let expr = caps.get(2).unwrap().as_str();
-                format!("{}{} as u32)", prefix, expr)
-            }).to_string();
+        if let Some(re) =
+            cached_regex(r"(let\s+(?:mut\s+)?\w+\s*:\s*u32\s*=\s*\()(.+?)\s+as\s+i32\)")
+        {
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let prefix = caps.get(1).unwrap().as_str();
+                    let expr = caps.get(2).unwrap().as_str();
+                    format!("{}{} as u32)", prefix, expr)
+                })
+                .to_string();
             *content = new;
         }
 
@@ -21887,11 +24552,13 @@ pub use auto_cabi_kit::*;"#
             );
             if let Some(re) = cached_regex(&pattern) {
                 let _vn = var_name.clone(); // used in closure if needed
-                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    let prefix = caps.get(1).unwrap().as_str();
-                    let expr = caps.get(2).unwrap().as_str();
-                    format!("{}{} as u32)", prefix, expr)
-                }).to_string();
+                let new = re
+                    .replace_all(content.as_str(), |caps: &regex::Captures| {
+                        let prefix = caps.get(1).unwrap().as_str();
+                        let expr = caps.get(2).unwrap().as_str();
+                        format!("{}{} as u32)", prefix, expr)
+                    })
+                    .to_string();
                 *content = new;
             }
         }
@@ -21914,11 +24581,13 @@ pub use auto_cabi_kit::*;"#
                 regex::escape(field_name)
             );
             if let Some(re) = cached_regex(&pattern) {
-                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    let prefix = caps.get(1).unwrap().as_str();
-                    let expr = caps.get(2).unwrap().as_str();
-                    format!("{}{} as u32)", prefix, expr)
-                }).to_string();
+                let new = re
+                    .replace_all(content.as_str(), |caps: &regex::Captures| {
+                        let prefix = caps.get(1).unwrap().as_str();
+                        let expr = caps.get(2).unwrap().as_str();
+                        format!("{}{} as u32)", prefix, expr)
+                    })
+                    .to_string();
                 *content = new;
             }
         }
@@ -21949,19 +24618,20 @@ pub use auto_cabi_kit::*;"#
                 int_names.insert(caps.get(1).unwrap().as_str().to_string());
             }
         }
-        if int_names.is_empty() { return; }
+        if int_names.is_empty() {
+            return;
+        }
 
         for name in &int_names {
-            let pattern = format!(
-                r"\.insert\(\s*{}\s*(,)",
-                regex::escape(name)
-            );
+            let pattern = format!(r"\.insert\(\s*{}\s*(,)", regex::escape(name));
             if let Some(re) = cached_regex(&pattern) {
                 let n = name.clone();
-                let new = re.replace_all(content.as_str(), move |caps: &regex::Captures| {
-                    let comma = caps.get(1).unwrap().as_str();
-                    format!(".insert({} as usize{}", n, comma)
-                }).to_string();
+                let new = re
+                    .replace_all(content.as_str(), move |caps: &regex::Captures| {
+                        let comma = caps.get(1).unwrap().as_str();
+                        format!(".insert({} as usize{}", n, comma)
+                    })
+                    .to_string();
                 *content = new;
             }
         }
@@ -21973,30 +24643,38 @@ pub use auto_cabi_kit::*;"#
         // Pattern: `a2r_std::fs::exists(X) == 0` → `!a2r_std::fs::exists(X)`
         // Use non-greedy match to handle nested parens like `file_path.as_str()`
         if let Some(re) = cached_regex(r"a2r_std::fs::exists\((.+?)\)\s*==\s*0") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                format!("!a2r_std::fs::exists({})", caps.get(1).unwrap().as_str())
-            }).to_string();
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!("!a2r_std::fs::exists({})", caps.get(1).unwrap().as_str())
+                })
+                .to_string();
             *content = new;
         }
         // Pattern: `a2r_std::fs::exists(X) != 0` → `a2r_std::fs::exists(X)`
         if let Some(re) = cached_regex(r"a2r_std::fs::exists\((.+?)\)\s*!=\s*0") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                format!("a2r_std::fs::exists({})", caps.get(1).unwrap().as_str())
-            }).to_string();
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!("a2r_std::fs::exists({})", caps.get(1).unwrap().as_str())
+                })
+                .to_string();
             *content = new;
         }
         // Pattern: `a2r_std::fs::is_dir(X) == 0` → `!a2r_std::fs::is_dir(X)`
         if let Some(re) = cached_regex(r"a2r_std::fs::is_dir\((.+?)\)\s*==\s*0") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                format!("!a2r_std::fs::is_dir({})", caps.get(1).unwrap().as_str())
-            }).to_string();
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!("!a2r_std::fs::is_dir({})", caps.get(1).unwrap().as_str())
+                })
+                .to_string();
             *content = new;
         }
         // Pattern: `a2r_std::fs::is_dir(X) != 0` → `a2r_std::fs::is_dir(X)`
         if let Some(re) = cached_regex(r"a2r_std::fs::is_dir\((.+?)\)\s*!=\s*0") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                format!("a2r_std::fs::is_dir({})", caps.get(1).unwrap().as_str())
-            }).to_string();
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!("a2r_std::fs::is_dir({})", caps.get(1).unwrap().as_str())
+                })
+                .to_string();
             *content = new;
         }
         // Pattern: `!(a2r_std::fs::is_dir(X))` → `!a2r_std::fs::is_dir(X)`
@@ -22006,7 +24684,8 @@ pub use auto_cabi_kit::*;"#
         // Pattern: `let VAR = a2r_std::fs::is_dir(X); ... if VAR != 0` → `if VAR`
         // Find variables assigned from is_dir and replace `VAR != 0` with just `VAR`
         if let Some(re) = cached_regex(r"let\s+(\w+)\s*=\s*a2r_std::fs::is_dir\(") {
-            let bool_vars: Vec<String> = re.captures_iter(content.as_str())
+            let bool_vars: Vec<String> = re
+                .captures_iter(content.as_str())
                 .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
                 .collect();
             for var in &bool_vars {
@@ -22014,14 +24693,22 @@ pub use auto_cabi_kit::*;"#
                 let pattern_ne = format!(r"if\s+{}\s*!=\s*0\s*\{{", var);
                 if let Some(re) = cached_regex(&pattern_ne) {
                     let replacement = format!("if {} {{", var);
-                    let new = re.replace_all(content.as_str(), replacement.as_str()).to_string();
-                    if new != *content { *content = new; }
+                    let new = re
+                        .replace_all(content.as_str(), replacement.as_str())
+                        .to_string();
+                    if new != *content {
+                        *content = new;
+                    }
                 }
                 let pattern_eq = format!(r"if\s+{}\s*==\s*0\s*\{{", var);
                 if let Some(re) = cached_regex(&pattern_eq) {
                     let replacement = format!("if !{} {{", var);
-                    let new = re.replace_all(content.as_str(), replacement.as_str()).to_string();
-                    if new != *content { *content = new; }
+                    let new = re
+                        .replace_all(content.as_str(), replacement.as_str())
+                        .to_string();
+                    if new != *content {
+                        *content = new;
+                    }
                 }
             }
         }
@@ -22039,61 +24726,60 @@ pub use auto_cabi_kit::*;"#
     /// derive omitting the unsafe traits, leave it untouched (Plan 376 override).
     fn fix_dyn_trait_derives(content: &mut String) {
         if let Some(re) = cached_regex(
-            r"(?s)(#\[derive\(([^)]*)\)\]\npub struct (\w+) \{[^}]*?(?:Box<dyn|Arc<dyn))"
+            r"(?s)(#\[derive\(([^)]*)\)\]\npub struct (\w+) \{[^}]*?(?:Box<dyn|Arc<dyn))",
         ) {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let full = caps.get(0).unwrap().as_str();
-                let derives = caps.get(2).unwrap().as_str();
-                let derive_list: Vec<&str> = derives.split(',').map(|s| s.trim()).collect();
-                // Plan 376: respect a user-supplied derive that already omits the
-                // unsafe traits (e.g. just "Debug", or "Clone, Debug" when the
-                // dyn-Trait is wrapped in an Arc — which IS Clone). Only strip
-                // PartialEq/Eq/PartialOrd/Ord from the AUTO-generated derive.
-                // Plan 376V: Clone AND Debug are unsafe for Box<dyn Trait>:
-                //   - Box<T>: Clone requires T: Clone (dyn Trait never is)
-                //   - Box<dyn Trait>: Debug requires Trait: Debug (specs don't bound it)
-                // So when a struct has a bare Box<dyn> field, replace the whole
-                // derive with #[allow(dead_code)] (matches the hand-written version).
-                // Plan 390 §15.11 (L2): `Arc<dyn T>` keeps Clone — Arc<T> is
-                // unconditionally Clone for T: ?Sized; only Debug/PartialEq/Eq/
-                // Ord remain unsafe (they require T: those).
-                let has_arc_dyn = full.contains("Arc<dyn");
-                let unsafe_traits: &[&str] = if has_arc_dyn {
-                    &["PartialEq", "Eq", "PartialOrd", "Ord", "Debug"]
-                } else {
-                    &["PartialEq", "Eq", "PartialOrd", "Ord", "Clone", "Debug"]
-                };
-                let needs_fix = derive_list.iter().any(|d| unsafe_traits.contains(d));
-                if !needs_fix {
-                    return full.to_string();
-                }
-                // If ALL derives are unsafe (typical for Box<dyn>), use allow(dead_code).
-                let any_safe = derive_list.iter().any(|d| !unsafe_traits.contains(d));
-                if !any_safe {
-                    return full.replace(
-                        &format!("#[derive({})]", derives),
-                        "#[allow(dead_code)]",
-                    );
-                }
-                // Keep only the safe traits (Clone, Debug, Copy, Default, ...).
-                let kept: Vec<&&str> = derive_list
-                    .iter()
-                    .filter(|d| !unsafe_traits.contains(d))
-                    .collect();
-                if kept.is_empty() {
-                    full.replace(
-                        &format!("#[derive({})]", derives),
-                        "#[derive(Debug)]",
-                    )
-                } else {
-                    let new_derives: Vec<&str> = kept.into_iter().copied().collect();
-                    full.replace(
-                        &format!("#[derive({})]", derives),
-                        &format!("#[derive({})]", new_derives.join(", ")),
-                    )
-                }
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let full = caps.get(0).unwrap().as_str();
+                    let derives = caps.get(2).unwrap().as_str();
+                    let derive_list: Vec<&str> = derives.split(',').map(|s| s.trim()).collect();
+                    // Plan 376: respect a user-supplied derive that already omits the
+                    // unsafe traits (e.g. just "Debug", or "Clone, Debug" when the
+                    // dyn-Trait is wrapped in an Arc — which IS Clone). Only strip
+                    // PartialEq/Eq/PartialOrd/Ord from the AUTO-generated derive.
+                    // Plan 376V: Clone AND Debug are unsafe for Box<dyn Trait>:
+                    //   - Box<T>: Clone requires T: Clone (dyn Trait never is)
+                    //   - Box<dyn Trait>: Debug requires Trait: Debug (specs don't bound it)
+                    // So when a struct has a bare Box<dyn> field, replace the whole
+                    // derive with #[allow(dead_code)] (matches the hand-written version).
+                    // Plan 390 §15.11 (L2): `Arc<dyn T>` keeps Clone — Arc<T> is
+                    // unconditionally Clone for T: ?Sized; only Debug/PartialEq/Eq/
+                    // Ord remain unsafe (they require T: those).
+                    let has_arc_dyn = full.contains("Arc<dyn");
+                    let unsafe_traits: &[&str] = if has_arc_dyn {
+                        &["PartialEq", "Eq", "PartialOrd", "Ord", "Debug"]
+                    } else {
+                        &["PartialEq", "Eq", "PartialOrd", "Ord", "Clone", "Debug"]
+                    };
+                    let needs_fix = derive_list.iter().any(|d| unsafe_traits.contains(d));
+                    if !needs_fix {
+                        return full.to_string();
+                    }
+                    // If ALL derives are unsafe (typical for Box<dyn>), use allow(dead_code).
+                    let any_safe = derive_list.iter().any(|d| !unsafe_traits.contains(d));
+                    if !any_safe {
+                        return full
+                            .replace(&format!("#[derive({})]", derives), "#[allow(dead_code)]");
+                    }
+                    // Keep only the safe traits (Clone, Debug, Copy, Default, ...).
+                    let kept: Vec<&&str> = derive_list
+                        .iter()
+                        .filter(|d| !unsafe_traits.contains(d))
+                        .collect();
+                    if kept.is_empty() {
+                        full.replace(&format!("#[derive({})]", derives), "#[derive(Debug)]")
+                    } else {
+                        let new_derives: Vec<&str> = kept.into_iter().copied().collect();
+                        full.replace(
+                            &format!("#[derive({})]", derives),
+                            &format!("#[derive({})]", new_derives.join(", ")),
+                        )
+                    }
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
     }
 
@@ -22144,13 +24830,21 @@ pub use auto_cabi_kit::*;"#
         // Fix comparison operators: u32_var op (expr as i64) -> u32_var op (expr as u32)
         for var in &u32_vars {
             for op in &["<=", ">=", "<", ">"] {
-                let pattern = format!(r"{}\s*{}\s*\((.+?)\s+as\s+i32\)", regex::escape(var), regex::escape(op));
+                let pattern = format!(
+                    r"{}\s*{}\s*\((.+?)\s+as\s+i32\)",
+                    regex::escape(var),
+                    regex::escape(op)
+                );
                 if let Some(re) = cached_regex(&pattern) {
-                    let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                        let expr = caps.get(1).unwrap().as_str();
-                        format!("{} {} ({} as u32)", var, op, expr)
-                    }).to_string();
-                    if new != *content { *content = new; }
+                    let new = re
+                        .replace_all(content.as_str(), |caps: &regex::Captures| {
+                            let expr = caps.get(1).unwrap().as_str();
+                            format!("{} {} ({} as u32)", var, op, expr)
+                        })
+                        .to_string();
+                    if new != *content {
+                        *content = new;
+                    }
                 }
             }
         }
@@ -22171,50 +24865,86 @@ pub use auto_cabi_kit::*;"#
             let pattern = format!(r"\[{}\]", regex::escape(var));
             if let Some(re) = cached_regex(&pattern) {
                 let orig = content.clone();
-                let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
-                    format!("[{} as usize]", var)
-                }).to_string();
-                if new != orig { *content = new; }
+                let new = re
+                    .replace_all(content.as_str(), |_caps: &regex::Captures| {
+                        format!("[{} as usize]", var)
+                    })
+                    .to_string();
+                if new != orig {
+                    *content = new;
+                }
             }
         }
 
         // Fix u32 vars passed where i32 expected (enum variant args)
         let enum_variants_needing_i32 = [
-            "ContentBlockStart", "ContentBlockDelta", "ContentBlockStop",
-            "StepStarted", "GateWaiting", "RunFailed",
+            "ContentBlockStart",
+            "ContentBlockDelta",
+            "ContentBlockStop",
+            "StepStarted",
+            "GateWaiting",
+            "RunFailed",
         ];
         for variant in &enum_variants_needing_i32 {
             for var in &u32_vars {
                 // Pattern: Variant(var, or Variant(var)
                 let pat = format!(r"::{}\({},\s*", regex::escape(variant), regex::escape(var));
                 if let Some(re) = cached_regex(&pat) {
-                    let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
-                        format!("::{}({} as i32, ", variant, var)
-                    }).to_string();
-                    if new != *content { *content = new; }
+                    let new = re
+                        .replace_all(content.as_str(), |_caps: &regex::Captures| {
+                            format!("::{}({} as i32, ", variant, var)
+                        })
+                        .to_string();
+                    if new != *content {
+                        *content = new;
+                    }
                 }
-                let pat = format!(r"::{}\(\s*{}\s*\)", regex::escape(variant), regex::escape(var));
+                let pat = format!(
+                    r"::{}\(\s*{}\s*\)",
+                    regex::escape(variant),
+                    regex::escape(var)
+                );
                 if let Some(re) = cached_regex(&pat) {
-                    let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
-                        format!("::{}({} as i64)", variant, var)
-                    }).to_string();
-                    if new != *content { *content = new; }
+                    let new = re
+                        .replace_all(content.as_str(), |_caps: &regex::Captures| {
+                            format!("::{}({} as i64)", variant, var)
+                        })
+                        .to_string();
+                    if new != *content {
+                        *content = new;
+                    }
                 }
                 // Also handle self.var patterns: Variant(self.var,
                 let self_var = format!("self.{}", var);
-                let pat = format!(r"::{}\({},\s*", regex::escape(variant), regex::escape(&self_var));
+                let pat = format!(
+                    r"::{}\({},\s*",
+                    regex::escape(variant),
+                    regex::escape(&self_var)
+                );
                 if let Some(re) = cached_regex(&pat) {
-                    let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
-                        format!("::{}({} as i32, ", variant, self_var)
-                    }).to_string();
-                    if new != *content { *content = new; }
+                    let new = re
+                        .replace_all(content.as_str(), |_caps: &regex::Captures| {
+                            format!("::{}({} as i32, ", variant, self_var)
+                        })
+                        .to_string();
+                    if new != *content {
+                        *content = new;
+                    }
                 }
-                let pat = format!(r"::{}\(\s*{}\s*\)", regex::escape(variant), regex::escape(&self_var));
+                let pat = format!(
+                    r"::{}\(\s*{}\s*\)",
+                    regex::escape(variant),
+                    regex::escape(&self_var)
+                );
                 if let Some(re) = cached_regex(&pat) {
-                    let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
-                        format!("::{}({} as i64)", variant, self_var)
-                    }).to_string();
-                    if new != *content { *content = new; }
+                    let new = re
+                        .replace_all(content.as_str(), |_caps: &regex::Captures| {
+                            format!("::{}({} as i64)", variant, self_var)
+                        })
+                        .to_string();
+                    if new != *content {
+                        *content = new;
+                    }
                 }
             }
         }
@@ -22225,10 +24955,14 @@ pub use auto_cabi_kit::*;"#
             for var in &i32_vars {
                 let pat = format!(r"{}\({}\)", regex::escape(func), regex::escape(var));
                 if let Some(re) = cached_regex(&pat) {
-                    let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
-                        format!("{}({} as u32)", func, var)
-                    }).to_string();
-                    if new != *content { *content = new; }
+                    let new = re
+                        .replace_all(content.as_str(), |_caps: &regex::Captures| {
+                            format!("{}({} as u32)", func, var)
+                        })
+                        .to_string();
+                    if new != *content {
+                        *content = new;
+                    }
                 }
             }
         }
@@ -22238,19 +24972,27 @@ pub use auto_cabi_kit::*;"#
             let pattern = format!(r"\[self\.{}\]", regex::escape(var));
             if let Some(re) = cached_regex(&pattern) {
                 let orig = content.clone();
-                let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
-                    format!("[self.{} as usize]", var)
-                }).to_string();
-                if new != orig { *content = new; }
+                let new = re
+                    .replace_all(content.as_str(), |_caps: &regex::Captures| {
+                        format!("[self.{} as usize]", var)
+                    })
+                    .to_string();
+                if new != orig {
+                    *content = new;
+                }
             }
             // Also: .insert(self.u32_field, -> .insert(self.u32_field as usize,
             let pattern = format!(r"\.insert\(self\.{},\s*", regex::escape(var));
             if let Some(re) = cached_regex(&pattern) {
                 let orig = content.clone();
-                let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
-                    format!(".insert(self.{} as usize, ", var)
-                }).to_string();
-                if new != orig { *content = new; }
+                let new = re
+                    .replace_all(content.as_str(), |_caps: &regex::Captures| {
+                        format!(".insert(self.{} as usize, ", var)
+                    })
+                    .to_string();
+                if new != orig {
+                    *content = new;
+                }
             }
         }
     }
@@ -22268,22 +25010,32 @@ pub use auto_cabi_kit::*;"#
             if let Some(caps) = cached_regex(r"^let\s+(\w+)\s*=").unwrap().captures(trimmed) {
                 let var_name = caps.get(1).unwrap().as_str();
                 // Skip if already mut
-                if trimmed.starts_with("let mut") { continue; }
+                if trimmed.starts_with("let mut") {
+                    continue;
+                }
                 // Plan 419 §4.5: Rc<RefCell<T>> 写捕获绑定自带内部可变性,
                 // 追加 mut 只会产生 unused_mut 告警。
-                if trimmed.contains("std::rc::Rc::new(std::cell::RefCell::new(") { continue; }
+                if trimmed.contains("std::rc::Rc::new(std::cell::RefCell::new(") {
+                    continue;
+                }
                 // Look ahead for assignments to this variable
                 let assign_pat = format!(r"\b{}\s*[.\[]", var_name);
                 let direct_pat = format!(r"\b{}\s*=[^=>]", var_name);
                 // Methods that take &mut self (require mut binding)
-                let mut_methods = ["push", "pop", "insert", "remove", "clear", "next", "extend",
-                    "truncate", "retain", "sort", "sort_by", "reverse", "dedup", "swap", "splice",
-                    "drain", "append", "resize"];
+                let mut_methods = [
+                    "push", "pop", "insert", "remove", "clear", "next", "extend", "truncate",
+                    "retain", "sort", "sort_by", "reverse", "dedup", "swap", "splice", "drain",
+                    "append", "resize",
+                ];
                 if let Some(re) = cached_regex(&assign_pat) {
                     for future_line in lines.iter().skip(i + 1) {
                         // Stop at function boundary
                         let fl = future_line.trim();
-                        if fl.starts_with("pub fn ") || fl.starts_with("fn ") || fl.starts_with("pub async fn ") || fl.starts_with("async fn ") {
+                        if fl.starts_with("pub fn ")
+                            || fl.starts_with("fn ")
+                            || fl.starts_with("pub async fn ")
+                            || fl.starts_with("async fn ")
+                        {
                             break;
                         }
                         if re.is_match(fl) {
@@ -22312,19 +25064,27 @@ pub use auto_cabi_kit::*;"#
                                     }
                                 }
                             }
-                            if needs_mut.contains(&i) { break; }
+                            if needs_mut.contains(&i) {
+                                break;
+                            }
                         }
                     }
                 }
                 if let Some(re) = cached_regex(&direct_pat) {
                     for future_line in lines.iter().skip(i + 1) {
                         let fl = future_line.trim();
-                        if fl.starts_with("pub fn ") || fl.starts_with("fn ") || fl.starts_with("pub async fn ") || fl.starts_with("async fn ") {
+                        if fl.starts_with("pub fn ")
+                            || fl.starts_with("fn ")
+                            || fl.starts_with("pub async fn ")
+                            || fl.starts_with("async fn ")
+                        {
                             break;
                         }
                         if re.is_match(fl) && !fl.starts_with(&format!("let {}", var_name)) {
                             // Exclude == and !=
-                            if let Some(eq_check) = cached_regex(&format!(r"\b{}\s*=[^=>]", var_name)) {
+                            if let Some(eq_check) =
+                                cached_regex(&format!(r"\b{}\s*=[^=>]", var_name))
+                            {
                                 if eq_check.is_match(fl) {
                                     needs_mut.insert(i);
                                     break;
@@ -22336,15 +25096,21 @@ pub use auto_cabi_kit::*;"#
             }
         }
 
-        if needs_mut.is_empty() { return; }
+        if needs_mut.is_empty() {
+            return;
+        }
 
-        let new_lines: Vec<String> = lines.iter().enumerate().map(|(i, line)| {
-            if needs_mut.contains(&i) {
-                line.replacen("let ", "let mut ", 1)
-            } else {
-                line.to_string()
-            }
-        }).collect();
+        let new_lines: Vec<String> = lines
+            .iter()
+            .enumerate()
+            .map(|(i, line)| {
+                if needs_mut.contains(&i) {
+                    line.replacen("let ", "let mut ", 1)
+                } else {
+                    line.to_string()
+                }
+            })
+            .collect();
         *content = new_lines.join("\n");
     }
 
@@ -22355,27 +25121,40 @@ pub use auto_cabi_kit::*;"#
     /// `names.push(..)`, `param.field = x`) is E0596. Detect mutated params
     /// and prefix the declaration with `mut `.
     fn fix_mutable_params(content: &mut String) {
-        let mut_methods: &[&str] = &["push", "pop", "insert", "remove", "clear", "next",
-            "extend", "truncate", "retain", "sort", "sort_by", "reverse", "dedup", "swap",
-            "splice", "drain", "append", "resize", "set", "update", "merge"];
+        let mut_methods: &[&str] = &[
+            "push", "pop", "insert", "remove", "clear", "next", "extend", "truncate", "retain",
+            "sort", "sort_by", "reverse", "dedup", "swap", "splice", "drain", "append", "resize",
+            "set", "update", "merge",
+        ];
         let lines: Vec<&str> = content.lines().collect();
         let mut result: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
 
         for (i, line) in lines.iter().enumerate() {
             let sig = line.trim();
-            let is_sig = sig.starts_with("pub fn ") || sig.starts_with("pub async fn ")
-                || sig.starts_with("async fn ") || sig.starts_with("fn ")
-                || sig.starts_with("pub(crate) fn ") || sig.starts_with("unsafe fn ");
-            if !is_sig { continue; }
+            let is_sig = sig.starts_with("pub fn ")
+                || sig.starts_with("pub async fn ")
+                || sig.starts_with("async fn ")
+                || sig.starts_with("fn ")
+                || sig.starts_with("pub(crate) fn ")
+                || sig.starts_with("unsafe fn ");
+            if !is_sig {
+                continue;
+            }
 
-            let open = match line.find('(') { Some(p) => p, None => continue };
+            let open = match line.find('(') {
+                Some(p) => p,
+                None => continue,
+            };
             // ')' that precedes the return arrow / body — params span
             // (..) up to the first ')'; a2r emits one-line signatures so
             // rfind(')') is safe unless an arrow type contains ')'. Prefer
             // the first ')' that is followed (after whitespace) by "->" or "{".
             let rest = &line[open + 1..];
             let close = rest.find(')');
-            let close = match close { Some(c) => open + 1 + c, None => continue };
+            let close = match close {
+                Some(c) => open + 1 + c,
+                None => continue,
+            };
 
             // Split params at depth-0 commas.
             let params_str = &line[open + 1..close];
@@ -22388,20 +25167,26 @@ pub use auto_cabi_kit::*;"#
                     '>' | ']' | ')' => depth -= 1,
                     ',' if depth == 0 => {
                         let p = params_str[cur_start..k].trim();
-                        if !p.is_empty() { params.push(p); }
+                        if !p.is_empty() {
+                            params.push(p);
+                        }
                         cur_start = k + 1;
                     }
                     _ => {}
                 }
             }
             let last_p = params_str[cur_start..].trim();
-            if !last_p.is_empty() { params.push(last_p); }
+            if !last_p.is_empty() {
+                params.push(last_p);
+            }
 
             // Locate the end of the body via brace balance. i64 so lines with
             // more `}` than `{` (block closes) can't underflow. Trait/impl
             // method DECLARATIONS without a body (`fn name(&self) -> String;`)
             // have no `{` — skip them entirely.
-            if !line.contains('{') { continue; }
+            if !line.contains('{') {
+                continue;
+            }
             let mut brace: i64 = line.bytes().filter(|b| *b == b'{').count() as i64
                 - line.bytes().filter(|b| *b == b'}').count() as i64;
             let mut j = i;
@@ -22429,8 +25214,14 @@ pub use auto_cabi_kit::*;"#
                     Some((n, _)) => n.trim().to_string(),
                     None => continue,
                 };
-                let name = name.trim_start_matches("&").trim_start_matches("mut ").trim().to_string();
-                if name.is_empty() || name == "self" { continue; }
+                let name = name
+                    .trim_start_matches("&")
+                    .trim_start_matches("mut ")
+                    .trim()
+                    .to_string();
+                if name.is_empty() || name == "self" {
+                    continue;
+                }
 
                 let mut is_mut = false;
                 // Plan 032 G2.1 (auto-ai consumer debt): any method call on an
@@ -22453,26 +25244,40 @@ pub use auto_cabi_kit::*;"#
                     if owned_value_type {
                         let any_call = format!(r"\b{}\.\w+\s*\(", name);
                         if let Some(re) = cached_regex(&any_call) {
-                            if re.is_match(fl) { is_mut = true; break; }
+                            if re.is_match(fl) {
+                                is_mut = true;
+                                break;
+                            }
                         }
                     }
                     // name.push/insert/... (mutating method calls)
                     for m in mut_methods {
                         let pat = format!(r"\b{}\.{}\s*\(", name, m);
                         if let Some(re) = cached_regex(&pat) {
-                            if re.is_match(fl) { is_mut = true; break; }
+                            if re.is_match(fl) {
+                                is_mut = true;
+                                break;
+                            }
                         }
                     }
-                    if is_mut { break; }
+                    if is_mut {
+                        break;
+                    }
                     // name.field = ... (field assignment through the param)
                     let field_assign = format!(r"\b{}\.\w+\s*=", name);
                     if let Some(re) = cached_regex(&field_assign) {
-                        if re.is_match(fl) { is_mut = true; break; }
+                        if re.is_match(fl) {
+                            is_mut = true;
+                            break;
+                        }
                     }
                     // name[idx] = ... (indexed assignment)
                     let idx_assign = format!(r"\b{}\[[^\]]*\]\s*=", name);
                     if let Some(re) = cached_regex(&idx_assign) {
-                        if re.is_match(fl) { is_mut = true; break; }
+                        if re.is_match(fl) {
+                            is_mut = true;
+                            break;
+                        }
                     }
                     // name = ... (direct reassignment; exclude == and `let name`;
                     // also `=>` — match-arm arrows like `_guard if a == b =>`
@@ -22481,14 +25286,19 @@ pub use auto_cabi_kit::*;"#
                     let direct = format!(r"\b{}\s*=[^=>]", name);
                     if let Some(re) = cached_regex(&direct) {
                         if re.is_match(fl) && !fl.starts_with("let ") {
-                            is_mut = true; break;
+                            is_mut = true;
+                            break;
                         }
                     }
                 }
-                if is_mut { mutated.push(name); }
+                if is_mut {
+                    mutated.push(name);
+                }
             }
 
-            if mutated.is_empty() { continue; }
+            if mutated.is_empty() {
+                continue;
+            }
             // Rewrite the params span: `name: Type` → `mut name: Type`.
             let mut new_params = params_str.to_string();
             for name in &mutated {
@@ -22506,7 +25316,9 @@ pub use auto_cabi_kit::*;"#
         }
 
         let joined = result.join("\n");
-        if joined != *content { *content = joined; }
+        if joined != *content {
+            *content = joined;
+        }
     }
 
     /// Fix `return None;` in void (unit-return) functions → `return;`.
@@ -22524,10 +25336,12 @@ pub use auto_cabi_kit::*;"#
 
             // Track function declarations without return type (void).
             // Plan 384: `-> ()` (explicit unit) is also void.
-            let is_void_ret = !trimmed.contains("->")
-                || trimmed.contains("-> ()") || trimmed.contains("->()");
-            if (trimmed.starts_with("pub fn ") || trimmed.starts_with("fn ")
-                || trimmed.starts_with("pub async fn ") || trimmed.starts_with("async fn "))
+            let is_void_ret =
+                !trimmed.contains("->") || trimmed.contains("-> ()") || trimmed.contains("->()");
+            if (trimmed.starts_with("pub fn ")
+                || trimmed.starts_with("fn ")
+                || trimmed.starts_with("pub async fn ")
+                || trimmed.starts_with("async fn "))
                 && is_void_ret
             {
                 in_void_fn = true;
@@ -22571,86 +25385,127 @@ pub use auto_cabi_kit::*;"#
         // Fix: map.get(X).unwrap_or(vec![]) → map.get(X).cloned().unwrap_or_default()
         // Also: map.get(X).unwrap_or(&[]) → map.get(X).cloned().unwrap_or_default()
         if let Some(re) = cached_regex(r"\.get\(([^)]+)\)\.unwrap_or\(vec!\[\]\)") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let key = caps.get(1).unwrap().as_str();
-                format!(".get({}).cloned().unwrap_or_default()", key)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let key = caps.get(1).unwrap().as_str();
+                    format!(".get({}).cloned().unwrap_or_default()", key)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
 
         // Fix: .get(X).unwrap_or(&[]) → .get(X).cloned().unwrap_or_default()
         if let Some(re) = cached_regex(r"\.get\(([^)]+)\)\.unwrap_or\(&\[\]\)") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let key = caps.get(1).unwrap().as_str();
-                format!(".get({}).cloned().unwrap_or_default()", key)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let key = caps.get(1).unwrap().as_str();
+                    format!(".get({}).cloned().unwrap_or_default()", key)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
 
         // Fix: let var = map.get(X).unwrap_or(vec![...]) → add .cloned()
-        if let Some(re) = cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*=\s*(\w+\.get\([^)]+\))\.unwrap_or\(vec!") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let var = caps.get(1).unwrap().as_str();
-                let get_expr = caps.get(2).unwrap().as_str();
-                format!("let mut {} = {}.cloned().unwrap_or(vec!", var, get_expr)
-            }).to_string();
-            if new != *content { *content = new; }
+        if let Some(re) =
+            cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*=\s*(\w+\.get\([^)]+\))\.unwrap_or\(vec!")
+        {
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let var = caps.get(1).unwrap().as_str();
+                    let get_expr = caps.get(2).unwrap().as_str();
+                    format!("let mut {} = {}.cloned().unwrap_or(vec!", var, get_expr)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
 
         // Fix: map.insert(key, &variable) → map.insert(key, variable.clone())
         if let Some(re) = cached_regex(r"\.insert\(([^,]+),\s+&(\w+)\)") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let key = caps.get(1).unwrap().as_str();
-                let var = caps.get(2).unwrap().as_str();
-                format!(".insert({}, {}.clone())", key, var)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let key = caps.get(1).unwrap().as_str();
+                    let var = caps.get(2).unwrap().as_str();
+                    format!(".insert({}, {}.clone())", key, var)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
 
         // Fix: .field = &variable; → .field = variable.clone();
         if let Some(re) = cached_regex(r"(\.\w+)\s*=\s+&(\w+);") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let field = caps.get(1).unwrap().as_str();
-                let var = caps.get(2).unwrap().as_str();
-                format!("{} = {}.clone();", field, var)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let field = caps.get(1).unwrap().as_str();
+                    let var = caps.get(2).unwrap().as_str();
+                    format!("{} = {}.clone();", field, var)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
 
         // Fix: .push(&variable) → .push(variable.clone())
         if let Some(re) = cached_regex(r"\.push\(&(\w+)\)") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let var = caps.get(1).unwrap().as_str();
-                format!(".push({}.clone())", var)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let var = caps.get(1).unwrap().as_str();
+                    format!(".push({}.clone())", var)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
     }
 
     /// Fix enum == "str" comparisons.
     fn fix_enum_str_comparisons(content: &mut String) {
         let enum_fields = [
-            "section_type", "status", "phase", "kind", "role", "stop_reason",
-            "source_type", "provider", "decision",
+            "section_type",
+            "status",
+            "phase",
+            "kind",
+            "role",
+            "stop_reason",
+            "source_type",
+            "provider",
+            "decision",
         ];
         for field in &enum_fields {
             let eq_pat = format!(".{}\\s*==\\s*\"", field);
             if let Some(re) = cached_regex(&eq_pat) {
                 let old_eq = format!(".{field} ==");
                 let new_eq = format!(".{field}.to_string() ==");
-                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    caps.get(0).unwrap().as_str().replace(&old_eq, &new_eq)
-                }).to_string();
-                if new != *content { *content = new; }
+                let new = re
+                    .replace_all(content.as_str(), |caps: &regex::Captures| {
+                        caps.get(0).unwrap().as_str().replace(&old_eq, &new_eq)
+                    })
+                    .to_string();
+                if new != *content {
+                    *content = new;
+                }
             }
             let ne_pat = format!(".{}\\s*!=\\s*\"", field);
             if let Some(re) = cached_regex(&ne_pat) {
                 let old_ne = format!(".{field} !=");
                 let new_ne = format!(".{field}.to_string() !=");
-                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    caps.get(0).unwrap().as_str().replace(&old_ne, &new_ne)
-                }).to_string();
-                if new != *content { *content = new; }
+                let new = re
+                    .replace_all(content.as_str(), |caps: &regex::Captures| {
+                        caps.get(0).unwrap().as_str().replace(&old_ne, &new_ne)
+                    })
+                    .to_string();
+                if new != *content {
+                    *content = new;
+                }
             }
         }
     }
@@ -22669,7 +25524,8 @@ pub use auto_cabi_kit::*;"#
         let mut in_vec = false;
         let mut vec_depth = 0;
         let mut paren_depth: i32 = 0;
-        let mut func_paren_depths: std::collections::HashSet<i32> = std::collections::HashSet::new();
+        let mut func_paren_depths: std::collections::HashSet<i32> =
+            std::collections::HashSet::new();
 
         while i < len {
             // Plan 523 W3(path4 首曝的既有洞):外层扫描须跳过双引号字符串
@@ -22682,14 +25538,18 @@ pub use auto_cabi_kit::*;"#
                 let start = i;
                 i += 1;
                 while i < len && bytes[i] != b'"' {
-                    if bytes[i] == b'\\' { i += 1; }
+                    if bytes[i] == b'\\' {
+                        i += 1;
+                    }
                     i += 1;
                 }
-                if i < len { i += 1; }
+                if i < len {
+                    i += 1;
+                }
                 result.extend_from_slice(&content[start..i].as_bytes());
                 continue;
             }
-            if !in_vec && i + 5 <= len && &bytes[i..i+5] == b"vec![" {
+            if !in_vec && i + 5 <= len && &bytes[i..i + 5] == b"vec![" {
                 in_vec = true;
                 vec_depth = 1;
                 paren_depth = 0;
@@ -22701,18 +25561,29 @@ pub use auto_cabi_kit::*;"#
 
             if in_vec {
                 match bytes[i] {
-                    b'[' => { vec_depth += 1; result.push(b'['); i += 1; continue; }
+                    b'[' => {
+                        vec_depth += 1;
+                        result.push(b'[');
+                        i += 1;
+                        continue;
+                    }
                     b']' => {
                         vec_depth -= 1;
                         result.push(b']');
                         i += 1;
-                        if vec_depth == 0 { in_vec = false; }
+                        if vec_depth == 0 {
+                            in_vec = false;
+                        }
                         continue;
                     }
                     b'(' => {
                         // Check if this ( is a function call: preceded by identifier or ::
                         let before = content[..i].trim_end();
-                        let is_func = before.chars().last().map(|c| c.is_alphanumeric() || c == '_' || c == ':').unwrap_or(false);
+                        let is_func = before
+                            .chars()
+                            .last()
+                            .map(|c| c.is_alphanumeric() || c == '_' || c == ':')
+                            .unwrap_or(false);
                         if is_func {
                             func_paren_depths.insert(paren_depth + 1);
                         }
@@ -22732,10 +25603,14 @@ pub use auto_cabi_kit::*;"#
                         let start = i;
                         i += 1;
                         while i < len && bytes[i] != b'"' {
-                            if bytes[i] == b'\\' { i += 1; }
+                            if bytes[i] == b'\\' {
+                                i += 1;
+                            }
                             i += 1;
                         }
-                        if i < len { i += 1; }
+                        if i < len {
+                            i += 1;
+                        }
                         let lit = &content[start..i];
                         let rest = &content[i..];
                         let already_has = rest.trim_start().starts_with(".to_string()");
@@ -22748,7 +25623,11 @@ pub use auto_cabi_kit::*;"#
                         }
                         continue;
                     }
-                    _ => { result.push(bytes[i]); i += 1; continue; }
+                    _ => {
+                        result.push(bytes[i]);
+                        i += 1;
+                        continue;
+                    }
                 }
             }
 
@@ -22794,7 +25673,9 @@ pub use auto_cabi_kit::*;"#
                     || get_expr.starts_with("params.")
                     || get_expr.starts_with("headers.")
                     || get_expr.starts_with("state.");
-                if is_bootstrap_env && (get_expr.contains(".get(\"") || get_expr.contains(".get(\"")) {
+                if is_bootstrap_env
+                    && (get_expr.contains(".get(\"") || get_expr.contains(".get(\""))
+                {
                     replacements.push((var.to_string(), get_expr.to_string()));
                 }
             }
@@ -22811,10 +25692,12 @@ pub use auto_cabi_kit::*;"#
         // Step 2: Replace EXPR.get(KEY).as_str() inline patterns
         // Pattern: var.get("key").as_str() → var.get("key").map(|s| s.as_str()).unwrap_or("")
         if let Some(re) = cached_regex(r#"(\w+\.get\("[^"]+"\))\.as_str\(\)"#) {
-            let new = re.replace_all(content, |caps: &regex::Captures| {
-                let get_expr = caps.get(1).unwrap().as_str();
-                format!("{}.map(|s| s.as_str()).unwrap_or(\"\")", get_expr)
-            }).to_string();
+            let new = re
+                .replace_all(content, |caps: &regex::Captures| {
+                    let get_expr = caps.get(1).unwrap().as_str();
+                    format!("{}.map(|s| s.as_str()).unwrap_or(\"\")", get_expr)
+                })
+                .to_string();
             if new != *content {
                 *content = new;
             }
@@ -22845,7 +25728,9 @@ pub use auto_cabi_kit::*;"#
             }
         }
 
-        if int_vars.is_empty() { return; }
+        if int_vars.is_empty() {
+            return;
+        }
 
         // Replace VAR.as_str() with format!("{}", VAR).as_str() for integer vars
         for var in &int_vars {
@@ -22864,41 +25749,57 @@ pub use auto_cabi_kit::*;"#
     fn fix_split_methods(content: &mut String) {
         // Pattern: VAR.split(X).len() → VAR.split(X).count()
         if let Some(re) = cached_regex(r"\.split\(([^)]+)\)\.len\(\)") {
-            let new = re.replace_all(content, |caps: &regex::Captures| {
-                let arg = caps.get(1).unwrap().as_str();
-                format!(".split({}).count()", arg)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content, |caps: &regex::Captures| {
+                    let arg = caps.get(1).unwrap().as_str();
+                    format!(".split({}).count()", arg)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
 
         // Pattern: VAR.split(X).get(N) → VAR.split(X).nth(N)
         if let Some(re) = cached_regex(r"\.split\(([^)]+)\)\.get\(([^)]+)\)") {
-            let new = re.replace_all(content, |caps: &regex::Captures| {
-                let split_arg = caps.get(1).unwrap().as_str();
-                let get_arg = caps.get(2).unwrap().as_str();
-                format!(".split({}).nth({})", split_arg, get_arg)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content, |caps: &regex::Captures| {
+                    let split_arg = caps.get(1).unwrap().as_str();
+                    let get_arg = caps.get(2).unwrap().as_str();
+                    format!(".split({}).nth({})", split_arg, get_arg)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
 
         // Pattern: VAR.split(X)[N] → VAR.split(X).nth(N).unwrap()
         if let Some(re) = cached_regex(r"\.split\(([^)]+)\)\[(\d+)\]") {
-            let new = re.replace_all(content, |caps: &regex::Captures| {
-                let split_arg = caps.get(1).unwrap().as_str();
-                let idx = caps.get(2).unwrap().as_str();
-                format!(".split({}).nth({}).unwrap()", split_arg, idx)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content, |caps: &regex::Captures| {
+                    let split_arg = caps.get(1).unwrap().as_str();
+                    let idx = caps.get(2).unwrap().as_str();
+                    format!(".split({}).nth({}).unwrap()", split_arg, idx)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
 
         // Pattern: VAR.split(X)[VAR2 as usize] → VAR.split(X).nth(VAR2 as usize).unwrap()
         if let Some(re) = cached_regex(r"\.split\(([^)]+)\)\[(\w+ as usize)\]") {
-            let new = re.replace_all(content, |caps: &regex::Captures| {
-                let split_arg = caps.get(1).unwrap().as_str();
-                let idx = caps.get(2).unwrap().as_str();
-                format!(".split({}).nth({}).unwrap()", split_arg, idx)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content, |caps: &regex::Captures| {
+                    let split_arg = caps.get(1).unwrap().as_str();
+                    let idx = caps.get(2).unwrap().as_str();
+                    format!(".split({}).nth({}).unwrap()", split_arg, idx)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
     }
 
@@ -22928,7 +25829,8 @@ pub use auto_cabi_kit::*;"#
     fn fix_map_keys_indexing(content: &mut String) {
         // Find all .keys() assignments and check if they're used with indexing or .len()
         if let Some(re) = cached_regex(r"(?m)^(\s+let (?:mut )?)(\w+) = (.+?)\.keys\(\)") {
-            let captures: Vec<(usize, String, String, String)> = re.captures_iter(content.as_str())
+            let captures: Vec<(usize, String, String, String)> = re
+                .captures_iter(content.as_str())
                 .filter_map(|caps| {
                     let full = caps.get(0)?;
                     let indent = caps.get(1)?.as_str().to_string();
@@ -22944,20 +25846,30 @@ pub use auto_cabi_kit::*;"#
                 let idx_pat = format!("{}[", var);
                 let len_pat = format!("{}.len()", var);
                 let needs_fix = content.contains(&idx_pat) || content.contains(&len_pat);
-                if !needs_fix { continue; }
+                if !needs_fix {
+                    continue;
+                }
 
                 let old_line = format!("{}{} = {}.keys();", indent, var, expr);
-                let new_line = format!("{}{}: Vec<_> = {}.keys().cloned().collect();", indent, var, expr);
+                let new_line = format!(
+                    "{}{}: Vec<_> = {}.keys().cloned().collect();",
+                    indent, var, expr
+                );
                 *content = content.replace(&old_line, &new_line);
 
                 // After converting to Vec, fix map.get(var[i].clone()) → map.get(&var[i])
                 // and map.insert(var[i].clone(), ...) → map.insert(var[i].clone(), ...)
-                let get_clone_pat = format!(r"\.get\({}\[([^\]]+)\]\s*\.clone\(\)\)", regex::escape(var));
+                let get_clone_pat =
+                    format!(r"\.get\({}\[([^\]]+)\]\s*\.clone\(\)\)", regex::escape(var));
                 if let Some(get_re) = cached_regex(&get_clone_pat) {
-                    let new = get_re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                        format!(".get(&{}[{}])", var, caps.get(1).unwrap().as_str())
-                    }).to_string();
-                    if new != *content { *content = new; }
+                    let new = get_re
+                        .replace_all(content.as_str(), |caps: &regex::Captures| {
+                            format!(".get(&{}[{}])", var, caps.get(1).unwrap().as_str())
+                        })
+                        .to_string();
+                    if new != *content {
+                        *content = new;
+                    }
                 }
             }
         }
@@ -23002,7 +25914,7 @@ pub use auto_cabi_kit::*;"#
                         // Check if var is used after this line in the same or nearby scope
                         let mut var_used_again = false;
                         let indent = line.len() - line.trim_start().len();
-                        for j in (i+1)..std::cmp::min(i+20, lines.len()) {
+                        for j in (i + 1)..std::cmp::min(i + 20, lines.len()) {
                             let later = lines[j];
                             // Stop at lines with less or equal indentation that are closing braces or new statements
                             let later_indent = later.len() - later.trim_start().len();
@@ -23011,7 +25923,9 @@ pub use auto_cabi_kit::*;"#
                             }
                             // Check if var appears as a standalone identifier (not just substring)
                             // Simple heuristic: var followed by . or = or ( or [ or , or )
-                            if let Some(var_re) = cached_regex(&format!(r"\b{}\b", regex::escape(var))) {
+                            if let Some(var_re) =
+                                cached_regex(&format!(r"\b{}\b", regex::escape(var)))
+                            {
                                 if var_re.is_match(later) {
                                     // Exclude the case where var appears in the same push
                                     if !later.contains(&format!(".push({})", var)) {
@@ -23052,13 +25966,21 @@ pub use auto_cabi_kit::*;"#
         // Pattern: .unwrap_or("") → .unwrap_or_default()
         // This handles Option<String>.unwrap_or("") → unwrap_or_default()
         if let Some(re) = cached_regex(r#"\.unwrap_or\(""\)"#) {
-            let new = re.replace_all(content.as_str(), ".unwrap_or_default()").to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), ".unwrap_or_default()")
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
         // Pattern: .unwrap_or(vec![]) → .unwrap_or_default()
         if let Some(re) = cached_regex(r"\.unwrap_or\(vec!\[\]\)") {
-            let new = re.replace_all(content.as_str(), ".unwrap_or_default()").to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), ".unwrap_or_default()")
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
     }
 
@@ -23113,7 +26035,10 @@ pub use auto_cabi_kit::*;"#
                 let assign_replacement = format!("= {}.to_string();", param);
                 if new_line.contains(&assign_target) && !new_line.contains(&assign_replacement) {
                     // Only apply for self.field or var.field assignments
-                    if new_line.contains("self.") || new_line.contains("page.") || new_line.contains("s.") {
+                    if new_line.contains("self.")
+                        || new_line.contains("page.")
+                        || new_line.contains("s.")
+                    {
                         new_line = new_line.replace(&assign_target, &assign_replacement);
                     }
                 }
@@ -23147,16 +26072,24 @@ pub use auto_cabi_kit::*;"#
         // `s[lo..hi].to_string()` works without `&` (and `&s[..].to_string()`
         // would become `&String`, E0308).
         if let Some(re) = cached_regex(r"(\w+)\.substring\(([^,)]+),\s*([^)]+)\)") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let m0 = caps.get(0).unwrap();
-                let after_is_dot = content.as_bytes().get(m0.end()) == Some(&b'.');
-                let recv = caps.get(1).unwrap().as_str();
-                let lo = caps.get(2).unwrap().as_str().trim();
-                let hi = caps.get(3).unwrap().as_str().trim();
-                let inner = format!("{}[{} as usize..{} as usize]", recv, lo, hi);
-                if after_is_dot { inner } else { format!("&{}", inner) }
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let m0 = caps.get(0).unwrap();
+                    let after_is_dot = content.as_bytes().get(m0.end()) == Some(&b'.');
+                    let recv = caps.get(1).unwrap().as_str();
+                    let lo = caps.get(2).unwrap().as_str().trim();
+                    let hi = caps.get(3).unwrap().as_str().trim();
+                    let inner = format!("{}[{} as usize..{} as usize]", recv, lo, hi);
+                    if after_is_dot {
+                        inner
+                    } else {
+                        format!("&{}", inner)
+                    }
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
     }
 
@@ -23168,24 +26101,24 @@ pub use auto_cabi_kit::*;"#
     pub(crate) fn fix_numeric_conversion_methods(content: &mut String) {
         // Match a receiver that is either an identifier or a method chain we can
         // wrap in parens. Keep it conservative: `IDENT.method_chain().to_float()`.
-        for (method, cast) in [
-            ("to_float", "f64"),
-            ("to_uint", "u32"),
-            ("to_int", "i32"),
-        ] {
+        for (method, cast) in [("to_float", "f64"), ("to_uint", "u32"), ("to_int", "i32")] {
             let pat = format!(r"([\w.()]+)\.{}\(\)", method);
             if let Some(re) = cached_regex(&pat) {
                 let mthd = method;
-                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    let recv = caps.get(1).unwrap().as_str();
-                    // Avoid double-wrapping if already parenthesized.
-                    if recv.starts_with('(') && recv.ends_with(')') {
-                        format!("{} as {})", &recv[..recv.len() - 1], cast)
-                    } else {
-                        format!("({} as {})", recv, cast)
-                    }
-                }).to_string();
-                if new != *content { *content = new; }
+                let new = re
+                    .replace_all(content.as_str(), |caps: &regex::Captures| {
+                        let recv = caps.get(1).unwrap().as_str();
+                        // Avoid double-wrapping if already parenthesized.
+                        if recv.starts_with('(') && recv.ends_with(')') {
+                            format!("{} as {})", &recv[..recv.len() - 1], cast)
+                        } else {
+                            format!("({} as {})", recv, cast)
+                        }
+                    })
+                    .to_string();
+                if new != *content {
+                    *content = new;
+                }
                 let _ = mthd;
             }
         }
@@ -23236,7 +26169,11 @@ pub use auto_cabi_kit::*;"#
                             out.push_str("Err(");
                             out.push_str(&after[..i]);
                             out.push_str(")");
-                            let skip = if after[i + 1..].starts_with(')') { i + 2 } else { i + 1 };
+                            let skip = if after[i + 1..].starts_with(')') {
+                                i + 2
+                            } else {
+                                i + 1
+                            };
                             rest = &after[skip..];
                         }
                         None => {
@@ -23260,8 +26197,12 @@ pub use auto_cabi_kit::*;"#
     /// bug. We track brace depth to bound each fn body.
     fn fix_result_none_unit(content: &mut String) {
         // Type position: `Result<None,` or `Result<None>` → unit first arg (always safe).
-        let reduced = content.replace("Result<None,", "Result<(),").replace("Result<None>", "Result<(),>");
-        if reduced != *content { *content = reduced; }
+        let reduced = content
+            .replace("Result<None,", "Result<(),")
+            .replace("Result<None>", "Result<(),>");
+        if reduced != *content {
+            *content = reduced;
+        }
 
         // Value position: only replace `Ok(None)` → `Ok(())` inside fn bodies
         // whose signature returns `Result<(), _>` (Ok-type is unit). Walk the
@@ -23301,10 +26242,16 @@ pub use auto_cabi_kit::*;"#
                 }
 
                 if header_done {
-                    if unit_fn_re.as_ref().map(|r| r.is_match(&fn_header)).unwrap_or(false) {
+                    if unit_fn_re
+                        .as_ref()
+                        .map(|r| r.is_match(&fn_header))
+                        .unwrap_or(false)
+                    {
                         in_unit_fn = true;
                         depth = line.matches('{').count() as i32 - line.matches('}').count() as i32;
-                        if depth <= 0 { in_unit_fn = false; }
+                        if depth <= 0 {
+                            in_unit_fn = false;
+                        }
                     }
                     header_done = false;
                     fn_header.clear();
@@ -23329,7 +26276,9 @@ pub use auto_cabi_kit::*;"#
         if out.ends_with('\n') && !content.ends_with('\n') {
             out.pop();
         }
-        if out != *content { *content = out; }
+        if out != *content {
+            *content = out;
+        }
     }
 
     /// Plan 373: calls on function-typed struct fields need parenthesization.
@@ -23360,19 +26309,27 @@ pub use auto_cabi_kit::*;"#
             let pat = format!(r"self\.{}\s*\(", regex::escape(field));
             if let Some(re) = cached_regex(&pat) {
                 let fld = field.clone();
-                let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
-                    format!("(self.{})(", fld)
-                }).to_string();
-                if new != *content { *content = new; }
+                let new = re
+                    .replace_all(content.as_str(), |_caps: &regex::Captures| {
+                        format!("(self.{})(", fld)
+                    })
+                    .to_string();
+                if new != *content {
+                    *content = new;
+                }
             }
             // plain `field(args)` calls (non-self receiver) — also wrap
             let pat2 = format!(r"\b{} \(", regex::escape(field));
             if let Some(re) = cached_regex(&pat2) {
                 let fld = field.clone();
-                let new = re.replace_all(content.as_str(), |_caps: &regex::Captures| {
-                    format!("({})(", fld)
-                }).to_string();
-                if new != *content { *content = new; }
+                let new = re
+                    .replace_all(content.as_str(), |_caps: &regex::Captures| {
+                        format!("({})(", fld)
+                    })
+                    .to_string();
+                if new != *content {
+                    *content = new;
+                }
             }
         }
     }
@@ -23407,8 +26364,12 @@ pub use auto_cabi_kit::*;"#
         let mut out: Vec<AutoStr> = Vec::new();
         for attr in attrs {
             let a = attr.as_str().trim();
-            let Some(inner) = a.strip_prefix("derive(") else { continue };
-            let Some(inner) = inner.strip_suffix(')') else { continue };
+            let Some(inner) = a.strip_prefix("derive(") else {
+                continue;
+            };
+            let Some(inner) = inner.strip_suffix(')') else {
+                continue;
+            };
             for t in inner.split(',') {
                 let t = t.trim();
                 if t.is_empty() {
@@ -23508,7 +26469,11 @@ pub use auto_cabi_kit::*;"#
         // Cycle guard: assume unconstrained until proven otherwise.
         self.auto_cmp_mask_memo.insert(name.into(), Self::D_FULL);
         let mut mask = Self::D_FULL;
-        if let Some((base, refs)) = self.local_auto_shapes.get(name).map(|(b, r)| (*b, r.clone())) {
+        if let Some((base, refs)) = self
+            .local_auto_shapes
+            .get(name)
+            .map(|(b, r)| (*b, r.clone()))
+        {
             mask = base;
             for r in refs {
                 mask &= self.type_cmp_mask(&r);
@@ -23564,7 +26529,9 @@ pub use auto_cabi_kit::*;"#
     fn type_has_float(ty: &Type) -> bool {
         match ty {
             Type::Float | Type::Double => true,
-            Type::List(inner) | Type::Result(inner) | Type::Option(inner) => Self::type_has_float(inner),
+            Type::List(inner) | Type::Result(inner) | Type::Option(inner) => {
+                Self::type_has_float(inner)
+            }
             _ => false,
         }
     }
@@ -23582,8 +26549,12 @@ pub use auto_cabi_kit::*;"#
             Type::Tag(_) | Type::Enum(_) => true,
             // Type::User with empty members is a generic type param (T), not a concrete type
             Type::User(td) if !td.members.is_empty() || !td.generic_params.is_empty() => true,
-            Type::GenericInstance(inst) => inst.args.iter().any(|arg| Self::type_contains_enum(arg)),
-            Type::List(inner) | Type::Result(inner) | Type::Option(inner) => Self::type_contains_enum(inner),
+            Type::GenericInstance(inst) => {
+                inst.args.iter().any(|arg| Self::type_contains_enum(arg))
+            }
+            Type::List(inner) | Type::Result(inner) | Type::Option(inner) => {
+                Self::type_contains_enum(inner)
+            }
             _ => false,
         }
     }
@@ -23591,10 +26562,10 @@ pub use auto_cabi_kit::*;"#
     fn type_contains_dyn(ty: &Type) -> bool {
         match ty {
             Type::User(td) => td.name.starts_with("dyn "),
-            Type::GenericInstance(inst) => {
-                inst.args.iter().any(|arg| Self::type_contains_dyn(arg))
-            }
-            Type::List(inner) | Type::Result(inner) | Type::Option(inner)
+            Type::GenericInstance(inst) => inst.args.iter().any(|arg| Self::type_contains_dyn(arg)),
+            Type::List(inner)
+            | Type::Result(inner)
+            | Type::Option(inner)
             | Type::Reference(inner) => Self::type_contains_dyn(inner),
             _ => false,
         }
@@ -23610,9 +26581,19 @@ pub use auto_cabi_kit::*;"#
         // We scan the two lines that often follow the derive: the type kind line
         // and its field/variant lines up to the closing brace.
         let non_ord_markers = [
-            "JsonValue", "serde_json::Value", "Value", "HashMap", "BTreeMap",
-            "Box<dyn", "Message", "ClientError", "ToolError",
-            "HandoffDocument", "AgentError", "AgentResult", "ToolCallRecord",
+            "JsonValue",
+            "serde_json::Value",
+            "Value",
+            "HashMap",
+            "BTreeMap",
+            "Box<dyn",
+            "Message",
+            "ClientError",
+            "ToolError",
+            "HandoffDocument",
+            "AgentError",
+            "AgentResult",
+            "ToolCallRecord",
             "RoleConfig",
             // Plan 016 Phase A A6: ModelTier removed — it IS Ord (fieldless enum,
             // and rust-ref tier.rs now derives PartialOrd+Ord).
@@ -23624,28 +26605,34 @@ pub use auto_cabi_kit::*;"#
         // We approximate the body as everything up to the first "\n}\n" at column 0.
         let re_str = r"(?s)(#\[derive\(([^)]*)\)\]\n)(pub )?(enum|struct) (\w+) \{(.*?)\n\}";
         if let Some(re) = cached_regex(re_str) {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let derive_attr = caps.get(1).unwrap().as_str();
-                let derives = caps.get(2).unwrap().as_str();
-                let body = caps.get(6).unwrap().as_str();
-                let has_non_ord = non_ord_markers.iter().any(|m| body.contains(m));
-                if !has_non_ord {
-                    return caps.get(0).unwrap().as_str().to_string();
-                }
-                let needs_relax = derives.contains("Ord")
-                    || derives.contains("PartialOrd")
-                    || derives.contains("Eq");
-                if !needs_relax {
-                    return caps.get(0).unwrap().as_str().to_string();
-                }
-                // Rebuild the type with a relaxed derive.
-                let kind_kw = caps.get(4).unwrap().as_str();
-                let pub_kw = caps.get(3).map(|m| m.as_str()).unwrap_or("");
-                let name = caps.get(5).unwrap().as_str();
-                format!("#[derive(Clone, Debug, PartialEq)]\n{}{} {} {{{}\n}}",
-                        pub_kw, kind_kw, name, body)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let derive_attr = caps.get(1).unwrap().as_str();
+                    let derives = caps.get(2).unwrap().as_str();
+                    let body = caps.get(6).unwrap().as_str();
+                    let has_non_ord = non_ord_markers.iter().any(|m| body.contains(m));
+                    if !has_non_ord {
+                        return caps.get(0).unwrap().as_str().to_string();
+                    }
+                    let needs_relax = derives.contains("Ord")
+                        || derives.contains("PartialOrd")
+                        || derives.contains("Eq");
+                    if !needs_relax {
+                        return caps.get(0).unwrap().as_str().to_string();
+                    }
+                    // Rebuild the type with a relaxed derive.
+                    let kind_kw = caps.get(4).unwrap().as_str();
+                    let pub_kw = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+                    let name = caps.get(5).unwrap().as_str();
+                    format!(
+                        "#[derive(Clone, Debug, PartialEq)]\n{}{} {} {{{}\n}}",
+                        pub_kw, kind_kw, name, body
+                    )
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
 
         // Plan 016 Phase A A6 (upgrade pass): structs that were conservatively
@@ -23661,12 +26648,14 @@ pub use auto_cabi_kit::*;"#
         // contains a base marker, then treat those names as markers too, so a
         // struct containing a non-Ord enum (e.g. Message { content: Vec<ContentBlock> })
         // is NOT upgraded.
-        let upgrade_re_str = r"(?s)(#\[derive\(Clone, Debug, PartialEq\)\]\n)(pub )?struct (\w+) \{(.*?)\n\}";
+        let upgrade_re_str =
+            r"(?s)(#\[derive\(Clone, Debug, PartialEq\)\]\n)(pub )?struct (\w+) \{(.*?)\n\}";
         if let Some(re) = cached_regex(upgrade_re_str) {
             // First pass: collect derived markers (type names whose own body
             // contains a base non_ord marker — these are non-Ord enums/structs
             // that should block upgrade of anything referencing them).
-            let mut derived_markers: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut derived_markers: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
             let collect_re_str = r"(?s)(?:enum|struct) (\w+) \{(.*?)\n\}";
             if let Some(collect_re) = cached_regex(collect_re_str) {
                 for caps in collect_re.captures_iter(content.as_str()) {
@@ -23682,7 +26671,7 @@ pub use auto_cabi_kit::*;"#
             // f64, or were downgraded by type_decl's has_float_field/has_map_field).
             // A struct referencing such a type must not be upgraded to Ord.
             if let Some(partial_eq_re) = cached_regex(
-                r"(?s)#\[derive\(Clone, Debug, PartialEq\)\]\n(?:pub )?struct (\w+) \{"
+                r"(?s)#\[derive\(Clone, Debug, PartialEq\)\]\n(?:pub )?struct (\w+) \{",
             ) {
                 for caps in partial_eq_re.captures_iter(content.as_str()) {
                     if let Some(m) = caps.get(1) {
@@ -23690,7 +26679,8 @@ pub use auto_cabi_kit::*;"#
                     }
                 }
             }
-            let all_markers: Vec<String> = non_ord_markers.iter()
+            let all_markers: Vec<String> = non_ord_markers
+                .iter()
                 .map(|s| s.to_string())
                 .chain(derived_markers.iter().cloned())
                 // PLAN-009 T1 (F1): types whose comparison derives were
@@ -23724,7 +26714,9 @@ pub use auto_cabi_kit::*;"#
                 format!("#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]\n{}struct {} {{{}\n}}",
                         pub_kw, name, body)
             }).to_string();
-            if new != *content { *content = new; }
+            if new != *content {
+                *content = new;
+            }
         }
     }
 
@@ -23737,11 +26729,15 @@ pub use auto_cabi_kit::*;"#
             let pat = format!(r#"{}\("([^"]*)"\)"#, variant);
             if let Some(re) = cached_regex(&pat) {
                 let var = *variant;
-                let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                    let msg = caps.get(1).unwrap().as_str();
-                    format!("{}(\"{}\".to_string())", var, msg)
-                }).to_string();
-                if new != *content { *content = new; }
+                let new = re
+                    .replace_all(content.as_str(), |caps: &regex::Captures| {
+                        let msg = caps.get(1).unwrap().as_str();
+                        format!("{}(\"{}\".to_string())", var, msg)
+                    })
+                    .to_string();
+                if new != *content {
+                    *content = new;
+                }
             }
         }
     }
@@ -23778,8 +26774,7 @@ pub use auto_cabi_kit::*;"#
                 || content.contains(&format!("{} ,", type_name));
             if content.contains(type_name) && !already_via_rust && !already_via_auto {
                 if let Some(pos) = content.find("use a2r_std::*;") {
-                    content.insert_str(pos + "use a2r_std::*;".len(),
-                        &format!("\n{}", use_stmt));
+                    content.insert_str(pos + "use a2r_std::*;".len(), &format!("\n{}", use_stmt));
                 }
             }
         }
@@ -23820,23 +26815,42 @@ pub use auto_cabi_kit::*;"#
     /// Plan 376 Pass 2: Fix `.get(key).field` → `.get(key).unwrap().field`
     /// (HashMap.get returns Option, not the value directly).
     fn fix_option_get_field_access(content: &mut String) {
-        let safe_methods = ["is_some", "is_none", "unwrap", "unwrap_or",
-            "unwrap_or_default", "map", "and_then", "unwrap_or_else",
-            "as_ref", "as_deref", "copied", "cloned", "ok", "err",
-            "iter", "into_iter", "as_mut",
+        let safe_methods = [
+            "is_some",
+            "is_none",
+            "unwrap",
+            "unwrap_or",
+            "unwrap_or_default",
+            "map",
+            "and_then",
+            "unwrap_or_else",
+            "as_ref",
+            "as_deref",
+            "copied",
+            "cloned",
+            "ok",
+            "err",
+            "iter",
+            "into_iter",
+            "as_mut",
             // Plan 610 ⑥: Option has expect too — injecting .unwrap() before
             // it broke libloading Symbol resolution (`lib().get(b"..").expect(..)`).
-            "expect"];
+            "expect",
+        ];
         if let Some(re) = cached_regex(r"\.get\(([^)]+)\)\.(\w+)") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let key = caps.get(1).unwrap().as_str();
-                let field = caps.get(2).unwrap().as_str();
-                if safe_methods.contains(&field) {
-                    return format!(".get({}).{}", key, field);
-                }
-                format!(".get({}).unwrap().{}", key, field)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let key = caps.get(1).unwrap().as_str();
+                    let field = caps.get(2).unwrap().as_str();
+                    if safe_methods.contains(&field) {
+                        return format!(".get({}).{}", key, field);
+                    }
+                    format!(".get({}).unwrap().{}", key, field)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
     }
 
@@ -23915,17 +26929,25 @@ pub use auto_cabi_kit::*;"#
                 }
             }
             let new = out_lines.join("\n") + "\n";
-            if new != *content { *content = new; }
+            if new != *content {
+                *content = new;
+            }
         }
         let re2 = cached_regex(r#"(self\.\w+\s*=\s*Some\()("(?:[^"\\]|\\.)*")(\))"#);
         if let Some(re2) = re2 {
-            let new = re2.replace_all(content.as_str(), |caps: &regex::Captures| {
-                format!("{}{}.to_string(){}",
-                    caps.get(1).unwrap().as_str(),
-                    caps.get(2).unwrap().as_str(),
-                    caps.get(3).unwrap().as_str())
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re2
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!(
+                        "{}{}.to_string(){}",
+                        caps.get(1).unwrap().as_str(),
+                        caps.get(2).unwrap().as_str(),
+                        caps.get(3).unwrap().as_str()
+                    )
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
     }
 
@@ -23934,17 +26956,23 @@ pub use auto_cabi_kit::*;"#
     fn fix_a2r_std_fs_result_patterns(content: &mut String) {
         // Plan 376W: use non-greedy .*? to handle nested parens in args
         // (e.g. path.to_str().unwrap() contains ')' which broke the old [^)]*).
-        let re = cached_regex(r"match\s+(a2r_std::fs::(?:read_to_string|write|read_dir|exists|is_dir)\(.*?\))\s*\{");
+        let re = cached_regex(
+            r"match\s+(a2r_std::fs::(?:read_to_string|write|read_dir|exists|is_dir)\(.*?\))\s*\{",
+        );
         if let Some(re) = re {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let call = caps.get(1).unwrap().as_str();
-                // Plan 380: the bridged read_to_string returns String (not
-                // Result), so we fake a Result with Ok(...) for the match.
-                // Annotate the error type (the Err arm is dead) — bare
-                // `Ok(x)` can't infer E (E0282).
-                format!("match Ok::<String, std::io::Error>({}) {{", call)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let call = caps.get(1).unwrap().as_str();
+                    // Plan 380: the bridged read_to_string returns String (not
+                    // Result), so we fake a Result with Ok(...) for the match.
+                    // Annotate the error type (the Err arm is dead) — bare
+                    // `Ok(x)` can't infer E (E0282).
+                    format!("match Ok::<String, std::io::Error>({}) {{", call)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
     }
 
@@ -23959,21 +26987,25 @@ pub use auto_cabi_kit::*;"#
         // Some(Constructor()) returns. The signature pattern:
         //   fn name(...) -> Option<Box<dyn Trait>> {
         // Match the trait name so we only box inside the right functions.
-        if let Some(re) = cached_regex(
-            r"(?ms)(fn \w+\([^)]*\)[^{]*->\s*Option<Box<dyn (\w+)>>\s*\{)(.*?)(^\})",
-        ) {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let header = caps.get(1).unwrap().as_str();
-                let body = caps.get(3).unwrap().as_str();
-                let close = caps.get(4).unwrap().as_str();
-                // Wrap Some(PascalCase {}) → Some(Box::new(PascalCase {}))
-                // (escaped \) — the unescaped form panicked with "unopened
-                // group" and silently dropped the builtin_roles module).
-                let body_re = regex::Regex::new(r"Some\((\w+)\s*\{\s*\}\)").unwrap();
-                let new_body = body_re.replace_all(body, "Some(Box::new($1 {}))");
-                format!("{}{}{}", header, new_body, close)
-            }).to_string();
-            if new != *content { *content = new; }
+        if let Some(re) =
+            cached_regex(r"(?ms)(fn \w+\([^)]*\)[^{]*->\s*Option<Box<dyn (\w+)>>\s*\{)(.*?)(^\})")
+        {
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let header = caps.get(1).unwrap().as_str();
+                    let body = caps.get(3).unwrap().as_str();
+                    let close = caps.get(4).unwrap().as_str();
+                    // Wrap Some(PascalCase {}) → Some(Box::new(PascalCase {}))
+                    // (escaped \) — the unescaped form panicked with "unopened
+                    // group" and silently dropped the builtin_roles module).
+                    let body_re = regex::Regex::new(r"Some\((\w+)\s*\{\s*\}\)").unwrap();
+                    let new_body = body_re.replace_all(body, "Some(Box::new($1 {}))");
+                    format!("{}{}{}", header, new_body, close)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
     }
 
@@ -23981,10 +27013,14 @@ pub use auto_cabi_kit::*;"#
     /// Auto uses [] for both list and tuple access, but Rust tuples need .N.
     fn fix_tuple_index(content: &mut String) {
         if let Some(re) = cached_regex(r"\bpair\[(\d+)\]") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                format!("pair.{}", caps.get(1).unwrap().as_str())
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    format!("pair.{}", caps.get(1).unwrap().as_str())
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
     }
 
@@ -24003,13 +27039,19 @@ pub use auto_cabi_kit::*;"#
         // Pattern 1: let X: PathBuf = ...  or  fn f(X: PathBuf)
         if let Some(re) = cached_regex(r"\b(\w+):\s*(?:std::path::)?PathBuf\b") {
             for caps in re.captures_iter(content.as_str()) {
-                if let Some(m) = caps.get(1) { pathbuf_vars.insert(m.as_str().to_string()); }
+                if let Some(m) = caps.get(1) {
+                    pathbuf_vars.insert(m.as_str().to_string());
+                }
             }
         }
         // Pattern 2: let X = PathBuf::from(...) or std::path::PathBuf::from(...)
-        if let Some(re) = cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*=\s*(?:std::path::)?PathBuf::from") {
+        if let Some(re) =
+            cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*=\s*(?:std::path::)?PathBuf::from")
+        {
             for caps in re.captures_iter(content.as_str()) {
-                if let Some(m) = caps.get(1) { pathbuf_vars.insert(m.as_str().to_string()); }
+                if let Some(m) = caps.get(1) {
+                    pathbuf_vars.insert(m.as_str().to_string());
+                }
             }
         }
         // Pattern 3: let X = Y.join(...) — in Rust, .join() on a path-like
@@ -24020,7 +27062,9 @@ pub use auto_cabi_kit::*;"#
         //  still produces a PathBuf path.)
         if let Some(re) = cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*=\s*\w+\.join\(") {
             for caps in re.captures_iter(content.as_str()) {
-                if let Some(m) = caps.get(1) { pathbuf_vars.insert(m.as_str().to_string()); }
+                if let Some(m) = caps.get(1) {
+                    pathbuf_vars.insert(m.as_str().to_string());
+                }
             }
         }
         // Pattern 4: is fn { Some(X) => ... } where fn returns ?PathBuf —
@@ -24033,7 +27077,9 @@ pub use auto_cabi_kit::*;"#
         let mut string_vars: std::collections::HashSet<String> = std::collections::HashSet::new();
         if let Some(re) = cached_regex(r"\b(\w+):\s*(?:std::string::)?String\b") {
             for caps in re.captures_iter(content.as_str()) {
-                if let Some(m) = caps.get(1) { string_vars.insert(m.as_str().to_string()); }
+                if let Some(m) = caps.get(1) {
+                    string_vars.insert(m.as_str().to_string());
+                }
             }
         }
         // Plan 016 Phase A A.4: also &str params (a name shared between a match
@@ -24041,12 +27087,18 @@ pub use auto_cabi_kit::*;"#
         // string-like, not PathBuf).
         if let Some(re) = cached_regex(r"\b(\w+):\s*&str\b") {
             for caps in re.captures_iter(content.as_str()) {
-                if let Some(m) = caps.get(1) { string_vars.insert(m.as_str().to_string()); }
+                if let Some(m) = caps.get(1) {
+                    string_vars.insert(m.as_str().to_string());
+                }
             }
         }
-        if let Some(re) = cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*=\s*(?:std::path::)?PathBuf::from") {
+        if let Some(re) =
+            cached_regex(r"let\s+(?:mut\s+)?(\w+)\s*=\s*(?:std::path::)?PathBuf::from")
+        {
             for caps in re.captures_iter(content.as_str()) {
-                if let Some(m) = caps.get(1) { string_vars.remove(&m.as_str().to_string()); }
+                if let Some(m) = caps.get(1) {
+                    string_vars.remove(&m.as_str().to_string());
+                }
             }
         }
 
@@ -24054,26 +27106,30 @@ pub use auto_cabi_kit::*;"#
         // only if name is in pathbuf_vars OR (matches the old heuristic AND is
         // NOT a known String var).
         if let Some(re) = cached_regex(r"(\b\w*_path|\bpath|\bdir|\bsidecar)\.as_str\(\)") {
-            let new = re.replace_all(content.as_str(), |caps: &regex::Captures| {
-                let name = caps.get(1).unwrap().as_str();
-                // Definitely PathBuf → rewrite.
-                if pathbuf_vars.contains(name) {
-                    return format!("{}.to_str().unwrap()", name);
-                }
-                // Known String → do NOT rewrite (keep .as_str()).
-                if string_vars.contains(name) {
-                    return format!("{}.as_str()", name);
-                }
-                // Unknown (not confirmed PathBuf, not confirmed String):
-                // Plan 016 Phase A A.4 — conservatively keep .as_str().
-                // String has a valid .as_str() method; &str params/literals
-                // wouldn't reach here (a2r skips .as_str() for them at codegen).
-                // Only PathBuf needs .to_str().unwrap(), and confirmed PathBufs
-                // are in pathbuf_vars (handled above). This avoids wrongly
-                // rewriting String vars named path/aaid_path (E0599 to_str).
-                format!("{}.as_str()", name)
-            }).to_string();
-            if new != *content { *content = new; }
+            let new = re
+                .replace_all(content.as_str(), |caps: &regex::Captures| {
+                    let name = caps.get(1).unwrap().as_str();
+                    // Definitely PathBuf → rewrite.
+                    if pathbuf_vars.contains(name) {
+                        return format!("{}.to_str().unwrap()", name);
+                    }
+                    // Known String → do NOT rewrite (keep .as_str()).
+                    if string_vars.contains(name) {
+                        return format!("{}.as_str()", name);
+                    }
+                    // Unknown (not confirmed PathBuf, not confirmed String):
+                    // Plan 016 Phase A A.4 — conservatively keep .as_str().
+                    // String has a valid .as_str() method; &str params/literals
+                    // wouldn't reach here (a2r skips .as_str() for them at codegen).
+                    // Only PathBuf needs .to_str().unwrap(), and confirmed PathBufs
+                    // are in pathbuf_vars (handled above). This avoids wrongly
+                    // rewriting String vars named path/aaid_path (E0599 to_str).
+                    format!("{}.as_str()", name)
+                })
+                .to_string();
+            if new != *content {
+                *content = new;
+            }
         }
     }
 
@@ -24094,11 +27150,21 @@ pub use auto_cabi_kit::*;"#
             if let Ok(mut store) = shared.write() {
                 for stmt in stmts {
                     match stmt {
-                        Stmt::Fn(fn_decl) => { store.register_fn_decl(fn_decl); }
-                        Stmt::TypeDecl(td) => { store.register_type_decl(td); }
-                        Stmt::SpecDecl(sd) => { store.register_spec_decl(sd); }
-                        Stmt::EnumDecl(ed) => { store.register_enum_decl(ed.clone()); }
-                        Stmt::Ext(ext) => { store.register_ext_methods(ext); }
+                        Stmt::Fn(fn_decl) => {
+                            store.register_fn_decl(fn_decl);
+                        }
+                        Stmt::TypeDecl(td) => {
+                            store.register_type_decl(td);
+                        }
+                        Stmt::SpecDecl(sd) => {
+                            store.register_spec_decl(sd);
+                        }
+                        Stmt::EnumDecl(ed) => {
+                            store.register_enum_decl(ed.clone());
+                        }
+                        Stmt::Ext(ext) => {
+                            store.register_ext_methods(ext);
+                        }
                         _ => {}
                     }
                 }
@@ -24109,11 +27175,21 @@ pub use auto_cabi_kit::*;"#
             let mut store = crate::types::TypeStore::new();
             for stmt in stmts {
                 match stmt {
-                    Stmt::Fn(fn_decl) => { store.register_fn_decl(fn_decl); }
-                    Stmt::TypeDecl(td) => { store.register_type_decl(td); }
-                    Stmt::SpecDecl(sd) => { store.register_spec_decl(sd); }
-                    Stmt::EnumDecl(ed) => { store.register_enum_decl(ed.clone()); }
-                    Stmt::Ext(ext) => { store.register_ext_methods(ext); }
+                    Stmt::Fn(fn_decl) => {
+                        store.register_fn_decl(fn_decl);
+                    }
+                    Stmt::TypeDecl(td) => {
+                        store.register_type_decl(td);
+                    }
+                    Stmt::SpecDecl(sd) => {
+                        store.register_spec_decl(sd);
+                    }
+                    Stmt::EnumDecl(ed) => {
+                        store.register_enum_decl(ed.clone());
+                    }
+                    Stmt::Ext(ext) => {
+                        store.register_ext_methods(ext);
+                    }
                     _ => {}
                 }
             }
@@ -24334,32 +27410,46 @@ impl Trans for RustTrans {
         for stmt in &ast.stmts {
             match stmt {
                 Stmt::Fn(fn_decl) => {
-                    let str_param_flags: Vec<bool> = fn_decl.params.iter()
+                    let str_param_flags: Vec<bool> = fn_decl
+                        .params
+                        .iter()
                         .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit))
                         .collect();
-                    self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
+                    self.fn_str_param_indices
+                        .insert(fn_decl.name.clone(), str_param_flags);
 
-                    let struct_param_flags: Vec<bool> = fn_decl.params.iter()
+                    let struct_param_flags: Vec<bool> = fn_decl
+                        .params
+                        .iter()
                         .map(|p| !Self::is_copy_type(&p.ty))
                         .collect();
-                    self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+                    self.fn_struct_param_indices
+                        .insert(fn_decl.name.clone(), struct_param_flags);
 
-                    let int_param_flags: Vec<bool> = fn_decl.params.iter()
+                    let int_param_flags: Vec<bool> = fn_decl
+                        .params
+                        .iter()
                         .map(|p| matches!(p.ty, Type::Int))
                         .collect();
-                    self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
+                    self.fn_int_param_indices
+                        .insert(fn_decl.name.clone(), int_param_flags);
 
                     // Plan 390 §11 Phase E (D-A): spec params need Box::new() at call
                     // sites — cache the flags in the prescan so callers declared *before*
                     // this fn still auto-box. (The emit-time insert at fn_decl emission
                     // only covers fns seen before the caller.)
-                    let spec_param_flags: Vec<bool> = fn_decl.params.iter()
+                    let spec_param_flags: Vec<bool> = fn_decl
+                        .params
+                        .iter()
                         .map(|p| matches!(p.ty, Type::Spec(_)))
                         .collect();
-                    self.fn_spec_param_indices.insert(fn_decl.name.clone(), spec_param_flags);
+                    self.fn_spec_param_indices
+                        .insert(fn_decl.name.clone(), spec_param_flags);
 
-                    let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
-                    self.fn_param_types.insert(fn_decl.name.clone(), param_types);
+                    let param_types: Vec<Type> =
+                        fn_decl.params.iter().map(|p| p.ty.clone()).collect();
+                    self.fn_param_types
+                        .insert(fn_decl.name.clone(), param_types);
 
                     // Plan 389 R2: also cache the return type in the prescan so
                     // task state fields initialized from a fn reference
@@ -24375,10 +27465,13 @@ impl Trans for RustTrans {
                     // *before* the caller; prescan here makes call sites to
                     // fns declared *after* their caller (e.g. a helper fn at
                     // the bottom of the file) also inject &mut.
-                    let mut_param_flags: Vec<bool> = fn_decl.params.iter()
+                    let mut_param_flags: Vec<bool> = fn_decl
+                        .params
+                        .iter()
                         .map(|p| p.mode == crate::ast::ParamMode::Mut)
                         .collect();
-                    self.fn_mut_params.insert(fn_decl.name.clone(), mut_param_flags);
+                    self.fn_mut_params
+                        .insert(fn_decl.name.clone(), mut_param_flags);
                 }
                 Stmt::SpecDecl(spec_decl) => {
                     // Plan 310 Phase 0.3: Pre-scan spec methods so that delegation
@@ -24392,47 +27485,73 @@ impl Trans for RustTrans {
                     // Also scan methods inside type declarations
                     let type_name = &type_decl.name;
                     for fn_decl in &type_decl.methods {
-                        let str_param_flags: Vec<bool> = fn_decl.params.iter()
-                            .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit))
+                        let str_param_flags: Vec<bool> = fn_decl
+                            .params
+                            .iter()
+                            .map(|p| {
+                                matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit)
+                            })
                             .collect();
                         // Use qualified key "Type.method" to avoid cross-type overwrites
-                        let qualified_key: AutoStr = format!("{}.{}", type_name, fn_decl.name).into();
-                        self.fn_str_param_indices.insert(qualified_key.clone(), str_param_flags.clone());
+                        let qualified_key: AutoStr =
+                            format!("{}.{}", type_name, fn_decl.name).into();
+                        self.fn_str_param_indices
+                            .insert(qualified_key.clone(), str_param_flags.clone());
                         // Also store unqualified for backward compat (last one wins)
-                        self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
+                        self.fn_str_param_indices
+                            .insert(fn_decl.name.clone(), str_param_flags);
 
-                        let struct_param_flags: Vec<bool> = fn_decl.params.iter()
+                        let struct_param_flags: Vec<bool> = fn_decl
+                            .params
+                            .iter()
                             .map(|p| !Self::is_copy_type(&p.ty))
                             .collect();
-                        self.fn_struct_param_indices.insert(qualified_key.clone(), struct_param_flags.clone());
-                        self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+                        self.fn_struct_param_indices
+                            .insert(qualified_key.clone(), struct_param_flags.clone());
+                        self.fn_struct_param_indices
+                            .insert(fn_decl.name.clone(), struct_param_flags);
 
-                        let int_param_flags: Vec<bool> = fn_decl.params.iter()
+                        let int_param_flags: Vec<bool> = fn_decl
+                            .params
+                            .iter()
                             .map(|p| matches!(p.ty, Type::Int))
                             .collect();
-                        self.fn_int_param_indices.insert(qualified_key.clone(), int_param_flags.clone());
-                        self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
+                        self.fn_int_param_indices
+                            .insert(qualified_key.clone(), int_param_flags.clone());
+                        self.fn_int_param_indices
+                            .insert(fn_decl.name.clone(), int_param_flags);
 
                         // Plan 390 §11 Phase E (D-A): spec params need Box::new() at
                         // call sites — mirror the str/struct/int qualified+unqualified
                         // key pattern so `r.register(t)` (Expr::Dot) resolves via the
                         // last-segment fallback (Fix B) to "Type.method".
-                        let spec_param_flags: Vec<bool> = fn_decl.params.iter()
+                        let spec_param_flags: Vec<bool> = fn_decl
+                            .params
+                            .iter()
                             .map(|p| matches!(p.ty, Type::Spec(_)))
                             .collect();
-                        self.fn_spec_param_indices.insert(qualified_key.clone(), spec_param_flags.clone());
-                        self.fn_spec_param_indices.insert(fn_decl.name.clone(), spec_param_flags);
+                        self.fn_spec_param_indices
+                            .insert(qualified_key.clone(), spec_param_flags.clone());
+                        self.fn_spec_param_indices
+                            .insert(fn_decl.name.clone(), spec_param_flags);
 
-                        let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
-                        self.fn_param_types.insert(qualified_key.clone(), param_types.clone());
-                        self.fn_param_types.insert(fn_decl.name.clone(), param_types);
+                        let param_types: Vec<Type> =
+                            fn_decl.params.iter().map(|p| p.ty.clone()).collect();
+                        self.fn_param_types
+                            .insert(qualified_key.clone(), param_types.clone());
+                        self.fn_param_types
+                            .insert(fn_decl.name.clone(), param_types);
 
                         // C11: same prescan for `mut p T` flags (see Stmt::Fn above).
-                        let mut_param_flags: Vec<bool> = fn_decl.params.iter()
+                        let mut_param_flags: Vec<bool> = fn_decl
+                            .params
+                            .iter()
                             .map(|p| p.mode == crate::ast::ParamMode::Mut)
                             .collect();
-                        self.fn_mut_params.insert(fn_decl.name.clone(), mut_param_flags.clone());
-                        self.fn_mut_params.insert(qualified_key.clone(), mut_param_flags);
+                        self.fn_mut_params
+                            .insert(fn_decl.name.clone(), mut_param_flags.clone());
+                        self.fn_mut_params
+                            .insert(qualified_key.clone(), mut_param_flags);
                     }
                 }
                 Stmt::Ext(ext) => {
@@ -24446,41 +27565,67 @@ impl Trans for RustTrans {
                     // last-segment fallback (Fix B).
                     let type_name = &ext.target;
                     for fn_decl in &ext.methods {
-                        let qualified_key: AutoStr = format!("{}.{}", type_name, fn_decl.name).into();
+                        let qualified_key: AutoStr =
+                            format!("{}.{}", type_name, fn_decl.name).into();
 
-                        let str_param_flags: Vec<bool> = fn_decl.params.iter()
-                            .map(|p| matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit))
+                        let str_param_flags: Vec<bool> = fn_decl
+                            .params
+                            .iter()
+                            .map(|p| {
+                                matches!(p.ty, Type::StrFixed(_) | Type::StrSlice | Type::CStrLit)
+                            })
                             .collect();
-                        self.fn_str_param_indices.insert(qualified_key.clone(), str_param_flags.clone());
-                        self.fn_str_param_indices.insert(fn_decl.name.clone(), str_param_flags);
+                        self.fn_str_param_indices
+                            .insert(qualified_key.clone(), str_param_flags.clone());
+                        self.fn_str_param_indices
+                            .insert(fn_decl.name.clone(), str_param_flags);
 
-                        let struct_param_flags: Vec<bool> = fn_decl.params.iter()
+                        let struct_param_flags: Vec<bool> = fn_decl
+                            .params
+                            .iter()
                             .map(|p| !Self::is_copy_type(&p.ty))
                             .collect();
-                        self.fn_struct_param_indices.insert(qualified_key.clone(), struct_param_flags.clone());
-                        self.fn_struct_param_indices.insert(fn_decl.name.clone(), struct_param_flags);
+                        self.fn_struct_param_indices
+                            .insert(qualified_key.clone(), struct_param_flags.clone());
+                        self.fn_struct_param_indices
+                            .insert(fn_decl.name.clone(), struct_param_flags);
 
-                        let int_param_flags: Vec<bool> = fn_decl.params.iter()
+                        let int_param_flags: Vec<bool> = fn_decl
+                            .params
+                            .iter()
                             .map(|p| matches!(p.ty, Type::Int))
                             .collect();
-                        self.fn_int_param_indices.insert(qualified_key.clone(), int_param_flags.clone());
-                        self.fn_int_param_indices.insert(fn_decl.name.clone(), int_param_flags);
+                        self.fn_int_param_indices
+                            .insert(qualified_key.clone(), int_param_flags.clone());
+                        self.fn_int_param_indices
+                            .insert(fn_decl.name.clone(), int_param_flags);
 
-                        let spec_param_flags: Vec<bool> = fn_decl.params.iter()
+                        let spec_param_flags: Vec<bool> = fn_decl
+                            .params
+                            .iter()
                             .map(|p| matches!(p.ty, Type::Spec(_)))
                             .collect();
-                        self.fn_spec_param_indices.insert(qualified_key.clone(), spec_param_flags.clone());
-                        self.fn_spec_param_indices.insert(fn_decl.name.clone(), spec_param_flags);
+                        self.fn_spec_param_indices
+                            .insert(qualified_key.clone(), spec_param_flags.clone());
+                        self.fn_spec_param_indices
+                            .insert(fn_decl.name.clone(), spec_param_flags);
 
-                        let param_types: Vec<Type> = fn_decl.params.iter().map(|p| p.ty.clone()).collect();
-                        self.fn_param_types.insert(qualified_key.clone(), param_types.clone());
-                        self.fn_param_types.insert(fn_decl.name.clone(), param_types);
+                        let param_types: Vec<Type> =
+                            fn_decl.params.iter().map(|p| p.ty.clone()).collect();
+                        self.fn_param_types
+                            .insert(qualified_key.clone(), param_types.clone());
+                        self.fn_param_types
+                            .insert(fn_decl.name.clone(), param_types);
 
-                        let mut_param_flags: Vec<bool> = fn_decl.params.iter()
+                        let mut_param_flags: Vec<bool> = fn_decl
+                            .params
+                            .iter()
                             .map(|p| p.mode == crate::ast::ParamMode::Mut)
                             .collect();
-                        self.fn_mut_params.insert(fn_decl.name.clone(), mut_param_flags.clone());
-                        self.fn_mut_params.insert(qualified_key.clone(), mut_param_flags);
+                        self.fn_mut_params
+                            .insert(fn_decl.name.clone(), mut_param_flags.clone());
+                        self.fn_mut_params
+                            .insert(qualified_key.clone(), mut_param_flags);
                     }
                 }
                 _ => {}
@@ -24493,7 +27638,9 @@ impl Trans for RustTrans {
         // type conversion (e.g., self.field = Some(&str) → Some(&str.to_string())).
         for stmt in &ast.stmts {
             if let Stmt::TypeDecl(td) = stmt {
-                let fields: Vec<(AutoStr, Type)> = td.members.iter()
+                let fields: Vec<(AutoStr, Type)> = td
+                    .members
+                    .iter()
                     .map(|m| (m.name.clone(), m.ty.clone()))
                     .collect();
                 if !fields.is_empty() {
@@ -24505,7 +27652,8 @@ impl Trans for RustTrans {
                 // the str-trim `.to_string()` suffix even when a call to it
                 // appears before its declaration (E0599 `()` Display).
                 for method in &td.methods {
-                    self.fn_ret_types.insert(method.name.clone(), method.ret.clone());
+                    self.fn_ret_types
+                        .insert(method.name.clone(), method.ret.clone());
                     let qualified: AutoStr = format!("{}.{}", td.name, method.name).into();
                     self.fn_ret_types.insert(qualified, method.ret.clone());
                 }
@@ -24521,7 +27669,7 @@ impl Trans for RustTrans {
         // Phase 2: Split into declarations and main, preserving source line info
         self.global_lazy_used = false; // Plan 523 H5
         let mut decls: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
-        let mut main: Vec<(Stmt, usize)> = Vec::new();  // (stmt, source_line)
+        let mut main: Vec<(Stmt, usize)> = Vec::new(); // (stmt, source_line)
 
         let source_lines = ast.source_lines;
         for (i, stmt) in ast.stmts.into_iter().enumerate() {
@@ -24532,7 +27680,9 @@ impl Trans for RustTrans {
                     || matches!(store.kind, StoreKind::Shared)
                     || matches!(store.kind, StoreKind::Const)
                 {
-                    if matches!(store.kind, StoreKind::Var) || matches!(store.kind, StoreKind::Shared) {
+                    if matches!(store.kind, StoreKind::Var)
+                        || matches!(store.kind, StoreKind::Shared)
+                    {
                         self.register_global_var_typed(store.name.clone(), store.ty.clone());
                         // Plan 523 H5: 非字面量初始化的全局保留 Lazy 形态。
                         if !Self::global_store_is_const_init(store) {
@@ -24707,7 +27857,9 @@ impl Trans for RustTrans {
                 if text.contains(&format!("use {}::{{", path)) {
                     return true;
                 }
-                names.iter().any(|n| text.contains(&format!("use {}::{};", path, n)))
+                names
+                    .iter()
+                    .any(|n| text.contains(&format!("use {}::{};", path, n)))
             };
             let mut imports = String::new();
             if (text.contains("Arc") || text.contains("Mutex::"))
@@ -24765,7 +27917,7 @@ impl Trans for RustTrans {
             // also invalidated 48 golden headers. api_gen backends (which dep
             // auto-lang instead) re-qualify the preamble in post-processing
             // (see auto-man api_gen's qualify_a2r_std).
-let import = b"// a2r Standard Library (from crate)\n#[allow(unused_imports)]\nuse a2r_std;\nuse a2r_std::*;\n\n";
+            let import = b"// a2r Standard Library (from crate)\n#[allow(unused_imports)]\nuse a2r_std;\nuse a2r_std::*;\n\n";
             // Find the header boundary: after "#![allow]" line + blank line
             let body = &sink.body;
             let mut insert_pos = 0;
@@ -24856,12 +28008,14 @@ pub fn transpile_rust_full(
     let mut transpiler = RustTrans::new(name);
     transpiler.escape_results = escape_results;
     transpiler.source_dir = source_dir; // Plan 610 ⑥
-    // Plan 433 A1: pre-register fn return types for the whole file so
-    // `let x = fn()` bindings infer their type regardless of declaration
-    // order (see scan_call_init_bindings).
+                                        // Plan 433 A1: pre-register fn return types for the whole file so
+                                        // `let x = fn()` bindings infer their type regardless of declaration
+                                        // order (see scan_call_init_bindings).
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::Fn(f) = stmt {
-            transpiler.fn_ret_types.insert(f.name.clone(), f.ret.clone());
+            transpiler
+                .fn_ret_types
+                .insert(f.name.clone(), f.ret.clone());
         }
     }
     // Plan 376D: Share sibling TypeStore for cross-module type inference.
@@ -24892,18 +28046,23 @@ pub fn create_note(title str) Note {
     let mut parser = Parser::from(code);
     let ast = parser.parse().unwrap();
     // 取第一个 Stmt::Fn
-    let fn_ast = ast.stmts.iter().find_map(|st| match st {
-        crate::ast::Stmt::Fn(f) => Some(f.clone()),
-        _ => None,
-    }).expect("no fn found");
+    let fn_ast = ast
+        .stmts
+        .iter()
+        .find_map(|st| match st {
+            crate::ast::Stmt::Fn(f) => Some(f.clone()),
+            _ => None,
+        })
+        .expect("no fn found");
     let mut t = RustTrans::new(AutoStr::from("test"));
     // 预注册 Note 类型（字段名 + 类型），让构造体能解析
-    t.register_type("Note", vec![
-        ("id", Type::Int),
-        ("title", Type::StrOwned),
-    ]);
+    t.register_type("Note", vec![("id", Type::Int), ("title", Type::StrOwned)]);
     let out = t.transpile_fn(&fn_ast).unwrap();
-    assert!(out.contains("fn create_note"), "transpile_fn output must contain fn: {}", out);
+    assert!(
+        out.contains("fn create_note"),
+        "transpile_fn output must contain fn: {}",
+        out
+    );
 }
 
 /// Plan 399 Phase 11.2: struct field `Type { title: title }` (Arg::Pair with a
@@ -24921,18 +28080,22 @@ pub fn make(title str) Note {
 "#;
     let mut parser = Parser::from(code);
     let ast = parser.parse().unwrap();
-    let fn_ast = ast.stmts.iter().find_map(|st| match st {
-        crate::ast::Stmt::Fn(f) => Some(f.clone()),
-        _ => None,
-    }).expect("no fn found");
+    let fn_ast = ast
+        .stmts
+        .iter()
+        .find_map(|st| match st {
+            crate::ast::Stmt::Fn(f) => Some(f.clone()),
+            _ => None,
+        })
+        .expect("no fn found");
     let mut t = RustTrans::new(AutoStr::from("test"));
-    t.register_type("Note", vec![
-        ("id", Type::Int),
-        ("title", Type::StrOwned),
-    ]);
+    t.register_type("Note", vec![("id", Type::Int), ("title", Type::StrOwned)]);
     let out = t.transpile_fn(&fn_ast).unwrap();
-    assert!(out.contains("title: title.to_string()"),
-        "Pair String field gets .to_string(): {}", out);
+    assert!(
+        out.contains("title: title.to_string()"),
+        "Pair String field gets .to_string(): {}",
+        out
+    );
 }
 
 /// analysis pass actually runs in the transpile pipeline. Not used by the
@@ -24997,11 +28160,18 @@ fn render_cargo_dep(dep: &crate::ast::DepStmt) -> String {
         if dep.features.is_empty() {
             return format!("{} = {{ path = \"{}\" }}", dep.name, escape_cargo_str(path));
         }
-        let feats = dep.features.iter()
+        let feats = dep
+            .features
+            .iter()
             .map(|f| format!("\"{}\"", escape_cargo_str(f)))
-            .collect::<Vec<_>>().join(", ");
-        return format!("{} = {{ path = \"{}\", features = [{}] }}",
-            dep.name, escape_cargo_str(path), feats);
+            .collect::<Vec<_>>()
+            .join(", ");
+        return format!(
+            "{} = {{ path = \"{}\", features = [{}] }}",
+            dep.name,
+            escape_cargo_str(path),
+            feats
+        );
     }
     // Git dependency — `foo = { git = "...", branch = "..." }`.
     if let Some(git) = &dep.git {
@@ -25021,20 +28191,33 @@ fn render_cargo_dep(dep: &crate::ast::DepStmt) -> String {
         if dep.features.is_empty() {
             return format!("{} = \"{}\"", dep.name, escape_cargo_str(version));
         }
-        let feats = dep.features.iter()
+        let feats = dep
+            .features
+            .iter()
             .map(|f| format!("\"{}\"", escape_cargo_str(f)))
-            .collect::<Vec<_>>().join(", ");
-        return format!("{} = {{ version = \"{}\", features = [{}] }}",
-            dep.name, escape_cargo_str(version), feats);
+            .collect::<Vec<_>>()
+            .join(", ");
+        return format!(
+            "{} = {{ version = \"{}\", features = [{}] }}",
+            dep.name,
+            escape_cargo_str(version),
+            feats
+        );
     }
     // Bare `dep foo` — no options: wildcard version.
     if dep.features.is_empty() {
         return format!("{} = \"*\"", dep.name);
     }
-    let feats = dep.features.iter()
+    let feats = dep
+        .features
+        .iter()
         .map(|f| format!("\"{}\"", escape_cargo_str(f)))
-        .collect::<Vec<_>>().join(", ");
-    format!("{} = {{ version = \"*\", features = [{}] }}", dep.name, feats)
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{} = {{ version = \"*\", features = [{}] }}",
+        dep.name, feats
+    )
 }
 
 /// Escape a string for safe embedding in a Cargo.toml value (escape backslash
@@ -25052,12 +28235,15 @@ fn escape_cargo_str(s: &str) -> String {
 /// 4. Generates mod.rs from mod.at with pub mod declarations
 ///
 /// Returns a HashMap mapping output filename to generated Rust code.
-pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::HashMap<String, (Vec<u8>, Vec<super::SourceMapEntry>)>> {
+pub fn transpile_rust_project(
+    entry_file: &str,
+) -> AutoResult<std::collections::HashMap<String, (Vec<u8>, Vec<super::SourceMapEntry>)>> {
     use super::MultiSink;
     use crate::ast::Stmt;
 
     let entry_path = std::path::Path::new(entry_file);
-    let entry_dir = entry_path.parent()
+    let entry_dir = entry_path
+        .parent()
         .ok_or_else(|| AutoError::Msg("Entry file has no parent directory".into()))?;
 
     // Phase 1: Discover all modules
@@ -25077,17 +28263,32 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         let mut store = shared_type_store.write().unwrap();
         for module in &modules {
             let mod_name = if module.is_dir_module {
-                module.source_path.parent().unwrap()
-                    .file_name().unwrap().to_string_lossy().to_string()
+                module
+                    .source_path
+                    .parent()
+                    .unwrap()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
             } else {
-                module.source_path.file_stem()
-                    .unwrap().to_string_lossy().to_string()
+                module
+                    .source_path
+                    .file_stem()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
             };
             // Ensure module exists in module_types even if it has no type declarations.
             // This is needed so `use relay.X` gets `crate::` prefix in other modules.
             module_types.entry(mod_name.clone()).or_default();
-            let source = std::fs::read_to_string(&module.source_path)
-                .map_err(|e| AutoError::Msg(format!("Failed to read {}: {}", module.source_path.display(), e)))?;
+            let source = std::fs::read_to_string(&module.source_path).map_err(|e| {
+                AutoError::Msg(format!(
+                    "Failed to read {}: {}",
+                    module.source_path.display(),
+                    e
+                ))
+            })?;
             for line in source.lines() {
                 let trimmed = line.trim();
                 let (prefix, rest) = if trimmed.starts_with("pub type ") {
@@ -25118,11 +28319,17 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                     continue;
                 }
                 // Type names must start with uppercase
-                if !name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                if !name
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
+                {
                     continue;
                 }
                 // Plan 264: record module → type name mapping
-                module_types.entry(mod_name.clone())
+                module_types
+                    .entry(mod_name.clone())
                     .or_default()
                     .insert(name.to_string());
                 if prefix.contains("type ") {
@@ -25158,52 +28365,78 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     // Phase 2: Parse each module
     let mut parsed_modules = Vec::new();
     for module in &modules {
-        let source = std::fs::read_to_string(&module.source_path)
-            .map_err(|e| AutoError::Msg(format!("Failed to read {}: {}", module.source_path.display(), e)))?;
+        let source = std::fs::read_to_string(&module.source_path).map_err(|e| {
+            AutoError::Msg(format!(
+                "Failed to read {}: {}",
+                module.source_path.display(),
+                e
+            ))
+        })?;
         let _scope = shared(crate::scope_manager::ScopeManager::new());
         let mut parser = Parser::new_with_type_store(source.as_str(), shared_type_store.clone());
         parser.set_dest(crate::parser::CompileDest::TransRust);
         parser.skip_check = true; // Plan 167: skip type checking for multi-file mode
         let ast = parser.parse().map_err(|e| {
-            AutoError::Msg(format!("Parse error in {}: {}", module.source_path.display(), e.to_string()))
+            AutoError::Msg(format!(
+                "Parse error in {}: {}",
+                module.source_path.display(),
+                e.to_string()
+            ))
         })?;
         parsed_modules.push((module, ast));
     }
 
     // Phase 2.5: Pre-scan all function signatures for cross-module param-type tracking
-    let mut global_fn_str_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
-    let mut global_fn_struct_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
-    let mut global_fn_int_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
-    let mut global_fn_param_types: std::collections::HashMap<AutoStr, Vec<Type>> = std::collections::HashMap::new();
+    let mut global_fn_str_params: std::collections::HashMap<AutoStr, Vec<bool>> =
+        std::collections::HashMap::new();
+    let mut global_fn_struct_params: std::collections::HashMap<AutoStr, Vec<bool>> =
+        std::collections::HashMap::new();
+    let mut global_fn_int_params: std::collections::HashMap<AutoStr, Vec<bool>> =
+        std::collections::HashMap::new();
+    let mut global_fn_param_types: std::collections::HashMap<AutoStr, Vec<Type>> =
+        std::collections::HashMap::new();
     // Plan 390 §11 Phase E: spec params need Box::new() at call sites; track them
     // cross-module so `r.register(t)` (incl. ext-block methods) auto-boxes.
-    let mut global_fn_spec_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    let mut global_fn_spec_params: std::collections::HashMap<AutoStr, Vec<bool>> =
+        std::collections::HashMap::new();
 
     // Plan 390 §11 Phase E: collect spec-param flags across Fn / TypeDecl methods /
     // Ext methods (mirrors collect_fn_str_params but for spec auto-boxing). Ext-block
     // methods are a separate Stmt::Ext not covered by the TypeDecl scan, so without
     // this `ext ToolRegistry { fn register(tool Tool) }` would never auto-box.
-    fn collect_fn_spec_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
+    fn collect_fn_spec_params(
+        stmts: &[Stmt],
+        type_name: &str,
+        map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
+    ) {
         let generic_methods = [
-            "get", "set", "insert", "push", "remove", "contains", "len",
-            "is_empty", "iter", "keys", "values", "clone", "new",
-            "update", "delete", "find", "index",
+            "get", "set", "insert", "push", "remove", "contains", "len", "is_empty", "iter",
+            "keys", "values", "clone", "new", "update", "delete", "find", "index",
         ];
-        let scan_fn = |fn_decl: &Fn, parent: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>| {
-            let spec_flags: Vec<bool> = fn_decl.params.iter()
-                .map(|p| matches!(p.ty, Type::Spec(_)))
-                .collect();
-            if !spec_flags.is_empty() {
-                if !generic_methods.contains(&fn_decl.name.as_str()) {
-                    map.insert(fn_decl.name.clone(), spec_flags.clone());
+        let scan_fn =
+            |fn_decl: &Fn,
+             parent: &str,
+             map: &mut std::collections::HashMap<AutoStr, Vec<bool>>| {
+                let spec_flags: Vec<bool> = fn_decl
+                    .params
+                    .iter()
+                    .map(|p| matches!(p.ty, Type::Spec(_)))
+                    .collect();
+                if !spec_flags.is_empty() {
+                    if !generic_methods.contains(&fn_decl.name.as_str()) {
+                        map.insert(fn_decl.name.clone(), spec_flags.clone());
+                    }
+                    if !parent.is_empty() || fn_decl.parent.is_some() {
+                        let p = fn_decl
+                            .parent
+                            .as_ref()
+                            .map(|x| x.to_string())
+                            .unwrap_or_else(|| parent.to_string());
+                        let qualified = format!("{}.{}", p, fn_decl.name);
+                        map.insert(AutoStr::from(qualified), spec_flags);
+                    }
                 }
-                if !parent.is_empty() || fn_decl.parent.is_some() {
-                    let p = fn_decl.parent.as_ref().map(|x| x.to_string()).unwrap_or_else(|| parent.to_string());
-                    let qualified = format!("{}.{}", p, fn_decl.name);
-                    map.insert(AutoStr::from(qualified), spec_flags);
-                }
-            }
-        };
+            };
         for stmt in stmts {
             if let Stmt::Fn(fn_decl) = stmt {
                 scan_fn(fn_decl, type_name, map);
@@ -25222,17 +28455,22 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     }
 
     // Helper: collect Fn declarations from statements, including methods inside TypeDecl
-    fn collect_fn_str_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
+    fn collect_fn_str_params(
+        stmts: &[Stmt],
+        type_name: &str,
+        map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
+    ) {
         // Generic method names that should never be stored as bare-name keys
         // to avoid false positive .as_str() on unrelated calls
         let generic_methods = [
-            "get", "set", "insert", "push", "remove", "contains", "len",
-            "is_empty", "iter", "keys", "values", "clone", "new",
-            "update", "delete", "find", "index",
+            "get", "set", "insert", "push", "remove", "contains", "len", "is_empty", "iter",
+            "keys", "values", "clone", "new", "update", "delete", "find", "index",
         ];
         for stmt in stmts {
             if let Stmt::Fn(fn_decl) = stmt {
-                let str_flags: Vec<bool> = fn_decl.params.iter()
+                let str_flags: Vec<bool> = fn_decl
+                    .params
+                    .iter()
                     .map(|p| matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
                     .collect();
                 if !str_flags.is_empty() {
@@ -25242,7 +28480,11 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                     }
                     // Always store qualified key "TypeName.method_name" for methods
                     if !type_name.is_empty() || fn_decl.parent.is_some() {
-                        let parent = fn_decl.parent.as_ref().map(|p| p.to_string()).unwrap_or_else(|| type_name.to_string());
+                        let parent = fn_decl
+                            .parent
+                            .as_ref()
+                            .map(|p| p.to_string())
+                            .unwrap_or_else(|| type_name.to_string());
                         let qualified = format!("{}.{}", parent, fn_decl.name);
                         map.insert(AutoStr::from(qualified), str_flags);
                     }
@@ -25252,8 +28494,12 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
             if let Stmt::TypeDecl(type_decl) = stmt {
                 let type_name_str = type_decl.name.to_string();
                 for method in &type_decl.methods {
-                    let str_flags: Vec<bool> = method.params.iter()
-                        .map(|p| matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                    let str_flags: Vec<bool> = method
+                        .params
+                        .iter()
+                        .map(|p| {
+                            matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_))
+                        })
                         .collect();
                     if !str_flags.is_empty() {
                         if !generic_methods.contains(&method.name.as_str()) {
@@ -25277,37 +28523,74 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         mut param_types_map: Option<&mut std::collections::HashMap<AutoStr, Vec<Type>>>,
     ) {
         let generic_methods = [
-            "get", "set", "insert", "push", "remove", "contains", "len",
-            "is_empty", "iter", "keys", "values", "clone", "new",
-            "update", "delete", "find", "index",
+            "get", "set", "insert", "push", "remove", "contains", "len", "is_empty", "iter",
+            "keys", "values", "clone", "new", "update", "delete", "find", "index",
         ];
-        let process_fn = |fn_decl: &crate::ast::Fn, _tname: &str, target_struct: &mut std::collections::HashMap<AutoStr, Vec<bool>>, target_int: &mut std::collections::HashMap<AutoStr, Vec<bool>>| {
-            let struct_flags: Vec<bool> = fn_decl.params.iter()
-                .map(|p| !matches!(p.ty,
-                    Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
-                    | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
-                    | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
-                    | Type::Void | Type::Unknown
-                    | Type::Slice(_) | Type::Array(_) | Type::List(_)))
-                .collect();
-            let int_flags: Vec<bool> = fn_decl.params.iter()
-                .map(|p| matches!(p.ty, Type::Int))
-                .collect();
-            let has_struct = struct_flags.iter().any(|&b| b);
-            let has_int = int_flags.iter().any(|&b| b);
-            if has_struct || has_int {
-                if !generic_methods.contains(&fn_decl.name.as_str()) {
-                    if has_struct { target_struct.insert(fn_decl.name.clone(), struct_flags.clone()); }
-                    if has_int { target_int.insert(fn_decl.name.clone(), int_flags.clone()); }
+        let process_fn =
+            |fn_decl: &crate::ast::Fn,
+             _tname: &str,
+             target_struct: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
+             target_int: &mut std::collections::HashMap<AutoStr, Vec<bool>>| {
+                let struct_flags: Vec<bool> = fn_decl
+                    .params
+                    .iter()
+                    .map(|p| {
+                        !matches!(
+                            p.ty,
+                            Type::Int
+                                | Type::Uint
+                                | Type::USize
+                                | Type::I64
+                                | Type::U64
+                                | Type::Float
+                                | Type::Double
+                                | Type::Bool
+                                | Type::Char
+                                | Type::Byte
+                                | Type::StrFixed(_)
+                                | Type::StrOwned
+                                | Type::StrSlice
+                                | Type::CStrLit
+                                | Type::Void
+                                | Type::Unknown
+                                | Type::Slice(_)
+                                | Type::Array(_)
+                                | Type::List(_)
+                        )
+                    })
+                    .collect();
+                let int_flags: Vec<bool> = fn_decl
+                    .params
+                    .iter()
+                    .map(|p| matches!(p.ty, Type::Int))
+                    .collect();
+                let has_struct = struct_flags.iter().any(|&b| b);
+                let has_int = int_flags.iter().any(|&b| b);
+                if has_struct || has_int {
+                    if !generic_methods.contains(&fn_decl.name.as_str()) {
+                        if has_struct {
+                            target_struct.insert(fn_decl.name.clone(), struct_flags.clone());
+                        }
+                        if has_int {
+                            target_int.insert(fn_decl.name.clone(), int_flags.clone());
+                        }
+                    }
+                    if !type_name.is_empty() || fn_decl.parent.is_some() {
+                        let parent = fn_decl
+                            .parent
+                            .as_ref()
+                            .map(|p: &crate::ast::Name| p.to_string())
+                            .unwrap_or_else(|| type_name.to_string());
+                        let qualified = format!("{}.{}", parent, fn_decl.name);
+                        if has_struct {
+                            target_struct.insert(AutoStr::from(&qualified), struct_flags);
+                        }
+                        if has_int {
+                            target_int.insert(AutoStr::from(&qualified), int_flags);
+                        }
+                    }
                 }
-                if !type_name.is_empty() || fn_decl.parent.is_some() {
-                    let parent = fn_decl.parent.as_ref().map(|p: &crate::ast::Name| p.to_string()).unwrap_or_else(|| type_name.to_string());
-                    let qualified = format!("{}.{}", parent, fn_decl.name);
-                    if has_struct { target_struct.insert(AutoStr::from(&qualified), struct_flags); }
-                    if has_int { target_int.insert(AutoStr::from(&qualified), int_flags); }
-                }
-            }
-        };
+            };
         for stmt in stmts {
             if let Stmt::Fn(fn_decl) = stmt {
                 process_fn(fn_decl, type_name, struct_map, int_map);
@@ -25317,7 +28600,11 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                         ptm.insert(fn_decl.name.clone(), pt.clone());
                     }
                     if !type_name.is_empty() || fn_decl.parent.is_some() {
-                        let parent = fn_decl.parent.as_ref().map(|p: &crate::ast::Name| p.to_string()).unwrap_or_else(|| type_name.to_string());
+                        let parent = fn_decl
+                            .parent
+                            .as_ref()
+                            .map(|p: &crate::ast::Name| p.to_string())
+                            .unwrap_or_else(|| type_name.to_string());
                         let qualified = format!("{}.{}", parent, fn_decl.name);
                         ptm.insert(AutoStr::from(&qualified), pt);
                     }
@@ -25327,27 +28614,57 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                 let type_name_str = type_decl.name.to_string();
                 for method in &type_decl.methods {
                     // Create a temporary FnDecl-like approach by using the method directly
-                    let struct_flags: Vec<bool> = method.params.iter()
-                        .map(|p| !matches!(p.ty,
-                            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
-                            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
-                            | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
-                            | Type::Void | Type::Unknown
-                            | Type::Slice(_) | Type::Array(_) | Type::List(_)))
+                    let struct_flags: Vec<bool> = method
+                        .params
+                        .iter()
+                        .map(|p| {
+                            !matches!(
+                                p.ty,
+                                Type::Int
+                                    | Type::Uint
+                                    | Type::USize
+                                    | Type::I64
+                                    | Type::U64
+                                    | Type::Float
+                                    | Type::Double
+                                    | Type::Bool
+                                    | Type::Char
+                                    | Type::Byte
+                                    | Type::StrFixed(_)
+                                    | Type::StrOwned
+                                    | Type::StrSlice
+                                    | Type::CStrLit
+                                    | Type::Void
+                                    | Type::Unknown
+                                    | Type::Slice(_)
+                                    | Type::Array(_)
+                                    | Type::List(_)
+                            )
+                        })
                         .collect();
-                    let int_flags: Vec<bool> = method.params.iter()
+                    let int_flags: Vec<bool> = method
+                        .params
+                        .iter()
                         .map(|p| matches!(p.ty, Type::Int))
                         .collect();
                     let has_struct = struct_flags.iter().any(|&b| b);
                     let has_int = int_flags.iter().any(|&b| b);
                     if has_struct || has_int {
                         if !generic_methods.contains(&method.name.as_str()) {
-                            if has_struct { struct_map.insert(method.name.clone(), struct_flags.clone()); }
-                            if has_int { int_map.insert(method.name.clone(), int_flags.clone()); }
+                            if has_struct {
+                                struct_map.insert(method.name.clone(), struct_flags.clone());
+                            }
+                            if has_int {
+                                int_map.insert(method.name.clone(), int_flags.clone());
+                            }
                         }
                         let qualified = format!("{}.{}", type_name_str, method.name);
-                        if has_struct { struct_map.insert(AutoStr::from(&qualified), struct_flags); }
-                        if has_int { int_map.insert(AutoStr::from(&qualified), int_flags); }
+                        if has_struct {
+                            struct_map.insert(AutoStr::from(&qualified), struct_flags);
+                        }
+                        if has_int {
+                            int_map.insert(AutoStr::from(&qualified), int_flags);
+                        }
                     }
                     if let Some(ptm) = param_types_map.as_mut() {
                         let pt: Vec<Type> = method.params.iter().map(|p| p.ty.clone()).collect();
@@ -25365,7 +28682,14 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     for (_module, ast) in &parsed_modules {
         collect_fn_str_params(&ast.stmts, "", &mut global_fn_str_params);
         collect_fn_spec_params(&ast.stmts, "", &mut global_fn_spec_params);
-        collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params, None, Some(&mut global_fn_param_types));
+        collect_fn_param_types(
+            &ast.stmts,
+            "",
+            &mut global_fn_struct_params,
+            &mut global_fn_int_params,
+            None,
+            Some(&mut global_fn_param_types),
+        );
     }
 
     // Phase 3: Transpile each module into its own Sink
@@ -25375,7 +28699,9 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     let mut ord_restricted_acc: HashSet<AutoStr> = HashSet::new();
     for (module, ast) in &parsed_modules {
         let sink = multi_sink.add(&module.output_name);
-        sink.source_file = module.source_path.file_name()
+        sink.source_file = module
+            .source_path
+            .file_name()
             .map(|n| n.to_string_lossy().to_string());
         let mut transpiler = RustTrans::new(AutoStr::from(&module.output_name));
         // Plan 376D: Share the global TypeStore with the transpiler for type inference.
@@ -25389,11 +28715,21 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         // Plan 264: Pass module_types and current module name for path qualification
         transpiler.module_types = module_types.clone();
         let cur_mod_name = if module.is_dir_module {
-            module.source_path.parent().unwrap()
-                .file_name().unwrap().to_string_lossy().to_string()
+            module
+                .source_path
+                .parent()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
         } else {
-            module.source_path.file_stem()
-                .unwrap().to_string_lossy().to_string()
+            module
+                .source_path
+                .file_stem()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
         };
         transpiler.current_module_name = cur_mod_name.clone();
 
@@ -25408,19 +28744,25 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         // Pre-populate fn_str_param_indices with cross-module function signatures
         for (name, flags) in &global_fn_str_params {
             if !transpiler.fn_str_param_indices.contains_key(name) {
-                transpiler.fn_str_param_indices.insert(name.clone(), flags.clone());
+                transpiler
+                    .fn_str_param_indices
+                    .insert(name.clone(), flags.clone());
             }
         }
 
         // Pre-populate fn_struct_param_indices and fn_int_param_indices for cross-module clone/cast
         for (name, flags) in &global_fn_struct_params {
             if !transpiler.fn_struct_param_indices.contains_key(name) {
-                transpiler.fn_struct_param_indices.insert(name.clone(), flags.clone());
+                transpiler
+                    .fn_struct_param_indices
+                    .insert(name.clone(), flags.clone());
             }
         }
         for (name, flags) in &global_fn_int_params {
             if !transpiler.fn_int_param_indices.contains_key(name) {
-                transpiler.fn_int_param_indices.insert(name.clone(), flags.clone());
+                transpiler
+                    .fn_int_param_indices
+                    .insert(name.clone(), flags.clone());
             }
         }
         // Plan 390 §11 Phase E: Pre-populate fn_spec_param_indices cross-module so
@@ -25428,13 +28770,17 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
         // boundaries and for ext-block methods (e.g. `ext ToolRegistry { register }`).
         for (name, flags) in &global_fn_spec_params {
             if !transpiler.fn_spec_param_indices.contains_key(name) {
-                transpiler.fn_spec_param_indices.insert(name.clone(), flags.clone());
+                transpiler
+                    .fn_spec_param_indices
+                    .insert(name.clone(), flags.clone());
             }
         }
         // Pre-populate fn_param_types for cross-module type-aware call site generation
         for (name, ptypes) in &global_fn_param_types {
             if !transpiler.fn_param_types.contains_key(name) {
-                transpiler.fn_param_types.insert(name.clone(), ptypes.clone());
+                transpiler
+                    .fn_param_types
+                    .insert(name.clone(), ptypes.clone());
             }
         }
         // Plan 376 Phase 1: Pre-populate fn_ret_types cross-module for .await insertion
@@ -25442,12 +28788,16 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
             for stmt in &other_ast.stmts {
                 if let Stmt::Fn(fn_decl) = stmt {
                     if !transpiler.fn_ret_types.contains_key(&fn_decl.name) {
-                        transpiler.fn_ret_types.insert(fn_decl.name.clone(), fn_decl.ret.clone());
+                        transpiler
+                            .fn_ret_types
+                            .insert(fn_decl.name.clone(), fn_decl.ret.clone());
                     }
                     if let Some(parent) = &fn_decl.parent {
                         let qualified: AutoStr = format!("{}.{}", parent, fn_decl.name).into();
                         if !transpiler.fn_ret_types.contains_key(&qualified) {
-                            transpiler.fn_ret_types.insert(qualified, fn_decl.ret.clone());
+                            transpiler
+                                .fn_ret_types
+                                .insert(qualified, fn_decl.ret.clone());
                         }
                     }
                 }
@@ -25455,7 +28805,9 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                     for method in &td.methods {
                         let qualified: AutoStr = format!("{}.{}", td.name, method.name).into();
                         if !transpiler.fn_ret_types.contains_key(&qualified) {
-                            transpiler.fn_ret_types.insert(qualified, method.ret.clone());
+                            transpiler
+                                .fn_ret_types
+                                .insert(qualified, method.ret.clone());
                         }
                     }
                 }
@@ -25464,12 +28816,17 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                     // returns ?Role) — needed for the spec-bound-ident detection
                     // in is-scrutinees (Option<Spec> → Box<dyn Trait>).
                     for method in &spec_decl.methods {
-                        let qualified: AutoStr = format!("{}.{}", spec_decl.name, method.name).into();
+                        let qualified: AutoStr =
+                            format!("{}.{}", spec_decl.name, method.name).into();
                         if !transpiler.fn_ret_types.contains_key(&qualified) {
-                            transpiler.fn_ret_types.insert(qualified, method.ret.clone());
+                            transpiler
+                                .fn_ret_types
+                                .insert(qualified, method.ret.clone());
                         }
                         if !transpiler.fn_ret_types.contains_key(&method.name) {
-                            transpiler.fn_ret_types.insert(method.name.clone(), method.ret.clone());
+                            transpiler
+                                .fn_ret_types
+                                .insert(method.name.clone(), method.ret.clone());
                         }
                     }
                 }
@@ -25482,15 +28839,22 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
             for stmt in &other_ast.stmts {
                 if let Stmt::TypeDecl(td) = stmt {
                     if !transpiler.struct_fields.contains_key(&td.name) {
-                        let field_names: Vec<AutoStr> = td.members.iter()
-                            .map(|m| m.name.clone()).collect();
+                        let field_names: Vec<AutoStr> =
+                            td.members.iter().map(|m| m.name.clone()).collect();
                         if !field_names.is_empty() {
-                            transpiler.struct_fields.insert(td.name.clone(), field_names);
+                            transpiler
+                                .struct_fields
+                                .insert(td.name.clone(), field_names);
                         }
-                        let field_types: Vec<(AutoStr, Type)> = td.members.iter()
-                            .map(|m| (m.name.clone(), m.ty.clone())).collect();
+                        let field_types: Vec<(AutoStr, Type)> = td
+                            .members
+                            .iter()
+                            .map(|m| (m.name.clone(), m.ty.clone()))
+                            .collect();
                         if !field_types.is_empty() {
-                            transpiler.struct_field_types.insert(td.name.clone(), field_types);
+                            transpiler
+                                .struct_field_types
+                                .insert(td.name.clone(), field_types);
                         }
                         // PLAN-010 T2: delegation component fields for literal
                         // default-init (E0063 missing-field debt).
@@ -25499,7 +28863,8 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                         {
                             transpiler.struct_delegation_types.insert(
                                 td.name.clone(),
-                                td.delegations.iter()
+                                td.delegations
+                                    .iter()
                                     .map(|d| (d.member_name.clone(), d.member_type.clone()))
                                     .collect(),
                             );
@@ -25522,11 +28887,21 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                     continue;
                 }
                 let other_name = if other.is_dir_module {
-                    other.source_path.parent().unwrap()
-                        .file_name().unwrap().to_string_lossy().to_string()
+                    other
+                        .source_path
+                        .parent()
+                        .unwrap()
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string()
                 } else {
-                    other.source_path.file_stem()
-                        .unwrap().to_string_lossy().to_string()
+                    other
+                        .source_path
+                        .file_stem()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string()
                 };
                 transpiler.local_modules.insert(other_name);
             }
@@ -25545,8 +28920,12 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                 }
                 let other_dir = other.source_path.parent().unwrap();
                 if other_dir == mod_dir {
-                    let other_name = other.source_path.file_stem()
-                        .unwrap().to_string_lossy().to_string();
+                    let other_name = other
+                        .source_path
+                        .file_stem()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string();
                     transpiler.dir_children.insert(other_name);
                 }
             }
@@ -25579,8 +28958,12 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                 }
                 let other_dir = other.source_path.parent().unwrap();
                 if other_dir == module_dir {
-                    let other_name = other.source_path.file_stem()
-                        .unwrap().to_string_lossy().to_string();
+                    let other_name = other
+                        .source_path
+                        .file_stem()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string();
                     transpiler.sibling_modules.insert(other_name);
                 }
             }
@@ -25645,11 +29028,21 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                     continue;
                 }
                 let other_name = if other.is_dir_module {
-                    other.source_path.parent().unwrap()
-                        .file_name().unwrap().to_string_lossy().to_string()
+                    other
+                        .source_path
+                        .parent()
+                        .unwrap()
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string()
                 } else {
-                    other.source_path.file_stem()
-                        .unwrap().to_string_lossy().to_string()
+                    other
+                        .source_path
+                        .file_stem()
+                        .unwrap()
+                        .to_string_lossy()
+                        .to_string()
                 };
                 mod_names.push(other_name);
             }
@@ -25674,17 +29067,24 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
     // Phase 3.5: Generate Cargo.toml
     let mut result = std::collections::HashMap::new();
     {
-        let project_name = entry_dir.file_name()
+        let project_name = entry_dir
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("auto_project");
         // Sanitize: replace non-alphanumeric with underscore
-        let project_name = project_name.chars()
+        let project_name = project_name
+            .chars()
             .map(|c| if c.is_alphanumeric() { c } else { '_' })
             .collect::<String>()
             .to_lowercase();
 
         // Plan 328: Cargo package names can't start with a digit.
-        let safe_name = if project_name.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        let safe_name = if project_name
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+        {
             format!("app-{}", project_name)
         } else {
             project_name.to_string()
@@ -25716,7 +29116,8 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                         if matches!(u.kind, UseKind::Rust) && !u.paths.is_empty() {
                             let crate_name = u.paths[0].as_str();
                             if !deps.contains(&crate_name.to_string())
-                                && !built_in_crates.contains(&crate_name) {
+                                && !built_in_crates.contains(&crate_name)
+                            {
                                 deps.push(crate_name.to_string());
                             }
                         }
@@ -25726,7 +29127,8 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
                         dep_specs.insert(dep.name.as_str(), dep);
                         // Ensure the name is in the dep list so it gets emitted.
                         if !deps.contains(&dep.name.to_string())
-                            && !built_in_crates.contains(&dep.name.as_str()) {
+                            && !built_in_crates.contains(&dep.name.as_str())
+                        {
                             deps.push(dep.name.to_string());
                         }
                     }
@@ -25748,7 +29150,10 @@ pub fn transpile_rust_project(entry_file: &str) -> AutoResult<std::collections::
             }
         }
 
-        result.insert("Cargo.toml".to_string(), (cargo_toml.into_bytes(), Vec::new()));
+        result.insert(
+            "Cargo.toml".to_string(),
+            (cargo_toml.into_bytes(), Vec::new()),
+        );
     }
 
     // Phase 4: Collect results with per-file source maps
@@ -25780,20 +29185,43 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     if entry_path.is_dir() {
         // Directory mode: discover all .at files in the directory
         let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(entry_path)
-            .map_err(|e| AutoError::Msg(format!("Cannot read directory {}: {}", entry_path.display(), e)))?
+            .map_err(|e| {
+                AutoError::Msg(format!(
+                    "Cannot read directory {}: {}",
+                    entry_path.display(),
+                    e
+                ))
+            })?
             .filter_map(|e| e.ok())
             .map(|e| e.path())
             .filter(|p| p.extension().map(|e| e == "at").unwrap_or(false))
             .collect();
         // Sort by dependency order (same order as merge.sh for consistency)
-        let dep_order = ["pos", "error", "token", "opcode", "ast", "lexer", "parser",
-                         "typeinfer", "codegen", "vm", "a2r", "eval"];
+        let dep_order = [
+            "pos",
+            "error",
+            "token",
+            "opcode",
+            "ast",
+            "lexer",
+            "parser",
+            "typeinfer",
+            "codegen",
+            "vm",
+            "a2r",
+            "eval",
+        ];
         entries.sort_by_key(|p| {
-            let name = p.file_stem().unwrap_or_default().to_string_lossy().to_string();
+            let name = p
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             dep_order.iter().position(|&d| d == name).unwrap_or(999)
         });
         for path in &entries {
-            let name = path.file_stem()
+            let name = path
+                .file_stem()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
@@ -25806,7 +29234,8 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
             });
         }
     } else {
-        let entry_dir = entry_path.parent()
+        let entry_dir = entry_path
+            .parent()
             .ok_or_else(|| AutoError::Msg("Entry file has no parent directory".into()))?;
         let mut visited = std::collections::HashSet::new();
         discover_modules(entry_path, entry_dir, &mut modules, &mut visited)?;
@@ -25824,15 +29253,30 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         let mut store = shared_type_store.write().unwrap();
         for module in &modules {
             let mod_name = if module.is_dir_module {
-                module.source_path.parent().unwrap()
-                    .file_name().unwrap().to_string_lossy().to_string()
+                module
+                    .source_path
+                    .parent()
+                    .unwrap()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
             } else {
-                module.source_path.file_stem()
-                    .unwrap().to_string_lossy().to_string()
+                module
+                    .source_path
+                    .file_stem()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
             };
             module_types.entry(mod_name.clone()).or_default();
-            let source = std::fs::read_to_string(&module.source_path)
-                .map_err(|e| AutoError::Msg(format!("Failed to read {}: {}", module.source_path.display(), e)))?;
+            let source = std::fs::read_to_string(&module.source_path).map_err(|e| {
+                AutoError::Msg(format!(
+                    "Failed to read {}: {}",
+                    module.source_path.display(),
+                    e
+                ))
+            })?;
             for line in source.lines() {
                 let trimmed = line.trim();
                 let (prefix, rest) = if trimmed.starts_with("pub type ") {
@@ -25858,10 +29302,19 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                 } else {
                     after_prefix
                 };
-                if name.is_empty() || !name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                if name.is_empty()
+                    || !name
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false)
+                {
                     continue;
                 }
-                module_types.entry(mod_name.clone()).or_default().insert(name.to_string());
+                module_types
+                    .entry(mod_name.clone())
+                    .or_default()
+                    .insert(name.to_string());
                 if prefix.contains("type ") {
                     let decl = TypeDecl::builtin(name);
                     store.register_type_decl(&decl);
@@ -25895,33 +29348,56 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     // Phase 2: Parse each module
     let mut parsed_modules = Vec::new();
     for module in &modules {
-        let source = std::fs::read_to_string(&module.source_path)
-            .map_err(|e| AutoError::Msg(format!("Failed to read {}: {}", module.source_path.display(), e)))?;
+        let source = std::fs::read_to_string(&module.source_path).map_err(|e| {
+            AutoError::Msg(format!(
+                "Failed to read {}: {}",
+                module.source_path.display(),
+                e
+            ))
+        })?;
         let _scope = shared(crate::scope_manager::ScopeManager::new());
         let mut parser = Parser::new_with_type_store(source.as_str(), shared_type_store.clone());
         parser.set_dest(crate::parser::CompileDest::TransRust);
         parser.skip_check = true;
         let ast = parser.parse().map_err(|e| {
-            AutoError::Msg(format!("Parse error in {}: {}", module.source_path.display(), e.to_string()))
+            AutoError::Msg(format!(
+                "Parse error in {}: {}",
+                module.source_path.display(),
+                e.to_string()
+            ))
         })?;
         parsed_modules.push((module, ast));
     }
 
     // Phase 2.5: Pre-scan all function signatures for cross-module param-type tracking
-    let mut global_fn_str_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
-    let mut global_fn_struct_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
-    let mut global_fn_int_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
-    let mut global_fn_param_types: std::collections::HashMap<AutoStr, Vec<Type>> = std::collections::HashMap::new();
-    let mut global_merge_mut_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    let mut global_fn_str_params: std::collections::HashMap<AutoStr, Vec<bool>> =
+        std::collections::HashMap::new();
+    let mut global_fn_struct_params: std::collections::HashMap<AutoStr, Vec<bool>> =
+        std::collections::HashMap::new();
+    let mut global_fn_int_params: std::collections::HashMap<AutoStr, Vec<bool>> =
+        std::collections::HashMap::new();
+    let mut global_fn_param_types: std::collections::HashMap<AutoStr, Vec<Type>> =
+        std::collections::HashMap::new();
+    let mut global_merge_mut_params: std::collections::HashMap<AutoStr, Vec<bool>> =
+        std::collections::HashMap::new();
     // Plan 390 §11 Phase E: spec params need Box::new() at call sites.
-    let mut global_fn_spec_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    let mut global_fn_spec_params: std::collections::HashMap<AutoStr, Vec<bool>> =
+        std::collections::HashMap::new();
 
-    fn collect_fn_str_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
-        let generic_methods = ["get", "set", "insert", "push", "remove", "contains", "len",
-            "is_empty", "iter", "keys", "values", "clone", "new", "update", "delete", "find", "index"];
+    fn collect_fn_str_params(
+        stmts: &[Stmt],
+        type_name: &str,
+        map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
+    ) {
+        let generic_methods = [
+            "get", "set", "insert", "push", "remove", "contains", "len", "is_empty", "iter",
+            "keys", "values", "clone", "new", "update", "delete", "find", "index",
+        ];
         for stmt in stmts {
             if let Stmt::Fn(fn_decl) = stmt {
-                let str_flags: Vec<bool> = fn_decl.params.iter()
+                let str_flags: Vec<bool> = fn_decl
+                    .params
+                    .iter()
                     .map(|p| matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
                     .collect();
                 if !str_flags.is_empty() {
@@ -25929,7 +29405,11 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                         map.insert(fn_decl.name.clone(), str_flags.clone());
                     }
                     if !type_name.is_empty() || fn_decl.parent.is_some() {
-                        let parent = fn_decl.parent.as_ref().map(|p| p.to_string()).unwrap_or_else(|| type_name.to_string());
+                        let parent = fn_decl
+                            .parent
+                            .as_ref()
+                            .map(|p| p.to_string())
+                            .unwrap_or_else(|| type_name.to_string());
                         let qualified = format!("{}.{}", parent, fn_decl.name);
                         map.insert(AutoStr::from(qualified), str_flags);
                     }
@@ -25938,8 +29418,12 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
             if let Stmt::TypeDecl(type_decl) = stmt {
                 let type_name_str = type_decl.name.to_string();
                 for method in &type_decl.methods {
-                    let str_flags: Vec<bool> = method.params.iter()
-                        .map(|p| matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_)))
+                    let str_flags: Vec<bool> = method
+                        .params
+                        .iter()
+                        .map(|p| {
+                            matches!(p.ty, Type::StrSlice | Type::StrOwned | Type::StrFixed(_))
+                        })
                         .collect();
                     if !str_flags.is_empty() {
                         if !generic_methods.contains(&method.name.as_str()) {
@@ -25956,24 +29440,39 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     // Plan 390 §11 Phase E: spec-param collector (mirrors collect_fn_str_params
     // but for spec auto-boxing). Covers Fn / TypeDecl methods / Ext methods — the
     // last is a separate Stmt::Ext not reached by the TypeDecl scan.
-    fn collect_fn_spec_params(stmts: &[Stmt], type_name: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>) {
-        let generic_methods = ["get", "set", "insert", "push", "remove", "contains", "len",
-            "is_empty", "iter", "keys", "values", "clone", "new", "update", "delete", "find", "index"];
-        let scan_fn = |fn_decl: &Fn, parent: &str, map: &mut std::collections::HashMap<AutoStr, Vec<bool>>| {
-            let spec_flags: Vec<bool> = fn_decl.params.iter()
-                .map(|p| matches!(p.ty, Type::Spec(_)))
-                .collect();
-            if !spec_flags.is_empty() {
-                if !generic_methods.contains(&fn_decl.name.as_str()) {
-                    map.insert(fn_decl.name.clone(), spec_flags.clone());
+    fn collect_fn_spec_params(
+        stmts: &[Stmt],
+        type_name: &str,
+        map: &mut std::collections::HashMap<AutoStr, Vec<bool>>,
+    ) {
+        let generic_methods = [
+            "get", "set", "insert", "push", "remove", "contains", "len", "is_empty", "iter",
+            "keys", "values", "clone", "new", "update", "delete", "find", "index",
+        ];
+        let scan_fn =
+            |fn_decl: &Fn,
+             parent: &str,
+             map: &mut std::collections::HashMap<AutoStr, Vec<bool>>| {
+                let spec_flags: Vec<bool> = fn_decl
+                    .params
+                    .iter()
+                    .map(|p| matches!(p.ty, Type::Spec(_)))
+                    .collect();
+                if !spec_flags.is_empty() {
+                    if !generic_methods.contains(&fn_decl.name.as_str()) {
+                        map.insert(fn_decl.name.clone(), spec_flags.clone());
+                    }
+                    if !parent.is_empty() || fn_decl.parent.is_some() {
+                        let p = fn_decl
+                            .parent
+                            .as_ref()
+                            .map(|x| x.to_string())
+                            .unwrap_or_else(|| parent.to_string());
+                        let qualified = format!("{}.{}", p, fn_decl.name);
+                        map.insert(AutoStr::from(qualified), spec_flags);
+                    }
                 }
-                if !parent.is_empty() || fn_decl.parent.is_some() {
-                    let p = fn_decl.parent.as_ref().map(|x| x.to_string()).unwrap_or_else(|| parent.to_string());
-                    let qualified = format!("{}.{}", p, fn_decl.name);
-                    map.insert(AutoStr::from(qualified), spec_flags);
-                }
-            }
-        };
+            };
         for stmt in stmts {
             if let Stmt::Fn(fn_decl) = stmt {
                 scan_fn(fn_decl, type_name, map);
@@ -25999,38 +29498,76 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         mut merge_mut_map: Option<&mut std::collections::HashMap<AutoStr, Vec<bool>>>,
         mut param_types_map: Option<&mut std::collections::HashMap<AutoStr, Vec<Type>>>,
     ) {
-        let generic_methods = ["get", "set", "insert", "push", "remove", "contains", "len",
-            "is_empty", "iter", "keys", "values", "clone", "new", "update", "delete", "find", "index"];
+        let generic_methods = [
+            "get", "set", "insert", "push", "remove", "contains", "len", "is_empty", "iter",
+            "keys", "values", "clone", "new", "update", "delete", "find", "index",
+        ];
         for stmt in stmts {
             if let Stmt::Fn(fn_decl) = stmt {
-                let struct_flags: Vec<bool> = fn_decl.params.iter()
-                    .map(|p| !matches!(p.ty,
-                        Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
-                        | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
-                        | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
-                        | Type::Void | Type::Unknown
-                        | Type::Slice(_) | Type::Array(_) | Type::List(_)))
+                let struct_flags: Vec<bool> = fn_decl
+                    .params
+                    .iter()
+                    .map(|p| {
+                        !matches!(
+                            p.ty,
+                            Type::Int
+                                | Type::Uint
+                                | Type::USize
+                                | Type::I64
+                                | Type::U64
+                                | Type::Float
+                                | Type::Double
+                                | Type::Bool
+                                | Type::Char
+                                | Type::Byte
+                                | Type::StrFixed(_)
+                                | Type::StrOwned
+                                | Type::StrSlice
+                                | Type::CStrLit
+                                | Type::Void
+                                | Type::Unknown
+                                | Type::Slice(_)
+                                | Type::Array(_)
+                                | Type::List(_)
+                        )
+                    })
                     .collect();
-                let int_flags: Vec<bool> = fn_decl.params.iter()
+                let int_flags: Vec<bool> = fn_decl
+                    .params
+                    .iter()
                     .map(|p| matches!(p.ty, Type::Int))
                     .collect();
                 let has_struct = struct_flags.iter().any(|&b| b);
                 let has_int = int_flags.iter().any(|&b| b);
                 if has_struct || has_int {
                     if !generic_methods.contains(&fn_decl.name.as_str()) {
-                        if has_struct { struct_map.insert(fn_decl.name.clone(), struct_flags.clone()); }
-                        if has_int { int_map.insert(fn_decl.name.clone(), int_flags.clone()); }
+                        if has_struct {
+                            struct_map.insert(fn_decl.name.clone(), struct_flags.clone());
+                        }
+                        if has_int {
+                            int_map.insert(fn_decl.name.clone(), int_flags.clone());
+                        }
                     }
                     if !type_name.is_empty() || fn_decl.parent.is_some() {
-                        let parent = fn_decl.parent.as_ref().map(|p| p.to_string()).unwrap_or_else(|| type_name.to_string());
+                        let parent = fn_decl
+                            .parent
+                            .as_ref()
+                            .map(|p| p.to_string())
+                            .unwrap_or_else(|| type_name.to_string());
                         let qualified = format!("{}.{}", parent, fn_decl.name);
-                        if has_struct { struct_map.insert(AutoStr::from(&qualified), struct_flags); }
-                        if has_int { int_map.insert(AutoStr::from(&qualified), int_flags); }
+                        if has_struct {
+                            struct_map.insert(AutoStr::from(&qualified), struct_flags);
+                        }
+                        if has_int {
+                            int_map.insert(AutoStr::from(&qualified), int_flags);
+                        }
                     }
                 }
                 // Pre-scan merge-mut params for correct call-site handling
                 if let Some(ref mut mm) = merge_mut_map {
-                    let merge_flags: Vec<bool> = fn_decl.params.iter()
+                    let merge_flags: Vec<bool> = fn_decl
+                        .params
+                        .iter()
                         .map(|p| RustTrans::is_merge_mut_type(&p.ty))
                         .collect();
                     if merge_flags.iter().any(|&b| b) {
@@ -26044,7 +29581,11 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                         ptm.insert(fn_decl.name.clone(), pt.clone());
                     }
                     if !type_name.is_empty() || fn_decl.parent.is_some() {
-                        let parent = fn_decl.parent.as_ref().map(|p| p.to_string()).unwrap_or_else(|| type_name.to_string());
+                        let parent = fn_decl
+                            .parent
+                            .as_ref()
+                            .map(|p| p.to_string())
+                            .unwrap_or_else(|| type_name.to_string());
                         let qualified = format!("{}.{}", parent, fn_decl.name);
                         ptm.insert(AutoStr::from(&qualified), pt);
                     }
@@ -26053,27 +29594,57 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
             if let Stmt::TypeDecl(type_decl) = stmt {
                 let type_name_str = type_decl.name.to_string();
                 for method in &type_decl.methods {
-                    let struct_flags: Vec<bool> = method.params.iter()
-                        .map(|p| !matches!(p.ty,
-                            Type::Int | Type::Uint | Type::USize | Type::I64 | Type::U64
-                            | Type::Float | Type::Double | Type::Bool | Type::Char | Type::Byte
-                            | Type::StrFixed(_) | Type::StrOwned | Type::StrSlice | Type::CStrLit
-                            | Type::Void | Type::Unknown
-                            | Type::Slice(_) | Type::Array(_) | Type::List(_)))
+                    let struct_flags: Vec<bool> = method
+                        .params
+                        .iter()
+                        .map(|p| {
+                            !matches!(
+                                p.ty,
+                                Type::Int
+                                    | Type::Uint
+                                    | Type::USize
+                                    | Type::I64
+                                    | Type::U64
+                                    | Type::Float
+                                    | Type::Double
+                                    | Type::Bool
+                                    | Type::Char
+                                    | Type::Byte
+                                    | Type::StrFixed(_)
+                                    | Type::StrOwned
+                                    | Type::StrSlice
+                                    | Type::CStrLit
+                                    | Type::Void
+                                    | Type::Unknown
+                                    | Type::Slice(_)
+                                    | Type::Array(_)
+                                    | Type::List(_)
+                            )
+                        })
                         .collect();
-                    let int_flags: Vec<bool> = method.params.iter()
+                    let int_flags: Vec<bool> = method
+                        .params
+                        .iter()
                         .map(|p| matches!(p.ty, Type::Int))
                         .collect();
                     let has_struct = struct_flags.iter().any(|&b| b);
                     let has_int = int_flags.iter().any(|&b| b);
                     if has_struct || has_int {
                         if !generic_methods.contains(&method.name.as_str()) {
-                            if has_struct { struct_map.insert(method.name.clone(), struct_flags.clone()); }
-                            if has_int { int_map.insert(method.name.clone(), int_flags.clone()); }
+                            if has_struct {
+                                struct_map.insert(method.name.clone(), struct_flags.clone());
+                            }
+                            if has_int {
+                                int_map.insert(method.name.clone(), int_flags.clone());
+                            }
                         }
                         let qualified = format!("{}.{}", type_name_str, method.name);
-                        if has_struct { struct_map.insert(AutoStr::from(&qualified), struct_flags); }
-                        if has_int { int_map.insert(AutoStr::from(&qualified), int_flags); }
+                        if has_struct {
+                            struct_map.insert(AutoStr::from(&qualified), struct_flags);
+                        }
+                        if has_int {
+                            int_map.insert(AutoStr::from(&qualified), int_flags);
+                        }
                     }
                     if let Some(ref mut ptm) = param_types_map {
                         let pt: Vec<Type> = method.params.iter().map(|p| p.ty.clone()).collect();
@@ -26103,16 +29674,26 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     for (_module, ast) in &parsed_modules {
         collect_fn_str_params(&ast.stmts, "", &mut global_fn_str_params);
         collect_fn_spec_params(&ast.stmts, "", &mut global_fn_spec_params);
-        collect_fn_param_types(&ast.stmts, "", &mut global_fn_struct_params, &mut global_fn_int_params, Some(&mut global_merge_mut_params), Some(&mut global_fn_param_types));
+        collect_fn_param_types(
+            &ast.stmts,
+            "",
+            &mut global_fn_struct_params,
+            &mut global_fn_int_params,
+            Some(&mut global_merge_mut_params),
+            Some(&mut global_fn_param_types),
+        );
     }
 
     // Plan 433 A1: cross-module C11 `mut p T` flags — a later module calling an
     // earlier module's &mut-taking fn must pass `&mut *arg`, not `arg.clone()`.
-    let mut global_fn_mut_params: std::collections::HashMap<AutoStr, Vec<bool>> = std::collections::HashMap::new();
+    let mut global_fn_mut_params: std::collections::HashMap<AutoStr, Vec<bool>> =
+        std::collections::HashMap::new();
     for (_module, ast) in &parsed_modules {
         for stmt in &ast.stmts {
             if let Stmt::Fn(f) = stmt {
-                let flags: Vec<bool> = f.params.iter()
+                let flags: Vec<bool> = f
+                    .params
+                    .iter()
                     .map(|p| p.mode == crate::ast::ParamMode::Mut)
                     .collect();
                 if flags.iter().any(|&b| b) {
@@ -26125,7 +29706,8 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
     // Plan 433 A1: cross-module fn return types (feeds let-binding type
     // inference via scan_call_init_bindings — a `var c = cg_compile(s)` in a
     // later module must know CG before its body emits).
-    let mut global_fn_ret_types: std::collections::HashMap<AutoStr, Type> = std::collections::HashMap::new();
+    let mut global_fn_ret_types: std::collections::HashMap<AutoStr, Type> =
+        std::collections::HashMap::new();
     for (_module, ast) in &parsed_modules {
         for stmt in &ast.stmts {
             match stmt {
@@ -26176,11 +29758,21 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
 
         transpiler.module_types = module_types.clone();
         let cur_mod_name = if module.is_dir_module {
-            module.source_path.parent().unwrap()
-                .file_name().unwrap().to_string_lossy().to_string()
+            module
+                .source_path
+                .parent()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
         } else {
-            module.source_path.file_stem()
-                .unwrap().to_string_lossy().to_string()
+            module
+                .source_path
+                .file_stem()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
         };
         transpiler.current_module_name = cur_mod_name.clone();
         transpiler.tag_types = all_enum_names.clone();
@@ -26193,27 +29785,37 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
         // Pre-populate cross-module param indices
         for (name, flags) in &global_fn_str_params {
             if !transpiler.fn_str_param_indices.contains_key(name) {
-                transpiler.fn_str_param_indices.insert(name.clone(), flags.clone());
+                transpiler
+                    .fn_str_param_indices
+                    .insert(name.clone(), flags.clone());
             }
         }
         for (name, flags) in &global_fn_struct_params {
             if !transpiler.fn_struct_param_indices.contains_key(name) {
-                transpiler.fn_struct_param_indices.insert(name.clone(), flags.clone());
+                transpiler
+                    .fn_struct_param_indices
+                    .insert(name.clone(), flags.clone());
             }
         }
         for (name, flags) in &global_fn_int_params {
             if !transpiler.fn_int_param_indices.contains_key(name) {
-                transpiler.fn_int_param_indices.insert(name.clone(), flags.clone());
+                transpiler
+                    .fn_int_param_indices
+                    .insert(name.clone(), flags.clone());
             }
         }
         for (name, ptypes) in &global_fn_param_types {
             if !transpiler.fn_param_types.contains_key(name) {
-                transpiler.fn_param_types.insert(name.clone(), ptypes.clone());
+                transpiler
+                    .fn_param_types
+                    .insert(name.clone(), ptypes.clone());
             }
         }
         for (name, flags) in &global_merge_mut_params {
             if !transpiler.fn_merge_mut_params.contains_key(name) {
-                transpiler.fn_merge_mut_params.insert(name.clone(), flags.clone());
+                transpiler
+                    .fn_merge_mut_params
+                    .insert(name.clone(), flags.clone());
             }
         }
         // Plan 433 A1: cross-module fn return types (see collection above).
@@ -26234,15 +29836,22 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
             for stmt in &other_ast.stmts {
                 if let Stmt::TypeDecl(td) = stmt {
                     if !transpiler.struct_fields.contains_key(&td.name) {
-                        let field_names: Vec<AutoStr> = td.members.iter()
-                            .map(|m| m.name.clone()).collect();
+                        let field_names: Vec<AutoStr> =
+                            td.members.iter().map(|m| m.name.clone()).collect();
                         if !field_names.is_empty() {
-                            transpiler.struct_fields.insert(td.name.clone(), field_names);
+                            transpiler
+                                .struct_fields
+                                .insert(td.name.clone(), field_names);
                         }
-                        let field_types: Vec<(AutoStr, Type)> = td.members.iter()
-                            .map(|m| (m.name.clone(), m.ty.clone())).collect();
+                        let field_types: Vec<(AutoStr, Type)> = td
+                            .members
+                            .iter()
+                            .map(|m| (m.name.clone(), m.ty.clone()))
+                            .collect();
                         if !field_types.is_empty() {
-                            transpiler.struct_field_types.insert(td.name.clone(), field_types);
+                            transpiler
+                                .struct_field_types
+                                .insert(td.name.clone(), field_types);
                         }
                         // PLAN-010 T2: delegation component fields for literal
                         // default-init (E0063 missing-field debt).
@@ -26251,7 +29860,8 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
                         {
                             transpiler.struct_delegation_types.insert(
                                 td.name.clone(),
-                                td.delegations.iter()
+                                td.delegations
+                                    .iter()
                                     .map(|d| (d.member_name.clone(), d.member_type.clone()))
                                     .collect(),
                             );
@@ -26263,17 +29873,19 @@ pub fn transpile_rust_project_merged(entry_file: &str) -> AutoResult<Vec<u8>> {
 
         // Dedup: skip struct/enum definitions already emitted by a previous module
         let mut deduped_ast = ast.clone();
-        deduped_ast.stmts.retain(|stmt| {
-            match stmt {
-                Stmt::TypeDecl(td) => seen_structs.insert(td.name.to_string()),
-                Stmt::EnumDecl(ed) => seen_enums.insert(ed.name.to_string()),
-                _ => true,
-            }
+        deduped_ast.stmts.retain(|stmt| match stmt {
+            Stmt::TypeDecl(td) => seen_structs.insert(td.name.to_string()),
+            Stmt::EnumDecl(ed) => seen_enums.insert(ed.name.to_string()),
+            _ => true,
         });
         // Record what we've seen
         for stmt in &ast.stmts {
-            if let Stmt::TypeDecl(td) = stmt { seen_structs.insert(td.name.to_string()); }
-            if let Stmt::EnumDecl(ed) = stmt { seen_enums.insert(ed.name.to_string()); }
+            if let Stmt::TypeDecl(td) = stmt {
+                seen_structs.insert(td.name.to_string());
+            }
+            if let Stmt::EnumDecl(ed) = stmt {
+                seen_enums.insert(ed.name.to_string());
+            }
         }
 
         transpiler.trans(deduped_ast, &mut sink)?;
@@ -26300,7 +29912,8 @@ fn post_process_merged(body: &mut Vec<u8>) {
     // Note: struct/enum dedup is handled at AST level in transpile_rust_project_merged
     let mut seen_allow = false;
     let mut seen_uses: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut seen_top_level_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_top_level_names: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     let mut brace_depth: i32 = 0;
 
     let mut result = String::new();
@@ -26311,7 +29924,10 @@ fn post_process_merged(body: &mut Vec<u8>) {
 
         // Skip duplicate #![allow(...)] pragmas
         if trimmed.starts_with("#![allow(") {
-            if seen_allow { i += 1; continue; }
+            if seen_allow {
+                i += 1;
+                continue;
+            }
             seen_allow = true;
             result.push_str(line);
             result.push('\n');
@@ -26320,12 +29936,17 @@ fn post_process_merged(body: &mut Vec<u8>) {
         }
 
         // Skip duplicate use statements (any form)
-        if trimmed.starts_with("use ") || trimmed.starts_with("#[allow(unused_imports)]") && i + 1 < lines.len() && lines[i+1].trim().starts_with("use ") {
+        if trimmed.starts_with("use ")
+            || trimmed.starts_with("#[allow(unused_imports)]")
+                && i + 1 < lines.len()
+                && lines[i + 1].trim().starts_with("use ")
+        {
             let use_line = if trimmed.starts_with("#[allow") {
                 // Skip the #[allow(unused_imports)] annotation line too
                 let actual_use = lines[i + 1].trim();
                 if seen_uses.contains(actual_use) {
-                    i += 2; continue; // skip both annotation and use
+                    i += 2;
+                    continue; // skip both annotation and use
                 }
                 seen_uses.insert(actual_use.to_string());
                 result.push_str(line);
@@ -26336,7 +29957,8 @@ fn post_process_merged(body: &mut Vec<u8>) {
                 trimmed
             };
             if seen_uses.contains(use_line) {
-                i += 1; continue;
+                i += 1;
+                continue;
             }
             seen_uses.insert(use_line.to_string());
             result.push_str(line);
@@ -26352,7 +29974,8 @@ fn post_process_merged(body: &mut Vec<u8>) {
                 if let Some(colon_pos) = name.find(':') {
                     let const_name = &name[..colon_pos];
                     if seen_top_level_names.contains(const_name) {
-                        i += 1; continue;
+                        i += 1;
+                        continue;
                     }
                     seen_top_level_names.insert(const_name.to_string());
                 }
@@ -26411,10 +30034,15 @@ fn post_process_merged(body: &mut Vec<u8>) {
         // Skip duplicate type aliases: "type X = ..."
         if trimmed.starts_with("type ") && trimmed.contains('=') {
             if let Some(rest) = trimmed.strip_prefix("type ") {
-                let name = rest.split(|c: char| c == '=' || c == '<' || c == ' ').next().unwrap_or("").trim();
+                let name = rest
+                    .split(|c: char| c == '=' || c == '<' || c == ' ')
+                    .next()
+                    .unwrap_or("")
+                    .trim();
                 if !name.is_empty() {
                     if seen_top_level_names.contains(name) {
-                        i += 1; continue;
+                        i += 1;
+                        continue;
                     }
                     seen_top_level_names.insert(name.to_string());
                 }
@@ -26467,10 +30095,15 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     // tenv clone at cross-file call sites: no longer needed in merge mode
     // since TypeEnv is now &mut TypeEnv (auto-reborrow handles multiple calls)
     // node.name partial move fix
-    content = content.replace("let mut callee_name = node.name;", "let mut callee_name = node.name.clone();");
+    content = content.replace(
+        "let mut callee_name = node.name;",
+        "let mut callee_name = node.name.clone();",
+    );
     // str_to_int arithmetic fix
     let re = cached_regex(r#"result = format!\("\{\}\{\}", result \* 10, ch - 48\)"#).unwrap();
-    content = re.replace_all(&content, "result = result * 10 + (ch - 48)").to_string();
+    content = re
+        .replace_all(&content, "result = result * 10 + (ch - 48)")
+        .to_string();
     // Allow overflowing literals
     if !content.contains("#![allow(overflowing_literals)]") {
         content = format!("#![allow(overflowing_literals)]\n{}", content);
@@ -26510,10 +30143,7 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
 
     // === fix_param_vec.py ===
     // Add NodeKind::Param variant
-    content = content.replace(
-        "MoveExpr = 33,\n}",
-        "MoveExpr = 33,\n    Param = 34,\n}",
-    );
+    content = content.replace("MoveExpr = 33,\n}", "MoveExpr = 33,\n    Param = 34,\n}");
     // Add to Display impl
     content = content.replace(
         "NodeKind::NilNode => write!(f, \"NilNode\")",
@@ -26549,70 +30179,99 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
 
     // === fix_vec_get.py: AST level covers most cases, regex catches remaining 2 edge cases ===
     let re = cached_regex(r"p\.tokens\.get\(([^)]+)\)").unwrap();
-    content = re.replace_all(&content, "p.tokens[$1 as usize].clone()").to_string();
+    content = re
+        .replace_all(&content, "p.tokens[$1 as usize].clone()")
+        .to_string();
     let re = cached_regex(r"\bcode\.get\(([^)]+)\)").unwrap();
-    content = re.replace_all(&content, "code[$1 as usize].clone()").to_string();
+    content = re
+        .replace_all(&content, "code[$1 as usize].clone()")
+        .to_string();
 
     // === fix_usize_insert.py ===
     // .insert(arith_expr, -> .insert((arith_expr) as usize,
     let re = cached_regex(r"\.insert\(([^,]+),").unwrap();
-    content = re.replace_all(&content, |caps: &regex::Captures| {
-        let idx = caps[1].trim().to_string();
-        if idx.contains("as usize") || idx.starts_with('"') || idx.contains(".to_string()") || idx.starts_with('&') {
-            caps[0].to_string()
-        } else if idx.chars().any(|c| "+-*/%".contains(c)) {
-            format!(".insert(({}) as usize,", idx)
-        } else {
-            caps[0].to_string()
-        }
-    }).to_string();
+    content = re
+        .replace_all(&content, |caps: &regex::Captures| {
+            let idx = caps[1].trim().to_string();
+            if idx.contains("as usize")
+                || idx.starts_with('"')
+                || idx.contains(".to_string()")
+                || idx.starts_with('&')
+            {
+                caps[0].to_string()
+            } else if idx.chars().any(|c| "+-*/%".contains(c)) {
+                format!(".insert(({}) as usize,", idx)
+            } else {
+                caps[0].to_string()
+            }
+        })
+        .to_string();
 
     // === fix_hashmap_get.py ===
     // Replace .get(expr) with .get(&expr).cloned().unwrap_or_default() for HashMap types.
     // Only applies to known HashMap field names to avoid corrupting Vec .get() calls.
     let hashmap_fields = [
-        "struct_fields", "fn_param_types", "fn_defs", "globals",
-        "type_aliases", "scopes", "strings", "state", "env",
+        "struct_fields",
+        "fn_param_types",
+        "fn_defs",
+        "globals",
+        "type_aliases",
+        "scopes",
+        "strings",
+        "state",
+        "env",
     ];
     for field in &hashmap_fields {
         // env.field.get(X) pattern
-        let pat = cached_regex(&format!(
-            r"env\.{}\.get\(([^)]+)\)", regex::escape(field)
-        )).unwrap();
-        content = pat.replace_all(&content, |caps: &regex::Captures| {
-            let arg = caps[1].trim();
-            let key_expr = if arg.starts_with('"') || arg.starts_with("c\"") {
-                arg.to_string()
-            } else if arg.contains("format!") || arg.contains("to_string") {
-                format!("&{}", arg)
-            } else {
-                format!("&*{}", arg)
-            };
-            format!("env.{}.get({}).cloned().unwrap_or_default()", field, key_expr)
-        }).to_string();
+        let pat = cached_regex(&format!(r"env\.{}\.get\(([^)]+)\)", regex::escape(field))).unwrap();
+        content = pat
+            .replace_all(&content, |caps: &regex::Captures| {
+                let arg = caps[1].trim();
+                let key_expr = if arg.starts_with('"') || arg.starts_with("c\"") {
+                    arg.to_string()
+                } else if arg.contains("format!") || arg.contains("to_string") {
+                    format!("&{}", arg)
+                } else {
+                    format!("&*{}", arg)
+                };
+                format!(
+                    "env.{}.get({}).cloned().unwrap_or_default()",
+                    field, key_expr
+                )
+            })
+            .to_string();
         // bare field.get(X) pattern (when field is a local variable)
-        let pat = cached_regex(&format!(
-            r"\b{}\.get\(([^)]+)\)", regex::escape(field)
-        )).unwrap();
-        content = pat.replace_all(&content, |caps: &regex::Captures| {
-            let arg = caps[1].trim();
-            // Skip Vec-style .get() with 'as usize' index
-            if arg.contains("as usize") { return caps[0].to_string(); }
-            let key_expr = if arg.starts_with('"') || arg.starts_with("c\"") {
-                arg.to_string()
-            } else if arg.contains("format!") || arg.contains("to_string") {
-                format!("&{}", arg)
-            } else {
-                format!("&*{}", arg)
-            };
-            format!("{}.get({}).cloned().unwrap_or_default()", field, key_expr)
-        }).to_string();
+        let pat = cached_regex(&format!(r"\b{}\.get\(([^)]+)\)", regex::escape(field))).unwrap();
+        content = pat
+            .replace_all(&content, |caps: &regex::Captures| {
+                let arg = caps[1].trim();
+                // Skip Vec-style .get() with 'as usize' index
+                if arg.contains("as usize") {
+                    return caps[0].to_string();
+                }
+                let key_expr = if arg.starts_with('"') || arg.starts_with("c\"") {
+                    arg.to_string()
+                } else if arg.contains("format!") || arg.contains("to_string") {
+                    format!("&{}", arg)
+                } else {
+                    format!("&*{}", arg)
+                };
+                format!("{}.get({}).cloned().unwrap_or_default()", field, key_expr)
+            })
+            .to_string();
     }
 
     // === fix_misc: void functions return 0 -> return ===
     // AST level handles top-level return 0 in void functions, but if-block returns need regex
-    for fn_name in &["codegen_expr", "codegen_stmt", "type_infer_stmts",
-                     "codegen_call", "codegen_binop", "codegen_unary", "a2r_transpile"] {
+    for fn_name in &[
+        "codegen_expr",
+        "codegen_stmt",
+        "type_infer_stmts",
+        "codegen_call",
+        "codegen_binop",
+        "codegen_unary",
+        "a2r_transpile",
+    ] {
         let fn_pattern = format!("fn {}(", fn_name);
         if let Some(pos) = content.find(&fn_pattern) {
             if let Some(brace_pos) = content[pos..].find('{') {
@@ -26628,10 +30287,16 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
                     }
                     end += 1;
                 }
-                let body = &content[abs_brace+1..end-1];
+                let body = &content[abs_brace + 1..end - 1];
                 let fixed_body = body.replace("return 0;", "return;");
                 if body != fixed_body {
-                    content = format!("{}{}{}{}", &content[..abs_brace+1], fixed_body, &content[end-1..], "");
+                    content = format!(
+                        "{}{}{}{}",
+                        &content[..abs_brace + 1],
+                        fixed_body,
+                        &content[end - 1..],
+                        ""
+                    );
                 }
             }
         }
@@ -26652,9 +30317,13 @@ fn apply_merged_regex_fixes(body: &mut Vec<u8>) {
     content = content.replace(".to_string().cloned().unwrap_or_default()", ".to_string()");
     // Also fix .cloned().unwrap_or_default() on format!() results
     let re = cached_regex(r#"format!\([^)]*\)\.cloned\(\)\.unwrap_or_default\(\)"#).unwrap();
-    content = re.replace_all(&content, |caps: &regex::Captures| {
-        caps[0].trim_end_matches(".cloned().unwrap_or_default()").to_string()
-    }).to_string();
+    content = re
+        .replace_all(&content, |caps: &regex::Captures| {
+            caps[0]
+                .trim_end_matches(".cloned().unwrap_or_default()")
+                .to_string()
+        })
+        .to_string();
 
     // === &&expr -> &expr (E0277: double reference to String) ===
     // state.get(&&"key".to_string()) -> state.get(&"key".to_string())
@@ -26718,9 +30387,11 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
     // === Fix .get(...).as_str() (E0599: no method as_str on Option) ===
     // .get(X).as_str() -> .get(X).cloned().unwrap_or_default()
     let re = cached_regex(r"\.get\(([^)]+)\)\.as_str\(\)").unwrap();
-    content = re.replace_all(&content, |caps: &regex::Captures| {
-        format!(".get({}).cloned().unwrap_or_default()", &caps[1])
-    }).to_string();
+    content = re
+        .replace_all(&content, |caps: &regex::Captures| {
+            format!(".get({}).cloned().unwrap_or_default()", &caps[1])
+        })
+        .to_string();
 
     // === Fix .to_string() after format!() (unnecessary, format! returns String) ===
     // This causes "expected &str, found String" in some contexts
@@ -26851,8 +30522,14 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
     // === Fix path move into str_substr (E0382) ===
     // str_substr(path, 0, 5) -> str_substr(&path, 0, 5) to avoid moving path
     content = content.replace("str_substr(path, 0, 5)", "str_substr(&path, 0, 5)");
-    content = content.replace("str_substr(path, 5, (path.len() as i64))", "str_substr(&path, 5, (path.len() as i64))");
-    content = content.replace("a2r_path_to_rust(str_substr(&path, 5, (path.len() as i64)).as_str())", "a2r_path_to_rust(&str_substr(&path, 5, (path.len() as i64)))");
+    content = content.replace(
+        "str_substr(path, 5, (path.len() as i64))",
+        "str_substr(&path, 5, (path.len() as i64))",
+    );
+    content = content.replace(
+        "a2r_path_to_rust(str_substr(&path, 5, (path.len() as i64)).as_str())",
+        "a2r_path_to_rust(&str_substr(&path, 5, (path.len() as i64)))",
+    );
 
     // === Fix state borrow conflict (E0502) ===
     // let s = state.get(X); ... state.insert(Y, Z);
@@ -26892,7 +30569,9 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
         for var in &["nkey", "ekey", "vkey", "name", "key", "skey", "fn_name"] {
             content = content.replace(&format!("&&{}.", var), &format!("&{}.", var));
         }
-        if content.len() == before { break; } // no more replacements
+        if content.len() == before {
+            break;
+        } // no more replacements
     }
     // Fix .to_string().cloned().unwrap_or_default() -> .to_string()
     content = content.replace(".to_string().cloned().unwrap_or_default()", ".to_string()");
@@ -26904,7 +30583,10 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
         );
     }
     // Fix .cloned().unwrap_or_default().unwrap() (unwrap on String)
-    content = content.replace(".cloned().unwrap_or_default().unwrap()", ".cloned().unwrap_or_default()");
+    content = content.replace(
+        ".cloned().unwrap_or_default().unwrap()",
+        ".cloned().unwrap_or_default()",
+    );
     // Fix .cloned().unwrap_or_default().as_str() (as_str on String)
     // Actually .as_str() on String is fine. But on Option it's not.
     // The .get().as_str() pattern was already fixed above.
@@ -26912,14 +30594,18 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
     // Fix state.get(X) where X has nested .cloned().unwrap_or_default() inside get arg
     // Pattern: .get(&"str".to_string().cloned().unwrap_or_default())
     // Should be: .get(&"str".to_string())
-    let re = cached_regex(r#"\.get\((&[^)]+?)\.to_string\(\)\.cloned\(\)\.unwrap_or_default\(\)\)"#).unwrap();
+    let re =
+        cached_regex(r#"\.get\((&[^)]+?)\.to_string\(\)\.cloned\(\)\.unwrap_or_default\(\)\)"#)
+            .unwrap();
     content = re.replace_all(&content, ".get($1.to_string())").to_string();
 
     // === Fix .get(X).as_str() where .get returns Option (E0599) ===
     let re = cached_regex(r"state\.get\(([^)]+)\)\.as_str\(\)").unwrap();
-    content = re.replace_all(&content, |caps: &regex::Captures| {
-        format!("state.get({}).cloned().unwrap_or_default()", &caps[1])
-    }).to_string();
+    content = re
+        .replace_all(&content, |caps: &regex::Captures| {
+            format!("state.get({}).cloned().unwrap_or_default()", &caps[1])
+        })
+        .to_string();
 
     // AST-level fn_str_param_indices + .as_str() auto-borrow covers:
     // contains_key(callee), codegen_lookup_elem(vn2), block_node(body_str2),
@@ -26928,17 +30614,27 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
 
     // === E0308: return state.get(X) -> return state.get(X).cloned().unwrap_or_default() ===
     let re = cached_regex(r"return state\.get\((&[^)]+)\);").unwrap();
-    content = re.replace_all(&content, |caps: &regex::Captures| {
-        let arg = &caps[1];
-        if arg.contains(".cloned()") { caps[0].to_string() }
-        else { format!("return state.get({}).cloned().unwrap_or_default();", arg) }
-    }).to_string();
+    content = re
+        .replace_all(&content, |caps: &regex::Captures| {
+            let arg = &caps[1];
+            if arg.contains(".cloned()") {
+                caps[0].to_string()
+            } else {
+                format!("return state.get({}).cloned().unwrap_or_default();", arg)
+            }
+        })
+        .to_string();
     let re = cached_regex(r"= state\.get\((&[^)]+)\);").unwrap();
-    content = re.replace_all(&content, |caps: &regex::Captures| {
-        let arg = &caps[1];
-        if arg.contains(".cloned()") { caps[0].to_string() }
-        else { format!("= state.get({}).cloned().unwrap_or_default();", arg) }
-    }).to_string();
+    content = re
+        .replace_all(&content, |caps: &regex::Captures| {
+            let arg = &caps[1];
+            if arg.contains(".cloned()") {
+                caps[0].to_string()
+            } else {
+                format!("= state.get({}).cloned().unwrap_or_default();", arg)
+            }
+        })
+        .to_string();
 
     // === E0308: TokenKind::Break/Continue match arms returning nil_node() instead of Token ===
     // The match is in a function returning Token. nil_node() returns ASTNode, not Token.
@@ -26962,47 +30658,62 @@ fn str_substr<S: AsRef<str>>(s: S, start: i32, end: i32) -> String {
         };
 
         // eval_bind_str(env, X, eval_get_last_str(env).as_str())
-        content = extract_env_tmp(&content,
+        content = extract_env_tmp(
+            &content,
             r#"eval_bind_str\(env, ([^,]+), eval_get_last_str\(env\)\.as_str\(\)\)"#,
             r#"let __tmp = eval_get_last_str(env);
-            eval_bind_str(env, $1, __tmp.as_str())"#);
+            eval_bind_str(env, $1, __tmp.as_str())"#,
+        );
 
         // eval_set_last_str(env, eval_str_cat(X, eval_get_last_str(env).as_str()).as_str())
-        content = extract_env_tmp(&content,
+        content = extract_env_tmp(
+            &content,
             r#"eval_set_last_str\(env, eval_str_cat\(([^,]+), eval_get_last_str\(env\)\.as_str\(\)\)\.as_str\(\)\)"#,
             r#"let __tmp = eval_get_last_str(env);
-                eval_set_last_str(env, eval_str_cat($1, __tmp.as_str()).as_str())"#);
+                eval_set_last_str(env, eval_str_cat($1, __tmp.as_str()).as_str())"#,
+        );
 
         // eval_set_last_str(env, eval_lookup_str_var(env, X).as_str())
-        content = extract_env_tmp(&content,
+        content = extract_env_tmp(
+            &content,
             r#"eval_set_last_str\(env, eval_lookup_str_var\(env, (.+?)\)\.as_str\(\)\)"#,
             r#"let __tmp = eval_lookup_str_var(env, $1);
-            eval_set_last_str(env, __tmp.as_str())"#);
+            eval_set_last_str(env, __tmp.as_str())"#,
+        );
 
         // env.globals.insert(X, (eval_get_last_type(env)).to_string())
-        content = extract_env_tmp(&content,
+        content = extract_env_tmp(
+            &content,
             r#"env\.globals\.insert\(([^,]+), \(eval_get_last_type\(env\)\)\.to_string\(\)\)"#,
             r#"let __tmp = eval_get_last_type(env);
-            env.globals.insert($1, (__tmp).to_string())"#);
+            env.globals.insert($1, (__tmp).to_string())"#,
+        );
 
         // env.globals.insert(X, (eval_get_last_str(env)).to_string())
-        content = extract_env_tmp(&content,
+        content = extract_env_tmp(
+            &content,
             r#"env\.globals\.insert\(([^,]+), \(eval_get_last_str\(env\)\)\.to_string\(\)\)"#,
             r#"let __tmp = eval_get_last_str(env);
-                env.globals.insert($1, (__tmp).to_string())"#);
+                env.globals.insert($1, (__tmp).to_string())"#,
+        );
 
         // env.output = eval_str_cat(env.output.as_str(), eval_str_cat(eval_get_last_str(env).as_str(), "\n").as_str())
-        content = extract_env_tmp(&content,
+        content = extract_env_tmp(
+            &content,
             r#"env\.output = eval_str_cat\(env\.output\.as_str\(\), eval_str_cat\(eval_get_last_str\(env\)\.as_str\(\), "\\n"\)\.as_str\(\)\)"#,
             r#"let __tmp = eval_get_last_str(env);
-            env.output = eval_str_cat(env.output.as_str(), eval_str_cat(__tmp.as_str(), "\n").as_str())"#);
+            env.output = eval_str_cat(env.output.as_str(), eval_str_cat(__tmp.as_str(), "\n").as_str())"#,
+        );
     }
 
     // === Fix partial move: var = struct.field where struct used after (E0382) ===
     // Pattern: else_str = else_if.value; ... else_if.clone()
     // The field access moves the String, then clone() tries to borrow the whole struct
     // Fix: add .clone() to the field access
-    content = content.replace("else_str = else_if.value;", "else_str = else_if.value.clone();");
+    content = content.replace(
+        "else_str = else_if.value;",
+        "else_str = else_if.value.clone();",
+    );
 
     // Ensure trailing newline
     if !content.ends_with('\n') {
@@ -27039,8 +30750,13 @@ fn discover_modules(
     modules: &mut Vec<ProjectModule>,
     visited: &mut std::collections::HashSet<String>,
 ) -> AutoResult<()> {
-    let canonical = file_path.canonicalize()
-        .map_err(|e| AutoError::Msg(format!("Cannot canonicalize {}: {}", file_path.display(), e)))?;
+    let canonical = file_path.canonicalize().map_err(|e| {
+        AutoError::Msg(format!(
+            "Cannot canonicalize {}: {}",
+            file_path.display(),
+            e
+        ))
+    })?;
     let key = canonical.to_string_lossy().to_string();
 
     if visited.contains(&key) {
@@ -27048,7 +30764,8 @@ fn discover_modules(
     }
     visited.insert(key);
 
-    let file_name = file_path.file_stem()
+    let file_name = file_path
+        .file_stem()
         .ok_or_else(|| AutoError::Msg("File has no stem".into()))?
         .to_string_lossy()
         .to_string();
@@ -27056,7 +30773,8 @@ fn discover_modules(
     let is_dir_module = file_name == "mod";
 
     // Determine output path relative to base_dir
-    let rel_path = file_path.parent()
+    let rel_path = file_path
+        .parent()
         .and_then(|p| p.strip_prefix(base_dir).ok())
         .unwrap_or(std::path::Path::new(""));
     let output_name = if rel_path.as_os_str().is_empty() {
@@ -27086,13 +30804,16 @@ fn discover_modules(
         };
         if !rest.starts_with("c ") && !rest.starts_with(".rust") && !rest.starts_with("auto.") {
             // Extract module name (first segment before :, *, or end)
-            let module_name = rest.split(|c: char| c == ':' || c == ' ' || c == '*')
+            let module_name = rest
+                .split(|c: char| c == ':' || c == ' ' || c == '*')
                 .next()
                 .unwrap_or("")
                 .trim();
             // Skip pac/super prefixed (handled by the resolver)
-            if module_name == "pac" || module_name == "super"
-                || module_name.starts_with("pac.") || module_name.starts_with("super.")
+            if module_name == "pac"
+                || module_name == "super"
+                || module_name.starts_with("pac.")
+                || module_name.starts_with("super.")
             {
                 continue;
             }
@@ -27225,15 +30946,23 @@ fn emit_http_verb_call(
     if tr.in_async_ctx.get() {
         write!(out, "a2r_std::http::{}_async(", verb)?;
         for (i, arg) in call.args.args.iter().enumerate() {
-            if i > 0 { write!(out, ", ")?; }
-            if let crate::ast::Arg::Pos(expr) = arg { tr.expr_as_str(expr, out)?; }
+            if i > 0 {
+                write!(out, ", ")?;
+            }
+            if let crate::ast::Arg::Pos(expr) = arg {
+                tr.expr_as_str(expr, out)?;
+            }
         }
         write!(out, ").await")?;
     } else {
         write!(out, "a2r_std::http::{}(", verb)?;
         for (i, arg) in call.args.args.iter().enumerate() {
-            if i > 0 { write!(out, ", ")?; }
-            if let crate::ast::Arg::Pos(expr) = arg { tr.expr_as_str(expr, out)?; }
+            if i > 0 {
+                write!(out, ", ")?;
+            }
+            if let crate::ast::Arg::Pos(expr) = arg {
+                tr.expr_as_str(expr, out)?;
+            }
         }
         write!(out, ")")?;
     }
@@ -27314,7 +31043,10 @@ fn for_range_is_http_stream(tr: &RustTrans, range: &Expr) -> Option<bool> {
             }
             Expr::Dot(obj, m)
                 if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "http")
-                    && matches!(m.as_str(), "get_stream" | "post_stream" | "post_stream_with_headers") =>
+                    && matches!(
+                        m.as_str(),
+                        "get_stream" | "post_stream" | "post_stream_with_headers"
+                    ) =>
             {
                 Some(tr.in_async_ctx.get())
             }

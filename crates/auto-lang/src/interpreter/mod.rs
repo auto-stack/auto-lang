@@ -126,7 +126,10 @@ impl AutoInterpreter {
     /// binding names so the run's top-of-stack result carries the binding
     /// values out of the per-run VM).
     pub fn eval_stmts(&mut self, stmts: Vec<Stmt>) -> AutoResult<Value> {
-        self.vm.run_ast(Code { stmts, ..Code::default() })
+        self.vm.run_ast(Code {
+            stmts,
+            ..Code::default()
+        })
     }
 
     /// Evaluate a template with F-string support
@@ -343,7 +346,11 @@ mod tests {
         let mut interp = AutoInterpreter::new();
         interp.set_global("who", Value::str("world"));
         let r = interp.eval("who").unwrap();
-        assert_eq!(r.to_astr().as_str(), "world", "global scalar must be readable");
+        assert_eq!(
+            r.to_astr().as_str(),
+            "world",
+            "global scalar must be readable"
+        );
     }
 
     #[test]
@@ -351,8 +358,14 @@ mod tests {
         let mut interp = AutoInterpreter::new();
         let arr = auto_val::Array::from_vec(vec![Value::Int(1), Value::Int(2), Value::Int(3)]);
         interp.set_global("nums", Value::Array(arr));
-        let sum = interp.eval("var s = 0\nfor x in nums { s = s + x }\ns").unwrap();
-        assert_eq!(sum, Value::Int(6), "for-in must iterate an injected global array");
+        let sum = interp
+            .eval("var s = 0\nfor x in nums { s = s + x }\ns")
+            .unwrap();
+        assert_eq!(
+            sum,
+            Value::Int(6),
+            "for-in must iterate an injected global array"
+        );
     }
 
     // Plan 375: minimal mold-style template (note='@') with a for-loop over an
@@ -371,9 +384,16 @@ mod tests {
         match r {
             Ok(v) => {
                 let s = v.to_astr();
-                assert!(s.contains("SCU001"), "template must interpolate app.id, got: {}", s);
+                assert!(
+                    s.contains("SCU001"),
+                    "template must interpolate app.id, got: {}",
+                    s
+                );
             }
-            Err(e) => panic!("mold template eval failed: {:?}\n(template was:\n{})", e, tpl),
+            Err(e) => panic!(
+                "mold template eval failed: {:?}\n(template was:\n{})",
+                e, tpl
+            ),
         }
     }
 }

@@ -101,7 +101,11 @@ impl FoldMap {
                 _ => hidden.push((a, b)),
             }
         }
-        FoldMap { regions, hidden, line_height }
+        FoldMap {
+            regions,
+            hidden,
+            line_height,
+        }
     }
 
     /// The region opened by `opener`, if the line is foldable.
@@ -121,7 +125,10 @@ impl FoldMap {
 
     /// The merged hidden range containing `line`, if any.
     pub fn hidden_range_containing(&self, line: usize) -> Option<(usize, usize)> {
-        self.hidden.iter().copied().find(|&(a, b)| a <= line && line <= b)
+        self.hidden
+            .iter()
+            .copied()
+            .find(|&(a, b)| a <= line && line <= b)
     }
 
     /// Hidden lines strictly above `line` — the y prefix-sum step. If
@@ -324,7 +331,9 @@ fn f() {";
         }
         // Below the last band: extrapolated with the same offset.
         let &(_, last_proj, last_orig) = bands.last().unwrap();
-        let below = map.unfold_y(last_proj + 4.0 * LH, &bands).expect("below maps");
+        let below = map
+            .unfold_y(last_proj + 4.0 * LH, &bands)
+            .expect("below maps");
         assert_eq!(below, last_orig + 4.0 * LH);
     }
 

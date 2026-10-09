@@ -22,7 +22,6 @@ use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::ffi::convert::VMConvertible;
 use crate::vm::task::AutoTask;
 
-
 static LIB: OnceLock<Option<Library>> = OnceLock::new();
 static NEXT_HANDLE: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
 type SnapMap = std::collections::HashMap<i64, Vec<String>>;
@@ -146,7 +145,9 @@ fn engine_spawn(cols: i64, rows: i64) -> i64 {
     unsafe {
         let spawn: libloading::Symbol<
             unsafe extern "C" fn(c_int, c_int, *const c_char) -> *mut core::ffi::c_void,
-        > = lib.get(b"autoterm_engine_spawn\0").expect("autoterm_engine_spawn symbol");
+        > = lib
+            .get(b"autoterm_engine_spawn\0")
+            .expect("autoterm_engine_spawn symbol");
         let h = spawn(cols as c_int, rows as c_int, std::ptr::null());
         if h.is_null() {
             return 0;
@@ -197,9 +198,16 @@ fn engine_spawn_ex(program: &str, argv: Vec<String>, cwd: &str, cols: i64, rows:
         };
         let h = spawn_ex(
             c_prog.as_ptr(),
-            if c_argv.is_empty() { std::ptr::null() } else { c_argv.as_ptr() },
+            if c_argv.is_empty() {
+                std::ptr::null()
+            } else {
+                c_argv.as_ptr()
+            },
             c_argv.len() as c_int,
-            c_cwd.as_ref().map(|c| c.as_ptr()).unwrap_or(std::ptr::null()),
+            c_cwd
+                .as_ref()
+                .map(|c| c.as_ptr())
+                .unwrap_or(std::ptr::null()),
             cols as c_int,
             rows as c_int,
         );
@@ -226,7 +234,9 @@ fn engine_write_line(handle: i64, line: &str) {
     unsafe {
         let write: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, *const u8, usize),
-        > = lib.get(b"autoterm_engine_write_input\0").expect("autoterm_engine_write_input symbol");
+        > = lib
+            .get(b"autoterm_engine_write_input\0")
+            .expect("autoterm_engine_write_input symbol");
         write(h, bytes.as_ptr(), bytes.len());
     }
 }
@@ -245,7 +255,9 @@ fn engine_write_raw(handle: i64, vt: &str) {
     unsafe {
         let write: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, *const u8, usize),
-        > = lib.get(b"autoterm_engine_write_input\0").expect("autoterm_engine_write_input symbol");
+        > = lib
+            .get(b"autoterm_engine_write_input\0")
+            .expect("autoterm_engine_write_input symbol");
         write(h, bytes.as_ptr(), bytes.len());
     }
 }
@@ -287,7 +299,9 @@ fn pump_inner(handle: i64, keys: Vec<String>) -> i64 {
     unsafe {
         let write: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, *const u8, usize),
-        > = lib.get(b"autoterm_engine_write_input\0").expect("autoterm_engine_write_input symbol");
+        > = lib
+            .get(b"autoterm_engine_write_input\0")
+            .expect("autoterm_engine_write_input symbol");
         for key in &keys {
             let bytes = key.as_bytes();
             write(h, bytes.as_ptr(), bytes.len());
@@ -320,13 +334,17 @@ fn engine_feed_snapshot(
         }
         let take: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, *mut c_int, c_int) -> c_int,
-        > = lib.get(b"autoterm_engine_take_dirty_rows\0").expect("autoterm_engine_take_dirty_rows symbol");
+        > = lib
+            .get(b"autoterm_engine_take_dirty_rows\0")
+            .expect("autoterm_engine_take_dirty_rows symbol");
         let mut rows = [0 as c_int; 64];
         take(h, rows.as_mut_ptr(), 64);
         // 光标格随拍采样(可见时刷新;隐藏保持上次值;per-handle D5)。
         let cursor: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, *mut c_int, *mut c_int) -> c_int,
-        > = lib.get(b"autoterm_engine_cursor\0").expect("autoterm_engine_cursor symbol");
+        > = lib
+            .get(b"autoterm_engine_cursor\0")
+            .expect("autoterm_engine_cursor symbol");
         let (mut r, mut c) = (0 as c_int, 0 as c_int);
         if cursor(h, &mut r, &mut c) == 1 {
             set_geom(&CURSORS, handle, (r as i64, c as i64));
@@ -335,10 +353,14 @@ fn engine_feed_snapshot(
         // 逐行取文本 + 逐格样式,文本进快照、样式走组件旁路。
         let row_text: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut c_char, c_int) -> c_int,
-        > = lib.get(b"autoterm_engine_row_text\0").expect("autoterm_engine_row_text symbol");
+        > = lib
+            .get(b"autoterm_engine_row_text\0")
+            .expect("autoterm_engine_row_text symbol");
         let row_style: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut u32, c_int) -> c_int,
-        > = lib.get(b"autoterm_engine_row_style\0").expect("autoterm_engine_row_style symbol");
+        > = lib
+            .get(b"autoterm_engine_row_style\0")
+            .expect("autoterm_engine_row_style symbol");
         let mut lines = Vec::new();
         let mut sink = RowSink::new();
         for r in 0..256i32 {
@@ -463,11 +485,9 @@ impl RowSink {
                 Sideband::All => {
                     crate::ui::terminal::terminal_feed_cells_all(row as usize, cells.clone())
                 }
-                Sideband::Key(key) => crate::ui::terminal::terminal_feed_cells_for(
-                    key,
-                    row as usize,
-                    cells.clone(),
-                ),
+                Sideband::Key(key) => {
+                    crate::ui::terminal::terminal_feed_cells_for(key, row as usize, cells.clone())
+                }
             }
         }
         self.rows.push(cells);
@@ -507,19 +527,19 @@ fn apply_scroll_queue(lib: &Library, h: *mut core::ffi::c_void, handle: i64, key
         };
         let delta = crate::ui::terminal::terminal_take_scroll_delta(core);
         if delta != 0 {
-            let scroll: libloading::Symbol<
-                unsafe extern "C" fn(*mut core::ffi::c_void, c_int),
-            > = lib.get(b"autoterm_engine_scroll\0").expect("autoterm_engine_scroll symbol");
+            let scroll: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void, c_int)> =
+                lib.get(b"autoterm_engine_scroll\0")
+                    .expect("autoterm_engine_scroll symbol");
             scroll(h, delta as c_int);
         }
-        let soff: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int,
-        > = lib.get(b"autoterm_engine_scroll_offset\0").expect("autoterm_engine_scroll_offset symbol");
+        let soff: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> = lib
+            .get(b"autoterm_engine_scroll_offset\0")
+            .expect("autoterm_engine_scroll_offset symbol");
         let off = soff(h);
         crate::ui::terminal::terminal_set_scroll_offset(core, off.max(0) as usize);
-        let hist: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int,
-        > = lib.get(b"autoterm_engine_history\0").expect("autoterm_engine_history symbol");
+        let hist: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> = lib
+            .get(b"autoterm_engine_history\0")
+            .expect("autoterm_engine_history symbol");
         let n = hist(h);
         crate::ui::terminal::terminal_set_history(core, n.max(0) as usize);
         // T-02 锚 + T-05 防抖标记。
@@ -551,7 +571,9 @@ fn sample_engine_row(
     unsafe {
         let row_text: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut c_char, c_int) -> c_int,
-        > = lib.get(b"autoterm_engine_row_text\0").expect("autoterm_engine_row_text symbol");
+        > = lib
+            .get(b"autoterm_engine_row_text\0")
+            .expect("autoterm_engine_row_text symbol");
         let mut buf = [0 as c_char; 512];
         let need = row_text(h, r, buf.as_mut_ptr(), 512);
         if need < 0 {
@@ -562,7 +584,9 @@ fn sample_engine_row(
         let text = String::from_utf8_lossy(&bytes).into_owned();
         let row_style: libloading::Symbol<
             unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut u32, c_int) -> c_int,
-        > = lib.get(b"autoterm_engine_row_style\0").expect("autoterm_engine_row_style symbol");
+        > = lib
+            .get(b"autoterm_engine_row_style\0")
+            .expect("autoterm_engine_row_style symbol");
         let mut styles = [0u32; 1024];
         let styled = row_style(h, r, styles.as_mut_ptr(), 1024);
         let pairs = (styled.max(0) as usize) / 2;
@@ -599,9 +623,9 @@ fn prefetch_window(
         return;
     }
     unsafe {
-        let scroll: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void, c_int),
-        > = lib.get(b"autoterm_engine_scroll\0").expect("autoterm_engine_scroll symbol");
+        let scroll: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void, c_int)> = lib
+            .get(b"autoterm_engine_scroll\0")
+            .expect("autoterm_engine_scroll symbol");
         let n_up = N.min(hist - off).min(rows);
         if n_up > 0 {
             let mut stash: Vec<Vec<crate::ui::terminal::TermCell>> = Vec::new();
@@ -686,9 +710,9 @@ fn engine_resize(handle: i64, cols: i64, rows: i64) {
         eprintln!("[P024-TRACE] engine_resize handle={handle} {cols}x{rows}");
     }
     unsafe {
-        let resize: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void, c_int, c_int),
-        > = lib.get(b"autoterm_engine_resize\0").expect("autoterm_engine_resize symbol");
+        let resize: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void, c_int, c_int)> =
+            lib.get(b"autoterm_engine_resize\0")
+                .expect("autoterm_engine_resize symbol");
         resize(h, cols as c_int, rows as c_int);
     }
 }
@@ -701,7 +725,8 @@ fn engine_interrupt(handle: i64) -> i64 {
     }
     unsafe {
         let interrupt: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> =
-            lib.get(b"autoterm_engine_interrupt\0").expect("autoterm_engine_interrupt symbol");
+            lib.get(b"autoterm_engine_interrupt\0")
+                .expect("autoterm_engine_interrupt symbol");
         interrupt(h) as i64
     }
 }
@@ -713,8 +738,9 @@ fn engine_is_exited(handle: i64) -> bool {
         return true;
     }
     unsafe {
-        let exited: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> =
-            lib.get(b"autoterm_engine_is_exited\0").expect("autoterm_engine_is_exited symbol");
+        let exited: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> = lib
+            .get(b"autoterm_engine_is_exited\0")
+            .expect("autoterm_engine_is_exited symbol");
         exited(h) == 1
     }
 }
@@ -726,8 +752,9 @@ fn engine_free(handle: i64) {
         return;
     }
     unsafe {
-        let free: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void)> =
-            lib.get(b"autoterm_engine_free\0").expect("autoterm_engine_free symbol");
+        let free: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void)> = lib
+            .get(b"autoterm_engine_free\0")
+            .expect("autoterm_engine_free symbol");
         free(h);
     }
     handles().remove(&handle);
@@ -739,7 +766,8 @@ fn engine_free(handle: i64) {
 pub fn shim_term_spawn(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let rows = crate::vm::native::pop_arg_i32(task) as i64;
     let cols = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(engine_spawn(cols, rows) as i32));
+    task.ram
+        .push_nv(auto_val::encode_i32(engine_spawn(cols, rows) as i32));
     Ok(())
 }
 
@@ -771,7 +799,8 @@ pub fn shim_term_write_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// 014 直键入:engine_pump_input(handle) int。
 pub fn shim_term_pump_input(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(engine_pump_input(handle) as i32));
+    task.ram
+        .push_nv(auto_val::encode_i32(engine_pump_input(handle) as i32));
     Ok(())
 }
 
@@ -780,7 +809,9 @@ pub fn shim_term_pump_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let key: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(engine_pump_input_for(handle, &key) as i32));
+    task.ram.push_nv(auto_val::encode_i32(
+        engine_pump_input_for(handle, &key) as i32
+    ));
     Ok(())
 }
 
@@ -819,7 +850,8 @@ fn engine_apply_resize_for(handle: i64, key: &str) -> i64 {
 
 pub fn shim_term_apply_resize(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(engine_apply_resize(handle) as i32));
+    task.ram
+        .push_nv(auto_val::encode_i32(engine_apply_resize(handle) as i32));
     Ok(())
 }
 
@@ -829,7 +861,9 @@ pub fn shim_term_apply_resize_for(task: &mut AutoTask, vm: &AutoVM) -> Result<()
     let key: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(engine_apply_resize_for(handle, &key) as i32));
+    task.ram.push_nv(auto_val::encode_i32(
+        engine_apply_resize_for(handle, &key) as i32
+    ));
     Ok(())
 }
 
@@ -844,8 +878,7 @@ fn engine_pend_resize_geom(key: &str, geom: &str) -> i64 {
     let Some((cols_s, rows_s)) = geom.split_once('x') else {
         return 0;
     };
-    let (Ok(cols), Ok(rows)) = (cols_s.trim().parse::<u16>(), rows_s.trim().parse::<u16>())
-    else {
+    let (Ok(cols), Ok(rows)) = (cols_s.trim().parse::<u16>(), rows_s.trim().parse::<u16>()) else {
         return 0;
     };
     if cols < crate::ui::terminal::MIN_RESIZE_COLS
@@ -868,15 +901,14 @@ fn engine_pend_resize_geom(_key: &str, _geom: &str) -> i64 {
 }
 
 /// PLAN-028 T-03:engine_pend_resize_geom(key str, geom str) int shim。
-pub fn shim_term_engine_pend_resize_geom(
-    task: &mut AutoTask,
-    vm: &AutoVM,
-) -> Result<(), VMError> {
+pub fn shim_term_engine_pend_resize_geom(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let geom: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let key: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    task.ram.push_nv(auto_val::encode_i32(engine_pend_resize_geom(&key, &geom) as i32));
+    task.ram.push_nv(auto_val::encode_i32(
+        engine_pend_resize_geom(&key, &geom) as i32
+    ));
     Ok(())
 }
 
@@ -890,8 +922,9 @@ fn engine_history(handle: i64) -> i64 {
         return 0;
     }
     unsafe {
-        let hist: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> =
-            lib.get(b"autoterm_engine_history\0").expect("autoterm_engine_history symbol");
+        let hist: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> = lib
+            .get(b"autoterm_engine_history\0")
+            .expect("autoterm_engine_history symbol");
         hist(h).max(0) as i64
     }
 }
@@ -899,7 +932,8 @@ fn engine_history(handle: i64) -> i64 {
 /// PLAN-028 T-03:engine_history(handle int) int shim。
 pub fn shim_term_engine_history(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(engine_history(handle) as i32));
+    task.ram
+        .push_nv(auto_val::encode_i32(engine_history(handle) as i32));
     Ok(())
 }
 
@@ -910,7 +944,8 @@ fn engine_menu_take() -> i64 {
 }
 
 pub fn shim_term_menu_take(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    task.ram.push_nv(auto_val::encode_i32(engine_menu_take() as i32));
+    task.ram
+        .push_nv(auto_val::encode_i32(engine_menu_take() as i32));
     Ok(())
 }
 
@@ -1032,9 +1067,9 @@ fn engine_backlog_pending_mb(handle: i64) -> i64 {
         return 0;
     }
     unsafe {
-        let pending: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int,
-        > = lib.get(b"autoterm_engine_pending_bytes\0").expect("autoterm_engine_pending_bytes symbol");
+        let pending: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> =
+            lib.get(b"autoterm_engine_pending_bytes\0")
+                .expect("autoterm_engine_pending_bytes symbol");
         (pending(h).max(0) as i64) / (1024 * 1024)
     }
 }
@@ -1104,34 +1139,40 @@ fn engine_backlog_pending_bytes(handle: i64) -> i32 {
         return 0;
     }
     unsafe {
-        let pending: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int,
-        > = lib.get(b"autoterm_engine_pending_bytes\0").expect("autoterm_engine_pending_bytes symbol");
+        let pending: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> =
+            lib.get(b"autoterm_engine_pending_bytes\0")
+                .expect("autoterm_engine_pending_bytes symbol");
         pending(h).max(0)
     }
 }
 
 pub fn shim_term_backlog_pending_mb(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(engine_backlog_pending_mb(handle) as i32));
+    task.ram.push_nv(auto_val::encode_i32(
+        engine_backlog_pending_mb(handle) as i32
+    ));
     Ok(())
 }
 
 pub fn shim_term_backlog_paused(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(engine_backlog_paused(handle) as i32));
+    task.ram
+        .push_nv(auto_val::encode_i32(engine_backlog_paused(handle) as i32));
     Ok(())
 }
 
 pub fn shim_term_backlog_take_alerts(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(engine_backlog_take_alerts(handle) as i32));
+    task.ram.push_nv(auto_val::encode_i32(
+        engine_backlog_take_alerts(handle) as i32
+    ));
     Ok(())
 }
 
 pub fn shim_term_backlog_dropped(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(engine_backlog_dropped(handle) as i32));
+    task.ram
+        .push_nv(auto_val::encode_i32(engine_backlog_dropped(handle) as i32));
     Ok(())
 }
 
@@ -1152,13 +1193,15 @@ pub fn shim_term_resize(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
 
 pub fn shim_term_interrupt(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(engine_interrupt(handle) as i32));
+    task.ram
+        .push_nv(auto_val::encode_i32(engine_interrupt(handle) as i32));
     Ok(())
 }
 
 pub fn shim_term_is_exited(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_bool(engine_is_exited(handle)));
+    task.ram
+        .push_nv(auto_val::encode_bool(engine_is_exited(handle)));
     Ok(())
 }
 
@@ -1184,7 +1227,10 @@ mod ash_leak_probe {
         );
         let core = crate::ui::terminal::terminal("leak-probe", 100, 30);
         let handle = engine_spawn(100, 30);
-        assert!(handle != 0, "spawn ash 失败(先 cargo build -p autoterm-core)");
+        assert!(
+            handle != 0,
+            "spawn ash 失败(先 cargo build -p autoterm-core)"
+        );
         std::thread::sleep(Duration::from_millis(1000));
         engine_rows(handle);
         println!("probe: ash spawned, start streaming");
@@ -1228,8 +1274,9 @@ pub fn shim_term_scroll_pending_for(task: &mut AutoTask, vm: &AutoVM) -> Result<
     let key: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram
-        .push_nv(auto_val::encode_i32(engine_scroll_pending_for(handle, &key) as i32));
+    task.ram.push_nv(auto_val::encode_i32(
+        engine_scroll_pending_for(handle, &key) as i32,
+    ));
     Ok(())
 }
 
@@ -1300,17 +1347,39 @@ mod p028_geom_bridge_tests {
         assert_eq!(engine_pend_resize_geom("p028-geom", "abc"), 0);
         assert_eq!(engine_pend_resize_geom("p028-geom", "80"), 0);
         assert_eq!(engine_pend_resize_geom("p028-geom", "80x"), 0);
-        assert_eq!(engine_pend_resize_geom("p028-geom", "1x30"), 0, "退化 cols 拒收");
-        assert_eq!(engine_pend_resize_geom("p028-geom", "80x0"), 0, "退化 rows 拒收");
-        assert_eq!(engine_pend_resize_geom("p028-geom", "0x30"), 0, "最小化 0 尺寸拒收");
+        assert_eq!(
+            engine_pend_resize_geom("p028-geom", "1x30"),
+            0,
+            "退化 cols 拒收"
+        );
+        assert_eq!(
+            engine_pend_resize_geom("p028-geom", "80x0"),
+            0,
+            "退化 rows 拒收"
+        );
+        assert_eq!(
+            engine_pend_resize_geom("p028-geom", "0x30"),
+            0,
+            "最小化 0 尺寸拒收"
+        );
         // 合法:落 per-key pending,既有定向泵出口取走。
         assert_eq!(engine_pend_resize_geom("p028-geom", "80x30"), 1);
         let core = crate::ui::terminal::terminal_core("p028-geom").expect("桥写惰性建核");
-        assert_eq!(crate::ui::terminal::terminal_take_resize_for(core), Some((80, 30)));
-        assert_eq!(crate::ui::terminal::terminal_take_resize_for(core), None, "取走即清");
+        assert_eq!(
+            crate::ui::terminal::terminal_take_resize_for(core),
+            Some((80, 30))
+        );
+        assert_eq!(
+            crate::ui::terminal::terminal_take_resize_for(core),
+            None,
+            "取走即清"
+        );
         // 同值重推仍落位(core 占位 (0,0);去重归前端推送面,泵侧幂等)。
         assert_eq!(engine_pend_resize_geom("p028-geom", "80x30"), 1);
-        assert_eq!(crate::ui::terminal::terminal_take_resize_for(core), Some((80, 30)));
+        assert_eq!(
+            crate::ui::terminal::terminal_take_resize_for(core),
+            Some((80, 30))
+        );
         crate::ui::terminal::terminal_dispose("p028-geom");
     }
 }

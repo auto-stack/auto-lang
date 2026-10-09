@@ -47,17 +47,13 @@ mod plan339_tests {
         }
         let _ = session.resolve_uses(&code);
 
-        let parser_session = if module_path
-            .components()
-            .any(|c| c.as_os_str() == "back")
-        {
+        let parser_session = if module_path.components().any(|c| c.as_os_str() == "back") {
             crate::session::CompilerSession::core()
         } else {
             crate::session::CompilerSession::ui()
         };
-        let mut parser =
-            crate::Parser::new_with_type_store(code.as_str(), session.type_store())
-                .with_session(parser_session);
+        let mut parser = crate::Parser::new_with_type_store(code.as_str(), session.type_store())
+            .with_session(parser_session);
         let ast = match parser.parse() {
             Ok(a) => a,
             Err(_) => return,
@@ -103,9 +99,7 @@ mod plan339_tests {
                 _ => {}
             }
         }
-        let module_dir = module_path
-            .parent()
-            .unwrap_or(Path::new("."));
+        let module_dir = module_path.parent().unwrap_or(Path::new("."));
         for dep in scan_use_statements(&code) {
             if dep.is_c_import || dep.is_rust_import {
                 continue;
@@ -209,12 +203,17 @@ pub fn create_note(title str, body str) Note {
         );
         // No bare (unqualified) names should survive.
         assert!(
-            !fn_names.iter().any(|n| n == "create_note" || n == "list_notes" || n == "all_notes"),
+            !fn_names
+                .iter()
+                .any(|n| n == "create_note" || n == "list_notes" || n == "all_notes"),
             "bare names should not survive: {:?}",
             fn_names
         );
         // api.create_note and db.create_note are DISTINCT (no last-wins dedup).
-        let create_count = fn_names.iter().filter(|n| n.ends_with(".create_note")).count();
+        let create_count = fn_names
+            .iter()
+            .filter(|n| n.ends_with(".create_note"))
+            .count();
         assert_eq!(
             create_count, 2,
             "expected api.create_note AND db.create_note, got {}: {:?}",
@@ -231,7 +230,10 @@ pub fn create_note(title str, body str) Note {
         assert_eq!(use_stmts.len(), 1);
         let us = &use_stmts[0];
         assert_eq!(us.module, "back.api");
-        assert_eq!(us.items, vec!["create_note".to_string(), "list_notes".to_string()]);
+        assert_eq!(
+            us.items,
+            vec!["create_note".to_string(), "list_notes".to_string()]
+        );
 
         // Mirror lib.rs's alias construction (Phase 4).
         let module_qualifier = us.module.split('.').last().unwrap_or(&us.module);
@@ -240,8 +242,14 @@ pub fn create_note(title str, body str) Note {
             let qualified = format!("{}.{}", module_qualifier, item);
             aliases.insert(item.clone(), qualified);
         }
-        assert_eq!(aliases.get("create_note"), Some(&"api.create_note".to_string()));
-        assert_eq!(aliases.get("list_notes"), Some(&"api.list_notes".to_string()));
+        assert_eq!(
+            aliases.get("create_note"),
+            Some(&"api.create_note".to_string())
+        );
+        assert_eq!(
+            aliases.get("list_notes"),
+            Some(&"api.list_notes".to_string())
+        );
     }
 
     /// End-to-end: load the REAL 015-notes sources, run the full
@@ -263,9 +271,7 @@ pub fn create_note(title str, body str) Note {
             .stack_size(16 * 1024 * 1024)
             .spawn(test_015_notes_app_compiles_with_namespace_inner)
             .expect("failed to spawn deep-stack test thread");
-        child
-            .join()
-            .expect("deep-stack test thread panicked");
+        child.join().expect("deep-stack test thread panicked");
     }
 
     #[cfg(feature = "ui")]
@@ -276,15 +282,9 @@ pub fn create_note(title str, body str) Note {
                 .ok()
                 .map(|d| PathBuf::from(d))
                 .map(|d| d.join("../../examples/ui/015-notes/src/front/app.at")),
-            Some(PathBuf::from(
-                "examples/ui/015-notes/src/front/app.at",
-            )),
+            Some(PathBuf::from("examples/ui/015-notes/src/front/app.at")),
         ];
-        let manifest = candidates
-            .iter()
-            .flatten()
-            .find(|p| p.exists())
-            .cloned();
+        let manifest = candidates.iter().flatten().find(|p| p.exists()).cloned();
         let Some(manifest) = manifest else {
             eprintln!("plan339: skipping — 015-notes app.at not found");
             return;
@@ -342,10 +342,7 @@ pub fn create_note(title str, body str) Note {
             }
         }
 
-        eprintln!(
-            "plan339: import_aliases = {:?}",
-            import_aliases
-        );
+        eprintln!("plan339: import_aliases = {:?}", import_aliases);
 
         // 3. Run the FULL pipeline through VmBridge (synthesis + link + VM
         //    init). This is exactly what run_file_dynamic_ui does, minus the
@@ -376,15 +373,9 @@ pub fn create_note(title str, body str) Note {
                 .ok()
                 .map(|d| PathBuf::from(d))
                 .map(|d| d.join("../../examples/ui/016-calendar/src/front/app.at")),
-            Some(PathBuf::from(
-                "examples/ui/016-calendar/src/front/app.at",
-            )),
+            Some(PathBuf::from("examples/ui/016-calendar/src/front/app.at")),
         ];
-        let manifest = candidates
-            .iter()
-            .flatten()
-            .find(|p| p.exists())
-            .cloned();
+        let manifest = candidates.iter().flatten().find(|p| p.exists()).cloned();
         let Some(manifest) = manifest else {
             eprintln!("plan339: skipping — 016-calendar app.at not found");
             return;
@@ -466,7 +457,11 @@ pub fn create_note(title str, body str) Note {
         let temp_dir = tempfile::tempdir().unwrap();
         let project_root = temp_dir.path();
         let front_dir = project_root.join("src").join("front");
-        let dep_front = project_root.join("deps").join("common").join("src").join("front");
+        let dep_front = project_root
+            .join("deps")
+            .join("common")
+            .join("src")
+            .join("front");
         fs::create_dir_all(&front_dir).unwrap();
         fs::create_dir_all(&dep_front).unwrap();
 
@@ -481,7 +476,8 @@ dep common {
     path: \"../common\"
 }
 ",
-        ).unwrap();
+        )
+        .unwrap();
 
         let resolved = crate::resolve_module_path(&front_dir, "common.header");
         assert!(resolved.is_some(), "Must resolve common.header via deps/");
@@ -493,14 +489,21 @@ dep common {
         let temp_dir = tempfile::tempdir().unwrap();
         let project_root = temp_dir.path();
         let front_dir = project_root.join("src").join("front");
-        let dep_front = project_root.join("deps").join("ghost").join("src").join("front");
+        let dep_front = project_root
+            .join("deps")
+            .join("ghost")
+            .join("src")
+            .join("front");
         fs::create_dir_all(&front_dir).unwrap();
         fs::create_dir_all(&dep_front).unwrap();
         fs::write(dep_front.join("header.at"), "widget Header {}").unwrap();
         // No pac.at: the materialized deps/ghost is a ghost dependency.
 
         let resolved = crate::resolve_module_path(&front_dir, "ghost.header");
-        assert!(resolved.is_none(), "undeclared deps/<name> must not resolve");
+        assert!(
+            resolved.is_none(),
+            "undeclared deps/<name> must not resolve"
+        );
     }
 
     #[test]
@@ -519,10 +522,14 @@ dep common {
 scene: \"workspace\"
 members: [\"common\"]
 ",
-        ).unwrap();
+        )
+        .unwrap();
 
         let resolved = crate::resolve_module_path(&front_dir, "common.header");
-        assert!(resolved.is_some(), "workspace member must resolve like deps/");
+        assert!(
+            resolved.is_some(),
+            "workspace member must resolve like deps/"
+        );
         assert_eq!(resolved.unwrap(), header_file);
     }
 }

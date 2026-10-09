@@ -6,7 +6,6 @@ use crate::vm::abt::{AbtInstruction, AbtOperand, AbtProgram};
 use crate::vm::codegen::ObjectType;
 use crate::vm::opcode::OpCode;
 
-
 /// Parse ABT source text into an `AbtProgram`.
 pub fn parse(source: &str) -> Result<AbtProgram, String> {
     let mut program = AbtProgram::default();
@@ -27,7 +26,13 @@ pub fn parse(source: &str) -> Result<AbtProgram, String> {
                 ".object_keys" => Section::ObjectKeys,
                 ".object_types" => Section::ObjectTypes,
                 ".code" => Section::Code,
-                _ => return Err(format!("Unknown section '{}' at line {}", line, line_no + 1)),
+                _ => {
+                    return Err(format!(
+                        "Unknown section '{}' at line {}",
+                        line,
+                        line_no + 1
+                    ))
+                }
             };
             continue;
         }
@@ -65,7 +70,11 @@ pub fn parse(source: &str) -> Result<AbtProgram, String> {
                 parse_code_line(line, line_no + 1, &mut program, &mut instr_idx)?;
             }
             Section::None => {
-                return Err(format!("Line outside of section at {}: {}", line_no + 1, line));
+                return Err(format!(
+                    "Line outside of section at {}: {}",
+                    line_no + 1,
+                    line
+                ));
             }
         }
     }
@@ -88,7 +97,7 @@ enum Section {
 fn parse_quoted_string(s: &str) -> Result<String, String> {
     let s = s.trim();
     if s.starts_with('"') && s.ends_with('"') {
-        Ok(s[1..s.len()-1].to_string())
+        Ok(s[1..s.len() - 1].to_string())
     } else {
         Ok(s.to_string())
     }
@@ -97,8 +106,10 @@ fn parse_quoted_string(s: &str) -> Result<String, String> {
 fn parse_array_line(s: &str) -> Result<Vec<String>, String> {
     // Format: idx: ["a", "b", "c"]
     let bracket_start = s.find('[').ok_or_else(|| format!("Expected [ in: {}", s))?;
-    let bracket_end = s.rfind(']').ok_or_else(|| format!("Expected ] in: {}", s))?;
-    let inner = &s[bracket_start+1..bracket_end];
+    let bracket_end = s
+        .rfind(']')
+        .ok_or_else(|| format!("Expected ] in: {}", s))?;
+    let inner = &s[bracket_start + 1..bracket_end];
     let mut result = Vec::new();
     for item in inner.split(',') {
         let item = item.trim();
@@ -111,8 +122,10 @@ fn parse_array_line(s: &str) -> Result<Vec<String>, String> {
 
 fn parse_types_line(s: &str) -> Result<Vec<ObjectType>, String> {
     let bracket_start = s.find('[').ok_or_else(|| format!("Expected [ in: {}", s))?;
-    let bracket_end = s.rfind(']').ok_or_else(|| format!("Expected ] in: {}", s))?;
-    let inner = &s[bracket_start+1..bracket_end];
+    let bracket_end = s
+        .rfind(']')
+        .ok_or_else(|| format!("Expected ] in: {}", s))?;
+    let inner = &s[bracket_start + 1..bracket_end];
     let mut result = Vec::new();
     for item in inner.split(',') {
         let item = item.trim();
@@ -140,17 +153,25 @@ fn parse_object_type(s: &str) -> Result<ObjectType, String> {
     }
 }
 
-fn parse_code_line(line: &str, line_no: usize, program: &mut AbtProgram, instr_idx: &mut usize) -> Result<(), String> {
+fn parse_code_line(
+    line: &str,
+    line_no: usize,
+    program: &mut AbtProgram,
+    instr_idx: &mut usize,
+) -> Result<(), String> {
     // Label?
     if line.ends_with(':') {
-        let label = line[..line.len()-1].trim().to_string();
+        let label = line[..line.len() - 1].trim().to_string();
         program.labels.insert(label, *instr_idx); // instruction index, resolved to byte offset during assembly
         return Ok(());
     }
 
     // .line pseudo-op
     if line.starts_with(".line") {
-        let num: u32 = line[5..].trim().parse().map_err(|e| format!("Invalid .line at {}: {}", line_no, e))?;
+        let num: u32 = line[5..]
+            .trim()
+            .parse()
+            .map_err(|e| format!("Invalid .line at {}: {}", line_no, e))?;
         program.code.push(AbtInstruction {
             offset: 0,
             opcode: OpCode::SOURCE_LINE,
@@ -203,28 +224,36 @@ fn parse_operand(s: &str) -> Result<AbtOperand, String> {
 
     // String index: str[N]
     if s.starts_with("str[") && s.ends_with(']') {
-        let inner = &s[4..s.len()-1];
-        let idx: usize = inner.parse().map_err(|e| format!("Invalid str idx: {}", e))?;
+        let inner = &s[4..s.len() - 1];
+        let idx: usize = inner
+            .parse()
+            .map_err(|e| format!("Invalid str idx: {}", e))?;
         return Ok(AbtOperand::StringIdx(idx));
     }
 
     // Field index: field[N]
     if s.starts_with("field[") && s.ends_with(']') {
-        let inner = &s[6..s.len()-1];
-        let idx: usize = inner.parse().map_err(|e| format!("Invalid field idx: {}", e))?;
+        let inner = &s[6..s.len() - 1];
+        let idx: usize = inner
+            .parse()
+            .map_err(|e| format!("Invalid field idx: {}", e))?;
         return Ok(AbtOperand::FieldIdx(idx));
     }
 
     // Native index: nat#N
     if s.starts_with("nat#") {
         let inner = &s[4..];
-        let idx: u16 = inner.parse().map_err(|e| format!("Invalid nat idx: {}", e))?;
+        let idx: u16 = inner
+            .parse()
+            .map_err(|e| format!("Invalid nat idx: {}", e))?;
         return Ok(AbtOperand::NatIdx(idx));
     }
 
     // Parameter reference: argN (encoded as 0x80 + N)
     if s.starts_with("arg") {
-        let num: u8 = s[3..].parse().map_err(|e| format!("Invalid arg ref: {}", e))?;
+        let num: u8 = s[3..]
+            .parse()
+            .map_err(|e| format!("Invalid arg ref: {}", e))?;
         if num > 127 {
             return Err(format!("arg index too large: {}", num));
         }
@@ -269,7 +298,7 @@ fn parse_operand(s: &str) -> Result<AbtOperand, String> {
 
     // Quoted string
     if s.starts_with('"') && s.ends_with('"') {
-        return Ok(AbtOperand::Bytes(s[1..s.len()-1].as_bytes().to_vec()));
+        return Ok(AbtOperand::Bytes(s[1..s.len() - 1].as_bytes().to_vec()));
     }
 
     Err(format!("Cannot parse operand: {}", s))

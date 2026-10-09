@@ -103,7 +103,9 @@ fn spawn_rqhost_default(wellknown: &str) -> std::io::Result<()> {
 /// 自命中（auto/auto.exe）或同目录向上至多三级。
 fn rqhost_auto_binary() -> std::io::Result<std::path::PathBuf> {
     let exe = std::env::current_exe()?;
-    let is_auto = exe.file_name().is_some_and(|n| n == "auto" || n == "auto.exe");
+    let is_auto = exe
+        .file_name()
+        .is_some_and(|n| n == "auto" || n == "auto.exe");
     if is_auto {
         return Ok(exe);
     }
@@ -212,9 +214,7 @@ fn parse_adopt_record(msg: &ProtocolMsg) -> Option<String> {
     };
     let mut parts = record.split('\u{1f}');
     match (parts.next(), parts.next()) {
-        (Some("adopt"), Some(name)) | (Some("incubate"), Some(name))
-            if !name.is_empty() =>
-        {
+        (Some("adopt"), Some(name)) | (Some("incubate"), Some(name)) if !name.is_empty() => {
             Some(name.to_string())
         }
         _ => None,
@@ -246,7 +246,11 @@ fn serve_adopt_once(
     });
     client.send(&reply)?;
     eprintln!("[rqhost] adopt {app_name} -> {app_pipe}");
-    Ok(Some(PendingAdoption { app_name, pipe_name: app_pipe, listener: app_listener }))
+    Ok(Some(PendingAdoption {
+        app_name,
+        pipe_name: app_pipe,
+        listener: app_listener,
+    }))
 }
 
 /// rqhost 启动失败形态（锁管道被占 = 单实例仲裁出局，调用方干净退出）。
@@ -300,17 +304,14 @@ impl RqServe {
                             let pending = Arc::clone(&pending);
                             std::thread::Builder::new()
                                 .name("rqhost-adopt-wait".into())
-                                .spawn(move || {
-                                    match adoption.listener.wait_connect() {
-                                        Ok(end) => pending
-                                            .lock()
-                                            .unwrap()
-                                            .push((adoption.app_name, end)),
-                                        Err(e) => eprintln!(
-                                            "[rqhost] adoption {} 未转连: {e:?}",
-                                            adoption.pipe_name
-                                        ),
+                                .spawn(move || match adoption.listener.wait_connect() {
+                                    Ok(end) => {
+                                        pending.lock().unwrap().push((adoption.app_name, end))
                                     }
+                                    Err(e) => eprintln!(
+                                        "[rqhost] adoption {} 未转连: {e:?}",
+                                        adoption.pipe_name
+                                    ),
                                 })
                                 .expect("spawn adopt-wait thread");
                         }
@@ -391,7 +392,12 @@ impl RqIds {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RqEvent {
     /// Hello 已采纳——开窗凭据齐备（title/尺寸）。
-    Adopted { app_name: String, title: String, width: f32, height: f32 },
+    Adopted {
+        app_name: String,
+        title: String,
+        width: f32,
+        height: f32,
+    },
     /// 窗应回收（ExitRequest→ReclaimWindow 握手完成，BufferRelease 已回发）。
     Reclaimed { wid: u64 },
     /// PLAN-690 T-02：App IME 请求下行（daemon 按发生窗执行 IMM；去重在
@@ -421,7 +427,13 @@ fn apply_actions(
     let mut events = Vec::new();
     for action in actions {
         match action {
-            HostAction::ResolveAndAttach { app_name, title, width, height, .. } => {
+            HostAction::ResolveAndAttach {
+                app_name,
+                title,
+                width,
+                height,
+                ..
+            } => {
                 // 客户端权威：零装载。app_id/wid = rqhost 自有计数器；
                 // rect = (0,0,w,h) 窗口本地坐标（表面铺满客户区，D4）。
                 let app_id = ids.next();
@@ -441,11 +453,8 @@ fn apply_actions(
                 // = 观测弃置（v1 显式边界，043 样板 560×360 in 480×320
                 // 表面实测过档）。
                 let bm_name = format!("{shm_name}-bm");
-                let bm_slot_size = width.ceil().max(1.0) as u32
-                    * height.ceil().max(1.0) as u32
-                    * 4
-                    * 4
-                    + 4;
+                let bm_slot_size =
+                    width.ceil().max(1.0) as u32 * height.ceil().max(1.0) as u32 * 4 * 4 + 4;
                 let bm = match SharedFrameBuffer::create(&bm_name, 2, bm_slot_size) {
                     Ok(seg) => {
                         client.inner.bm_shm.insert(surface, seg);
@@ -477,17 +486,34 @@ fn apply_actions(
                         client.inner.app_id = Some(crate::ui::session::AppId(app_id));
                         client.inner.wid = Some(Wid(wid));
                         client.inner.app_name = Some(app_name.clone());
-                        let title = if title.is_empty() { app_name.clone() } else { title };
+                        let title = if title.is_empty() {
+                            app_name.clone()
+                        } else {
+                            title
+                        };
                         client.app_name = app_name.clone();
                         client.title = title.clone();
                         client.width = width;
                         client.height = height;
-                        events.push(RqEvent::Adopted { app_name, title, width, height });
+                        events.push(RqEvent::Adopted {
+                            app_name,
+                            title,
+                            width,
+                            height,
+                        });
                     }
                     Err(_) => continue,
                 }
             }
-            HostAction::ComposeFrame { surface, wid, frame_id, slot, revision, payload, .. } => {
+            HostAction::ComposeFrame {
+                surface,
+                wid,
+                frame_id,
+                slot,
+                revision,
+                payload,
+                ..
+            } => {
                 if let Some(freed) = client.inner.surfaces.compose(surface, slot, payload) {
                     client.frames += 1;
                     note_revision(client, revision);
@@ -498,16 +524,29 @@ fn apply_actions(
                     }));
                 }
             }
-            HostAction::ComposeFrameShared { surface, wid, frame_id, slot, revision, .. } => {
+            HostAction::ComposeFrameShared {
+                surface,
+                wid,
+                frame_id,
+                slot,
+                revision,
+                ..
+            } => {
                 // PLAN-683：槽内载荷种类 tag 分派（2 = DisplayList v2 →
                 // v2 槽合成；1/其他 = v1 既有路径）。
-                let slot_payload = client.inner.shm.get(&surface).and_then(|s| s.read_slot(slot).ok());
+                let slot_payload = client
+                    .inner
+                    .shm
+                    .get(&surface)
+                    .and_then(|s| s.read_slot(slot).ok());
                 if super::shm::frame_payload_kind(slot_payload.as_deref().unwrap_or(&[])) == 2 {
-                    let ready_v2 = slot_payload
-                        .as_deref()
-                        .and_then(|payload| super::shm::display_list_from_slot_payload(payload).ok());
+                    let ready_v2 = slot_payload.as_deref().and_then(|payload| {
+                        super::shm::display_list_from_slot_payload(payload).ok()
+                    });
                     if let Some(payload) = ready_v2 {
-                        if let Some(freed) = client.inner.surfaces.compose_v2(surface, slot, payload) {
+                        if let Some(freed) =
+                            client.inner.surfaces.compose_v2(surface, slot, payload)
+                        {
                             client.frames += 1;
                             note_revision(client, revision);
                             to_app.push(ProtocolMsg::Frame(FrameMsg::FrameAck {
@@ -520,9 +559,7 @@ fn apply_actions(
                 } else {
                     let ready = slot_payload
                         .as_deref()
-                        .and_then(|payload| {
-                            super::shm::draw_list_from_slot_payload(payload).ok()
-                        });
+                        .and_then(|payload| super::shm::draw_list_from_slot_payload(payload).ok());
                     if let Some(payload) = ready {
                         if let Some(freed) = client.inner.surfaces.compose(surface, slot, payload) {
                             client.frames += 1;
@@ -538,7 +575,14 @@ fn apply_actions(
             }
             // PLAN-683（remote 模式）：v2 内嵌帧 → v2 槽合成（信封
             // FrameReadyV2；Ack 纪律同 v1）。
-            HostAction::ComposeFrameV2 { surface, wid, frame_id, slot, revision, payload } => {
+            HostAction::ComposeFrameV2 {
+                surface,
+                wid,
+                frame_id,
+                slot,
+                revision,
+                payload,
+            } => {
                 if let Some(freed) = client.inner.surfaces.compose_v2(surface, slot, payload) {
                     client.frames += 1;
                     note_revision(client, revision);
@@ -579,9 +623,7 @@ fn apply_actions(
                         .push(key.clone());
                 }
                 // 观测行（e2e 断言锚点：位图过线 + 缓存命中面）。
-                eprintln!(
-                    "[rqhost] bitmap `{key}` {w}x{h} slot={slot} cached={cached}"
-                );
+                eprintln!("[rqhost] bitmap `{key}` {w}x{h} slot={slot} cached={cached}");
                 to_app.push(ProtocolMsg::Frame(FrameMsg::BitmapAck { wid, slot }));
             }
             // queue 唯一档（Welcome=Commands）——像素帧臂理论不到达；
@@ -596,8 +638,9 @@ fn apply_actions(
                 h,
                 stride,
             } => {
-                if let Some(ack) =
-                    client.inner.compose_pixels(surface, wid, frame_id, slot, revision, w, h, stride)
+                if let Some(ack) = client
+                    .inner
+                    .compose_pixels(surface, wid, frame_id, slot, revision, w, h, stride)
                 {
                     to_app.push(ProtocolMsg::Frame(ack));
                 }
@@ -667,8 +710,7 @@ pub fn adopt_one(
         scale: 1.0,
         last_perf_frames: 0,
     };
-    let deadline =
-        std::time::Instant::now() + std::time::Duration::from_millis(budget_ms as u64);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(budget_ms as u64);
     let mut events = Vec::new();
     while std::time::Instant::now() < deadline {
         if client.inner.endpoint.state == HostState::Active {
@@ -735,7 +777,9 @@ pub fn composed(client: &RqClient) -> Option<&DrawList> {
 
 /// PLAN-683（remote 模式）：该客户端当前合成面 v2（DisplayList——
 /// remote 窗的取帧/断言口）。
-pub fn composed_v2(client: &RqClient) -> Option<&crate::ui::desktop_protocol::message::DisplayList> {
+pub fn composed_v2(
+    client: &RqClient,
+) -> Option<&crate::ui::desktop_protocol::message::DisplayList> {
     client.inner.composed_v2()
 }
 
@@ -772,7 +816,10 @@ pub fn run_vm_rqhost_client(
             .map(|v| v.trim().eq_ignore_ascii_case("remote"))
             .unwrap_or(false),
     };
-    let target = ClientTarget::Rqhost { wellknown: wellknown.to_string(), app_name };
+    let target = ClientTarget::Rqhost {
+        wellknown: wellknown.to_string(),
+        app_name,
+    };
     client_entry::run_dynamic_client(component, opts, target)
         .map(|_| "rqhost client exited".to_string())
 }
@@ -803,20 +850,40 @@ pub enum RqMessage {
     /// 原生窗输入→帧响应太钝，D3 定案）。
     Tick,
     /// OS 窗 resize → `FrameMsg::Resize` 下发客户端重排（AC-06）。
-    WindowResized { window: iced::window::Id, width: f32, height: f32 },
+    WindowResized {
+        window: iced::window::Id,
+        width: f32,
+        height: f32,
+    },
     /// OS 窗关闭：宿主 Close 下发（app ExitRequest → Reclaim 既有状态机，
     /// 退出码 0）；末窗 = daemon 退出（iced 空窗不自动退出的反面，D5）。
     WindowClosed { window: iced::window::Id },
     /// live 输入（键盘/滚轮/IME——029 映射族产物；发生窗随行）。
-    Live { window: iced::window::Id, input: crate::ui::session::LiveInput },
+    Live {
+        window: iced::window::Id,
+        input: crate::ui::session::LiveInput,
+    },
     /// 光标移动（窗口本地坐标 = 表面坐标，D4；也是按下事件的坐标源）。
-    CursorMoved { window: iced::window::Id, x: f32, y: f32 },
+    CursorMoved {
+        window: iced::window::Id,
+        x: f32,
+        y: f32,
+    },
     /// 指针按下/释放（坐标取 `last_cursor` 簿记——Button 事件不带位）。
-    PointerPressed { window: iced::window::Id, button: iced::mouse::Button },
-    PointerReleased { window: iced::window::Id, button: iced::mouse::Button },
+    PointerPressed {
+        window: iced::window::Id,
+        button: iced::mouse::Button,
+    },
+    PointerReleased {
+        window: iced::window::Id,
+        button: iced::mouse::Button,
+    },
     /// PLAN-690 T-02：daemon 窗 scale factor 回报（开窗后取一次——App
     /// 逻辑坐标 → IMM 物理坐标换算系数）。
-    ScaleFactor { window: iced::window::Id, scale: f32 },
+    ScaleFactor {
+        window: iced::window::Id,
+        scale: f32,
+    },
 }
 
 /// daemon 状态：客户端表（窗注册表即 `client.window`）+ serve 柄。
@@ -879,8 +946,10 @@ fn open_window_for(client: &mut RqClient, cascade: u64) -> iced::Task<RqMessage>
         ..Default::default()
     });
     client.window = Some(win_id);
-    let scale_task = iced::window::scale_factor(win_id)
-        .map(move |scale| RqMessage::ScaleFactor { window: win_id, scale });
+    let scale_task = iced::window::scale_factor(win_id).map(move |scale| RqMessage::ScaleFactor {
+        window: win_id,
+        scale,
+    });
     eprintln!(
         "[rqhost] window opened for `{}` ({:.0}x{:.0})",
         client.app_name, client.width, client.height
@@ -949,14 +1018,21 @@ fn live_input_msgs(wid: u64, input: &crate::ui::session::LiveInput) -> Vec<Input
     use crate::ui::session::LiveInput;
     match input {
         LiveInput::KeyPressed { key, modifiers } => {
-            vec![InputMsg::KeyPressed { wid, key: *key, modifiers: *modifiers }]
+            vec![InputMsg::KeyPressed {
+                wid,
+                key: *key,
+                modifiers: *modifiers,
+            }]
         }
         LiveInput::Chars { text } => text
             .chars()
             .map(|ch| InputMsg::CharTyped { wid, ch })
             .collect(),
         LiveInput::ImeCommit { text } => {
-            vec![InputMsg::ImeCommit { wid, text: text.clone() }]
+            vec![InputMsg::ImeCommit {
+                wid,
+                text: text.clone(),
+            }]
         }
         LiveInput::ImePreedit { text, selection } => vec![InputMsg::ImePreedit {
             wid,
@@ -964,7 +1040,11 @@ fn live_input_msgs(wid: u64, input: &crate::ui::session::LiveInput) -> Vec<Input
             selection: selection.map(|(s, e)| (s as u32, e as u32)),
         }],
         LiveInput::ImeCancelled => vec![InputMsg::ImeCancelled { wid }],
-        LiveInput::Wheel { dx, dy } => vec![InputMsg::Scroll { wid, dx: *dx, dy: *dy }],
+        LiveInput::Wheel { dx, dy } => vec![InputMsg::Scroll {
+            wid,
+            dx: *dx,
+            dy: *dy,
+        }],
     }
 }
 
@@ -977,9 +1057,7 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
             // 一行 private/working_set（e2e 断言与运维口径；节流防刷）。
             state.mem_ticks += 1;
             if state.mem_ticks % 300 == 0 {
-                if let Ok(s) =
-                    super::stage3::sample_process_memory(std::process::id())
-                {
+                if let Ok(s) = super::stage3::sample_process_memory(std::process::id()) {
                     eprintln!(
                         "[rqhost] mem private={}KB working_set={}KB",
                         s.private_bytes / 1024,
@@ -1069,10 +1147,7 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
                             let client = &mut state.clients[idx];
                             if client.cursor_kind != kind {
                                 client.cursor_kind = kind;
-                                eprintln!(
-                                    "[rqhost] cursor `{}` -> kind {kind}",
-                                    client.app_name
-                                );
+                                eprintln!("[rqhost] cursor `{}` -> kind {kind}", client.app_name);
                             }
                         }
                     }
@@ -1103,7 +1178,11 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
             }
             iced::Task::batch(tasks)
         }
-        RqMessage::WindowResized { window, width, height } => {
+        RqMessage::WindowResized {
+            window,
+            width,
+            height,
+        } => {
             // PLAN-690 T-07（P683-D5 自愈臂）：最小化路径 OS 会发 0x0
             // resize——不向 app 转发零尺寸（app 侧表面重排成空面，恢复期
             // 假空白），登记基线保持最近有效尺寸；真实尺寸在恢复 resize
@@ -1174,43 +1253,54 @@ fn rq_update(state: &mut RqDaemon, msg: RqMessage) -> iced::Task<RqMessage> {
             state.last_cursor.insert(window, (x, y));
             if let Some(client) = state.client_of(window) {
                 if let Some(wid) = client.inner.wid.map(|w| w.0) {
-                    let _ = client.inner.end.send(&ProtocolMsg::Input(
-                        InputMsg::PointerMoved { wid, x, y },
-                    ));
+                    let _ = client
+                        .inner
+                        .end
+                        .send(&ProtocolMsg::Input(InputMsg::PointerMoved { wid, x, y }));
                 }
             }
             iced::Task::none()
         }
         RqMessage::PointerPressed { window, button } => {
-            let at = state.last_cursor.get(&window).copied().unwrap_or((0.0, 0.0));
+            let at = state
+                .last_cursor
+                .get(&window)
+                .copied()
+                .unwrap_or((0.0, 0.0));
             if let Some(client) = state.client_of(window) {
                 if let Some(wid) = client.inner.wid.map(|w| w.0) {
-                    let _ = client.inner.end.send(&ProtocolMsg::Input(
-                        InputMsg::PointerPressed {
+                    let _ = client
+                        .inner
+                        .end
+                        .send(&ProtocolMsg::Input(InputMsg::PointerPressed {
                             wid,
                             button: wire_button(button),
                             x: at.0,
                             y: at.1,
                             modifiers: 0,
-                        },
-                    ));
+                        }));
                 }
             }
             iced::Task::none()
         }
         RqMessage::PointerReleased { window, button } => {
-            let at = state.last_cursor.get(&window).copied().unwrap_or((0.0, 0.0));
+            let at = state
+                .last_cursor
+                .get(&window)
+                .copied()
+                .unwrap_or((0.0, 0.0));
             if let Some(client) = state.client_of(window) {
                 if let Some(wid) = client.inner.wid.map(|w| w.0) {
-                    let _ = client.inner.end.send(&ProtocolMsg::Input(
-                        InputMsg::PointerReleased {
+                    let _ = client
+                        .inner
+                        .end
+                        .send(&ProtocolMsg::Input(InputMsg::PointerReleased {
                             wid,
                             button: wire_button(button),
                             x: at.0,
                             y: at.1,
                             modifiers: 0,
-                        },
-                    ));
+                        }));
                 }
             }
             iced::Task::none()
@@ -1234,17 +1324,17 @@ fn rq_view(state: &RqDaemon, window: iced::window::Id) -> iced::Element<'_, RqMe
     } else {
         match client.and_then(composed) {
             Some(list) => crate::ui::iced::broker_surface::drawlist_element(list),
-            None => iced::widget::container(
-                iced::widget::text("[rqhost] 窗口未登记").size(14),
-            )
-            .width(iced::Length::Fill)
-            .height(iced::Length::Fill)
-            .center(iced::Length::Fill)
-            .into(),
+            None => iced::widget::container(iced::widget::text("[rqhost] 窗口未登记").size(14))
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .center(iced::Length::Fill)
+                .into(),
         }
     };
     iced::widget::mouse_area(content)
-        .interaction(crate::ui::desktop_protocol::headless::cursor_kind_icon(cursor_kind))
+        .interaction(crate::ui::desktop_protocol::headless::cursor_kind_icon(
+            cursor_kind,
+        ))
         .into()
 }
 
@@ -1257,28 +1347,40 @@ fn rq_subscription(_state: &RqDaemon) -> iced::Subscription<RqMessage> {
     iced::Subscription::batch(vec![
         iced::time::every(std::time::Duration::from_millis(15)).map(|_| RqMessage::Tick),
         iced::event::listen_with(|e, status, window_id| match e {
-            iced::Event::Window(iced::window::Event::Resized(size)) => Some(
-                RqMessage::WindowResized { window: window_id, width: size.width, height: size.height },
-            ),
+            iced::Event::Window(iced::window::Event::Resized(size)) => {
+                Some(RqMessage::WindowResized {
+                    window: window_id,
+                    width: size.width,
+                    height: size.height,
+                })
+            }
             iced::Event::Window(iced::window::Event::Closed) => {
                 Some(RqMessage::WindowClosed { window: window_id })
             }
             // live 输入三族（Ignored 门——Captured = 宿主真 widget 已消费；
             // rqhost 窗内容 = canvas 无交互 widget，稳态恒 Ignored）。
             iced::Event::Keyboard(kb) if status == iced::event::Status::Ignored => {
-                live_inputs_from_keyboard(&kb).into_iter().next().map(|input| {
-                    RqMessage::Live { window: window_id, input }
-                })
+                live_inputs_from_keyboard(&kb)
+                    .into_iter()
+                    .next()
+                    .map(|input| RqMessage::Live {
+                        window: window_id,
+                        input,
+                    })
             }
             iced::Event::InputMethod(im) if status == iced::event::Status::Ignored => {
-                live_input_from_input_method(&im)
-                    .map(|input| RqMessage::Live { window: window_id, input })
+                live_input_from_input_method(&im).map(|input| RqMessage::Live {
+                    window: window_id,
+                    input,
+                })
             }
             iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta })
                 if status == iced::event::Status::Ignored =>
             {
-                live_input_from_wheel(&delta)
-                    .map(|input| RqMessage::Live { window: window_id, input })
+                live_input_from_wheel(&delta).map(|input| RqMessage::Live {
+                    window: window_id,
+                    input,
+                })
             }
             iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
                 Some(RqMessage::CursorMoved {
@@ -1288,10 +1390,16 @@ fn rq_subscription(_state: &RqDaemon) -> iced::Subscription<RqMessage> {
                 })
             }
             iced::Event::Mouse(iced::mouse::Event::ButtonPressed(button)) => {
-                Some(RqMessage::PointerPressed { window: window_id, button })
+                Some(RqMessage::PointerPressed {
+                    window: window_id,
+                    button,
+                })
             }
             iced::Event::Mouse(iced::mouse::Event::ButtonReleased(button)) => {
-                Some(RqMessage::PointerReleased { window: window_id, button })
+                Some(RqMessage::PointerReleased {
+                    window: window_id,
+                    button,
+                })
             }
             _ => None,
         }),
@@ -1410,7 +1518,10 @@ mod tests {
     fn lock_pipe_second_claim_fails() {
         let lock = pid_pipe("lock");
         let _first = transport::try_claim_pipe(&lock).expect("首声明");
-        assert!(transport::try_claim_pipe(&lock).is_err(), "transport 层第二声明失败");
+        assert!(
+            transport::try_claim_pipe(&lock).is_err(),
+            "transport 层第二声明失败"
+        );
         drop(_first);
         assert!(transport::try_claim_pipe(&lock).is_ok(), "Drop 后名字让出");
 
@@ -1432,12 +1543,13 @@ mod tests {
         let (serve, _claim) = start_serve(&pipe);
 
         let (_, mut app_end) = adopt(&pipe, "no-such-app-anywhere", 2000).expect("adopt");
-        app_end.send(&hello("no-such-app-anywhere", "幻影 App")).unwrap();
+        app_end
+            .send(&hello("no-such-app-anywhere", "幻影 App"))
+            .unwrap();
 
         // 宿主侧收端点 + 泵到 Active。
         let (app_name, end) = {
-            let deadline =
-                std::time::Instant::now() + std::time::Duration::from_secs(3);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
             loop {
                 let got = serve.pending.lock().unwrap().pop();
                 if let Some(x) = got {
@@ -1450,8 +1562,7 @@ mod tests {
         assert_eq!(app_name, "no-such-app-anywhere");
 
         let mut ids = RqIds::default();
-        let (client, events) =
-            adopt_one(app_name, end, &mut ids, 3000).expect("泵到 Active");
+        let (client, events) = adopt_one(app_name, end, &mut ids, 3000).expect("泵到 Active");
         assert_eq!(client.inner.endpoint.state, HostState::Active);
         // Welcome + BufferAlloc 已回发；app 侧消费即 Active。
         let welcome = app_end.recv_wait(2000).unwrap().unwrap();
@@ -1466,10 +1577,10 @@ mod tests {
             Some(Ok(ProtocolMsg::Frame(FrameMsg::BufferAlloc { .. })))
         ));
         // 事件面：开窗凭据（title 空名回退 app_name）。
-        assert!(events
-            .iter()
-            .any(|e| matches!(e, RqEvent::Adopted { title, width, height, .. }
-                if *title == "幻影 App" && *width == 480.0 && *height == 320.0)));
+        assert!(events.iter().any(
+            |e| matches!(e, RqEvent::Adopted { title, width, height, .. }
+                if *title == "幻影 App" && *width == 480.0 && *height == 320.0)
+        ));
 
         serve.stop(&pipe);
     }
@@ -1485,10 +1596,11 @@ mod tests {
 
         for i in 1..=3 {
             let (_, mut app_end) = adopt(&pipe, &format!("app{i}"), 2000).expect("adopt");
-            app_end.send(&hello(&format!("app{i}"), &format!("t{i}"))).unwrap();
+            app_end
+                .send(&hello(&format!("app{i}"), &format!("t{i}")))
+                .unwrap();
             let (_, end) = {
-                let deadline =
-                    std::time::Instant::now() + std::time::Duration::from_secs(3);
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
                 loop {
                     let got = serve.pending.lock().unwrap().pop();
                     if let Some(x) = got {
@@ -1498,8 +1610,8 @@ mod tests {
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
             };
-            let (client, _) = adopt_one(format!("app{i}"), end, &mut ids, 3000)
-                .expect("泵到 Active");
+            let (client, _) =
+                adopt_one(format!("app{i}"), end, &mut ids, 3000).expect("泵到 Active");
             assert_eq!(client.inner.endpoint.state, HostState::Active);
             surfaces.push(client.inner.endpoint.surface.expect("surface 在册"));
         }
@@ -1579,7 +1691,10 @@ mod tests {
         let mut reclaimed = false;
         loop {
             let (events, alive) = pump_client(&mut client, &mut ids);
-            if events.iter().any(|e| matches!(e, RqEvent::Reclaimed { wid: w } if *w == wid)) {
+            if events
+                .iter()
+                .any(|e| matches!(e, RqEvent::Reclaimed { wid: w } if *w == wid))
+            {
                 assert!(alive, "端点回 Listening 仍活");
                 reclaimed = true;
                 break;
@@ -1638,9 +1753,7 @@ mod tests {
     /// 前身，D5②）。
     #[test]
     fn rqhost_full_cycle_over_pipe() {
-        use crate::ui::desktop_protocol::client_runtime::{
-            ClientConfig, ClientExit, ClientPump,
-        };
+        use crate::ui::desktop_protocol::client_runtime::{ClientConfig, ClientExit, ClientPump};
         use crate::ui::desktop_protocol::native_projector::RqProjector;
 
         const SRC: &str = "widget RqCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" { onclick: () => {.count += 1} }\n        text `count: ${.count}`\n    }\n}\n";
@@ -1677,8 +1790,7 @@ mod tests {
         };
         assert_eq!(name, "rq-counter");
         let mut ids = RqIds::default();
-        let (mut client, events) =
-            adopt_one(name, end, &mut ids, 3000).expect("泵到 Active");
+        let (mut client, events) = adopt_one(name, end, &mut ids, 3000).expect("泵到 Active");
         assert!(events.iter().any(|e| matches!(e, RqEvent::Adopted { .. })));
 
         // 帧合成：ClientPump 首帧（BufferAlloc 后自动产）→ pump 收 FrameAck
@@ -1795,17 +1907,27 @@ mod tests {
         // A 窗输入四型：光标 → 按下 → 键 → 字符串。
         let _ = rq_update(
             &mut state,
-            RqMessage::CursorMoved { window: win_a, x: 12.0, y: 34.0 },
+            RqMessage::CursorMoved {
+                window: win_a,
+                x: 12.0,
+                y: 34.0,
+            },
         );
         let _ = rq_update(
             &mut state,
-            RqMessage::PointerPressed { window: win_a, button: iced::mouse::Button::Left },
+            RqMessage::PointerPressed {
+                window: win_a,
+                button: iced::mouse::Button::Left,
+            },
         );
         let _ = rq_update(
             &mut state,
             RqMessage::Live {
                 window: win_a,
-                input: LiveInput::KeyPressed { key: 13, modifiers: 1 },
+                input: LiveInput::KeyPressed {
+                    key: 13,
+                    modifiers: 1,
+                },
             },
         );
         let _ = rq_update(
@@ -1818,7 +1940,11 @@ mod tests {
 
         // A 端按序收四组 Input（wid 全 = wid_a；按下坐标 = 光标簿记）。
         let expect = vec![
-            (InputMsg::PointerMoved { wid: wid_a, x: 12.0, y: 34.0 }),
+            (InputMsg::PointerMoved {
+                wid: wid_a,
+                x: 12.0,
+                y: 34.0,
+            }),
             (InputMsg::PointerPressed {
                 wid: wid_a,
                 button: MouseButton::Left,
@@ -1826,9 +1952,19 @@ mod tests {
                 y: 34.0,
                 modifiers: 0,
             }),
-            (InputMsg::KeyPressed { wid: wid_a, key: 13, modifiers: 1 }),
-            (InputMsg::CharTyped { wid: wid_a, ch: 'h' }),
-            (InputMsg::CharTyped { wid: wid_a, ch: 'i' }),
+            (InputMsg::KeyPressed {
+                wid: wid_a,
+                key: 13,
+                modifiers: 1,
+            }),
+            (InputMsg::CharTyped {
+                wid: wid_a,
+                ch: 'h',
+            }),
+            (InputMsg::CharTyped {
+                wid: wid_a,
+                ch: 'i',
+            }),
         ];
         for want in expect {
             let got = ends[0].recv_wait(2000).expect("A 端应收到").expect("解码");
@@ -1901,7 +2037,10 @@ mod tests {
             ("gamma".into(), end)
         });
         let _ = rq_update(&mut state, RqMessage::WindowClosed { window: win_b });
-        assert!(!state.serve.stop_requested(), "有待定采纳不退（关 B 暂缓退出）");
+        assert!(
+            !state.serve.stop_requested(),
+            "有待定采纳不退（关 B 暂缓退出）"
+        );
         // ④ 待定清空 → 再无在册窗（A/B 均已 Closed）→ 下一轮关窗语义：
         //    直接驱动门（再关一次任意已闭窗不触发——门看全局态，本腿
         //    以清空 pending 后驱动一次 A（已闭窗）验证全局态判定）。
@@ -1941,14 +2080,22 @@ mod tests {
     #[test]
     fn reconnect_policy_variants() {
         use crate::ui::desktop_protocol::client_entry::{reconnect_for, ClientTarget};
-        assert!(reconnect_for(
-            &ClientTarget::Rqhost { wellknown: "w".into(), app_name: "a".into() },
-            "p".into()
-        )
-        .is_none(), "rqhost 档 = exit-on-EOF");
+        assert!(
+            reconnect_for(
+                &ClientTarget::Rqhost {
+                    wellknown: "w".into(),
+                    app_name: "a".into()
+                },
+                "p".into()
+            )
+            .is_none(),
+            "rqhost 档 = exit-on-EOF"
+        );
         for target in [
             ClientTarget::Direct("p".into()),
-            ClientTarget::Broker { broker_pipe: "b".into() },
+            ClientTarget::Broker {
+                broker_pipe: "b".into(),
+            },
         ] {
             let policy = reconnect_for(&target, "p".into()).expect("桌面档保持重连");
             assert_eq!(policy.budget_ms, 30_000);
@@ -1968,7 +2115,11 @@ mod tests {
         std::env::set_var("AUTO_VM_WINDOW", "640x480");
         assert_eq!(vm_window_size(), (640.0, 480.0), "WxH 解析");
         std::env::set_var("AUTO_VM_WINDOW", "fit");
-        assert_eq!(vm_window_size(), (480.0, 320.0), "fit = 缺省档（非 480x680 独立窗语义）");
+        assert_eq!(
+            vm_window_size(),
+            (480.0, 320.0),
+            "fit = 缺省档（非 480x680 独立窗语义）"
+        );
         std::env::set_var("AUTO_VM_WINDOW", "99x99");
         assert_eq!(vm_window_size(), (480.0, 320.0), "越界 = 缺省档");
         std::env::set_var("AUTO_VM_WINDOW", "640x480");
@@ -2039,9 +2190,9 @@ mod tests {
     #[test]
     fn vm_typing_loop_over_pipe() {
         use crate::ui::desktop_protocol::client_runtime::{ClientConfig, ClientPump};
-        use crate::ui::desktop_protocol::native_projector::RqProjector;
         use crate::ui::desktop_protocol::endpoint::FrameSource;
         use crate::ui::desktop_protocol::message::DrawOp;
+        use crate::ui::desktop_protocol::native_projector::RqProjector;
 
         let conv_path = concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -2131,7 +2282,12 @@ mod tests {
             s.clients
                 .iter()
                 .position(|c| c.title == title)
-                .unwrap_or_else(|| panic!("客户端 `{title}` 不在: {:?}", s.clients.iter().map(|c| &c.title).collect::<Vec<_>>()))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "客户端 `{title}` 不在: {:?}",
+                        s.clients.iter().map(|c| &c.title).collect::<Vec<_>>()
+                    )
+                })
         };
         let conv_idx = idx_of(&state, "003");
         let hello_idx = idx_of(&state, "hello");
@@ -2153,9 +2309,7 @@ mod tests {
             .find_map(|op| match op {
                 // P679-D1②：flex 份额后输入盒宽 = 行份额（非旧 320 定宽）
                 // ——按输入盒高度定位（首个 h=32 bg quad = celsius，LTR 序）。
-                DrawOp::Quad { rect, .. } if rect.h == 32.0 => {
-                    Some((rect.x, rect.y))
-                }
+                DrawOp::Quad { rect, .. } if rect.h == 32.0 => Some((rect.x, rect.y)),
                 _ => None,
             })
             .expect("celsius 输入盒");
@@ -2179,10 +2333,7 @@ mod tests {
             || composed(&state.clients[conv_idx]).is_none()
         {
             let _ = rq_update(&mut state, RqMessage::Tick);
-            assert!(
-                std::time::Instant::now() < deadline,
-                "双端首帧 5s 未齐"
-            );
+            assert!(std::time::Instant::now() < deadline, "双端首帧 5s 未齐");
             std::thread::sleep(std::time::Duration::from_millis(30));
         }
         let hello_before: Vec<String> = composed(&state.clients[hello_idx])
@@ -2192,15 +2343,36 @@ mod tests {
         // 键入序（rq_update 输入臂 = listen_with 事件到达后的同一落点）：
         // 光标 → 点击聚焦（宿主坐标 = 表面坐标 + 输入盒中心）→ "100"。
         let (cx, cy) = (bx + 160.0, by + 16.0);
-        let _ = rq_update(&mut state, RqMessage::CursorMoved { window: win_conv, x: cx, y: cy });
-        let _ = rq_update(&mut state, RqMessage::PointerPressed { window: win_conv, button: iced::mouse::Button::Left });
-        let _ = rq_update(&mut state, RqMessage::PointerReleased { window: win_conv, button: iced::mouse::Button::Left });
+        let _ = rq_update(
+            &mut state,
+            RqMessage::CursorMoved {
+                window: win_conv,
+                x: cx,
+                y: cy,
+            },
+        );
+        let _ = rq_update(
+            &mut state,
+            RqMessage::PointerPressed {
+                window: win_conv,
+                button: iced::mouse::Button::Left,
+            },
+        );
+        let _ = rq_update(
+            &mut state,
+            RqMessage::PointerReleased {
+                window: win_conv,
+                button: iced::mouse::Button::Left,
+            },
+        );
         for ch in "100".chars() {
             let _ = rq_update(
                 &mut state,
                 RqMessage::Live {
                     window: win_conv,
-                    input: crate::ui::session::LiveInput::Chars { text: ch.to_string() },
+                    input: crate::ui::session::LiveInput::Chars {
+                        text: ch.to_string(),
+                    },
                 },
             );
             // Tick 泵一轮（输入 → 客户端重排 → 新帧回宿主）。
@@ -2251,10 +2423,7 @@ mod tests {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while !conv_app.is_finished() || !hello_app.is_finished() {
             let _ = rq_update(&mut state, RqMessage::Tick);
-            assert!(
-                std::time::Instant::now() < deadline,
-                "Close 握手 5s 未收敛"
-            );
+            assert!(std::time::Instant::now() < deadline, "Close 握手 5s 未收敛");
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         serve.stop(&pipe);
@@ -2359,7 +2528,9 @@ mod tests {
         let first = composed_v2(&state.clients[0]).unwrap();
         let first_texts = texts_of_v2(first);
         assert!(
-            first_texts.iter().any(|t| t.contains("Temperature Converter")),
+            first_texts
+                .iter()
+                .any(|t| t.contains("Temperature Converter")),
             "首帧标题缺席: {first_texts:?}"
         );
         assert!(
@@ -2381,15 +2552,36 @@ mod tests {
 
         // 键入序：光标 → 点击聚焦 → "100"（CharTyped → iced Character
         // 键事件 → text_input 原生插入）。
-        let _ = rq_update(&mut state, RqMessage::CursorMoved { window: win, x: cx, y: cy });
-        let _ = rq_update(&mut state, RqMessage::PointerPressed { window: win, button: iced::mouse::Button::Left });
-        let _ = rq_update(&mut state, RqMessage::PointerReleased { window: win, button: iced::mouse::Button::Left });
+        let _ = rq_update(
+            &mut state,
+            RqMessage::CursorMoved {
+                window: win,
+                x: cx,
+                y: cy,
+            },
+        );
+        let _ = rq_update(
+            &mut state,
+            RqMessage::PointerPressed {
+                window: win,
+                button: iced::mouse::Button::Left,
+            },
+        );
+        let _ = rq_update(
+            &mut state,
+            RqMessage::PointerReleased {
+                window: win,
+                button: iced::mouse::Button::Left,
+            },
+        );
         for ch in "100".chars() {
             let _ = rq_update(
                 &mut state,
                 RqMessage::Live {
                     window: win,
-                    input: crate::ui::session::LiveInput::Chars { text: ch.to_string() },
+                    input: crate::ui::session::LiveInput::Chars {
+                        text: ch.to_string(),
+                    },
                 },
             );
             let _ = rq_update(&mut state, RqMessage::Tick);
@@ -2512,9 +2704,9 @@ mod tests {
             list.ops
                 .iter()
                 .filter_map(|op| match op {
-                    crate::ui::desktop_protocol::message::DisplayOp::TextStyled { text, .. } => {
-                        Some(text.clone())
-                    }
+                    crate::ui::desktop_protocol::message::DisplayOp::TextStyled {
+                        text, ..
+                    } => Some(text.clone()),
                     _ => None,
                 })
                 .collect()
@@ -2531,7 +2723,10 @@ mod tests {
             .and_then(|l| {
                 l.ops.iter().find_map(|op| match op {
                     crate::ui::desktop_protocol::message::DisplayOp::TextStyled {
-                        x, y, text, ..
+                        x,
+                        y,
+                        text,
+                        ..
                     } if text == "0" => Some((*x, *y)),
                     _ => None,
                 })
@@ -2540,9 +2735,28 @@ mod tests {
         let (cx, cy) = (fx + 4.0, fy + 8.0);
 
         // ① 点击聚焦 → ImeRequest(Enabled)/SetCursor(Text) 下行到位。
-        let _ = rq_update(&mut state, RqMessage::CursorMoved { window: win, x: cx, y: cy });
-        let _ = rq_update(&mut state, RqMessage::PointerPressed { window: win, button: iced::mouse::Button::Left });
-        let _ = rq_update(&mut state, RqMessage::PointerReleased { window: win, button: iced::mouse::Button::Left });
+        let _ = rq_update(
+            &mut state,
+            RqMessage::CursorMoved {
+                window: win,
+                x: cx,
+                y: cy,
+            },
+        );
+        let _ = rq_update(
+            &mut state,
+            RqMessage::PointerPressed {
+                window: win,
+                button: iced::mouse::Button::Left,
+            },
+        );
+        let _ = rq_update(
+            &mut state,
+            RqMessage::PointerReleased {
+                window: win,
+                button: iced::mouse::Button::Left,
+            },
+        );
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
             let _ = rq_update(&mut state, RqMessage::Tick);
@@ -2578,7 +2792,9 @@ mod tests {
             &mut state,
             RqMessage::Live {
                 window: win,
-                input: crate::ui::session::LiveInput::ImeCommit { text: "你好".into() },
+                input: crate::ui::session::LiveInput::ImeCommit {
+                    text: "你好".into(),
+                },
             },
         );
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
@@ -2600,10 +2816,24 @@ mod tests {
 
         // ③ 0x0 resize（最小化路径）忽略：不向 app 转发、基线不动。
         let width_before = state.clients[0].width;
-        let _ = rq_update(&mut state, RqMessage::WindowResized { window: win, width: 0.0, height: 0.0 });
+        let _ = rq_update(
+            &mut state,
+            RqMessage::WindowResized {
+                window: win,
+                width: 0.0,
+                height: 0.0,
+            },
+        );
         assert_eq!(state.clients[0].width, width_before, "0x0 resize 改动基线");
         // 真实尺寸恢复转发。
-        let _ = rq_update(&mut state, RqMessage::WindowResized { window: win, width: 640.0, height: 480.0 });
+        let _ = rq_update(
+            &mut state,
+            RqMessage::WindowResized {
+                window: win,
+                width: 640.0,
+                height: 480.0,
+            },
+        );
         assert_eq!(state.clients[0].width, 640.0, "真实 resize 未同步基线");
 
         // 收尾：Close + Tick 泵到收敛。
@@ -2626,13 +2856,9 @@ mod tests {
     /// 其首帧实测 558B 不走溢出路径（原前置断言证伪后的改型）。
     #[test]
     fn large_frame_falls_back_to_pipe_payload() {
-        use crate::ui::desktop_protocol::client_runtime::{
-            ClientConfig, ClientPump,
-        };
+        use crate::ui::desktop_protocol::client_runtime::{ClientConfig, ClientPump};
         use crate::ui::desktop_protocol::endpoint::FrameSource;
-        use crate::ui::desktop_protocol::message::{
-            DrawOp, InputMsg as Msg, Rgba8,
-        };
+        use crate::ui::desktop_protocol::message::{DrawOp, InputMsg as Msg, Rgba8};
 
         struct BigSource;
         impl FrameSource for BigSource {
@@ -2667,8 +2893,7 @@ mod tests {
                 width: 480.0,
                 height: 320.0,
             };
-            let (exit, _) =
-                ClientPump::new(app_end, BigSource, config, None).run();
+            let (exit, _) = ClientPump::new(app_end, BigSource, config, None).run();
             exit
         });
 
@@ -2725,10 +2950,10 @@ mod tests {
     /// 缓存即时翻新（tick 推进 → 梯度变 → Handle 像素变）。
     #[test]
     fn p034_bitmap_channel_inproc_roundtrip() {
+        use crate::ui::component::Component;
         use crate::ui::desktop_protocol::client_runtime::{ClientConfig, ClientPump};
         use crate::ui::desktop_protocol::endpoint::bitmap_src;
         use crate::ui::desktop_protocol::native_projector::RqProjector;
-        use crate::ui::component::Component;
 
         /// 合成位图生产者：50ms tick 自驱（frame++ → 位图待传 + 视图
         /// 引用 bitmap://anim + 帧号文本）。
@@ -2758,10 +2983,7 @@ mod tests {
                 let src = bitmap_src("anim");
                 crate::ui::view::View::col()
                     .child(crate::ui::view::View::image(src))
-                    .child(crate::ui::view::View::text(format!(
-                        "frame {}",
-                        self.frame
-                    )))
+                    .child(crate::ui::view::View::text(format!("frame {}", self.frame)))
                     .build()
             }
 
@@ -2801,7 +3023,14 @@ mod tests {
         let cp = pipe.clone();
         let app = std::thread::spawn(move || {
             let (_, end) = adopt(&cp, "p034anim", 2000).expect("adopt");
-            let proj = RqProjector::new(AnimBitmapApp { frame: 0, pending: true }, 480.0, 320.0);
+            let proj = RqProjector::new(
+                AnimBitmapApp {
+                    frame: 0,
+                    pending: true,
+                },
+                480.0,
+                320.0,
+            );
             let (exit, _) = ClientPump::new(
                 end,
                 proj,

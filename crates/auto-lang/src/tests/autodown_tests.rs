@@ -1,11 +1,10 @@
 //! AutoDown Test Suite
-use crate::autodown::{
-    AdocBlock, AdocDocument, AdocInline, AdocMath, AdocParser, AdocSection,
-    AdocLexer, LexerMode,
-};
 use crate::autodown::lexer::{AdToken, AdTokenKind, AdocLexer as Lexer};
-use crate::autodown::trans::{HtmlTranspiler, TypstTranspiler, AdocTranspiler};
 use crate::autodown::math::AutoMathParser;
+use crate::autodown::trans::{AdocTranspiler, HtmlTranspiler, TypstTranspiler};
+use crate::autodown::{
+    AdocBlock, AdocDocument, AdocInline, AdocLexer, AdocMath, AdocParser, AdocSection, LexerMode,
+};
 
 mod lexer_tests {
     use super::*;
@@ -18,7 +17,6 @@ mod lexer_tests {
         assert_eq!(token.kind, AdTokenKind::Text);
     }
 }
-
 
 mod parser_tests {
     use super::*;
@@ -174,28 +172,44 @@ mod math_tests {
 
     #[test]
     fn test_math_simple_expression() {
-        let math = AdocMath { content: "a + b".to_string(), parsed: None, display: false };
+        let math = AdocMath {
+            content: "a + b".to_string(),
+            parsed: None,
+            display: false,
+        };
         let result = AutoMathParser::to_latex(&math);
         assert!(!result.is_empty());
     }
 
     #[test]
     fn test_math_sum_function() {
-        let math = AdocMath { content: "sum(i=0..n, f(i))".to_string(), parsed: None, display: false };
+        let math = AdocMath {
+            content: "sum(i=0..n, f(i))".to_string(),
+            parsed: None,
+            display: false,
+        };
         let result = AutoMathParser::to_latex(&math);
         assert!(result.contains("sum"));
     }
 
     #[test]
     fn test_math_sqrt() {
-        let math = AdocMath { content: "sqrt(x)".to_string(), parsed: None, display: false };
+        let math = AdocMath {
+            content: "sqrt(x)".to_string(),
+            parsed: None,
+            display: false,
+        };
         let result = AutoMathParser::to_latex(&math);
         assert!(result.contains("sqrt"));
     }
 
     #[test]
     fn test_math_to_typst() {
-        let math = AdocMath { content: "a + b".to_string(), parsed: None, display: false };
+        let math = AdocMath {
+            content: "a + b".to_string(),
+            parsed: None,
+            display: false,
+        };
         let result = AutoMathParser::to_typst(&math);
         assert!(!result.is_empty());
     }
@@ -313,7 +327,9 @@ mod lexer_advanced_tests {
         let source = "Hello ${name}!";
         let mut lexer = Lexer::new(source);
         let tokens: Vec<AdToken> = lexer.tokenize_all().unwrap();
-        let has_interpolate = tokens.iter().any(|t| t.kind == AdTokenKind::InterpolateStart);
+        let has_interpolate = tokens
+            .iter()
+            .any(|t| t.kind == AdTokenKind::InterpolateStart);
         assert!(has_interpolate, "Expected InterpolateStart token");
     }
 

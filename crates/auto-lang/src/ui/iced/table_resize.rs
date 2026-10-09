@@ -16,7 +16,9 @@
 //! 结构先例：PointerArea（tree::Tag 本地 State + 事件现场 layout bounds）、
 //! code_editor 滚动条（Drag 态 + fill_quad 直绘）。
 
-use crate::ui::view::{clamp_col_width, col_boundary_hit, ColResizeCallback, ColResizeMetrics, COL_RESIZE_BAND};
+use crate::ui::view::{
+    clamp_col_width, col_boundary_hit, ColResizeCallback, ColResizeMetrics, COL_RESIZE_BAND,
+};
 use iced::advanced::layout::{self, Layout};
 use iced::advanced::mouse;
 use iced::advanced::renderer;
@@ -86,7 +88,13 @@ pub fn table_resize<'a, Message: Clone + 'static>(
     applied_widths: Option<Vec<f32>>,
     on_resize: Option<ColResizeCallback<Message>>,
 ) -> TableResize<'a, Message> {
-    TableResize { header_cells, body_rows, col_spacing, applied_widths, on_resize }
+    TableResize {
+        header_cells,
+        body_rows,
+        col_spacing,
+        applied_widths,
+        on_resize,
+    }
 }
 
 impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
@@ -109,17 +117,26 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
     }
 
     fn diff(&self, tree: &mut Tree) {
-        let cells: Vec<&Element<Message>> =
-            self.header_cells.iter().chain(self.body_rows.iter().flatten()).collect();
+        let cells: Vec<&Element<Message>> = self
+            .header_cells
+            .iter()
+            .chain(self.body_rows.iter().flatten())
+            .collect();
         tree.diff_children(&cells);
     }
 
     fn size(&self) -> Size<Length> {
-        Size { width: Length::Shrink, height: Length::Shrink }
+        Size {
+            width: Length::Shrink,
+            height: Length::Shrink,
+        }
     }
 
     fn size_hint(&self) -> Size<Length> {
-        Size { width: Length::Shrink, height: Length::Shrink }
+        Size {
+            width: Length::Shrink,
+            height: Length::Shrink,
+        }
     }
 
     fn layout(
@@ -137,24 +154,21 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
         let mut natural_col = vec![0.0f32; n_cols];
         {
             let mut ci = 0usize;
-            let cells = self
-                .header_cells
-                .iter_mut()
-                .enumerate()
-                .chain(self.body_rows.iter_mut().flat_map(|r| r.iter_mut().enumerate()));
+            let cells = self.header_cells.iter_mut().enumerate().chain(
+                self.body_rows
+                    .iter_mut()
+                    .flat_map(|r| r.iter_mut().enumerate()),
+            );
             for (col, cell) in cells {
-                let node = cell.as_widget_mut().layout(
-                    &mut tree.children[ci],
-                    renderer,
-                    &limits.loose(),
-                );
+                let node =
+                    cell.as_widget_mut()
+                        .layout(&mut tree.children[ci], renderer, &limits.loose());
                 natural_col[col.min(n_cols - 1)] =
                     natural_col[col.min(n_cols - 1)].max(node.size().width);
                 ci += 1;
             }
         }
-        let natural_full: Vec<f32> =
-            natural_col.iter().map(|w| w + 2.0 * CELL_PAD_X).collect();
+        let natural_full: Vec<f32> = natural_col.iter().map(|w| w + 2.0 * CELL_PAD_X).collect();
 
         // —— 生效宽分派：drag 临时宽 > applied 固定宽 > 自然宽 ——
         let effective: Vec<f32> = {
@@ -182,37 +196,41 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
             }
             xs
         };
-        let total_w = effective.iter().sum::<f32>()
-            + self.col_spacing * n_cols.saturating_sub(1) as f32;
+        let total_w =
+            effective.iter().sum::<f32>() + self.col_spacing * n_cols.saturating_sub(1) as f32;
 
         // —— 第二遍：按列宽限宽落格（行分组：headers 一组 + 每 body 行一组）——
         let mut nodes: Vec<layout::Node> = Vec::new();
         let mut row_groups: Vec<(usize /*起始索引*/, usize /*cell 数*/)> = Vec::new();
         {
             let mut ci = 0usize;
-            let mut lay_row =
-                |cells: &mut dyn Iterator<Item = (usize, &mut Element<'_, Message>)>,
-                 tree: &mut Tree,
-                 nodes: &mut Vec<layout::Node>,
-                 ci: &mut usize| {
-                    let start = nodes.len();
-                    for (col, cell) in cells {
-                        let col = col.min(n_cols - 1);
-                        let inner_w = (effective[col] - 2.0 * CELL_PAD_X).max(0.0);
-                        let cell_limits = limits
-                            .width(Length::Fixed(inner_w))
-                            .height(Length::Shrink);
-                        let node = cell.as_widget_mut().layout(
-                            &mut tree.children[*ci],
-                            renderer,
-                            &cell_limits,
-                        );
-                        nodes.push(node);
-                        *ci += 1;
-                    }
-                    start
-                };
-            let g0 = lay_row(&mut self.header_cells.iter_mut().enumerate(), tree, &mut nodes, &mut ci);
+            let mut lay_row = |cells: &mut dyn Iterator<
+                Item = (usize, &mut Element<'_, Message>),
+            >,
+                               tree: &mut Tree,
+                               nodes: &mut Vec<layout::Node>,
+                               ci: &mut usize| {
+                let start = nodes.len();
+                for (col, cell) in cells {
+                    let col = col.min(n_cols - 1);
+                    let inner_w = (effective[col] - 2.0 * CELL_PAD_X).max(0.0);
+                    let cell_limits = limits.width(Length::Fixed(inner_w)).height(Length::Shrink);
+                    let node = cell.as_widget_mut().layout(
+                        &mut tree.children[*ci],
+                        renderer,
+                        &cell_limits,
+                    );
+                    nodes.push(node);
+                    *ci += 1;
+                }
+                start
+            };
+            let g0 = lay_row(
+                &mut self.header_cells.iter_mut().enumerate(),
+                tree,
+                &mut nodes,
+                &mut ci,
+            );
             row_groups.push((g0, self.header_cells.len()));
             for r in self.body_rows.iter_mut() {
                 let s = lay_row(&mut r.iter_mut().enumerate(), tree, &mut nodes, &mut ci);
@@ -235,7 +253,10 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
             }
             row_y.push(y);
             y += h;
-            rules.push(Rectangle::new(Point::new(0.0, y), Size::new(total_w, RULE_H)));
+            rules.push(Rectangle::new(
+                Point::new(0.0, y),
+                Size::new(total_w, RULE_H),
+            ));
             y += RULE_H;
         }
 
@@ -243,10 +264,8 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
         for (gi, &(start, count)) in row_groups.iter().enumerate() {
             for k in 0..count {
                 let col = k.min(n_cols - 1);
-                nodes[start + k].translate_mut(Vector::new(
-                    col_x[col] + CELL_PAD_X,
-                    row_y[gi] + CELL_PAD_Y,
-                ));
+                nodes[start + k]
+                    .translate_mut(Vector::new(col_x[col] + CELL_PAD_X, row_y[gi] + CELL_PAD_Y));
             }
         }
 
@@ -260,7 +279,8 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
             state.indicator = if let Some(d) = state.drag {
                 Some(col_x[d.col.min(n_cols - 1)] + effective[d.col.min(n_cols - 1)])
             } else {
-                state.hover_col
+                state
+                    .hover_col
                     .map(|c| col_x[c.min(n_cols - 1)] + effective[c.min(n_cols - 1)])
             };
         }
@@ -277,9 +297,14 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
     ) {
         // 转发 cell 子树（iced_test find / snapshot 探针可达性）。
         let mut ci = 0usize;
-        for cell in self.header_cells.iter_mut().chain(self.body_rows.iter_mut().flatten()) {
+        for cell in self
+            .header_cells
+            .iter_mut()
+            .chain(self.body_rows.iter_mut().flatten())
+        {
             if let Some(cl) = layout.children().nth(ci) {
-                cell.as_widget_mut().operate(&mut tree.children[ci], cl, renderer, operation);
+                cell.as_widget_mut()
+                    .operate(&mut tree.children[ci], cl, renderer, operation);
             }
             ci += 1;
         }
@@ -333,9 +358,7 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
             Event::Mouse(mouse::Event::CursorMoved { position }) => {
                 Some((position.x - bounds.x, position.y - bounds.y))
             }
-            _ => cursor
-                .position()
-                .map(|p| (p.x - bounds.x, p.y - bounds.y)),
+            _ => cursor.position().map(|p| (p.x - bounds.x, p.y - bounds.y)),
         };
 
         match event {
@@ -365,10 +388,7 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
                         // 拖拽中：临时宽实时重排（不进 DSL state——会话裁定）。
                         d.current_w = drag_width(d.start_w, d.start_x, x);
                         shell.invalidate_layout();
-                    } else if cursor.is_over(bounds)
-                        && y >= 0.0
-                        && y <= state.header_h
-                        && x >= 0.0
+                    } else if cursor.is_over(bounds) && y >= 0.0 && y <= state.header_h && x >= 0.0
                     {
                         let hit =
                             col_boundary_hit(x, &state.widths, self.col_spacing, COL_RESIZE_BAND);
@@ -444,7 +464,11 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
         // 无命中时委托 cell 子树（文本光标等）。
         let mut best = mouse::Interaction::None;
         let mut ci = 0usize;
-        for cell in self.header_cells.iter().chain(self.body_rows.iter().flatten()) {
+        for cell in self
+            .header_cells
+            .iter()
+            .chain(self.body_rows.iter().flatten())
+        {
             if let Some(cl) = layout.children().nth(ci) {
                 best = best.max(cell.as_widget().mouse_interaction(
                     &tree.children[ci],
@@ -476,9 +500,9 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
         // 语义色随主题翻转，编辑臂 table_header_rgb 的只读臂对应面）。
         // 先画带再画格，单元格文字落其上。
         if state.header_h > 0.0 && state.header_w > 0.0 {
-            if let Some((r, g, b)) = crate::ui::style::theme::resolve_semantic_rgb(
-                &crate::ui::style::Color::Muted,
-            ) {
+            if let Some((r, g, b)) =
+                crate::ui::style::theme::resolve_semantic_rgb(&crate::ui::style::Color::Muted)
+            {
                 fill_quad(
                     renderer,
                     Rectangle::new(
@@ -491,7 +515,11 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
         }
 
         let mut ci = 0usize;
-        for cell in self.header_cells.iter().chain(self.body_rows.iter().flatten()) {
+        for cell in self
+            .header_cells
+            .iter()
+            .chain(self.body_rows.iter().flatten())
+        {
             if let Some(cl) = layout.children().nth(ci) {
                 cell.as_widget().draw(
                     &tree.children[ci],
@@ -522,10 +550,9 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
 
         // 拖拽/悬浮指示线（2px 竖线，vue 金标 body 挂 fixed div 同形）。
         if let Some(x) = state.indicator {
-            let (pr, pg, pb) = crate::ui::style::theme::resolve_semantic_rgb(
-                &crate::ui::style::Color::Primary,
-            )
-            .unwrap_or((99, 102, 241));
+            let (pr, pg, pb) =
+                crate::ui::style::theme::resolve_semantic_rgb(&crate::ui::style::Color::Primary)
+                    .unwrap_or((99, 102, 241));
             fill_quad(
                 renderer,
                 Rectangle::new(
@@ -540,7 +567,10 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
 
 fn fill_quad(renderer: &mut iced::Renderer, rect: Rectangle, color: iced::Color) {
     renderer.fill_quad(
-        renderer::Quad { bounds: rect, ..renderer::Quad::default() },
+        renderer::Quad {
+            bounds: rect,
+            ..renderer::Quad::default()
+        },
         iced::Background::Color(color),
     );
 }

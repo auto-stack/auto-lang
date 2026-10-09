@@ -20,8 +20,11 @@ fn main() {
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
     // Should not have compilation errors
-    assert!(!result.contains("syntax error"),
-        "Const generic in tag should parse correctly, got: {}", result);
+    assert!(
+        !result.contains("syntax error"),
+        "Const generic in tag should parse correctly, got: {}",
+        result
+    );
 }
 
 /// Test type parameter still works in tag
@@ -37,8 +40,11 @@ fn main() {
 }
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(!result.contains("syntax error"),
-        "Type parameter in tag should still work, got: {}", result);
+    assert!(
+        !result.contains("syntax error"),
+        "Type parameter in tag should still work, got: {}",
+        result
+    );
 }
 
 /// Test mixed type and const parameters
@@ -55,8 +61,11 @@ fn main() {
 }
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(!result.contains("syntax error"),
-        "Mixed type and const parameters should work, got: {}", result);
+    assert!(
+        !result.contains("syntax error"),
+        "Mixed type and const parameters should work, got: {}",
+        result
+    );
 }
 
 /// Test const generic in type definition
@@ -73,8 +82,11 @@ fn main() {
 }
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(!result.contains("syntax error"),
-        "Const generic in type should parse correctly, got: {}", result);
+    assert!(
+        !result.contains("syntax error"),
+        "Const generic in type should parse correctly, got: {}",
+        result
+    );
 }
 
 /// Test multiple const parameters
@@ -90,8 +102,11 @@ fn main() {
 }
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(!result.contains("syntax error"),
-        "Multiple const parameters should work, got: {}", result);
+    assert!(
+        !result.contains("syntax error"),
+        "Multiple const parameters should work, got: {}",
+        result
+    );
 }
 
 /// Test const parameter with usize type
@@ -107,6 +122,9 @@ fn main() {
 }
 "#;
     let result = run(code).unwrap_or_else(|e| format!("Error: {}", e));
-    assert!(!result.contains("syntax error"),
-        "Const parameter with usize should work, got: {}", result);
+    assert!(
+        !result.contains("syntax error"),
+        "Const parameter with usize should work, got: {}",
+        result
+    );
 }

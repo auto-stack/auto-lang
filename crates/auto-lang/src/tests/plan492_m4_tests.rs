@@ -71,7 +71,10 @@ mod m4_pkg_compile_chain {
         let c_segs = dump.matches(" C ").count();
         println!("C1 anchor: alive={alive} line_C_segs={c_segs}");
         assert!(alive, "geometry must survive prop compare in Init");
-        assert!(c_segs > 0, "monotone branch must execute (C segments): {c_segs}");
+        assert!(
+            c_segs > 0,
+            "monotone branch must execute (C segments): {c_segs}"
+        );
     }
 
     /// C2 锚(无补丁基线): 三副本带参 msg 声明原生恢复(`msg { Init,
@@ -81,7 +84,12 @@ mod m4_pkg_compile_chain {
     #[test]
     fn c2_param_msg_declaration_both_tracks_alive() {
         for rel in copies() {
-            for file in ["line_chart.at", "bar_chart.at", "area_chart.at", "donut_chart.at"] {
+            for file in [
+                "line_chart.at",
+                "bar_chart.at",
+                "area_chart.at",
+                "donut_chart.at",
+            ] {
                 let src = std::fs::read_to_string(rel.join(file)).unwrap();
                 assert!(
                     src.contains("msg { Init, Hover(int)"),
@@ -97,11 +105,12 @@ mod m4_pkg_compile_chain {
         let donut_alive = dump.contains("A100 100 0");
         let bar_alive = dump.contains("h19") || dump.contains("h25");
         let line_c_segs = dump.matches(" C ").count();
-        println!(
-            "C2 anchor: donut={donut_alive} bar={bar_alive} line_C_segs={line_c_segs}"
-        );
+        println!("C2 anchor: donut={donut_alive} bar={bar_alive} line_C_segs={line_c_segs}");
         assert!(donut_alive && bar_alive, "siblings must stay alive");
-        assert!(line_c_segs > 0, "line geometry must render with param msg decl");
+        assert!(
+            line_c_segs > 0,
+            "line geometry must render with param msg decl"
+        );
 
         // vue 轨: SFC 生成含带参事件消费(Plan 499 M3 基线演进:484 竖带
         // .Hover(i) 退役,折线命中区改单全图 mouse-area onmousemove——
@@ -144,7 +153,12 @@ mod m4_pkg_compile_chain {
     #[test]
     fn m6_workaround_anchors_gone() {
         for rel in copies() {
-            for file in ["line_chart.at", "bar_chart.at", "area_chart.at", "donut_chart.at"] {
+            for file in [
+                "line_chart.at",
+                "bar_chart.at",
+                "area_chart.at",
+                "donut_chart.at",
+            ] {
                 let src = std::fs::read_to_string(rel.join(file)).unwrap();
                 let name = format!("{}/{}", rel.display(), file);
                 assert!(!src.contains("segsM List"), "{name}: segsM gone");
@@ -161,5 +175,4 @@ mod m4_pkg_compile_chain {
             }
         }
     }
-
 }

@@ -3,9 +3,9 @@
 // This module converts AutoLang's Value::Node (runtime AST) into AutoUI's View<M>
 // to enable runtime interpretation mode without transpilation.
 
-use auto_val::{Value, Node};
-use super::view::View;
 use super::style::Style;
+use super::view::View;
+use auto_val::{Node, Value};
 
 // 导出动态消息类型（当 interpreter feature 启用时）
 #[cfg(feature = "interpreter")]
@@ -36,10 +36,23 @@ impl std::fmt::Display for ConversionError {
                 write!(f, "Unknown UI node kind: '{}'", kind)
             }
             ConversionError::MissingProp { kind, prop } => {
-                write!(f, "Missing required property '{}' for node kind '{}'", prop, kind)
+                write!(
+                    f,
+                    "Missing required property '{}' for node kind '{}'",
+                    prop, kind
+                )
             }
-            ConversionError::InvalidPropType { kind, prop, expected, got } => {
-                write!(f, "Invalid type for property '{}' on node kind '{}': expected {}, got {}", prop, kind, expected, got)
+            ConversionError::InvalidPropType {
+                kind,
+                prop,
+                expected,
+                got,
+            } => {
+                write!(
+                    f,
+                    "Invalid type for property '{}' on node kind '{}': expected {}, got {}",
+                    prop, kind, expected, got
+                )
             }
             ConversionError::MessageRequired { kind } => {
                 write!(f, "Message type required for node kind '{}' (runtime interpretation not yet supported)", kind)
@@ -192,8 +205,12 @@ fn convert_container(node: &Node) -> ConversionResult<View<String>> {
     if kids.is_empty() {
         // Empty container
         let mut builder = View::container(View::empty()).padding(padding);
-        if center_x { builder = builder.center_x(); }
-        if center_y { builder = builder.center_y(); }
+        if center_x {
+            builder = builder.center_x();
+        }
+        if center_y {
+            builder = builder.center_y();
+        }
         if let Some(style) = style {
             builder = builder.with_style(style);
         }
@@ -203,10 +220,18 @@ fn convert_container(node: &Node) -> ConversionResult<View<String>> {
     let child = convert_node(&kids[0])?;
 
     let mut builder = View::container(child).padding(padding);
-    if let Some(w) = width { builder = builder.width(w); }
-    if let Some(h) = height { builder = builder.height(h); }
-    if center_x { builder = builder.center_x(); }
-    if center_y { builder = builder.center_y(); }
+    if let Some(w) = width {
+        builder = builder.width(w);
+    }
+    if let Some(h) = height {
+        builder = builder.height(h);
+    }
+    if center_x {
+        builder = builder.center_x();
+    }
+    if center_y {
+        builder = builder.center_y();
+    }
     if let Some(style) = style {
         builder = builder.with_style(style);
     }
@@ -225,8 +250,12 @@ fn convert_scrollable(node: &Node) -> ConversionResult<View<String>> {
     if kids.is_empty() {
         // Empty scrollable
         let mut builder = View::scrollable(View::empty());
-        if let Some(w) = width { builder = builder.width(w); }
-        if let Some(h) = height { builder = builder.height(h); }
+        if let Some(w) = width {
+            builder = builder.width(w);
+        }
+        if let Some(h) = height {
+            builder = builder.height(h);
+        }
         if let Some(style) = style {
             builder = builder.with_style(style);
         }
@@ -236,8 +265,12 @@ fn convert_scrollable(node: &Node) -> ConversionResult<View<String>> {
     let child = convert_node(&kids[0])?;
 
     let mut builder = View::scrollable(child);
-    if let Some(w) = width { builder = builder.width(w); }
-    if let Some(h) = height { builder = builder.height(h); }
+    if let Some(w) = width {
+        builder = builder.width(w);
+    }
+    if let Some(h) = height {
+        builder = builder.height(h);
+    }
     if let Some(style) = style {
         builder = builder.with_style(style);
     }
@@ -272,8 +305,8 @@ fn convert_button(node: &Node) -> ConversionResult<View<String>> {
     let label = extract_main_arg_str(node).unwrap_or_default();
 
     // onclick is required for buttons
-    let onclick = extract_prop_str(node, "onclick")
-        .ok_or_else(|| ConversionError::MissingProp {
+    let onclick =
+        extract_prop_str(node, "onclick").ok_or_else(|| ConversionError::MissingProp {
             kind: "button".to_string(),
             prop: "onclick".to_string(),
         })?;
@@ -452,7 +485,9 @@ fn convert_table(node: &Node) -> ConversionResult<View<String>> {
         rows.push(row?);
     }
 
-    let mut builder = View::table(headers, rows).spacing(spacing).col_spacing(col_spacing);
+    let mut builder = View::table(headers, rows)
+        .spacing(spacing)
+        .col_spacing(col_spacing);
 
     if let Some(style) = style {
         builder = builder.with_style(style);
@@ -589,12 +624,19 @@ fn extract_prop_str_array(node: &Node, key: &str) -> Option<Vec<String>> {
     let value = node.get_prop(key);
     match value {
         Value::Array(arr) => {
-            let strs: Vec<_> = arr.iter().filter_map(|v| match v {
-                Value::Str(s) => Some(s.to_string()),
-                Value::String(s) => Some(s.as_str().to_string()),
-                _ => None,
-            }).collect();
-            if strs.is_empty() { None } else { Some(strs) }
+            let strs: Vec<_> = arr
+                .iter()
+                .filter_map(|v| match v {
+                    Value::Str(s) => Some(s.to_string()),
+                    Value::String(s) => Some(s.as_str().to_string()),
+                    _ => None,
+                })
+                .collect();
+            if strs.is_empty() {
+                None
+            } else {
+                Some(strs)
+            }
         }
         _ => None,
     }
@@ -602,7 +644,8 @@ fn extract_prop_str_array(node: &Node, key: &str) -> Option<Vec<String>> {
 
 /// Extract child nodes (all nodes in kids)
 fn extract_child_nodes(node: &Node) -> ConversionResult<Vec<Node>> {
-    let kids = node.kids_iter()
+    let kids = node
+        .kids_iter()
         .filter_map(|(_, kid)| {
             if let auto_val::Kid::Node(n) = kid {
                 Some((**n).clone())
@@ -699,7 +742,9 @@ mod tests {
         let view = convert_node(&node).unwrap();
 
         match view {
-            View::Column { spacing, children, .. } => {
+            View::Column {
+                spacing, children, ..
+            } => {
                 assert_eq!(spacing, 10);
                 assert_eq!(children.len(), 2);
             }
@@ -717,7 +762,9 @@ mod tests {
         let view = convert_node(&node).unwrap();
 
         match view {
-            View::Row { spacing, children, .. } => {
+            View::Row {
+                spacing, children, ..
+            } => {
                 assert_eq!(spacing, 5);
                 assert_eq!(children.len(), 2);
             }
@@ -753,7 +800,12 @@ mod tests {
         let view = convert_node(&node).unwrap();
 
         match view {
-            View::Checkbox { is_checked, label, on_toggle, .. } => {
+            View::Checkbox {
+                is_checked,
+                label,
+                on_toggle,
+                ..
+            } => {
                 assert_eq!(is_checked, true);
                 assert_eq!(label, "Remember me");
                 assert_eq!(on_toggle, Some("toggle-checkbox".to_string()));
@@ -797,7 +849,7 @@ mod tests {
                 Node::new("row")
                     .with_prop("spacing", 5u32)
                     .with_child(Node::new("text").with_arg("A"))
-                    .with_child(Node::new("text").with_arg("B"))
+                    .with_child(Node::new("text").with_arg("B")),
             )
             .with_child(Node::new("text").with_arg("C"));
 
@@ -809,7 +861,10 @@ mod tests {
 
                 // First child should be a Row
                 match &children[0] {
-                    View::Row { children: row_children, .. } => {
+                    View::Row {
+                        children: row_children,
+                        ..
+                    } => {
                         assert_eq!(row_children.len(), 2);
                     }
                     _ => panic!("Expected first child to be View::Row"),
@@ -895,9 +950,9 @@ fn extract_event_handler(
     prop_name: &str,
     _metadata: Option<&str>,
 ) -> ConversionResult<DynamicMessage> {
-    let event_str = extract_prop_str(node, prop_name)
-        .ok_or_else(|| ConversionError::MissingProp {
-            kind: node.name.to_string(),  // AutoStr → String
+    let event_str =
+        extract_prop_str(node, prop_name).ok_or_else(|| ConversionError::MissingProp {
+            kind: node.name.to_string(), // AutoStr → String
             prop: prop_name.to_string(),
         })?;
 
@@ -957,7 +1012,12 @@ fn convert_column_dynamic(
     let padding = extract_prop_u32(node, "padding").unwrap_or(0) as u16;
     let children = extract_children_dynamic(node, metadata)?;
     let style = extract_style(node)?;
-    Ok(View::Column { spacing, padding, children, style })
+    Ok(View::Column {
+        spacing,
+        padding,
+        children,
+        style,
+    })
 }
 
 #[cfg(feature = "interpreter")]
@@ -969,7 +1029,12 @@ fn convert_row_dynamic(
     let padding = extract_prop_u32(node, "padding").unwrap_or(0) as u16;
     let children = extract_children_dynamic(node, metadata)?;
     let style = extract_style(node)?;
-    Ok(View::Row { spacing, padding, children, style })
+    Ok(View::Row {
+        spacing,
+        padding,
+        children,
+        style,
+    })
 }
 
 #[cfg(feature = "interpreter")]
@@ -1055,8 +1120,7 @@ fn convert_scrollable_dynamic(
 
 #[cfg(feature = "interpreter")]
 fn convert_text_dynamic(node: &Node) -> ConversionResult<View<DynamicMessage>> {
-    let content = extract_main_arg_str(node)
-        .unwrap_or_else(|| String::from(""));  // 默认空字符串
+    let content = extract_main_arg_str(node).unwrap_or_else(|| String::from("")); // 默认空字符串
     let style = extract_style(node)?;
     Ok(View::Text { content, style })
 }
@@ -1066,11 +1130,16 @@ fn convert_button_dynamic(
     node: &Node,
     metadata: Option<(&str, &auto_lang::Universe)>,
 ) -> ConversionResult<View<DynamicMessage>> {
-    let label = extract_main_arg_str(node)
-        .unwrap_or_else(|| String::from("Button"));
-    let onclick = extract_event_handler(node, "onclick", metadata.map(|(name, _)|name))?;
+    let label = extract_main_arg_str(node).unwrap_or_else(|| String::from("Button"));
+    let onclick = extract_event_handler(node, "onclick", metadata.map(|(name, _)| name))?;
     let style = extract_style(node)?;
-    Ok(View::Button { label, onclick, style, on_right_click: None, content: None })
+    Ok(View::Button {
+        label,
+        onclick,
+        style,
+        on_right_click: None,
+        content: None,
+    })
 }
 
 #[cfg(feature = "interpreter")]
@@ -1079,13 +1148,20 @@ fn convert_input_dynamic(
     metadata: Option<(&str, &auto_lang::Universe)>,
 ) -> ConversionResult<View<DynamicMessage>> {
     let placeholder = extract_main_arg_str(node).unwrap_or_default();
-    let on_change = extract_event_handler(node, "onchange", metadata.map(|(name, _)|name))?;
+    let on_change = extract_event_handler(node, "onchange", metadata.map(|(name, _)| name))?;
     let value = extract_prop_str(node, "value").unwrap_or_default();
-    let width = extract_prop_u32(node, "width");  // Option<u32>
-    let width = width.map(|w| w as u16);  // Option<u16>
+    let width = extract_prop_u32(node, "width"); // Option<u32>
+    let width = width.map(|w| w as u16); // Option<u16>
     let password = extract_prop_bool(node, "password").unwrap_or(false);
     let style = extract_style(node)?;
-    Ok(View::Input { placeholder, value, on_change: Some(on_change), width, password, style })
+    Ok(View::Input {
+        placeholder,
+        value,
+        on_change: Some(on_change),
+        width,
+        password,
+        style,
+    })
 }
 
 #[cfg(feature = "interpreter")]
@@ -1094,18 +1170,28 @@ fn convert_textarea_dynamic(
     metadata: Option<(&str, &auto_lang::Universe)>,
 ) -> ConversionResult<View<DynamicMessage>> {
     let placeholder = extract_main_arg_str(node).unwrap_or_default();
-    let on_change = extract_event_handler(node, "onchange", metadata.map(|(name, _)|name))
-        .or_else(|_| extract_event_handler(node, "oninput", metadata.map(|(name, _)|name)))
-        .or_else(|_| extract_event_handler(node, "change", metadata.map(|(name, _)|name)))
-        .or_else(|_| extract_event_handler(node, "input", metadata.map(|(name, _)|name)))
+    let on_change = extract_event_handler(node, "onchange", metadata.map(|(name, _)| name))
+        .or_else(|_| extract_event_handler(node, "oninput", metadata.map(|(name, _)| name)))
+        .or_else(|_| extract_event_handler(node, "change", metadata.map(|(name, _)| name)))
+        .or_else(|_| extract_event_handler(node, "input", metadata.map(|(name, _)| name)))
         .ok();
     let value = extract_prop_str(node, "value").unwrap_or_default();
     let height = extract_prop_u32(node, "height").map(|h| h as u16);
     let style = extract_style(node)?;
-    let on_submit = extract_event_handler(node, "onenter", metadata.map(|(name, _)|name))
-        .or_else(|_| extract_event_handler(node, "enter", metadata.map(|(name, _)|name)))
+    let on_submit = extract_event_handler(node, "onenter", metadata.map(|(name, _)| name))
+        .or_else(|_| extract_event_handler(node, "enter", metadata.map(|(name, _)| name)))
         .ok();
-    Ok(View::Textarea { placeholder, value, on_change, on_submit, height, style, highlight: Vec::new(), ghost: String::new(), keydown: std::collections::HashMap::new() })
+    Ok(View::Textarea {
+        placeholder,
+        value,
+        on_change,
+        on_submit,
+        height,
+        style,
+        highlight: Vec::new(),
+        ghost: String::new(),
+        keydown: std::collections::HashMap::new(),
+    })
 }
 
 #[cfg(feature = "interpreter")]
@@ -1119,7 +1205,12 @@ fn convert_checkbox_dynamic(
         .map(|s| Some(DynamicMessage::String(s)))
         .unwrap_or(None);
     let style = extract_style(node)?;
-    Ok(View::Checkbox { is_checked, label, on_toggle, style })
+    Ok(View::Checkbox {
+        is_checked,
+        label,
+        on_toggle,
+        style,
+    })
 }
 
 #[cfg(feature = "interpreter")]
@@ -1133,7 +1224,12 @@ fn convert_radio_dynamic(
         .map(|s| Some(DynamicMessage::String(s)))
         .unwrap_or(None);
     let style = extract_style(node)?;
-    Ok(View::Radio { label, is_selected, on_select, style })
+    Ok(View::Radio {
+        label,
+        is_selected,
+        on_select,
+        style,
+    })
 }
 
 #[cfg(feature = "interpreter")]
@@ -1145,15 +1241,19 @@ fn convert_select_dynamic(
     let selected_index = extract_prop_usize(node, "selected");
 
     // 创建 SelectCallback - 将选项索引转换为事件字符串
-    let on_select = extract_prop_str(node, "onselect")
-        .map(|event_str| {
-            SelectCallback::new(move |_index: usize, _selected: &str| {
-                DynamicMessage::String(event_str.clone())
-            })
-        });
+    let on_select = extract_prop_str(node, "onselect").map(|event_str| {
+        SelectCallback::new(move |_index: usize, _selected: &str| {
+            DynamicMessage::String(event_str.clone())
+        })
+    });
 
     let style = extract_style(node)?;
-    Ok(View::Select { options, selected_index, on_select, style })
+    Ok(View::Select {
+        options,
+        selected_index,
+        on_select,
+        style,
+    })
 }
 
 #[cfg(feature = "interpreter")]
@@ -1164,7 +1264,11 @@ fn convert_list_dynamic(
     let items = extract_children_dynamic(node, metadata)?;
     let spacing = extract_prop_u32(node, "spacing").unwrap_or(0) as u16;
     let style = extract_style(node)?;
-    Ok(View::List { items, spacing, style })
+    Ok(View::List {
+        items,
+        spacing,
+        style,
+    })
 }
 
 #[cfg(feature = "interpreter")]
@@ -1179,7 +1283,10 @@ fn convert_table_dynamic(
     let headers = if !children.is_empty() {
         // 尝试从第一个子节点提取 headers
         match &children[0] {
-            View::Row { children: header_children, .. } => header_children.clone(),
+            View::Row {
+                children: header_children,
+                ..
+            } => header_children.clone(),
             _ => vec![],
         }
     } else {
@@ -1187,13 +1294,20 @@ fn convert_table_dynamic(
     };
 
     let rows = if children.len() > 1 {
-        children[1..].iter().filter_map(|child| {
-            if let View::Row { children: row_children, .. } = child {
-                Some(row_children.clone())
-            } else {
-                None
-            }
-        }).collect()
+        children[1..]
+            .iter()
+            .filter_map(|child| {
+                if let View::Row {
+                    children: row_children,
+                    ..
+                } = child
+                {
+                    Some(row_children.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
     } else {
         vec![]
     };
@@ -1201,7 +1315,16 @@ fn convert_table_dynamic(
     let spacing = extract_prop_u32(node, "spacing").unwrap_or(0) as u16;
     let col_spacing = extract_prop_u32(node, "col_spacing").unwrap_or(spacing as u32) as u16;
     let style = extract_style(node)?;
-    Ok(View::Table { headers, rows, spacing, col_spacing, style, table_key: None, col_widths: None, on_col_resize: None })
+    Ok(View::Table {
+        headers,
+        rows,
+        spacing,
+        col_spacing,
+        style,
+        table_key: None,
+        col_widths: None,
+        on_col_resize: None,
+    })
 }
 
 /// 递归提取子节点并转换为动态消息 View
@@ -1230,8 +1353,8 @@ fn extract_children_dynamic(
 #[cfg(test)]
 #[cfg(feature = "interpreter")]
 mod tests_dynamic {
-    use super::*;
     use super::interpreter::DynamicMessage;
+    use super::*;
 
     #[test]
     fn test_convert_text_dynamic() {
@@ -1273,7 +1396,9 @@ mod tests_dynamic {
         let view = convert_node_dynamic(&node, None).unwrap();
 
         match view {
-            View::Column { spacing, children, .. } => {
+            View::Column {
+                spacing, children, ..
+            } => {
                 assert_eq!(spacing, 10);
                 assert_eq!(children.len(), 2);
             }

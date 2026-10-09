@@ -83,14 +83,12 @@ impl TransportConfig {
             body_limit: 10 * 1024 * 1024,
             body_timeout: Duration::from_secs(10),
             queue_capacity: env_usize("AUTO_HTTP_MAX_INFLIGHT", 64),
-            request_timeout: Duration::from_millis(env_usize(
-                "AUTO_HTTP_REQUEST_TIMEOUT_MS",
-                30_000,
-            ) as u64),
-            shutdown_drain: Duration::from_millis(env_usize(
-                "AUTO_HTTP_SHUTDOWN_DRAIN_MS",
-                10_000,
-            ) as u64),
+            request_timeout: Duration::from_millis(
+                env_usize("AUTO_HTTP_REQUEST_TIMEOUT_MS", 30_000) as u64,
+            ),
+            shutdown_drain: Duration::from_millis(
+                env_usize("AUTO_HTTP_SHUTDOWN_DRAIN_MS", 10_000) as u64
+            ),
             max_connections: env_usize("AUTO_HTTP_MAX_CONNECTIONS", 128),
             service: None,
         }
@@ -284,11 +282,7 @@ async fn bridge_handler(
     request: axum::extract::Request,
     peer: SocketAddr,
     cfg: TransportConfig,
-    req_tx: tokio::sync::mpsc::Sender<(
-        ApiRequest,
-        tokio::sync::oneshot::Sender<ApiReply>,
-        u64,
-    )>,
+    req_tx: tokio::sync::mpsc::Sender<(ApiRequest, tokio::sync::oneshot::Sender<ApiReply>, u64)>,
     shutdown: tokio::sync::watch::Receiver<bool>,
     conn_id: u64,
 ) -> Response {
@@ -304,9 +298,7 @@ async fn bridge_handler(
     // PLAN-736 T-05: 服务控制面（/__auto/*）——不经业务 VM/auth（AC-02/05）；
     // snapshot/shutdown 仅 loopback。早于策略链与 body 读取。
     if path.starts_with("/__auto/") {
-        if let Some(resp) =
-            super::http_server::handle_service_control_path(&method, &path, peer)
-        {
+        if let Some(resp) = super::http_server::handle_service_control_path(&method, &path, peer) {
             crate::http_service_observability::counter_add(
                 crate::http_service_observability::CounterName::RequestsTotal,
                 1,
@@ -334,14 +326,23 @@ async fn bridge_handler(
             return error_response(400, "host not allowed");
         }
         // (b) 单层可信代理身份（peer 精确命中才消费单段 XFF/XFP）。
-        let xff = parts.headers.get("x-forwarded-for").and_then(|v| v.to_str().ok());
-        let xfp = parts.headers.get("x-forwarded-proto").and_then(|v| v.to_str().ok());
+        let xff = parts
+            .headers
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok());
+        let xfp = parts
+            .headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok());
         let (identity, _proto) = c.effective_client_identity(peer.ip(), xff, xfp);
         let _ = identity.via_trusted_proxy;
         // (c) 服务级限速（有界桶 + TTL；满表新身份保守 429）。
         if let Some(rl) = &svc.limiter {
-            if let crate::http_service_config::RateDecision::Limited { retry_after_secs } =
-                rl.check(identity.client, crate::http_service_config::ServiceRuntime::now_ms())
+            if let crate::http_service_config::RateDecision::Limited { retry_after_secs } = rl
+                .check(
+                    identity.client,
+                    crate::http_service_config::ServiceRuntime::now_ms(),
+                )
             {
                 let mut resp = error_response(429, "rate limited");
                 if let Ok(v) = axum::http::HeaderValue::from_str(&retry_after_secs.to_string()) {
@@ -375,7 +376,8 @@ async fn bridge_handler(
                         axum::http::HeaderValue::from(c.cors.max_age_seconds),
                     );
                     if vary {
-                        resp.headers_mut().insert("Vary", axum::http::HeaderValue::from_static("Origin"));
+                        resp.headers_mut()
+                            .insert("Vary", axum::http::HeaderValue::from_static("Origin"));
                     }
                     let methods = c.cors.allowed_methods.join(", ");
                     if let Ok(v) = axum::http::HeaderValue::from_str(&methods) {
@@ -390,8 +392,10 @@ async fn bridge_handler(
             }
         }
         if let Some(origin) = origin {
-            if let crate::http_service_config::CorsOutcome::Allowed { allow_origin, vary_origin } =
-                c.cors.actual_request(Some(origin))
+            if let crate::http_service_config::CorsOutcome::Allowed {
+                allow_origin,
+                vary_origin,
+            } = c.cors.actual_request(Some(origin))
             {
                 cors_attach = Some((allow_origin, vary_origin));
             }
@@ -468,10 +472,8 @@ async fn bridge_handler(
 
     // PLAN-705 T-05: 生命期许可 + scope ——入队前获取（queued+running+
     // parked 总上限）；许可不可得 = 总上限满 → 503（零分配零排队）。
-    let scope = super::http_server::create_scope(
-        conn_id,
-        std::time::Instant::now() + cfg.request_timeout,
-    );
+    let scope =
+        super::http_server::create_scope(conn_id, std::time::Instant::now() + cfg.request_timeout);
     let Some(scope) = scope else {
         eprintln!("[HTTP] {} {} → 503 (lifetime permit cap)", peer, "");
         let mut resp = error_response(503, "server busy");
@@ -566,8 +568,14 @@ async fn bridge_handler(
     // 关闭均触发）；普通回复立即终结 scope。
     match &reply {
         // SSE/文件体的许可随 scope 移交响应体代持；其余回复立即终结 scope。
-        ApiReply::Full { body: ApiBody::Sse(_), .. } => {}
-        ApiReply::Full { body: ApiBody::File(_), .. } => {}
+        ApiReply::Full {
+            body: ApiBody::Sse(_),
+            ..
+        } => {}
+        ApiReply::Full {
+            body: ApiBody::File(_),
+            ..
+        } => {}
         _ => super::http_server::complete_scope(&scope),
     }
     let response = api_reply_to_response(reply, parts, shutdown, Some(scope)).await;
@@ -799,7 +807,10 @@ async fn api_reply_to_response(
 /// Determinate transport-level rejection (pre-dispatch: no VM, no request id
 /// — same header shape as the legacy `write_request_error_response`).
 fn error_response(status: u16, message: &str) -> axum::response::Response {
-    let body = format!("{{\"error\":{}}}", super::http_server::json_escape_string(message));
+    let body = format!(
+        "{{\"error\":{}}}",
+        super::http_server::json_escape_string(message)
+    );
     let mut builder = axum::response::Response::builder()
         .status(
             axum::http::StatusCode::from_u16(status)
@@ -869,7 +880,9 @@ impl futures::Stream for FrameStream {
 /// Raw WebSocket echo over an upgraded IO — same simplified frame loop the
 /// legacy inline path ran on the raw TCP socket (text echo / ping-pong /
 /// close; client-masked payloads unmasked).
-async fn serve_ws_echo_loop(stream: &mut (impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin)) {
+async fn serve_ws_echo_loop(
+    stream: &mut (impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin),
+) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     loop {
         // Read a WebSocket frame (simplified: text frames only).

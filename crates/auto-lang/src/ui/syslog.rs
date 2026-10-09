@@ -107,8 +107,7 @@ pub fn dirty_seq() -> u64 {
 /// 全量快照（环序 = 最旧→最新；克隆——注入面全量快照替换语义，v1 不做
 /// 增量协议）。锁内拷贝，调用方持锁零交叉。
 pub fn snapshot() -> Vec<SyslogEntry> {
-    RING
-        .lock()
+    RING.lock()
         .map(|ring| ring.iter().cloned().collect())
         .unwrap_or_default()
 }
@@ -273,9 +272,19 @@ mod tests {
         // 首拍（无上次注入记录）：立即放行。
         assert!(injection_due(7, 0, None, t0));
         // seq 变化但距上次 <500ms：攒批拒绝。
-        assert!(!injection_due(8, 7, Some(t0), t0 + Duration::from_millis(499)));
+        assert!(!injection_due(
+            8,
+            7,
+            Some(t0),
+            t0 + Duration::from_millis(499)
+        ));
         // seq 变化且 ≥500ms：放行。
-        assert!(injection_due(8, 7, Some(t0), t0 + Duration::from_millis(500)));
+        assert!(injection_due(
+            8,
+            7,
+            Some(t0),
+            t0 + Duration::from_millis(500)
+        ));
     }
 
     #[test]

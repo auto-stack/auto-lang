@@ -1,6 +1,6 @@
-use crate::parse_preserve_error;
+use crate::ast::{StorageKind, StorageType, Type};
 use crate::error::attach_source;
-use crate::ast::{Type, StorageType, StorageKind};
+use crate::parse_preserve_error;
 
 #[test]
 fn test_parse_dynamic_storage() {

@@ -13,18 +13,20 @@
 #![cfg(test)]
 
 fn run(code: &str) -> (String, String) {
-    crate::run_autovm_capture(code)
-        .unwrap_or_else(|e| (format!("ERR: {:?}", e), String::new()))
+    crate::run_autovm_capture(code).unwrap_or_else(|e| (format!("ERR: {:?}", e), String::new()))
 }
 
 #[test]
 fn method_chain_scalar_str_on_list_len() {
-    let (result, stdout) = crate::run_autovm_capture(r#"
+    let (result, stdout) = crate::run_autovm_capture(
+        r#"
 fn main() {
     var l []str = ["a", "b", "c"]
     print(l.len().str())
 }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
     assert!(result.is_empty(), "unexpected err: {}", result);
     assert_eq!(stdout.trim(), "3", "l.len().str() must print 3");
 }
@@ -49,7 +51,11 @@ fn main() {
     print((a + b).str())
 }
 "#);
-    assert_eq!(stdout.trim(), "42", "arithmetic result .str() must go through scalar dispatch");
+    assert_eq!(
+        stdout.trim(),
+        "42",
+        "arithmetic result .str() must go through scalar dispatch"
+    );
 }
 
 #[test]
@@ -76,7 +82,9 @@ fn main() {
 fn module_pub_fn_return_composite_roundtrip() {
     let dir = std::env::temp_dir().join("vmfix-modret");
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("api.at"), r#"
+    std::fs::write(
+        dir.join("api.at"),
+        r#"
 type Note {
     title str
     body str
@@ -90,7 +98,9 @@ pub fn names() -> []str {
     var l []str = ["a", "b"]
     return l
 }
-"#).unwrap();
+"#,
+    )
+    .unwrap();
     let code = r#"
 use api: make_note, names
 

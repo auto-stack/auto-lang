@@ -533,7 +533,10 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
 
 /// 单元素查询（tag 精确匹配；归一由调用方处理——coverage.rs normalize_kind）。
 pub fn element_status(tag: &str) -> Option<QueueStatus> {
-    element_table().iter().find(|(t, _)| *t == tag).map(|(_, s)| *s)
+    element_table()
+        .iter()
+        .find(|(t, _)| *t == tag)
+        .map(|(_, s)| *s)
 }
 
 /// 覆盖率数字（T6 门禁输出用）：`(covered, not_yet, not_consumed, total)`。

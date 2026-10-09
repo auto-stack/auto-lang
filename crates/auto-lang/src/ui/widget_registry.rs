@@ -3,8 +3,8 @@
 //! Stores child widget definitions loaded from `use` imports,
 //! enabling the interpreter to render custom component tags.
 
-use std::collections::HashMap;
 use crate::aura::AuraWidget;
+use std::collections::HashMap;
 
 /// Registry mapping widget names to their AuraWidget definitions.
 #[derive(Debug, Default)]
@@ -35,7 +35,8 @@ impl WidgetRegistry {
     /// Plan 408: Register a route module alias (module name → widget name).
     /// Used by render_outlet to look up page widgets by route.module.
     pub fn register_route_alias(&mut self, module: &str, widget_name: &str) {
-        self.route_aliases.insert(module.to_string(), widget_name.to_string());
+        self.route_aliases
+            .insert(module.to_string(), widget_name.to_string());
     }
 
     /// Plan 408: Look up a widget by route module name via the alias map.
@@ -65,16 +66,11 @@ impl WidgetRegistry {
         };
         // 组件形态守卫(与 vue.rs tag_has_component_shape 同规):无分隔符
         // 且无大写的缩合小写词不是组件形态,不做折叠兜底(避免误聚 + O(n) 全扫)。
-        if !name.contains('-')
-            && !name.contains('_')
-            && !name.chars().any(|c| c.is_uppercase())
-        {
+        if !name.contains('-') && !name.contains('_') && !name.chars().any(|c| c.is_uppercase()) {
             return None;
         }
         let want = fold(name);
-        self.widgets
-            .values()
-            .find(|w| fold(&w.name) == want)
+        self.widgets.values().find(|w| fold(&w.name) == want)
     }
 
     /// Check if a widget with the given name is registered.

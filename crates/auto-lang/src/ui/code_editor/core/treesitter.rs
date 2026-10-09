@@ -17,8 +17,8 @@
 // 语言配置（HighlightConfiguration）进程级单例；Highlighter 线程本地复用
 // （0.27 内嵌 Parser——714 §5.1 单例纪律继承）。
 
-use std::collections::HashMap;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 use tree_sitter::Language;
@@ -245,7 +245,9 @@ pub(crate) static LANG_TABLE: &[TsLangSpec] = &[
 /// lang → ts 规格路由。表外语言一律 None（syntect 基线）。
 pub(crate) fn route(lang: &str) -> Option<&'static TsLangSpec> {
     let key = lang.to_ascii_lowercase();
-    LANG_TABLE.iter().find(|s| s.lang_keys.contains(&key.as_str()))
+    LANG_TABLE
+        .iter()
+        .find(|s| s.lang_keys.contains(&key.as_str()))
 }
 
 /// 进程级配置单例（Query 编译一次；Box::leak 共享）。
@@ -259,9 +261,7 @@ fn config_for(spec: &TsLangSpec) -> Option<&'static HighlightConfiguration> {
     }
     // 叠加层拼接（typescript 族）：基础查询 + TS 专有层（官方用法）。
     let combined: &'static str = match spec.highlights_query_extra {
-        Some(extra) => Box::leak(
-            format!("{}\n{}", spec.highlights_query, extra).into_boxed_str(),
-        ),
+        Some(extra) => Box::leak(format!("{}\n{}", spec.highlights_query, extra).into_boxed_str()),
         None => spec.highlights_query,
     };
     let mut config = HighlightConfiguration::new(
@@ -324,45 +324,44 @@ const HIGHLIGHT_NAMES: &[&str] = &[
 /// capture 索引（Highlight.0 = configure 名单下标）→ 归类名。
 fn category_for_index(idx: usize) -> Option<&'static str> {
     let name = HIGHLIGHT_NAMES.get(idx)?;
-    Some(
-        if name.starts_with("comment") {
-            "comment"
-        } else if name.starts_with("string") {
-            "string"
-        } else if name.starts_with("keyword.operator") || name.starts_with("operator") {
-            "operator"
-        } else if name.starts_with("keyword") {
-            "keyword"
-        } else if name.starts_with("number")
-            || name.starts_with("constant")
-            || name.starts_with("boolean")
-        {
-            "constant"
-        } else if name.starts_with("type") {
-            "type"
-        } else if name.starts_with("function")
-            || name.starts_with("method")
-            || name.starts_with("constructor")
-        {
-            "function"
-        } else if name.starts_with("tag") {
-            "tag"
-        } else if name.starts_with("attribute") {
-            "attribute"
-        } else if name.starts_with("include") || name.starts_with("module") || name.starts_with("label") {
-            "module"
-        } else if name.starts_with("property") || name.starts_with("variable.member") {
-            "property"
-        } else if name.starts_with("variable") || name.starts_with("symbol") {
-            "variable"
-        } else if name.starts_with("punctuation") {
-            "punctuation"
-        } else {
-            // embedded/diff/spell/text.*（md 旧 nvim 惯例）等 → 基色（None，
-            // 与 syntect 基线在 AutoUI 主题下的素色呈现平价）
-            return None;
-        },
-    )
+    Some(if name.starts_with("comment") {
+        "comment"
+    } else if name.starts_with("string") {
+        "string"
+    } else if name.starts_with("keyword.operator") || name.starts_with("operator") {
+        "operator"
+    } else if name.starts_with("keyword") {
+        "keyword"
+    } else if name.starts_with("number")
+        || name.starts_with("constant")
+        || name.starts_with("boolean")
+    {
+        "constant"
+    } else if name.starts_with("type") {
+        "type"
+    } else if name.starts_with("function")
+        || name.starts_with("method")
+        || name.starts_with("constructor")
+    {
+        "function"
+    } else if name.starts_with("tag") {
+        "tag"
+    } else if name.starts_with("attribute") {
+        "attribute"
+    } else if name.starts_with("include") || name.starts_with("module") || name.starts_with("label")
+    {
+        "module"
+    } else if name.starts_with("property") || name.starts_with("variable.member") {
+        "property"
+    } else if name.starts_with("variable") || name.starts_with("symbol") {
+        "variable"
+    } else if name.starts_with("punctuation") {
+        "punctuation"
+    } else {
+        // embedded/diff/spell/text.*（md 旧 nvim 惯例）等 → 基色（None，
+        // 与 syntect 基线在 AutoUI 主题下的素色呈现平价）
+        return None;
+    })
 }
 
 /// 归类名 → AutoUI 主题 scope 探针（优先级序，首个命中生效）——与 syntect
@@ -379,7 +378,11 @@ fn scope_probes_for_category(category: &str) -> &'static [&'static str] {
         "tag" => &["entity.name.tag"],
         "attribute" => &["entity.other.attribute-name"],
         "module" => &["entity.name.namespace", "support.module"],
-        "property" => &["variable.other.property", "support.variable.property", "variable.other.member"],
+        "property" => &[
+            "variable.other.property",
+            "support.variable.property",
+            "variable.other.member",
+        ],
         "variable" => &["variable"],
         "punctuation" => &["punctuation", "meta.brace"],
         _ => &[],
@@ -388,12 +391,11 @@ fn scope_probes_for_category(category: &str) -> &'static [&'static str] {
 
 /// 在 syntect 主题上做 scope 匹配取前景色（顺序覆盖——与 syntect 选择器
 /// 顺序应用语义一致；无命中 → None = 基色）。
-fn style_rgb_for_scope(
-    theme: &syntect::highlighting::Theme,
-    scope: &str,
-) -> Option<(u8, u8, u8)> {
+fn style_rgb_for_scope(theme: &syntect::highlighting::Theme, scope: &str) -> Option<(u8, u8, u8)> {
     use syntect::parsing::{Scope, ScopeStack};
-    let Ok(scope) = Scope::new(scope) else { return None };
+    let Ok(scope) = Scope::new(scope) else {
+        return None;
+    };
     let mut stack = ScopeStack::new();
     stack.push(scope);
     let mut fg: Option<syntect::highlighting::Color> = None;
@@ -428,41 +430,51 @@ pub(crate) fn highlight_segments(
     // 类别 → RGB 预解析（段级查表，事件循环零重复匹配）。基前景色归一为
     // None——与 syntect 路径同规则（base_fg 色段=无样式段，双轨对照同形）。
     let base_fg = theme.settings.foreground.map(|fg| (fg.r, fg.g, fg.b));
-    let category_rgb: HashMap<&'static str, Option<(u8, u8, u8)>> = ["comment", "string",
-        "operator", "keyword", "constant", "type", "function", "tag", "attribute", "module",
-        "property", "variable", "punctuation"]
-        .into_iter()
-        .map(|cat| {
-            let rgb = scope_probes_for_category(cat)
-                .iter()
-                .find_map(|s| style_rgb_for_scope(theme, s))
-                .filter(|rgb| Some(*rgb) != base_fg);
-            (cat, rgb)
-        })
-        .collect();
+    let category_rgb: HashMap<&'static str, Option<(u8, u8, u8)>> = [
+        "comment",
+        "string",
+        "operator",
+        "keyword",
+        "constant",
+        "type",
+        "function",
+        "tag",
+        "attribute",
+        "module",
+        "property",
+        "variable",
+        "punctuation",
+    ]
+    .into_iter()
+    .map(|cat| {
+        let rgb = scope_probes_for_category(cat)
+            .iter()
+            .find_map(|s| style_rgb_for_scope(theme, s))
+            .filter(|rgb| Some(*rgb) != base_fg);
+        (cat, rgb)
+    })
+    .collect();
 
     // Highlighter 线程本地复用；事件先物化（迭代器借用 highlighter）。
     let mut events: Vec<HighlightEvent> = Vec::new();
-    HIGHLIGHTER.with_borrow_mut(|highlighter| {
-        let Ok(iter) = highlighter.highlight(
-            config,
-            text.as_bytes(),
-            None,
-            None,
-            |injected: &str| route(injected).and_then(config_for),
-        ) else {
-            return false;
-        };
-        for event in iter {
-            match event {
-                Ok(e) => events.push(e),
-                Err(_) => return false,
+    HIGHLIGHTER
+        .with_borrow_mut(|highlighter| {
+            let Ok(iter) =
+                highlighter.highlight(config, text.as_bytes(), None, None, |injected: &str| {
+                    route(injected).and_then(config_for)
+                })
+            else {
+                return false;
+            };
+            for event in iter {
+                match event {
+                    Ok(e) => events.push(e),
+                    Err(_) => return false,
+                }
             }
-        }
-        true
-    })
-    .then_some(())
-    ?;
+            true
+        })
+        .then_some(())?;
 
     let mut out: Vec<(String, Option<(u8, u8, u8)>)> = Vec::new();
     let mut current: Option<(u8, u8, u8)> = None;
@@ -556,31 +568,31 @@ impl IncrementalSession {
         // 增量分支：旧树在位+合法编辑域 → tree.edit+带旧树重解析。
         let incremental: Option<(tree_sitter::Tree, Vec<(usize, usize)>, (usize, usize))> =
             match (self.tree.as_ref(), edit) {
-            (Some(old), Some((start, old_end, new_end)))
-                if start <= old_end
-                    && old_end <= old_text.len()
-                    && new_end <= new_text.len() =>
-            {
-                let mut edited_old = old.clone();
-                edited_old.edit(&input_edit(
-                    old_text.as_bytes(),
-                    new_text.as_bytes(),
-                    start,
-                    old_end,
-                    new_end,
-                ));
-                parser.parse(new_text, Some(&edited_old)).map(|new_tree| {
-                    let ranges: Vec<(usize, usize)> = edited_old
-                        .changed_ranges(&new_tree)
-                        .map(|r| (r.start_byte, r.end_byte))
-                        .collect();
-                    // 编辑域并入失效域：等长 token 文本替换（如 20→99）树结构
-                    // 零差（changed_ranges 空），但文本确变——重高亮窗必须覆盖。
-                    (new_tree, ranges, (start, new_end))
-                })
-            }
-            _ => None,
-        };
+                (Some(old), Some((start, old_end, new_end)))
+                    if start <= old_end
+                        && old_end <= old_text.len()
+                        && new_end <= new_text.len() =>
+                {
+                    let mut edited_old = old.clone();
+                    edited_old.edit(&input_edit(
+                        old_text.as_bytes(),
+                        new_text.as_bytes(),
+                        start,
+                        old_end,
+                        new_end,
+                    ));
+                    parser.parse(new_text, Some(&edited_old)).map(|new_tree| {
+                        let ranges: Vec<(usize, usize)> = edited_old
+                            .changed_ranges(&new_tree)
+                            .map(|r| (r.start_byte, r.end_byte))
+                            .collect();
+                        // 编辑域并入失效域：等长 token 文本替换（如 20→99）树结构
+                        // 零差（changed_ranges 空），但文本确变——重高亮窗必须覆盖。
+                        (new_tree, ranges, (start, new_end))
+                    })
+                }
+                _ => None,
+            };
 
         let (tree, changed_ranges, full_reparse) = match incremental {
             Some((new_tree, mut ranges, edit_region)) => {
@@ -596,7 +608,11 @@ impl IncrementalSession {
                     (new_tree, ranges, false)
                 }
             }
-            None => (parser.parse(new_text, None)?, vec![(0, new_text.len())], true),
+            None => (
+                parser.parse(new_text, None)?,
+                vec![(0, new_text.len())],
+                true,
+            ),
         };
         let parse_elapsed = t0.elapsed();
 
@@ -604,11 +620,16 @@ impl IncrementalSession {
         let rehighlight_window = if full_reparse {
             (0, new_text.len())
         } else {
-            changed_ranges.iter().fold((usize::MAX, 0usize), |acc, (a, b)| {
-                let first = expand_to_line_start(new_text.as_bytes(), *a);
-                let last = expand_to_line_end(new_text.as_bytes(), b.saturating_sub(1).min(new_text.len().saturating_sub(1)));
-                (acc.0.min(first), acc.1.max(last))
-            })
+            changed_ranges
+                .iter()
+                .fold((usize::MAX, 0usize), |acc, (a, b)| {
+                    let first = expand_to_line_start(new_text.as_bytes(), *a);
+                    let last = expand_to_line_end(
+                        new_text.as_bytes(),
+                        b.saturating_sub(1).min(new_text.len().saturating_sub(1)),
+                    );
+                    (acc.0.min(first), acc.1.max(last))
+                })
         };
 
         self.tree = Some(tree);
@@ -686,12 +707,44 @@ mod tests {
     /// P0+P1 表：语言路由在位（大小写不敏感，与 lang_to_extension 同口径）。
     #[test]
     fn p0_routes_registered() {
-        for lang in ["rust", "Rust", "rs", "python", "py", "javascript", "js",
-            "typescript", "ts", "tsx", "json", "toml", "yaml", "yml",
-            "markdown", "md", "shell", "sh", "bash", "c",
-            "html", "css", "cpp", "c++", "csharp", "cs", "go", "java", "sql", "xml",
-            "batch", "bat", "powershell", "ps1", "ini", "properties"]
-        {
+        for lang in [
+            "rust",
+            "Rust",
+            "rs",
+            "python",
+            "py",
+            "javascript",
+            "js",
+            "typescript",
+            "ts",
+            "tsx",
+            "json",
+            "toml",
+            "yaml",
+            "yml",
+            "markdown",
+            "md",
+            "shell",
+            "sh",
+            "bash",
+            "c",
+            "html",
+            "css",
+            "cpp",
+            "c++",
+            "csharp",
+            "cs",
+            "go",
+            "java",
+            "sql",
+            "xml",
+            "batch",
+            "bat",
+            "powershell",
+            "ps1",
+            "ini",
+            "properties",
+        ] {
             assert!(route(lang).is_some(), "P0/P1 lang must route: {lang}");
         }
         assert!(route("Rust").is_some(), "路由键大小写不敏感");
@@ -700,8 +753,13 @@ mod tests {
     /// tail 语言任何批次都不得入表（路由纪律，frozen ④）。
     #[test]
     fn tail_langs_never_route() {
-        for lang in ["at", "auto", "autolang", "mermaid", "vue", "console", "none", "plain", ""] {
-            assert!(route(lang).is_none(), "tail lang must stay on syntect: {lang}");
+        for lang in [
+            "at", "auto", "autolang", "mermaid", "vue", "console", "none", "plain", "",
+        ] {
+            assert!(
+                route(lang).is_none(),
+                "tail lang must stay on syntect: {lang}"
+            );
         }
     }
 
@@ -712,23 +770,41 @@ mod tests {
         assert_eq!(category_for_index(0), Some("attribute"));
         assert_eq!(category_for_index(idx("comment")), Some("comment"));
         assert_eq!(category_for_index(idx("string.escape")), Some("string"));
-        assert_eq!(category_for_index(idx("keyword.operator")), Some("operator"));
+        assert_eq!(
+            category_for_index(idx("keyword.operator")),
+            Some("operator")
+        );
         assert_eq!(category_for_index(idx("keyword")), Some("keyword"));
         assert_eq!(category_for_index(idx("number")), Some("constant"));
         assert_eq!(category_for_index(idx("type.builtin")), Some("type"));
         assert_eq!(category_for_index(idx("function")), Some("function"));
         assert_eq!(category_for_index(idx("tag")), Some("tag"));
         assert_eq!(category_for_index(idx("variable")), Some("variable"));
-        assert_eq!(category_for_index(idx("punctuation.delimiter")), Some("punctuation"));
+        assert_eq!(
+            category_for_index(idx("punctuation.delimiter")),
+            Some("punctuation")
+        );
         assert_eq!(category_for_index(999), None, "越界索引安全");
     }
 
     /// scope 探针表：每归类至少一条探针。
     #[test]
     fn every_category_has_probes() {
-        for cat in ["comment", "string", "operator", "keyword", "constant", "type",
-            "function", "tag", "attribute", "module", "property", "variable", "punctuation"]
-        {
+        for cat in [
+            "comment",
+            "string",
+            "operator",
+            "keyword",
+            "constant",
+            "type",
+            "function",
+            "tag",
+            "attribute",
+            "module",
+            "property",
+            "variable",
+            "punctuation",
+        ] {
             assert!(!scope_probes_for_category(cat).is_empty(), "{cat} 无探针");
         }
     }
@@ -767,10 +843,8 @@ mod tests {
         let syn = crate::ui::code_editor::core::highlight::highlight_segments_syntect(
             lang, code, true, "indigo",
         );
-        let ts_colors: std::collections::HashSet<_> =
-            ts.iter().filter_map(|(_, c)| *c).collect();
-        let syn_colors: std::collections::HashSet<_> =
-            syn.iter().filter_map(|(_, c)| *c).collect();
+        let ts_colors: std::collections::HashSet<_> = ts.iter().filter_map(|(_, c)| *c).collect();
+        let syn_colors: std::collections::HashSet<_> = syn.iter().filter_map(|(_, c)| *c).collect();
         // (2) 主题色板（同一 (theme,dark,accent) 键的全量前景色集）。
         let theme_id = crate::ui::style::theme::theme_name();
         let theme_key =
@@ -808,31 +882,64 @@ mod tests {
     fn p0_fixture_matrix() {
         // (lang, fixture, 必须着色的文本锚点[keyword/string/number/comment])
         let cases: &[(&str, &str, &[&str])] = &[
-            ("rust", "// c\nfn main() { let s = \"hi\"; let n = 42; }\n",
-                &["fn", "let", "\"hi\"", "42", "// c"]),
-            ("python", "# c\ndef main():\n    s = \"hi\"\n    n = 42\n",
-                &["def", "\"hi\"", "42", "# c"]),
-            ("javascript", "// c\nfunction main() { let s = \"hi\"; let n = 42; }\n",
-                &["function", "\"hi\"", "42", "// c"]),
-            ("typescript", "// c\nfunction main(): number { const s = \"hi\"; let n = 42; }\n",
-                &["function", "const", "\"hi\"", "42", "// c"]),
-            ("tsx", "// c\nconst el = <div id=\"x\">{42}</div>;\n",
-                &["const", "// c", "42"]),
-            ("json", "{\"k\": \"hi\", \"n\": 42, \"arr\": [1, 2]}\n",
-                &["\"k\"", "\"hi\"", "42"]),
-            ("toml", "# c\nkey = \"hi\"\nn = 42\n",
-                &["\"hi\"", "42", "# c"]),
-            ("yaml", "# c\nkey: \"hi\"\nn: 42\n",
-                &["\"hi\"", "42", "# c"]),
-            ("markdown", "# Head\n\nSome **bold** and `code` text.\n",
+            (
+                "rust",
+                "// c\nfn main() { let s = \"hi\"; let n = 42; }\n",
+                &["fn", "let", "\"hi\"", "42", "// c"],
+            ),
+            (
+                "python",
+                "# c\ndef main():\n    s = \"hi\"\n    n = 42\n",
+                &["def", "\"hi\"", "42", "# c"],
+            ),
+            (
+                "javascript",
+                "// c\nfunction main() { let s = \"hi\"; let n = 42; }\n",
+                &["function", "\"hi\"", "42", "// c"],
+            ),
+            (
+                "typescript",
+                "// c\nfunction main(): number { const s = \"hi\"; let n = 42; }\n",
+                &["function", "const", "\"hi\"", "42", "// c"],
+            ),
+            (
+                "tsx",
+                "// c\nconst el = <div id=\"x\">{42}</div>;\n",
+                &["const", "// c", "42"],
+            ),
+            (
+                "json",
+                "{\"k\": \"hi\", \"n\": 42, \"arr\": [1, 2]}\n",
+                &["\"k\"", "\"hi\"", "42"],
+            ),
+            (
+                "toml",
+                "# c\nkey = \"hi\"\nn = 42\n",
+                &["\"hi\"", "42", "# c"],
+            ),
+            (
+                "yaml",
+                "# c\nkey: \"hi\"\nn: 42\n",
+                &["\"hi\"", "42", "# c"],
+            ),
+            (
+                "markdown",
+                "# Head\n\nSome **bold** and `code` text.\n",
                 // AutoUI 主题无 markup.* 槽位——标题/粗体/行内码双引擎同为素色
                 // （真平价）；ts 值加在注入面（围栏内代码获色）+ 结构标点。
-                &["#"]),
-            ("bash", "# c\necho \"hi\" $n 42\n",
+                &["#"],
+            ),
+            (
+                "bash",
+                "# c\necho \"hi\" $n 42\n",
                 // bash 查询不给裸词数字着色（词法=word 非 number 字面量）。
-                &["echo", "\"hi\"", "# c"]),
-            ("c", "// c\nint main() { char *s = \"hi\"; int n = 42; }\n",
-                &["int", "\"hi\"", "42", "// c"]),
+                &["echo", "\"hi\"", "# c"],
+            ),
+            (
+                "c",
+                "// c\nint main() { char *s = \"hi\"; int n = 42; }\n",
+                &["int", "\"hi\"", "42", "// c"],
+            ),
         ];
         for (lang, code, anchors) in cases {
             let segs = roundtrip(lang, code);
@@ -872,12 +979,13 @@ fn f(x: Option<&str>) -> Result<String, ()> {
     fn degraded_inputs_fall_back_cleanly() {
         // 空输入/纯空白/坏 UTF-8 邻界文本不 panic；空串走 None 回落（与
         // syntect 基线一致输出单段）。
-        assert!(highlight_segments("rust", "", true, "indigo").is_none()
-            || highlight_segments("rust", "", true, "indigo").is_some());
+        assert!(
+            highlight_segments("rust", "", true, "indigo").is_none()
+                || highlight_segments("rust", "", true, "indigo").is_some()
+        );
         let _ = highlight_segments("rust", "\n\n\n", true, "indigo");
         let _ = highlight_segments("json", "{\"a\": ", true, "indigo"); // 截断 JSON——ERROR 节点容错
     }
-
 
     /// markdown 注入路由：block 查询的 inline 注入经 markdown-inline 键解析。
     #[test]
@@ -966,7 +1074,9 @@ fn f(x: Option<&str>) -> Result<String, ()> {
 
         // 大比例：替换前半文档。
         let new = format!("{}\n{}", rust_fixture(20), rust_fixture(10));
-        let out = s.update(&old, &new, Some((0, old.len(), old.len()))).unwrap();
+        let out = s
+            .update(&old, &new, Some((0, old.len(), old.len())))
+            .unwrap();
         assert!(out.full_reparse, "大比例改写应兜底全量");
         assert_eq!(out.changed_ranges, vec![(0, new.len())]);
 
@@ -991,12 +1101,13 @@ fn f(x: Option<&str>) -> Result<String, ()> {
             let pos = text.find(&needle).unwrap();
             let replacement = format!("let s{i} = \"edit{i}\";");
             let new = text.replace(&needle, &replacement);
-            let out = s.update(
-                &text,
-                &new,
-                Some((pos, pos + needle.len(), pos + replacement.len())),
-            )
-            .unwrap();
+            let out = s
+                .update(
+                    &text,
+                    &new,
+                    Some((pos, pos + needle.len(), pos + replacement.len())),
+                )
+                .unwrap();
             assert!(!out.full_reparse, "链式编辑第 {i} 步应增量: {:?}", out);
             text = new;
         }
@@ -1024,12 +1135,12 @@ fn f(x: Option<&str>) -> Result<String, ()> {
             let needle = "let n0 = 0;";
             let pos = text.find(needle).unwrap() + "let n0 = ".len();
             let new = text.replacen(needle, "let n0 = 7;", 1);
-            let out = s.update(&text, &new, Some((pos, pos + 1, pos + 1))).unwrap();
+            let out = s
+                .update(&text, &new, Some((pos, pos + 1, pos + 1)))
+                .unwrap();
             eprintln!(
                 "[P716 延迟档] {label}（~{size_kb}KB）full={:?} inc={:?} inc_full={}",
-                first.parse_elapsed,
-                out.parse_elapsed,
-                out.full_reparse
+                first.parse_elapsed, out.parse_elapsed, out.full_reparse
             );
             assert!(
                 out.parse_elapsed.as_millis() < 2000,

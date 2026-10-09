@@ -144,10 +144,10 @@ pub enum TypeTag {
     // Generic instances (Plan 087)
     /// User-defined generic instance (e.g., Pair<int, string>)
     /// Stores mono_name for identification
-    GenericInstance(String),  // mono_name: "Pair_int_str"
+    GenericInstance(String), // mono_name: "Pair_int_str"
     /// Specialized pair storage (Plan 087 Phase 4)
     /// Stores mono_name for identification
-    SpecializedPair(String),  // mono_name: "Pair_int_int", "Pair_int_Value", etc.
+    SpecializedPair(String), // mono_name: "Pair_int_int", "Pair_int_Value", etc.
 
     // Future types
     /// User-defined or custom types
@@ -202,18 +202,26 @@ impl TypeTag {
 
     /// Check if this type tag represents a list type
     pub fn is_list(&self) -> bool {
-        matches!(self,
-            TypeTag::ListInt |
-            TypeTag::ListChar |
-            TypeTag::ListBool |
-            TypeTag::ListString |
-            TypeTag::ListValue
+        matches!(
+            self,
+            TypeTag::ListInt
+                | TypeTag::ListChar
+                | TypeTag::ListBool
+                | TypeTag::ListString
+                | TypeTag::ListValue
         )
     }
 
     /// Check if this type tag represents a map type
     pub fn is_map(&self) -> bool {
-        matches!(self, TypeTag::HashMapInt | TypeTag::HashMapBool | TypeTag::HashMapString | TypeTag::HashMapValue | TypeTag::TreeMap)
+        matches!(
+            self,
+            TypeTag::HashMapInt
+                | TypeTag::HashMapBool
+                | TypeTag::HashMapString
+                | TypeTag::HashMapValue
+                | TypeTag::TreeMap
+        )
     }
 
     /// Check if this type tag represents a set type
@@ -263,14 +271,24 @@ pub struct BigIntData {
 
 impl BigIntData {
     pub fn from_i64(v: i64) -> Self {
-        Self { bits: v as u64, is_unsigned: false }
+        Self {
+            bits: v as u64,
+            is_unsigned: false,
+        }
     }
     pub fn from_u64(v: u64) -> Self {
-        Self { bits: v, is_unsigned: true }
+        Self {
+            bits: v,
+            is_unsigned: true,
+        }
     }
     /// 按存储符号读回 i64
     pub fn as_i64(&self) -> i64 {
-        if self.is_unsigned { self.bits as i64 } else { self.bits as i64 }
+        if self.is_unsigned {
+            self.bits as i64
+        } else {
+            self.bits as i64
+        }
     }
     /// 按存储符号读回 u64
     pub fn as_u64(&self) -> u64 {
@@ -279,9 +297,15 @@ impl BigIntData {
 }
 
 impl HeapObject for BigIntData {
-    fn type_tag(&self) -> TypeTag { TypeTag::BigInt }
-    fn as_any(&self) -> &dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::BigInt
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 // ============================================================================
@@ -294,9 +318,15 @@ impl HeapObject for BigIntData {
 // get_heap_object + downcast 取回。
 // ============================================================================
 impl HeapObject for auto_val::Node {
-    fn type_tag(&self) -> TypeTag { TypeTag::Node }
-    fn as_any(&self) -> &dyn Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn Any { self }
+    fn type_tag(&self) -> TypeTag {
+        TypeTag::Node
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
     // Plan 419: props 中的 VmRef 是子引用(kids 为内联 owned Node,非引用)。
     fn child_refs(&self) -> Vec<u64> {
         self.props_clone()
@@ -433,7 +463,10 @@ pub fn try_downcast_checked<T: Any>(obj: &dyn HeapObject, expected_tag: TypeTag)
 /// }
 /// ```
 #[inline]
-pub fn try_downcast_checked_mut<T: Any>(obj: &mut dyn HeapObject, expected_tag: TypeTag) -> Option<&mut T> {
+pub fn try_downcast_checked_mut<T: Any>(
+    obj: &mut dyn HeapObject,
+    expected_tag: TypeTag,
+) -> Option<&mut T> {
     // Fast path: type tag matches (most common case)
     if obj.type_tag() == expected_tag {
         obj.as_any_mut().downcast_mut::<T>()
@@ -457,9 +490,15 @@ mod tests {
     }
 
     impl HeapObject for MockIntList {
-        fn type_tag(&self) -> TypeTag { TypeTag::ListInt }
-        fn as_any(&self) -> &dyn Any { self }
-        fn as_any_mut(&mut self) -> &mut dyn Any { self }
+        fn type_tag(&self) -> TypeTag {
+            TypeTag::ListInt
+        }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
     }
 
     struct MockCharList {
@@ -467,9 +506,15 @@ mod tests {
     }
 
     impl HeapObject for MockCharList {
-        fn type_tag(&self) -> TypeTag { TypeTag::ListChar }
-        fn as_any(&self) -> &dyn Any { self }
-        fn as_any_mut(&mut self) -> &mut dyn Any { self }
+        fn type_tag(&self) -> TypeTag {
+            TypeTag::ListChar
+        }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
     }
 
     struct MockString {
@@ -477,9 +522,15 @@ mod tests {
     }
 
     impl HeapObject for MockString {
-        fn type_tag(&self) -> TypeTag { TypeTag::String }
-        fn as_any(&self) -> &dyn Any { self }
-        fn as_any_mut(&mut self) -> &mut dyn Any { self }
+        fn type_tag(&self) -> TypeTag {
+            TypeTag::String
+        }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
     }
 
     #[test]
@@ -557,19 +608,27 @@ mod tests {
 
     #[test]
     fn test_heap_object_type_tag() {
-        let list = MockIntList { elems: vec![1, 2, 3] };
+        let list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
         assert_eq!(list.type_tag(), TypeTag::ListInt);
 
-        let char_list = MockCharList { elems: vec!['a', 'b'] };
+        let char_list = MockCharList {
+            elems: vec!['a', 'b'],
+        };
         assert_eq!(char_list.type_tag(), TypeTag::ListChar);
 
-        let string = MockString { value: "hello".to_string() };
+        let string = MockString {
+            value: "hello".to_string(),
+        };
         assert_eq!(string.type_tag(), TypeTag::String);
     }
 
     #[test]
     fn test_is_type_helper() {
-        let list = MockIntList { elems: vec![1, 2, 3] };
+        let list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
 
         assert!(is_type(&list, TypeTag::ListInt));
         assert!(!is_type(&list, TypeTag::ListChar));
@@ -578,7 +637,9 @@ mod tests {
 
     #[test]
     fn test_downcast_success() {
-        let list = MockIntList { elems: vec![1, 2, 3] };
+        let list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
         let obj: &dyn HeapObject = &list;
 
         let downcasted = downcast::<MockIntList>(obj);
@@ -588,7 +649,9 @@ mod tests {
 
     #[test]
     fn test_downcast_failure() {
-        let list = MockIntList { elems: vec![1, 2, 3] };
+        let list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
         let obj: &dyn HeapObject = &list;
 
         let downcasted = downcast::<MockCharList>(obj);
@@ -597,7 +660,9 @@ mod tests {
 
     #[test]
     fn test_downcast_mut_success() {
-        let mut list = MockIntList { elems: vec![1, 2, 3] };
+        let mut list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
         let obj: &mut dyn HeapObject = &mut list;
 
         let downcasted = downcast_mut::<MockIntList>(obj);
@@ -610,7 +675,9 @@ mod tests {
 
     #[test]
     fn test_downcast_mut_failure() {
-        let mut list = MockIntList { elems: vec![1, 2, 3] };
+        let mut list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
         let obj: &mut dyn HeapObject = &mut list;
 
         let downcasted = downcast_mut::<MockCharList>(obj);
@@ -619,7 +686,9 @@ mod tests {
 
     #[test]
     fn test_type_name_helper() {
-        let list = MockIntList { elems: vec![1, 2, 3] };
+        let list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
         let obj: &dyn HeapObject = &list;
 
         assert_eq!(type_name(obj), "List<int>");
@@ -627,7 +696,9 @@ mod tests {
 
     #[test]
     fn test_arc_rwlock_heap_object() {
-        let list = MockIntList { elems: vec![1, 2, 3] };
+        let list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
         let obj: Arc<RwLock<dyn HeapObject>> = Arc::new(RwLock::new(list));
 
         // Test read access
@@ -642,7 +713,9 @@ mod tests {
 
     #[test]
     fn test_arc_rwlock_heap_object_mut() {
-        let list = MockIntList { elems: vec![1, 2, 3] };
+        let list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
         let obj: Arc<RwLock<dyn HeapObject>> = Arc::new(RwLock::new(list));
 
         // Test write access
@@ -664,9 +737,24 @@ mod tests {
         let registry: DashMap<u64, Arc<RwLock<dyn HeapObject>>> = DashMap::new();
 
         // Insert different object types
-        registry.insert(1, Arc::new(RwLock::new(MockIntList { elems: vec![1, 2, 3] })));
-        registry.insert(2, Arc::new(RwLock::new(MockCharList { elems: vec!['a', 'b'] })));
-        registry.insert(3, Arc::new(RwLock::new(MockString { value: "hello".to_string() })));
+        registry.insert(
+            1,
+            Arc::new(RwLock::new(MockIntList {
+                elems: vec![1, 2, 3],
+            })),
+        );
+        registry.insert(
+            2,
+            Arc::new(RwLock::new(MockCharList {
+                elems: vec!['a', 'b'],
+            })),
+        );
+        registry.insert(
+            3,
+            Arc::new(RwLock::new(MockString {
+                value: "hello".to_string(),
+            })),
+        );
 
         // Retrieve and verify types
         let obj1 = registry.get(&1).unwrap();
@@ -705,29 +793,40 @@ mod tests {
     // Plan 077 Phase 7: Tests for optimized downcast helpers
     #[test]
     fn test_try_downcast_checked_success() {
-        let list = MockIntList { elems: vec![1, 2, 3] };
+        let list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
 
         // Correct type tag should succeed
-        let result = crate::vm::heap_object::try_downcast_checked::<MockIntList>(&list, TypeTag::ListInt);
+        let result =
+            crate::vm::heap_object::try_downcast_checked::<MockIntList>(&list, TypeTag::ListInt);
         assert!(result.is_some());
         assert_eq!(result.unwrap().elems, vec![1, 2, 3]);
     }
 
     #[test]
     fn test_try_downcast_checked_wrong_type() {
-        let list = MockIntList { elems: vec![1, 2, 3] };
+        let list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
 
         // Wrong type tag should fail
-        let result = crate::vm::heap_object::try_downcast_checked::<MockIntList>(&list, TypeTag::ListChar);
+        let result =
+            crate::vm::heap_object::try_downcast_checked::<MockIntList>(&list, TypeTag::ListChar);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_try_downcast_checked_mut_success() {
-        let mut list = MockIntList { elems: vec![1, 2, 3] };
+        let mut list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
 
         // Correct type tag should succeed
-        let result = crate::vm::heap_object::try_downcast_checked_mut::<MockIntList>(&mut list, TypeTag::ListInt);
+        let result = crate::vm::heap_object::try_downcast_checked_mut::<MockIntList>(
+            &mut list,
+            TypeTag::ListInt,
+        );
         assert!(result.is_some());
         result.unwrap().elems.push(4);
         assert_eq!(list.elems, vec![1, 2, 3, 4]);
@@ -735,10 +834,15 @@ mod tests {
 
     #[test]
     fn test_try_downcast_checked_mut_wrong_type() {
-        let mut list = MockIntList { elems: vec![1, 2, 3] };
+        let mut list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
 
         // Wrong type tag should fail
-        let result = crate::vm::heap_object::try_downcast_checked_mut::<MockIntList>(&mut list, TypeTag::ListChar);
+        let result = crate::vm::heap_object::try_downcast_checked_mut::<MockIntList>(
+            &mut list,
+            TypeTag::ListChar,
+        );
         assert!(result.is_none());
     }
 
@@ -747,14 +851,18 @@ mod tests {
         // This test verifies the optimized helpers work correctly
         use crate::vm::heap_object::{try_downcast_checked, try_downcast_checked_mut};
 
-        let list = MockIntList { elems: vec![1, 2, 3] };
+        let list = MockIntList {
+            elems: vec![1, 2, 3],
+        };
 
         // Read path
         let read_result = try_downcast_checked::<MockIntList>(&list, TypeTag::ListInt);
         assert!(read_result.is_some());
 
         // Write path
-        let mut list2 = MockIntList { elems: vec![4, 5, 6] };
+        let mut list2 = MockIntList {
+            elems: vec![4, 5, 6],
+        };
         let write_result = try_downcast_checked_mut::<MockIntList>(&mut list2, TypeTag::ListInt);
         assert!(write_result.is_some());
         write_result.unwrap().elems.push(7);
@@ -765,7 +873,13 @@ mod tests {
     #[test]
     fn test_bigint_data_roundtrip_i64() {
         // 边界值：48 位内联范围外的大数
-        let vals = [1i64 << 47, -(1i64 << 47) - 1, i64::MAX, i64::MIN, 0x_FFFF_FFFF_FFFF_FFFFu64 as i64];
+        let vals = [
+            1i64 << 47,
+            -(1i64 << 47) - 1,
+            i64::MAX,
+            i64::MIN,
+            0x_FFFF_FFFF_FFFF_FFFFu64 as i64,
+        ];
         for v in vals {
             let big = BigIntData::from_i64(v);
             assert_eq!(big.as_i64(), v, "i64 {} round-trip", v);
@@ -775,7 +889,12 @@ mod tests {
 
     #[test]
     fn test_bigint_data_roundtrip_u64() {
-        let vals = [1u64 << 48, u64::MAX, (1u64 << 63) + 1, 0x_FFFF_FFFF_0000_0000u64];
+        let vals = [
+            1u64 << 48,
+            u64::MAX,
+            (1u64 << 63) + 1,
+            0x_FFFF_FFFF_0000_0000u64,
+        ];
         for v in vals {
             let big = BigIntData::from_u64(v);
             assert_eq!(big.as_u64(), v, "u64 {} round-trip", v);

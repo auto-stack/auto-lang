@@ -14,9 +14,7 @@ use cosmic_text::{
     Attrs, AttrsList, BufferLine, Edit, Family, FontSystem, LineEnding, Metrics, Selection, Wrap,
 };
 
-use super::{
-    fold, CodeEditorCore, CodeEditorConfig, LayoutInfo, SCROLLBAR_THICKNESS,
-};
+use super::{fold, CodeEditorConfig, CodeEditorCore, LayoutInfo, SCROLLBAR_THICKNESS};
 use crate::ui::code_editor::draw::{
     CaretDraw, EditorDrawList, GutterFold, GutterNumber, GutterSection, PreeditDraw, Pt, Rect,
     ScrollbarDraw, TextRun,
@@ -63,7 +61,8 @@ pub fn render(
     // 测量约束）给出 f32::INFINITY，`inf <= 1.0` 为假曾放行，下游 gutter
     // 光栅 `inf as u32` 饱和 u32::MAX → w*h*4 = 721GB 分配崩进程（OBS-1）。
     // NaN 同拒（NaN 比较恒假）。本帧跳过渲染，布局收敛后自然恢复。
-    if !viewport_w.is_finite() || !viewport_h.is_finite() || viewport_w <= 1.0 || viewport_h <= 1.0 {
+    if !viewport_w.is_finite() || !viewport_h.is_finite() || viewport_w <= 1.0 || viewport_h <= 1.0
+    {
         return list;
     }
 
@@ -98,20 +97,14 @@ pub fn render(
             let (cached_digits, cached_w) = core.gutter_width_cache();
             if cached_digits == digits && cached_w > 0.0 {
                 width = cached_w;
-            } else if let Some(line) =
-                gutter_probe_layout(font_system, digits).first()
-            {
+            } else if let Some(line) = gutter_probe_layout(font_system, digits).first() {
                 width = line.w * config.font_size;
                 core.set_gutter_width_cache(digits, width);
             }
         }
         // Plan 414 §6.3: no pad between the numbers zone and the fold
         // column — its own 6px inner padding IS the gap on both sides.
-        (
-            (width + GUTTER_PAD + FOLD_GUTTER_W).ceil(),
-            digits,
-            regions,
-        )
+        ((width + GUTTER_PAD + FOLD_GUTTER_W).ceil(), digits, regions)
     } else {
         (0.0, 0, Vec::new())
     };
@@ -140,16 +133,10 @@ pub fn render(
     // Regions were discovered above (line texts, no shaping needed); the
     // map merges folded bodies and owns all projection math. Stored on the
     // core for hit testing; pruning drops openers invalidated by edits.
-    let fold_map = fold::FoldMap::build(
-        regions,
-        &core.folded_openers(),
-        config.line_height(),
-    );
+    let fold_map = fold::FoldMap::build(regions, &core.folded_openers(), config.line_height());
     let fold_hidden = core.set_fold_map(fold_map.clone());
     list.fold_hidden = fold_hidden;
-    let proj = |line_i: usize, orig_top: f32| -> f32 {
-        fold_map.project_y(line_i, orig_top)
-    };
+    let proj = |line_i: usize, orig_top: f32| -> f32 { fold_map.project_y(line_i, orig_top) };
 
     let text_rect = Rect::new(gutter_total, 0.0, text_w, viewport_h);
 
@@ -192,16 +179,21 @@ pub fn render(
             let number = run.line_i + 1;
             if number != last_number {
                 last_number = number;
-                gutter_numbers.push(GutterNumber { number, y: proj_top });
+                gutter_numbers.push(GutterNumber {
+                    number,
+                    y: proj_top,
+                });
             }
             // Two-state chevrons at foldable openers (P3 consumes the
             // state; the raster draws ▾ / ▸).
             if fold_map.region_at(run.line_i).is_some() {
                 let folded = core.fold_is_folded(run.line_i);
-                gutter_folds.push(GutterFold { y: proj_top, folded });
+                gutter_folds.push(GutterFold {
+                    y: proj_top,
+                    folded,
+                });
                 if folded {
-                    pending_marker =
-                        Some((text_rect.x + run.line_w + 4.0, proj_top));
+                    pending_marker = Some((text_rect.x + run.line_w + 4.0, proj_top));
                 }
             }
 
@@ -224,7 +216,10 @@ pub fn render(
     let visible_lines = visible_run_count;
 
     // ── background + gutter section ───────────────────────────────────────
-    list.background = Some((Rect::new(0.0, 0.0, viewport_w, viewport_h), theme.background));
+    list.background = Some((
+        Rect::new(0.0, 0.0, viewport_w, viewport_h),
+        theme.background,
+    ));
     if config.line_numbers {
         list.gutter = Some(GutterSection {
             bounds: Rect::new(0.0, 0.0, gutter_total, viewport_h),
@@ -272,7 +267,11 @@ pub fn render(
                 if fold_map.is_hidden(run.line_i) {
                     continue;
                 }
-                let lo = if run.line_i == start.line { start.index } else { 0 };
+                let lo = if run.line_i == start.line {
+                    start.index
+                } else {
+                    0
+                };
                 let hi = if run.line_i == end.line {
                     end.index
                 } else {
@@ -341,14 +340,12 @@ pub fn render(
     // P4's auto-expand reveals the line on the next input anyway.
     let mut caret_rect: Option<Rect> = None;
     let cursor_line = editor.cursor().line;
-    if let Some((cx, cy)) = editor.cursor_position().filter(|_| !fold_map.is_hidden(cursor_line)) {
+    if let Some((cx, cy)) = editor
+        .cursor_position()
+        .filter(|_| !fold_map.is_hidden(cursor_line))
+    {
         let cy = proj(cursor_line, cy as f32);
-        let rect = Rect::new(
-            cx as f32,
-            cy,
-            CARET_WIDTH,
-            config.font_size * 1.15,
-        );
+        let rect = Rect::new(cx as f32, cy, CARET_WIDTH, config.font_size * 1.15);
         caret_rect = Some(rect);
         list.caret = Some(CaretDraw {
             rect: Rect::new(text_rect.x + rect.x, text_rect.y + rect.y, rect.w, rect.h),
@@ -386,7 +383,10 @@ pub fn render(
         // PLAN-526 T21：track 退化护栏（viewport < THICKNESS+2 时为负，
         // clamp(min>max) 曾 panic 打死桌面进程——min=8.0/max=-2.5 实录）。
         let track_h = (viewport_h - SCROLLBAR_THICKNESS - 2.0).max(1.0);
-        let thumb_h = scrollbar_thumb(track_h, viewport_h * (visible_lines.max(1) as f32 / total_effective as f32));
+        let thumb_h = scrollbar_thumb(
+            track_h,
+            viewport_h * (visible_lines.max(1) as f32 / total_effective as f32),
+        );
         // PLAN-626 rev2 T-09: with no visible runs (degenerate frame),
         // first_visible_line stays usize::MAX — feeding it to the frac
         // produced inf/NaN scrollbar geometry that froze the drag loop.
@@ -418,10 +418,16 @@ pub fn render(
         None
     };
     if let Some(sb) = scrollbar_v {
-        list.scrollbar_v = Some(ScrollbarDraw { thumb: sb, color: theme.scrollbar });
+        list.scrollbar_v = Some(ScrollbarDraw {
+            thumb: sb,
+            color: theme.scrollbar,
+        });
     }
     if let Some(sb) = scrollbar_h {
-        list.scrollbar_h = Some(ScrollbarDraw { thumb: sb, color: theme.scrollbar });
+        list.scrollbar_h = Some(ScrollbarDraw {
+            thumb: sb,
+            color: theme.scrollbar,
+        });
     }
 
     // ── record layout for hit testing ─────────────────────────────────────
@@ -435,9 +441,8 @@ pub fn render(
         max_line_width,
         visible_lines,
         fold_bands,
-        fold_column: (config.line_numbers).then(|| {
-            Rect::new(gutter_total - FOLD_GUTTER_W, 0.0, FOLD_GUTTER_W, viewport_h)
-        }),
+        fold_column: (config.line_numbers)
+            .then(|| Rect::new(gutter_total - FOLD_GUTTER_W, 0.0, FOLD_GUTTER_W, viewport_h)),
     });
 
     // Clear the redraw flag after a successful paint pass.
@@ -481,7 +486,10 @@ fn digits_of(mut n: usize) -> usize {
 /// at font size 1.0 — the width, scaled by the real font size, is the
 /// gutter's content width. cosmic-text caches shaped lines, so repeated
 /// probes are cheap.
-fn gutter_probe_layout(font_system: &mut FontSystem, digits: usize) -> Vec<cosmic_text::LayoutLine> {
+fn gutter_probe_layout(
+    font_system: &mut FontSystem,
+    digits: usize,
+) -> Vec<cosmic_text::LayoutLine> {
     // Plan 414 §6.4: probe with the SAME family as the body text (the
     // monospace generic's ascent/descent misaligns the number baseline).
     let attrs = Attrs::new().family(super::mono_family());
@@ -492,7 +500,8 @@ fn gutter_probe_layout(font_system: &mut FontSystem, digits: usize) -> Vec<cosmi
         AttrsList::new(&attrs),
         cosmic_text::Shaping::Advanced,
     );
-    line.layout(font_system, 1.0, None, Wrap::None, None, 8).to_vec()
+    line.layout(font_system, 1.0, None, Wrap::None, None, 8)
+        .to_vec()
 }
 
 /// Byte index → x offset within a laid-out run (walks glyph clusters,
@@ -520,7 +529,10 @@ fn index_x(run: &cosmic_text::LayoutRun, index: usize) -> Option<f32> {
 
 /// Dim a color by scaling alpha (fold markers, affordance text).
 fn dimmed(c: Rgba, factor: f32) -> Rgba {
-    Rgba { a: c.a * factor, ..c }
+    Rgba {
+        a: c.a * factor,
+        ..c
+    }
 }
 
 /// cosmic-text color → theme color.
@@ -581,7 +593,8 @@ fn push_run_pieces(
     }
 
     // Merge adjacent pieces of equal color.
-    let mut merged: Vec<(usize, usize, Option<cosmic_text::Color>)> = Vec::with_capacity(pieces.len());
+    let mut merged: Vec<(usize, usize, Option<cosmic_text::Color>)> =
+        Vec::with_capacity(pieces.len());
     for (s, e, color) in pieces {
         match merged.last_mut() {
             Some((_, le, lc)) if *lc == color && *le == s => *le = e,
@@ -682,11 +695,22 @@ mod scrollbar_thumb_tests {
         // 任意负/零/正常 track 均不 panic 且落在 [1, max(track,1)]。
         for track in [-100.0f32, 0.0, 1.0, 5.0, 8.0, 40.0, 400.0] {
             let t = scrollbar_thumb(track, 7.5);
-            assert!((1.0..=track.max(1.0)).contains(&t), "track={track} thumb={t}");
+            assert!(
+                (1.0..=track.max(1.0)).contains(&t),
+                "track={track} thumb={t}"
+            );
         }
 
         // 正常路径：natural 夹在 THICKNESS 与 track 之间。
-        assert_eq!(scrollbar_thumb(100.0, 7.5), 8.0, "natural < THICKNESS → THICKNESS");
-        assert_eq!(scrollbar_thumb(100.0, 500.0), 100.0, "natural > track → track");
+        assert_eq!(
+            scrollbar_thumb(100.0, 7.5),
+            8.0,
+            "natural < THICKNESS → THICKNESS"
+        );
+        assert_eq!(
+            scrollbar_thumb(100.0, 500.0),
+            100.0,
+            "natural > track → track"
+        );
     }
 }

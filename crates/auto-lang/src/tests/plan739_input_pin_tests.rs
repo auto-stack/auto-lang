@@ -50,7 +50,11 @@ mod plan739_input_pin_tests {
     /// AC-01/AC-02 主围栏：键入节拍 → 换页节拍 → 重建断言 ADE value 随
     /// store 切换（修前 = 键入全文钉死，红）。视面核随动断言：未覆写值
     /// 对换页新核必真重建。
-    #[cfg(all(feature = "ui-interpreter", feature = "autodown", feature = "code-editor"))]
+    #[cfg(all(
+        feature = "ui-interpreter",
+        feature = "autodown",
+        feature = "code-editor"
+    ))]
     #[test]
     fn plan739_edit_then_page_switch_view_follows_store() {
         use crate::plan370_test_support::build_component_from_app;
@@ -123,8 +127,7 @@ mod plan739_input_pin_tests {
         patch_input_values(&mut v2, &iv);
         let _ = v2.into_iced();
         let sk2 = crate::ui::autodown_editor::storage_key("p2");
-        let core_text = crate::ui::autodown_editor::autodown_editor_text(&sk2)
-            .unwrap_or_default();
+        let core_text = crate::ui::autodown_editor::autodown_editor_text(&sk2).unwrap_or_default();
         assert_eq!(
             core_text, "第二页正文。",
             "F-037-R1 视面核半边：编辑器核必须装新页值（用户可见面跟随）"
@@ -153,7 +156,10 @@ mod plan739_input_pin_tests {
         patch_input_values(&mut ade, &iv);
         match &ade {
             View::AutodownEditor { value, .. } => {
-                assert_eq!(value, "模板求值值", "ADE 视面权威序列=state→sync 守卫→核；键入条目零作用");
+                assert_eq!(
+                    value, "模板求值值",
+                    "ADE 视面权威序列=state→sync 守卫→核；键入条目零作用"
+                );
             }
             _ => unreachable!(),
         }
@@ -170,7 +176,10 @@ mod plan739_input_pin_tests {
         patch_input_values(&mut input, &iv);
         match &input {
             View::Input { value, .. } => {
-                assert_eq!(value, "键入全文", "Input 单向 value 仍由补丁承载（零回退反例锚）");
+                assert_eq!(
+                    value, "键入全文",
+                    "Input 单向 value 仍由补丁承载（零回退反例锚）"
+                );
             }
             _ => unreachable!(),
         }
@@ -179,14 +188,18 @@ mod plan739_input_pin_tests {
     /// AC-03 守卫回退围栏（§5.1 案例二）：字面 content 载体键入后，重建帧
     /// sync(字面量原文) 必须零重建——摘除 patch 臂后历史动机（防逐帧重建
     /// 清焦点/丢用户文本）由 sync_external 三层守卫承担的实证锁定。
-    #[cfg(all(feature = "ui-interpreter", feature = "autodown", feature = "code-editor"))]
+    #[cfg(all(
+        feature = "ui-interpreter",
+        feature = "autodown",
+        feature = "code-editor"
+    ))]
     #[test]
     fn plan739_literal_content_typing_sync_no_rebuild() {
+        use crate::ui::autodown_editor::DocInput;
         use crate::ui::autodown_editor::{autodown_editor, storage_key};
         use crate::ui::code_editor::core::{
             set_font_system_call, EditorKey, EditorModifiers, NullClipboard,
         };
-        use crate::ui::autodown_editor::DocInput;
 
         // 测试装制 font system（core.rs tests run_fs 同款单例锁形态）。
         static FS: std::sync::OnceLock<std::sync::RwLock<cosmic_text::FontSystem>> =
@@ -214,35 +227,60 @@ mod plan739_input_pin_tests {
             core.render_frame(
                 fs,
                 400.0,
-                crate::ui::code_editor::theme::Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 },
+                crate::ui::code_editor::theme::Rgba {
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                    a: 1.0,
+                },
                 None,
             )
         });
-        let rect0 = core.block_rects().first().copied().expect("render_frame must lay out block 0");
+        let rect0 = core
+            .block_rects()
+            .first()
+            .copied()
+            .expect("render_frame must lay out block 0");
         {
             use crate::ui::code_editor::core::EditorButton;
             let (cx, cy) = (rect0.x + 8.0, rect0.y + 4.0);
             crate::ui::code_editor::core::with_font_system(|fs| {
                 core.handle_input(
                     fs,
-                    DocInput::MousePressed { button: EditorButton::Left, x: cx, y: cy },
+                    DocInput::MousePressed {
+                        button: EditorButton::Left,
+                        x: cx,
+                        y: cy,
+                    },
                     &mut NullClipboard,
                 )
             });
             crate::ui::code_editor::core::with_font_system(|fs| {
                 core.handle_input(
                     fs,
-                    DocInput::MouseReleased { button: EditorButton::Left, x: cx, y: cy },
+                    DocInput::MouseReleased {
+                        button: EditorButton::Left,
+                        x: cx,
+                        y: cy,
+                    },
                     &mut NullClipboard,
                 )
             });
         }
-        assert_eq!(core.focused_block(), Some(0), "点击必须建焦块 0（键入前置）");
+        assert_eq!(
+            core.focused_block(),
+            Some(0),
+            "点击必须建焦块 0（键入前置）"
+        );
         let press = |key: EditorKey| {
             crate::ui::code_editor::core::with_font_system(|fs| {
                 core.handle_input(
                     fs,
-                    DocInput::KeyPressed { key, text: None, modifiers: EditorModifiers::none() },
+                    DocInput::KeyPressed {
+                        key,
+                        text: None,
+                        modifiers: EditorModifiers::none(),
+                    },
                     &mut NullClipboard,
                 )
             });
@@ -256,6 +294,10 @@ mod plan739_input_pin_tests {
             !core.sync_external(literal, true),
             "字面 content 重建帧 sync 必须零重建（last_external 差分快路承担）"
         );
-        assert_eq!(core.emit_document(), "甲编辑普通正文。X", "用户键入存活于核");
+        assert_eq!(
+            core.emit_document(),
+            "甲编辑普通正文。X",
+            "用户键入存活于核"
+        );
     }
 }

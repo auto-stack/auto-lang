@@ -30,8 +30,7 @@ pub static PY_RETURN_ANNOTATIONS: std::sync::OnceLock<
     std::sync::RwLock<std::collections::HashMap<String, PyType>>,
 > = std::sync::OnceLock::new();
 
-fn annotations_table(
-) -> &'static std::sync::RwLock<std::collections::HashMap<String, PyType>> {
+fn annotations_table() -> &'static std::sync::RwLock<std::collections::HashMap<String, PyType>> {
     PY_RETURN_ANNOTATIONS.get_or_init(|| std::sync::RwLock::new(std::collections::HashMap::new()))
 }
 
@@ -44,18 +43,19 @@ pub fn record_return_annotation(name: &str, t: PyType) {
 
 /// 查询导入项的返回注解（无知识 = None）。
 pub fn lookup_return_annotation(name: &str) -> Option<PyType> {
-    annotations_table().read().ok().and_then(|m| m.get(name).cloned())
+    annotations_table()
+        .read()
+        .ok()
+        .and_then(|m| m.get(name).cloned())
 }
 
 /// nullable lint 收集器：已知 `T | None` 返回的调用点未判空直用
 ///（Store/语句位裸消费）时记录（Plan 567 T19——W 级，不阻断）。
-pub static PY_NULLABLE_LINT_HITS: std::sync::OnceLock<
-    std::sync::RwLock<Vec<String>>,
-> = std::sync::OnceLock::new();
+pub static PY_NULLABLE_LINT_HITS: std::sync::OnceLock<std::sync::RwLock<Vec<String>>> =
+    std::sync::OnceLock::new();
 
 pub fn record_nullable_lint(site: String) {
-    let hits = PY_NULLABLE_LINT_HITS
-        .get_or_init(|| std::sync::RwLock::new(Vec::new()));
+    let hits = PY_NULLABLE_LINT_HITS.get_or_init(|| std::sync::RwLock::new(Vec::new()));
     if let Ok(mut v) = hits.write() {
         // 同名站点去重（W 级提示，一次即可）。
         if !v.iter().any(|s| s == &site) {

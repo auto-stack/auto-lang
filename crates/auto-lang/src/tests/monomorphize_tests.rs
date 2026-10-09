@@ -1,19 +1,16 @@
 // Plan 076 Phase 2: Monomorphization Tests
 // Tests for generating specialized bytecode for generic types
 
-use crate::vm::codegen::Codegen;
-use crate::vm::monomorphize::{Monomorphizer, is_monomorphizable, collect_monomorphizable_types};
-use crate::vm::opcode::OpCode;
 use crate::ast::Type;
+use crate::vm::codegen::Codegen;
+use crate::vm::monomorphize::{collect_monomorphizable_types, is_monomorphizable, Monomorphizer};
+use crate::vm::opcode::OpCode;
 
 #[test]
 fn test_monomorphizer_list_int() {
     let mut mono = Monomorphizer::new();
 
-    let instance = crate::vm::generic::GenericInstance::new(
-        "List".to_string(),
-        vec![Type::Int]
-    );
+    let instance = crate::vm::generic::GenericInstance::new("List".to_string(), vec![Type::Int]);
     mono.register_generic(instance);
 
     let modules = mono.monomorphize();
@@ -27,10 +24,8 @@ fn test_monomorphizer_list_int() {
 fn test_monomorphizer_list_string() {
     let mut mono = Monomorphizer::new();
 
-    let instance = crate::vm::generic::GenericInstance::new(
-        "List".to_string(),
-        vec![Type::StrFixed(0)]
-    );
+    let instance =
+        crate::vm::generic::GenericInstance::new("List".to_string(), vec![Type::StrFixed(0)]);
     mono.register_generic(instance);
 
     let modules = mono.monomorphize();
@@ -113,15 +108,15 @@ fn test_monomorphizer_multiple_modules() {
 
     mono.register_generic(crate::vm::generic::GenericInstance::new(
         "List".to_string(),
-        vec![Type::Int]
+        vec![Type::Int],
     ));
     mono.register_generic(crate::vm::generic::GenericInstance::new(
         "List".to_string(),
-        vec![Type::StrFixed(0)]
+        vec![Type::StrFixed(0)],
     ));
     mono.register_generic(crate::vm::generic::GenericInstance::new(
         "List".to_string(),
-        vec![Type::Bool]
+        vec![Type::Bool],
     ));
 
     let modules = mono.monomorphize();
@@ -138,7 +133,7 @@ fn test_monomorphizer_get_module_by_name() {
 
     mono.register_generic(crate::vm::generic::GenericInstance::new(
         "List".to_string(),
-        vec![Type::Int]
+        vec![Type::Int],
     ));
 
     mono.monomorphize();

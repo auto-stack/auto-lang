@@ -38,7 +38,6 @@ use crate::symbols::SymbolLocation;
 
 use crate::use_scanner::{scan_use_statements, UseStatement};
 
-
 use std::collections::HashMap;
 
 use auto_cache::{CrateMetadata, CrateSource, Sandbox};
@@ -331,7 +330,9 @@ impl Clone for CompileSession {
 
             query_engine: None, // QueryEngine is recreated on-demand after clone
 
-            type_store: Arc::new(RwLock::new(self.type_store.read().unwrap().clone_for_epoch())),
+            type_store: Arc::new(RwLock::new(
+                self.type_store.read().unwrap().clone_for_epoch(),
+            )),
 
             auto_cache: self.auto_cache.clone(),
 
@@ -361,10 +362,10 @@ impl Clone for CompileSession {
 
             py_imports: self.py_imports.clone(),
 
-            script_marked: self.script_marked,     // Plan 550 T10
-            script_mode: self.script_mode,         // Plan 555 T02
-            assembly: self.assembly,               // PLAN-738：装配目标随 clone 传递
-            layer_selections: Vec::new(),          // 记录属于本次装载，重置
+            script_marked: self.script_marked, // Plan 550 T10
+            script_mode: self.script_mode,     // Plan 555 T02
+            assembly: self.assembly,           // PLAN-738：装配目标随 clone 传递
+            layer_selections: Vec::new(),      // 记录属于本次装载，重置
             assembly_references: Vec::new(),
             assembly_manifest: None,
             stdlib_root: None, // A cloned compiler starts a new assembly epoch.
@@ -500,8 +501,12 @@ impl CompileSession {
                 candidate_files: candidates,
                 context_byte_boundary: merged_context.map(|(_, b)| b),
                 public_hash: crate::stdlib_assembly::model::fnv1a64(
-                    merged_context.map(|(_, b)| &source[..b - 1]).unwrap_or(source)),
-                context_hash: merged_context.map(|(_, b)| crate::stdlib_assembly::model::fnv1a64(&source[b..])),
+                    merged_context
+                        .map(|(_, b)| &source[..b - 1])
+                        .unwrap_or(source),
+                ),
+                context_hash: merged_context
+                    .map(|(_, b)| crate::stdlib_assembly::model::fnv1a64(&source[b..])),
                 source: source.into(),
             });
     }
@@ -534,13 +539,22 @@ impl CompileSession {
         self.type_store.clone()
     }
 
-    pub fn freeze_assembly_manifest(&mut self, consumer: &str, path: &std::path::Path, source: &str)
-        -> AutoResult<crate::stdlib_assembly::manifest::AssemblyManifest> {
+    pub fn freeze_assembly_manifest(
+        &mut self,
+        consumer: &str,
+        path: &std::path::Path,
+        source: &str,
+    ) -> AutoResult<crate::stdlib_assembly::manifest::AssemblyManifest> {
         let stdlib = crate::stdlib_assembly::loader::repo_stdlib_root()?;
         let manifest = crate::stdlib_assembly::manifest::AssemblyManifest::freeze(
-            self.assembly, consumer, path.parent().unwrap_or(std::path::Path::new(".")),
-            &stdlib, &self.layer_selections, self.assembly_references.clone(),
-        ).with_consumer_input("project/entry", source);
+            self.assembly,
+            consumer,
+            path.parent().unwrap_or(std::path::Path::new(".")),
+            &stdlib,
+            &self.layer_selections,
+            self.assembly_references.clone(),
+        )
+        .with_consumer_input("project/entry", source);
         self.assembly_manifest = Some(manifest.clone());
         Ok(manifest)
     }
@@ -1381,6 +1395,23 @@ impl CompileSession {
             }
         }
 
+        // 2b. 目标层声明命名空间（`c.*` → stdlib/c/<name>.c.at）：仅在 C
+        // 会话可见——R2 C 发射消费完整 AST 后，io.c.at/storage.c.at 内的
+        // `use c.stdio` 首次真正进入解析器（此前片段发射不解析 use）。
+        // VM/Rust 会话维持原 not-found 语义，不扩大搜索面。
+        if found_path.is_none()
+            && self.assembly.target == crate::stdlib_assembly::model::AssemblyTarget::C
+            && module_path.starts_with("c/")
+        {
+            let candidate = stdlib_base
+                .parent()
+                .map(|stdlib_root| stdlib_root.join(&module_path))
+                .map(|path| path.with_extension(&self.assembly.target.context_extension()[1..]));
+            if let Some(path) = candidate.filter(|path| path.is_file()) {
+                found_path = Some(path);
+            }
+        }
+
         // 3. Try directory module pattern: tools/ → tools/mod.at
         if found_path.is_none() {
             for ext in &extensions {
@@ -1450,15 +1481,29 @@ impl CompileSession {
                 &self.assembly,
                 crate::stdlib_assembly::providers::catalog_schema_version(),
             )
-            .filter(|c| std::path::Path::new(&c.file_path).canonicalize().ok() == root_path.canonicalize().ok())
+            .filter(|c| {
+                std::path::Path::new(&c.file_path).canonicalize().ok()
+                    == root_path.canonicalize().ok()
+            })
             .map(|c| (c.type_store.clone(), c.segments.clone(), c.clone()));
         let resolved_key = root_path.canonicalize()?.to_string_lossy().to_string();
-        if let Some(previous) = self.layer_selections.iter().find(|s| s.module == use_stmt.module) {
-            let previous_key = std::path::Path::new(&previous.public_file).canonicalize()
-                .map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-            let active_valid = self.loaded_assemblies.values().all(|entry| entry.is_valid())
-                && self.loaded_assemblies.get(&use_stmt.module).is_some_and(|entry|
-                    entry.assembly == self.assembly);
+        if let Some(previous) = self
+            .layer_selections
+            .iter()
+            .find(|s| s.module == use_stmt.module)
+        {
+            let previous_key = std::path::Path::new(&previous.public_file)
+                .canonicalize()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let active_valid = self
+                .loaded_assemblies
+                .values()
+                .all(|entry| entry.is_valid())
+                && self
+                    .loaded_assemblies
+                    .get(&use_stmt.module)
+                    .is_some_and(|entry| entry.assembly == self.assembly);
             if previous_key != resolved_key || !active_valid {
                 return Err(AutoError::Msg(format!(
                     "session_target_mismatch: sources or dependencies of `{}` changed; rebuild the CompileSession",
@@ -1551,7 +1596,8 @@ impl CompileSession {
                 .unwrap_or_else(|_| module_root.to_string_lossy().to_string());
 
             if !self.compiled_module_paths.contains(&path_key)
-                && self.assembly.target == crate::stdlib_assembly::model::AssemblyTarget::Vm {
+                && self.assembly.target == crate::stdlib_assembly::model::AssemblyTarget::Vm
+            {
                 let module_code =
                     self.compile_module_to_bytecode(&module_source, &segments[0].file)?;
 
@@ -1574,7 +1620,8 @@ impl CompileSession {
                 &module_source,
             );
 
-            self.loaded_assemblies.insert(use_stmt.module.clone(), cached_entry);
+            self.loaded_assemblies
+                .insert(use_stmt.module.clone(), cached_entry);
             return Ok(());
         }
 
@@ -1594,9 +1641,15 @@ impl CompileSession {
         }
 
         let assembly_plan = crate::stdlib_assembly::plan::AssemblyPlan::from_resolved(
-            &use_stmt.module, &root_path, self.assembly)?;
+            &use_stmt.module,
+            &root_path,
+            self.assembly,
+        )?;
         let module_source = assembly_plan.source.clone();
-        let merged_context = assembly_plan.target_path.as_ref().zip(assembly_plan.boundary)
+        let merged_context = assembly_plan
+            .target_path
+            .as_ref()
+            .zip(assembly_plan.boundary)
             .map(|(p, b)| (p.clone(), b));
 
         // DEBUG: Print module source being parsed
@@ -1639,7 +1692,8 @@ impl CompileSession {
         // TypeStore.modules 登记（wildcard 平铺映射/限定查找消费）。
         let module_export_fns: Vec<String>;
         if !self.compiled_module_paths.contains(&path_key)
-            && self.assembly.target == crate::stdlib_assembly::model::AssemblyTarget::Vm {
+            && self.assembly.target == crate::stdlib_assembly::model::AssemblyTarget::Vm
+        {
             let module_code =
                 self.compile_module_to_bytecode(&module_source, &root_path.to_string_lossy())?;
             module_export_fns = module_code.exports.keys().cloned().collect();
@@ -1729,7 +1783,8 @@ impl CompileSession {
             dep_fingerprints,
         );
 
-        self.loaded_assemblies.insert(use_stmt.module.clone(), cache_entry.clone());
+        self.loaded_assemblies
+            .insert(use_stmt.module.clone(), cache_entry.clone());
         self.auto_cache.store_assembled(cache_entry);
 
         // 鍚堝苟鍒颁富 type_store
@@ -1952,7 +2007,8 @@ impl CompileSession {
         }
 
         codegen.code.push(OpCode::HALT as u8);
-        self.assembly_references.extend(codegen.assembly_references.iter().cloned());
+        self.assembly_references
+            .extend(codegen.assembly_references.iter().cloned());
 
         // Plan 346: Merge this module's generic_registry + object pools into
         // the session so they can be combined with the main module's at link time.

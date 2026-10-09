@@ -137,17 +137,15 @@ impl UICache {
     /// If so, all cached artifacts are stale (API imports may have changed).
     /// Returns true if the cache was invalidated.
     pub fn invalidate_if_api_functions_changed(&mut self, api_fns_path: &Path) -> bool {
-        let current_hash = fs::read_to_string(api_fns_path)
-            .ok()
-            .map(|content| {
-                // Simple FNV-1a-style hash via seahash or just use a basic hash
-                let mut hash: u64 = 0xcbf29ce484222325;
-                for byte in content.bytes() {
-                    hash ^= byte as u64;
-                    hash = hash.wrapping_mul(0x100000001b3);
-                }
-                hash
-            });
+        let current_hash = fs::read_to_string(api_fns_path).ok().map(|content| {
+            // Simple FNV-1a-style hash via seahash or just use a basic hash
+            let mut hash: u64 = 0xcbf29ce484222325;
+            for byte in content.bytes() {
+                hash ^= byte as u64;
+                hash = hash.wrapping_mul(0x100000001b3);
+            }
+            hash
+        });
 
         let changed = match (&self.api_functions_hash, &current_hash) {
             (Some(cached), Some(current)) => cached != current,
@@ -188,7 +186,10 @@ impl UICache {
     /// Plan 015 P0#2: drop entries whose source .at no longer exists, so the
     /// saved cache only lists artifacts that are still live. Returns the
     /// removed artifact output paths (relative, as recorded).
-    pub fn retain_existing_sources(&mut self, source_exists: &dyn Fn(&Path) -> bool) -> Vec<PathBuf> {
+    pub fn retain_existing_sources(
+        &mut self,
+        source_exists: &dyn Fn(&Path) -> bool,
+    ) -> Vec<PathBuf> {
         let mut removed_outputs = Vec::new();
         let mut stale: Vec<PathBuf> = Vec::new();
         for src in self.file_hashes.keys() {
@@ -321,7 +322,11 @@ mod tests {
 
         let loaded = UICache::load_with(temp_dir.path(), Some("F2".into()));
         assert_eq!(loaded.file_count(), 0, "changed fingerprint clears entries");
-        assert_eq!(loaded.generator_fingerprint, Some("F2".into()), "fresh cache re-stamps current fp");
+        assert_eq!(
+            loaded.generator_fingerprint,
+            Some("F2".into()),
+            "fresh cache re-stamps current fp"
+        );
     }
 
     #[test]

@@ -39,8 +39,8 @@ fn build_embedded(files: &[(&str, &str)]) -> (crate::ui::dynamic::DynamicCompone
     let host_path = dir.path().join("host.at");
     let path_str = host_path.to_string_lossy().to_string();
     let host_src = std::fs::read_to_string(&host_path).unwrap();
-    let comp = crate::build_dynamic_component(&host_src, Some(&path_str))
-        .expect("内嵌 demo 宿主编译");
+    let comp =
+        crate::build_dynamic_component(&host_src, Some(&path_str)).expect("内嵌 demo 宿主编译");
     (comp, host_path)
 }
 
@@ -151,8 +151,14 @@ fn f1_embedded_store_state_seeds_and_interpolates() {
     let (view, _, _) = comp.view_with_debug();
     let rendered = format!("{view:?}");
     // store 字段直接可读（model 并根的直接证据）。
-    let count = comp.read_state("count").expect("store 字段 count 应在统一根态");
-    assert_eq!(count, auto_val::Value::Int(7), "store 默认值应播种: {count:?}");
+    let count = comp
+        .read_state("count")
+        .expect("store 字段 count 应在统一根态");
+    assert_eq!(
+        count,
+        auto_val::Value::Int(7),
+        "store 默认值应播种: {count:?}"
+    );
     // f-string 内插求值成功（非原样 `${.store.count}`）。
     assert!(
         rendered.contains("count=7"),
@@ -175,7 +181,11 @@ fn f1_embedded_store_handler_dispatch() {
     let _ = comp.view_with_debug();
     comp.on_with_input_for("Demo016", "Bump", None);
     let count = comp.read_state("count").expect("Bump 后 count 仍可读");
-    assert_eq!(count, auto_val::Value::Int(8), "store.Inc() 应经 sibling 调用生效: {count:?}");
+    assert_eq!(
+        count,
+        auto_val::Value::Int(8),
+        "store.Inc() 应经 sibling 调用生效: {count:?}"
+    );
 }
 
 /// F4 锁：适配器 use 链的模块 fn 经别名进 computed 求值（twice = 7×2）。

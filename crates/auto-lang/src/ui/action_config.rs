@@ -113,7 +113,11 @@ impl UiActionConfig {
 
         // Validation: unique ids, menu/toolbar refs resolve, shortcuts normalize.
         // (extend——保留 parse 循环已累积的 missing-handler/unknown-block 警告)
-        let mut warnings = { let mut w = warnings; w.extend(cfg.validate_refs()); w };
+        let mut warnings = {
+            let mut w = warnings;
+            w.extend(cfg.validate_refs());
+            w
+        };
         // Shortcut bindings: normalized key → handler (first action wins on
         // collision, warning recorded).
         for w in cfg.rebuild_shortcut_bindings() {
@@ -125,15 +129,15 @@ impl UiActionConfig {
 
     /// Plan 451: build from a widget decl's `actions {}` block (DSL form).
     /// Same validation as the auto-atom parse (warnings, non-fatal).
-    pub fn from_actions_block(
-        b: &crate::ast::ui::ActionsBlock,
-    ) -> (UiActionConfig, Vec<String>) {
+    pub fn from_actions_block(b: &crate::ast::ui::ActionsBlock) -> (UiActionConfig, Vec<String>) {
         let map_item = |i: &crate::ast::ui::MenuItemEntry| match i {
             crate::ast::ui::MenuItemEntry::Action(id) => MenuItem::Action(id.clone()),
             crate::ast::ui::MenuItemEntry::Sep => MenuItem::Separator,
         };
         let mut cfg = UiActionConfig {
-            actions: b.actions.iter()
+            actions: b
+                .actions
+                .iter()
                 .map(|a| ActionDef {
                     id: a.id.clone(),
                     handler: a.handler.clone(),
@@ -144,10 +148,12 @@ impl UiActionConfig {
                     enabled_if: a.enabled_if.clone(),
                 })
                 .collect(),
-            menus: b.menubar
+            menus: b
+                .menubar
                 .as_ref()
                 .map(|m| {
-                    m.menus.iter()
+                    m.menus
+                        .iter()
                         .map(|me| MenuDef {
                             id: me.id.clone(),
                             title: me.title.clone(),
@@ -156,7 +162,8 @@ impl UiActionConfig {
                         .collect()
                 })
                 .unwrap_or_default(),
-            toolbar: b.toolbar
+            toolbar: b
+                .toolbar
                 .as_ref()
                 .map(|t| t.items.iter().map(map_item).collect())
                 .unwrap_or_default(),
@@ -180,7 +187,9 @@ impl UiActionConfig {
             MenuItem::Separator => crate::ast::ui::MenuItemEntry::Sep,
         };
         crate::ast::ui::ActionsBlock {
-            actions: self.actions.iter()
+            actions: self
+                .actions
+                .iter()
                 .map(|a| crate::ast::ui::ActionEntry {
                     id: a.id.clone(),
                     handler: a.handler.clone(),
@@ -192,7 +201,9 @@ impl UiActionConfig {
                 })
                 .collect(),
             menubar: (!self.menus.is_empty()).then(|| crate::ast::ui::MenubarBlock {
-                menus: self.menus.iter()
+                menus: self
+                    .menus
+                    .iter()
                     .map(|m| crate::ast::ui::MenuEntry {
                         id: m.id.clone(),
                         title: m.title.clone(),
@@ -223,7 +234,10 @@ impl UiActionConfig {
             for item in &m.items {
                 if let MenuItem::Action(id) = item {
                     if !exists(id) {
-                        warnings.push(format!("menu {:?} references unknown action {:?}", m.id, id));
+                        warnings.push(format!(
+                            "menu {:?} references unknown action {:?}",
+                            m.id, id
+                        ));
                     }
                 }
             }
@@ -368,14 +382,11 @@ fn resolve_app_id() -> Option<String> {
             return Some(id.trim().to_string());
         }
     }
-    CONFIG_PATH
-        .get()
-        .and_then(|p| p.as_ref())
-        .and_then(|p| {
-            std::path::Path::new(p)
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-        })
+    CONFIG_PATH.get().and_then(|p| p.as_ref()).and_then(|p| {
+        std::path::Path::new(p)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+    })
 }
 
 /// (mtime, len) of the app config + OS keymap layer at the last successful
@@ -389,8 +400,7 @@ static DSL_STAMP: Mutex<Option<(std::time::SystemTime, u64)>> = Mutex::new(None)
 /// Bumped on every successful reload. The renderer's update closure compares
 /// its last-seen value on each message (heartbeat included) to force a
 /// view rebuild after a config swap (Plan 423 P1).
-static CONFIG_GENERATION: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
+static CONFIG_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub fn config_generation() -> u64 {
     CONFIG_GENERATION.load(std::sync::atomic::Ordering::SeqCst)
@@ -498,9 +508,7 @@ fn install_dsl_config(
 /// 此提取 → install）。优先首个带 actions 块的 widget；否则取顶层
 /// `actions {}` 声明（Plan 451 P3 的模块级形态——热重载只重读本源文件，
 /// use 引入模块的声明改动需 touch 本文件触发）。
-pub fn extract_actions_from_source(
-    code: &str,
-) -> Result<crate::ast::ui::ActionsBlock, String> {
+pub fn extract_actions_from_source(code: &str) -> Result<crate::ast::ui::ActionsBlock, String> {
     let session = crate::session::CompilerSession::ui();
     let mut parser = crate::parser::Parser::from(code).with_session(session);
     let ast = parser
@@ -709,8 +717,7 @@ fn apply_os_keymap_layer(cfg: &mut UiActionConfig) -> usize {
 /// Parse an OS keymap document: `action { id : "..." shortcut : "..." }`
 /// entries → id → shortcut (display form). Handler-less by design.
 fn parse_keymap_overrides(doc: &str) -> Result<HashMap<String, String>, String> {
-    let atom = auto_atom::AtomParser::parse(doc)
-        .map_err(|e| format!("keymap parse error: {e}"))?;
+    let atom = auto_atom::AtomParser::parse(doc).map_err(|e| format!("keymap parse error: {e}"))?;
     let node = match atom {
         auto_atom::Atom::Node(n) => n,
         _ => return Err("keymap: document root is not a node".into()),
@@ -808,10 +815,9 @@ widget App {
         assert!(cfg.is_configured_handler(".ActConsole"));
         assert!(!cfg.is_configured_handler(".Nope"));
 
-        let (bad, warnings) = UiActionConfig::parse(
-            "x { action { id : \"a\" title : \"t\" } item_ref_unknown { } }",
-        )
-        .unwrap();
+        let (bad, warnings) =
+            UiActionConfig::parse("x { action { id : \"a\" title : \"t\" } item_ref_unknown { } }")
+                .unwrap();
         assert!(bad.actions.is_empty()); // missing handler → skipped
         assert!(!warnings.is_empty());
     }

@@ -66,7 +66,9 @@ pub fn counter_add(name: CounterName, delta: u64) {
         CounterName::ConnRejected => c.connections_rejected.fetch_add(delta, Ordering::Relaxed),
         CounterName::ConnActive => c.connections_active.fetch_add(delta, Ordering::Relaxed),
         CounterName::RequestsTotal => c.requests_total.fetch_add(delta, Ordering::Relaxed),
-        CounterName::RequestsRejected503 => c.requests_rejected_503.fetch_add(delta, Ordering::Relaxed),
+        CounterName::RequestsRejected503 => {
+            c.requests_rejected_503.fetch_add(delta, Ordering::Relaxed)
+        }
         CounterName::RequestsCanceled => c.requests_canceled.fetch_add(delta, Ordering::Relaxed),
         CounterName::RequestsCompleted => c.requests_completed.fetch_add(delta, Ordering::Relaxed),
         CounterName::StreamSessions => c.stream_sessions.fetch_add(delta, Ordering::Relaxed),
@@ -225,10 +227,7 @@ impl PendingRequestEvent {
     }
 
     fn emit_once(&self, outcome: &str) {
-        if self
-            .sent
-            .swap(true, std::sync::atomic::Ordering::SeqCst)
-        {
+        if self.sent.swap(true, std::sync::atomic::Ordering::SeqCst) {
             return; // cancel/drop 双路径只发一次
         }
         // 计数与事件同点收敛（snapshot 面与 JSONL 面一致）。
@@ -327,7 +326,9 @@ mod tests {
 
     #[test]
     fn t03_counters_snapshot_fields() {
-        let before = service_counters().snapshot()["connections_accepted"].as_u64().unwrap();
+        let before = service_counters().snapshot()["connections_accepted"]
+            .as_u64()
+            .unwrap();
         counter_add(CounterName::ConnAccepted, 3);
         counter_add(CounterName::ConnActive, 2);
         counter_sub(CounterName::ConnActive, 1);

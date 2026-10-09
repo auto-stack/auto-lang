@@ -15,14 +15,14 @@
 // Phase 3: Add fragment-level hashing and fine-grained dependencies
 
 use crate::ast::{Fn, Type};
-use crate::scope::{Scope, Sid, SID_PATH_GLOBAL, SymbolTable};
+use crate::scope::{Scope, Sid, SymbolTable, SID_PATH_GLOBAL};
 use crate::symbols::{CodePak, SymbolLocation};
 use auto_val::{AutoStr, TypeInfoStore};
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 // Plan 134: UI Artifact support
 mod ui_artifact;
@@ -57,8 +57,8 @@ impl FileId {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FragId {
     pub file: FileId,
-    pub offset: usize,     // Byte offset in source file
-    pub generation: u32,   // Increments on modification
+    pub offset: usize,   // Byte offset in source file
+    pub generation: u32, // Increments on modification
 }
 
 impl FragId {
@@ -182,13 +182,15 @@ impl DependencyGraph {
     }
 
     pub fn get_file_imports(&self, file: FileId) -> &[FileId] {
-        self.file_imports.get(&file)
+        self.file_imports
+            .get(&file)
             .map(|v| v.as_slice())
             .unwrap_or(&[])
     }
 
     pub fn get_file_dependents(&self, file: FileId) -> &[FileId] {
-        self.file_imported_by.get(&file)
+        self.file_imported_by
+            .get(&file)
             .map(|v| v.as_slice())
             .unwrap_or(&[])
     }
@@ -205,13 +207,15 @@ impl DependencyGraph {
     }
 
     pub fn get_frag_deps(&self, frag: &FragId) -> &[FragId] {
-        self.frag_deps.get(frag)
+        self.frag_deps
+            .get(frag)
             .map(|v| v.as_slice())
             .unwrap_or(&[])
     }
 
     pub fn get_frag_dependents(&self, frag: &FragId) -> &[FragId] {
-        self.frag_dependents.get(frag)
+        self.frag_dependents
+            .get(frag)
             .map(|v| v.as_slice())
             .unwrap_or(&[])
     }
@@ -255,14 +259,14 @@ pub struct Database {
 
     // Source code storage
     sources: HashMap<FileId, AutoStr>,
-    file_paths: HashMap<FileId, AutoStr>,  // FileId -> path
+    file_paths: HashMap<FileId, AutoStr>, // FileId -> path
 
     // Fragment storage (declaration-level)
     frag_asts: HashMap<FragId, Arc<Fn>>,
     frag_meta: HashMap<FragId, FragMeta>,
 
     // Fragment ID counters (per-file)
-    frag_counters: HashMap<FileId, u64>,  // FileId -> next fragment index
+    frag_counters: HashMap<FileId, u64>, // FileId -> next fragment index
 
     // Symbol metadata (for LSP support)
     symbol_locations: HashMap<SymbolId, SymbolLocation>,
@@ -290,8 +294,8 @@ pub struct Database {
     // =========================================================================
 
     // Scope management (compile-time scoping structure)
-    scopes: HashMap<Sid, Scope>,  // Legacy Scope (will be deprecated)
-    symbol_tables: HashMap<Sid, SymbolTable>,  // Phase 4.2: SymbolTable (compile-time only)
+    scopes: HashMap<Sid, Scope>, // Legacy Scope (will be deprecated)
+    symbol_tables: HashMap<Sid, SymbolTable>, // Phase 4.2: SymbolTable (compile-time only)
 
     // Type information storage (compile-time type registry)
     type_info_store: TypeInfoStore,
@@ -334,9 +338,8 @@ pub struct Database {
     // =========================================================================
     // COUNTERS (for ID generation)
     // =========================================================================
-
     file_counter: AtomicU64,
-    #[allow(dead_code)]  // Phase 2: Used for fragment ID generation
+    #[allow(dead_code)] // Phase 2: Used for fragment ID generation
     frag_counter: AtomicU64,
 }
 
@@ -359,8 +362,8 @@ impl Database {
             dirty_files: std::collections::HashSet::new(),
             frag_iface_hashes: HashMap::new(),
             // Phase 3: Compile-time data from Universe (Plan 064)
-            scopes: HashMap::new(),  // Legacy Scope (will be deprecated)
-            symbol_tables: HashMap::new(),  // Phase 4.2: SymbolTable (compile-time only)
+            scopes: HashMap::new(),        // Legacy Scope (will be deprecated)
+            symbol_tables: HashMap::new(), // Phase 4.2: SymbolTable (compile-time only)
             type_info_store: TypeInfoStore::new(),
             type_aliases: HashMap::new(),
             specs: HashMap::new(),
@@ -431,7 +434,8 @@ impl Database {
         self.dirty_files.remove(&file_id);
 
         // Remove all fragments belonging to this file
-        let frags_to_remove: Vec<_> = self.frag_meta
+        let frags_to_remove: Vec<_> = self
+            .frag_meta
             .iter()
             .filter(|(_, meta)| meta.file_id == file_id)
             .map(|(frag_id, _)| frag_id.clone())
@@ -456,7 +460,7 @@ impl Database {
         let hash_u64 = u64::from_le_bytes(
             hash.as_bytes()[..8]
                 .try_into()
-                .expect("BLAKE3 hash is at least 8 bytes")
+                .expect("BLAKE3 hash is at least 8 bytes"),
         );
 
         self.text_hashes.insert(file_id, hash_u64);
@@ -487,16 +491,16 @@ impl Database {
                 u64::from_le_bytes(
                     hash.as_bytes()[..8]
                         .try_into()
-                        .expect("BLAKE3 hash is at least 8 bytes")
+                        .expect("BLAKE3 hash is at least 8 bytes"),
                 )
             }
-            None => return true,  // File doesn't exist, treat as dirty
+            None => return true, // File doesn't exist, treat as dirty
         };
 
         // Compare with stored hash
         match self.text_hashes.get(&file_id) {
             Some(stored_hash) => stored_hash != &current_hash,
-            None => true,  // No stored hash, file is new
+            None => true, // No stored hash, file is new
         }
     }
 
@@ -536,7 +540,9 @@ impl Database {
     /// * `file_id` - The file that changed
     pub fn propagate_dirty(&mut self, file_id: FileId) {
         // Get all files that import this file (dependents)
-        let dependents: Vec<FileId> = self.dep_graph.get_file_dependents(file_id)
+        let dependents: Vec<FileId> = self
+            .dep_graph
+            .get_file_dependents(file_id)
             .iter()
             .copied()
             .collect();
@@ -568,7 +574,9 @@ impl Database {
 
         while let Some(current) = queue.pop_front() {
             // Get dependents of current file (collect to avoid borrow issues)
-            let dependents: Vec<FileId> = self.dep_graph.get_file_dependents(current)
+            let dependents: Vec<FileId> = self
+                .dep_graph
+                .get_file_dependents(current)
                 .iter()
                 .copied()
                 .collect();
@@ -577,7 +585,7 @@ impl Database {
                 // Mark as dirty if not already dirty
                 if !self.is_marked_dirty(dep) {
                     self.mark_file_dirty(dep);
-                    queue.push_back(dep);  // Continue propagating
+                    queue.push_back(dep); // Continue propagating
                 }
             }
         }
@@ -605,7 +613,8 @@ impl Database {
     /// Called when re-indexing a file (old fragments are removed).
     pub fn clear_fragment_hashes(&mut self, file_id: FileId) {
         // Collect hashes to remove (fragments belonging to this file)
-        let to_remove: Vec<FragId> = self.frag_meta
+        let to_remove: Vec<FragId> = self
+            .frag_meta
             .iter()
             .filter(|(_, meta)| meta.file_id == file_id)
             .map(|(frag_id, _)| frag_id.clone())
@@ -634,7 +643,9 @@ impl Database {
     /// * `frag_id` - The fragment that changed (signature changed)
     pub fn propagate_frag_dirty(&mut self, frag_id: FragId) {
         // Get all fragments that depend on this fragment
-        let dependent_frags: Vec<FragId> = self.dep_graph.get_frag_dependents(&frag_id)
+        let dependent_frags: Vec<FragId> = self
+            .dep_graph
+            .get_frag_dependents(&frag_id)
             .iter()
             .cloned()
             .collect();
@@ -666,7 +677,7 @@ impl Database {
         let frag_index = self.frag_counters.entry(file_id).or_insert(0);
         let frag_id = FragId {
             file: file_id,
-            offset: *frag_index as usize,  // Use counter instead of span offset
+            offset: *frag_index as usize, // Use counter instead of span offset
             generation: 0,
         };
         *frag_index += 1;
@@ -707,10 +718,7 @@ impl Database {
     ///
     /// Phase 3.6: Added for advanced queries (find-references, completions)
     pub fn all_fragment_ids(&self) -> Vec<FragId> {
-        self.frag_meta
-            .keys()
-            .cloned()
-            .collect()
+        self.frag_meta.keys().cloned().collect()
     }
 
     /// Get all fragments for a file (alias for get_fragments_in_file)
@@ -768,7 +776,7 @@ impl Database {
         self.bytecodes.remove(frag_id);
         self.dep_graph.frag_deps.remove(frag_id);
         self.dep_graph.frag_dependents.remove(frag_id);
-        self.frag_iface_hashes.remove(frag_id);  // Phase 3.2: Clear interface hash
+        self.frag_iface_hashes.remove(frag_id); // Phase 3.2: Clear interface hash
     }
 
     /// Clear all fragments for a file (for re-indexing)
@@ -1447,7 +1455,8 @@ mod tests {
         let file_c = db.insert_source("main.at", AutoStr::from("fn main() int { 3 }"));
 
         // Set up dependencies: main imports lib_a and lib_b
-        db.dep_graph_mut().add_file_import(file_c, vec![file_a, file_b]);
+        db.dep_graph_mut()
+            .add_file_import(file_c, vec![file_a, file_b]);
 
         // Hash all files
         db.hash_file(file_a);
@@ -1488,9 +1497,9 @@ mod tests {
         db.propagate_dirty_recursive(file_a);
 
         // All dependent files should be dirty
-        assert!(!db.is_marked_dirty(file_a));  // Original file not marked
-        assert!(db.is_marked_dirty(file_b));   // Direct dependent
-        assert!(db.is_marked_dirty(file_c));   // Indirect dependent
+        assert!(!db.is_marked_dirty(file_a)); // Original file not marked
+        assert!(db.is_marked_dirty(file_b)); // Direct dependent
+        assert!(db.is_marked_dirty(file_c)); // Indirect dependent
         assert!(db.is_marked_dirty(file_main)); // Indirect dependent
     }
 
@@ -1693,10 +1702,7 @@ mod tests {
 
         // Insert a spec
         let spec_name = AutoStr::from("MySpec");
-        let spec = SpecDecl::new(
-            crate::ast::Name::from("MySpec"),
-            vec![],
-        );
+        let spec = SpecDecl::new(crate::ast::Name::from("MySpec"), vec![]);
         db.insert_spec(spec_name.clone(), Rc::new(spec));
 
         // Get spec
@@ -1715,7 +1721,7 @@ mod tests {
 
     #[test]
     fn test_symbol_table_insert_get() {
-        use crate::scope::{SymbolTable, ScopeKind};
+        use crate::scope::{ScopeKind, SymbolTable};
 
         let mut db = Database::new();
         let sid = Sid::new("test_symbol_table");
@@ -1734,7 +1740,7 @@ mod tests {
 
     #[test]
     fn test_symbol_table_get_mut() {
-        use crate::scope::{SymbolTable, ScopeKind};
+        use crate::scope::{ScopeKind, SymbolTable};
 
         let mut db = Database::new();
         let sid = Sid::new("test_mut");
@@ -1745,8 +1751,14 @@ mod tests {
 
         // Get mutable reference and modify
         if let Some(table) = db.get_symbol_table_mut(&sid) {
-            table.symbols.insert(AutoStr::from("x"), Rc::new(crate::scope::Meta::Ref(crate::ast::Name::from("x"))));
-            table.types.insert(AutoStr::from("x"), Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int)));
+            table.symbols.insert(
+                AutoStr::from("x"),
+                Rc::new(crate::scope::Meta::Ref(crate::ast::Name::from("x"))),
+            );
+            table.types.insert(
+                AutoStr::from("x"),
+                Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int)),
+            );
         }
 
         // Verify modifications
@@ -1759,7 +1771,7 @@ mod tests {
 
     #[test]
     fn test_symbol_table_remove() {
-        use crate::scope::{SymbolTable, ScopeKind};
+        use crate::scope::{ScopeKind, SymbolTable};
 
         let mut db = Database::new();
         let sid = Sid::new("test_remove");
@@ -1788,8 +1800,14 @@ mod tests {
 
         // Create a scope with some data
         let mut scope = Scope::new(ScopeKind::Block, sid.clone());
-        scope.symbols.insert(AutoStr::from("x"), Rc::new(crate::scope::Meta::Ref(crate::ast::Name::from("x"))));
-        scope.types.insert(AutoStr::from("x"), Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int)));
+        scope.symbols.insert(
+            AutoStr::from("x"),
+            Rc::new(crate::scope::Meta::Ref(crate::ast::Name::from("x"))),
+        );
+        scope.types.insert(
+            AutoStr::from("x"),
+            Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int)),
+        );
         db.insert_scope(sid.clone(), scope);
 
         // Convert to symbol table
@@ -1807,7 +1825,7 @@ mod tests {
 
     #[test]
     fn test_symbol_table_and_scope_coexistence() {
-        use crate::scope::{Scope, SymbolTable, ScopeKind};
+        use crate::scope::{Scope, ScopeKind, SymbolTable};
 
         let mut db = Database::new();
         let sid = Sid::new("test_coexist");
@@ -1832,7 +1850,7 @@ mod tests {
 
     #[test]
     fn test_symbol_table_fields_preservation() {
-        use crate::scope::{SymbolTable, ScopeKind};
+        use crate::scope::{ScopeKind, SymbolTable};
 
         let mut db = Database::new();
         let sid = Sid::new("test_fields");
@@ -1847,19 +1865,19 @@ mod tests {
         // Add symbols and types
         symbol_table.symbols.insert(
             AutoStr::from("x"),
-            Rc::new(crate::scope::Meta::Ref(crate::ast::Name::from("x")))
+            Rc::new(crate::scope::Meta::Ref(crate::ast::Name::from("x"))),
         );
         symbol_table.symbols.insert(
             AutoStr::from("myfunc"),
-            Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int))
+            Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int)),
         );
         symbol_table.types.insert(
             AutoStr::from("x"),
-            Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int))
+            Rc::new(crate::scope::Meta::Type(crate::ast::Type::Int)),
         );
         symbol_table.types.insert(
             AutoStr::from("mytype"),
-            Rc::new(crate::scope::Meta::Type(crate::ast::Type::Float))
+            Rc::new(crate::scope::Meta::Type(crate::ast::Type::Float)),
         );
 
         // Insert into database

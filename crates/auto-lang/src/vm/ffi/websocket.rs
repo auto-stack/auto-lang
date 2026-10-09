@@ -5,12 +5,12 @@
 //! client. Messages are pushed via mpsc channel, consumed via the Plan 348
 //! non-blocking yield mechanism (AsyncHttpStream iterator).
 
+use crate::vm::engine::AutoVM;
+use crate::vm::engine::VMError;
+use crate::vm::ffi::stdlib::{alloc_async_id, AsyncStreamEvent, AsyncStreamHandle};
+use crate::vm::task::AutoTask;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use crate::vm::ffi::stdlib::{AsyncStreamEvent, AsyncStreamHandle, alloc_async_id};
-use crate::vm::engine::AutoVM;
-use crate::vm::task::AutoTask;
-use crate::vm::engine::VMError;
 
 // ──────────────────────────────────────────────────────────────────────
 // WebSocket connection registry
@@ -156,13 +156,15 @@ pub fn shim_ws_send(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle: i64 = task.ram.pop_i32() as i64;
 
-    let success = WS_CONNECTIONS.lock()
+    let success = WS_CONNECTIONS
+        .lock()
         .ok()
         .and_then(|conns| {
             conns.get(&(handle as u64)).and_then(|conn| {
-                conn.tx.lock().ok().and_then(|tx_guard| {
-                    tx_guard.as_ref().and_then(|tx| tx.send(message).ok())
-                })
+                conn.tx
+                    .lock()
+                    .ok()
+                    .and_then(|tx_guard| tx_guard.as_ref().and_then(|tx| tx.send(message).ok()))
             })
         })
         .is_some();
@@ -179,7 +181,8 @@ pub fn shim_ws_on_message(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let stream_id = handle as u64;
 
     // Verify the connection exists.
-    let exists = WS_CONNECTIONS.lock()
+    let exists = WS_CONNECTIONS
+        .lock()
         .map(|conns| conns.contains_key(&stream_id))
         .unwrap_or(false);
     if !exists {
@@ -194,7 +197,9 @@ pub fn shim_ws_on_message(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         done: false,
     };
     let iter_id = {
-        let next_id = vm.iterator_id_gen.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let next_id = vm
+            .iterator_id_gen
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         vm.iterators.insert(
             next_id,
             crate::vm::engine::Iterator::AsyncHttpStream(async_iter),
@@ -229,9 +234,7 @@ pub fn shim_ws_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
 }
 
 /// Register all WebSocket natives.
-pub fn register_ws_natives(
-    natives: &mut crate::vm::native::NativeInterface,
-) {
+pub fn register_ws_natives(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.ws.connect", shim_ws_connect);
     natives.register_shim_by_name("ws.connect", shim_ws_connect);
     natives.register_shim_by_name("auto.ws.send", shim_ws_send);

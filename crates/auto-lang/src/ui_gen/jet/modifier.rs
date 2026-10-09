@@ -8,7 +8,10 @@
 //! - gap-2 → 8.dp
 //! - px-4 → padding(horizontal = 16.dp)
 
-use crate::ui_gen::shared::{Color, ComputedStyle, Dimension, Display, FlexDirection, FontWeight, Size, TailwindParser, TextAlign};
+use crate::ui_gen::shared::{
+    Color, ComputedStyle, Dimension, Display, FlexDirection, FontWeight, Size, TailwindParser,
+    TextAlign,
+};
 
 /// Tailwind class to Compose Modifier converter
 pub struct ModifierDsl {
@@ -82,7 +85,10 @@ impl ModifierDsl {
 
         // Gap → Arrangement
         if let Some(gap) = &style.gap {
-            arrangement = Some(format!("Arrangement.spacedBy({})", self.dimension_to_dp(gap)));
+            arrangement = Some(format!(
+                "Arrangement.spacedBy({})",
+                self.dimension_to_dp(gap)
+            ));
         }
 
         // Padding - check for explicit x/y (px-*, py-*) first
@@ -97,17 +103,26 @@ impl ModifierDsl {
             } else if has_x || has_y {
                 // Handle px-* / py-* combinations
                 if let Some(x) = &style.padding.x {
-                    modifiers.push(format!("padding(horizontal = {})", self.dimension_to_padding(x)));
+                    modifiers.push(format!(
+                        "padding(horizontal = {})",
+                        self.dimension_to_padding(x)
+                    ));
                 }
                 if let Some(y) = &style.padding.y {
-                    modifiers.push(format!("padding(vertical = {})", self.dimension_to_padding(y)));
+                    modifiers.push(format!(
+                        "padding(vertical = {})",
+                        self.dimension_to_padding(y)
+                    ));
                 }
                 // Also handle any explicit sides
                 if let Some(t) = &style.padding.top {
                     modifiers.push(format!("padding(top = {})", self.dimension_to_padding(t)));
                 }
                 if let Some(b) = &style.padding.bottom {
-                    modifiers.push(format!("padding(bottom = {})", self.dimension_to_padding(b)));
+                    modifiers.push(format!(
+                        "padding(bottom = {})",
+                        self.dimension_to_padding(b)
+                    ));
                 }
                 if let Some(l) = &style.padding.left {
                     modifiers.push(format!("padding(start = {})", self.dimension_to_padding(l)));
@@ -128,32 +143,48 @@ impl ModifierDsl {
                         if self.dimension_to_padding(&l) == self.dimension_to_padding(&t) {
                             modifiers.push(format!("padding({})", self.dimension_to_padding(&l)));
                         } else {
-                            modifiers.push(format!("padding(horizontal = {}, vertical = {})",
-                                self.dimension_to_padding(&l), self.dimension_to_padding(&t)));
+                            modifiers.push(format!(
+                                "padding(horizontal = {}, vertical = {})",
+                                self.dimension_to_padding(&l),
+                                self.dimension_to_padding(&t)
+                            ));
                         }
                     }
                 } else if left == right && left.is_some() {
                     if let Some(l) = left {
-                        modifiers.push(format!("padding(horizontal = {})", self.dimension_to_padding(&l)));
+                        modifiers.push(format!(
+                            "padding(horizontal = {})",
+                            self.dimension_to_padding(&l)
+                        ));
                     }
                     if let Some(t) = top {
                         modifiers.push(format!("padding(top = {})", self.dimension_to_padding(&t)));
                     }
                     if let Some(b) = bottom {
                         if Some(b) != top {
-                            modifiers.push(format!("padding(bottom = {})", self.dimension_to_padding(&b)));
+                            modifiers.push(format!(
+                                "padding(bottom = {})",
+                                self.dimension_to_padding(&b)
+                            ));
                         }
                     }
                 } else if top == bottom && top.is_some() {
                     if let Some(t) = top {
-                        modifiers.push(format!("padding(vertical = {})", self.dimension_to_padding(&t)));
+                        modifiers.push(format!(
+                            "padding(vertical = {})",
+                            self.dimension_to_padding(&t)
+                        ));
                     }
                     if let Some(l) = left {
-                        modifiers.push(format!("padding(start = {})", self.dimension_to_padding(&l)));
+                        modifiers.push(format!(
+                            "padding(start = {})",
+                            self.dimension_to_padding(&l)
+                        ));
                     }
                     if let Some(r) = right {
                         if Some(r) != left {
-                            modifiers.push(format!("padding(end = {})", self.dimension_to_padding(&r)));
+                            modifiers
+                                .push(format!("padding(end = {})", self.dimension_to_padding(&r)));
                         }
                     }
                 } else {
@@ -162,10 +193,16 @@ impl ModifierDsl {
                         modifiers.push(format!("padding(top = {})", self.dimension_to_padding(&t)));
                     }
                     if let Some(b) = bottom {
-                        modifiers.push(format!("padding(bottom = {})", self.dimension_to_padding(&b)));
+                        modifiers.push(format!(
+                            "padding(bottom = {})",
+                            self.dimension_to_padding(&b)
+                        ));
                     }
                     if let Some(l) = left {
-                        modifiers.push(format!("padding(start = {})", self.dimension_to_padding(&l)));
+                        modifiers.push(format!(
+                            "padding(start = {})",
+                            self.dimension_to_padding(&l)
+                        ));
                     }
                     if let Some(r) = right {
                         modifiers.push(format!("padding(end = {})", self.dimension_to_padding(&r)));
@@ -184,10 +221,16 @@ impl ModifierDsl {
                     modifiers.push(format!("padding(top = {})", self.dimension_to_padding(&t)));
                 }
                 if let Some(b) = style.margin.bottom() {
-                    modifiers.push(format!("padding(bottom = {})", self.dimension_to_padding(&b)));
+                    modifiers.push(format!(
+                        "padding(bottom = {})",
+                        self.dimension_to_padding(&b)
+                    ));
                 }
                 if let Some(l) = style.margin.left() {
-                    modifiers.push(format!("padding(start = {})", self.dimension_to_padding(&l)));
+                    modifiers.push(format!(
+                        "padding(start = {})",
+                        self.dimension_to_padding(&l)
+                    ));
                 }
                 if let Some(r) = style.margin.right() {
                     modifiers.push(format!("padding(end = {})", self.dimension_to_padding(&r)));
@@ -223,7 +266,10 @@ impl ModifierDsl {
             if radius.to_dp() >= 9999.0 {
                 modifiers.push("clip(CircleShape)".to_string());
             } else {
-                modifiers.push(format!("clip(RoundedCornerShape({}))", self.dimension_to_dp(radius)));
+                modifiers.push(format!(
+                    "clip(RoundedCornerShape({}))",
+                    self.dimension_to_dp(radius)
+                ));
             }
         }
 
@@ -248,7 +294,10 @@ impl ModifierDsl {
 
         // Shadow
         if let Some(shadow) = &style.shadow {
-            modifiers.push(format!("shadow({})", self.dimension_to_dp(&shadow.elevation)));
+            modifiers.push(format!(
+                "shadow({})",
+                self.dimension_to_dp(&shadow.elevation)
+            ));
         }
 
         // Opacity
@@ -387,8 +436,14 @@ mod tests {
     fn test_padding_conversion() {
         let dsl = ModifierDsl::new();
         let result = dsl.convert_class("px-4 py-2");
-        assert!(result.modifiers.iter().any(|m| m.contains("padding(horizontal")));
-        assert!(result.modifiers.iter().any(|m| m.contains("padding(vertical")));
+        assert!(result
+            .modifiers
+            .iter()
+            .any(|m| m.contains("padding(horizontal")));
+        assert!(result
+            .modifiers
+            .iter()
+            .any(|m| m.contains("padding(vertical")));
     }
 
     #[test]
@@ -403,22 +458,34 @@ mod tests {
     fn test_fill_conversion() {
         let dsl = ModifierDsl::new();
         let result = dsl.convert_class("w-full h-full");
-        assert!(result.modifiers.iter().any(|m| m.contains("fillMaxWidth()")));
-        assert!(result.modifiers.iter().any(|m| m.contains("fillMaxHeight()")));
+        assert!(result
+            .modifiers
+            .iter()
+            .any(|m| m.contains("fillMaxWidth()")));
+        assert!(result
+            .modifiers
+            .iter()
+            .any(|m| m.contains("fillMaxHeight()")));
     }
 
     #[test]
     fn test_rounded_conversion() {
         let dsl = ModifierDsl::new();
         let result = dsl.convert_class("rounded-lg");
-        assert!(result.modifiers.iter().any(|m| m.contains("clip(RoundedCornerShape")));
+        assert!(result
+            .modifiers
+            .iter()
+            .any(|m| m.contains("clip(RoundedCornerShape")));
     }
 
     #[test]
     fn test_background_color() {
         let dsl = ModifierDsl::new();
         let result = dsl.convert_class("bg-blue-500");
-        assert!(result.modifiers.iter().any(|m| m.contains("background(Color(")));
+        assert!(result
+            .modifiers
+            .iter()
+            .any(|m| m.contains("background(Color(")));
     }
 
     #[test]
@@ -453,7 +520,10 @@ mod tests {
         let dsl = ModifierDsl::new();
 
         assert_eq!(dsl.get_flex_direction("flex-row"), Some(FlexDirection::Row));
-        assert_eq!(dsl.get_flex_direction("flex-col"), Some(FlexDirection::Column));
+        assert_eq!(
+            dsl.get_flex_direction("flex-col"),
+            Some(FlexDirection::Column)
+        );
         assert_eq!(dsl.get_flex_direction("flex"), None);
     }
 
@@ -463,7 +533,10 @@ mod tests {
 
         let result = dsl.convert_class("px-4 py-2 rounded-lg bg-blue-500 opacity-90");
         assert!(result.modifiers.iter().any(|m| m.contains("padding")));
-        assert!(result.modifiers.iter().any(|m| m.contains("RoundedCornerShape")));
+        assert!(result
+            .modifiers
+            .iter()
+            .any(|m| m.contains("RoundedCornerShape")));
         assert!(result.modifiers.iter().any(|m| m.contains("background")));
         assert!(result.modifiers.iter().any(|m| m.contains("alpha")));
     }

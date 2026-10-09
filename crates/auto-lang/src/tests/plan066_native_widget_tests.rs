@@ -43,7 +43,11 @@ mod plan066_native_widget_tests {
     /// 原臂语义钉死：key 取 key:/id: 缺省 "doc"；content/value 双别名；
     /// final 解析为 bool（字面 true）；oninput → on_change 消息位；
     /// scroll_sync 缺席 = 不外包 Scrollable（View::AutodownEditor 裸出）。
-    #[cfg(all(feature = "ui-interpreter", feature = "autodown", feature = "code-editor"))]
+    #[cfg(all(
+        feature = "ui-interpreter",
+        feature = "autodown",
+        feature = "code-editor"
+    ))]
     #[test]
     fn plan066_editor_tag_dispatches_via_native_registry() {
         let mut dc = match build_app("src/front/app.at") {
@@ -71,7 +75,11 @@ mod plan066_native_widget_tests {
 
     /// 折叠别名：`AutodownEditor`/`autodown-editor` 标签同归注册表入口
     /// （P8-6 折叠兜底同规）——原臂的 "autodowneditor" 双拼写保持。
-    #[cfg(all(feature = "ui-interpreter", feature = "autodown", feature = "code-editor"))]
+    #[cfg(all(
+        feature = "ui-interpreter",
+        feature = "autodown",
+        feature = "code-editor"
+    ))]
     #[test]
     fn plan066_editor_fold_aliases_hit_registry() {
         // 注册表面直接断言（builder 面由等价测试钉死）。
@@ -123,35 +131,54 @@ mod plan066_native_widget_tests {
     #[test]
     fn plan066_unknown_tag_bypasses_native_registry() {
         // 注册表面：确无此名。
-        assert!(crate::ui::native_widget::global().lookup("plan066_not_registered").is_none());
+        assert!(crate::ui::native_widget::global()
+            .lookup("plan066_not_registered")
+            .is_none());
         // 构建面：未知 tag 语料走兜底（占位文本），不炸不误配。
         // （占位形状由既有 fallback 语义负责，这里只钉"不接管"。）
-        assert!(
-            !matches!(
-                crate::ui::native_widget::global().lookup("totally_unknown_widget"),
-                Some(_)
-            )
-        );
+        assert!(!matches!(
+            crate::ui::native_widget::global().lookup("totally_unknown_widget"),
+            Some(_)
+        ));
     }
 
     // ─────────────────────────────────────────────────────────────────────
     // helpers
     // ─────────────────────────────────────────────────────────────────────
 
-    #[cfg(all(feature = "ui-interpreter", feature = "autodown", feature = "code-editor"))]
+    #[cfg(all(
+        feature = "ui-interpreter",
+        feature = "autodown",
+        feature = "code-editor"
+    ))]
     fn find_autodown_editor(
         view: &View<DynamicMessage>,
     ) -> Option<(String, String, bool, Option<DynamicMessage>, Option<String>)> {
         match view {
-            View::AutodownEditor { key, value, is_final, on_change, placeholder, .. } => {
-                Some((key.clone(), value.clone(), *is_final, on_change.clone(), placeholder.clone()))
-            }
+            View::AutodownEditor {
+                key,
+                value,
+                is_final,
+                on_change,
+                placeholder,
+                ..
+            } => Some((
+                key.clone(),
+                value.clone(),
+                *is_final,
+                on_change.clone(),
+                placeholder.clone(),
+            )),
             View::Scrollable { child, .. } => find_autodown_editor(child),
-            View::Column { children, .. } | View::Row { children, .. } | View::List { items: children, .. } => {
-                children.iter().find_map(find_autodown_editor)
-            }
+            View::Column { children, .. }
+            | View::Row { children, .. }
+            | View::List {
+                items: children, ..
+            } => children.iter().find_map(find_autodown_editor),
             View::Container { child, .. } => find_autodown_editor(child),
-            View::Button { content: Some(c), .. } => find_autodown_editor(c),
+            View::Button {
+                content: Some(c), ..
+            } => find_autodown_editor(c),
             _ => None,
         }
     }
@@ -161,11 +188,15 @@ mod plan066_native_widget_tests {
         match view {
             View::Custom { name, props, .. } => Some((name.clone(), props.clone())),
             View::Scrollable { child, .. } => find_custom(child),
-            View::Column { children, .. } | View::Row { children, .. } | View::List { items: children, .. } => {
-                children.iter().find_map(find_custom)
-            }
+            View::Column { children, .. }
+            | View::Row { children, .. }
+            | View::List {
+                items: children, ..
+            } => children.iter().find_map(find_custom),
             View::Container { child, .. } => find_custom(child),
-            View::Button { content: Some(c), .. } => find_custom(c),
+            View::Button {
+                content: Some(c), ..
+            } => find_custom(c),
             _ => None,
         }
     }

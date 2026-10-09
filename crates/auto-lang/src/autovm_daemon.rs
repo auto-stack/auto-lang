@@ -38,10 +38,26 @@ pub struct DaemonResponse {
 
 impl DaemonResponse {
     pub fn ok(id: u64) -> Self {
-        Self { id, status: "ok".into(), session: None, value: None, type_: None, message: None, data: None }
+        Self {
+            id,
+            status: "ok".into(),
+            session: None,
+            value: None,
+            type_: None,
+            message: None,
+            data: None,
+        }
     }
     pub fn error(id: u64, msg: impl Into<String>) -> Self {
-        Self { id, status: "error".into(), session: None, value: None, type_: None, message: Some(msg.into()), data: None }
+        Self {
+            id,
+            status: "error".into(),
+            session: None,
+            value: None,
+            type_: None,
+            message: Some(msg.into()),
+            data: None,
+        }
     }
 }
 
@@ -49,24 +65,34 @@ impl DaemonResponse {
 
 pub fn pipe_addr(name: &str) -> String {
     #[cfg(windows)]
-    { format!(r"\\.\pipe\{}", name) }
+    {
+        format!(r"\\.\pipe\{}", name)
+    }
     #[cfg(unix)]
-    { format!("/tmp/{}.sock", name) }
+    {
+        format!("/tmp/{}.sock", name)
+    }
 }
 
 /// Try to connect to a running daemon's pipe. Returns the named pipe stream.
 /// Used by `autovm_client` to check if a daemon is already running.
 #[cfg(windows)]
-pub async fn connect_to_pipe(pipe_name: &str) -> Result<tokio::net::windows::named_pipe::NamedPipeClient, String> {
+pub async fn connect_to_pipe(
+    pipe_name: &str,
+) -> Result<tokio::net::windows::named_pipe::NamedPipeClient, String> {
     use tokio::net::windows::named_pipe::ClientOptions;
     let addr = pipe_addr(pipe_name);
-    ClientOptions::new().open(&addr).map_err(|e| format!("Pipe connect failed: {}", e))
+    ClientOptions::new()
+        .open(&addr)
+        .map_err(|e| format!("Pipe connect failed: {}", e))
 }
 
 #[cfg(unix)]
 pub async fn connect_to_pipe(pipe_name: &str) -> Result<tokio::net::UnixStream, String> {
     let addr = pipe_addr(pipe_name);
-    tokio::net::UnixStream::connect(&addr).await.map_err(|e| format!("Socket connect failed: {}", e))
+    tokio::net::UnixStream::connect(&addr)
+        .await
+        .map_err(|e| format!("Socket connect failed: {}", e))
 }
 
 // ── Daemon Core ─────────────────────────────────────────────────────
@@ -79,11 +105,19 @@ pub struct AutovmDaemon {
 
 impl AutovmDaemon {
     pub fn new() -> Self {
-        Self { sessions: SessionManager::new(), max_sessions: 20, timeout_secs: 1800 }
+        Self {
+            sessions: SessionManager::new(),
+            max_sessions: 20,
+            timeout_secs: 1800,
+        }
     }
 
     pub fn new_with_config(max_sessions: usize, timeout_secs: u64) -> Self {
-        Self { sessions: SessionManager::new(), max_sessions, timeout_secs }
+        Self {
+            sessions: SessionManager::new(),
+            max_sessions,
+            timeout_secs,
+        }
     }
 
     /// Run daemon using stdin/stdout (simple mode, no named pipe).
@@ -105,7 +139,9 @@ impl AutovmDaemon {
             }
 
             let line = line.trim();
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
 
             let req = match serde_json::from_str::<DaemonRequest>(line) {
                 Ok(r) => r,
@@ -138,7 +174,8 @@ impl AutovmDaemon {
         // We use a two-thread approach:
         // Thread 1 (tokio): accept connections, read/write JSON lines
         // Thread 2 (main): handle_request (synchronous VM execution, no runtime nesting)
-        let (conn_tx, conn_rx) = std::sync::mpsc::channel::<(String, std::sync::mpsc::Sender<String>)>();
+        let (conn_tx, conn_rx) =
+            std::sync::mpsc::channel::<(String, std::sync::mpsc::Sender<String>)>();
 
         // Thread: tokio accept + I/O
         let pipe_path_clone = pipe_path.clone();
@@ -170,7 +207,9 @@ impl AutovmDaemon {
                         }
 
                         let trimmed = line.trim();
-                        if trimmed.is_empty() { continue; }
+                        if trimmed.is_empty() {
+                            continue;
+                        }
 
                         // Send request to handler thread, wait for response
                         let (resp_tx, resp_rx) = std::sync::mpsc::channel::<String>();
@@ -179,8 +218,13 @@ impl AutovmDaemon {
                         }
                         match resp_rx.recv() {
                             Ok(json) => {
-                                let _ = tokio::io::AsyncWriteExt::write_all(&mut writer, json.as_bytes()).await;
-                                let _ = tokio::io::AsyncWriteExt::write_all(&mut writer, b"\n").await;
+                                let _ = tokio::io::AsyncWriteExt::write_all(
+                                    &mut writer,
+                                    json.as_bytes(),
+                                )
+                                .await;
+                                let _ =
+                                    tokio::io::AsyncWriteExt::write_all(&mut writer, b"\n").await;
                                 let _ = tokio::io::AsyncWriteExt::flush(&mut writer).await;
                             }
                             Err(_) => break,
@@ -211,7 +255,8 @@ impl AutovmDaemon {
 
     fn maybe_cleanup(&mut self) {
         if self.timeout_secs > 0 {
-            self.sessions.cleanup_expired(Duration::from_secs(self.timeout_secs));
+            self.sessions
+                .cleanup_expired(Duration::from_secs(self.timeout_secs));
         }
     }
 
@@ -236,10 +281,13 @@ impl AutovmDaemon {
     fn handle_new_session(&mut self, req: &DaemonRequest) -> DaemonResponse {
         let count = self.sessions.session_count();
         if count >= self.max_sessions {
-            return DaemonResponse::error(req.id, format!(
-                "Max sessions reached ({}/{}). Delete unused sessions first.",
-                count, self.max_sessions
-            ));
+            return DaemonResponse::error(
+                req.id,
+                format!(
+                    "Max sessions reached ({}/{}). Delete unused sessions first.",
+                    count, self.max_sessions
+                ),
+            );
         }
         let ses_id = self.sessions.create(false);
         let mut r = DaemonResponse::ok(req.id);
@@ -265,7 +313,8 @@ impl AutovmDaemon {
 
         match session.run(&code) {
             Ok(_) => {
-                let result_value = session.format_last_result()
+                let result_value = session
+                    .format_last_result()
                     .or_else(|| session.get_last_result().map(|v| v.to_string()));
 
                 self.sessions.append_source(&ses_id, &code);
@@ -296,7 +345,8 @@ impl AutovmDaemon {
         };
 
         let stats = session.stats();
-        let functions: Vec<serde_json::Value> = session.functions()
+        let functions: Vec<serde_json::Value> = session
+            .functions()
             .into_iter()
             .map(|f| serde_json::json!({"name": f}))
             .collect();
@@ -364,11 +414,13 @@ impl AutovmDaemon {
         self.maybe_cleanup();
         let ids = self.sessions.session_ids();
         let count = ids.len();
-        let sessions_val: serde_json::Value = ids.into_iter()
-            .map(serde_json::Value::String)
-            .collect();
+        let sessions_val: serde_json::Value =
+            ids.into_iter().map(serde_json::Value::String).collect();
         let mut map = serde_json::Map::new();
-        map.insert("session_count".into(), serde_json::Value::Number(serde_json::Number::from(count)));
+        map.insert(
+            "session_count".into(),
+            serde_json::Value::Number(serde_json::Number::from(count)),
+        );
         map.insert("sessions".into(), sessions_val);
         let mut r = DaemonResponse::ok(_req.id);
         r.data = Some(serde_json::Value::Object(map));
@@ -394,8 +446,7 @@ async fn accept_connection(socket_path: &str) -> tokio::net::UnixStream {
     use std::sync::OnceLock;
     use tokio::net::UnixListener;
     static LISTENER: OnceLock<UnixListener> = OnceLock::new();
-    let listener = LISTENER.get_or_init(|| {
-        UnixListener::bind(socket_path).expect("Failed to bind Unix socket")
-    });
+    let listener = LISTENER
+        .get_or_init(|| UnixListener::bind(socket_path).expect("Failed to bind Unix socket"));
     listener.accept().await.expect("Accept failed").0
 }

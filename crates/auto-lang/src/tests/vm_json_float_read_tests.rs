@@ -35,7 +35,11 @@ let obj = Json.to_value(js)
     fn json_float_field_dot_read_print() {
         let stdout = run_code(&format!("{PRELUDE}print(obj.storage_free_gb)"));
         eprintln!("[P474] dot-read print = [{}]", stdout);
-        assert!(stdout.contains("54.16"), "expected 54.16, got: [{}]", stdout);
+        assert!(
+            stdout.contains("54.16"),
+            "expected 54.16, got: [{}]",
+            stdout
+        );
     }
 
     #[test]
@@ -43,7 +47,11 @@ let obj = Json.to_value(js)
         // os-config 现场形态：Dot 读结果经局部槽 store/load 后再消费
         let stdout = run_code(&format!("{PRELUDE}let x = obj.storage_free_gb\nprint(x)"));
         eprintln!("[P474] local-then-print = [{}]", stdout);
-        assert!(stdout.contains("54.16"), "expected 54.16, got: [{}]", stdout);
+        assert!(
+            stdout.contains("54.16"),
+            "expected 54.16, got: [{}]",
+            stdout
+        );
     }
 
     #[test]
@@ -85,11 +93,7 @@ let obj = Json.to_value(js)
         // 待澄清#3 已修（print is_bool 臂）：bool 打印 true/false 形态。
         let stdout = run_code(&format!("{PRELUDE}print(obj.ok == true)"));
         eprintln!("[P474] bool-compare = [{}]", stdout);
-        assert!(
-            stdout.contains("true"),
-            "expected true, got: [{}]",
-            stdout
-        );
+        assert!(stdout.contains("true"), "expected true, got: [{}]", stdout);
     }
 
     // 控制组：同实例的整数/字符串/bool 字段（既有正确路径不应受影响）
@@ -114,11 +118,7 @@ let obj = Json.to_value(js)
         // tag 守卫优先，bool 一律 true/false。
         let stdout = run_code(&format!("{PRELUDE}print(obj.ok)"));
         eprintln!("[P474] bool-field = [{}]", stdout);
-        assert!(
-            stdout.contains("true"),
-            "expected true, got: [{}]",
-            stdout
-        );
+        assert!(stdout.contains("true"), "expected true, got: [{}]", stdout);
     }
 
     #[test]
@@ -186,11 +186,7 @@ let obj = Json.to_value(js)
             "{PRELUDE}let o = {{\"f\": 0.0}}\no.f = obj.storage_free_gb.floor()\nprint(o.f)"
         ));
         eprintln!("[P474] floor→obj-field = [{}]", stdout);
-        assert!(
-            stdout.contains("54"),
-            "expected 54, got: [{}]",
-            stdout
-        );
+        assert!(stdout.contains("54"), "expected 54, got: [{}]", stdout);
     }
 
     #[test]
@@ -204,13 +200,11 @@ let obj = Json.to_value(js)
 
     #[test]
     fn json_float_floor_arith_consumer() {
-        let stdout = run_code(&format!("{PRELUDE}print(obj.storage_free_gb.floor() + 0.0)"));
+        let stdout = run_code(&format!(
+            "{PRELUDE}print(obj.storage_free_gb.floor() + 0.0)"
+        ));
         eprintln!("[P474] floor+0.0 = [{}]", stdout);
-        assert!(
-            stdout.contains("54"),
-            "expected 54, got: [{}]",
-            stdout
-        );
+        assert!(stdout.contains("54"), "expected 54, got: [{}]", stdout);
     }
 
     // ── 字节码级：单条 GET_FIELD 位级断言 ──────────────────────────────
@@ -229,8 +223,7 @@ let obj = Json.to_value(js)
         // ① 写侧物化：json → __json_object（GenericInstanceData）
         let mut vm = AutoVM::new(VirtualFlash::new(16), 1024);
         let mut task = AutoTask::new(0, 1024, 0);
-        let json: serde_json::Value =
-            serde_json::from_str("{\"storage_free_gb\":54.16}").unwrap();
+        let json: serde_json::Value = serde_json::from_str("{\"storage_free_gb\":54.16}").unwrap();
         stdlib::json_to_vm_value(&mut task, &vm, &json, 0).unwrap();
         let obj_nv = task.ram.pop_nv();
 
@@ -268,7 +261,8 @@ let obj = Json.to_value(js)
             auto_val::encode_f64(54.16)
         );
         assert_eq!(
-            result_nv, auto_val::encode_f64(54.16),
+            result_nv,
+            auto_val::encode_f64(54.16),
             "GET_FIELD 位级不等——注入点在读取链"
         );
     }
@@ -371,10 +365,13 @@ widget App {
 
         let check = |name: &str, expect: f64, tol: f64| {
             let got = state.get(name).and_then(as_f64);
-            eprintln!("[P474] {} = {:?} (expect ~{})", name, state.get(name), expect);
-            let v = got.unwrap_or_else(|| {
-                panic!("{} 应为数值，got {:?}", name, state.get(name))
-            });
+            eprintln!(
+                "[P474] {} = {:?} (expect ~{})",
+                name,
+                state.get(name),
+                expect
+            );
+            let v = got.unwrap_or_else(|| panic!("{} 应为数值，got {:?}", name, state.get(name)));
             assert!(
                 (v - expect).abs() < tol,
                 "{} 应为 ~{}, got {:?}",
