@@ -5,8 +5,8 @@ feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-09
-plan_revision: 1
-current_step: 1  # R1 修复基础已提交；work 交接 needs_replan，T-02..T-08 验收继续打开（见 §9 / P738-R1..R9）
+plan_revision: 2
+current_step: 1  # 用户已授权 revision 2 修订和继续修复；T-02..T-08 保持打开
 total_steps: 8
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -171,6 +171,18 @@ inspect输出inventory或某次AssemblyPlan/Manifest（模式字段明确），c
 
 最终报告包括六模块所有公开符号×vm/rust/c×native/browser（实际入口支持/不支持都有原因），VM/Rust已验证HTTP/file/upload例与C已有支持样例；浏览器仅测试能力拒绝与已有adapter事实，不把host server放到webview中。D3b后续逐模块扩展严格门和行为parity，不能从本期signature_checked推定同取消/错误/ABI语义。
 
+### 5.7 Revision 2：最终绑定证明与实际引用闭包（2026-10-09）
+
+用户授权“OK，按照你的说的执行修订和修复”。沿用 PLAN-738、原 worktree、AC-01..08 和 SD-01..07；不新取号，不削减验收，不把必要修复转成延期。R1 已验证基础代码保留；历史完成声明不能替代本 revision 的证据。
+
+1. **共同生产 factory + 最终 snapshot（T-03/04）**：统一 AutoVM 与 inspect 的 native 初始化，严格保留原注册及 override 次序。最终选中 callee 的独立 producer contract 随绑定存储；后续 register/merge 替换必须撤销旧证明。签名证据包含 receiver/static/generic/mode/async、输入输出及错误适配；未证明的被引用核心符号为 Unverified 并拒绝，不能改标 Unsupported 绕过门。
+2. **来源与引用门（T-02/03/04）**：由实际 resolver 身份和调用 lowering 收集符号闭包（含 Auto body 内依赖），六核心公共声明与目标实现/宿主契约双源比较。模块导入本身不拒绝未引用的 unsupported 声明。VM 普通/persistent 与 Rust/C 实际 emit 消费共同 manifest；本地同名模块不冒充 stdlib。TCP read 公开 API 保留，已发现的缓冲/双输出不等价如实诊断，不能擅改 ABI。
+3. **不可变 manifest 与失效（T-02/05/06）**：完成 actual selected sources/dependencies/providers/features/target/environment/symbol proof 快照，便携身份与本地诊断路径分离；指纹按实际闭包计算，缺失/读取失败闭合拒绝。clone 的 TypeStore 不能跨根串台；生成和启动消费同一版本快照，unknown/null 指纹不能相互证明新鲜。
+4. **完整清点与诊断（T-02/06/07）**：完整 public fn/method/type/field 分母及六格 target/environment 状态；失败层与未知项保留。诊断指向公共与实现源/producer，而非从已污染 live TypeStore 反推。
+5. **真实验收和因果分诊（T-07/08）**：已有支持能力的 C 和 Rust 同源代码必须实编实跑；沿 734/736 真生成→编译→serve→ready 链检查 assembly 改变后的拒绝/再生。HTTP timed-frame 原断言保留，在相同配置下对照 R1 基线与修复树，必要时跟踪上游到客户端各阶段；未确定原因前不得记为既有环境红。最后重跑分级门、完成 SD 正文及独立复审，仍不授权合入/归档。
+
+任务依赖沿用 T-01→T-02→T-03/04→T-05→T-06→T-07→T-08；每个已完成单位提交代码，主检出只记计划进度。新 API 或确需独立范围变更须另提具体方案；当前修订保持原目标与授权。
+
 ### 规范增量
 
 起草只提出增量，不修改canonical。736落地后再对最终服务Spec兼容。
@@ -314,6 +326,20 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [ ] 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
 
 ## 9. 复审记录
+
+### Revision 2 修订交接（2026-10-09，pass → work）
+
+- stage: new
+- plan_id: PLAN-738
+- plan_revision: 2
+- outcome: pass（修订合同就绪，不代表实施/复审通过）
+- changed_tasks: T-02..T-08；补充 T-01 的最终 override 调查结论
+- changed_acceptance: none（AC-01..08、SD-01..07 保留）
+- authorization: 用户明确授权“按照你的说的执行修订和修复”，覆盖本节同范围设计和继续 work
+- inputs: 主检出 `9fec53bdf`；基础修复 `4089b84183c6044ee68f1b6962752d4cb54da821`；R1 独立复审及修复交接报告；相关 canonical Specs 仍以原 frontmatter 为准，尚未沉淀
+- evidence: §5.7 的实际 callee / 引用闭包 / immutable manifest / 真服务与 HTTP 归因合同；原登记债务不得作为豁免
+- state: executing；current_step=1/8；保留已有代码和原 worktree
+- next: work，完成 T-02..T-08 后新 revision-bound 独立 review；本轮不合入/归档
 
 ### R1 修复交接（2026-10-09，needs_replan；基础修复已提交）
 
