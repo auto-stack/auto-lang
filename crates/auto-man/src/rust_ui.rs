@@ -4026,11 +4026,14 @@ pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
     lock_freshness(recorded_lock, current_lock.as_deref())
 }
 
-/// workspace lock 新鲜度（PLAN-738 T-12）：双方一致才新鲜；旧收据缺字段
-/// 或单侧缺失=不可核验，保守再生（一次再生写入字段后收敛）。
+/// workspace lock 新鲜度（PLAN-738 T-12）：双方一致才新鲜。**首次物化
+/// 例外**：生成时 lock 尚未建（收据记 absent），首次构建后 lock 出现
+/// ——该 lock 是已记录 manifest 依赖的确定性物化，不是依赖漂移，判新鲜
+/// （否则每个新 workspace 首启都会误判陈旧拒启）。旧收据缺字段/收据有
+/// 而当前缺失/值漂移=保守再生（一次再生写入字段后收敛）。
 fn lock_freshness(recorded: Option<&str>, current: Option<&str>) -> bool {
     match (recorded, current) {
-        (Some(a), Some(b)) => a == b,
+        (Some(a), Some(b)) => a == b || a == "absent",
         _ => false,
     }
 }
@@ -5013,12 +5016,16 @@ mod tests {
     /// Only two known equal fingerprints prove assembly freshness.
     #[test]
     /// PLAN-738 T-12：workspace lock 新鲜度真值表——双方一致才新鲜；
-    /// 旧收据缺字段（None）/单侧缺失/值漂移均保守再生。
+    /// 首次物化（收据 absent→lock 出现）=确定性物化判新鲜；旧收据缺
+    /// 字段（None）/lock 消失/值漂移均保守再生。
     #[test]
     fn lock_freshness_truth_table() {
         assert!(lock_freshness(Some("a1b2"), Some("a1b2")));
         assert!(!lock_freshness(Some("a1b2"), Some("c3d4")));
         assert!(!lock_freshness(Some("a1b2"), Some("absent")));
+        // 首次物化：生成时未建 lock，首次构建后出现——新鲜。
+        assert!(lock_freshness(Some("absent"), Some("c3d4")));
+        assert!(lock_freshness(Some("absent"), Some("absent")));
         assert!(!lock_freshness(None, Some("a1b2")));
         assert!(!lock_freshness(Some("absent"), None));
         assert!(!lock_freshness(None, None));
