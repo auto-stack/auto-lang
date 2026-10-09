@@ -33,11 +33,19 @@ struct Payload {
     references: Vec<ReferenceProof>,
 }
 
+/// 不可变装配收据（schema 4）。双重身份（PLAN-738 rv3 §5.8.3/T-12）：
+/// - `fingerprint`：**共同装配身份**——消费者中立投影（consumer 名与
+///   `consumer_input` 角色源剔除）。同 fixture/同 target/同 features/同
+///   来源闭包下，CLI actual、编译会话、生成收据三个消费者必须相等；
+/// - `consumer_fingerprint`：**消费者收据身份**——全量 payload（含
+///   consumer 名与消费者输入），供新鲜度门/收据对拍使用。
+/// 旧（≤schema 3）单指纹语义 = 现.consumer_fingerprint。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AssemblyManifest {
     #[serde(flatten)]
     payload: Payload,
     fingerprint: String,
+    consumer_fingerprint: String,
 }
 
 impl AssemblyManifest {
@@ -109,7 +117,7 @@ impl AssemblyManifest {
                 && a.producer == b.producer
         });
         let payload = Payload {
-            schema_version: 3,
+            schema_version: 4,
             target: context.target,
             environment: context.environment,
             platform: env!("AUTO_ASSEMBLY_TARGET").into(),
@@ -119,18 +127,32 @@ impl AssemblyManifest {
             providers: provider_inputs(context.target),
             references,
         };
-        let fingerprint = format!(
+        let fingerprint = assembly_identity(&payload);
+        let consumer_fingerprint = format!(
             "{:016x}",
             fnv1a64(&serde_json::to_string(&payload).unwrap())
         );
         Self {
             payload,
             fingerprint,
+            consumer_fingerprint,
         }
     }
 
     pub fn fingerprint(&self) -> &str {
         &self.fingerprint
+    }
+
+    pub fn consumer_fingerprint(&self) -> &str {
+        &self.consumer_fingerprint
+    }
+
+    pub fn schema_version(&self) -> u32 {
+        self.payload.schema_version
+    }
+
+    pub fn consumer(&self) -> &str {
+        &self.payload.consumer
     }
     pub fn sources(&self) -> &[SourceInput] {
         &self.payload.sources
@@ -151,12 +173,26 @@ impl AssemblyManifest {
         self.payload.sources.sort_by(|a, b| {
             (&a.module, &a.role, &a.source_id).cmp(&(&b.module, &b.role, &b.source_id))
         });
-        self.fingerprint = format!(
+        self.consumer_fingerprint = format!(
             "{:016x}",
             fnv1a64(&serde_json::to_string(&self.payload).unwrap())
         );
         self
     }
+}
+
+/// 共同装配身份投影：剔除 consumer 名与 `consumer_input` 角色源后哈希。
+/// 消费者元数据（名/业务输入）不得伪造装配差异，也不得掩盖真实差异。
+fn assembly_identity(payload: &Payload) -> String {
+    let mut neutral = payload.clone();
+    neutral.consumer = String::new();
+    neutral
+        .sources
+        .retain(|source| source.role != "consumer_input");
+    format!(
+        "{:016x}",
+        fnv1a64(&serde_json::to_string(&neutral).unwrap())
+    )
 }
 
 pub fn enabled_features() -> Vec<String> {

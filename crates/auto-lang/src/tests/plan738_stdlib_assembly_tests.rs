@@ -1620,3 +1620,154 @@ fn main() {
         assert!(error.contains("int / bool"), "{error}");
     }
 }
+
+#[cfg(test)]
+mod t12_manifest_identity {
+    use crate::compile::CompileSession;
+    use crate::stdlib_assembly::manifest::AssemblyManifest;
+    use crate::stdlib_assembly::model::AssemblyTarget;
+
+    fn stdlib_root() -> std::path::PathBuf {
+        crate::stdlib_assembly::loader::repo_stdlib_root().unwrap()
+    }
+
+    /// 三角对拍：同一 fixture、同一 target 下，三个真实消费者（CLI actual
+    /// 路径 / 编译会话最终快照 / 生成收据形态）的共同装配身份必须一致；
+    /// 消费者收据身份各自不同（consumer 名与业务输入是收据差异，不是装配
+    /// 差异）。CLI 分支镜像 cmd_stdlib actual 的真实调用序（session →
+    /// compile_actual_references → freeze("stdlib-inspect")）。
+    #[test]
+    fn triangle_consumers_share_assembly_identity_not_receipt_identity() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source =
+            "use auto.json: parse\n\nfn main() {\n    let v = parse(\"{}\")\n    print(v)\n}\n";
+        std::fs::write(tmp.path().join("main.at"), source).unwrap();
+        let path = tmp.path().join("main.at");
+        let root = stdlib_root();
+
+        let session = |target: AssemblyTarget| {
+            let mut session = CompileSession::new();
+            session.set_assembly_target(target).unwrap();
+            session.add_source_dir(tmp.path().to_path_buf());
+            session.resolve_uses(source).unwrap();
+            session
+        };
+
+        // 消费者 A：CLI actual（stdlib-inspect）。
+        let mut cli = session(AssemblyTarget::Rust);
+        let references =
+            crate::stdlib_assembly::reference::compile_actual_references(&cli, source, &path)
+                .unwrap();
+        let cli_manifest = AssemblyManifest::freeze(
+            cli.assembly,
+            "stdlib-inspect",
+            tmp.path(),
+            &root,
+            &cli.layer_selections,
+            references,
+        );
+
+        // 消费者 B：编译会话最终快照（compiler，含 project/entry 业务输入）。
+        let mut compiled = session(AssemblyTarget::Rust);
+        let _ = crate::trans_rust_with_session(&mut compiled, path.to_str().unwrap());
+        let compiler_manifest = compiled
+            .freeze_assembly_manifest("compiler", &path, source)
+            .unwrap();
+
+        // 消费者 C：生成收据形态（api-generation + 业务输入）。
+        let generation_manifest = cli_manifest
+            .clone()
+            .with_consumer_input("project/back/api.at", "api content")
+            .with_consumer_input("project/back/db.at", "db content");
+
+        assert_eq!(
+            cli_manifest.fingerprint(),
+            compiler_manifest.fingerprint(),
+            "CLI actual 与编译会话的共同装配身份必须一致"
+        );
+        assert_eq!(
+            cli_manifest.fingerprint(),
+            generation_manifest.fingerprint(),
+            "生成收据不因消费者元数据/业务输入改变共同装配身份"
+        );
+        assert_eq!(cli_manifest.schema_version(), 4);
+        assert_ne!(
+            cli_manifest.consumer_fingerprint(),
+            compiler_manifest.consumer_fingerprint(),
+            "消费者收据身份应包含 consumer 名差异"
+        );
+        assert_ne!(
+            cli_manifest.consumer_fingerprint(),
+            generation_manifest.consumer_fingerprint(),
+            "消费者收据身份应包含业务输入差异"
+        );
+    }
+
+    /// 失效面：target 变化改变共同身份；业务输入只改收据身份；同内容
+    /// 异绝对根的共同身份稳定（便携源 ID + 内容哈希）。
+    #[test]
+    fn identity_invalidates_on_assembly_inputs_not_business_inputs() {
+        let root = stdlib_root();
+        let mk = |dir: &tempfile::TempDir| {
+            let source = "use auto.json: parse\n\nfn main() {\n    let v = parse(\"{}\")\n}\n";
+            std::fs::write(dir.path().join("main.at"), source).unwrap();
+            let path = dir.path().join("main.at");
+            let mut session = CompileSession::new();
+            session.set_assembly_target(AssemblyTarget::Rust).unwrap();
+            session.add_source_dir(dir.path().to_path_buf());
+            session.resolve_uses(source).unwrap();
+            let references = crate::stdlib_assembly::reference::compile_actual_references(
+                &session, source, &path,
+            )
+            .unwrap();
+            AssemblyManifest::freeze(
+                session.assembly,
+                "stdlib-inspect",
+                dir.path(),
+                &root,
+                &session.layer_selections,
+                references,
+            )
+        };
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let first = mk(&a);
+        let second = mk(&b);
+        assert_eq!(
+            first.fingerprint(),
+            second.fingerprint(),
+            "同内容异绝对根的共同装配身份必须稳定（便携身份）"
+        );
+        // 业务输入：只进收据身份。
+        let with_business = first
+            .clone()
+            .with_consumer_input("project/back/api.at", "changed");
+        assert_eq!(first.fingerprint(), with_business.fingerprint());
+        assert_ne!(
+            first.consumer_fingerprint(),
+            with_business.consumer_fingerprint()
+        );
+        // target 变化：共同身份改变（providers/选定层随 target 分叉）。
+        let vm = tempfile::tempdir().unwrap();
+        let source = "use auto.json: parse\n\nfn main() {\n    let v = parse(\"{}\")\n}\n";
+        std::fs::write(vm.path().join("main.at"), source).unwrap();
+        let path = vm.path().join("main.at");
+        let mut session = CompileSession::new();
+        session.set_assembly_target(AssemblyTarget::Vm).unwrap();
+        session.add_source_dir(vm.path().to_path_buf());
+        session.resolve_uses(source).unwrap();
+        let vm_manifest = AssemblyManifest::freeze(
+            session.assembly,
+            "stdlib-inspect",
+            vm.path(),
+            &root,
+            &session.layer_selections,
+            Vec::new(),
+        );
+        assert_ne!(
+            first.fingerprint(),
+            vm_manifest.fingerprint(),
+            "target 变化必须改变共同装配身份"
+        );
+    }
+}

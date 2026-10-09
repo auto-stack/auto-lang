@@ -3696,7 +3696,8 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
     }
     // A project outside the repository still uses this generator's framework.
     // Resolve that real crate instead of inventing a project-relative checkout.
-    let compiled_crate = Path::new(env!("CARGO_MANIFEST_DIR")).parent()
+    let compiled_crate = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
         .map(|parent| parent.join("auto-lang"));
     if let Some(crate_dir) = compiled_crate.filter(|path| path.join("Cargo.toml").is_file()) {
         return compute_relative_path(ws_dir, &crate_dir);
@@ -3724,7 +3725,10 @@ fn compute_relative_path(from: &Path, to: &Path) -> String {
     // Windows drive roots cannot be traversed with `..`.
     if common == 0 {
         let path = to_abs.to_string_lossy();
-        return path.strip_prefix(r"\\?\").unwrap_or(&path).replace('\\', "/");
+        return path
+            .strip_prefix(r"\\?\")
+            .unwrap_or(&path)
+            .replace('\\', "/");
     }
 
     // Go up from `from` to the common ancestor
@@ -4008,8 +4012,27 @@ pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
         .and_then(|a| a.get("fingerprint"))
         .and_then(|f| f.as_str());
     let current_assembly = crate::api_gen::current_generated_api_assembly(project_dir)
-        .ok().map(|manifest| manifest.fingerprint().to_string());
-    assembly_freshness(recorded_assembly, current_assembly.as_deref())
+        .ok()
+        .map(|manifest| manifest.consumer_fingerprint().to_string());
+    if !assembly_freshness(recorded_assembly, current_assembly.as_deref()) {
+        return false;
+    }
+    // PLAN-738 T-12：生成 workspace lock 身份对拍——生成产物运行时依赖
+    // 输入变化（lock 出现/更新）即陈旧；旧收据无此字段=不可核验，保守再生。
+    let recorded_lock = record.get("workspace_lock").and_then(|v| v.as_str());
+    let current_lock = std::fs::read(ensure_shared_workspace(project_dir).join("Cargo.lock"))
+        .ok()
+        .map(|bytes| format!("{:x}", crate::api_gen::fnv1a(&bytes)));
+    lock_freshness(recorded_lock, current_lock.as_deref())
+}
+
+/// workspace lock 新鲜度（PLAN-738 T-12）：双方一致才新鲜；旧收据缺字段
+/// 或单侧缺失=不可核验，保守再生（一次再生写入字段后收敛）。
+fn lock_freshness(recorded: Option<&str>, current: Option<&str>) -> bool {
+    match (recorded, current) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
 }
 
 /// 装配新鲜度判定（PLAN-738 T-06；纯函数便于单测）。
@@ -4989,11 +5012,20 @@ mod tests {
 
     /// Only two known equal fingerprints prove assembly freshness.
     #[test]
+    /// PLAN-738 T-12：workspace lock 新鲜度真值表——双方一致才新鲜；
+    /// 旧收据缺字段（None）/单侧缺失/值漂移均保守再生。
+    #[test]
+    fn lock_freshness_truth_table() {
+        assert!(lock_freshness(Some("a1b2"), Some("a1b2")));
+        assert!(!lock_freshness(Some("a1b2"), Some("c3d4")));
+        assert!(!lock_freshness(Some("a1b2"), Some("absent")));
+        assert!(!lock_freshness(None, Some("a1b2")));
+        assert!(!lock_freshness(Some("absent"), None));
+        assert!(!lock_freshness(None, None));
+    }
+
     fn assembly_freshness_truth_table() {
-        assert!(
-            !assembly_freshness(None, None),
-            "缺少两侧身份不能证明新鲜"
-        );
+        assert!(!assembly_freshness(None, None), "缺少两侧身份不能证明新鲜");
         assert!(
             assembly_freshness(Some("aaaa00000000bbbb"), Some("aaaa00000000bbbb")),
             "指纹相等=新鲜"

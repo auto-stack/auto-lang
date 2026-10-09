@@ -32,7 +32,7 @@ use auto_lang::api::{ApiAttrs, ApiEndpoint, ApiField, ApiModule, ApiParam, ApiTy
 
 /// PLAN-734 T-04：32 位 FNV-1a（generation.json 的内容指纹——与
 /// ui_cache invalidate_if_api_functions_changed 同族）。
-fn fnv1a(bytes: &[u8]) -> u32 {
+pub(crate) fn fnv1a(bytes: &[u8]) -> u32 {
     let mut h: u32 = 0x811c9dc5;
     for b in bytes {
         h ^= *b as u32;
@@ -1025,7 +1025,7 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         "fn __assembly_fingerprint() -> Option<&'static str> { None }",
         &format!(
             "fn __assembly_fingerprint() -> Option<&'static str> {{ Some(\"{}\") }}",
-            assembly.fingerprint()
+            assembly.consumer_fingerprint()
         ),
     );
     std::fs::write(src_dir.join("main.rs"), &main_rs)
