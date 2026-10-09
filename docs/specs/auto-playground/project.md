@@ -47,3 +47,10 @@ graph LR
 | frontend | Vue3 + Vite SPA（playwright e2e） | active |
 
 > **Plan 582（2026-09-07，archived）**：/api/examples 读 notes.json 单一事实源（三路回退；entry files[0] 回退保 api=manifest=1332 不变量）；frontend 壳单模式化（侧栏导航+直嵌 IDE，noteMeta 入标题栏）；files-only 物化运行（parity 多文件可 Run，base64·Decode 10 ok 实证）；宿主 e2e 19 条。
+
+> **PLAN-746（2026-10-09，executing）**：/api/run 执行时限——`timeout_secs`
+> （默认 10s，clamp 1..=60）映射 VM 协作式截止（auto-vm spec ExecutionBudget），
+> 超时响应 stdout 携 `Error: ExecutionTimeout: execution deadline exceeded`，
+> 服务端不留失控执行线程/内存（PG-MEM-1 根治：走查 16MB→1434MB/20GB+ 实录）。
+> 执行 panic（执行线程内部）返回干净 Err 不再 unwrap 噪音 500（SD-04）。
+> print 内建 kwargs 形态（`print(x, end=..)`）编译期拒绝（SD-02，见 auto-vm spec）。
