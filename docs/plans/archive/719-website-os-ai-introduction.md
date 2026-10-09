@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-719
-status: reviewed
+status: archived
 feature_name: Website OS 与 AI 介绍重组
 author: [agent]
 created_at: 2026-10-01
@@ -298,3 +298,17 @@ stage: merge | plan_id: PLAN-719 | plan_revision: 2 | outcome: blocked（仅 led
 | archived / cleaned | pending：计划保持reviewed，保留clean的D:/autostack/.wt/lang-719/auto-lang与plan-719-dev；不提前归档/删除；公开站未部署。 |
 | preview | 本次稳定dist在719工作树，http://127.0.0.1:4225/zh/os（可进入AI/桌面与两篇长文）；已向当前聊天右侧提交打开请求，app返回queued。不误称原4197旧标签或公开站已更新。 |
 | batch | 719非%5节点，距.last-batch-regression.json的2026-09-30T16:20Z不足48h，本计划不新增到期；720的已登记跳过收据保持原样。本次Category A不跑Rust批量档，不改.last-batch-regression.json。 |
+
+### PLAN-719:r2 收尾完成（2026-10-09）
+
+- stage: merge | outcome: pass（收尾补齐；网站与规范 2026-10-01 已交付，本节仅清偿 ledger/归档/清理检查点）
+- ledger_refreshed: 依 docs/specs/README.md §5 手工回退路径（musk store 对旧格式账本 500 的既知阻塞，本仓规约认可）：`.autoos/specs.json` 本地 upsert——designs 新增 P719-1（website/design/os-ai-introduction.md，docsha 溯源）+ website/project.md 复用更新既有 P720-1（含 719/722/723 增补注记，不追加副本）；ui-presentation.md 现行态未变（719 仅冻结输入），既有 P715-1/P720-2 保持权威。tests P719-2、reviews P719-3、reports P719-4。`python scripts/spec-index.py` 再生 INDEX.md 无语义变化；六段 JSON 重载校验通过、新 ID 无冲突。
+- archived: git mv → docs/plans/archive/719-website-os-ai-introduction.md，status → archived。
+- cleaned: wt-guard clean（auto-lang+auto-down 双树实测）→ git worktree remove D:/autostack/.wt/lang-719/{auto-lang,auto-down} + 组目录 rmdir；plan-719-dev（7153a4a66，已全含于 master）branch -d 删除；auto-down 兄弟为 detached 依赖基线（3373a5c）无未合内容。
+- artifacts/batch: 沿 2026-10-01 收据——公开站未部署、main 无 dist，本轮无后台/Rust 触面不重建二进制；719 非 %5、批量收据 2026-10-08T11:20Z 未到期，不改 .last-batch-regression.json。
+
+## spec-sync 回写记录（2026-10-09 收尾）
+
+- website/plans.md：719 行状态 → ✅（reviewed→archived），链接指向 archive/。
+- .autoos/specs.json：P719-1/-2/-3/-4 upsert；P720-1 复用增补。
+- docs/specs/INDEX.md：spec-index.py 再生，无语义变化。

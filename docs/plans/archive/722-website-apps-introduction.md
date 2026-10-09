@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-722
-status: reviewed
+status: archived
 feature_name: Website Apps 总览、四应用介绍与系统 Demo 展示方案
 author: [Codex]
 created_at: 2026-10-01
@@ -119,3 +119,17 @@ stage: merge | plan_id: PLAN-722 | plan_revision: 1 | outcome: blocked（仅账�
 next: 修复旧账本与store的兼容后，派生投影读回、归档与guard清理。全部请求的网站修改已经进入master。
 
 无阻塞用户问题。精确发布集合/无后台体验覆盖为设计内后续逐项验证项，本轮不承诺固定28项全可用。
+
+### PLAN-722:r1 收尾完成（2026-10-09）
+
+- stage: merge | outcome: pass（收尾补齐；网站与 canonical 2026-10-01 已交付，同日合入检查点的 blocked 仅剩账本/归档/清理，本节清偿）
+- ledger_refreshed: docs/specs/README.md §5 手工回退——designs 新增 P722-1（application-introductions.md）/P722-2（application-demos.md），website/project.md 复用更新 P720-1（不追加副本）；tests P722-3、reviews P722-4、reports P722-5（landing 等价映射收账：3fd4562da→d7b881e6c、a4456ad52→91689176b、bb8bcefd3→939497ead）。spec-index.py 再生无语义变化；JSON 重载校验通过、新 ID 无冲突。
+- archived: git mv → docs/plans/archive/722-website-apps-introduction.md，status → archived。
+- cleaned: wt-guard clean → git worktree remove D:/autostack/.wt/lang-722/auto-lang + 组目录 rmdir；plan-722-dev tip bb8bcefd3 非 master 祖先但三提交 patch 等价已落 master（3fd4562da→d7b881e6c、a4456ad52→91689176b、bb8bcefd3→939497ead，range-diff 在案），branch -D 删除，必要时经 reflog/收据哈希找回。
+- artifacts/batch: 沿 2026-10-01 收据（公开站未部署、main 无 dist、无后台触面）；722 非 %5、批量收据 2026-10-08T11:20Z 未到期，不改 .last-batch-regression.json。
+
+## spec-sync 回写记录（2026-10-09 收尾）
+
+- website/plans.md：722 行状态 → ✅（reviewed→archived），链接指向 archive/。
+- .autoos/specs.json：P722-1/-2/-3/-4/-5 upsert；P720-1 复用增补。
+- docs/specs/INDEX.md：spec-index.py 再生，无语义变化。

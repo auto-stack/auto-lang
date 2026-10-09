@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-723
-status: reviewed
+status: archived
 feature_name: Website 应用介绍与28个Demo真实截图
 author: [Codex]
 created_at: 2026-10-01
@@ -131,3 +131,19 @@ r2 revision handoff：2026-10-01用户查看后明确要求将28 Demo页面合�
 r1执行完成（历史，结构测试不覆盖r2）：28项双语用途/操作/条件/边界与58个阅读/目录页面；28项真图逐图审查，25项新拍，Launcher、AutoTerm、Config三项复用并标来源。AutoTerm当前VM拍摄失败未发布，采用注明版本的2026-09-22原生留存图。真实媒体与文件服务使用公开/专用资源，无mock API/替换UI。AutoEdit/Shell批准主图已接入；实施19beb3046fc3d888000514e651071ad4f2748f8c复审pass，构建与95个唯一检查通过。更详证据与准备Spec保留在计划分支，尚未合入master。
 
 r2执行完成：137bc5557855c7757a0f3754ed4466226fa752f3提交概览合并；28项正文仍由原demos.json提供，没有删除或改写素材。就地原生details与稳定深链、58兼容跳转接入；四主产品独立保留。npm run build首次187.22s；最终冻结实现npx vitepress build 177.57s通过，未在构建过程中继续改实现。r2专项+全站UI/SPA触面回归70项通过，逐AC复审pass；现有4235预览已更新，未合入master。
+
+### PLAN-723:r2 收尾完成（2026-10-09）
+
+（上两段"尚未合入master/未合入master"为 2026-10-01 历史执行记录；实际交付当天已按 §10 合入检查点 ff-only 落 master，delivery 02f4b1a90。）
+
+- stage: merge | outcome: pass（收尾补齐；2026-10-01 合入检查点的 blocked 仅剩账本/归档/清理，本节清偿）
+- ledger_refreshed: docs/specs/README.md §5 手工回退——designs 新增 P723-1（demo-capture-catalog.md）；application-introductions/application-demos 现行态以 723:r2 并轨后为准（P722-1/-2 内容已注明）；website/project.md 复用更新 P720-1。tests P723-2、reviews P723-3、reports P723-4。spec-index.py 再生无语义变化；JSON 重载校验通过、新 ID 无冲突。
+- archived: git mv → docs/plans/archive/723-website-demo-introductions.md，status → archived。
+- cleaned: wt-guard clean → git worktree remove D:/autostack/.wt/lang-723/auto-lang + 组目录 rmdir；plan-723-dev（f504b506d，已全含于 master）branch -d 删除。
+- artifacts/batch: 沿 2026-10-01 收据（公开站未部署、main 无 dist、无后台触面）；723 非 %5、批量收据 2026-10-08T11:20Z 未到期，不改 .last-batch-regression.json。
+
+## spec-sync 回写记录（2026-10-09 收尾）
+
+- website/plans.md：723 行状态 → ✅（reviewed→archived），链接指向 archive/。
+- .autoos/specs.json：P723-1/-2/-3/-4 upsert；P720-1 复用增补。
+- docs/specs/INDEX.md：spec-index.py 再生，无语义变化。
