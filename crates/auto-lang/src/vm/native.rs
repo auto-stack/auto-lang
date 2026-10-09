@@ -52,11 +52,17 @@ pub const DYNAMIC_ID_START: u16 = 10000;
 
 pub type ShimFunc = Arc<dyn Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct NativeContract {
     pub parameters: Vec<String>,
     pub returns: String,
     pub producer: String,
+    /// Independent target adapter facts; never populated by the .at scanner.
+    pub receiver: Option<String>,
+    pub is_static: bool,
+    pub generics: Vec<String>,
+    pub parameter_modes: Vec<String>,
+    pub error_shape: String,
 }
 
 /// Plan 094: NativeInterface with hybrid lookup support
@@ -64,7 +70,6 @@ pub struct NativeContract {
 /// Supports two types of native functions:
 /// - **Static** (IDs 0-9999): Built into VM, registered at compile time
 /// - **Dynamic** (IDs 10000+): Loaded via `use.rust`, registered at runtime
-#[derive(Clone)]
 pub struct NativeInterface {
     /// Static shims: direct array lookup for maximum performance
     static_shims: Vec<Option<ShimFunc>>,
@@ -75,7 +80,21 @@ pub struct NativeInterface {
     /// Plan 200 Task 3.3: name -> ID mapping for CALL_SPEC fallback
     name_to_id: HashMap<String, u16>,
     contracts: HashMap<u16, NativeContract>,
+    binding_revision: u64,
     pub binding_conflicts: Vec<(u16, String, String)>,
+    reference_proofs: std::sync::Mutex<HashMap<u16, Result<Option<crate::stdlib_assembly::reference::ReferenceProof>, String>>>,
+}
+
+impl Clone for NativeInterface {
+    fn clone(&self) -> Self {
+        Self {
+            static_shims: self.static_shims.clone(), dynamic_shims: self.dynamic_shims.clone(),
+            next_dynamic_id: self.next_dynamic_id, name_to_id: self.name_to_id.clone(),
+            contracts: self.contracts.clone(), binding_conflicts: self.binding_conflicts.clone(),
+            binding_revision: self.binding_revision,
+            reference_proofs: std::sync::Mutex::new(HashMap::new()),
+        }
+    }
 }
 
 impl NativeInterface {
@@ -86,8 +105,84 @@ impl NativeInterface {
             next_dynamic_id: DYNAMIC_ID_START,
             name_to_id: HashMap::new(),
             contracts: HashMap::new(),
+            binding_revision: 0,
             binding_conflicts: Vec::new(),
+            reference_proofs: std::sync::Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Common production binding order, including the VM overrides.
+    /// Callers may merge external interfaces later; those merges invalidate proof.
+    pub fn production() -> Self {
+        let mut native_interface = NativeInterface::new();
+        native_interface.register_std_shims();
+        // Plan 094: Register manual FFI shims (cannot use #[rust_fn])
+        crate::vm::ffi::register_stdlib_ffi(&mut native_interface);
+        // Plan 555 T06: 分发组合子（interop.obj_* 家族，1860-1865）。
+        crate::vm::interop::register_interop_natives(&mut native_interface);
+        // Plan 198: Register #[rust_fn]-annotated shims via inventory
+        native_interface.build_from_inventory();
+
+        // Override inventory shims with nanbox-aware versions for str methods
+        // (inventory shims use String extraction which doesn't work with NanoValue stack)
+        {
+            native_interface.register(crate::vm::native::NATIVE_STR_CONTAINS, crate::vm::native::shim_str_contains);
+            native_interface.register(crate::vm::native::NATIVE_STR_STARTS_WITH, crate::vm::native::shim_str_starts_with);
+            native_interface.register(crate::vm::native::NATIVE_STR_ENDS_WITH, crate::vm::native::shim_str_ends_with);
+            native_interface.register(crate::vm::native::NATIVE_STR_TO_INT, crate::vm::native::shim_str_to_int_nv);
+            native_interface.register(crate::vm::native::NATIVE_STR_TO_UINT, crate::vm::native::shim_str_to_uint_nv);
+            // Plan 446 批三 D1: json.parse 占位 shim（rust_fn 版原样透传字符串）
+            // 覆盖为 vm 感知版——经 Plan 340 转换器物化成 __json_object/
+            // ListData 堆值，下游 GET_FIELD/for-in 直读。ID 取静态表
+            // （auto.json.parse = 1902，native_catalog）。
+            native_interface.register_typed_shim_by_name(
+                "auto.json.parse", crate::vm::ffi::stdlib::shim_json_parse_vm,
+                &["str"], "JsonValue?",
+            );
+            // PLAN-057 T6（等价性缺陷族③）：web 内建 natives 补齐——
+            // Array.isArray/JSON.stringify/Math.trunc/Math.imul 此前未注册，
+            // 调用点经未解析静态兜底（CALL_SPEC str 接收者臂）静默 None。
+            // 名/ID 已入 native_catalog 静态表（NATIVE_ID_ENTRIES，codegen
+            // 任意时刻可解析，沿 auto.json.parse 惯例）；此处绑定 shim 到
+            // 固定 ID + 注册字面/canonical 双名（沿 build_from_inventory
+            // 三名惯例）。注意 canonical 经 TYPE_CANONICAL_MAP：Array→
+            // auto.list、Object→auto.obj。
+            {
+                const WEB_NATIVES: &[(&str, &str, fn(&mut AutoTask, &AutoVM) -> Result<(), VMError>)] = &[
+                    ("Array.isArray", "auto.list.is_array", crate::vm::ffi::stdlib::shim_web_is_array),
+                    ("JSON.stringify", "auto.json.stringify", crate::vm::ffi::stdlib::shim_web_json_stringify),
+                    ("Math.trunc", "auto.math.trunc", crate::vm::ffi::stdlib::shim_web_math_trunc),
+                    ("Math.imul", "auto.math.imul", crate::vm::ffi::stdlib::shim_web_math_imul),
+                ];
+                for (name, canonical, shim) in WEB_NATIVES {
+                    let id = crate::vm::native_registry::BIGVM_NATIVES
+                        .lock()
+                        .unwrap()
+                        .resolve_qualified(canonical)
+                        .expect("PLAN-057 web native missing from NATIVE_ID_ENTRIES");
+                    native_interface.register(id, *shim);
+                    native_interface.register_name(name, id);
+                    native_interface.register_name(canonical, id);
+                }
+            }
+            // Plan 446 批三 D1(续): 文档类 json native（get/get_at/has_key/
+            // len/keys/is_valid）双态化——堆文档首参序列化回文本走原路径，
+            // json.get(json.parse(x), k) 文本工具链与点访问 idiom 互通。
+            crate::vm::ffi::stdlib::override_json_doc_natives(&mut native_interface);
+        }
+
+        // Plan 011 (MS3-B): shell-host bridge natives.
+        {
+            native_interface.register(crate::vm::native::NATIVE_SHELL_SYSTEM, crate::vm::native::shim_shell_system);
+            native_interface.register(crate::vm::native::NATIVE_SHELL_SYSTEM_STATUS, crate::vm::native::shim_shell_system_status);
+            native_interface.register(crate::vm::native::NATIVE_SHELL_EXPORT, crate::vm::native::shim_shell_export);
+            native_interface.register(crate::vm::native::NATIVE_SHELL_EXIT, crate::vm::native::shim_shell_exit);
+            // PLAN-082: structured interop natives.
+            native_interface.register(crate::vm::native::NATIVE_SHELL_QUERY, crate::vm::native::shim_shell_query);
+            native_interface.register(crate::vm::native::NATIVE_SHELL_RUN, crate::vm::native::shim_shell_run);
+        }
+
+        native_interface
     }
 
     /// Register a static shim (IDs 0-9999)
@@ -99,7 +194,9 @@ impl NativeInterface {
         F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
     {
         assert!(id < STATIC_ID_MAX, "Static ID must be < {}", STATIC_ID_MAX);
+        self.binding_revision = self.binding_revision.wrapping_add(1);
         self.contracts.remove(&id);
+        self.reference_proofs.get_mut().unwrap().remove(&id);
         self.static_shims[id as usize] = Some(Arc::new(func));
     }
 
@@ -112,6 +209,7 @@ impl NativeInterface {
         F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
     {
         let id = self.next_dynamic_id;
+        self.binding_revision = self.binding_revision.wrapping_add(1);
         self.next_dynamic_id += 1;
         self.dynamic_shims.insert(id, Arc::new(func));
         id
@@ -125,6 +223,9 @@ impl NativeInterface {
         F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
     {
         assert!(id >= DYNAMIC_ID_START, "Dynamic ID must be >= {}", DYNAMIC_ID_START);
+        self.binding_revision = self.binding_revision.wrapping_add(1);
+        self.contracts.remove(&id);
+        self.reference_proofs.get_mut().unwrap().remove(&id);
         self.dynamic_shims.insert(id, Arc::new(func));
         if id >= self.next_dynamic_id {
             self.next_dynamic_id = id + 1;
@@ -146,8 +247,20 @@ impl NativeInterface {
         self.contracts.get(&id)
     }
 
+    pub fn binding_revision(&self) -> u64 { self.binding_revision }
+
+    pub fn verify_core_reference(&self, id: u16) -> Result<Option<crate::stdlib_assembly::reference::ReferenceProof>, String> {
+        if let Some(proof) = self.reference_proofs.lock().unwrap().get(&id).cloned() {
+            return proof;
+        }
+        let proof = crate::stdlib_assembly::reference::verify_native_reference(id, self);
+        self.reference_proofs.lock().unwrap().insert(id, proof.clone());
+        proof
+    }
+
     /// Logical contract belongs to the manually implemented producer, not to
     /// the .at scanner. Keep it next to the shim registration.
+    #[track_caller]
     pub fn register_typed_shim_by_name(
         &mut self, name: &str,
         func: fn(&mut AutoTask, &AutoVM) -> Result<(), VMError>,
@@ -156,8 +269,24 @@ impl NativeInterface {
         let id = self.register_shim_by_name(name, func);
         self.contracts.insert(id, NativeContract {
             parameters: parameters.iter().map(|p| p.to_string()).collect(),
-            returns: returns.into(), producer: name.into(),
+            returns: returns.into(), producer: format!("{}:{} ({name})",
+                std::panic::Location::caller().file().replace('\\', "/"),
+                std::panic::Location::caller().line()),
+            receiver: None, is_static: false, generics: Vec::new(),
+            parameter_modes: parameters.iter().map(|_| "View".into()).collect(),
+            error_shape: "VMError".into(),
         });
+        id
+    }
+
+    #[track_caller]
+    pub fn register_method_shim_by_name(
+        &mut self, name: &str,
+        func: fn(&mut AutoTask, &AutoVM) -> Result<(), VMError>,
+        receiver: &str, parameters: &[&str], returns: &str,
+    ) -> u16 {
+        let id = self.register_typed_shim_by_name(name, func, parameters, returns);
+        self.contracts.get_mut(&id).unwrap().receiver = Some(receiver.into());
         id
     }
 
@@ -168,6 +297,8 @@ impl NativeInterface {
 
     /// Register a name -> ID mapping for CALL_SPEC fallback (Plan 200 Task 3.3)
     pub fn register_name(&mut self, name: &str, id: u16) {
+        self.binding_revision = self.binding_revision.wrapping_add(1);
+        self.reference_proofs.get_mut().unwrap().clear();
         self.name_to_id.insert(name.to_string(), id);
     }
 
@@ -222,20 +353,25 @@ impl NativeInterface {
     /// Used to merge Rust FFI bridge native shims into the main VM's
     /// NativeInterface after the bridge has loaded and registered functions.
     pub fn merge(&mut self, other: &NativeInterface) {
-        self.contracts.extend(other.contracts.clone());
+        self.binding_revision = self.binding_revision.wrapping_add(1);
+        self.reference_proofs.get_mut().unwrap().clear();
         self.binding_conflicts.extend(other.binding_conflicts.clone());
         // Merge static shims
         for (id, shim) in other.static_shims.iter().enumerate() {
             if let Some(shim) = shim {
                 if id < self.static_shims.len() {
+                    self.contracts.remove(&(id as u16));
                     self.static_shims[id] = Some(shim.clone());
                 }
             }
         }
         // Merge dynamic shims
         for (id, shim) in &other.dynamic_shims {
+            self.contracts.remove(id);
             self.dynamic_shims.insert(*id, shim.clone());
         }
+        self.contracts.extend(other.contracts.clone());
+        self.name_to_id.extend(other.name_to_id.clone());
         // Advance next_dynamic_id if needed
         if other.next_dynamic_id > self.next_dynamic_id {
             self.next_dynamic_id = other.next_dynamic_id;
@@ -286,6 +422,9 @@ impl NativeInterface {
             self.contracts.insert(id, NativeContract {
                 parameters: entry.parameters.iter().map(|p| p.to_string()).collect(),
                 returns: entry.returns.into(), producer: entry.producer.into(),
+                receiver: None, is_static: false, generics: Vec::new(),
+                parameter_modes: entry.parameters.iter().map(|_| "View".into()).collect(),
+                error_shape: "VMError".into(),
             });
             // Register names for CALL_SPEC resolve
             // Register the inventory name itself (e.g., "Str.char_at")

@@ -208,17 +208,15 @@ mod t03_assembly_wiring {
             assert!(
                 names.contains(&"pub_fn".to_string())
                     && !names.contains(&"vm_only".to_string())
-                    && !names.contains(&"c_only".to_string()),
+                    && !names.contains(&"c_only".to_string())
+                    && names.contains(&"rs_only".to_string()),
                 "Rust 装配上下文不得含 VM/C 层符号: {names:?}"
             );
         }
         let sel = &rs_session.layer_selections[0];
         assert_eq!(sel.target, AssemblyTarget::Rust);
-        assert!(sel.context_file.is_none(), "Rust 目标零装载面：无合并层");
-        assert!(sel
-            .candidate_files
-            .iter()
-            .any(|c| c.ends_with("proto.rs.at")));
+        assert!(sel.context_file.as_ref().is_some_and(|file| file.ends_with("proto.rs.at")), "actual Rust project layer must be consumed");
+        assert!(!sel.candidate_files.iter().any(|c| c.ends_with("proto.rs.at")));
 
         // C 目标：同构（c 层 candidate，vm 层不串入）。
         let mut c_session = crate::compile::CompileSession::new();
@@ -232,7 +230,8 @@ mod t03_assembly_wiring {
             assert!(
                 names.contains(&"pub_fn".to_string())
                     && !names.contains(&"vm_only".to_string())
-                    && !names.contains(&"rs_only".to_string()),
+                    && !names.contains(&"rs_only".to_string())
+                    && names.contains(&"c_only".to_string()),
                 "C 装配上下文不得含 VM/Rust 层符号: {names:?}"
             );
         }
@@ -1055,6 +1054,15 @@ mod t07_witness_and_matrix {
 
         assert_eq!(modules.len(), 6, "六核心全在册");
         for (name, cell) in modules {
+            let denominator: std::collections::BTreeSet<_> = cell["rust"]["public_symbols"]
+                .as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect();
+            for target in ["vm", "rust", "c"] {
+                for environment in ["native", "browser"] {
+                    let actual: std::collections::BTreeSet<_> = cell[target][environment]
+                        .as_array().unwrap().iter().map(|s| s["symbol"].as_str().unwrap()).collect();
+                    assert_eq!(actual, denominator, "{name}/{target}/{environment}: full public denominator");
+                }
+            }
             // 四格全在册
             assert!(
                 cell["vm"]["native"].is_array() && cell["vm"]["browser"].is_array(),

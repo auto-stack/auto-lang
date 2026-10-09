@@ -19,6 +19,28 @@ pub struct AssemblyPlan {
 }
 
 impl AssemblyPlan {
+    pub fn selection(&self) -> super::model::LayerSelection {
+        let public = self
+            .boundary
+            .map(|boundary| &self.source[..boundary - 1])
+            .unwrap_or(&self.source);
+        super::model::LayerSelection {
+            module: self.module.clone(),
+            target: self.context.target,
+            public_file: self.public_path.to_string_lossy().into(),
+            context_file: self
+                .target_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().into()),
+            candidate_files: Vec::new(),
+            context_byte_boundary: self.boundary,
+            public_hash: fnv1a64(public),
+            context_hash: self
+                .boundary
+                .map(|boundary| fnv1a64(&self.source[boundary..])),
+            source: self.source.clone(),
+        }
+    }
     pub fn from_resolved(
         module: &str,
         public: &Path,
@@ -39,7 +61,12 @@ impl AssemblyPlan {
         let mut boundary = None;
         // VM consumes Auto bodies. Host emitters consume their host provider;
         // side-layer files remain candidates until an emitter implements them.
-        if context.target == AssemblyTarget::Vm && selected.is_file() {
+        let stdlib = super::loader::repo_stdlib_root()?;
+        let rust_auto_layer =
+            context.target == AssemblyTarget::Rust && !public_path.starts_with(&stdlib);
+        if (matches!(context.target, AssemblyTarget::Vm | AssemblyTarget::C) || rust_auto_layer)
+            && selected.is_file()
+        {
             let layer_source = std::fs::read_to_string(&selected)?;
             reject_conflicts(
                 module,
@@ -47,6 +74,11 @@ impl AssemblyPlan {
                 &public_source,
                 &selected,
                 &layer_source,
+                match context.target {
+                    AssemblyTarget::Vm => LayerKind::Vm,
+                    AssemblyTarget::Rust => LayerKind::Rust,
+                    AssemblyTarget::C => LayerKind::C,
+                },
             )?;
             source.push('\n');
             boundary = Some(source.len());
@@ -57,10 +89,10 @@ impl AssemblyPlan {
             "{:?}|{:?}|{}|{}|{}|{}",
             context.target,
             context.environment,
-            public_path.display(),
+            module,
             target_path
                 .as_ref()
-                .map(|p| p.to_string_lossy())
+                .map(|p| p.file_name().unwrap_or_default().to_string_lossy())
                 .unwrap_or_default(),
             super::providers::catalog_content_fingerprint(),
             source
@@ -129,6 +161,7 @@ fn reject_conflicts(
     public_source: &str,
     target_path: &Path,
     target_source: &str,
+    target_kind: LayerKind,
 ) -> AutoResult<()> {
     let public = super::loader::parse_layer(
         public_source,
@@ -137,7 +170,7 @@ fn reject_conflicts(
     );
     let target = super::loader::parse_layer(
         target_source,
-        LayerKind::Vm,
+        target_kind,
         target_path.display().to_string(),
     );
     // Dependent type declarations may require the combined parser; it remains
@@ -153,7 +186,21 @@ fn reject_conflicts(
             .iter()
             .filter(|s| s.name == declaration.name && s.kind == declaration.kind)
         {
-            if declaration.has_body && (implementation.has_body || implementation.is_vm_decl) {
+            let signature_drift = implementation.has_body
+                && match (&declaration.signature, &implementation.signature) {
+                    (Some(public), Some(selected)) => {
+                        public.parameters != selected.parameters
+                            || public.parameter_modes != selected.parameter_modes
+                            || public.returns != selected.returns
+                            || public.is_static != selected.is_static
+                            || public.has_self != selected.has_self
+                            || public.generics != selected.generics
+                    }
+                    _ => false,
+                };
+            if signature_drift
+                || (declaration.has_body && (implementation.has_body || implementation.is_vm_decl))
+            {
                 let errors = [
                     (&public_path, public_source, declaration.source_span),
                     (&target_path, target_source, implementation.source_span),
@@ -163,8 +210,18 @@ fn reject_conflicts(
                     let (start, length) = span.unwrap_or((0, 0));
                     AutoError::MsgWithSource(MsgWithSource {
                         message: format!(
-                            "STDASSEMBLY.PROVIDER_CONFLICT: {module}.{} has multiple bodies",
-                            declaration.name
+                            "{}: {module}.{} {}",
+                            if signature_drift {
+                                "STDASSEMBLY.SIGNATURE_DRIFT"
+                            } else {
+                                "STDASSEMBLY.PROVIDER_CONFLICT"
+                            },
+                            declaration.name,
+                            if signature_drift {
+                                "public and target signatures differ"
+                            } else {
+                                "has multiple bodies"
+                            }
                         ),
                         source: miette::NamedSource::new(
                             path.to_string_lossy(),
@@ -467,5 +524,54 @@ mod plan738_repairs {
             validate(&inventory, &shims)[0].verification,
             VerificationLevel::Bound
         );
+    }
+
+    #[test]
+    fn plan738_merge_replacement_withdraws_previous_contract() {
+        use crate::vm::native::NativeInterface;
+        let mut selected = NativeInterface::new();
+        let id = selected.register_typed_shim_by_name(
+            "auto.net.tcp_bind",
+            |_, _| Ok(()),
+            &["str"],
+            "TcpListener?",
+        );
+        let original = selected.get(id).unwrap().clone();
+        let mut replacement = NativeInterface::new();
+        replacement.register_static(id, |_, _| Ok(()));
+        selected.merge(&replacement);
+        assert!(!std::sync::Arc::ptr_eq(
+            &original,
+            selected.get(id).unwrap()
+        ));
+        assert!(selected.contract(id).is_none());
+    }
+
+    #[test]
+    fn plan738_clone_type_store_does_not_mutate_original_epoch() {
+        let session = crate::compile::CompileSession::new();
+        let cloned = session.clone();
+        assert!(!std::sync::Arc::ptr_eq(
+            &session.type_store(),
+            &cloned.type_store()
+        ));
+        crate::parser::Parser::new_with_type_store(
+            "type CloneOnly { value int }",
+            cloned.type_store(),
+        )
+        .parse()
+        .unwrap();
+        assert!(cloned
+            .type_store()
+            .read()
+            .unwrap()
+            .lookup_type_decl(&"CloneOnly".into())
+            .is_some());
+        assert!(session
+            .type_store()
+            .read()
+            .unwrap()
+            .lookup_type_decl(&"CloneOnly".into())
+            .is_none());
     }
 }

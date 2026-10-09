@@ -314,6 +314,8 @@ pub struct CompileSession {
     /// seam，T-06 CLI/生成收据消费）。Clone 时重置（同 compiled_modules——
     /// 记录属于"本次装载"而非可继承状态）。
     pub layer_selections: Vec<crate::stdlib_assembly::model::LayerSelection>,
+    pub assembly_references: Vec<crate::stdlib_assembly::reference::ReferenceProof>,
+    pub assembly_manifest: Option<crate::stdlib_assembly::manifest::AssemblyManifest>,
 
     /// PLAN-738 T-05（§5.5）：本 session 解析到的 stdlib root 身份。首个
     /// stdlib 模块装载时记录；后续装载发现根变化 → SessionTargetMismatch
@@ -329,7 +331,7 @@ impl Clone for CompileSession {
 
             query_engine: None, // QueryEngine is recreated on-demand after clone
 
-            type_store: self.type_store.clone(),
+            type_store: Arc::new(RwLock::new(self.type_store.read().unwrap().clone_for_epoch())),
 
             auto_cache: self.auto_cache.clone(),
 
@@ -363,6 +365,8 @@ impl Clone for CompileSession {
             script_mode: self.script_mode,         // Plan 555 T02
             assembly: self.assembly,               // PLAN-738：装配目标随 clone 传递
             layer_selections: Vec::new(),          // 记录属于本次装载，重置
+            assembly_references: Vec::new(),
+            assembly_manifest: None,
             stdlib_root: None, // A cloned compiler starts a new assembly epoch.
             loaded_assemblies: HashMap::new(),
         }
@@ -416,6 +420,8 @@ impl CompileSession {
             script_mode: crate::mode::ScriptMode::Normal, // Plan 555 T02
             assembly: Default::default(),                 // PLAN-738：默认 Vm×Native
             layer_selections: Vec::new(),
+            assembly_references: Vec::new(),
+            assembly_manifest: None,
             stdlib_root: None, // PLAN-738 T-05：首个 stdlib 装载时记录
             loaded_assemblies: HashMap::new(),
         }
@@ -467,6 +473,7 @@ impl CompileSession {
         use_stmt: &UseStatement,
         root_path: &std::path::Path,
         merged_context: Option<(&std::path::Path, usize)>,
+        source: &str,
     ) {
         let mut candidates: Vec<String> = Vec::new();
         for ext in [".vm.at", ".rs.at", ".c.at"] {
@@ -477,7 +484,7 @@ impl CompileSession {
             if cand.exists() {
                 let selected = merged_context
                     .as_ref()
-                    .map(|(p, _)| *p == cand)
+                    .map(|(p, _)| p.canonicalize().ok() == cand.canonicalize().ok())
                     .unwrap_or(false);
                 if !selected {
                     candidates.push(cand.to_string_lossy().to_string());
@@ -492,6 +499,10 @@ impl CompileSession {
                 context_file: merged_context.map(|(p, _)| p.to_string_lossy().to_string()),
                 candidate_files: candidates,
                 context_byte_boundary: merged_context.map(|(_, b)| b),
+                public_hash: crate::stdlib_assembly::model::fnv1a64(
+                    merged_context.map(|(_, b)| &source[..b - 1]).unwrap_or(source)),
+                context_hash: merged_context.map(|(_, b)| crate::stdlib_assembly::model::fnv1a64(&source[b..])),
+                source: source.into(),
             });
     }
 
@@ -521,6 +532,17 @@ impl CompileSession {
 
     pub fn type_store(&self) -> Arc<RwLock<TypeStore>> {
         self.type_store.clone()
+    }
+
+    pub fn freeze_assembly_manifest(&mut self, consumer: &str, path: &std::path::Path, source: &str)
+        -> AutoResult<crate::stdlib_assembly::manifest::AssemblyManifest> {
+        let stdlib = crate::stdlib_assembly::loader::repo_stdlib_root()?;
+        let manifest = crate::stdlib_assembly::manifest::AssemblyManifest::freeze(
+            self.assembly, consumer, path.parent().unwrap_or(std::path::Path::new(".")),
+            &stdlib, &self.layer_selections, self.assembly_references.clone(),
+        ).with_consumer_input("project/entry", source);
+        self.assembly_manifest = Some(manifest.clone());
+        Ok(manifest)
     }
 
     /// Get cache statistics (Plan 085 Phase 5)
@@ -1262,20 +1284,6 @@ impl CompileSession {
     /// Inner implementation of load_module (called after cycle check)
 
     fn load_module_inner(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
-        if self.assembly.target != crate::stdlib_assembly::model::AssemblyTarget::Vm {
-            if let Some(module) = use_stmt.module.strip_prefix("auto.") {
-                let target = match self.assembly.target {
-                    crate::stdlib_assembly::model::AssemblyTarget::Rust => "rust",
-                    crate::stdlib_assembly::model::AssemblyTarget::C => "c",
-                    _ => unreachable!(),
-                };
-                let catalog = crate::stdlib_assembly::providers::load_catalog().map_err(AutoError::Msg)?;
-                if let Some(claim) = catalog.providers.iter().find(|p| p.module == module && p.target == target && p.status == "unsupported") {
-                    return Err(AutoError::Msg(format!("STDASSEMBLY.PROVIDER_UNSUPPORTED: {module}/{target}: {}",
-                        claim.reason.as_deref().unwrap_or("no provider"))));
-                }
-            }
-        }
         // Phase 5 / PLAN-738 T-05: AutoCache 装配感知命中
         //
         // §5.5 早退一致性：命中只替换 parse 步（类型抽取），本 epoch 的
@@ -1563,6 +1571,7 @@ impl CompileSession {
                 use_stmt,
                 &module_root,
                 context.as_ref().map(|(p, b)| (p.as_path(), *b)),
+                &module_source,
             );
 
             self.loaded_assemblies.insert(use_stmt.module.clone(), cached_entry);
@@ -1617,6 +1626,7 @@ impl CompileSession {
             use_stmt,
             &root_path,
             merged_context.as_ref().map(|(p, b)| (p.as_path(), *b)),
+            &module_source,
         );
 
         // Cross-module function calls: compile module to bytecode
@@ -1757,7 +1767,7 @@ impl CompileSession {
 
                 let _ = store.merge_with_conflicts(&module_type_store, &use_stmt.module);
             } else if !use_stmt.items.is_empty() {
-                store.import_items(&module_type_store, &use_stmt.items);
+                store.import_items_from(&module_type_store, &use_stmt.items, &use_stmt.module);
             } else {
 
                 // Plan 545: bare `use db` = namespace-only（Rust 2018 风格）。
@@ -1870,6 +1880,7 @@ impl CompileSession {
             .to_string();
 
         let mut codegen = Codegen::new_with_type_store(self.type_store.clone());
+        codegen.assembly_context = self.assembly;
 
         // Plan 345: set module context so global variables get qualified keys
         // (e.g. "db.notes" instead of "notes"), providing cross-module isolation.
@@ -1941,6 +1952,7 @@ impl CompileSession {
         }
 
         codegen.code.push(OpCode::HALT as u8);
+        self.assembly_references.extend(codegen.assembly_references.iter().cloned());
 
         // Plan 346: Merge this module's generic_registry + object pools into
         // the session so they can be combined with the main module's at link time.

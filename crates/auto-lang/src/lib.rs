@@ -1461,6 +1461,7 @@ async fn execute_autovm_with_deadline(
     }
     // Plan 123: Share TypeStore with Parser so Codegen can access registered types/enums
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    codegen.assembly_context = session.assembly;
     // PLAN-013 T1: seed the root codegen with the `#[vm]` fn names declared
     // by dep modules (e.g. stdlib term.vm.at) — dep modules compile in their
     // own codegen pass, so the root would otherwise never learn that an
@@ -1660,6 +1661,8 @@ async fn execute_autovm_with_deadline(
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
+    session.assembly_references.extend(codegen.assembly_references.iter().cloned());
+    session.freeze_assembly_manifest("vm-batch", std::path::Path::new("<main>"), code.as_ref())?;
     let main_module = codegen.finish("<main>".to_string());
     vm_debug!("DEBUG: Main module exports: {:?}", main_module.exports.keys().collect::<Vec<_>>());
     linker.add_entry_module(main_module);
@@ -1908,6 +1911,7 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     }
 
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    codegen.assembly_context = session.assembly;
     // PLAN-013 T1: 与脚本路径同款——dep 模块(如 stdlib term.vm.at)声明的
     // #[vm] fn 名播种进根 codegen,裸调用才不会被 Plan 347 影子抑制改道 reloc。
     for name in &session.vm_fn_names {
@@ -1948,6 +1952,8 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
+    session.assembly_references.extend(codegen.assembly_references.iter().cloned());
+    session.freeze_assembly_manifest("vm-batch", std::path::Path::new("<main>"), code.as_ref())?;
     let main_module = codegen.finish("<main>".to_string());
     linker.add_entry_module(main_module);
 
@@ -5250,6 +5256,7 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     ctee.transform(&mut ast)?;
 
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    codegen.assembly_context = session.assembly;
     // PLAN-013 T1: 与脚本路径同款——dep 模块(如 stdlib term.vm.at)声明的
     // #[vm] fn 名播种进根 codegen,裸调用才不会被 Plan 347 影子抑制改道 reloc。
     for name in &session.vm_fn_names {
@@ -5299,6 +5306,8 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
+    session.assembly_references.extend(codegen.assembly_references.iter().cloned());
+    session.freeze_assembly_manifest("vm-batch", std::path::Path::new("<main>"), code.as_ref())?;
     let main_module = codegen.finish("<main>".to_string());
     linker.add_entry_module(main_module);
 
@@ -5479,6 +5488,7 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     ctee.transform(&mut ast)?;
 
     let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    codegen.assembly_context = session.assembly;
     // PLAN-013 T1: 与脚本路径同款——dep 模块(如 stdlib term.vm.at)声明的
     // #[vm] fn 名播种进根 codegen,裸调用才不会被 Plan 347 影子抑制改道 reloc。
     for name in &session.vm_fn_names {
@@ -5528,6 +5538,8 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
+    session.assembly_references.extend(codegen.assembly_references.iter().cloned());
+    session.freeze_assembly_manifest("vm-batch", std::path::Path::new("<main>"), code.as_ref())?;
     let main_module = codegen.finish("<main>".to_string());
     linker.add_entry_module(main_module);
 
@@ -6014,50 +6026,18 @@ pub fn trans_c_with_session(session: &mut CompileSession, path: &str) -> AutoRes
     // Compile source with incremental support
     let frag_ids = session.compile_source(&code, path)?;
 
-    // Get file_id and Database
-    let db = session.db();
-    let file_id = {
-        let db_read = db.read().unwrap();
-        db_read
-            .get_file_id_by_path(path)
-            .ok_or_else(|| format!("File not found in database: {}", path))?
-    };
-
-    // Create transpiler with Database
-    let mut trans = CTrans::with_database(db.clone());
-
-    // Perform incremental transpilation
-    let results = trans.trans_incremental_c(session, file_id)?;
-
-    // Merge results and write output files
-    let cname = path.replace(".at", ".c");
-    let hname = path.replace(".at", ".h");
-
-    let mut source_content = String::new();
-    let mut header_content = String::new();
-
-    // Merge results
-    for (_frag_id, (source, header)) in &results {
-        source_content.push_str(source);
-        header_content.push_str(header);
+    let artifacts = crate::stdlib_assembly::emission::emit_c_assembly(session, &code, std::path::Path::new(path))?;
+    let manifest = session.freeze_assembly_manifest("c-emission", std::path::Path::new(path), &code)?;
+    let output = std::path::Path::new(path).parent().unwrap_or(std::path::Path::new("."));
+    // All emission/strict checks finish before any generated artifact is written.
+    for artifact in &artifacts {
+        std::fs::write(output.join(format!("{}.c", artifact.stem)), &artifact.source)?;
+        std::fs::write(output.join(format!("{}.h", artifact.stem)), &artifact.header)?;
     }
+    std::fs::write(output.join(format!("{}.assembly.json", std::path::Path::new(path).file_stem().unwrap().to_string_lossy())), serde_json::to_vec(&manifest).map_err(|error| crate::error::AutoError::Msg(error.to_string()))?)?;
+    Ok(format!("[trans] {} -> {} ({} fragments, {} C artifacts)",
+        path, path.replace(".at", ".c"), frag_ids.len(), artifacts.len()))
 
-    // Write output files
-    if !source_content.is_empty() {
-        std::fs::write(&cname, source_content)?;
-    }
-    if !header_content.is_empty() {
-        std::fs::write(&hname, header_content)?;
-    }
-
-    Ok(format!(
-        "[trans] {} -> {} ({} fragments, {} dirty, {} transpiled)",
-        path,
-        cname,
-        frag_ids.len(),
-        db.read().unwrap().get_dirty_fragments().len(),
-        results.len()
-    ))
 }
 
 /// Transpile to Rust with incremental compilation support
@@ -6098,6 +6078,15 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
 
     // Plan 204 Phase 6A: Use .a2r.rs suffix to avoid overwriting .rs files
     let rsname = path.replace(".at", ".a2r.rs");
+    if session.layer_selections.iter().any(|selection| selection.context_file.as_ref().is_some_and(|file| file.ends_with(".rs.at"))) {
+        let (output, references) = crate::stdlib_assembly::emission::emit_rust_assembly(session, &code, std::path::Path::new(path))?;
+        session.assembly_references.extend(references);
+        let manifest = session.freeze_assembly_manifest("rust-emission", std::path::Path::new(path), &code)?;
+        std::fs::write(&rsname, output)?;
+        std::fs::write(format!("{rsname}.assembly.json"), serde_json::to_vec(&manifest).map_err(|error| crate::error::AutoError::Msg(error.to_string()))?)?;
+        return Ok(format!("[trans] {path} -> {rsname} (selected Rust Auto layers)"));
+    }
+
     let fname = AutoPath::new(path).filename();
 
     // Re-parse for transpilation using the full pipeline (not incremental),
@@ -6386,9 +6375,12 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     crate::trans::rust::RustTrans::post_process_with(&mut sink.body, &trans.ord_restricted_names());
 
     // Write output file
+    session.assembly_references.extend(trans.assembly_references.iter().cloned());
+    let manifest = session.freeze_assembly_manifest("rust-emission", std::path::Path::new(path), &code)?;
     let source_bytes = sink.done()?;
     if !source_bytes.is_empty() {
         std::fs::write(&rsname, source_bytes)?;
+        std::fs::write(format!("{rsname}.assembly.json"), serde_json::to_vec(&manifest).map_err(|error| crate::error::AutoError::Msg(error.to_string()))?)?;
 
         // Plan 204 Phase 6B: Basic output validation
         let source_str = String::from_utf8_lossy(source_bytes);

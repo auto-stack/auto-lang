@@ -79,6 +79,8 @@ pub struct AutovmReplSession {
     /// 内容或根变化 = 活 VM 下热换 stdlib ABI → SessionTargetMismatch
     /// 明确错误要求重建（不让旧堆资源混跑新实现）。pub(crate) 供测试注入。
     pub(crate) module_fingerprints: Vec<(String, u64, String)>,
+    assembly_selections: Vec<crate::stdlib_assembly::model::LayerSelection>,
+    pub assembly_manifest: Option<crate::stdlib_assembly::manifest::AssemblyManifest>,
 }
 
 impl AutovmReplSession {
@@ -126,6 +128,8 @@ impl AutovmReplSession {
             #[cfg(feature = "python")]
             py_bridge: None, // Plan 300 Phase 2: Lazy init on first use.py
             module_fingerprints: Vec::new(), // PLAN-738 T-05: stdlib 热换守卫台账
+            assembly_selections: Vec::new(),
+            assembly_manifest: None,
         }
     }
 
@@ -319,6 +323,7 @@ impl AutovmReplSession {
         if !self.module_fingerprints.iter().any(|(module, _, _)| module == &use_stmt.module) {
             self.module_fingerprints.push((use_stmt.module.clone(), assembly_plan.fingerprint,
                 stdlib_path.to_string_lossy().to_string()));
+            self.assembly_selections.push(assembly_plan.selection());
         }
 
         vm_debug!(
@@ -473,6 +478,15 @@ impl AutovmReplSession {
     }
 
     fn run_inner(&mut self, code: &str) -> AutoResult<String> {
+        let stdlib = crate::stdlib_assembly::loader::repo_stdlib_root()?;
+        for (module, fingerprint, root) in &self.module_fingerprints {
+            let relative = module.strip_prefix("auto.").unwrap_or(module).replace('.', "/");
+            let plan = crate::stdlib_assembly::plan::AssemblyPlan::from_resolved(
+                module, &stdlib.join(relative).with_extension("at"), Default::default())?;
+            if plan.fingerprint != *fingerprint || stdlib.to_string_lossy().as_ref() != root {
+                return Err(AutoError::Msg(format!("session_target_mismatch: loaded stdlib {module} changed; rebuild the persistent session")));
+            }
+        }
         // 0. Plan 094: Resolve use statements first (loads modules, registers functions)
         self.resolve_use_statements(code)?;
 
@@ -834,6 +848,18 @@ impl AutovmReplSession {
         let mut flash = VirtualFlash::new_with_code(self.bytecode.clone());
         flash.object_keys = self.object_keys.clone();
         flash.object_types = self.object_types.clone();
+
+        let entry = new_code_start;
+        let proofs = match crate::stdlib_assembly::reference::verify_linked_native_closure(
+            &flash, entry, &self.vm.native_interface, &codegen.strings,
+        ) {
+            Ok(proofs) => proofs,
+            Err(error) => { self.codegen = Some(codegen); return Err(AutoError::Msg(error)); }
+        };
+        self.assembly_manifest = Some(crate::stdlib_assembly::manifest::AssemblyManifest::freeze(
+            Default::default(), "vm-persistent", std::path::Path::new("."), &stdlib,
+            &self.assembly_selections, proofs,
+        ).with_consumer_input("project/snippet", code));
 
         // Update VM's flash and strings
         self.vm.flash = Arc::new(flash);

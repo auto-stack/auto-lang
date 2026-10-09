@@ -183,6 +183,24 @@ pub struct SymbolConflict {
 }
 
 impl TypeStore {
+    /// Start an independent compiler epoch without imported definitions.
+    /// Main-file definitions survive; dependency names must be resolved again.
+    pub fn clone_for_epoch(&self) -> Self {
+        let mut store = self.clone();
+        let imported: HashSet<String> = self.symbol_origin.iter()
+            .filter(|(_, origin)| origin.as_str() != "<main>")
+            .map(|(name, _)| name.clone()).collect();
+        store.type_decls.retain(|name, _| !imported.contains(name.as_str()));
+        store.fn_decls.retain(|name, _| !imported.contains(&name.to_string()));
+        store.spec_decls.retain(|name, _| !imported.contains(name.as_str()));
+        store.enum_decls.retain(|name, _| !imported.contains(name.as_str()));
+        store.generic_templates.retain(|name, _| !imported.contains(name));
+        store.type_aliases.retain(|name, _| !imported.contains(name.as_str()));
+        store.symbol_origin.retain(|name, _| !imported.contains(name));
+        store.modules.clear();
+        store
+    }
+
     /// 创建新的类型存储
     pub fn new() -> Self {
         Self {
@@ -627,8 +645,21 @@ impl TypeStore {
         }
     }
 
+    /// Named imports retain their origins so a new assembly epoch can evict them.
+    pub fn import_items_from(&mut self, other: &TypeStore, items: &[String], origin: &str) {
+        let existing_enums: HashSet<_> = self.enum_decls.keys().cloned().collect();
+        self.import_items(other, items);
+        for name in items {
+            let key: AutoStr = name.as_str().into();
+            if other.type_decls.contains_key(&key) || other.fn_decls.contains_key(&Name::from(name.as_str()))
+                || other.spec_decls.contains_key(&key) || other.type_aliases.contains_key(&key)
+                || (other.enum_decls.contains_key(&key) && !existing_enums.contains(&key)) {
+                self.symbol_origin.insert(name.clone(), origin.into());
+            }
+        }
+    }
+
     /// Plan 545 D2: 带来源追踪与冲突检测的合并（wildcard `use mod: *` 路径）。
-    ///
     /// 与 [`TypeStore::merge`] 写入策略逐表一致（enum 首胜、其余末胜），额外：
     /// 目标已有同名符号、来源模块不同、且定义不同 → 收集为冲突返回。
     /// 同名同定义（如 re-export）不报；显式 named import 的主动遮蔽不经过此

@@ -131,14 +131,21 @@ pub fn validate_core_vm_bindings(
                     crate::vm::init_io_module();
                     let method = sym.name.strip_prefix("File.").unwrap_or("");
                     let registry = crate::vm::VM_REGISTRY.lock().unwrap();
-                    let callable = if method == "open" {
-                        registry.get_function("auto.io", "File.open").is_some()
+                    if method == "open" {
+                        registry
+                            .get_function("auto.io", "File.open")
+                            .filter(|entry| {
+                                std::ptr::fn_addr_eq(
+                                    entry.func,
+                                    crate::vm::io::open as crate::vm::VmFunction,
+                                )
+                            })
+                            .and_then(|_| crate::vm::io::method_contract(method))
                     } else {
-                        registry.get_method("File", method).is_some()
-                    };
-                    callable
-                        .then(|| crate::vm::io::method_contract(method))
-                        .flatten()
+                        registry.get_method("File", method).and_then(|selected| {
+                            crate::vm::io::selected_method_contract(method, *selected)
+                        })
+                    }
                 } else {
                     None
                 };
@@ -316,6 +323,24 @@ pub fn requested_diagnostics(
 /// The name table is the same public dispatch identity used by VM codegen.
 /// Layer helper spelling must not create a second, unbound public API.
 pub fn public_native_name(module: &str, sym: &SymbolEntry) -> String {
+    if module == "http" && sym.kind == SymbolKind::Method {
+        if let Some((owner, method)) = sym.name.split_once('.') {
+            let prefix = match owner {
+                "Server" => "server",
+                "Request" => "request",
+                "Response" => "response",
+                "RequestBuilder" => "request_builder",
+                "HTTPStream" => "stream",
+                _ => return canonical_native_name(module, sym),
+            };
+            let module = if owner == "HTTPStream" {
+                "http_stream"
+            } else {
+                "http"
+            };
+            return format!("auto.{module}.{prefix}_{method}");
+        }
+    }
     if module == "io" && sym.kind == SymbolKind::Method {
         return canonical_native_name(module, sym);
     }
@@ -382,7 +407,7 @@ fn normalize_host_type(ty: &str) -> String {
     }
 }
 
-fn signature_matches(
+pub(crate) fn signature_matches(
     module: &str,
     sym: &SymbolEntry,
     contract: &crate::vm::native::NativeContract,
@@ -392,8 +417,8 @@ fn signature_matches(
         .signature
         .as_ref()
         .ok_or("source logical signature missing")?;
-    if !signature.generics.is_empty()
-        || signature.parameter_modes.iter().any(|mode| mode != "View")
+    if signature.generics != contract.generics
+        || signature.parameter_modes != contract.parameter_modes
         || signature.attributes.iter().any(|attr| attr != "vm")
     {
         return Err(
@@ -401,9 +426,10 @@ fn signature_matches(
         );
     }
     if sym.kind == SymbolKind::Method {
-        let known_receiver = contract.producer.starts_with("vm::io::")
-            || (module == "net" && contract.producer.starts_with("auto.net.tcp_"));
-        if !known_receiver || (signature.is_static && contract.producer != "vm::io::open") {
+        let owner = sym.name.split('.').next().unwrap_or("");
+        if signature.is_static != contract.is_static
+            || (!signature.is_static && contract.receiver.as_deref() != Some(owner))
+        {
             return Err("independent receiver/static contract unavailable".into());
         }
     }
@@ -607,12 +633,12 @@ pub fn core_target_env_matrix(
     let modules: serde_json::Map<String, serde_json::Value> = CORE_MODULES
         .iter()
         .map(|m| {
-            let native_cell: Vec<_> = v_native
+            let mut native_cell: Vec<_> = v_native
                 .iter()
                 .filter(|v| v.module == *m && v.public_symbol)
                 .map(symbol_json)
                 .collect();
-            let browser_cell: Vec<_> = v_browser
+            let mut browser_cell: Vec<_> = v_browser
                 .iter()
                 .filter(|v| v.module == *m && v.public_symbol)
                 .map(symbol_json)
@@ -628,6 +654,22 @@ pub fn core_target_env_matrix(
                         .collect()
                 })
                 .unwrap_or_default();
+            // Types and physical fields share the public denominator with callables.
+            // They carry declaration evidence only until a target layout is proven.
+            for symbol in &public_symbols {
+                for (cell, environment) in [(&mut native_cell, Environment::Native),
+                    (&mut browser_cell, Environment::Browser)] {
+                    if !cell.iter().any(|entry| entry["symbol"] == symbol.as_str()) {
+                        cell.push(serde_json::json!({
+                            "symbol": symbol, "native_name": null,
+                            "status": if environment == Environment::Browser { "unsupported" } else { "unverified" },
+                            "verification": "declared",
+                            "reason": if environment == Environment::Browser { "no browser layout adapter is registered" }
+                                else { "physical type/field representation has declaration evidence only" },
+                        }));
+                    }
+                }
+            }
             let claim = |target: &str| {
                 catalog
                     .as_ref()

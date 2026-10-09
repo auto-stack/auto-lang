@@ -13,6 +13,10 @@
 
 pub mod loader;
 pub mod model;
+pub mod manifest;
+pub mod host;
+pub mod emission;
 pub mod plan;
 pub mod providers;
+pub mod reference;
 pub mod validate;

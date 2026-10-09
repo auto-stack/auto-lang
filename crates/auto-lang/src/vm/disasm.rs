@@ -73,6 +73,11 @@ impl<'a> Disassembler<'a> {
         Self { flash }
     }
 
+    pub(crate) fn instruction_operands(&self, op: OpCode, offset: usize) -> usize {
+        if op == OpCode::SOURCE_LINE { 2 }
+        else { self.decode_operands(op, offset + 1, offset).1 }
+    }
+
     /// Disassemble a range of bytecode
     pub fn disassemble_range(&self, start: usize, end: usize) -> Vec<DisasmLine> {
         let mut lines = Vec::new();

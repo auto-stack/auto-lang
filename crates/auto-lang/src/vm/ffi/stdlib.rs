@@ -8737,16 +8737,16 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // Net/TCP functions (manual shims — use heap objects for TCP state)
     // Note: registry uses underscores in method portion (auto.net.tcp_bind, not auto.net.tcp.bind)
     natives.register_typed_shim_by_name("auto.net.tcp_bind", shim_net_tcp_bind, &["str"], "TcpListener?");
-    natives.register_typed_shim_by_name("auto.net.tcp_listener_accept", shim_net_tcp_listener_accept, &["TcpListener"], "TcpStream?");
-    natives.register_typed_shim_by_name("auto.net.tcp_listener_close", shim_net_tcp_listener_close, &["TcpListener"], "void");
+    natives.register_method_shim_by_name("auto.net.tcp_listener_accept", shim_net_tcp_listener_accept, "TcpListener", &["TcpListener"], "TcpStream?");
+    natives.register_method_shim_by_name("auto.net.tcp_listener_close", shim_net_tcp_listener_close, "TcpListener", &["TcpListener"], "void");
     natives.register_typed_shim_by_name("auto.net.tcp_connect", shim_net_tcp_connect, &["str"], "TcpStream?");
     natives.register_shim_by_name("auto.net.tcp_stream_read", shim_net_tcp_stream_read);
-    natives.register_typed_shim_by_name("auto.net.tcp_stream_write", shim_net_tcp_stream_write, &["TcpStream", "[]byte"], "int");
-    natives.register_typed_shim_by_name("auto.net.tcp_stream_read_all", shim_net_tcp_stream_read_all, &["TcpStream"], "[]byte");
-    natives.register_typed_shim_by_name("auto.net.tcp_stream_write_str", shim_net_tcp_stream_write_str, &["TcpStream", "str"], "int");
-    natives.register_typed_shim_by_name("auto.net.tcp_stream_close", shim_net_tcp_stream_close, &["TcpStream"], "void");
-    natives.register_typed_shim_by_name("auto.net.tcp_stream_set_read_timeout", shim_net_tcp_stream_set_read_timeout, &["TcpStream", "int"], "void");
-    natives.register_typed_shim_by_name("auto.net.tcp_stream_set_write_timeout", shim_net_tcp_stream_set_write_timeout, &["TcpStream", "int"], "void");
+    natives.register_method_shim_by_name("auto.net.tcp_stream_write", shim_net_tcp_stream_write, "TcpStream", &["TcpStream", "[]byte"], "int");
+    natives.register_method_shim_by_name("auto.net.tcp_stream_read_all", shim_net_tcp_stream_read_all, "TcpStream", &["TcpStream"], "[]byte");
+    natives.register_method_shim_by_name("auto.net.tcp_stream_write_str", shim_net_tcp_stream_write_str, "TcpStream", &["TcpStream", "str"], "int");
+    natives.register_method_shim_by_name("auto.net.tcp_stream_close", shim_net_tcp_stream_close, "TcpStream", &["TcpStream"], "void");
+    natives.register_method_shim_by_name("auto.net.tcp_stream_set_read_timeout", shim_net_tcp_stream_set_read_timeout, "TcpStream", &["TcpStream", "int"], "void");
+    natives.register_method_shim_by_name("auto.net.tcp_stream_set_write_timeout", shim_net_tcp_stream_set_write_timeout, "TcpStream", &["TcpStream", "int"], "void");
     // Plan 313: TCP flush + nodelay for SSE/low-latency writes
     natives.register_shim_by_name("auto.net.tcp_stream_flush", shim_net_tcp_stream_flush);
     natives.register_shim_by_name("auto.net.tcp_stream_set_nodelay", shim_net_tcp_stream_set_nodelay);

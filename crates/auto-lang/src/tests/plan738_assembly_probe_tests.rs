@@ -246,6 +246,13 @@ fn p4_rust_emission_rejects_missing_net_provider() {
     let tmp = tempfile::tempdir().unwrap();
     let main = tmp.path().join("net_main.at");
     fs::write(&main, "use auto.net\n\nfn main() {\n    let x = 1\n}\n").unwrap();
+    let mut unused = crate::compile::CompileSession::new();
+    crate::trans_rust_with_session(&mut unused, main.to_str().unwrap())
+        .expect("unused unsupported declarations must not reject a module import");
+    let unused_output = fs::read_to_string(tmp.path().join("net_main.a2r.rs")).unwrap();
+    assert!(!unused_output.contains("a2r_std::net"));
+    fs::remove_file(tmp.path().join("net_main.a2r.rs")).unwrap();
+    fs::write(&main, "use auto.net\n\nfn main() {\n    let x = net.tcp_bind(\"127.0.0.1:0\")\n}\n").unwrap();
 
     let mut session = crate::compile::CompileSession::new();
     let error = crate::trans_rust_with_session(&mut session, main.to_str().unwrap())

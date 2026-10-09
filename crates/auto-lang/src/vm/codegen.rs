@@ -148,6 +148,12 @@ fn default_expr_for_type(ty: &Type) -> crate::ast::Expr {
 
 /// Codegen: Compiles AST directly to AutoVM Bytecode
 pub struct Codegen {
+    assembly_pending_native: bool,
+    pub assembly_context: crate::stdlib_assembly::model::AssemblyContext,
+    assembly_compile_depth: usize,
+    assembly_native_ids: Vec<u16>,
+    assembly_interface: Option<crate::vm::native::NativeInterface>,
+    pub assembly_references: Vec<crate::stdlib_assembly::reference::ReferenceProof>,
     pub code: Vec<u8>,
     pub exports: HashMap<String, u32>,
     pub relocs: Vec<RelocEntry>,
@@ -642,6 +648,12 @@ impl Codegen {
         scope_stack.push(locals);
 
         let mut codegen = Self {
+            assembly_pending_native: false,
+            assembly_context: Default::default(),
+            assembly_compile_depth: 0,
+            assembly_native_ids: Vec::new(),
+            assembly_interface: None,
+            assembly_references: Vec::new(),
             code: Vec::new(),
             exports: HashMap::new(),
             api_routes: Vec::new(),
@@ -955,6 +967,12 @@ impl Codegen {
         scope_stack.push(locals);
 
         let mut codegen = Self {
+            assembly_pending_native: false,
+            assembly_context: Default::default(),
+            assembly_compile_depth: 0,
+            assembly_native_ids: Vec::new(),
+            assembly_interface: None,
+            assembly_references: Vec::new(),
             code: Vec::new(),
             exports: HashMap::new(),
             api_routes: Vec::new(),
@@ -1150,6 +1168,15 @@ impl Codegen {
     }
 
     pub fn compile_stmt(&mut self, stmt: &Stmt) -> AutoResult<()> {
+        self.assembly_compile_depth += 1;
+        let result = self.compile_stmt_inner(stmt);
+        self.assembly_compile_depth -= 1;
+        result?;
+        if self.assembly_compile_depth == 0 { self.verify_assembly_references()?; }
+        Ok(())
+    }
+
+    fn compile_stmt_inner(&mut self, stmt: &Stmt) -> AutoResult<()> {
         match stmt {
             Stmt::Expr(expr) => {
                 // Plan 364 Step 5: Config-mode accumulation. In config_mode,
@@ -3027,7 +3054,7 @@ impl Codegen {
                                 ));
                             };
                             self.emit(OpCode::CALL_NAT);
-                            self.code.extend_from_slice(&native_id.to_le_bytes());
+                            self.emit_u16(native_id);
 
                             // Check if result is nil (end of iteration)
                             // Nil is represented as -1 in our VM
@@ -3111,7 +3138,7 @@ impl Codegen {
                                         )
                                     })?;
                                 self.emit(OpCode::CALL_NAT);
-                                self.code.extend_from_slice(&native_id.to_le_bytes());
+                                self.emit_u16(native_id);
                                 self.emit(OpCode::DUP);
                                 self.emit(OpCode::CONST_I32);
                                 self.emit_i32(-1);
@@ -5844,6 +5871,15 @@ impl Codegen {
     }
 
     pub fn compile_expr(&mut self, expr: &Expr) -> AutoResult<()> {
+        self.assembly_compile_depth += 1;
+        let result = self.compile_expr_inner(expr);
+        self.assembly_compile_depth -= 1;
+        result?;
+        if self.assembly_compile_depth == 0 { self.verify_assembly_references()?; }
+        Ok(())
+    }
+
+    fn compile_expr_inner(&mut self, expr: &Expr) -> AutoResult<()> {
         self.last_was_native_void = false; // reset for each expression
         self.last_expr_may_py = false; // Plan 569 D2: 粘性位随表达式边界重置（仅 py 臂/Ident 镜像置位）
         match expr {
@@ -6489,7 +6525,7 @@ impl Codegen {
                                     .unwrap_or_else(|| reg.register(&qualified))
                             };
                             self.emit(OpCode::CALL_NAT_COUNTED);
-                            self.code.extend_from_slice(&native_id.to_le_bytes());
+                            self.emit_u16(native_id);
                             self.code.push(0); // arg_count = 0
                             // py-FFI auto return marshals to string pool by default
                             self.last_expr_type = ObjectType::String;
@@ -9749,11 +9785,11 @@ impl Codegen {
                     //（plain CALL_NAT 不携带 arity，多弹/漏弹破坏栈平衡）。
                     if is_py_ffi_call || (9900..=9905).contains(&resolved_id) {
                         self.emit(OpCode::CALL_NAT_COUNTED);
-                        self.code.extend_from_slice(&resolved_id.to_le_bytes());
+                        self.emit_u16(resolved_id);
                         self.code.push(call.args.args.len().min(255) as u8);
                     } else {
                         self.emit(OpCode::CALL_NAT);
-                        self.code.extend_from_slice(&resolved_id.to_le_bytes());
+                        self.emit_u16(resolved_id);
                     }
 
                     // Track return type for type-aware dispatch (e.g., print choosing STR vs I32)
@@ -11427,6 +11463,7 @@ impl Codegen {
     // === Helpers ===
 
     fn emit(&mut self, op: OpCode) {
+        self.assembly_pending_native = matches!(op, OpCode::CALL_NAT | OpCode::CALL_NAT_COUNTED);
         let opcode = op as u8;
         self.code.push(opcode);
     }
@@ -11452,7 +11489,37 @@ impl Codegen {
 
     // Plan 087 Phase 2: Emit u16 value (2 bytes, little-endian)
     fn emit_u16(&mut self, val: u16) {
+        if self.assembly_pending_native {
+            self.assembly_pending_native = false;
+            if !self.assembly_native_ids.contains(&val) { self.assembly_native_ids.push(val); }
+        }
         self.code.extend_from_slice(&val.to_le_bytes());
+    }
+
+    fn verify_assembly_references(&mut self) -> AutoResult<()> {
+        // Verify after the outer compilation operation has released all
+        // native-registry guards. Emission itself must never acquire that lock.
+        let ids = std::mem::take(&mut self.assembly_native_ids);
+        for id in ids {
+            let is_core = {
+                let registry = BIGVM_NATIVES.lock().unwrap();
+                crate::vm::native_catalog::NATIVE_ID_ENTRIES.iter()
+                    .filter(|(_, native)| *native == id).map(|(name, _)| name.to_string())
+                    .chain(registry.get_function_names().into_iter().filter(|name| registry.get_id(name) == Some(id)))
+                    .any(|name| name.strip_prefix("auto.").is_some_and(|rest|
+                        crate::stdlib_assembly::validate::CORE_MODULES.contains(&rest.split('.').next().unwrap_or(""))
+                        || rest.starts_with("http_stream.")))
+            };
+            if !is_core { continue; }
+            let interface = self.assembly_interface.get_or_insert_with(crate::vm::native::NativeInterface::production);
+            if let Some(proof) = interface.verify_core_reference(id).map_err(crate::error::AutoError::Msg)? {
+                if self.assembly_context.environment == crate::stdlib_assembly::model::Environment::Browser {
+                    return Err(crate::error::AutoError::Msg(format!("STDASSEMBLY.PROVIDER_UNSUPPORTED: {}.{} has no browser adapter", proof.module, proof.symbol)));
+                }
+                if !self.assembly_references.iter().any(|p| p.native_id == Some(id)) { self.assembly_references.push(proof); }
+            }
+        }
+        Ok(())
     }
 
     /// Plan 199: Emit SOURCE_LINE opcode if line number changed.

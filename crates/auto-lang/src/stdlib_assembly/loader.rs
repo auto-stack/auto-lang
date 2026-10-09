@@ -421,7 +421,7 @@ fn push_fn(symbols: &mut Vec<SymbolEntry>, f: &crate::ast::Fn, owner: Option<&st
     });
 }
 
-fn source_has_body(content: &str, span: Option<(usize, usize)>) -> bool {
+pub(crate) fn source_has_body(content: &str, span: Option<(usize, usize)>) -> bool {
     let Some((offset, length)) = span else {
         return false;
     };

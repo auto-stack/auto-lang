@@ -117,10 +117,7 @@ fn production_surfaces() -> Result<
     let stdlib_root = loader::repo_stdlib_root().map_err(|e| e.to_string())?;
     auto_lang::vm::native_registry::register_builtin_natives();
 
-    let mut shims = auto_lang::vm::native::NativeInterface::new();
-    shims.register_std_shims();
-    auto_lang::vm::ffi::stdlib::register_stdlib_ffi(&mut shims);
-    shims.build_from_inventory();
+    let shims = auto_lang::vm::native::NativeInterface::production();
 
     let inv = loader::scan_inventory(&stdlib_root);
     Ok((
@@ -231,14 +228,8 @@ fn inspect_actual(
                 .unwrap_or(true)
         })
         .map(|sel| {
-            let public_hash = std::fs::read_to_string(&sel.public_file)
-                .map(|s| auto_lang::stdlib_assembly::model::fnv1a64(&s))
-                .unwrap_or(0);
-            let context_hash = sel
-                .context_file
-                .as_ref()
-                .and_then(|f| std::fs::read_to_string(f).ok())
-                .map(|s| auto_lang::stdlib_assembly::model::fnv1a64(&s));
+            let public_hash = sel.public_hash;
+            let context_hash = sel.context_hash;
             json!({
                 "module": sel.module,
                 "target": sel.target,
@@ -289,76 +280,54 @@ fn inspect_actual(
         "diagnostics": [],
     });
 
-    if check {
-        let (_, registry, shims) = match production_surfaces() {
-            Ok(x) => x,
-            Err(e) => return error_value(EXIT_ERROR, &e),
-        };
-        let mut inv = auto_lang::stdlib_assembly::model::StdlibInventory {
-            schema_version: auto_lang::stdlib_assembly::model::INVENTORY_SCHEMA_VERSION,
-            root: loader::PORTABLE_ROOT.into(),
-            files_total: 0,
-            modules: Vec::new(),
-            diagnostics: Vec::new(),
-        };
-        let snapshot = std::sync::Arc::new(std::sync::RwLock::new(
-            session.type_store().read().unwrap().clone(),
-        ));
-        for selection in &session.layer_selections {
-            let mut layers = Vec::new();
-            for (file, kind) in std::iter::once((
-                &selection.public_file,
-                auto_lang::stdlib_assembly::model::LayerKind::Public,
-            ))
-            .chain(
-                selection
-                    .context_file
-                    .iter()
-                    .map(|f| (f, auto_lang::stdlib_assembly::model::LayerKind::Vm)),
-            ) {
-                let source = match std::fs::read_to_string(file) {
-                    Ok(source) => source,
-                    Err(e) => {
-                        return error_value(
-                            EXIT_ERROR,
-                            &format!("cannot read selected source: {e}"),
-                        )
-                    }
-                };
-                layers.push(loader::parse_layer_with_store(
-                    &source,
-                    kind,
-                    portable_source_id(file, path),
-                    snapshot.clone(),
-                ));
+    let references = match auto_lang::stdlib_assembly::reference::compile_actual_references(
+        &session,
+        &source,
+        std::path::Path::new(path),
+    ) {
+        Ok(references) => references,
+        Err(error) => {
+            value["diagnostics"] = json!([{"message": error.to_string()}]);
+            if check {
+                return (
+                    EXIT_CHECK_FAILED,
+                    json!({
+                        "mode": "actual+check", "target": target, "environment": environment,
+                        "status": "fail", "violations": value["diagnostics"], "manifest": value,
+                    }),
+                );
             }
-            inv.files_total += layers.len();
-            inv.modules
-                .push(auto_lang::stdlib_assembly::model::ModuleInventory {
-                    module: normalize_module(&selection.module),
-                    layers,
-                });
+            return (EXIT_ERROR, value);
         }
+    };
+    let stdlib_root = match loader::repo_stdlib_root() {
+        Ok(root) => root,
+        Err(error) => return error_value(EXIT_ERROR, &error.to_string()),
+    };
+    let assembly = auto_lang::stdlib_assembly::manifest::AssemblyManifest::freeze(
+        session.assembly,
+        "stdlib-inspect",
+        std::path::Path::new(path)
+            .parent()
+            .unwrap_or(std::path::Path::new(".")),
+        &stdlib_root,
+        &session.layer_selections,
+        references,
+    );
+    value["assembly"] = serde_json::to_value(assembly).unwrap();
+    if check {
         let closure: Vec<String> = session
             .layer_selections
             .iter()
             .map(|s| normalize_module(&s.module))
             .collect();
-        let closure_refs: Vec<&str> = closure.iter().map(String::as_str).collect();
-        let (code, mut check_value) = check_core(
-            module,
-            target,
-            environment,
-            Some(&closure_refs),
-            &inv,
-            &registry,
-            &shims,
+        return (
+            EXIT_OK,
+            json!({
+                "mode": "actual+check", "target": target, "environment": environment,
+                "checked_modules": closure, "status": "pass", "violations": [], "manifest": value,
+            }),
         );
-        check_value["mode"] = json!("actual+check");
-        check_value["target"] = json!(target);
-        check_value["environment"] = json!(environment);
-        check_value["manifest"] = value.take();
-        return (code, check_value);
     }
 
     (EXIT_OK, value)

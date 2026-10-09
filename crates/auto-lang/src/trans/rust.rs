@@ -88,6 +88,9 @@ fn snake_of(n: &crate::ast::Name) -> String {
 }
 
 pub struct RustTrans {
+    pub assembly_modules: HashSet<String>,
+    pub assembly_references: Vec<crate::stdlib_assembly::reference::ReferenceProof>,
+    pub assembly_runtime: crate::stdlib_assembly::host::RustRuntime,
     indent: usize,
     uses: HashSet<AutoStr>,
     dep_crates: HashSet<AutoStr>,
@@ -485,6 +488,9 @@ pub struct RustTrans {
 impl RustTrans {
     pub fn new(_name: AutoStr) -> Self {
         Self {
+            assembly_modules: HashSet::new(),
+            assembly_references: Vec::new(),
+            assembly_runtime: Default::default(),
             indent: 0,
             uses: HashSet::new(),
             dep_crates: HashSet::new(),
@@ -590,6 +596,9 @@ impl RustTrans {
     /// Create transpiler with Database (Phase 066: new API)
     pub fn with_database(db: Arc<RwLock<Database>>) -> Self {
         Self {
+            assembly_modules: HashSet::new(),
+            assembly_references: Vec::new(),
+            assembly_runtime: Default::default(),
             indent: 0,
             uses: HashSet::new(),
             dep_crates: HashSet::new(),
@@ -5158,6 +5167,26 @@ impl RustTrans {
     }
 
     fn call(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
+        let mut emitted = Vec::new();
+        self.call_inner(call, &mut emitted)?;
+        if let Expr::Dot(object, symbol) = call.name.as_ref() {
+            if let Expr::Ident(module) = object.as_ref() {
+                if !self.local_var_types.contains_key(module)
+                    && !self.local_modules.contains(module.as_str())
+                    && !self.sibling_modules.contains(module.as_str()) {
+                    let module = if module.as_str() == "Json" { "json" } else { module.as_str() };
+                    let text = std::str::from_utf8(&emitted).map_err(|e| e.to_string())?;
+                    if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                        module, symbol.as_str(), text, self.assembly_runtime,
+                    )? { self.assembly_references.push(proof); }
+                }
+            }
+        }
+        out.write_all(&emitted)?;
+        Ok(())
+    }
+
+    fn call_inner(&mut self, call: &Call, out: &mut impl Write) -> AutoResult<()> {
         // PLAN-714 r3 R3-T2: 裸名 diff 内建映射（VM codegen intrinsics
         // 9915/9916/9917 同源——corpus fsys.at 裸名直调位；模块内无本地
         // 同名符号[fsys.at:245 注记原文]）。
@@ -8527,7 +8556,8 @@ impl RustTrans {
             if let Expr::Ident(type_name) = object.as_ref() {
                 // If the identifier is a known local variable, skip stdlib routing
                 let is_local_var = self.local_var_types.contains_key(type_name);
-                if !is_local_var {
+                if !is_local_var && !self.local_modules.contains(type_name.as_str())
+                    && !self.sibling_modules.contains(type_name.as_str()) {
                 // Plan 368: Normalize "Json" → "json" for consistent module dispatch.
                 // PLAN-681: "Env" → "env" — the VM builtin object is capitalized
                 // (Env.get); the a2r dispatch tables key on lowercase.
@@ -8536,6 +8566,8 @@ impl RustTrans {
                     "Env" => "env",
                     _ => type_name.as_str(),
                 };
+                crate::stdlib_assembly::providers::require_reference_provider(
+                    normalized_type, method_name.as_str(), "rust")?;
                 match (normalized_type, method_name.as_str()) {
                     ("json", "parse") => {
                         self.a2r_std_used.set(true); write!(out, "{}", if self.json_parse_as_opt { "a2r_std::json::parse_opt(" } else { "a2r_std::json::parse(" })?;
@@ -17804,6 +17836,23 @@ pub use auto_cabi_kit::*;"#
         let pub_kw = if use_stmt.is_pub || is_reexport { "pub " } else { "" };
         match use_stmt.kind {
             UseKind::Auto => {
+                let module = use_stmt.paths.join(".");
+                if self.assembly_modules.contains(&module) {
+                    self.local_modules.insert(module.clone());
+                    if use_stmt.is_wildcard {
+                        write!(out, "{pub_kw}use crate::{module}::*;")?;
+                    } else if !use_stmt.items.is_empty() {
+                        write!(out, "{pub_kw}use crate::{module}::{{{}}};", use_stmt.items.join(", "))?;
+                    }
+                    return Ok(());
+                }
+                if use_stmt.paths.first().is_some_and(|p| p.as_str() == "auto") {
+                    if let Some(module) = use_stmt.paths.get(1) {
+                        if crate::stdlib_assembly::providers::unsupported_reason(module.as_str(), "rust").is_some() {
+                            return Ok(());
+                        }
+                    }
+                }
                 // For dir children — pub mod X; already emitted, but also need
                 // pub use X::*; to re-export child module's pub types
                 if use_stmt.paths.len() == 1

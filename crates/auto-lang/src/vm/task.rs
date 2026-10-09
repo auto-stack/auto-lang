@@ -35,6 +35,7 @@ pub struct CallFrame {
 /// Represents a single concurrent task in the AutoVM
 /// Holds its own stack, instruction pointer, and execution state.
 pub struct AutoTask {
+    pub(crate) assembly_checked: Option<(usize, u64)>,
     pub id: TaskId,
     pub ram: VirtualRAM,
     pub ip: usize,
@@ -228,6 +229,7 @@ impl AccumContainer {
 impl AutoTask {
     pub fn new(id: TaskId, ram_size: usize, start_ip: usize) -> Self {
         Self {
+            assembly_checked: None,
             id,
             ram: VirtualRAM::new(ram_size),
             ip: start_ip,

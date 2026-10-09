@@ -739,79 +739,7 @@ impl AutoVM {
     }
 
     pub fn new(flash: VirtualFlash, _ram_size: usize) -> Self {
-        let mut native_interface = NativeInterface::new();
-        native_interface.register_std_shims();
-        // Plan 094: Register manual FFI shims (cannot use #[rust_fn])
-        crate::vm::ffi::register_stdlib_ffi(&mut native_interface);
-        // Plan 555 T06: 分发组合子（interop.obj_* 家族，1860-1865）。
-        crate::vm::interop::register_interop_natives(&mut native_interface);
-        // Plan 198: Register #[rust_fn]-annotated shims via inventory
-        native_interface.build_from_inventory();
-
-        // Override inventory shims with nanbox-aware versions for str methods
-        // (inventory shims use String extraction which doesn't work with NanoValue stack)
-        {
-            native_interface.register(crate::vm::native::NATIVE_STR_CONTAINS, crate::vm::native::shim_str_contains);
-            native_interface.register(crate::vm::native::NATIVE_STR_STARTS_WITH, crate::vm::native::shim_str_starts_with);
-            native_interface.register(crate::vm::native::NATIVE_STR_ENDS_WITH, crate::vm::native::shim_str_ends_with);
-            native_interface.register(crate::vm::native::NATIVE_STR_TO_INT, crate::vm::native::shim_str_to_int_nv);
-            native_interface.register(crate::vm::native::NATIVE_STR_TO_UINT, crate::vm::native::shim_str_to_uint_nv);
-            // Plan 446 批三 D1: json.parse 占位 shim（rust_fn 版原样透传字符串）
-            // 覆盖为 vm 感知版——经 Plan 340 转换器物化成 __json_object/
-            // ListData 堆值，下游 GET_FIELD/for-in 直读。ID 取静态表
-            // （auto.json.parse = 1902，native_catalog）。
-            if let Some(id) = crate::vm::native_registry::BIGVM_NATIVES
-                .lock()
-                .unwrap()
-                .resolve_qualified("auto.json.parse")
-            {
-                native_interface.register(
-                    id,
-                    crate::vm::ffi::stdlib::shim_json_parse_vm,
-                );
-            }
-            // PLAN-057 T6（等价性缺陷族③）：web 内建 natives 补齐——
-            // Array.isArray/JSON.stringify/Math.trunc/Math.imul 此前未注册，
-            // 调用点经未解析静态兜底（CALL_SPEC str 接收者臂）静默 None。
-            // 名/ID 已入 native_catalog 静态表（NATIVE_ID_ENTRIES，codegen
-            // 任意时刻可解析，沿 auto.json.parse 惯例）；此处绑定 shim 到
-            // 固定 ID + 注册字面/canonical 双名（沿 build_from_inventory
-            // 三名惯例）。注意 canonical 经 TYPE_CANONICAL_MAP：Array→
-            // auto.list、Object→auto.obj。
-            {
-                const WEB_NATIVES: &[(&str, &str, fn(&mut AutoTask, &AutoVM) -> Result<(), VMError>)] = &[
-                    ("Array.isArray", "auto.list.is_array", crate::vm::ffi::stdlib::shim_web_is_array),
-                    ("JSON.stringify", "auto.json.stringify", crate::vm::ffi::stdlib::shim_web_json_stringify),
-                    ("Math.trunc", "auto.math.trunc", crate::vm::ffi::stdlib::shim_web_math_trunc),
-                    ("Math.imul", "auto.math.imul", crate::vm::ffi::stdlib::shim_web_math_imul),
-                ];
-                for (name, canonical, shim) in WEB_NATIVES {
-                    let id = crate::vm::native_registry::BIGVM_NATIVES
-                        .lock()
-                        .unwrap()
-                        .resolve_qualified(canonical)
-                        .expect("PLAN-057 web native missing from NATIVE_ID_ENTRIES");
-                    native_interface.register(id, *shim);
-                    native_interface.register_name(name, id);
-                    native_interface.register_name(canonical, id);
-                }
-            }
-            // Plan 446 批三 D1(续): 文档类 json native（get/get_at/has_key/
-            // len/keys/is_valid）双态化——堆文档首参序列化回文本走原路径，
-            // json.get(json.parse(x), k) 文本工具链与点访问 idiom 互通。
-            crate::vm::ffi::stdlib::override_json_doc_natives(&mut native_interface);
-        }
-
-        // Plan 011 (MS3-B): shell-host bridge natives.
-        {
-            native_interface.register(crate::vm::native::NATIVE_SHELL_SYSTEM, crate::vm::native::shim_shell_system);
-            native_interface.register(crate::vm::native::NATIVE_SHELL_SYSTEM_STATUS, crate::vm::native::shim_shell_system_status);
-            native_interface.register(crate::vm::native::NATIVE_SHELL_EXPORT, crate::vm::native::shim_shell_export);
-            native_interface.register(crate::vm::native::NATIVE_SHELL_EXIT, crate::vm::native::shim_shell_exit);
-            // PLAN-082: structured interop natives.
-            native_interface.register(crate::vm::native::NATIVE_SHELL_QUERY, crate::vm::native::shim_shell_query);
-            native_interface.register(crate::vm::native::NATIVE_SHELL_RUN, crate::vm::native::shim_shell_run);
-        }
+        let mut native_interface = NativeInterface::production();
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
         // The codegen's handle_c_import populates CFFI_GLOBAL during compilation;
@@ -3628,6 +3556,13 @@ impl AutoVM {
     /// `Ok(StepResult::Terminated)` if the task has finished, or
     /// `Ok(StepResult::Yield)` if the task should pause the current batch.
     pub fn run_one_instruction(&self, task: &mut AutoTask) -> Result<StepResult, VMError> {
+        let assembly_revision = (self.flash.memory.len(), self.native_interface.binding_revision());
+        if task.assembly_checked != Some(assembly_revision) {
+            crate::stdlib_assembly::reference::verify_linked_native_closure(
+                &self.flash, task.ip, &self.native_interface, &self.strings.read().unwrap(),
+            ).map_err(VMError::RuntimeError)?;
+            task.assembly_checked = Some(assembly_revision);
+        }
         // 1. Fetch
         if task.ip >= self.flash.memory.len() {
             return Ok(StepResult::Terminated);
@@ -9253,6 +9188,7 @@ impl AutoVM {
                 OpCode::CALL_NAT => {
                     let native_id = self.flash.read_u16(task.ip);
                     task.ip += 2;
+                    self.native_interface.verify_core_reference(native_id).map_err(VMError::RuntimeError)?;
 
                     // Plan 419: native 死区结算 —— shim 弹掉的参数/receiver 槽
                     // 在此统一释放(shim 内 pop 均为 raw,不计数)。shim 内
@@ -9335,6 +9271,7 @@ impl AutoVM {
                     let arg_count = self.flash.read_u8(task.ip);
                     task.ip += 1;
                     task.pending_native_arg_count = arg_count;
+                    self.native_interface.verify_core_reference(native_id).map_err(VMError::RuntimeError)?;
 
                     // Plan 419: 同 CALL_NAT 的死区结算。
                     let sp_before_native = task.ram.sp;

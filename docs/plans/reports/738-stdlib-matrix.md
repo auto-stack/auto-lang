@@ -2,9 +2,9 @@
 
 | module | vm.native | vm.browser | rust | c | 公共符号数 |
 |---|---|---|---|---|---|
-| io | 0/9 supported | 0/9 supported | unsupported | supported | 11 |
-| net | 14/14 supported | 0/14 supported | unsupported | unsupported | 16 |
-| async | 10/10 supported | 10/10 supported | unverified | unsupported | 0 |
-| http | 34/68 supported | 27/68 supported | unverified | unsupported | 89 |
-| json | 4/19 supported | 4/19 supported | supported | unsupported | 21 |
+| io | 8/10 supported | 0/10 supported | unsupported | supported | 10 |
+| net | 10/14 supported | 0/14 supported | unsupported | unsupported | 14 |
+| async | 0/11 supported | 0/11 supported | unverified | unsupported | 11 |
+| http | 0/79 supported | 0/79 supported | unverified | unsupported | 79 |
+| json | 1/20 supported | 0/20 supported | supported | unsupported | 20 |
 | sse | 0/1 supported | 0/1 supported | unverified | unsupported | 1 |

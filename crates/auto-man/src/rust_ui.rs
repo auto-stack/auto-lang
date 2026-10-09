@@ -3694,6 +3694,13 @@ fn compute_auto_lang_rel_path(project_dir: &Path, ws_dir: &Path) -> String {
             break;
         }
     }
+    // A project outside the repository still uses this generator's framework.
+    // Resolve that real crate instead of inventing a project-relative checkout.
+    let compiled_crate = Path::new(env!("CARGO_MANIFEST_DIR")).parent()
+        .map(|parent| parent.join("auto-lang"));
+    if let Some(crate_dir) = compiled_crate.filter(|path| path.join("Cargo.toml").is_file()) {
+        return compute_relative_path(ws_dir, &crate_dir);
+    }
     // Fallback
     "../../autostack/auto-lang/crates/auto-lang".to_string()
 }
@@ -3713,6 +3720,12 @@ fn compute_relative_path(from: &Path, to: &Path) -> String {
         .zip(to_parts.iter())
         .take_while(|(a, b)| a == b)
         .count();
+
+    // Windows drive roots cannot be traversed with `..`.
+    if common == 0 {
+        let path = to_abs.to_string_lossy();
+        return path.strip_prefix(r"\\?\").unwrap_or(&path).replace('\\', "/");
+    }
 
     // Go up from `from` to the common ancestor
     let ups = from_parts.len() - common;
@@ -3941,7 +3954,7 @@ pub fn back_member_name(project_dir: &Path) -> String {
 
 /// PLAN-734 T-04：复用路径的 ready 新鲜度校验——在跑 bundle 的
 /// generation.json 源指纹与当前 api.at（+db.at）内容一致才允许复用。
-fn backend_generation_is_fresh(project_dir: &Path) -> bool {
+pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
     fn fnv1a(bytes: &[u8]) -> u32 {
         let mut h: u32 = 0x811c9dc5;
         for b in bytes {
@@ -3966,11 +3979,11 @@ fn backend_generation_is_fresh(project_dir: &Path) -> bool {
         return false;
     };
     for entry in hashes {
-        let Some(name) = entry.get("0").and_then(|v| v.as_str()) else {
-            continue;
+        let Some(name) = entry.get(0).and_then(|v| v.as_str()) else {
+            return false;
         };
-        let Some(recorded) = entry.get("1").and_then(|v| v.as_str()) else {
-            continue;
+        let Some(recorded) = entry.get(1).and_then(|v| v.as_str()) else {
+            return false;
         };
         let source_path = match name {
             "api.at" => api_file.clone(),
@@ -3978,10 +3991,10 @@ fn backend_generation_is_fresh(project_dir: &Path) -> bool {
                 .parent()
                 .map(|d| d.join("db.at"))
                 .unwrap_or_default(),
-            _ => continue,
+            _ => return false,
         };
         let Ok(text) = std::fs::read_to_string(&source_path) else {
-            continue;
+            return false;
         };
         if format!("{:x}", fnv1a(text.as_bytes())) != recorded {
             return false;
@@ -3994,16 +4007,8 @@ fn backend_generation_is_fresh(project_dir: &Path) -> bool {
         .get("assembly")
         .and_then(|a| a.get("fingerprint"))
         .and_then(|f| f.as_str());
-    let current_assembly = auto_lang::stdlib_assembly::loader::repo_stdlib_root()
-        .ok()
-        .and_then(|root| {
-            auto_lang::stdlib_assembly::loader::stdlib_assembly_fingerprint(
-                &root,
-                auto_lang::stdlib_assembly::model::AssemblyTarget::Rust,
-            )
-            .ok()
-        })
-        .map(|fp| format!("{fp:016x}"));
+    let current_assembly = crate::api_gen::current_generated_api_assembly(project_dir)
+        .ok().map(|manifest| manifest.fingerprint().to_string());
     assembly_freshness(recorded_assembly, current_assembly.as_deref())
 }
 

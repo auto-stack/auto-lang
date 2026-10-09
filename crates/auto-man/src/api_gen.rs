@@ -780,10 +780,19 @@ fn fix_borrowed_slice_returns(code: &str) -> String {
 }
 
 fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
+    let frozen_sources = generation_source_snapshot(root_dir)?;
+    let parsed = try_full_parse(&frozen_sources[0].1);
+    let api_module = parsed.as_ref().unwrap_or(api_module);
+    // Freeze actual selections and emitted body references before creating artifacts.
+    let assembly = generated_api_assembly(root_dir, api_module)?;
     // Output to shared workspace at D:/.auto/rust-workspace/{name}-back/
     let ws_dir = crate::rust_ui::ensure_shared_workspace(root_dir);
     let back_name = crate::rust_ui::back_member_name(root_dir);
     let rust_dir = ws_dir.join(&back_name);
+    let receipt_path = rust_dir.join("generation.json");
+    if receipt_path.exists() {
+        std::fs::remove_file(&receipt_path)?;
+    }
     let src_dir = rust_dir.join("src");
     std::fs::create_dir_all(&src_dir).map_err(|e| format!("Failed to create rust/src: {}", e))?;
 
@@ -992,6 +1001,10 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         &companion_mods,
         api_impl_active,
     );
+    let main_rs = main_rs.replace(
+        "fn __assembly_fingerprint() -> Option<&'static str> { None }",
+        &format!("fn __assembly_fingerprint() -> Option<&'static str> {{ Some(\"{}\") }}", assembly.fingerprint()),
+    );
     std::fs::write(src_dir.join("main.rs"), &main_rs)
         .map_err(|e| format!("Failed to write main.rs: {}", e))?;
 
@@ -1012,17 +1025,12 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
     // PLAN-734 T-04：ready 记录——源内容指纹（api.at/db.at）+ 端点清单 +
     // scaffold 标志，随 bundle 最后写入；复用路径据此校验新鲜度。
     {
-        let mut sources: Vec<(String, String)> = Vec::new();
-        if let Some(api_file) = auto_lang::config::resolve_back_api(root_dir) {
-            if let Ok(api_text) = std::fs::read_to_string(&api_file) {
-                sources.push(("api.at".into(), format!("{:x}", fnv1a(api_text.as_bytes()))));
-            }
-            if let Some(db_path) = api_file.parent().map(|d| d.join("db.at")) {
-                if let Ok(db_text) = std::fs::read_to_string(&db_path) {
-                    sources.push(("db.at".into(), format!("{:x}", fnv1a(db_text.as_bytes()))));
-                }
-            }
+        if generation_source_snapshot(root_dir)? != frozen_sources
+            || current_generated_api_assembly(root_dir)?.fingerprint() != assembly.fingerprint() {
+            return Err("assembly inputs changed during generation; receipt withheld".into());
         }
+        let sources: Vec<(String, String)> = frozen_sources.iter().map(|(name, text)|
+            (name.clone(), format!("{:x}", fnv1a(text.as_bytes())))).collect();
         let endpoints: Vec<String> = api_module
             .endpoints
             .iter()
@@ -1033,16 +1041,6 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
             .unwrap_or(false);
         // A receipt must identify the assembly it actually used. Failure to
         // locate/hash stdlib is an error, never a reusable null identity.
-        let assembly_root = auto_lang::stdlib_assembly::loader::repo_stdlib_root()
-            .map_err(|e| format!("cannot record stdlib assembly: {e}"))?;
-        let fp = auto_lang::stdlib_assembly::loader::stdlib_assembly_fingerprint(
-            &assembly_root, auto_lang::stdlib_assembly::model::AssemblyTarget::Rust)
-            .map_err(|e| format!("cannot fingerprint stdlib assembly: {e}"))?;
-        let assembly = serde_json::json!({
-            "schema_version": auto_lang::stdlib_assembly::model::INVENTORY_SCHEMA_VERSION,
-            "target": "rust", "environment": "native",
-            "fingerprint": format!("{fp:016x}"),
-        });
         let record = serde_json::json!({
             "schema_version": 1,
             "generated_at": std::time::SystemTime::now()
@@ -1054,7 +1052,8 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
             "assembly": assembly,
             "scaffold": scaffold,
         });
-        let _ = std::fs::write(rust_dir.join("generation.json"), record.to_string());
+        std::fs::write(rust_dir.join("generation.json"), record.to_string())
+            .map_err(|e| format!("cannot write generation receipt: {e}"))?;
     }
 
     Ok(())
@@ -1672,11 +1671,20 @@ fn try_transpile_body(
     endpoint: &ApiEndpoint,
     api_module: &auto_lang::api::ApiModule,
 ) -> Result<Vec<String>, String> {
+    try_transpile_body_with_proofs(body, endpoint, api_module).map(|(lines, _)| lines)
+}
+
+fn try_transpile_body_with_proofs(
+    body: &auto_lang::ast::Body,
+    endpoint: &ApiEndpoint,
+    api_module: &auto_lang::api::ApiModule,
+) -> Result<(Vec<String>, Vec<auto_lang::stdlib_assembly::reference::ReferenceProof>), String> {
     use auto_lang::ast::Type;
     use auto_lang::trans::rust::RustTrans;
     use auto_val::AutoStr;
 
     let mut trans = RustTrans::new(AutoStr::from("api_handler"));
+    trans.assembly_runtime = auto_lang::stdlib_assembly::host::RustRuntime::Embedded;
     // PLAN-730 T-06: `~T`（Future<T>）handler 的内联体在 async fn 内执行
     // ——await 点（upload_receive/commit/reject）合法。
     if endpoint.return_type.contains("Future<") {
@@ -1703,9 +1711,59 @@ fn try_transpile_body(
             (AutoStr::from(p.name.as_str()), ty)
         })
         .collect();
-    trans
-        .transpile_body_stmts(body, &params)
-        .map_err(|e| e.to_string())
+    let lines = trans.transpile_body_stmts(body, &params).map_err(|e| e.to_string())?;
+    Ok((lines, trans.assembly_references))
+}
+
+/// The startup freshness gate rebuilds the same dry assembly contract as generation.
+pub(crate) fn current_generated_api_assembly(root: &Path) -> AutoResult<auto_lang::stdlib_assembly::manifest::AssemblyManifest> {
+    let api_file = auto_lang::config::resolve_back_api(root).ok_or("API contract unavailable")?;
+    let source = std::fs::read_to_string(api_file)?;
+    let module = try_full_parse(&source).ok_or("API contract parse failed")?;
+    generated_api_assembly(root, &module)
+}
+
+fn generated_api_assembly(
+    root: &Path, module: &auto_lang::api::ApiModule,
+) -> AutoResult<auto_lang::stdlib_assembly::manifest::AssemblyManifest> {
+    let api_file = auto_lang::config::resolve_back_api(root).ok_or("API contract unavailable")?;
+    let source = std::fs::read_to_string(&api_file)?;
+    let mut session = auto_lang::compile::CompileSession::new();
+    session.set_assembly_target(auto_lang::stdlib_assembly::model::AssemblyTarget::Rust)?;
+    if let Some(parent) = api_file.parent() { session.add_source_dir(parent.to_path_buf()); }
+    session.resolve_uses(&source)?;
+    let mut references = Vec::new();
+    if std::env::var("AUTO_A2R_BODY").as_deref() != Ok("0") {
+        for endpoint in &module.endpoints {
+            if let Some(body) = &endpoint.body {
+                let (_, proofs) = try_transpile_body_with_proofs(body, endpoint, module)
+                    .map_err(|e| format!("API assembly rejected {}: {e}", endpoint.fn_name))?;
+                references.extend(proofs);
+            }
+        }
+    }
+    let stdlib = auto_lang::stdlib_assembly::loader::repo_stdlib_root()?;
+    let mut manifest = auto_lang::stdlib_assembly::manifest::AssemblyManifest::freeze(
+        session.assembly, "api-generation", root, &stdlib, &session.layer_selections, references,
+    ).with_consumer_input("configuration/AUTO_A2R_BODY", if std::env::var("AUTO_A2R_BODY").as_deref() == Ok("0") { "scaffold" } else { "translated" });
+    for (name, text) in generation_source_snapshot(root)? {
+        manifest = manifest.with_consumer_input(&format!("project/back/{name}"), &text);
+    }
+    let db = api_file.parent().unwrap().join("db.at");
+    manifest = manifest.with_consumer_input("selection/back/db.at", if db.is_file() { "present" } else { "absent" });
+    Ok(manifest)
+}
+
+fn generation_source_snapshot(root: &Path) -> AutoResult<Vec<(String, String)>> {
+    let api = auto_lang::config::resolve_back_api(root).ok_or("API contract unavailable")?;
+    let mut sources = vec![("api.at".into(), std::fs::read_to_string(&api)?)];
+    let db = api.parent().ok_or("API source directory unavailable")?.join("db.at");
+    match std::fs::read_to_string(db) {
+        Ok(text) => sources.push(("db.at".into(), text)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+        Err(error) => return Err(error.into()),
+    }
+    Ok(sources)
 }
 
 fn append_inline_param_bindings(lines: &mut Vec<String>, endpoint: &ApiEndpoint) {
@@ -1953,10 +2011,15 @@ async fn __health_live() -> axum::response::Response {
 }
 
 #[allow(dead_code)]
+fn __assembly_fingerprint() -> Option<&'static str> { None }
+
+#[allow(dead_code)]
 async fn __health_ready() -> axum::response::Response {
     use auto_lang::http_service_observability as obs;
     if obs::is_ready() {
-        __json_resp(200, obs::service_identity().unwrap_or_else(|| serde_json::json!({})))
+        let mut identity = obs::service_identity().unwrap_or_else(|| serde_json::json!({}));
+        identity["assembly_fingerprint"] = serde_json::json!(__assembly_fingerprint());
+        __json_resp(200, identity)
     } else {
         __json_resp(503, serde_json::json!({ "state": obs::service_state().as_str() }))
     }
@@ -2013,11 +2076,12 @@ const SERVICE_RUN_LOOP: &str = r#"
         obs::set_service_identity(&bound, c.profile.as_str(), c.effective_config_hash());
         obs::set_service_state(obs::ServiceState::Ready);
         println!(
-            "AUTO_SERVICE_READY {{\"bound\":\"{}\",\"instance_id\":\"{}\",\"profile\":\"{}\",\"config_hash\":\"{:016x}\"}}",
+            "AUTO_SERVICE_READY {{\"bound\":\"{}\",\"instance_id\":\"{}\",\"profile\":\"{}\",\"config_hash\":\"{:016x}\",\"assembly_fingerprint\":\"{}\"}}",
             bound,
             obs::instance_id(),
             c.profile.as_str(),
-            c.effective_config_hash()
+            c.effective_config_hash(),
+            __assembly_fingerprint().unwrap_or("unknown")
         );
         let app = app
             .route("/__auto/health/live", axum::routing::get(__health_live))
@@ -7244,5 +7308,105 @@ pub fn list_items() []str { return [] }
         assert!(cargo.contains("auto-lang = { workspace = true"));
         let ui_cargo = crate::rust_ui::generate_cargo_toml("image-ui", Path::new("."));
         assert!(ui_cargo.contains("auto-lang/ui-iced"));
+    }
+}
+
+#[cfg(all(test, feature = "test-http-e2e"))]
+mod plan738_generated_service {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::time::{Duration, Instant};
+
+    struct Server(std::process::Child);
+    impl Drop for Server {
+        fn drop(&mut self) { let _ = self.0.kill(); let _ = self.0.wait(); }
+    }
+
+    fn get(port: u16, path: &str) -> Option<(u16, serde_json::Value)> {
+        let addr: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().ok()?;
+        let mut stream = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(200)).ok()?;
+        stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
+        write!(stream, "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").ok()?;
+        let mut response = String::new();
+        stream.read_to_string(&mut response).ok()?;
+        let (head, body) = response.split_once("\r\n\r\n")?;
+        let status = head.split_whitespace().nth(1)?.parse().ok()?;
+        Some((status, serde_json::from_str(body).ok()?))
+    }
+
+    #[test]
+    #[ignore = "on-demand production generation, nested cargo build and real TCP service witness"]
+    fn http_e2e_plan738_production_generation_receipt_ready_and_regeneration() {
+        let root = std::env::temp_dir().join(format!("plan738-service-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("src/back")).unwrap();
+        std::fs::write(root.join("pac.at"), "{ name: \"plan738-service\", scene: \"workspace\" }").unwrap();
+        let api = "#[api(method = \"GET\", path = \"/api/answer\")]\npub fn answer() int { let d = json.parse(\"{}\")\n return 42 }\n";
+        std::fs::write(root.join("src/back/api.at"), api).unwrap();
+        let original_stdlib = auto_lang::stdlib_assembly::loader::repo_stdlib_root().unwrap();
+        let local_stdlib = root.join("stdlib");
+        std::fs::create_dir_all(&local_stdlib).unwrap();
+        std::fs::copy(original_stdlib.join("json.at"), local_stdlib.join("json.at")).unwrap();
+        let previous = std::env::var_os("AUTO_STDLIB_ROOT");
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) { match &self.0 { Some(value) => std::env::set_var("AUTO_STDLIB_ROOT", value), None => std::env::remove_var("AUTO_STDLIB_ROOT") } }
+        }
+        let _restore = Restore(previous);
+        std::env::set_var("AUTO_STDLIB_ROOT", &local_stdlib);
+        generate_api(&root, "rust").expect("production generate_api");
+        let workspace = crate::rust_ui::ensure_shared_workspace(&root);
+        let name = crate::rust_ui::back_member_name(&root);
+        let member = workspace.join(&name);
+        let read_receipt = || serde_json::from_str::<serde_json::Value>(
+            &std::fs::read_to_string(member.join("generation.json")).unwrap()).unwrap();
+        let receipt = read_receipt();
+        assert_eq!(receipt["assembly"]["schema_version"], 3);
+        assert!(receipt["assembly"]["references"].as_array().unwrap().iter().any(|proof| proof["symbol"] == "parse"));
+        assert!(crate::rust_ui::backend_generation_is_fresh(&root));
+        let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target").canonicalize().unwrap();
+        let target = std::path::PathBuf::from(target.to_string_lossy().strip_prefix(r"\\?\")
+            .unwrap_or(&target.to_string_lossy()).to_string());
+        let build = || {
+            let result = std::process::Command::new("cargo").args(["build", "-p", &name])
+                .env("CARGO_TARGET_DIR", &target).current_dir(&workspace).output().unwrap();
+            assert!(result.status.success(), "generated crate build failed: {}", String::from_utf8_lossy(&result.stderr));
+        };
+        build();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port(); drop(listener);
+        let config = format!("{{\"profile\":\"development\",\"listen\":{{\"addr\":\"127.0.0.1\",\"port\":{port}}}}}");
+        let start = |fingerprint: &serde_json::Value| {
+            let log = std::fs::File::create(root.join("server.log")).unwrap();
+            let mut server = Server(std::process::Command::new(target.join("debug").join(format!("{name}.exe")))
+                .env("AUTO_HTTP_SERVICE_JSON", &config).current_dir(&root)
+                .stdout(log.try_clone().unwrap()).stderr(log).spawn().unwrap());
+            let deadline = Instant::now() + Duration::from_secs(15);
+            loop {
+                if let Some((200, ready)) = get(port, "/__auto/health/ready") {
+                    assert_eq!(&ready["assembly_fingerprint"], fingerprint);
+                    let (status, answer) = get(port, "/api/answer").unwrap();
+                    assert_eq!(status, 200);
+                    assert!(answer.to_string().contains("42"), "business result: {answer}");
+                    return server;
+                }
+                assert!(Instant::now() < deadline && server.0.try_wait().unwrap().is_none(),
+                    "service not ready: {}", std::fs::read_to_string(root.join("server.log")).unwrap());
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        };
+        let server = start(&receipt["assembly"]["fingerprint"]);
+        drop(server);
+        let public = local_stdlib.join("json.at");
+        let mut text = std::fs::read_to_string(&public).unwrap(); text.push_str("\n// changed assembly input\n");
+        std::fs::write(public, text).unwrap();
+        assert_eq!(std::fs::read_to_string(root.join("src/back/api.at")).unwrap(), api);
+        assert!(!crate::rust_ui::backend_generation_is_fresh(&root), "unchanged API must not reuse changed assembly");
+        generate_api(&root, "rust").unwrap();
+        let regenerated = read_receipt();
+        assert_ne!(receipt["assembly"]["fingerprint"], regenerated["assembly"]["fingerprint"]);
+        assert!(crate::rust_ui::backend_generation_is_fresh(&root));
+        build();
+        let server = start(&regenerated["assembly"]["fingerprint"]);
+        drop(server);
     }
 }

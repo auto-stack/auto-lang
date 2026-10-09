@@ -152,3 +152,28 @@ pub fn cross_check_real_surfaces(
 pub fn catalog_content_fingerprint() -> u64 {
     super::model::fnv1a64(include_str!("../../../../stdlib/assembly-providers.json"))
 }
+
+pub fn unsupported_reason(module: &str, target: &str) -> Option<String> {
+    if !super::validate::CORE_MODULES.contains(&module) {
+        return None;
+    }
+    load_catalog()
+        .ok()?
+        .providers
+        .into_iter()
+        .find(|p| p.module == module && p.target == target && p.status == "unsupported")?
+        .reason
+}
+
+pub fn require_reference_provider(
+    module: &str,
+    symbol: &str,
+    target: &str,
+) -> crate::AutoResult<()> {
+    if let Some(reason) = unsupported_reason(module, target) {
+        return Err(crate::AutoError::Msg(format!(
+            "STDASSEMBLY.PROVIDER_UNSUPPORTED: {module}.{symbol}/{target}: {reason}"
+        )));
+    }
+    Ok(())
+}

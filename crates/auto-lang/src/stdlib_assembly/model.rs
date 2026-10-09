@@ -58,6 +58,11 @@ pub struct LayerSelection {
     pub candidate_files: Vec<String>,
     /// 合并源中目标层段的起始字节（源段错误归因；None=未合并）
     pub context_byte_boundary: Option<usize>,
+    pub public_hash: u64,
+    pub context_hash: Option<u64>,
+    /// Frozen input consumed by this epoch, rather than a later disk reread.
+    #[serde(skip)]
+    pub source: String,
 }
 
 /// 验证等级（计划 §5.1，从弱到强）。

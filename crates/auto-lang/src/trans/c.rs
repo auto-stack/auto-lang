@@ -32,6 +32,7 @@ pub enum CStyle {
 }
 
 pub struct CTrans {
+    pub assembly_modules: std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
     indent: usize,
     libs: HashSet<AutoStr>,
     pub header: Vec<u8>,
@@ -72,6 +73,7 @@ struct ClosureInfo {
 impl CTrans {
     pub fn new(name: AutoStr) -> Self {
         Self {
+            assembly_modules: Default::default(),
             indent: 0,
             uses_bool: false,
             libs: HashSet::new(),
@@ -94,6 +96,7 @@ impl CTrans {
     /// NEW: Create with Database (Phase 066)
     pub fn with_database(db: Arc<RwLock<Database>>) -> Self {
         Self {
+            assembly_modules: Default::default(),
             indent: 0,
             uses_bool: false,
             libs: HashSet::new(),
@@ -1322,6 +1325,18 @@ impl CTrans {
     fn use_stmt(&mut self, use_stmt: &Use, _out: &mut impl Write) -> AutoResult<()> {
         match use_stmt.kind {
             UseKind::Auto => {
+                let module = use_stmt.paths.join(".");
+                if self.assembly_modules.contains_key(&module) {
+                    self.libs.insert(format!("\"{}.h\"", module.replace('.', "_")).into());
+                    return Ok(());
+                }
+                if use_stmt.paths.first().is_some_and(|p| p.as_str() == "auto") {
+                    if let Some(module) = use_stmt.paths.get(1) {
+                        if crate::stdlib_assembly::providers::unsupported_reason(module.as_str(), "c").is_some() {
+                            return Ok(());
+                        }
+                    }
+                }
                 let path = use_stmt.paths.join("/");
                 self.libs.insert(format!("\"{}.h\"", path).into());
             }
@@ -3712,6 +3727,20 @@ impl CTrans {
         // Plan 035 Phase 5.2: Handle ext methods for built-in types
         // Check if lhs is a built-in type or variable
         let lhs_type = self.get_expr_type(lhs);
+        if matches!(lhs_type, Type::Unknown) {
+            if let (Expr::Ident(module), Expr::Ident(symbol)) = (lhs.as_ref(), rhs.as_ref()) {
+                if self.assembly_modules.get(module.as_str()).is_some_and(|functions| functions.contains(symbol.as_str())) {
+                    write!(out, "{symbol}(")?;
+                    for (index, argument) in call.args.args.iter().enumerate() {
+                        if index > 0 { write!(out, ", ")?; }
+                        self.arg(argument, out)?;
+                    }
+                    write!(out, ")")?;
+                    return Ok(true);
+                }
+                crate::stdlib_assembly::providers::require_reference_provider(module.as_str(), symbol.as_str(), "c")?;
+            }
+        }
 
         // If lhs has a known type, check if it's a built-in type (ext method)
         // or user-defined type (regular method)
