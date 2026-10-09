@@ -5375,6 +5375,30 @@
       "docsha:4ae41551c43eee81"
      ],
      "file": "docs/specs/website/design/demo-capture-catalog.md"
+    },
+    {
+     "id": "P746-1",
+     "title": "playground /api/run 执行时限与错误面（PLAN-746）",
+     "content": "PLAN-746:r1 交付落账（canonical 唯源=docs/specs/auto-playground/project.md，delivery 95c093001）。timeout_secs（默认 10s，clamp 1..=60）映射 VM 协作式截止；超时 stdout 携 Error: ExecutionTimeout，服务端无失控执行（全量走查净增 +11MB、静置不涨、挂起清零）；官方前端宿主（usePlayground/Full）显式发 60s 保合法慢例（F-746-R1 复审定谳）；执行线程 panic 经 join_execution 返干净 Err（SD-04）。",
+     "tags": [
+      "plan-746",
+      "auto-playground",
+      "commit:95c093001",
+      "docsha:beb1ac5bf44a"
+     ],
+     "file": "docs/specs/auto-playground/project.md"
+    },
+    {
+     "id": "P746-2",
+     "title": "auto-vm 协作式执行预算与 print kwargs 编译期拒绝（PLAN-746）",
+     "content": "PLAN-746:r1 交付落账（canonical 唯源=docs/specs/auto-vm/project.md，delivery 95c093001）。AutoVM.deadline: Option<Instant>（默认 None 零行为变化），run_task_loop 每轮清扫检查、超时终止全部任务置 ExecutionTimeout last_error；run_with_capture_and_bytecode_with_deadline/_path_and_bytecode_with_deadline 公开面（SD-03）；print 内建族（print/println/write/say/assert*）kwargs/赋值形态实参编译期拒绝——根因 parser 产 Bina(Asn) 实参致栈泄漏+失控膨胀（SD-02，PG-MEM-2 根治）。",
+     "tags": [
+      "plan-746",
+      "auto-vm",
+      "commit:95c093001",
+      "docsha:e3f9e88ead5c"
+     ],
+     "file": "docs/specs/auto-vm/project.md"
     }
    ]
   },
