@@ -6699,7 +6699,7 @@ fn generator_wait_credential(vm: &crate::vm::engine::AutoVM, iterator_id: u32) -
         return GeneratorWait::Stream(stream_id);
     }
     if let Some(stream_id) = task.waiting_sse_stream_id {
-        return GeneratorWait::Stream(stream_id);
+        return GeneratorWait::LegacyStream(stream_id);
     }
     if let Some(fid) = task.waiting_future_id {
         return GeneratorWait::Future(fid);
@@ -6710,6 +6710,7 @@ fn generator_wait_credential(vm: &crate::vm::engine::AutoVM, iterator_id: u32) -
 enum GeneratorWait {
     None,
     Stream(u64),
+    LegacyStream(u64),
     Future(u32),
 }
 
@@ -6792,6 +6793,9 @@ async fn next_sse_generator_value(
                 match generator_wait_credential(vm, iterator_id) {
                     GeneratorWait::Stream(stream_id) => {
                         crate::vm::ffi::http_stream::wait_stream_ready(stream_id).await;
+                    }
+                    GeneratorWait::LegacyStream(stream_id) => {
+                        crate::vm::ffi::http_stream::wait_legacy_stream_ready(stream_id).await;
                     }
                     GeneratorWait::Future(_) => {
                         let notified = crate::vm::ffi::async_http::COMPLETION_NOTIFY.notified();
