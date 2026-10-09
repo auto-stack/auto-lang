@@ -435,6 +435,19 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 ## 9. 复审记录
 
+### work 交接（2026-10-09 晚，Phase 3 T-09..T-14 完成 → execution_done）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 3
+- outcome: pass（T-09..T-14 全部执行并验收；AC-01..08 执行面闭合；next=独立 review）
+- code_commit: worktree plan-738-dev `2c1b4a763` → `b3a4d660e`（五提交：T-10 c1579ed71 / T-11 84bec29ef / T-12 b6cfc6df1 / T-14a 1a983091f / T-14b b3a4d660e；8 文件 +2224/−284；提交后 clean；auto-down 兄弟 895f8d0f 只读）
+- task_ids: T-09、T-10、T-11、T-12、T-13、T-14（current_step 14/14）
+- evidence: [738-phase3-scope](reports/738-phase3-scope.md)（566 差异机械分类）/ [738-phase3-strict](reports/738-phase3-strict.md)（契约注册表 strict 门）/ [738-phase3-reference-audit](reports/738-phase3-reference-audit.md)（引用闭包全路径）/ [738-phase3-manifest](reports/738-phase3-manifest.md)（双身份+lock 收据）/ [738-phase3-acceptance](reports/738-phase3-acceptance.md)（AC 对账）/ [738-phase3-verification](reports/738-phase3-verification.md)（最终门禁+服务链 1/1）；门禁要点：裸 t 5183 测 16 红全基线、tv 162/162、tt 非基线红=0、th 逐名分诊（plan730 interop/multipart 基线 worktree 同命令复现实证环境红）、plan738 69/69、服务完整链 1/1@38.6s、双 witness 1/1
+- blockers: 无阻塞。要点教训：①T-12 收据补丁脚本被断言中断的缺失段是静默的——T-14 真服务链走查是发现此类「门读字段而无人写」破损的唯一可靠手段；②lock 新鲜度须区分「首次物化」（已记录依赖的确定性派生）与「依赖漂移」，否则每个新 workspace 首启误判陈旧；③固定端口 HTTP 族失败先用基线 worktree 同命令复现再归因。
+- state: execution_done；不合入、不归档、不删 worktree（授权止于复审准备）
+- next: `/auto-plan:review PLAN-738`——未参与实现的 agent 复核最终提交 `b3a4d660e`（全部 AC、实际 callee/manifest、完整 diff vs SD 终稿、th 环境红基线归因）
+
 ### Revision 3 / Phase 3 修订交接（2026-10-09，pass → work）
 
 - stage: new
