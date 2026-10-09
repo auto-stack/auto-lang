@@ -249,7 +249,7 @@ total_steps: 7
   landed(master tip=d0c94b303,ff-only 无 merge commit;主检出产物重建:playground 二进制+
   frontend dist 已刷新) | ledger_refreshed(.autoos/specs.json designs 段 P746-1/P746-2,
   docsha 冻结,README §5 手工回退路径;spec-index.py 再生 26 projects) | archived(docs/plans/archive/) |
-  cleaned(wt-guard 待执行——见下方最终回执) | batch_regression: 746%5≠1;due 判定见 .last-batch-regression.json 回执 |
+  cleaned(worktree/分支/组目录已移除;wt-guard 首跑拦截 npm workspace junction(frontend/node_modules/auto-playground-vue→worktree 内部包,目标在 worktree 内,非红线跨仓情形)——移除后核验主检出 packages/auto-playground-vue 完好+worktree list 无残留) | batch_regression: 746%5≠1;due 判定见 .last-batch-regression.json 回执 |
   completion_kind: delivered`
 - 2026-10-09 `stage: review | PLAN-746 | r1 | outcome: pass | reviewed d7ae203e2 |
   base 394f90919 | dep auto-down @895f8d0 | acceptance_results: AC-01 pass（8 单测重跑）/
