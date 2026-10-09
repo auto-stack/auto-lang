@@ -15246,6 +15246,43 @@ fn fit_measure_task(win: iced::window::Id) -> iced::Task<crate::ui::session::Des
     })
 }
 
+/// 宿主窗 resize 同步（desktop，`__window_resized` 臂本体；测试直驱）：
+/// 宿主条目 window_size 落新值 → 虚拟窗全量同步但 **fit 窗跳过**（其
+/// window_size = 内容尺寸，fit 迟滞重测与排布格内居中消费——2026-10-09
+/// 用户实录：本笔全覆盖曾把日历内容尺寸污染成宿主尺寸，后续任意重排
+/// fit 居中按污染值钳位退化铺满整格）→ 全场重排（apply_dock_edges_now
+/// 同型：排布窗格跟随新 viewport，fit 窗在新格内再居中；此前 resize 后
+/// 窗格停留旧尺寸，直到下一次 launch/切布局才被动重排）→ 快照随撤（裁剪
+/// 区域全部 stale）+ 原生槽位几何排水。
+pub(crate) fn sync_host_resized(
+    state: &mut crate::ui::session::DesktopSession,
+    size: iced::Size,
+) {
+    if let Some(host) = state.host.as_ref() {
+        if let Some(entry) = state.windows.get(&host.window) {
+            *entry.window_size.borrow_mut() = size;
+        }
+        for v in host.wm.wins.values() {
+            if v.fit_enabled.get() {
+                continue;
+            }
+            *v.window_size.borrow_mut() = size;
+        }
+    }
+    for app in state.apps.values() {
+        *app.state.view_dirty.borrow_mut() = true;
+    }
+    // 视口直接取消息携带的新尺寸（宿主条目 window_size 已同步；不绕
+    // host_viewport 的条目查找，免测试/早期帧的回退默认值）。
+    let viewport = iced::Rectangle::new(iced::Point::ORIGIN, size);
+    let edges = state.desktop.dock_edges;
+    if let Some(host) = state.host.as_mut() {
+        crate::ui::layout::apply_layout(&mut host.wm, viewport, edges);
+    }
+    crate::ui::iced::snapshot::invalidate_all();
+    sync_native_geometry(state);
+}
+
 /// Plan 504：`__fit_measured` 回执——按测量锚点 `aura_fit_root_<appid>` 的
 /// 内容自然尺寸收缩目标窗口：独立模式 `window::resize` OS 窗；desktop 模式
 /// 改虚拟窗矩形（chrome 外沿 = 内容 + TITLEBAR_H + 2·BORDER，clamp 进可用
@@ -22464,24 +22501,13 @@ fn compare_pngs(
                     }
                 }
                 // Plan 462 desktop：宿主窗 resize → 全体虚拟窗口 window_size
-                // 同步（独立模式走原 per-window 拆借路径，行为不变）。
+                // 同步 + 全场重排（逻辑在 [`sync_host_resized`]，测试共用）。
                 if state.is_desktop() && m.event == "__window_resized" {
                     if let Some(ref val) = m.input_value {
                         if let Some((ws, hs)) = val.split_once('x') {
                             let w: f32 = ws.parse().unwrap_or(1280.0);
                             let h: f32 = hs.parse().unwrap_or(800.0);
-                            let size = iced::Size::new(w, h);
-                            if let Some(host) = state.host.as_ref() {
-                                if let Some(entry) = state.windows.get(&host.window) {
-                                    *entry.window_size.borrow_mut() = size;
-                                }
-                                for v in host.wm.wins.values() {
-                                    *v.window_size.borrow_mut() = size;
-                                }
-                            }
-                            for app in state.apps.values() {
-                                *app.state.view_dirty.borrow_mut() = true;
-                            }
+                            sync_host_resized(state, iced::Size::new(w, h));
                             crate::vm::ffi::stdlib::storage_host_publish(
                                 "vm.window_inner_height",
                                 format!("{}", h),
@@ -32285,6 +32311,70 @@ mod tests {
         assert_eq!(ds.desktop.desktop_wallpaper, "#101014");
         // inbox 取尽（幂等）。
         assert!(drain_desktop_bus_inbox(&mut ds).is_empty());
+    }
+
+    /// 宿主窗 resize 不变量（sync_host_resized）：fit 窗 window_size 保持
+    /// 内容尺寸（不被宿主尺寸污染）且矩形在新窗格内居中；常规窗 window_size
+    /// 随新窗格（else 分支）。
+    #[test]
+    fn host_resize_preserves_fit_window_and_relayouts() {
+        use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
+        use crate::ui::layout::{usable_rect, LayoutMode};
+        use crate::ui::session::{AppId, DesktopSession};
+        let mut ds = DesktopSession::__test_session();
+        ds.open_desktop(iced::window::Id::unique());
+        let add = |ds: &mut DesktopSession, title: &str| {
+            ds.host.as_mut().unwrap().wm.add_win(
+                AppId(1),
+                title.into(),
+                iced::Rectangle::new(
+                    iced::Point::ORIGIN,
+                    iced::Size::new(800.0, 600.0),
+                ),
+            )
+        };
+        let normal = add(&mut ds, "N");
+        let fit = add(&mut ds, "F");
+        {
+            let host = ds.host.as_mut().unwrap();
+            let v = host.wm.wins.get_mut(&fit).unwrap();
+            v.fit_enabled.set(true);
+            *v.window_size.borrow_mut() = iced::Size::new(460.0, 540.0);
+            host.wm.layout = LayoutMode::Grid;
+        }
+        sync_host_resized(&mut ds, iced::Size::new(1600.0, 1000.0));
+        let host = ds.host.as_ref().unwrap();
+        let usable = usable_rect(
+            iced::Rectangle::new(iced::Point::ORIGIN, iced::Size::new(1600.0, 1000.0)),
+            ds.desktop.dock_edges,
+        );
+        // Grid 2 窗：左右均分，fit 窗在右格。
+        let pane_w = usable.width / 2.0;
+        let pane = iced::Rectangle::new(
+            iced::Point::new(usable.x + pane_w, usable.y),
+            iced::Size::new(pane_w, usable.height),
+        );
+        // 核心不变量：fit 窗内容尺寸不被宿主尺寸覆盖。
+        assert_eq!(
+            *host.wm.wins[&fit].window_size.borrow(),
+            iced::Size::new(460.0, 540.0)
+        );
+        // 矩形 = 内容外沿在新窗格内居中（不铺满格）。
+        let outer_w = 460.0 + 2.0 * BORDER;
+        let outer_h = 540.0 + TITLEBAR_H + 2.0 * BORDER;
+        let rf = *host.wm.wins[&fit].rect.borrow();
+        assert!((rf.width - outer_w).abs() < 0.51 && (rf.height - outer_h).abs() < 0.51);
+        assert!(
+            ((rf.x - (pane.x + (pane_w - outer_w) / 2.0)).abs() < 0.51)
+                && ((rf.y - (pane.y + (usable.height - outer_h) / 2.0)).abs() < 0.51),
+            "fit rect {{x:{}, y:{}, w:{}, h:{}}} not centered in pane {{x:{}, y:{}, w:{}, h:{}}}",
+            rf.x, rf.y, rf.width, rf.height, pane.x, pane.y, pane.width, pane.height
+        );
+        // 常规窗：window_size 随新窗格（else 分支语义保持）。
+        assert_eq!(
+            *host.wm.wins[&normal].window_size.borrow(),
+            iced::Size::new(pane_w, usable.height)
+        );
     }
 
     /// PLAN-030 T-06：投影推送指纹门（未变不推/变了推/强制失效全量推）。
