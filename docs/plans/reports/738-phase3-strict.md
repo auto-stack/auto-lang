@@ -23,7 +23,7 @@
 3. **参数双源**：producer 逻辑参数面 == 公共参数面 + 契约扩展位（逐位相等）。
 4. **公共声明 ↔ 适配投影**：参数/返回/元数（公共元数只对 public_params 部分）。
 
-**规则表 14 条**（http 模块）：post_sync/post_bearer/post_bearer_sync/get_sync 侧信道族（sync+async 变体）、last_status 数值 cast、3 参 post 元数分派（**Embedded 限定**——a2r-std crate 无此 producer）、get_stream/post_stream/post_stream_with_headers async facade。无契约的非 Plain 形状 → `SIGNASSEMBLY.SIGNATURE_UNVERIFIED: no declared adapter contract ...`。
+**规则表 12 条**（http 模块；R3-02 勘误：初稿误记 14——c1579ed71 实测 12）：post_sync/post_bearer/post_bearer_sync/get_sync 侧信道族（sync+async 变体）、last_status 数值 cast、3 参 post 元数分派（**Embedded 限定**——a2r-std crate 无此 producer）、get_stream/post_stream/post_stream_with_headers async facade。无契约的非 Plain 形状 → `SIGNASSEMBLY.SIGNATURE_UNVERIFIED: no declared adapter contract ...`。
 
 Plain 形状保留通用严格路径（callee 解析、async 双向、元数、`signature_matches` 公共对拍、AsRef 视图/parse Null-sentinel 记录），同样无任何 Resolved-only 通道。
 

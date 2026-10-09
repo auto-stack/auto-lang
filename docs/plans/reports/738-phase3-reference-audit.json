@@ -77,7 +77,7 @@
   "for-in-stream-desugar-verify",
   "api-gen-back-module-embedded-proofs-into-manifest"
  ],
- "adapter_rules_total": 17,
+ "adapter_rules_total": 15,
  "r2_claim_329_sites": "not upheld as blanket glue/out-of-face; four user-reachable classes wired to strict collection this round; remainder verified out-of-face or explicit debt boundary",
  "gates": {
   "plan738": "67/67",

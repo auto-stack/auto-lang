@@ -36,7 +36,7 @@
 | for-in 流反糖 | `stream_next[_async]` 发射无证明 | 反糖点按 stream_next 契约验证（含 AsyncHTTPStream 参数 facade 视图——契约声明，非类型名猜测） |
 | 生成服务 back 模块（db.at/伴生 *.at） | `transpile_back_module_to_rs` 用 **Standalone 默认**转译并**丢弃证明**（而产物经 qualify_a2r_std 实际链接内嵌镜像） | `transpile_back_module_to_rs_with_proofs`：Embedded 运行形态 + 证明返回；`generated_api_assembly` 将 db+伴生模块证明并入 manifest（endpoint 面+back 模块面共同构成生成装配引用闭包） |
 
-## 3. 新增契约（ADAPTER_RULES 增补，17 条）
+## 3. 新增契约（ADAPTER_RULES 增补至 15 条；R3-02 勘误：初稿误记 17——84bec29ef 实测 15）
 
 stream_next/stream_is_done/stream_close 三件套的 async 面（`*_async` callee、`&AsyncHTTPStream` 参数经 `param_facades` 契约视图映射公共 `HTTPStream`；is_done/close 的 `_async` producer 是同步函数——awaited=false/producer_async=false 如实声明）。
 
