@@ -3349,6 +3349,41 @@ mod plan095_focus_tests {
         assert!(resolve_focus_target(&inputs, ".NoSuch").is_none());
         assert!(resolve_focus_target(&inputs, "").is_none());
     }
+
+    /// PLAN-747：消费步三臂——命中终结（ok + focus 任务）/稳定 miss 终结
+    /// （视图已含输入而目标缺席，或 5 轮重试耗尽）/竞态窗口不终结（重试）。
+    #[test]
+    fn plan747_focus_pending_step_three_arms() {
+        let inputs = vec![input("FocusProbe", "TiInput")];
+        let (id, done, result) = focus_pending_step(&inputs, ".TiInput", 0);
+        assert!(id.is_some() && done && result == "ok");
+
+        let (id, done, result) = focus_pending_step(&inputs, ".NoSuch", 0);
+        assert!(id.is_none() && done && result == "miss:.NoSuch");
+
+        let (id, done, result) = focus_pending_step(&[], ".NoSuch", 5);
+        assert!(id.is_none() && done && result == "miss:.NoSuch");
+
+        let (id, done, result) = focus_pending_step(&[], ".TiInput", 0);
+        assert!(id.is_none() && !done && result.is_empty());
+    }
+
+    /// PLAN-747 借用纪律回归：pending 消费形态（判别式克隆先行 + 块内
+    /// borrow_mut 清除）不得 panic——钉住「edition 2021 if-let 判别式
+    /// Ref 守卫跨块」类回归（修复前块内 borrow_mut 必 panic 且 pending
+    /// 永不清除 = update 每消息重入 panic，2026-10-09 审计 4611 例）。
+    #[test]
+    fn plan747_focus_pending_borrow_discipline() {
+        let focus_pending = std::cell::RefCell::new(Some(("QuickEdit".to_string(), 0u32)));
+        // 修复后消费形态：克隆语句先行（守卫随 let 语句结束释放）。
+        let pending = focus_pending.borrow().clone();
+        if let Some((key, tries)) = pending {
+            assert_eq!(key, "QuickEdit");
+            assert_eq!(tries, 0);
+            *focus_pending.borrow_mut() = None;
+        }
+        assert!(focus_pending.borrow().is_none(), "pending 应被清除");
+    }
 }
 
 /// PLAN-095 T-04: 当前视图中可聚焦输入控件（Input/Textarea）的稳定 Id 与
@@ -3441,6 +3476,23 @@ fn resolve_focus_target(inputs: &[FocusableInput], key: &str) -> Option<iced::wi
         }
     }
     None
+}
+
+/// PLAN-095 T-04 消费步决策（PLAN-747 抽出独立可测）：
+/// 返回 (focus 任务目标, 是否终结 pending, `__focus_result` 值)。
+/// 终结=false 表示挂载竞态窗口重试（重试计数 +1 由调用方落）。
+fn focus_pending_step(
+    inputs: &[FocusableInput],
+    key: &str,
+    tries: u32,
+) -> (Option<iced::widget::Id>, bool, String) {
+    if let Some(id) = resolve_focus_target(inputs, key) {
+        (Some(id), true, "ok".to_string())
+    } else if !inputs.is_empty() || tries >= 5 {
+        (None, true, format!("miss:{key}"))
+    } else {
+        (None, false, String::new())
+    }
 }
 
 /// PLAN-095 T-03: 浮层根声明 pointer-events-none → 被动框（不截获下方点选）。
@@ -20781,23 +20833,28 @@ fn compare_pngs(
         if let Some(key) = crate::vm::native::take_ui_focus_request() {
             *state.app.focus_pending.borrow_mut() = Some((key, 0));
         }
-        if let Some((key, tries)) = state.app.focus_pending.borrow().clone() {
+        // PLAN-747 根修：克隆提为独立语句——edition 2021 下 if-let 判别式临时
+        // （Ref 守卫）活整个块，块内 borrow_mut 必 panic 且 pending 永不清除
+        // （每条 update 消息重入 panic，update 后半段随 unwind 全丢 = UI 冻结；
+        // 2026-10-09 退出审计 4611 例 "RefCell already borrowed" 实证）。
+        let focus_pending = state.app.focus_pending.borrow().clone();
+        if let Some((key, tries)) = focus_pending {
             let (view, _, _) = state.component.view_with_debug_gated(false);
             let converted = convert_view_messages(view);
             let mut inputs: Vec<FocusableInput> = Vec::new();
             collect_focusable_inputs(&converted, &mut inputs);
-            if let Some(id) = resolve_focus_target(&inputs, &key) {
+            let (focus_id, done, result) = focus_pending_step(&inputs, &key, tries);
+            if let Some(id) = focus_id {
                 tail_tasks.push(iced::widget::operation::focus(id));
-                let _ = state.component.write_state("__focus_result", auto_val::Value::str("ok"));
-                *state.app.focus_pending.borrow_mut() = None;
-            } else if !inputs.is_empty() || tries >= 5 {
-                // 视图已含可聚焦输入而目标缺席 = 稳定 miss（立即落结果）；
-                // 视图尚无任何输入 = 挂载竞态窗口，走 5 轮重试上限。
+            }
+            if done {
+                // 命中=ok；稳定 miss（视图已含输入而目标缺席，或 5 轮重试耗尽）。
                 let _ = state
                     .component
-                    .write_state("__focus_result", auto_val::Value::str(format!("miss:{key}")));
+                    .write_state("__focus_result", auto_val::Value::str(&result));
                 *state.app.focus_pending.borrow_mut() = None;
             } else {
+                // 挂载竞态窗口：视图尚无任何输入，重试计数 +1。
                 *state.app.focus_pending.borrow_mut() = Some((key, tries + 1));
             }
         }
