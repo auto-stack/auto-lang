@@ -628,11 +628,26 @@ where
                     dismiss(shell, &self.on_dismiss);
                 }
                 if !over_panel && !over_anchor {
+                    // 宿主视口外（虚拟窗标题栏/缩放把手等 chrome）——整段
+                    // 放行：不 dismiss 不捕获，窗体拖拽/缩放照常。
+                    let host = self.viewport.get();
+                    let over_host = cursor.is_over(host);
+                    if std::env::var("AUTO_POPOVER_DEBUG").as_deref() == Ok("1") {
+                        eprintln!(
+                            "[pv-outside] host={host:?} over_host={over_host} modal={} cursor={:?}",
+                            self.modal,
+                            cursor.position(),
+                        );
+                    }
+                    if self.modal && !over_host {
+                        return;
+                    }
                     // 面板/锚之外的点击:dismiss 但放行给基础树 —— 别的
                     // menubar 触发器可以直接切换菜单。
                     dismiss(shell, &self.on_dismiss);
                     // PLAN-530 步骤8（W13）：模态形态整吞外点——遮罩语义，
                     // 基础树收不到（alert-dialog：外点不关闭不透传）。
+                    // 仅宿主视口内（真遮罩区）；chrome 区已上方放行。
                     if self.modal {
                         shell.capture_event();
                     }

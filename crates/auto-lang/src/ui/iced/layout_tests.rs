@@ -1337,6 +1337,7 @@ fn popover_modal_centers_within_clipped_host() {
     let pop = PopoverWidget::new(anchor, content)
         .placement(PopoverPlacement::Modal)
         .open(true)
+        .modal(true)
         .anchor_is_empty(true)
         .on_dismiss(PopMsg::Dismiss);
     let host = iced::widget::container(iced::Element::from(pop))
@@ -1361,6 +1362,19 @@ fn popover_modal_centers_within_clipped_host() {
     assert!(
         (cx - 512.0).abs() > 80.0,
         "modal must NOT center on the full window when clipped: cx {cx}"
+    );
+    // 宿主视口外（模拟窗框/标题栏）的点击不得被模态吞掉——否则无法拖拽窗体。
+    // 400×300 裁剪宿主在原点，点 (500, 50) 在宿主外。
+    ui.point_at(iced::Point::new(500.0, 50.0));
+    let statuses = ui.simulate(iced_test::simulator::click());
+    assert!(
+        !statuses.iter().any(|s| *s == iced::event::Status::Captured),
+        "click outside clipped host (window chrome) must pass through: {statuses:?}"
+    );
+    let msgs: Vec<PopMsg> = ui.into_messages().collect();
+    assert!(
+        !msgs.contains(&PopMsg::Dismiss),
+        "chrome click must NOT dismiss modal: {msgs:?}"
     );
 }
 
