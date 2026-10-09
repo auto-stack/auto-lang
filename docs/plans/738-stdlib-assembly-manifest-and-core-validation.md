@@ -327,6 +327,18 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 ## 9. 复审记录
 
+### work 交接（2026-10-09，R2 稳定树验证+服务验收从头重跑 → executing 继续）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 2
+- outcome: pass（本轮指令范围——稳定代码验证+服务验收重跑——完成；T-02..T-08 整体仍打开）
+- code_commit: worktree plan-738-dev `53010f145` → `b838f5f16`（R2 未提交实现主体 + 本轮 host 门修复一并入库的稳定树快照，31 files +7874/-1721；worktree=`D:/autostack/.wt/lang-738/auto-lang`，提交后 clean）
+- task_ids: T-02..T-08 修复进行中的验证收口（无勾选变更，current_step 保持 1/8）
+- evidence: [738-repair-round2.md](reports/738-repair-round2.md) 稳定树收口节；三 crate check 零错误；plan738 55/55；api_gen 43/43（修复 729/730 两真实红——host 门 `pub use` 转发壳跟随+await mode 证据+impl AsRef<str>/不透明类型按名身份）；module_cache 16/16、native_registry 13/13、use_semantics 7/7、autovm_persistent 20/20、CLI 10/10；真实生成服务验收 1/1（110.9s，`--features test-http-e2e`：生成→实编→serve→ready 指纹→业务 42→仅改 stdlib→陈旧→再生→重建→复验）
+- blockers: 无阻塞。注意：该验收测试门控在 `feature = "test-http-e2e"` 后——漏 feature 会得到 0 测试假绿（本轮 service7 轮已废弃）
+- next: R2 收口余项（callee/闭包遗漏审计、manifest 全消费者一致性、C IO 正证、最终 t/tv/tt/th 双树分诊、SD 正文）→ 新提交独立复审；本轮不合入/归档
+
 ### Revision 2 修订交接（2026-10-09，pass → work）
 
 - stage: new
