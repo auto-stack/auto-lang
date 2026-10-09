@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-09
 plan_revision: 3
-current_step: 2  # Phase 3：T-01 与 T-09 完成；T-02..T-08 验收对账与 T-10..T-14 待闭合
+current_step: 3  # Phase 3：T-01/T-09/T-10 完成；T-02..T-08 验收对账与 T-11..T-14 待闭合
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -384,11 +384,14 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [x] 新增 `docs/plans/reports/738-phase3-scope.{md,json}`，记录基面/文件清单/hash/分类/待审语义项。完成条件：每个变更文件均有归属，不存在未知语义差异。映射 T-08、AC-08、SD-01..07 的证据边界；本任务不靠全档测试验证格式性质。
   [✅ 已完成] [738-phase3-scope.md](reports/738-phase3-scope.md) + [738-phase3-scope.json](reports/738-phase3-scope.json)（566 条逐文件 parent/child SHA256+分类+依据；审计脚本 738-phase3-scope.audit.py 可重跑）。
 
-### Phase 3 / T-10：修复 Rust strict 门并证明合法适配链
+### Phase 3 / T-10：修复 Rust strict 门并证明合法适配链 ✅
 
-- [ ] 依赖 T-09。触面：`stdlib_assembly/host.rs::{verify_rust_reference,...}`、`model.rs`/`validate.rs`（按所选契约表达需要）、`trans/rust.rs::call` 与既有 HTTP lowering、`crates/a2r-std/src/http.rs` 和内嵌 `crates/auto-lang/src/a2r_std.rs` 的实际 producer 定义。先用现有包装形状构造最小反例，区分明确放行缺口与尚未实编的形状假设。
-- [ ] 给三参 post、post_sync/last_status、Await/Cast/(async)Block 等已支持适配建立双源可验证合同；元数/返回/async 漂移和无证明不再因 wrapped/mode_variant 豁免。strict 发射/生成入口只接受充分证明；Resolved-only 仍可用于清点，但不得成为引用核心调用成功的依据。保持 PLAN-724/729/730 合法能力与公开 API，不复制公共签名充作 producer 证据。
-- [ ] 在现有 `host.rs` 测试及 `plan738_stdlib_assembly_tests.rs`/相关 trans 族补正负例；Standalone/Embedded 分别真实编译适配 witness，有可观察返回/状态断言。开发运行 `cargo t plan738`、触及 adapter 的 scoped 族和 `cargo test -p auto-man --lib api_gen -- --test-threads=1`。新报告 `738-phase3-strict.md` 记录旧失败/新成功及拒绝位置。映射 T-03/04/07、AC-02/03/05/07/08、SD-01/02/04/05/07。
+- [x] 依赖 T-09。触面：`stdlib_assembly/host.rs::{verify_rust_reference,...}`、`model.rs`/`validate.rs`（按所选契约表达需要）、`trans/rust.rs::call` 与既有 HTTP lowering、`crates/a2r-std/src/http.rs` 和内嵌 `crates/auto-lang/src/a2r_std.rs` 的实际 producer 定义。先用现有包装形状构造最小反例，区分明确放行缺口与尚未实编的形状假设。
+  [✅ 已完成] worktree `c1579ed71`（基线 `2c1b4a763`）：最小反例先行（元数 2/3 参、缺 await、cast f64、未知块结构、Standalone 3 参 post）；实勘放行缺口三处——包装 async 豁免、`wrapped||mode_variant` Resolved-only 元数放行臂、`fn expr` Await 臂旁路 `call()` 验证钩子。
+- [x] 给三参 post、post_sync/last_status、Await/Cast/(async)Block 等已支持适配建立双源可验证合同；元数/返回/async 漂移和无证明不再因 wrapped/mode_variant 豁免。strict 发射/生成入口只接受充分证明；Resolved-only 仍可用于清点，但不得成为引用核心调用成功的依据。保持 PLAN-724/729/730 合法能力与公开 API，不复制公共签名充作 producer 证据。
+  [✅ 已完成] `ADAPTER_RULES` 14 条独立契约（侧信道族 sync/async 变体、last_status 数值 cast、3 参 post 元数分派【Embedded 限定——a2r-std crate 无 3 参 producer，Standalone 诚实拒绝】、三个 async 流 facade）+ 结构化 `observe_emission`（块结构逐段核对）+ 四源一致（发射↔契约↔producer↔公共投影）；Resolved-only 放行臂删除；类型名 pattern 证据废除；扩展位（api_key）由契约 `extension_params` 冻结不复制公共签名；Await 臂接入同一门。plan724 探针改判：Standalone 3 参 post 旧文本断言冻结的是从未可编译形状 → 改断言诚实拒绝；724 可编译能力（侧信道/golden/e2e）全部保留。
+- [x] 在现有 `host.rs` 测试及 `plan738_stdlib_assembly_tests.rs`/相关 trans 族补正负例；Standalone/Embedded 分别真实编译适配 witness，有可观察返回/状态断言。开发运行 `cargo t plan738`、触及 adapter 的 scoped 族和 `cargo test -p auto-man --lib api_gen -- --test-threads=1`。新报告 `738-phase3-strict.md` 记录旧失败/新成功及拒绝位置。映射 T-03/04/07、AC-02/03/05/07/08、SD-01/02/04/05/07。
+  [✅ 已完成] [738-phase3-strict.md](reports/738-phase3-strict.md)：plan738 62/62（host 新 5 测正负例）、plan724 5/5、api_gen 43/43、e2e witness 3/3（Standalone build_and_run 实编实跑断言 auth 200/body；Embedded 内嵌 3 参 post+post_sync+post_bearer_sync 可观察返回）、tt 全档 15 红全分诊（11 文档化 master 预存+4 负载 flake 含 plan730 隔离复跑绿）零新增确定性红、use_semantics 7/7、module_cache 16/16、rustfmt 干净。
 
 ### Phase 3 / T-11：实际 callee 与引用闭包完整性审计/修复
 
