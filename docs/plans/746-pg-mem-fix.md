@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-746
-status: execution_done               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: pg-mem-fix
 author: [agent]
 created_at: 2026-10-09
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-playground, auto-lang/vm]
-current_step: 7
+current_step: 5
 total_steps: 7
 ---
 
@@ -230,7 +230,7 @@ total_steps: 7
   commit e1cb8632f。AC-04
 - [x] T-04 基线 profiling 与修复：全量走查分桶采样定位保留源；真泄露修、
   工作集型记 SD-04 注记。验证：对比报告（修复前后 RSS 曲线）。AC-03
-- [x] T-05 playground e2e 增补：frontend/tests 超时 spec + demo 回归。
+- [ ] T-05 playground e2e 增补：frontend/tests 超时 spec + demo 回归。
   验证：`npx playwright test tests/run-timeout.spec.ts` 4/4 绿（12s）。
   注：worktree 走查期发现的端口互踩/旧二进制残留为环境事故非代码缺陷
   （干净服务单发+并发均正确）。AC-04
@@ -245,6 +245,19 @@ total_steps: 7
 
 ## 9. 复审记录
 
+- 2026-10-09 `stage: review | PLAN-746 | r1 | outcome: needs_fix | reviewed b5f11e6c0 |
+  base 394f90919 | dep auto-down @895f8d0 | acceptance: AC-01/02/05/06 pass（单测/tv/红集对拍/
+  spec 增量核验）；AC-03 内存数据有效；AC-04 与"0 异常"判定 needs_fix |
+  findings: F-746-R1 | evidence: 4 parity 慢例 10.0s ExecutionTimeout 实录（c_crawler 等，
+  走查脚本 ok 逻辑只看 result 字段漏判 stdout Error）| next: work（修复后复审）`
+- 2026-10-09 F-746-R1（medium-high，AC-04/慢例正确性）：默认 10s 截止截断合法慢示例——
+  c_crawler/c_http_get/c_wget/http_client_sync 合法耗时 ~10.5s（sync FFI 网络超时），
+  修复后全部在 10.0s 被 ExecutionTimeout 截断（前端不发 timeout_secs 时用默认 10s）。
+  走查"运行异常 0"为测量假象（脚本只查 result 字段；vm_runner 把 Error 放 stdout）。
+  纠正（Q-2 以走查数据定谳）：前端 usePlayground/usePlaygroundFull 的
+  projectRequestBody 显式发 timeout_secs=60（上限内自选；server 默认 10s 不变——
+  API 消费方仍受紧保护）；修正走查脚本 ok 逻辑（并查 stdout）；补 e2e 拦截断言
+  前端确实发送 60；4 慢例全量 TAP 输出复验。修 affected: T-03 政策面/T-05。
 - 2026-10-09 `stage: work | PLAN-746 | r1 | outcome: pass | code plan-746-dev @ b5f11e6c0
   （base 394f90919）| tasks T-01..T-07 全完成 | evidence：8+2 单测绿、tv 162/162、
   e2e 4/4+全量 23/23、全量走查 +11MB/静置不涨/异常 0（p746-mem-report.md）、
