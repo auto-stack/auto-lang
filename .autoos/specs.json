@@ -5399,6 +5399,38 @@
       "docsha:e3f9e88ead5c"
      ],
      "file": "docs/specs/auto-vm/project.md"
+    },
+    {
+     "id": "P749-1",
+     "title": "串拼接与 JSON 产物读语义（PLAN-749）",
+     "content": "PLAN-749:r4 交付落账（canonical 唯源=docs/specs/auto-lang/vm/overview.md §串拼接与 JSON 产物读语义，delivery f47cbc8e1）。串拼接显示契约：STR_CAT/ADD 串臂非串操作数按 tag 值显示（bool→true/false、i64/u64 按值、i32 数值；obj/list 维持堆 id；null=显式类型错）——根修 decode_i32 位型垃圾（musk E2E ok=-2147483648 实锤，TAG_BOOL 低 32 位 0x80000000）；str+f32 为预存观察项未修。JSON 产物读语义=验证事实登记（GET_FIELD 物化/JSON.parse 物化/深链/续体读经三上下文矩阵+musk E2E 5/5 boot 验证为既有正确契约，无实现改动）。",
+     "file": "docs/specs/auto-lang/vm/overview.md",
+     "related": [],
+     "status": "current",
+     "created": "2026-10-10",
+     "last_modified": "2026-10-10",
+     "tags": [
+      "plan-749",
+      "vm",
+      "display-semantics",
+      "read-semantics"
+     ]
+    },
+    {
+     "id": "P749-2",
+     "title": "视图条件位 CALL 通道语义（PLAN-749）",
+     "content": "PLAN-749:r4 交付落账（canonical 唯源=docs/specs/auto-lang/vm/design/vm-fn-call-semantics.md 语义矩阵视图条件位行，delivery f47cbc8e1）。视图模板条件位四形态（CALL 比较/CALL 真值/单段 computed 比较/store 前缀多段真值）经 G1 通用 fragment 解析兜底 resolve_condition_operand_fallback（仅后置不前置，委托 resolve_expr_to_value）+G2 比较臂 computed 回落+G3 store 前缀排除解除；真值位沿用严格布尔语义（Value::as_bool，Str→false）。坑①家族第三型（视图模板 fn 返空）关闭；P733-R2 异根甄别（97/6 零增减）指针移交 PLAN-748 T-02。",
+     "file": "docs/specs/auto-lang/vm/design/vm-fn-call-semantics.md",
+     "related": [],
+     "status": "current",
+     "created": "2026-10-10",
+     "last_modified": "2026-10-10",
+     "tags": [
+      "plan-749",
+      "vm",
+      "fn-call-semantics",
+      "view-condition"
+     ]
     }
    ]
   },
@@ -6476,6 +6508,21 @@
       "regression"
      ],
      "file": "docs/reports/p723-r2-review.md"
+    },
+    {
+     "id": "P749-3",
+     "title": "VM 读语义三上下文矩阵（PLAN-749）",
+     "content": "PLAN-749 矩阵回归锚 plan749_read_semantics_tests（13 测）：fn 同步段（create_vm_from_source+call_fn_by_name_segment）/store handler 段+视图+computed（build_dynamic_component comp 驱动）/await-resume 续体（Parked(HttpRequest) 骨架）三上下文×bool 位型/串拼接显示/≥5 hop 深链/视图条件四格；红相证据=修复前 VIEW_CALL_EMPTY/COMPUTED_CALL_EMPTY/VIEW_ENV_OK_FALSE/ok=-2147483648（work 阶段日志）；修复后 13/13 绿，worktree 与主检出合入后冒烟双绿。",
+     "file": "crates/auto-lang/src/tests/plan749_read_semantics_tests.rs",
+     "related": [],
+     "status": "current",
+     "created": "2026-10-10",
+     "last_modified": "2026-10-10",
+     "tags": [
+      "plan-749",
+      "vm",
+      "test-matrix"
+     ]
     }
    ]
   },
@@ -8639,6 +8686,21 @@
       "commit:02f4b1a90"
      ],
      "file": "docs/plans/archive/723-website-demo-introductions.md"
+    },
+    {
+     "id": "P749-4",
+     "title": "PLAN-749 复审与合并收据（rv4）",
+     "content": "PLAN-749:r4 review pass（reviewed_commit 79ece2f37，主检出合入 receipt 028e44020）：AC-01..08 全实证；实施会话内复审、从工件重建（diff 重读+对抗性补测+门禁同配置原位重跑 5122/15 零增量+tv 162/162）；F-1 真值位测试补钉（79ece2f37，严格布尔语义注记）/F-2 str+f32 预存注记/F-3 索引条件位 parser 边界/F-4 RHS 裸名 CALL 注记。合并：rebase 哈希映射 509c4b476→e7684dfe7/2db273736→63f7f576e/6be6c257c→0a0ec2eda/79ece2f37→ad7a44219/6ebf7d718→f47cbc8e1，range-diff 5/5 全等，delivery f47cbc8e1 ff-only 落 master；E2E 回执=musk PLAN-100 沙箱修复前 ok=-2147483648 复现→修复后 5/5 boot ok=true。",
+     "file": "docs/plans/archive/749-vm-json-read-semantics.md",
+     "related": [],
+     "status": "done",
+     "created": "2026-10-10",
+     "last_modified": "2026-10-10",
+     "tags": [
+      "plan-749",
+      "review",
+      "merge-receipt"
+     ]
     }
    ]
   }
