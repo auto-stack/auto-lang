@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-749
-status: reviewed             # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: VM 解释器对 JSON 产物/深链的读语义退化 + 视图模板 fn 调用返空根修（坑①家族第三型，auto-musk PLAN-100 上游缺口）
 author: [agent]
 created_at: 2026-10-10
@@ -301,6 +301,40 @@ revision 递增）；提交 + §9 记录 + 交接 review。
 | [x] T-06 | T-05 | 全量门通过：裸 `cargo t`（nextest 日常档 5137 跑/5122 过/**15 红全预存零增量**——P733-R2 六条+P733-R1 flake+plan606+schema×2+docs_gen kitchen_sink 台账在册，projector/ash_leak/desktop_bus/desktop_surface/kitchen_sink 五条另经 master 基面 f92aca82d 实拍同红对拍）+ `cargo tv` **162/162 全绿**（语料 golden 零漂移）+ aura 档 215/215 + musk_vm_track 97/6=基线零增减；KNOWN-DEBT P733-R2 条目更新（异根甄别+指针移交 748 T-02）；worktree 3 提交（509c4b476/2db273736/6be6c257c）零新警告 | V03/V05 | 06,08 |
 
 ## 复审记录
+
+### merge 阶段（2026-10-10，rv4，outcome: pass，completion_kind: delivered）
+
+- stage: merge | plan_id: PLAN-749 | plan_revision: 4 | outcome: **pass**
+- 检查点收据：
+  - prepared：reviewed 基线 79ece2f37 + 冻结规范增量（rv4 SD-01/SD-02）→
+    worktree 内 canonical 落账（vm/overview 新节 / fn-call-semantics 矩阵行+
+    边界③改写 / plans.md 749 行 / INDEX 再生），文档专增量提交 6ebf7d718
+    （实现/依赖零变化核验）→ delivery commit
+  - landed：rebase master（028e44020，docs-only 无冲突）哈希映射
+    509c4b476→e7684dfe7 / 2db273736→63f7f576e / 6be6c257c→0a0ec2eda /
+    79ece2f37→ad7a44219 / 6ebf7d718→f47cbc8e1，`git range-diff` **5/5 全等**
+    （安全改写证明）；主检出 `git merge --ff-only plan-749-dev` → tip =
+    **f47cbc8e1**（无合并提交）；他人媒体 WIP 8 文件以 stash 停靠-回放零冲突
+    （aura_view_builder.rs WIP hunks :8099/:8156 与本案 hunks :12906+ 零重叠，
+    未包含未丢弃）；主检出合入后冒烟 plan749 13/13 绿
+  - ledger_refreshed：`.autoos/specs.json`（主检出本地兼容期投影，备份
+    .bak-p749）upsert P749-1（designs·串拼接与 JSON 产物读语义）/P749-2
+    （designs·视图条件位 CALL 通道）/P749-3（tests·三上下文矩阵锚）/
+    P749-4（reviews·复审合并收据），回读核验 4 条在册
+  - archived：docs/plans/archive/749-vm-json-read-semantics.md（git mv）+
+    status: archived（终态）
+  - cleaned：wt-guard 双 clean（auto-lang + auto-down）→ worktree remove ×2 +
+    branch plan-749-dev 删除（was f47cbc8e1 = master tip，全部提交已落）+
+    组目录移除（2026-10-10 实测 GROUP CLEANED）
+- 生产工件观察项（landing ≠ deployment）：auto-lang 为引擎仓；消费方
+  （auto-musk 桌面轨等）取用的 auto.exe 发布构建晚于本案合入前——
+  E2E 验证所用为 749 worktree 构建（含全部修复），主检出 master 的
+  下一次 release/日常构建自然携带；无本仓自持常驻进程需重启。
+- 批量回归到期判定（2026-10-10）：**未到期**——收据
+  docs/plans/.last-batch-regression.json last_covered_plan_id=740
+  （2026-10-08T11:20Z，legs tf/tt/tb）；本案计划号 749%5≠0；收据距今
+  ~31h < 48h 阈值。下一次到期判定锚：任何 merge 后越过 2026-10-10T11:20Z
+  即触发 /auto-plan:regress（主检出单实例）。
 
 ### review 阶段（2026-10-10，rv4，outcome: pass）
 
