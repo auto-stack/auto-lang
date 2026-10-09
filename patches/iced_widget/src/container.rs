@@ -397,11 +397,21 @@ where
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
         // auto-os patch：children 空窗期无 overlay 可挂——返回 None。
         layout.children().next().and_then(|child_layout| {
+            // clip=true 时 overlay 视口同步收窄（与 draw 同口径）——弹层
+            // 定位/遮罩不得越出容器。虚拟窗内 Modal 居中于窗而非整桌面。
+            let child_viewport = if self.clip {
+                layout
+                    .bounds()
+                    .intersection(viewport)
+                    .unwrap_or(*viewport)
+            } else {
+                *viewport
+            };
             self.content.as_widget_mut().overlay(
                 tree,
                 child_layout,
                 renderer,
-                viewport,
+                &child_viewport,
                 translation,
             )
         })

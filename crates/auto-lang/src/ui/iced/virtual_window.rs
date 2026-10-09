@@ -409,6 +409,7 @@ pub fn virtual_window_element<'a>(
     let mut client_bg = token(crate::ui::style::Color::Background);
     client_bg.a = t_alpha;
     // PLAN-002 N5：客户区底色与窗框同步底角圆角（最大化=全屏方角）。
+    // clip 收紧 overlay 视口到客户区——Modal 弹层居中于内容而非含标题条整窗。
     let maximized = vwin.maximized.get();
     let client_area = container(
         mouse_area(container(client).width(Length::Fill).height(Length::Fill))
@@ -417,6 +418,7 @@ pub fn virtual_window_element<'a>(
     )
     .width(Length::Fill)
     .height(Length::Fill)
+    .clip(true)
     .style(move |_t| Style {
         background: Some(client_bg.into()),
         border: Border {

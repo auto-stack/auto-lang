@@ -1323,6 +1323,47 @@ fn popover_modal_panel_item_click_publishes_item() {
     assert!(!msgs.contains(&PopMsg::Dismiss), "in-panel click must not dismiss: {msgs:?}");
 }
 
+/// Modal inside a clipped host (virtual-window client / scrollable) must
+/// center within that host, not the full OS window — otherwise the dialog
+/// (and its buttons) spill outside a small desktop app window.
+#[test]
+fn popover_modal_centers_within_clipped_host() {
+    use crate::ui::iced::popover::Popover as PopoverWidget;
+    // 400×300 clipped host at the window origin. Modal panel must sit in
+    // that box's center (200, 150), not the 1024×768 window center (512, 384).
+    let content: iced::Element<'static, PopMsg> = iced::widget::text("CLIPMODAL").into();
+    let anchor: iced::Element<'static, PopMsg> =
+        iced::widget::button("CLIPTRIG").on_press(PopMsg::Trig).into();
+    let pop = PopoverWidget::new(anchor, content)
+        .placement(PopoverPlacement::Modal)
+        .open(true)
+        .anchor_is_empty(true)
+        .on_dismiss(PopMsg::Dismiss);
+    let host = iced::widget::container(iced::Element::from(pop))
+        .width(iced::Length::Fixed(400.0))
+        .height(iced::Length::Fixed(300.0))
+        .clip(true);
+    let mut ui = simulator(iced::Element::from(host));
+    let (px, py, pw, ph) = bounds_of(&mut ui, "CLIPMODAL");
+    assert!(pw > 0.0 && ph > 0.0, "clipped-host modal panel must be visible: {pw}x{ph}");
+    // 文本贴面板左上：文本中心 ≈ 面板中心 ≈ (200, 150)。
+    let cx = px + pw / 2.0;
+    let cy = py + ph / 2.0;
+    assert!(
+        (cx - 200.0).abs() <= 40.0,
+        "modal must center in 400px clipped host (not 1024 window): cx {cx}"
+    );
+    assert!(
+        (cy - 150.0).abs() <= 40.0,
+        "modal must center in 300px clipped host (not 768 window): cy {cy}"
+    );
+    // 反证整窗居中：面板不得落在 (512, 384) 附近。
+    assert!(
+        (cx - 512.0).abs() > 80.0,
+        "modal must NOT center on the full window when clipped: cx {cx}"
+    );
+}
+
 /// Modal without a trigger: alert-dialog uses an empty anchor in the dynamic
 /// builder. The panel must still be registered in iced's overlay tree.
 #[test]

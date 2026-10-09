@@ -290,6 +290,7 @@ where
                 snap_within_viewport: self.snap_within_viewport,
                 on_dismiss: self.on_dismiss.clone(),
                 modal: self.modal,
+                clip_viewport: *viewport,
                 viewport: std::cell::Cell::new(*viewport),
             })))
         } else {
@@ -373,8 +374,12 @@ where
     on_dismiss: Option<Message>,
     /// PLAN-530 步骤8（W13）：模态形态（遮罩 + 面板外点击整吞）。
     modal: bool,
-    /// 遮罩铺满的视口矩形。overlay() 入参 viewport 是基础树可见裁剪区
-    /// （锚周边），非整窗——全屏尺寸以 layout() 入参为准（运行时回填）。
+    /// overlay() 入参的裁剪视口（窗内绝对坐标）——container clip /
+    /// scrollable 等收窄后的可见区。独立 App 无 clip 时 ≈ 整窗。
+    clip_viewport: Rectangle,
+    /// 宿主视口（遮罩铺满 / Modal 居中 / Edge 贴边 / snap 钳制的坐标系）。
+    /// layout() 时取 `clip_viewport ∩ 整窗` 回填——虚拟小窗内弹层不得
+    /// 飘出自身窗，独立 App 仍整窗居中（原行为）。
     viewport: std::cell::Cell<Rectangle>,
 }
 
@@ -383,9 +388,10 @@ where
     Message: Clone + 'static,
 {
     fn layout(&mut self, renderer: &iced::Renderer, bounds: Size) -> layout::Node {
-        let viewport = Rectangle::with_size(bounds);
-        // PLAN-530 步骤8（W13）：遮罩按整窗尺寸铺（draw 无 viewport 入参,
-        // 这里缓存全屏 bounds）。
+        let full = Rectangle::with_size(bounds);
+        // 宿主视口 = 裁剪链可见区 ∩ 整窗。无 clip 时 ≈ 整窗（独立 App
+        // 原行为）；虚拟小窗内 = 窗内容区（Modal/Edge/遮罩不得飘出自身窗）。
+        let viewport = self.clip_viewport.intersection(&full).unwrap_or(full);
         self.viewport.set(viewport);
 
         let (position, anchor_bounds) = match self.at_point {
