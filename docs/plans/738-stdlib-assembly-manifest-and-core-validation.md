@@ -6,7 +6,7 @@ author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-09
 plan_revision: 3
-current_step: 3  # Phase 3：T-01/T-09/T-10 完成；T-02..T-08 验收对账与 T-11..T-14 待闭合
+current_step: 4  # Phase 3：T-01/T-09/T-10/T-11 完成；T-02..T-08 验收对账与 T-12..T-14 待闭合
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -393,11 +393,14 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [x] 在现有 `host.rs` 测试及 `plan738_stdlib_assembly_tests.rs`/相关 trans 族补正负例；Standalone/Embedded 分别真实编译适配 witness，有可观察返回/状态断言。开发运行 `cargo t plan738`、触及 adapter 的 scoped 族和 `cargo test -p auto-man --lib api_gen -- --test-threads=1`。新报告 `738-phase3-strict.md` 记录旧失败/新成功及拒绝位置。映射 T-03/04/07、AC-02/03/05/07/08、SD-01/02/04/05/07。
   [✅ 已完成] [738-phase3-strict.md](reports/738-phase3-strict.md)：plan738 62/62（host 新 5 测正负例）、plan724 5/5、api_gen 43/43、e2e witness 3/3（Standalone build_and_run 实编实跑断言 auth 200/body；Embedded 内嵌 3 参 post+post_sync+post_bearer_sync 可观察返回）、tt 全档 15 红全分诊（11 文档化 master 预存+4 负载 flake 含 plan730 隔离复跑绿）零新增确定性红、use_semantics 7/7、module_cache 16/16、rustfmt 干净。
 
-### Phase 3 / T-11：实际 callee 与引用闭包完整性审计/修复
+### Phase 3 / T-11：实际 callee 与引用闭包完整性审计/修复 ✅
 
-- [ ] 依赖 T-10。触面：`stdlib_assembly/reference.rs::verify_linked_native_closure`、`trans/rust.rs` 的 call/use/receiver 分派、`compile.rs` 的来源记录、`lib.rs` VM/Rust/C 入口、`autovm_persistent.rs`、`auto-man/src/api_gen.rs::generated_api_assembly` 的 endpoint/db/helper 消费。列出所有进入六核心 producer 的实际路径，核对 329 个发射点的分类依据；明确哪些确为胶水/面外，哪些需追踪。
-- [ ] 用具名/通配/别名/再导出/裸名/方法/Auto body 依赖及生成 db/helper fixture 对照：同一核心调用跨合法写法仍收集同一来源 identity；替换独立 producer 合同或 callee 后，每条真实路径都必须拒绝。补遗漏；同名用户符号及未调用 unsupported 导入不误拒。动态路径不能以 AST 未出现 `module.symbol` 为排除依据，需实际绑定证据或明确拒绝理由。
-- [ ] 新增 `738-phase3-reference-audit.{md,json}`，逐路径关联入口、collector、最终 callee、proof、测试与例外边界；执行 `cargo t plan738`、use_semantics/native_registry/autovm_persistent 等实际触面 scoped 族。完成条件：六核心引用闭包无未经证明的放行，VM preflight 结果和最终 manifest 无陈旧证明。映射 T-02/03/04/07、AC-01..05/07/08、SD-01..05/07。
+- [x] 依赖 T-10。触面：`stdlib_assembly/reference.rs::verify_linked_native_closure`、`trans/rust.rs` 的 call/use/receiver 分派、`compile.rs` 的来源记录、`lib.rs` VM/Rust/C 入口、`autovm_persistent.rs`、`auto-man/src/api_gen.rs::generated_api_assembly` 的 endpoint/db/helper 消费。列出所有进入六核心 producer 的实际路径，核对 329 个发射点的分类依据；明确哪些确为胶水/面外，哪些需追踪。
+  [✅ 已完成] worktree `84bec29ef`（基线 `c1579ed71`）：139 处六核心 FQN 引用按 11 组发射臂逐类归属（报告 §1 表）；「329 发射点均属胶水/面外」声明不成立——四类用户可达形状（Dot 模块臂/裸名流族/三段 auto.core.method/for-in 反糖）全部接入 strict 收集，#1/#6/#9 确面外，#4 legacy 别名与 #11 接收者面按既有 P738-D2/第四绑定面债务显式记边界。
+- [x] 用具名/通配/别名/再导出/裸名/方法/Auto body 依赖及生成 db/helper fixture 对照：同一核心调用跨合法写法仍收集同一来源 identity；替换独立 producer 合同或 callee 后，每条真实路径都必须拒绝。补遗漏；同名用户符号及未调用 unsupported 导入不误拒。动态路径不能以 AST 未出现 `module.symbol` 为排除依据，需实际绑定证据或明确拒绝理由。
+  [✅ 已完成] 新闭包七项：`verify_rust_import` 具名导入绑定+签名（纯适配面符号拒绝+限定拼写指引——旧路径裸调用发射无壳破损产物静默漂移）；裸名调用限定重建验证；wildcard 公共面唯一归属/多模块歧义拒绝/§5.3 不越界；用户同名 fn 遮蔽优先；Bina 三段 io 等幻影诚实拒绝；for-in 流反糖验证（AsyncHTTPStream 参数 facade 契约视图）；**api_gen db/伴生 back 模块 Embedded 证明并入 manifest**（原 Standalone 默认+丢弃证明）；ADAPTER_RULES 增至 17 条（stream 三件套 async 面）。
+- [x] 新增 `738-phase3-reference-audit.{md,json}`，逐路径关联入口、collector、最终 callee、proof、测试与例外边界；执行 `cargo t plan738`、use_semantics/native_registry/autovm_persistent 等实际触面 scoped 族。完成条件：六核心引用闭包无未经证明的放行，VM preflight 结果和最终 manifest 无陈旧证明。映射 T-02/03/04/07、AC-01..05/07/08、SD-01..05/07。
+  [✅ 已完成] [738-phase3-reference-audit.md](reports/738-phase3-reference-audit.md) + [json](reports/738-phase3-reference-audit.json)：plan738 67/67（t11_reference_closure 5 测）、plan724 5/5、api_gen 43/43、freshness 1/1、tt 非基线红=0（15 红全分诊）、use_semantics/native_registry/autovm_persistent/module_cache 7/13/20/16 全绿；VM 闭包走查沿用 R2 已闭合路径在案。
 
 ### Phase 3 / T-12：manifest 共同身份与多消费者三角对拍
 
