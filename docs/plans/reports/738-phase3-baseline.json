@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "plan_id": "PLAN-738",
+  "plan_revision": 3,
+  "phase": "Phase 3",
+  "stage": "new",
+  "observed_at": "2026-10-09T16:06:43.9326844+08:00",
+  "main_checkout": "D:/autostack/auto-lang",
+  "observed_main_commit": "df516a34957fc7278c045fc2e04778a562c58334",
+  "implementation_worktree": "D:/autostack/.wt/lang-738/auto-lang",
+  "implementation_branch": "plan-738-dev",
+  "implementation_commit": "2c1b4a763280b3994f51b441714b4f2120328fb3",
+  "implementation_clean": true,
+  "auto_down_commit": "895f8d0f9355c9f5ec3ce8fca268bdb768395846",
+  "spec_and_draft_sha256": {
+    "docs/specs/overview.md": "bfa32c63e5c0cf8902049f46cbe98dfafa38516ee634309d68f176e9692482b3",
+    "docs/specs/stdlib/project.md": "cd3d00bac3b2c7df1ac0320321c69fee37965fa40395d725656f7bc07114e26c",
+    "docs/specs/stdlib/design/backend-assembly.md": "8c25d12cae4ed3a4f1d5a83a1fdbf70c4f6424528b4cbf7bc1c18b5f8054c9ea",
+    "docs/specs/auto-lang/frontend/design/module-resolution.md": "fd110c6fb836795893b76c0709d280262362dc66be3b9a56b2ba3fdf2aa50d7f",
+    "docs/specs/auto-lang/trans/overview.md": "aabb0e631519721d4f5bb6def129d747177d5406bb4105f1bfea3f427ae323cb",
+    "docs/specs/auto-lang/runtime/design/networking-stdlib.md": "356436040c868450c6a73a49f27b9f0dd5af29342a3e93395fcd10f19529279e",
+    "docs/specs/auto-man/design/api-generation-integrity.md": "b66721c99150e39f2b86c4689c976a77c4ed934cf1ff1aef98667ded91fc225a",
+    "docs/specs/auto-cli/project.md": "7af13cc3e86b0df2397fad6b7d0136ae7503b058f2f2853fc86f771889e1a0ad",
+    "docs/plans/reports/738-sd-drafts.md": "99c03e2790169e2ddc873983d7e697619684c87bbdb82fb74365e87c1636b26d"
+  },
+  "implementation_input_sha256": {
+    "crates/auto-lang/src/stdlib_assembly/host.rs": "d402b37770fe47b84a3f45a2abdf3da142b12e05ef8c8a35e85123d4767e3c20",
+    "crates/auto-lang/src/stdlib_assembly/reference.rs": "77e39e6f981a6cad3a040e4fbadad98ebaa44a2c291844cf8ce65416ebece9fe",
+    "crates/auto-lang/src/stdlib_assembly/manifest.rs": "2ac61fb1f134642ef0fa45f44c4d050f954c58828d055e6a9b1e46be31c37f90",
+    "crates/auto-lang/src/trans/rust.rs": "02343262c0ee8abf17719f97feabf08764cbbc423d9d5c686d36d439e6ec17c7",
+    "crates/auto-lang/src/autovm_persistent.rs": "0eabcb7c2978c3b8314f2403b54db4fd486771122937d47f5e1385ac456396b2",
+    "crates/auto-man/src/api_gen.rs": "ebd8d1c219278b041ef54c9dd856c3a912fefb6f46697d77b1e0a1e9b7acac7a",
+    "crates/auto/src/cmd_stdlib.rs": "8f6fd91ee3330f24a23704564c8962e255f87ecadd2b50f6825460234320e9d9"
+  },
+  "r2_commit_scope": {
+    "files": 566,
+    "additions": 108488,
+    "deletions": 48935,
+    "needs_full_classification": true
+  },
+  "prior_service_receipt": {
+    "commit": "2c1b4a763280b3994f51b441714b4f2120328fb3",
+    "log": ".repair738-r8-service.log",
+    "passed": 1,
+    "duration_seconds": 50.18,
+    "source": "executor log checked read-only",
+    "independently_rerun": false
+  },
+  "findings": {
+    "confirmed_static": [
+      "host wrapper async exemption and Resolved-only arity fallback accepted by Rust emitter",
+      "SD-06 draft swaps exit codes 2 and 3"
+    ],
+    "pending_verification": [
+      "reference closure coverage across import/call shapes and delegated bodies",
+      "common assembly identity across actual consumers",
+      "generated workspace lock/features identity",
+      "full classification of bulk formatting diff"
+    ]
+  },
+  "scope": "Plan bookkeeping only; no implementation, Cargo tests, canonical Specs, ledger, merge, archive, or worktree cleanup."
+}

@@ -5,9 +5,9 @@ feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-09
-plan_revision: 2
-current_step: 1  # 用户已授权 revision 2 修订和继续修复；T-02..T-08 保持打开
-total_steps: 8
+plan_revision: 3
+current_step: 1  # Phase 3 待执行；T-01 保留完成，T-02..T-08 及新增 T-09..T-14 尚未闭合
+total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
   - docs/specs/stdlib/design/backend-assembly.md
@@ -19,7 +19,7 @@ supersedes_spec_components:
 new_spec_components:
   - docs/specs/stdlib/design/assembly-manifest.md
 touched_goals: [GOAL-003]
-affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persistent.rs, crates/auto-lang/src/module_cache.rs, crates/auto-lang/src/lib.rs, crates/auto-lang/src/parser.rs, crates/auto-lang/src/trans/rust.rs, crates/auto-lang/src/trans/c.rs, crates/auto-lang/src/vm/codegen.rs, crates/auto-lang/src/vm/native_registry.rs, crates/auto-lang/src/vm/native.rs, crates/auto-lang/src/vm/native_catalog.rs, crates/auto-lang/src/vm/ffi/stdlib.rs, crates/auto-man/src/api_gen.rs, crates/auto/src/main.rs, crates/auto/src/cmd_stdlib.rs, stdlib]
+affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persistent.rs, crates/auto-lang/src/module_cache.rs, crates/auto-lang/src/lib.rs, crates/auto-lang/src/parser.rs, crates/auto-lang/src/stdlib_assembly, crates/auto-lang/src/trans/rust.rs, crates/auto-lang/src/trans/c.rs, crates/auto-lang/src/a2r_std.rs, crates/a2r-std/src/http.rs, crates/auto-lang/src/vm/codegen.rs, crates/auto-lang/src/vm/native_registry.rs, crates/auto-lang/src/vm/native.rs, crates/auto-lang/src/vm/native_catalog.rs, crates/auto-lang/src/vm/ffi/stdlib.rs, crates/auto-man/src/api_gen.rs, crates/auto-man/src/rust_ui.rs, crates/auto/src/main.rs, crates/auto/src/cmd_stdlib.rs, stdlib]
 ---
 
 # [PLAN-738] 标准库后台装配契约与 manifest：真实来源、核心符号校验和缓存一致性
@@ -34,6 +34,8 @@ affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persisten
 3. **核心门禁**：io/net/async/http/json/sse的已声明符号按真实provider/签名/能力分类，引用缺实现、重复实现、签名漂移、目标或环境不适用均有构建/装载诊断；不会空返回或落另一个后台。
 
 这是D3基础和核心门禁，不承诺全标准库所有符号跨后台语义相同，不批量实现当前缺失的Rust net/io、C HTTP或浏览器监听。非核心模块先清点和记录验证等级，进一步签名/ABI和语义parity作为D3b。全actor/CPU/内置TLS/通用WS不在本期。
+
+**当前执行入口：Revision 3 / Phase 3「最终契约修复与验收收口」**，见 §5.8、§6.4、§8 的 T-09..T-14。继续原 `plan-738-dev` worktree，以 `2c1b4a763` 为入场实现基线；保留 R2 服务验收和三目标 witness 收据，补 strict 适配证明、引用闭包与 manifest 对拍、SD 终稿及最终独立复审。AC-01..08、SD-01..07 的范围和通过阈值不变；仍不合入/归档。
 
 ## 1. 目标
 
@@ -106,6 +108,16 @@ JSON schema仅服务装配清单/工具输出，不改语言语法或公开File/
 | `stdlib/auto/io.at/io.vm.at/io.c.at` | 公共声明已有#[vm]，VM在ext填方法、C填物理字段；不是纯声明+自动相同ABI。 |
 | `stdlib/auto/json.rs.at`与Rust host | rs文件存在，但Rust映射可能消费host runtime；实际选择须记清，不把两个provider重复激活。 |
 | `ui/ext_stubs.rs`、`lib.rs`use.web adapter链 | 前端适配是独立机制，不能凭空假定io.vue.at自动拼接；先记录事实/能力，不重写Vue链。 |
+
+### 4.3 Revision 3 入场事实与授权（2026-10-09）
+
+- 用户指令：“请你更新计划738,把后续步骤做成新的phase，然后我们去执行agent继续完善。”授权本轮在主检出修订计划和交接；后续执行沿用此前“执行修订和修复”的本仓授权。本轮不实施、不跑 Cargo、不代执行 agent 启动工作，也不授权合入/归档。
+- 实现基线：`D:/autostack/.wt/lang-738/auto-lang`，`plan-738-dev@2c1b4a763280b3994f51b441714b4f2120328fb3`，本轮观察 clean；auto-down 兄弟保持 `895f8d0f9355c9f5ec3ce8fca268bdb768395846` 只读。主检出已有其他 UI 工作的 WIP，本轮只编辑本计划簿记，执行不得搬到主检出。
+- R2 执行报告：[738-repair-round2.md](reports/738-repair-round2.md)。最终树真实生成服务验收 1/1、50.18s（用户报告 50.2s）；同源 VM=41/Rust=42/C=43 和 C stdio=65、分级门收据保留为该提交的执行证据。本轮只读核查，不将执行报告或本轮调查记作独立复审通过，也不将这些收据外推到后续提交。
+- 源码明确差异：`stdlib_assembly/host.rs::verify_rust_reference` 对包装形状免除 async 不匹配拒绝，并在元数不匹配时返回 `Resolved`；`trans/rust.rs::call` 收到该证明后仍输出代码。该差异须按原 §5.7 的 strict 要求修复，不能用降级证明维持放行。
+- 待验证假设：Rust `call()` 单站点是否覆盖所有六核心调用；VM 最终链接证明是否完整进入 manifest；CLI actual、会话/产物、生成 receipt/ready 是否描述相同实际装配。报告中的“329 发射点均属胶水/面外”须逐类验证，尚不作为覆盖证明。
+- 数据/文档差异：`manifest.rs` 的 consumer 字段参与指纹；多消费者对拍需定义共同身份和消费者证据的关系。生成 workspace 的实际 lock/features 是否已被捕获尚需验证。`738-sd-drafts.md` SD-06 将退出码 2/3 写反，代码为 2=错误、3=inventory partial。
+- 范围事实：`2c1b4a763` 共 566 个文件、108488 additions/48935 deletions；“约 530 文件纯 rustfmt”的抽查声明不能替代完整差异分类。入场复查与 Specs/草稿 SHA256 记录于新增 [Phase 3 基线收据](reports/738-phase3-baseline.json)。Specs 仍为当前 canonical；738 尚未沉淀，不因草稿或实现与其不同而覆盖它们。
 
 ## 5. 详细设计
 
@@ -183,6 +195,16 @@ inspect输出inventory或某次AssemblyPlan/Manifest（模式字段明确），c
 
 任务依赖沿用 T-01→T-02→T-03/04→T-05→T-06→T-07→T-08；每个已完成单位提交代码，主检出只记计划进度。新 API 或确需独立范围变更须另提具体方案；当前修订保持原目标与授权。
 
+### 5.8 Revision 3 / Phase 3：最终契约修复与验收收口
+
+本 phase 把 R2 遗留验收和本轮发现的 strict 缺口明确任务化。沿用现有目标/六核心边界/公共 API 与服务合同，不增加新后台，不把必修项延期到 D3b。原 T-02..T-08 保持打开，新 T-09..T-14 提供执行顺序和对账出口。
+
+1. **严格验证真实适配链**：区分公共声明、选中 producer 和 lowering adapter。适配壳必须有可独立检查的契约，覆盖元数、类型、receiver、返回/错误形状、sync/async/await 及实际 callee；公共 AST 复制或包装 AST 存在均不足以证明。合法历史适配保留可编译行为；无法证明的被引用核心项报 `SIGNATURE_UNVERIFIED`，已证明漂移报 `SIGNATURE_DRIFT`，不发射成功产物/成功生成收据。不得单纯将全部包装形状拒绝以清账。
+2. **引用按来源身份闭合**：named/wildcard/alias/re-export、裸名及 receiver 调用、Auto body 内依赖与生成 db/helper 委派均从 resolver/lowering/最终绑定追溯。用户同名符号不冒充 stdlib；动态调用不得无依据视为未引用。六核心范围内证明不足必须拒绝，范围外仍明确记录等级与边界。VM 最终绑定查询和产物快照须一致，不只保留 pre-link 的推测证明。
+3. **同输入、同目标比较共同装配身份**：先定义规范化字段与消费者专属字段。consumer/诊断路径/时间等元数据不得伪造装配差异或掩盖真实差异；可拆共同 assembly identity 与 consumer receipt identity，或采用可证明等价的明确投影，设计决策在 T-12 记录。同 target/environment/features/来源闭包的入口应一致；VM/Rust/C 不同目标有预期差异，不要求三目标指纹相等。投影不得删除真实依赖/provider/符号证明以获得绿。
+4. **生成消费者也须绑定真实输入**：检查生成 workspace 实际采用的依赖版本/lock/features 与 manifest 的对应关系，区分生成器自身输入和生成产物运行时输入；复用门按实际依赖失效，ready 与收据的相同常量不是完整依赖证明。公共/选定层及缺失身份、依赖闭包、provider schema/实现、编译模式等原合同要求均须可核验；哪些显式序列化、哪些由内容输入证明，在 schema/SD 中一致说明。
+5. **范围与规范一起收口**：完整核查 bulk fmt，不重写或丢弃历史修复证据；SD-01..07 对照当前 canonical 与最终实现形成可应用正文和证据映射。执行只更新计划/报告中的沉淀稿，canonical/ledger 沉淀留给独立复审通过后的 merge 阶段。
+
 ### 规范增量
 
 起草只提出增量，不修改canonical。736落地后再对最终服务Spec兼容。
@@ -224,12 +246,28 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 在 `D:/autostack/.wt/lang-738/auto-lang`：
 - `cargo check -p auto-lang`、`cargo check -p auto-man`、`cargo check -p auto`；开发`cargo t plan738`、compile/module_cache/native scoped族、`cargo test -p auto --bin auto stdlib -- --test-threads=1`（新增CLI族）及auto-man API/provider scoped。
-- 复审裸`cargo t` + `cargo tv` + `cargo tt` + `cargo th --test-threads=1`；实际ui_gen消费点改动才`cargo tu`。a2r-std若为provider元数据必要改动，补该crate scoped/适用全crate；不改auto/lib/aavm，无taa。
+- 复审裸`cargo t` + `cargo tv` + `cargo tt` + `cargo th -j 1`（nextest 串行）；实际ui_gen消费点改动才`cargo tu`。a2r-std若为provider元数据必要改动，补该crate scoped/适用全crate；不改auto/lib/aavm，无taa。
 - 真Rust/C/witness生成实编、736代表CLI/配置/ready与729/730/734兼容族；三目标unsupported另有负测。
 - 不改语法参考/文档生成器，assembly JSON为工具模型而非语言Schema；若实际改变文档Schema定义触发docs_gen，按最终diff判定。tf只merge到期主检出单实例，不为本期每plan跑。
 - 零新增确定性红，按同命令基线逐名分诊，不靠改公开API、删provider/跳过fixture清账。
 
 报告新`docs/plans/reports/738-stdlib-{decision,inventory,assembly,providers,cache,verification}.md`及inventory/manifest JSON；绑定最终revision、source/deps/hash、每AC/SD证据与验证等级。
+
+### 6.4 Phase 3 定向验证与最终证据
+
+| 对应任务 | 必须观察的正例/反例 | 证据与通过条件 |
+|---|---|---|
+| T-09 | `2c1b4a763` 对父提交及实际合入范围的完整差异分类 | 每个变更文件有分类/依据，非格式语义变化进入复审；不能只抽查或以测试绿证明纯格式。 |
+| T-10 | 合法包装/三参分派/状态侧信道、Standalone 与 Embedded 两 provider；错元数、返回、async/await 和被替换 callee | 合法适配实际 Rust 编译通过、行为断言成立且具有完整证明；漂移/未证明核心调用在发射/生成成功前拒绝，不能接受 Resolved-only。 |
+| T-11 | 限定/裸名、named/wildcard/alias/re-export、receiver、Auto body、生成 db/helper 内同一核心调用；同名用户符号 | 各真实路径均收集正确 identity；植入缺 provider/签名漂移后同样拒绝；普通导入不拒绝未引用 unsupported，不引入 use 语义泄漏。 |
+| T-12 | CLI actual ↔ 会话/产物 manifest ↔ 生成 receipt/ready；普通/persistent VM、Rust/C、生成 API 分组 | 同 fixture 同目标共同身份一致，消费者证据与最终绑定一致；不同目标字段差异符合选择结果，inventory/candidate 不冒 actual。 |
+| T-12 | 不改 API 源，仅改 public/选定层/依赖/provider/schema/features；缺失、读取失败、unknown/null、同内容异绝对根 | 真依赖变更使新身份改变或编译拒绝、旧生成失效；同内容便携身份稳定；生成 workspace 实际 lock/features 有匹配/失配证明。 |
+| T-13 | SD-01..07 与当前 canonical、最终 schema、等级、退出码逐条对照 | 2=错误、3=partial；每条规范都有 AC→代码→证据，无未实现字段/能力冒称已交付。 |
+| T-14 | 最终 clean 提交上的分级门、三目标/C stdio witness、真实生成服务 | 每条收据含 code commit、依赖与 features、命令、数量、结果及日志 hash；0 tests 不能通过。 |
+
+开发阶段先 `cargo check -p auto-lang` 和目标 scoped 族；沿用 §6.3，不重复全档。T-14 固定最终提交后再完成裸 `cargo t`（完整非 fail-fast）、`cargo tv`、`cargo tt`、`cargo th`；HTTP 档 nextest 串行参数用 `cargo th -j 1`，不用 libtest 的 `--test-threads`。另跑 CLI `cargo test -p auto --bin auto stdlib -- --test-threads=1`、auto-man `cargo test -p auto-man --lib api_gen -- --test-threads=1`，适配/witness 的现有 ignored 测试按实际名称和 feature 显式启用。新增生成服务验收以现有命令 `cargo test -p auto-man --lib --features test-http-e2e http_e2e_plan738 -- --ignored --test-threads=1` 复跑，必须实际选择并通过 1 项，覆盖生成→实编→serve→ready→业务→stdlib-only 失效→再生→重建复验。
+
+若新改动触及 ui_gen，追加 `cargo tu`；只有触及 AGENTS.md 所列 aavm 路径才追加对应 `taa`。本次修订为计划簿记，不运行 Cargo；后续纯报告/SD 操作也不单独触发 `cargo t`/docs_gen。已有红仅凭相同命令/配置/依赖的基线与逐名证据归类，flake 需隔离复跑与机制记录；未解释新红保持失败，不缩断言/跳测试。全部机器负载串行安排，不运行 per-plan `tf`。
 
 ## 7. 验收标准
 
@@ -248,6 +286,18 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 
 > 2026-10-09 独立复审 R1：**needs_fix**。下列历史“已完成”段保留为执行记录，受影响勾选已撤回；它们不再代表验收通过。
 > T-01 调查成果保留；T-02→R2/R7，T-03→R1/R5/R8，T-04→R1/R2，T-05→R3/R4，T-06→R4/R5/R6，T-07/08→R7/R9。完整复现与修复合同见 [独立复审报告](reports/738-independent-review.md)。
+
+### 8.0 Phase 3 执行入口与任务映射
+
+原始实现与 R1 修复记录、R2 修复/服务验收记录作为前两阶段历史保留；当前新增 **Phase 3（Revision 3）**，任务总数由 8 增至 14。仅 T-01 保留完成，current_step=1；T-02..T-08 不因新 phase 出现而自动关闭，须由新任务证据逐项对账。
+
+| 阶段 | 当前定位 | 下一步 |
+|---|---|---|
+| 原始实现 / R1 | 历史调查和 needs_fix 证据保留 | 不恢复旧 reviewed/execution_done 声明。 |
+| R2 修复与验收 | `2c1b4a763`，服务 1/1、同源 witness 与分级门执行收据 | 作为 Phase 3 入场基线；不视为独立 review pass。 |
+| **Phase 3：最终契约修复与验收收口** | **T-09..T-14 全部待执行** | T-09 → T-10 → T-11 → T-12 → T-13 → T-14 → 独立 review。 |
+
+执行 agent 读取主检出本 revision 计划，在既有 `D:/autostack/.wt/lang-738/auto-lang` 实施，不重建/重置 worktree、不另取号、不合入。每个独立验证单位提交；新增报告记在主检出 `docs/plans/reports/`，生产代码/测试仅在原 worktree。工作树/依赖与基线发生变化时先记原因和新版本，不能静默挪用旧收据。
 
 ### T-01：最终736基线、装配调用图与六模块provider冻结 ✅
 
@@ -325,7 +375,60 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
   入口就绪：status=execution_done，worktree `e4425b673` clean，复审证据齐备（§9 交接+验证报告）。SD 沉淀稿=起草时 SD-01..07 提案维持（merge 阶段执行）。
 - [ ] 清理前lang-738两兄弟各wt-guard clean；tf仅merge到期主检出单实例。全AC闭合才reviewed/archived。
 
+### Phase 3 / T-09：冻结入场版本并核清批量格式化范围
+
+- [ ] 依赖 T-01 与 R2 提交。复核 `2c1b4a763`、worktree clean、auto-down 版本和基线收据；审计 `2c1b4a763^..2c1b4a763` 全部 566 文件，并记录最终合入 diff 的比较基面。
+- [ ] 按功能修复、纯格式、金样/生成资产、其他语义变化逐文件分类，给可复核依据。对声称纯格式的文件用同版本 formatter/归一化前后等价等适用方法完整核对；格式混合功能文件须单独提取语义差异审查，不能一律标纯 fmt。确认后的格式变更可保留并纳入完整复审，或用后续提交缩减无关改动；不要求重写已记录提交，不丢 R2 实现。
+- [ ] 新增 `docs/plans/reports/738-phase3-scope.{md,json}`，记录基面/文件清单/hash/分类/待审语义项。完成条件：每个变更文件均有归属，不存在未知语义差异。映射 T-08、AC-08、SD-01..07 的证据边界；本任务不靠全档测试验证格式性质。
+
+### Phase 3 / T-10：修复 Rust strict 门并证明合法适配链
+
+- [ ] 依赖 T-09。触面：`stdlib_assembly/host.rs::{verify_rust_reference,...}`、`model.rs`/`validate.rs`（按所选契约表达需要）、`trans/rust.rs::call` 与既有 HTTP lowering、`crates/a2r-std/src/http.rs` 和内嵌 `crates/auto-lang/src/a2r_std.rs` 的实际 producer 定义。先用现有包装形状构造最小反例，区分明确放行缺口与尚未实编的形状假设。
+- [ ] 给三参 post、post_sync/last_status、Await/Cast/(async)Block 等已支持适配建立双源可验证合同；元数/返回/async 漂移和无证明不再因 wrapped/mode_variant 豁免。strict 发射/生成入口只接受充分证明；Resolved-only 仍可用于清点，但不得成为引用核心调用成功的依据。保持 PLAN-724/729/730 合法能力与公开 API，不复制公共签名充作 producer 证据。
+- [ ] 在现有 `host.rs` 测试及 `plan738_stdlib_assembly_tests.rs`/相关 trans 族补正负例；Standalone/Embedded 分别真实编译适配 witness，有可观察返回/状态断言。开发运行 `cargo t plan738`、触及 adapter 的 scoped 族和 `cargo test -p auto-man --lib api_gen -- --test-threads=1`。新报告 `738-phase3-strict.md` 记录旧失败/新成功及拒绝位置。映射 T-03/04/07、AC-02/03/05/07/08、SD-01/02/04/05/07。
+
+### Phase 3 / T-11：实际 callee 与引用闭包完整性审计/修复
+
+- [ ] 依赖 T-10。触面：`stdlib_assembly/reference.rs::verify_linked_native_closure`、`trans/rust.rs` 的 call/use/receiver 分派、`compile.rs` 的来源记录、`lib.rs` VM/Rust/C 入口、`autovm_persistent.rs`、`auto-man/src/api_gen.rs::generated_api_assembly` 的 endpoint/db/helper 消费。列出所有进入六核心 producer 的实际路径，核对 329 个发射点的分类依据；明确哪些确为胶水/面外，哪些需追踪。
+- [ ] 用具名/通配/别名/再导出/裸名/方法/Auto body 依赖及生成 db/helper fixture 对照：同一核心调用跨合法写法仍收集同一来源 identity；替换独立 producer 合同或 callee 后，每条真实路径都必须拒绝。补遗漏；同名用户符号及未调用 unsupported 导入不误拒。动态路径不能以 AST 未出现 `module.symbol` 为排除依据，需实际绑定证据或明确拒绝理由。
+- [ ] 新增 `738-phase3-reference-audit.{md,json}`，逐路径关联入口、collector、最终 callee、proof、测试与例外边界；执行 `cargo t plan738`、use_semantics/native_registry/autovm_persistent 等实际触面 scoped 族。完成条件：六核心引用闭包无未经证明的放行，VM preflight 结果和最终 manifest 无陈旧证明。映射 T-02/03/04/07、AC-01..05/07/08、SD-01..05/07。
+
+### Phase 3 / T-12：manifest 共同身份与多消费者三角对拍
+
+- [ ] 依赖 T-10/11。触面：`stdlib_assembly/manifest.rs::{AssemblyManifest::freeze,...}`、`CompileSession`/batch/persistent 最终快照、`trans/{rust,c}.rs`、`lib.rs`、`auto/src/cmd_stdlib.rs` actual/check、`auto-man/src/api_gen.rs::{generated_api_assembly,current_generated_api_assembly,...}`、`rust_ui.rs` 新鲜度门与正式服务 ready。先记录共同 identity/消费者 receipt 投影、schema 兼容和已有收据迁移规则；未知/旧不完整快照须明确陈旧或拒绝。
+- [ ] 按 §5.8/§6.4 完成内容闭包和身份缺项：public/实际选定层/缺失状态、依赖关系、最终引用证明、provider schema/实现、target/environment/features。核验生成 workspace 实际采用的 Cargo.lock/依赖/features，不把生成器的 Cargo 输入冒称生成服务输入。无须新增一套通用包解析器；在既有生成/构建/启动入口闭合本期依赖身份。
+- [ ] 对同 fixture 同目标做 CLI actual ↔ 会话/最终产物 ↔ generation/ready 三角断言，覆盖普通/persistent VM、Rust/C、生成 API 各入口；按内容变更/读取失败/异根的正负例验证失效。CLI 与 manifest 使用实际数据，不手工拼期待 JSON；对不适用的目标入口明确拒绝，不删消费者降低覆盖。
+- [ ] 新增 `738-phase3-manifest.{md,json}`，记录 identity 规则、消费者字段映射、实际差异及完整正负例结果。`cargo t plan738`、CLI stdlib 与 auto-man api_gen scoped 必须通过；真服务完整链在 T-14 最终提交复跑。映射 T-02/03/05/06/07、AC-01/02/04/06/07/08、SD-01/03/04/05/06。
+
+### Phase 3 / T-13：SD-01..07 终稿与原任务验收对账
+
+- [ ] 依赖 T-09..12。修订主检出 `docs/plans/reports/738-sd-drafts.md`，形成对当前 canonical 可应用的新增/替换正文和位置；保留七条 SD ID 与 frontmatter spec-impact。纠正 SD-06 的退出码；核对 manifest 字段/共同身份、strict 验证等级、动态引用边界、真实生成依赖与 D3a/D3b 能力声明，不将草稿规范降到当前缺陷行为。
+- [ ] 新增 `738-phase3-acceptance.md`，逐条列 AC-01..08 → 原 T-01..08 / 新 T-09..14 → 最终代码/反例/日志 → SD-01..07；T-14 最终门禁栏先明确待补，待 T-14 完成再填最终收据，不在此提前宣告全 AC pass。重验完整 inventory 与六格公共 fn/method/type/field 分母，不以 call 单站点代替完整分母。已完成旧项可据最新证据勾选；缺项明确留开，不能因新 phase 完成就批量关闭原任务。
+- [ ] 完成条件：正文准确、所有 AC/SD 均有任务与证据，未批准遗漏不转债务。本步骤只改计划/报告，不发布 canonical/ledger，不跑 Cargo/docs_gen；映射原 T-02/06/07/08、AC-01/05/07/08、SD-01..07。
+
+### Phase 3 / T-14：最终提交门禁、真实验收与独立 review 交接
+
+- [ ] 依赖 T-09..13。先提交全部实现/测试，冻结 clean code commit 与依赖/lock/features。按 §6.3/§6.4 执行三 crate check、完整裸 t + tv/tt/串行 th、必要 scoped/CLI/API 档、三目标同源与 C stdio witness、正式生成服务完整链。运行期间不改输入；若再修代码，新提交重跑受影响门禁，不能沿用旧提交成功记录作为最终证明。
+- [ ] 新增 `738-phase3-verification.{md,json}`：命令、选中/通过/失败/跳过数量、code/dependency revision、日志/hash、逐名红分诊、Warnings/fmt/debug/遗漏扫描。R2 收据保留历史；无新确定性红、无未知失败；变更范围和新增证明适用面清楚，不能称全库语义 parity。
+- [ ] 在主检出把证据对回原 T-02..T-08 的实现/验证项及 T-09..T-14；只有所有执行验收闭合才置 `execution_done`，独立 review/merge/清理项仍保持待办。交给未参与该实现的独立 review agent，按 `/auto-plan:review` 重新核对最终提交、所有 AC、实际 callee/manifest、完整 diff 与 SD 正文；执行 agent 不能自行宣告独立复审 pass。
+- [ ] 独立复审 pass 才允许 `reviewed`；needs_fix 返回本 phase，needs_replan 修订具体合同而不降 AC。当前授权止于修复/验收/复审准备，不合入/归档/删除 worktree，merge 时再 canonical/ledger/Design33/索引及 wt-guard。映射原 T-07/08、AC-01..08、SD-01..07。
+
 ## 9. 复审记录
+
+### Revision 3 / Phase 3 修订交接（2026-10-09，pass → work）
+
+- stage: new
+- plan_id: PLAN-738
+- plan_revision: 3
+- outcome: pass（执行合同已就绪；不是实现完成或独立复审通过）
+- authorization: 用户要求更新 738、将后续步骤纳入新 phase；沿用已授权的本仓修复范围，后续由执行 agent 继续。
+- baseline: `plan-738-dev@2c1b4a763280b3994f51b441714b4f2120328fb3`，入场 clean；依赖/Specs/草稿版本见 [738-phase3-baseline.json](reports/738-phase3-baseline.json)。
+- changed_tasks: 新增 Phase 3 / T-09..T-14；原 T-02..T-08 的剩余验收由新 phase 对账，历史记录与未闭合项保留。total_steps=14，current_step=1。
+- changed_acceptance: none（AC-01..08 与 SD-01..07 ID/范围/阈值保留）；补充 §5.8 的执行约束和 §6.4 的具体对拍/反例。
+- evidence: 本轮静态源码核查发现 Rust Resolved-only strict 放行和包装 async 豁免；manifest consumer 参与指纹、引用路径与生成依赖闭包待专项证明；SD 退出码错位；566 文件差异需完整分类。现有服务 1/1 50.18s 作为 R2 执行收据保留。
+- independence: 本会话参与过实现，本轮只修订计划，不能充作最终独立复审。本轮不实施、不跑测试、不改 canonical/ledger。
+- state: executing；原 worktree 与已有修复保留；未合入/归档。
+- next: `/auto-plan:work PLAN-738` 读取 revision 3，从 T-09 开始依次完成 T-10..14，再交独立 `/auto-plan:review`。执行结果报告必须绑定最终 revision 3 + 新代码提交。
 
 ### work 交接（2026-10-09 下午，R2 全档收口 → executing 继续）
 
@@ -559,7 +662,7 @@ stdlib 导入面破损系在案已知——stdlib_tests.rs #[ignore] 佐证）�
 
 ## 10. 待澄清事项
 
-- R1 修复实证的 producer/adapter 冲突与有界修订提案见 [738-repair-round1.md](reports/738-repair-round1.md)；当前交接 `needs_replan`，不是整项修复通过。JSON 可空声明不自动规定失败返 null；TCP read 的参数/返回差异则已有实际 producer 证据。修订不得削弱 AC 或把剩余必修项归 D3b 清账。
+- R1 的 `needs_replan` 是历史交接，已由 revision 2/3 的同范围修订接续；当前无需要用户补充的规划输入。producer/adapter 的实际差异须在 Phase 3 以独立契约/实编和负测闭合，不能削弱 AC 或把剩余必修项归 D3b。JSON 可空声明不自动规定失败返 null；TCP read 已知参数/返回差异保留公开 ABI 与明确验证边界。
 - T-01负责六模块producer签名与当前parser/source-map/target实际入口原型；事实与canonical冲突提出具体修订，不以“代码如此”擅改公开API/语义。
 - 全库inventory不等于全库strict/语义parity；D3b扩展非核心provider门和资源/错误/取消ABI对拍，不能因D3a有manifest称所有符号能用于所有环境。
 - .vue等环境文件目前非统一stdlib后缀机制；有适配路径才登记，不能假造Io浏览器实现或因Vue前端误禁Native后端。
