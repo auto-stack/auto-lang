@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-746
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: pg-mem-fix
 author: [agent]
 created_at: 2026-10-09
@@ -245,6 +245,12 @@ total_steps: 7
 
 ## 9. 复审记录
 
+- 2026-10-09 `PLAN-746:r1 merge 收据 | prepared(d7ae203e2→rebase 95c093001,range-diff=) |
+  landed(master tip=d0c94b303,ff-only 无 merge commit;主检出产物重建:playground 二进制+
+  frontend dist 已刷新) | ledger_refreshed(.autoos/specs.json designs 段 P746-1/P746-2,
+  docsha 冻结,README §5 手工回退路径;spec-index.py 再生 26 projects) | archived(docs/plans/archive/) |
+  cleaned(wt-guard 待执行——见下方最终回执) | batch_regression: 746%5≠1;due 判定见 .last-batch-regression.json 回执 |
+  completion_kind: delivered`
 - 2026-10-09 `stage: review | PLAN-746 | r1 | outcome: pass | reviewed d7ae203e2 |
   base 394f90919 | dep auto-down @895f8d0 | acceptance_results: AC-01 pass（8 单测重跑）/
   AC-02 pass/AC-03 pass（后端码自走查后未变，证据复用有效）/AC-04 pass（F-746-R1 修复后
@@ -281,3 +287,12 @@ total_steps: 7
   倾向拒绝（Auto 无 kwargs 内建先例）；T-02 调查后以证据定谳并落 SD-02。
 - Q-2：默认超时 10s 是否合适（demo 全绿前提下，慢例如 parity C 库
   编译型可放宽到 60s 上限内自选）——实现期用走查数据定，不改 AC。
+
+## spec-sync 回写记录
+
+- `docs/specs/auto-playground/project.md`：PLAN-746 节（执行时限/宿主 60s 行为/panic 错误面/print kwargs 拒绝锚点）。
+- `docs/specs/auto-vm/project.md`：PLAN-746 节（ExecutionBudget/deadline 语义、公开 deadline 面、join_execution、SD-02 根因）。
+- `docs/specs/auto-playground/plans.md` + `docs/specs/auto-vm/plans.md`（新建）：746 行一句话沉淀。
+- `.autoos/specs.json` designs 段：P746-1（auto-playground）、P746-2（auto-vm），commit:95c093001 + docsha 冻结。
+- `docs/specs/INDEX.md`：spec-index.py 再生（26 projects）。
+- KNOWN-DEBT：PG-MEM-1/2 随修复销账；PG-MEM-3 走查归因修正（基线缓涨=挂起旋转窗口的误判，净增实为 +11MB 工作集涨落）——建议 review 档销账注记（本计划 T-04 定谳）。
