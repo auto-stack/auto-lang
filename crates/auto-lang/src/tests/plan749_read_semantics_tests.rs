@@ -312,6 +312,84 @@ fn probe_layers() str {{
     );
 }
 
+/// S3：**await/resume 续体上下文**——musk SessionsLoaded 原生形态（Http
+/// 完成后 handler 续体内 JSON.parse + r.ok 读 + 二次 parse 深链读）。
+/// 同步 handler 探针（comp 矩阵）不覆盖续体栈布局——本格用 plan705 同款
+/// Parked(HttpRequest)+resume 骨架钉死。
+#[test]
+fn p749_s1_s2_async_continuation_minimal() {
+    let body = p749_envelope_json();
+    let body_for_server = body.clone();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("accept");
+        let mut buf = [0u8; 4096];
+        let _ = std::io::Read::read(&mut stream, &mut buf);
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body_for_server.len(),
+            body_for_server
+        );
+        let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+    });
+
+    let code = r#"
+fn probe_async() str {
+    let payload = Http.post_json("http://127.0.0.1:7499/seed", "")
+    let r = JSON.parse(payload)
+    if r.ok == true {
+        let resp = JSON.parse(r.body)
+        return "OK:" + resp.session.messages[1].blocks[0].tool_name
+    }
+    return "BAD"
+}
+"#
+    .replace("7499", &port.to_string());
+    let (vm, _) = p749_compile(&code);
+    let mut task = AutoTask::new(0, 65536, 0);
+    let outcome = vm.call_fn_by_name_segment(&mut task, "probe_async", 0);
+    let seg = match &outcome {
+        SegmentOutcome::Parked {
+            wait: crate::vm::engine::ParkedWait::HttpRequest(id),
+            seg,
+        } => {
+            let req_id = *id;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "server 应答超时（async result 未就绪）"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            seg.clone()
+        }
+        other => panic!("预期 Parked(HttpRequest)，得到 {:?}", other),
+    };
+    server.join().expect("server thread");
+    match vm.resume_fn_by_name_segment(&mut task, &seg) {
+        SegmentOutcome::Completed(Ok(())) => {}
+        other => panic!("续体应 Completed(Ok)，得到 {:?}", other),
+    }
+    let nv = task.ram.pop_nv();
+    let dump = p749_nv_dump("s3_async_ret", nv);
+    assert!(auto_val::is_string(nv), "返回应为串 nv; {dump}");
+    let idx = auto_val::decode_string(nv) as usize;
+    let pool = vm.strings.read().unwrap();
+    let got = pool
+        .get(idx)
+        .map(|b| String::from_utf8_lossy(b).to_string())
+        .unwrap_or_default();
+    drop(pool);
+    eprintln!("[s3_async] returned str = {got:?}");
+    assert_eq!(
+        got, "OK:t10",
+        "resume 续体内 r.ok==true 门 + 二次 parse 5-hop 深链必须全真值\
+         （musk SessionsLoaded/DetailLoaded 同构——dirty 构建间歇失效面）"
+    );
+}
+
 // ═══════════════ 上下文②③：store handler 段 + 视图/computed（comp 驱动）═══════════════
 
 /// 语料：宿主 widget（触发器 + computed 对照面 + 视图条件 CALL 面）。
