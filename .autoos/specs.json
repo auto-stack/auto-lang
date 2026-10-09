@@ -1284,6 +1284,39 @@
       "delivery",
       "commit:ef8eac37a"
      ]
+    },
+    {
+     "id": "P719-4",
+     "title": "website-os-ai-introduction — 交付摘要（PLAN-719:r2）",
+     "content": "OS/AI 介绍重组（LaOS 理念/OS over OS 产品形态/AI+Lang+OS 方向三态承接）+四篇中英历史长文落地 VitePress；12 路由/48 实图/31 公开源；整站 125 e2e。delivery dfb2bbb3a（master 017cb6dc6 ff-only，range-diff 等价自 reviewed 4c0fc7f7c）。2026-10-01 合入时 ledger store 500（旧格式缺 project/version）阻塞收尾；2026-10-09 依 docs/specs/README.md §5 手工回退补齐账本/归档/清理（本条即补记账）。",
+     "tags": [
+      "plan-719",
+      "delivery",
+      "commit:dfb2bbb3a"
+     ],
+     "file": "docs/plans/archive/719-website-os-ai-introduction.md"
+    },
+    {
+     "id": "P722-5",
+     "title": "website-apps-introduction — 交付摘要（PLAN-722:r1）",
+     "content": "四主应用双语概览/八专题/两保留 guide/两 demo 页/28 已核候选路径；88 Playwright+140 几何+56 截图。landing 939497ead（master 自 142458d21 ff-only；三提交等价映射 3fd4562da→d7b881e6c、a4456ad52→91689176b、bb8bcefd3→939497ead，映射文档 docs/reports/p722-p723-merge.md）。2026-10-01 ledger store 500 阻塞收尾，2026-10-09 手工回退补齐（本条即补记账）。",
+     "tags": [
+      "plan-722",
+      "delivery",
+      "commit:939497ead"
+     ],
+     "file": "docs/plans/archive/722-website-apps-introduction.md"
+    },
+    {
+     "id": "P723-4",
+     "title": "website-demo-introductions — 交付摘要（PLAN-723:r2）",
+     "content": "28 Demo 六类真实图卡片+就地操作/条件/版本/源码并入双语 /apps 概览；58 旧路由兼容深链；AutoEdit/Shell 批准主图接入，Musk/Jade 等待素材。delivery 02f4b1a90（ff-only，rebase 七项 range-diff 等价），后继收据 f504b506d；70 项回归+build 177.57s。2026-10-01 ledger store 500 阻塞收尾，2026-10-09 手工回退补齐账本/归档/清理（本条即补记账）。",
+     "tags": [
+      "plan-723",
+      "delivery",
+      "commit:02f4b1a90"
+     ],
+     "file": "docs/plans/archive/723-website-demo-introductions.md"
     }
    ]
   },
@@ -4938,13 +4971,16 @@
     {
      "id": "P720-1",
      "title": "桌面实景展示契约：六图同源四步说明与 OS 总览专题链接（PLAN-720 SD-01）",
-     "content": "PLAN-720 交付落账（website 域现行态投影；canonical 唯源=docs/specs/website/project.md，r1 落地 19bbbdee、repair-1 仅换 01..04 资产，delivery 764508169a）。契约：theme/data/desktop-showcase.ts 单源驱动六张 2026-10-01 原生截图的双语标签/alt/caption/尺寸与四步说明，DesktopShowcase.vue 复用 ScreenshotGallery/EvidenceImage；v0.5 与 AutoOS 专题按无展开窗口浅/深桌面→浅/深 Launcher→三小游戏→多应用工作递进展示全过程，OS 总览仅双主题预览并链接当前语言专题（/autoos/#desktop-showcase）；小组件来自已启动并最小化的应用，静态画面不当作功能/跨端/实时证明；保留完整 PNG、捕获日、尺寸、可键盘放大与原图链接。",
+     "content": "PLAN-720 交付落账（website 域现行态投影；canonical 唯源=docs/specs/website/project.md，r1 落地 19bbbdee、repair-1 仅换 01..04 资产，delivery 764508169a）。契约：theme/data/desktop-showcase.ts 单源驱动六张 2026-10-01 原生截图的双语标签/alt/caption/尺寸与四步说明，DesktopShowcase.vue 复用 ScreenshotGallery/EvidenceImage；v0.5 与 AutoOS 专题按无展开窗口浅/深桌面→浅/深 Launcher→三小游戏→多应用工作递进展示全过程，OS 总览仅双主题预览并链接当前语言专题（/autoos/#desktop-showcase）；小组件来自已启动并最小化的应用，静态画面不当作功能/跨端/实时证明；保留完整 PNG、捕获日、尺寸、可键盘放大与原图链接。〔2026-10-01 增补：PLAN-719 增补 os-ai-introduction、PLAN-722/723 增补四应用介绍与 28 Demo 展示三设计（application-introductions/application-demos/demo-capture-catalog），project 卡相应扩展；详见各 designs 条目。〕",
      "tags": [
       "plan-720",
       "website",
       "sd-01",
       "commit:764508169a",
-      "docsha:994113f25acd2261"
+      "docsha:994113f25acd2261",
+      "plan-719",
+      "plan-722",
+      "plan-723"
      ],
      "file": "docs/specs/website/project.md"
     },
@@ -5288,6 +5324,57 @@
      ],
      "status": "published",
      "created": "2026-10-08"
+    },
+    {
+     "id": "P719-1",
+     "title": "OS/AI 介绍现行态：LaOS 理念—OS over OS 产品形态—AI+Lang+OS 方向承接（PLAN-719）",
+     "content": "PLAN-719:r2 交付落账（canonical 唯源=docs/specs/website/design/os-ai-introduction.md，delivery dfb2bbb3a）。OS/AI 介绍从零散宣传页重组为三态承接叙事：LaOS 是实现理念、OS over OS 是当前产品形态、AI+Lang+OS 是长期面向人的使用方向，三者承接不替换；宿主组件/独立系统/自有内核边界分明。双语总览+四篇历史/展望长文（AutoOS/AI 各中英）走可索引 Markdown 正文与默认阅读版式；31 公开来源引用核验（p719-public-sources.json）；48 实图全部取自已授权 720 desktop-showcase 体系，旧 v05 原图仅在相关设置/应用说明保留。",
+     "tags": [
+      "plan-719",
+      "website",
+      "sd-01",
+      "commit:dfb2bbb3a",
+      "docsha:93e021ec16ac2fed"
+     ],
+     "file": "docs/specs/website/design/os-ai-introduction.md"
+    },
+    {
+     "id": "P722-1",
+     "title": "四主应用介绍契约：AutoEdit/AutoShell/AutoMusk/JadeEdit 双语专题与系统应用分组（PLAN-722）",
+     "content": "PLAN-722 交付落账（canonical 唯源=docs/specs/website/design/application-introductions.md；landing 939497ead，patch 等价映射自 3fd4562da；页面结构 723:r2 后以 /apps 概览并轨为准）。四主应用用途分工直达专题，专题依据当前源码/规范介绍操作、能力、运行条件与边界；AutoShell 实跑保留为独立 guide（713 证据迁入）；旧 AutoDown/AutoUI 资料不删除；系统应用两组归类并与 28 候选 Demo 展示（application-demos.md）互链。",
+     "tags": [
+      "plan-722",
+      "website",
+      "sd-01",
+      "commit:939497ead",
+      "docsha:fe3e91e5420accfe"
+     ],
+     "file": "docs/specs/website/design/application-introductions.md"
+    },
+    {
+     "id": "P722-2",
+     "title": "系统 Demo 展示契约：28 候选用途/典型操作/实际状态/运行环境（PLAN-722）",
+     "content": "PLAN-722 交付落账（canonical 唯源=docs/specs/website/design/application-demos.md；landing 939497ead）。约 28 系统 Demo 的展示设计：每候选可逐项了解用途、典型操作、实际状态和运行环境；无后台依赖的静态介绍入口，真实截图与选择性交互由 723 承接（demo-capture-catalog.md），不全量制作 mock；v0.5 不新增桌面/app 在线体验、不实施 UI Playground。",
+     "tags": [
+      "plan-722",
+      "website",
+      "sd-02",
+      "commit:939497ead",
+      "docsha:839422d2df950871"
+     ],
+     "file": "docs/specs/website/design/application-demos.md"
+    },
+    {
+     "id": "P723-1",
+     "title": "28 Demo 真实截图目录：来源/运行形态/版本记录与就地详情（PLAN-723）",
+     "content": "PLAN-723:r2 交付落账（canonical 唯源=docs/specs/website/design/demo-capture-catalog.md，delivery 02f4b1a90）。28 候选每项至少一张真实运行图，附来源/运行形态与版本记录（p723-capture-catalog.json 冻结 hash）；r2 将六类图文与逐项介绍合并进 /apps 应用概览（就地原生 details 稳定深链），四主应用保留独立详情；58 旧阅读/目录路由兼容跳转；AutoTerm 复用 2026-09-22 原生留存图（P723-D1 在案），Musk/Jade 截图等待已约定准备条件。",
+     "tags": [
+      "plan-723",
+      "website",
+      "commit:02f4b1a90",
+      "docsha:4ae41551c43eee81"
+     ],
+     "file": "docs/specs/website/design/demo-capture-catalog.md"
     }
    ]
   },
@@ -6332,6 +6419,39 @@
      "status": "published",
      "created": "2026-09-23",
      "last_modified": "2026-09-23"
+    },
+    {
+     "id": "P719-2",
+     "title": "website OS/AI 介绍整站验证（PLAN-719）",
+     "content": "复审冻结实现上的整站验证：稳定构建 142.09s exit0；整站 125 e2e pass/5.8m/零重试；120 几何检查与 48 最终图全过；31/31 公开源引用核验；12 路由清点+SSR/search 可达。Category A（纯网站资产）零 Cargo/docs_gen。逐 AC/T 对账与 manifest：docs/reports/p719-os-ai-introduction.md。",
+     "tags": [
+      "plan-719",
+      "website",
+      "e2e"
+     ],
+     "file": "docs/reports/p719-os-ai-introduction.md"
+    },
+    {
+     "id": "P722-3",
+     "title": "website 四应用介绍验证（PLAN-722）",
+     "content": "tested_commit a4456ad52（与 reviewed HEAD bb8bcefd3 仅证据差异、website diff 空）上：build exit0；scoped Playwright 88/88（5.2m）；140 路由/宽度/主题检查；56 截图经 8 联系表复核。合入后 master 生成器 --check 58 兼容路由通过+独占 4249 冒烟 3 passed。Category A。证据：docs/reports/p722-apps-introduction.md。",
+     "tags": [
+      "plan-722",
+      "website",
+      "playwright"
+     ],
+     "file": "docs/reports/p722-apps-introduction.md"
+    },
+    {
+     "id": "P723-2",
+     "title": "website 28 Demo 并轨回归（PLAN-723:r2）",
+     "content": "r2 冻结实现 137bc5557：最终 build 177.57s 通过；r2 专项+全站 UI/SPA 触面回归 70 项通过（3.2m）；双语就地 28 项、58 旧路由、直接/筛选后 hash、图片键盘交互、5 宽×双语×主题全部展开无横向溢出；人工桌面/手机视觉检查。合入后等价重放冒烟 3 passed。证据：docs/reports/p723-r2-review.md。",
+     "tags": [
+      "plan-723",
+      "website",
+      "regression"
+     ],
+     "file": "docs/reports/p723-r2-review.md"
     }
    ]
   },
@@ -8462,6 +8582,39 @@
      ],
      "status": "published",
      "created": "2026-10-08"
+    },
+    {
+     "id": "P719-3",
+     "title": "PLAN-719:r2 复审 pass（@4c0fc7f7c→delivery dfb2bbb3a）",
+     "content": "同会话独立复核步骤（独立性受限声明）：以提交 diff、生产 HTML、实际行为、来源状态、截图 manifest 与冻结 Spec 重建结论，不用勾选框充当证据。8 任务/12AC 全 pass，无未批准延后/遗漏/workaround/跨仓改动。range-diff 四项全等映射至 delivery dfb2bbb3a（master 017cb6dc6 ff-only 无 merge commit）；三 Spec SHA256 与冻结值全等。2026-10-09 收尾：账本本地 upsert+归档+guard 清理补齐（本仓 README §5 手工回退路径）。",
+     "tags": [
+      "plan-719",
+      "review-pass",
+      "commit:dfb2bbb3a"
+     ],
+     "file": "docs/plans/archive/719-website-os-ai-introduction.md"
+    },
+    {
+     "id": "P722-4",
+     "title": "PLAN-722:r1 复审 pass（@bb8bcefd3→landing 939497ead）",
+     "content": "同实施会话复审（独立性受限声明）：重读真实差异、测试断言、规范与来源逐 AC 重建。AC-01..07 全 pass 映射 T-01..05；runtime 证据复用因 website/lockfile/测试配置与 tested baseline 全等。findings 仅 P722-D1（低，画廊 ID 漂移，范围外，KNOWN-DEBT 在案）。landing 经 723 专用树 rebase 后三 patch range-diff 全等：3fd4562da→d7b881e6c、a4456ad52→91689176b、bb8bcefd3→939497ead（docs/reports/p722-p723-merge.md）。2026-10-09 收尾补齐账本/归档/清理。",
+     "tags": [
+      "plan-722",
+      "review-pass",
+      "commit:939497ead"
+     ],
+     "file": "docs/plans/archive/722-website-apps-introduction.md"
+    },
+    {
+     "id": "P723-3",
+     "title": "PLAN-723:r2 复审 pass（@137bc5557→delivery 02f4b1a90）",
+     "content": "同实施会话复审（独立性受限声明）。r1 pass 后 r2 页面结构变更使 AC-02/04/06 失效，按修订重新验证：AC-01..06 全 pass；素材沿 r1 冻结 demos.json/28 PNG/capture-catalog 再校验；无 mock/伪图/新执行入口；P723-D1 素材限制保持明确。最新 master 142458d21 上 rebase 七项 range-diff 等价，delivery 02f4b1a90（ff-only），后继 f504b506d 仅增成功收据。2026-10-09 收尾补齐账本/归档/清理。",
+     "tags": [
+      "plan-723",
+      "review-pass",
+      "commit:02f4b1a90"
+     ],
+     "file": "docs/plans/archive/723-website-demo-introductions.md"
     }
    ]
   }
