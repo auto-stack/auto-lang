@@ -5016,8 +5016,6 @@ fn type_to_rust_str(ty: &auto_lang::ast::Type) -> String {
 mod tests {
     use super::*;
 
-    /// Only two known equal fingerprints prove assembly freshness.
-    #[test]
     /// PLAN-738 T-12：workspace lock 新鲜度真值表——双方一致才新鲜；
     /// 首次物化（收据 absent→lock 出现）=确定性物化判新鲜；旧收据缺
     /// 字段（None）/lock 消失/值漂移均保守再生。
@@ -5034,6 +5032,8 @@ mod tests {
         assert!(!lock_freshness(None, None));
     }
 
+    /// Only two known equal fingerprints prove assembly freshness.
+    #[test]
     fn assembly_freshness_truth_table() {
         assert!(!assembly_freshness(None, None), "缺少两侧身份不能证明新鲜");
         assert!(
