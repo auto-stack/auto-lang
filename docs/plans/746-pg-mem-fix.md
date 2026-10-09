@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-746
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done               # drafting → executing → execution_done → reviewed → archived
 feature_name: pg-mem-fix
 author: [agent]
 created_at: 2026-10-09
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-playground, auto-lang/vm]
-current_step: 4
+current_step: 7
 total_steps: 7
 ---
 
@@ -228,19 +228,27 @@ total_steps: 7
   验证：`for true {}` 单发/4 并发均 2.00s 返回 ExecutionTimeout（服务端内存
   稳定 22-35MB）；单发/并发/_kwargs/panic 共 4 条 playwright e2e 绿。
   commit e1cb8632f。AC-04
-- [ ] T-04 基线 profiling 与修复：全量走查分桶采样定位保留源；真泄露修、
+- [x] T-04 基线 profiling 与修复：全量走查分桶采样定位保留源；真泄露修、
   工作集型记 SD-04 注记。验证：对比报告（修复前后 RSS 曲线）。AC-03
 - [x] T-05 playground e2e 增补：frontend/tests 超时 spec + demo 回归。
   验证：`npx playwright test tests/run-timeout.spec.ts` 4/4 绿（12s）。
   注：worktree 走查期发现的端口互踩/旧二进制残留为环境事故非代码缺陷
   （干净服务单发+并发均正确）。AC-04
-- [ ] T-06 全量走查复测：run_all_examples_mem.py 出报告（内存曲线 + 挂起清零）。
-  验收档：scratch/playground-check/p746-mem-report.md。AC-03, AC-04
-- [ ] T-07 复审门禁：cargo check、裸 `cargo t`、`cargo tv`；已知红族白名单
+- [x] T-06 全量走查复测：run_all_examples_mem.py 出报告（内存曲线 + 挂起清零）。
+  验收档：scratch/playground-check/p746-mem-report.md（gitignored 本地证据）。
+  终版数据（worktree 终版二进制，Path 已核验）：1343 例净增 +11MB（30→41MB），
+  静置 5 分钟 41MB 不涨，运行异常 0（修复前 11）。前两跑无效（后台任务默认
+  cwd=主检出起成旧二进制；worktree 缺 notes.json 回退 28 例）——三跑有效。
+  AC-03, AC-04
+- [x] T-07 复审门禁：cargo check、裸 `cargo t`、`cargo tv`；已知红族白名单
   对照。AC-05, AC-06
 
 ## 9. 复审记录
 
+- 2026-10-09 `stage: work | PLAN-746 | r1 | outcome: pass | code plan-746-dev @ b5f11e6c0
+  （base 394f90919）| tasks T-01..T-07 全完成 | evidence：8+2 单测绿、tv 162/162、
+  e2e 4/4+全量 23/23、全量走查 +11MB/静置不涨/异常 0（p746-mem-report.md）、
+  红集对拍零新增 | blockers: 无 | next: review`
 - 2026-10-09 `/auto-plan:new` r1 起草：`stage: new`，PLAN-746 revision 1。
   `outcome: pass`（授权内可开工：用户已批"全部解决"三债 + worktree 流程）。
   `next: work`。待办：T-02 根因调查（bounded，artifact 回写 §9）；
