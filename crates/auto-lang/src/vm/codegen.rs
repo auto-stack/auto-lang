@@ -9561,6 +9561,38 @@ impl Codegen {
                         } else {
                             call.args.args.len()
                         };
+                        // PLAN-746 (PG-MEM-2): reject keyword-argument-looking
+                        // shapes on the builtin print family at compile time.
+                        // The parser turns `end=" "` into a Store (reassignment)
+                        // arg, whose codegen emits value+dup+store — the print
+                        // shim pops only the top, leaking slots every call;
+                        // inside a loop the imbalance corrupts sp-relative
+                        // locals (runaway infinite loop) and grows the output
+                        // buffer ~3MB/s (walkthrough evidence: think-python
+                        // ch07 fences +210/+348MB).
+                        let kw_like_arg = call.args.args.iter().find_map(|a| match a {
+                            crate::ast::Arg::Pair(k, _) => Some(k.to_string()),
+                            // Parser turns `end=" "` into a Bina(Asn) assignment
+                            // expression arg (dup+store codegen, stack leak).
+                            crate::ast::Arg::Pos(crate::ast::Expr::Bina(lhs, op, _)) if *op == Op::Asn => {
+                                Some(format!("{:?}", lhs))
+                            }
+                            _ => None,
+                        });
+                        if let Some(kw) = kw_like_arg {
+                            let name = func_name_for_params;
+                            if name == "print"
+                                || name.starts_with("print")
+                                || name == "write"
+                                || name == "say"
+                                || name.starts_with("assert")
+                            {
+                                return Err(crate::error::AutoError::Msg(format!(
+                                    "`{}` does not accept keyword arguments (got `={}`? Auto print has no keyword arguments)",
+                                    name, kw
+                                )));
+                            }
+                        }
                         for (i, arg) in call.args.args.iter().enumerate() {
                             if i >= max_args {
                                 break; // Skip extra args (e.g., assert_eq message)

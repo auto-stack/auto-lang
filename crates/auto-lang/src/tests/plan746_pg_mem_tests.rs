@@ -82,3 +82,33 @@ fn plan746_execution_thread_panic_returns_err() {
     let res = crate::run_with_capture_and_bytecode_with_meta("'\n");
     assert!(res.is_err(), "hostile input must return Err, got Ok");
 }
+
+
+#[test]
+fn plan746_print_kwargs_rejected_at_compile_time() {
+    // PG-MEM-2 根治（SD-02）：内建 print 族 kwargs 编译期拒绝。
+    // 根因（T-02 调查）：Pair 实参被静默编译成裸值压栈，print shim 只弹
+    // 栈顶 → 每调用泄漏一个栈槽；循环内失衡腐蚀 sp 相对局部变量（死循环）
+    // 且输出缓冲以 ~3MB/s 增长（走查 +210/+348MB 实录）。
+    let res = crate::run_with_capture_and_bytecode_with_meta("print(1, end=\" \")");
+    let err = res.expect_err("kwargs on print must be a compile error");
+    let msg = err.to_string();
+    assert!(msg.contains("keyword arguments"), "got: {msg}");
+    assert!(msg.contains("end"), "got: {msg}");
+}
+
+#[test]
+fn plan746_print_kwargs_loop_shape_fails_fast() {
+    // 走查挂起形态（think-python ch07 块 01/02 同构）现在编译期即败，
+    // 不再进入失控执行。
+    let res = crate::run_with_capture_and_bytecode_with_meta(
+        "for i in 0..3 {
+    print(i, end=\" \")
+}",
+    );
+    assert!(res.is_err(), "loop with kwargs print must fail at compile time");
+    assert!(
+        res.err().map(|e| e.to_string()).unwrap_or_default().contains("keyword arguments"),
+        "error should mention keyword arguments"
+    );
+}
