@@ -2276,6 +2276,28 @@ fn read_auto_lib(project_root: &std::path::Path) -> AutoResult<String> {
     Ok(lib_code)
 }
 
+// PLAN-752: cached AAVM v1 bootstrap lib (AUTO_LIB_FILES full manifest) for the
+// playground prepend_lib path. Mirrors the golden is_bootstrap concat
+// (run_vm_file_test: `format!("{}\n{}", lib, src)`), single source of truth
+// stays the pub(crate) manifest above.
+static BOOTSTRAP_LIB: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// Concatenated `auto/lib-legacy/*.at` bootstrap lib (~188KB, dependency
+/// order per AUTO_LIB_FILES). `None` when no manifest file resolves (caller
+/// treats prepend_lib as unavailable). Result is cached after first call.
+pub fn bootstrap_lib_source() -> Option<&'static str> {
+    BOOTSTRAP_LIB
+        .get_or_init(|| {
+            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+            let project_root = root
+                .parent() // crates/
+                .and_then(|p| p.parent()) // repo root
+                .unwrap_or(root);
+            read_auto_lib(project_root).ok().filter(|s| !s.is_empty())
+        })
+        .as_deref()
+}
+
 /// Find the project root by walking up from a path, looking for `auto/` dir or `Cargo.toml`.
 fn find_project_root(from: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut dir = from;

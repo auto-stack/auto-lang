@@ -154,3 +154,14 @@ fn plan746_concurrent_deadlines_independent() {
         );
     }
 }
+
+// PLAN-752: bootstrap lib 公开面（playground prepend_lib 的 lib 源）。
+#[test]
+fn plan752_bootstrap_lib_source_present_and_cached() {
+    let lib = crate::bootstrap_lib_source().expect("bootstrap lib must resolve from repo root");
+    assert!(lib.len() > 100_000, "lib-legacy concat should be ~188KB, got {}", lib.len());
+    // eval.at 是最后一块拼图：eval_str_cat 必须可解析到（a2r_hello 实测符号）。
+    assert!(lib.contains("eval_str_cat"), "eval.at content missing from concat");
+    // 缓存同一性：二次调用返回同一引用。
+    assert!(std::ptr::eq(lib, crate::bootstrap_lib_source().unwrap()));
+}
