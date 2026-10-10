@@ -16,11 +16,11 @@
 
 | 检查 | 命令 / 条件 | 结果 | 记录 |
 |---|---|---|---|
-| 网站构建 | `npm run build`；NODE_OPTIONS 8GB | pass，148.93s | [构建日志](p757-capture/website-build.log) |
-| 应用、发布页与站内行为 | `npx playwright test apps-introduction.spec.ts site-ui.spec.ts v05-copy.spec.ts home-demo.spec.ts --workers=2`；CI=1，端口 4197 | 70 pass / 1 fail，4.2m；失败是 AutoShell 首次查询索引未完成 | [综合日志](p757-capture/website-tests.log) |
-| 新图原图与键盘操作 | `npx playwright test v05-copy.spec.ts --grep 'AutoEdit captures' --workers=1`；独占端口 | 2 pass，39.6s；EN/ZH 原像素、原图 200、Enter 打开、Esc 关闭、焦点返回 | [放大日志](p757-capture/website-capture-zoom.log) |
-| 搜索第一次独立复跑 | `npx playwright test site-ui.spec.ts --grep 'AutoShell query' --workers=1 --reporter=line --output=test-results-p757-search`；端口 4197 | fail；输入已为 AutoShell，索引请求未完成 | [日志](p757-capture/website-search-recheck.log)、[保留 trace](p757-capture/website-search-timeout-trace.zip) |
-| 搜索最终独立复核 | 同一测试/原超时与断言；端口 4201；输出目录 test-results-p757-search-final | pass，19.6s，命中 AutoShell 专题；未改网站搜索实现 | [日志](p757-capture/website-search-final.log) |
+| 网站构建 | `npm run build`；NODE_OPTIONS 8GB | pass，148.93s | [构建日志](p757-capture/website-build.log.gz) |
+| 应用、发布页与站内行为 | `npx playwright test apps-introduction.spec.ts site-ui.spec.ts v05-copy.spec.ts home-demo.spec.ts --workers=2`；CI=1，端口 4197 | 70 pass / 1 fail，4.2m；失败是 AutoShell 首次查询索引未完成 | [综合日志](p757-capture/website-tests.log.gz) |
+| 新图原图与键盘操作 | `npx playwright test v05-copy.spec.ts --grep 'AutoEdit captures' --workers=1`；独占端口 | 2 pass，39.6s；EN/ZH 原像素、原图 200、Enter 打开、Esc 关闭、焦点返回 | [放大日志](p757-capture/website-capture-zoom.log.gz) |
+| 搜索第一次独立复跑 | `npx playwright test site-ui.spec.ts --grep 'AutoShell query' --workers=1 --reporter=line --output=test-results-p757-search`；端口 4197 | fail；输入已为 AutoShell，索引请求未完成 | [日志](p757-capture/website-search-recheck.log.gz)、[保留 trace](p757-capture/website-search-timeout-trace.zip) |
+| 搜索最终独立复核 | 同一测试/原超时与断言；端口 4201；输出目录 test-results-p757-search-final | pass，19.6s，命中 AutoShell 专题；未改网站搜索实现 | [日志](p757-capture/website-search-final.log.gz) |
 
 综合检查覆盖 EN/ZH、360/390/768/1024/1440 宽度、深浅主题、正文与链接、导航、主题保持、原有演示行为；两项新增放大检查单独验证原始 2560×1600 图片。新增放大检查曾与综合检查共用默认输出目录，覆盖了首次失败附件；此执行错误已纠正为串行、独立输出，并保存第二次失败的完整 trace。不能将首轮结果表述为全部通过。
 
