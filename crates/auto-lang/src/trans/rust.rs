@@ -365,6 +365,9 @@ pub struct RustTrans {
     int_match_scrutinee: bool,
     // Track variables assigned from json.get() — need value_to_int/value_len helpers
     json_value_vars: HashSet<AutoStr>,
+    /// P738-R5-02：json 值生产调用（json.parse/get/get_at/get_str/get_u64）
+    /// 绑定的变量 def-use 集——receiver 方法闭包判据（不改变发射行为）。
+    json_value_bindings: HashSet<AutoStr>,
     // Plan 016 Phase A A.4: when true, emit json::parse_opt instead of json::parse
     // (set by is_stmt when scrutinee is json.parse matched against Some/None).
     json_parse_as_opt: bool,
@@ -567,6 +570,7 @@ impl RustTrans {
             is_hoist_counter: 0,
             int_match_scrutinee: false,
             json_value_vars: HashSet::new(),
+            json_value_bindings: HashSet::new(),
             json_parse_as_opt: false,
             fn_param_str_slice: HashSet::new(),
             current_fn_mut_params: HashSet::new(),
@@ -677,6 +681,7 @@ impl RustTrans {
             is_hoist_counter: 0,
             int_match_scrutinee: false,
             json_value_vars: HashSet::new(),
+            json_value_bindings: HashSet::new(),
             json_parse_as_opt: false,
             fn_param_str_slice: HashSet::new(),
             current_fn_mut_params: HashSet::new(),
@@ -5554,6 +5559,98 @@ impl RustTrans {
         Ok(())
     }
 
+    /// P738-R5-02：receiver 调用的公共方法归属验证。三种发射形态统一收
+    /// 敛到模块公共方法分母（`Owner.method`，含发射适配别名）：
+    /// ① 模块限定 `a2r_std::<core>::<callee>(..)`——文本直证；
+    /// ② 扁平 helper（`a2r_std::value_len/value_to_int`）——发射器内部
+    ///    producer 面，映射到公共方法后以等效限定形式验证；
+    /// ③ 接收者为 json 值（json_value_vars 跟踪或类型 User("JsonValue")）
+    ///    的直发方法（`v.len()`）——按等效限定形式验证。
+    /// 用户同名类型方法不经②③（类型/跟踪集不命中），其无核心 FQN 的发
+    /// 射也不经①；无公共面映射的 legacy 变体维持已登记边界（P738-D2）。
+    fn collect_core_method_reference(
+        &mut self,
+        object: &Expr,
+        method: &str,
+        text: &str,
+    ) -> AutoResult<()> {
+        for module in crate::stdlib_assembly::validate::CORE_MODULES {
+            if !text.contains(&format!("a2r_std::{module}::")) {
+                continue;
+            }
+            if let Some(symbol) = crate::stdlib_assembly::host::public_method_symbol(module, method)
+            {
+                if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                    module,
+                    &symbol,
+                    text,
+                    self.assembly_runtime,
+                )? {
+                    self.assembly_references.push(proof);
+                }
+            }
+            return Ok(());
+        }
+        // ② 扁平 value_* helper——发射器内部 producer 面的公共方法适配。
+        const FLAT_HELPERS: &[(&str, &str, &str)] = &[
+            ("a2r_std::value_len(", "json", "len"),
+            ("a2r_std::value_to_int(", "json", "as_int"),
+        ];
+        for (marker, module, callee) in FLAT_HELPERS {
+            if let Some(arg_start) = text.find(marker).map(|i| i + marker.len() - 1) {
+                if let Some(inner) = text[arg_start..].strip_suffix(')') {
+                    let qualified = format!("a2r_std::{module}::{callee}({inner})");
+                    if let Some(symbol) =
+                        crate::stdlib_assembly::host::public_method_symbol(module, method)
+                    {
+                        if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                            module,
+                            &symbol,
+                            &qualified,
+                            self.assembly_runtime,
+                        )? {
+                            self.assembly_references.push(proof);
+                        }
+                    }
+                    return Ok(());
+                }
+            }
+        }
+        // ③ json 值接收者的直发方法（发射保留 `v.len()` 形态）。
+        if method == "len" && self.receiver_is_json_value(object) {
+            if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                "json",
+                "JsonValue.len",
+                &format!(
+                    "a2r_std::json::len(&{name})",
+                    name = match object {
+                        Expr::Ident(n) => n.to_string(),
+                        _ => "receiver".to_string(),
+                    }
+                ),
+                self.assembly_runtime,
+            )? {
+                self.assembly_references.push(proof);
+            }
+        }
+        Ok(())
+    }
+
+    /// 接收者是否 json 值：发射器跟踪集（json.get/get_at/parse 赋值）或
+    /// 静态类型 User("JsonValue")。与发射臂的 value-helper 判据同源。
+    fn receiver_is_json_value(&self, object: &Expr) -> bool {
+        if let Expr::Ident(name) = object {
+            if self.json_value_vars.contains(name) || self.json_value_bindings.contains(name) {
+                return true;
+            }
+            return matches!(
+                self.local_var_types.get(name.as_str()),
+                Some(Type::User(decl)) if decl.name.as_str() == "JsonValue"
+            );
+        }
+        false
+    }
+
     /// PLAN-738 T-11 引用闭包收集器：六核心 producer 的每条真实发射路径
     /// 都在此收敛——限定 Dot 形状（含 Json 别名）、裸名导入/wildcard 拼写
     /// （重建限定文本验证）、裸名专用臂（发射文本自带 a2r_std::<core>::
@@ -5583,8 +5680,13 @@ impl RustTrans {
                         return Ok(());
                     }
                 }
-                return Ok(());
+                return self.collect_core_method_reference(object, symbol.as_str(), text);
             }
+            // P738-R5-02：receiver 方法调用（对象为变量/表达式）——发射
+            // 文本带核心 FQN 时按该模块公共方法分母归属验证（JsonValue
+            // 十二个公共方法面）；无公共面映射的 legacy 发射变体维持已
+            // 登记边界（P738-D2），不冒称证明。
+            return self.collect_core_method_reference(object, symbol.as_str(), text);
         }
         // 三段限定形状 `auto.<core>.<method>()`（Expr::Bina 链）：核心模块
         // 面同样走 strict 门——io/net 等无 Rust producer 的模块在此诚实
@@ -16017,6 +16119,24 @@ impl RustTrans {
 
     // Variable declaration
     fn store(&mut self, store: &Store, out: &mut impl Write) -> AutoResult<()> {
+        // P738-R5-02：json 值生产绑定的 def-use 跟踪（receiver 方法闭包
+        // 判据；不影响发射——与 json_value_vars 的历史用途分开）。
+        if matches!(store.kind, StoreKind::Let | StoreKind::Var) {
+            if let Expr::Call(call) = &store.expr {
+                if let Expr::Dot(obj, method) = call.name.as_ref() {
+                    if let Expr::Ident(owner) = obj.as_ref() {
+                        if matches!(owner.as_str(), "json" | "Json")
+                            && matches!(
+                                method.as_str(),
+                                "parse" | "get" | "get_at" | "get_str" | "get_u64"
+                            )
+                        {
+                            self.json_value_bindings.insert(store.name.clone());
+                        }
+                    }
+                }
+            }
+        }
         // PLAN-714 r3 R3-T3: 借位迭代变量的声明绑定 → `.clone()`（窄门：
         // Var/Let 声明 + 声明型 String 族 + init=裸 Ident∈borrowed_iter_
         // vars——E0308 &String→String 株；型门压住 1609 注记的 is-arm

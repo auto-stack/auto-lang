@@ -154,6 +154,24 @@ impl AssemblyManifest {
     pub fn consumer(&self) -> &str {
         &self.payload.consumer
     }
+
+    /// P738-R5-03 对拍 getter：可比装配面字段的值级拷贝（serde JSON 字符串
+    /// ——稳定比较，避免暴露内部枚举）。
+    pub fn target_json(&self) -> String {
+        serde_json::to_string(&self.payload.target).unwrap()
+    }
+
+    pub fn environment_json(&self) -> String {
+        serde_json::to_string(&self.payload.environment).unwrap()
+    }
+
+    pub fn features_json(&self) -> String {
+        serde_json::to_string(&self.payload.features).unwrap()
+    }
+
+    pub fn providers_json(&self) -> String {
+        serde_json::to_string(&self.payload.providers).unwrap()
+    }
     pub fn sources(&self) -> &[SourceInput] {
         &self.payload.sources
     }

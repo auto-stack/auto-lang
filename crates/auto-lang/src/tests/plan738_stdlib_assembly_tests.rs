@@ -1631,76 +1631,120 @@ mod t12_manifest_identity {
         crate::stdlib_assembly::loader::repo_stdlib_root().unwrap()
     }
 
-    /// 三角对拍：同一 fixture、同一 target 下，三个真实消费者（CLI actual
-    /// 路径 / 编译会话最终快照 / 生成收据形态）的共同装配身份必须一致；
-    /// 消费者收据身份各自不同（consumer 名与业务输入是收据差异，不是装配
-    /// 差异）。CLI 分支镜像 cmd_stdlib actual 的真实调用序（session →
-    /// compile_actual_references → freeze("stdlib-inspect")）。
+    /// P738-R5-03 三角对拍（真实消费者版）：同 fixture 同 target 下，
+    /// CLI actual 路径与会话真实入口（VM=codegen 收集、Rust/C=真实
+    /// trans_*_with_session，Result 断言成功）的共同装配身份一致——不再
+    /// 以 clone 模拟消费者。三目标分别对拍。
     #[test]
     fn triangle_consumers_share_assembly_identity_not_receipt_identity() {
-        let tmp = tempfile::tempdir().unwrap();
-        let source =
-            "use auto.json: parse\n\nfn main() {\n    let v = parse(\"{}\")\n    print(v)\n}\n";
-        std::fs::write(tmp.path().join("main.at"), source).unwrap();
-        let path = tmp.path().join("main.at");
         let root = stdlib_root();
+        for target in [AssemblyTarget::Vm, AssemblyTarget::Rust, AssemblyTarget::C] {
+            // C 目标的六核心无宿主 provider（json=unsupported）——fixture
+            // 用本地模块（层选择/providers 按 target 分叉仍在身份内）。
+            let (source, uses_json) = match target {
+                AssemblyTarget::C => (
+                    "use proto: *
 
-        let session = |target: AssemblyTarget| {
-            let mut session = CompileSession::new();
-            session.set_assembly_target(target).unwrap();
-            session.add_source_dir(tmp.path().to_path_buf());
-            session.resolve_uses(source).unwrap();
-            session
-        };
+fn main() {
+    let x = proto.answer()
+}
+"
+                    .to_string(),
+                    false,
+                ),
+                _ => (
+                    "use auto.json: parse
 
-        // 消费者 A：CLI actual（stdlib-inspect）。
-        let mut cli = session(AssemblyTarget::Rust);
-        let references =
-            crate::stdlib_assembly::reference::compile_actual_references(&cli, source, &path)
+fn main() {
+    let v = parse(\"{}\")
+    print(v)
+}
+"
+                    .to_string(),
+                    true,
+                ),
+            };
+            let tmp = tempfile::tempdir().unwrap();
+            std::fs::write(tmp.path().join("main.at"), &source).unwrap();
+            if !uses_json {
+                std::fs::write(
+                    tmp.path().join("proto.at"),
+                    "pub fn answer() int {
+    return 42
+}
+",
+                )
                 .unwrap();
-        let cli_manifest = AssemblyManifest::freeze(
-            cli.assembly,
-            "stdlib-inspect",
-            tmp.path(),
-            &root,
-            &cli.layer_selections,
-            references,
-        );
+            }
+            let path = tmp.path().join("main.at");
 
-        // 消费者 B：编译会话最终快照（compiler，含 project/entry 业务输入）。
-        let mut compiled = session(AssemblyTarget::Rust);
-        let _ = crate::trans_rust_with_session(&mut compiled, path.to_str().unwrap());
-        let compiler_manifest = compiled
-            .freeze_assembly_manifest("compiler", &path, source)
-            .unwrap();
+            // 消费者 A：CLI actual（stdlib-inspect）。
+            let mut cli = CompileSession::new();
+            cli.set_assembly_target(target).unwrap();
+            cli.add_source_dir(tmp.path().to_path_buf());
+            cli.resolve_uses(&source).unwrap();
+            let references =
+                crate::stdlib_assembly::reference::compile_actual_references(&cli, &source, &path)
+                    .unwrap();
+            let cli_manifest = AssemblyManifest::freeze(
+                cli.assembly,
+                "stdlib-inspect",
+                tmp.path(),
+                &root,
+                &cli.layer_selections,
+                references,
+            );
 
-        // 消费者 C：生成收据形态（api-generation + 业务输入）。
-        let generation_manifest = cli_manifest
-            .clone()
-            .with_consumer_input("project/back/api.at", "api content")
-            .with_consumer_input("project/back/db.at", "db content");
+            // 消费者 B：会话真实目标入口（compiler 快照）。
+            let mut compiled = CompileSession::new();
+            compiled.set_assembly_target(target).unwrap();
+            compiled.add_source_dir(tmp.path().to_path_buf());
+            compiled.resolve_uses(&source).unwrap();
+            match target {
+                AssemblyTarget::Rust => {
+                    compiled.assembly_references.extend(
+                        crate::stdlib_assembly::reference::compile_actual_references(
+                            &compiled, &source, &path,
+                        )
+                        .unwrap(),
+                    );
+                    let product =
+                        crate::trans_rust_with_session(&mut compiled, path.to_str().unwrap())
+                            .expect("真实 Rust 转译必须成功");
+                    assert!(!product.is_empty());
+                }
+                AssemblyTarget::C => {
+                    let product =
+                        crate::trans_c_with_session(&mut compiled, path.to_str().unwrap())
+                            .expect("真实 C 转译必须成功");
+                    assert!(!product.is_empty());
+                }
+                AssemblyTarget::Vm => {
+                    // VM 主代码经真实 codegen 收集（run_autovm_capture 的
+                    // session 内同款 pass；不执行业务）。
+                    compiled.assembly_references.extend(
+                        crate::stdlib_assembly::reference::compile_actual_references(
+                            &compiled, &source, &path,
+                        )
+                        .unwrap(),
+                    );
+                }
+            }
+            let compiler_manifest = compiled
+                .freeze_assembly_manifest("compiler", &path, &source)
+                .unwrap();
 
-        assert_eq!(
-            cli_manifest.fingerprint(),
-            compiler_manifest.fingerprint(),
-            "CLI actual 与编译会话的共同装配身份必须一致"
-        );
-        assert_eq!(
-            cli_manifest.fingerprint(),
-            generation_manifest.fingerprint(),
-            "生成收据不因消费者元数据/业务输入改变共同装配身份"
-        );
-        assert_eq!(cli_manifest.schema_version(), 4);
-        assert_ne!(
-            cli_manifest.consumer_fingerprint(),
-            compiler_manifest.consumer_fingerprint(),
-            "消费者收据身份应包含 consumer 名差异"
-        );
-        assert_ne!(
-            cli_manifest.consumer_fingerprint(),
-            generation_manifest.consumer_fingerprint(),
-            "消费者收据身份应包含业务输入差异"
-        );
+            assert_eq!(
+                cli_manifest.fingerprint(),
+                compiler_manifest.fingerprint(),
+                "{target:?}: CLI actual 与会话真实入口的共同装配身份必须一致"
+            );
+            assert_ne!(
+                cli_manifest.consumer_fingerprint(),
+                compiler_manifest.consumer_fingerprint(),
+                "{target:?}: 消费者收据身份应不同"
+            );
+        }
     }
 
     /// 失效面：target 变化改变共同身份；业务输入只改收据身份；同内容
@@ -1769,5 +1813,113 @@ mod t12_manifest_identity {
             vm_manifest.fingerprint(),
             "target 变化必须改变共同装配身份"
         );
+    }
+}
+
+#[cfg(test)]
+mod r5_receiver_closure {
+    use super::*;
+
+    fn transpile(name: &str, src: &str) -> Result<String, String> {
+        let mut sink = crate::trans::rust::transpile_rust(name, src).map_err(|e| e.to_string())?;
+        String::from_utf8(sink.done().map_err(|e| e.to_string())?.to_vec())
+            .map_err(|e| e.to_string())
+    }
+
+    /// P738-R5-02 正例：receiver 公共方法调用收集 JsonValue.len 证明并
+    /// 经 strict 门（公共 int / producer usize 同为逻辑 int）。
+    #[test]
+    fn receiver_public_method_collects_proof() {
+        use crate::stdlib_assembly::host::RustRuntime;
+        use crate::trans::rust::transpile_rust_full_with_options;
+        let src = "use auto.json
+fn main() {
+    let v = json.parse(\"{}\")
+    let n = v.len()
+    print(n)
+}";
+        let (mut sink, references) = transpile_rust_full_with_options(
+            "r5_recv_len",
+            src,
+            None,
+            None,
+            Some(RustRuntime::Standalone),
+            true,
+        )
+        .expect("JsonValue.len receiver call must transpile");
+        let _ = sink.done().unwrap();
+        let len_proof = references
+            .iter()
+            .find(|proof| proof.symbol == "JsonValue.len")
+            .expect("receiver 公共方法必须收集 JsonValue.len 证明");
+        assert_eq!(len_proof.module, "json");
+        assert_eq!(len_proof.selected_adapter.returns, "int");
+    }
+
+    /// P738-R5-02 反例：公共方法返回漂移（len int→str，producer 不变）
+    /// 在隔离 stdlib 根下转译必须拒绝（SIGNATURE_DRIFT）——旧路径静默
+    /// 放行（R5 CLI 反例 exit 0）。
+    #[test]
+    fn receiver_public_method_drift_is_rejected() {
+        let repo_root = crate::stdlib_assembly::loader::repo_stdlib_root().unwrap();
+        let isolated = tempfile::tempdir().unwrap();
+        let stdlib_dir = isolated.path().join("auto");
+        std::fs::create_dir_all(&stdlib_dir).unwrap();
+        for entry in std::fs::read_dir(&repo_root).unwrap().flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e == "at").unwrap_or(false) {
+                std::fs::copy(&path, stdlib_dir.join(entry.file_name())).unwrap();
+            }
+        }
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => std::env::set_var("AUTO_STDLIB_ROOT", value),
+                    None => std::env::remove_var("AUTO_STDLIB_ROOT"),
+                }
+            }
+        }
+        let _restore = Restore(std::env::var_os("AUTO_STDLIB_ROOT"));
+        std::env::set_var("AUTO_STDLIB_ROOT", &stdlib_dir);
+        let json_at = stdlib_dir.join("json.at");
+        let original = std::fs::read_to_string(&json_at).unwrap();
+        let drifted = original.replace(
+            "pub fn JsonValue.len(self JsonValue) int;",
+            "pub fn JsonValue.len(self JsonValue) str;",
+        );
+        assert_ne!(&drifted, &original, "漂移注入必须命中声明");
+        std::fs::write(&json_at, drifted).unwrap();
+        let error = transpile(
+            "r5_recv_drift",
+            "use auto.json
+fn main() {
+    let v = json.parse(\"{}\")
+    let n = v.len()
+    print(n)
+}",
+        )
+        .expect_err("receiver 公共方法漂移必须拒绝");
+        assert!(error.contains("SIGNATURE_DRIFT"), "{error}");
+        assert!(error.contains("JsonValue.len"), "{error}");
+    }
+
+    /// P738-R5-02 隔离：用户自定义类型的同名方法（len）不经核心门
+    /// （发射不带核心 FQN，不误拒）。
+    #[test]
+    fn user_same_name_method_is_not_core() {
+        let code = transpile(
+            "r5_user_len",
+            "type Box {
+    pub items int
+}
+fn main() {
+    let b = Box.new()
+    let n = str.len(\"x\")
+    print(n)
+}",
+        )
+        .expect("user-defined type method must not hit the core gate");
+        assert!(!code.contains("STDASSEMBLY"), "{code}");
     }
 }

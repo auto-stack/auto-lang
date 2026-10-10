@@ -5062,6 +5062,117 @@ fn parse_params(params_str: &str) -> Vec<ApiParam> {
 mod tests {
     use super::*;
 
+    /// P738-R5-03 生成消费者腿：真实 generate_api + current_generated_
+    /// assembly（api-generation），与同 api.at 文件的 CLI actual（rust）
+    /// 共同装配身份对拍——不使用 clone 模拟（对账 auto-lang 侧三目标
+    /// CLI↔会话三角）。
+    #[test]
+    fn generation_consumer_identity_matches_cli_actual() {
+        use auto_lang::compile::CompileSession;
+        use auto_lang::stdlib_assembly::manifest::AssemblyManifest;
+        use auto_lang::stdlib_assembly::model::AssemblyTarget;
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("project");
+        let isolated_workspace = dir.path().join("workspace");
+        std::fs::create_dir_all(project.join("src/back")).unwrap();
+        std::fs::write(
+            project.join("pac.at"),
+            "{ name: \"plan738-r5-triangle\", scene: \"workspace\" }",
+        )
+        .unwrap();
+        let api = "#[api(method = \"GET\", path = \"/api/answer\")]
+pub fn answer() int { let d = json.parse(\"{}\")
+ return 42 }
+";
+        std::fs::write(project.join("src/back/api.at"), api).unwrap();
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => std::env::set_var("AUTO_RUST_WORKSPACE", value),
+                    None => std::env::remove_var("AUTO_RUST_WORKSPACE"),
+                }
+            }
+        }
+        let _restore = Restore(std::env::var_os("AUTO_RUST_WORKSPACE"));
+        std::env::set_var("AUTO_RUST_WORKSPACE", &isolated_workspace);
+        generate_api(&project, "rust").expect("真实 generate_api");
+        let generation = current_generated_api_assembly(&project).expect("真实生成装配收据");
+        assert!(
+            generation.references().iter().any(|p| p.symbol == "parse"),
+            "生成装配必须携带 endpoint body 的核心引用证明"
+        );
+        let root = auto_lang::stdlib_assembly::loader::repo_stdlib_root().unwrap();
+        let api_path = project.join("src/back/api.at");
+        let mut cli = CompileSession::new();
+        cli.set_assembly_target(AssemblyTarget::Rust).unwrap();
+        cli.add_source_dir(api_path.parent().unwrap().to_path_buf());
+        cli.resolve_uses(api).unwrap();
+        let references =
+            auto_lang::stdlib_assembly::reference::compile_actual_references(&cli, api, &api_path)
+                .unwrap();
+        let cli_manifest = AssemblyManifest::freeze(
+            cli.assembly,
+            "stdlib-inspect",
+            api_path.parent().unwrap(),
+            &root,
+            &cli.layer_selections,
+            references,
+        );
+        // P738-R5-03：可比装配面必须一致；fingerprint 的唯一允许差异来源
+        // =运行形态 producer（生成器=Embedded 内嵌镜像 vs CLI 默认
+        // Standalone 独立 crate——§5.8.3 合理差异，显式钉死而非泛泛不等）。
+        let gen_sources: Vec<_> = generation
+            .sources()
+            .iter()
+            .filter(|src| src.role != "consumer_input")
+            .collect();
+        let cli_sources: Vec<_> = cli_manifest.sources().iter().collect();
+        assert_eq!(
+            format!("{gen_sources:?}"),
+            format!("{cli_sources:?}"),
+            "可比装配源面（非消费者输入）必须一致"
+        );
+        assert_eq!(generation.target_json(), cli_manifest.target_json());
+        assert_eq!(
+            generation.environment_json(),
+            cli_manifest.environment_json()
+        );
+        assert_eq!(generation.features_json(), cli_manifest.features_json());
+        assert_eq!(generation.providers_json(), cli_manifest.providers_json());
+        assert_eq!(
+            generation.references().len(),
+            cli_manifest.references().len()
+        );
+        let gen_parse = generation
+            .references()
+            .iter()
+            .find(|p| p.symbol == "parse")
+            .unwrap();
+        let cli_parse = cli_manifest
+            .references()
+            .iter()
+            .find(|p| p.symbol == "parse")
+            .unwrap();
+        assert_eq!(gen_parse.declaration_hash, cli_parse.declaration_hash);
+        assert_eq!(
+            gen_parse.public_signature.parameters,
+            cli_parse.public_signature.parameters
+        );
+        assert!(
+            gen_parse
+                .producer
+                .starts_with("crates/auto-lang/src/a2r_std.rs"),
+            "生成器证明应来自 Embedded 内嵌镜像: {}",
+            gen_parse.producer
+        );
+        assert!(
+            cli_parse.producer.starts_with("crates/a2r-std/src/"),
+            "CLI 默认证明应来自 Standalone crate: {}",
+            cli_parse.producer
+        );
+    }
+
     /// Plan 559 W2: project-provided TS glue install. When the back/api.at is
     /// implementation-style (no contract endpoints) but the project ships the
     /// web implementation as src/back/api.ts, the vue gen tree and dist copy

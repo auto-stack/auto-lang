@@ -3976,7 +3976,7 @@ pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
     let Ok(record_text) = std::fs::read_to_string(&record_path) else {
         return false; // 无 ready 记录（旧产物）——不复用
     };
-    let Ok(record) = serde_json::from_str::<serde_json::Value>(&record_text) else {
+    let Ok(mut record) = serde_json::from_str::<serde_json::Value>(&record_text) else {
         return false;
     };
     let Some(hashes) = record.get("source_hashes").and_then(|h| h.as_array()) else {
@@ -4026,17 +4026,37 @@ pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
         .ok()
         .map(|bytes| format!("{:x}", crate::api_gen::fnv1a(&bytes)))
         .or_else(|| Some("absent".to_string()));
-    lock_freshness(recorded_lock, current_lock.as_deref())
+    // PLAN-738 R5-01：一次绑定状态机。生成时未建 lock（收据记 absent）
+    // → 首次出现实际 lock 时判新鲜**并把实际 lock 身份写回收据**（一次性
+    // 物化绑定，收据升级）——此后严格比较：依赖版本漂移/lock 删除/读取
+    // 失败均陈旧。旧收据缺字段=不可核验，保守再生（一次再生写入后收敛）。
+    match (recorded_lock, current_lock.as_deref()) {
+        (Some("absent"), Some(materialized)) if materialized != "absent" => {
+            bind_workspace_lock(&record_path, &mut record, materialized);
+            true
+        }
+        (recorded, current) => lock_freshness(recorded, current),
+    }
 }
 
-/// workspace lock 新鲜度（PLAN-738 T-12）：双方一致才新鲜。**首次物化
-/// 例外**：生成时 lock 尚未建（收据记 absent），首次构建后 lock 出现
-/// ——该 lock 是已记录 manifest 依赖的确定性物化，不是依赖漂移，判新鲜
-/// （否则每个新 workspace 首启都会误判陈旧拒启）。旧收据缺字段/收据有
-/// 而当前缺失/值漂移=保守再生（一次再生写入字段后收敛）。
+/// 首次物化绑定：把实际 lock 身份写回收据的 workspace_lock 字段（保持
+/// 其余字段逐字不动——serde_json 值级更新，时间戳等不重写）。
+fn bind_workspace_lock(record_path: &Path, record: &mut serde_json::Value, lock: &str) {
+    if let Some(value) = record.get_mut("workspace_lock") {
+        if value.as_str() != Some(lock) {
+            *value = serde_json::Value::String(lock.to_string());
+            let _ = std::fs::write(record_path, record.to_string());
+        }
+    }
+}
+
+/// workspace lock 新鲜度（PLAN-738 T-12/R5-01）：双方一致才新鲜；首次
+/// 物化（absent→实际值）由调用方在绑定收据后判新鲜；absent/absent=
+/// 尚无 lock 物化，新鲜；其余（值漂移/lock 消失/读取失败归一 absent 对
+/// 实值/收据缺字段）一律陈旧。
 fn lock_freshness(recorded: Option<&str>, current: Option<&str>) -> bool {
     match (recorded, current) {
-        (Some(a), Some(b)) => a == b || a == "absent",
+        (Some(a), Some(b)) => a == b,
         _ => false,
     }
 }
@@ -5030,6 +5050,98 @@ mod tests {
         assert!(!lock_freshness(None, Some("a1b2")));
         assert!(!lock_freshness(Some("absent"), None));
         assert!(!lock_freshness(None, None));
+    }
+
+    /// PLAN-738 R5-01：lock 一次绑定状态机——真实 generate_api + 隔离
+    /// workspace：生成时 absent → 首次物化 fresh 且收据绑定实际 lock 身份
+    /// → 依赖版本漂移/lock 删除/收据缺字段均陈旧。反例源自 R5 补充复审
+    /// 探针（738-review-r5-probe.py）。
+    #[test]
+    fn review738_r5_lock_binding_state_machine() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("project");
+        let isolated_workspace = dir.path().join("workspace");
+        std::fs::create_dir_all(project.join("src/back")).unwrap();
+        std::fs::write(
+            project.join("pac.at"),
+            "{ name: \"review738-r5-lock\", scene: \"workspace\" }",
+        )
+        .unwrap();
+        std::fs::write(
+            project.join("src/back/api.at"),
+            "#[api(method = \"GET\", path = \"/api/answer\")]
+pub fn answer() int { return 42 }
+",
+        )
+        .unwrap();
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => std::env::set_var("AUTO_RUST_WORKSPACE", value),
+                    None => std::env::remove_var("AUTO_RUST_WORKSPACE"),
+                }
+            }
+        }
+        let _restore = Restore(std::env::var_os("AUTO_RUST_WORKSPACE"));
+        std::env::set_var("AUTO_RUST_WORKSPACE", &isolated_workspace);
+        crate::api_gen::generate_api(&project, "rust").unwrap();
+        let ws = ensure_shared_workspace(&project);
+        let receipt_path = ws.join(back_member_name(&project)).join("generation.json");
+        let read_lock_field = || {
+            serde_json::from_str::<serde_json::Value>(
+                &std::fs::read_to_string(&receipt_path).unwrap(),
+            )
+            .unwrap()["workspace_lock"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(read_lock_field(), "absent", "生成时尚无 lock");
+        assert!(backend_generation_is_fresh(&project), "无 lock 物化时新鲜");
+        let lock_path = ws.join("Cargo.lock");
+        let lock_v1 = "version = 4
+
+[[package]]
+name = \"review-runtime\"
+version = \"0.1.0\"
+";
+        std::fs::write(&lock_path, lock_v1).unwrap();
+        assert!(
+            backend_generation_is_fresh(&project),
+            "首次物化（确定性派生）新鲜"
+        );
+        let bound = read_lock_field();
+        assert_eq!(
+            bound,
+            format!("{:x}", crate::api_gen::fnv1a(lock_v1.as_bytes())),
+            "首次物化必须把实际 lock 身份绑定进收据"
+        );
+        assert!(backend_generation_is_fresh(&project), "绑定后同内容仍新鲜");
+        let lock_v2 = "version = 4
+
+[[package]]
+name = \"review-runtime\"
+version = \"0.2.0\"
+";
+        std::fs::write(&lock_path, lock_v2).unwrap();
+        assert!(
+            !backend_generation_is_fresh(&project),
+            "依赖版本漂移必须拒绝旧收据"
+        );
+        std::fs::remove_file(&lock_path).unwrap();
+        assert!(!backend_generation_is_fresh(&project), "lock 删除必须陈旧");
+        std::fs::write(&lock_path, lock_v1).unwrap();
+        let mut receipt = serde_json::from_str::<serde_json::Value>(
+            &std::fs::read_to_string(&receipt_path).unwrap(),
+        )
+        .unwrap();
+        receipt.as_object_mut().unwrap().remove("workspace_lock");
+        std::fs::write(&receipt_path, receipt.to_string()).unwrap();
+        assert!(
+            !backend_generation_is_fresh(&project),
+            "旧收据缺字段=不可核验，保守陈旧"
+        );
     }
 
     /// Only two known equal fingerprints prove assembly freshness.

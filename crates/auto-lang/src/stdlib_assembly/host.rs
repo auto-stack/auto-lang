@@ -1012,13 +1012,26 @@ fn verify_plain_reference(
             "emitted arity / Rust producer arity",
         ));
     }
+    // P738-R5-02：方法符号（`Owner.name`）的 receiver/is_static 来自公共
+    // 声明事实（self 方法须有 receiver=Owner），普通 fn 保持 None/false。
+    let owner = public
+        .name
+        .split('.')
+        .next()
+        .filter(|_| public.kind == super::model::SymbolKind::Method)
+        .map(str::to_string);
+    let is_static = public
+        .signature
+        .as_ref()
+        .map(|sig| sig.is_static)
+        .unwrap_or(false);
     let contract = crate::vm::native::NativeContract {
         parameter_modes: parameters.iter().map(|_| "View".into()).collect(),
         parameters,
         returns,
         producer: format!("{}::{}", producer_id, emission.callee),
-        receiver: None,
-        is_static: false,
+        receiver: owner,
+        is_static,
         generics: Vec::new(),
         error_shape,
     };
@@ -1108,6 +1121,38 @@ pub fn verify_rust_import(
             Err(error)
         }
     }
+}
+
+/// 公共方法分母归属（R5-02）：发射 callee 名在该模块公共层的方法面。
+/// 含发射侧适配拼写别名（类型名冲突变体 value_type→type、str-receiver
+/// 视图 *_str→基础名）；无公共面映射返回 None（legacy 边界，不冒称证明）。
+pub fn public_method_symbol(module: &str, callee: &str) -> Option<String> {
+    const ALIASES: &[(&str, &str)] = &[
+        ("value_type", "type"),
+        ("as_string_str", "as_string"),
+        ("as_int_str", "as_int"),
+        ("as_bool_str", "as_bool"),
+        ("len_str", "len"),
+        ("has_key_str", "has_key"),
+    ];
+    let method = ALIASES
+        .iter()
+        .find(|(from, _)| *from == callee)
+        .map(|(_, to)| *to)
+        .unwrap_or(callee);
+    let Ok(root) = super::loader::repo_stdlib_root() else {
+        return None;
+    };
+    let Ok(text) = std::fs::read_to_string(root.join(format!("{module}.at"))) else {
+        return None;
+    };
+    let layer =
+        super::loader::parse_layer(&text, LayerKind::Public, format!("stdlib/auto/{module}.at"));
+    layer
+        .symbols
+        .iter()
+        .find(|entry| entry.is_pub && entry.name.ends_with(&format!(".{method}")))
+        .map(|entry| entry.name.clone())
 }
 
 /// 公共面查询（T-11 wildcard 裸名归属）：模块公共 .at 是否声明该符号。
