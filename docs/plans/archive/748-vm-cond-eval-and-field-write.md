@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-748
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: VM 三断点修复 + vm 轨 iced 渲染器四件缺陷（musk PLAN-101 + jade-edit 供料，双 phase）
 author: [agent]
 created_at: 2026-10-10
@@ -740,6 +740,17 @@ P748_PROBE=1 配给过程 dump（env 门控，常驻）；③iced 0.14 `Limits::
 - evidence: auto-os 转交的 auto-musk PLAN-100 三型读语义病灶经本仓
   2026-10-10 实读分流（症状3 与断点①同函数不同臂确证异根），立
   PLAN-749 根修——749 §4"与 PLAN-748 的边界判定"五条依据为决策记录。
+
+
+### merge 合并收据（PLAN-748:r4，2026-10-10）
+
+- stage: merge | plan_id: PLAN-748 | plan_revision: 4 | outcome: pass | delivery_commit: master `575cd5778`
+- prepared: reviewed 基线 bb494c762（rv4 pass）+ 规范落账后裔 139e2bdbe（SD-01 fn-call-semantics 边界③收口/SD-02 ui overview 视口视觉层节/SD-03 editor parity 节+plans.md+INDEX）+ 账本投影 575cd5778（P748-1/2/3 upsert + P733-2 刷新，p748_ledger.py 离线投影先例回读核验）
+- landed: 两次 rebase（master 并发 515acb47c→6017e2b15）后 `--ff-only` ✓，tip=575cd5778；旧→新映射（range-diff 6/6 全 `=` 等价证明）：e9d953ec4→3b7450a68/2e2164b5e→a2422add2/3ec6a4914→d9d0f8414/29df32ec0→848f17ab3/4b4a7251e→e8ba2d323/bb494c762→92d88caeb；主检出媒体引擎 WIP（8 文件，他人会话物）stash→merge→pop 原样恢复零冲突。主检出冒烟以 worktree 同码门禁等价为据（工作区携带 WIP，本地跑测将混测非落地态）
+- ledger_refreshed: .autoos/specs.json（tracked，经 worktree 提交）——designs P748-1/P748-2、reviews P748-3 新增 + designs P733-2 边界③刷新（同 target current-knowledge 更新），回读核验 ✓
+- archived: docs/plans/archive/748-vm-cond-eval-and-field-write.md（status: archived，completion_kind: delivered）
+- observations: ①AC-14（jade 撤层复验）external-pending——jade 侧需新构建（本 merge 后 auto.exe/release）方可撤 4b398a4 两层 workaround 复验，669/682 先例流程；②**生产工件未重建**：release auto.exe（含 jade 所需 autodown+padding 修复）与依赖仓构建均陈旧——jade 复验/用户取用前须重建（本仓无运行中生产进程，不需重启）；③批量回归未到期（last_covered=740@2026-10-08T11:20Z，741..749 无 %5==0 计划落地，<48h）——下一合并或 plan 750 触发；④gallery 围栏随批量档
+- cleaned: 见后续提交（wt-guard → worktree/branch/组目录移除回执）
 
 ## 待澄清事项
 
