@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-752
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived
 feature_name: pg-bootstrap-lib
 author: [agent]
 created_at: 2026-10-09
@@ -197,6 +197,11 @@ pub fn bootstrap_lib_source() -> Option<&'static str>
 
 ## 9. 复审记录
 
+- 2026-10-09 `PLAN-752:r1 merge 收据 | prepared(e194481f6→rebase 5b3b4e257,range-diff=) |
+  landed(master tip=5b3b4e257,ff-only;主检出产物重建:playground 二进制+frontend dist) |
+  ledger_refreshed(.autoos/specs.json designs 段 P752-1/P752-2,docsha 冻结;INDEX 26 projects;
+  auto-playground/playground-vue plans.md 回写;README §5 手工回退) | archived | cleaned(见最终回执) |
+  batch_regression: 752%5≠2;due 判定见 .last-batch-regression.json | completion_kind: delivered`
 - 2026-10-09 `stage: review | PLAN-752 | r1 | outcome: pass | reviewed e194481f6
   （code tip fc76d2fb4）| base c5adecd1b | dep auto-down @895f8d0 | spec_inputs:
   docs/specs/auto-playground/project.md（SD-01）+ playground-vue/project.md（SD-02），
@@ -219,3 +224,11 @@ pub fn bootstrap_lib_source() -> Option<&'static str>
 - Q-1：website 宿主（NotesExplorer→PlaygroundCard）是否同步接 prependLib？
   本计划先交付独立 SPA 宿主（App.vue）；website 宿主接入为后续一行透传，
   不在验收内（若 PlaygroundCard 链路低成本可顺带，T-03 内记录实际范围）。
+
+## spec-sync 回写记录
+
+- `docs/specs/auto-playground/project.md`：PLAN-752 节（prepend_lib 语义/清单/宿主自动开启/走查结果）。
+- `docs/specs/playground-vue/project.md`：PLAN-752 节（noteMeta.prependLib 透传契约）。
+- `docs/specs/auto-playground/plans.md` + `docs/specs/playground-vue/plans.md`：752 行一句话沉淀。
+- `.autoos/specs.json` designs 段：P752-1、P752-2（commit:5b3b4e257 + docsha 冻结）。
+- `docs/specs/INDEX.md`：spec-index.py 再生。
