@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-755
-status: reviewed                # R3 pass：R2 两缺陷已修复重绑 (drafting → executing → execution_done → reviewed → archived)
+status: archived                # 终态（drafting → executing → execution_done → reviewed → archived）
 feature_name: http-contract-startup-diagnosis
 author: [zcode-agent]
 created_at: 2026-10-10
@@ -352,3 +352,36 @@ gate 可达性 | 处置`。gate 可达 = 该 id 会被 `stdlib/auto/http.at` 某
 3. ~~**interop fail（109.988s）归因**~~ **已销案**：与契约缺口同因——服务真实启动后互操作链 PASS
    （T-05 对账表 #2）。
 4. **全档 th 时段**：已按单实例串行执行完毕（186.4s）；后续批量回归若触 HTTP 面沿用 serial 纪律。
+
+## 11. 合并收据（PLAN-755:r1，2026-10-10）
+
+- **prepared**：reviewed 基线=R3 pass @`e121debf8`；canonical Spec diff=SD-01（assembly-manifest.md
+  新增节，blob `383d2dab`）；沉淀提交 `e586b9113`（stdlib plans.md 755 行 + specs.json 账本
+  P755-1/2/3 upsert 回读核验 + INDEX 再生，README §5 手工回退路径，750/751/752 先例）——
+  纯文档后裔，实现/依赖未变，即为 delivery_commit。
+- **landed**：worktree `D:/autostack/.wt/lang-755/auto-lang` rebase master 后
+  `git merge --ff-only plan-755-dev`（无 merge 提交）；主检出 tip **精确等于** `e586b9113`
+  （8 文件 +598/-23）。rebase 旧→新映射：`327069006→b3083e8b8`、`00e7f712c→3cefa2c8e`、
+  `4ce645516→bf94b8d64`、`e121debf8→5672e8e2d`；`git range-diff` 显示修复提交
+  `1: e121debf8 = 4: 5672e8e2d` 全等（安全重写证明）。落地后主检出冒烟：SD-01 canonical 在树、
+  守卫+负向 4/4、两原反例 2/2 PASS。
+- **ledger_refreshed**：workspace `D:/autostack/auto-lang`，`.autoos/specs.json` 离线投影
+  upsert P755-1（designs）/P755-2（reviews）/P755-3（reports），回读核验 published；计数
+  designs 167→168、reviews 208→209、reports 123→124。store 中介写入不可达（musk 后端按
+  README §5 通常不可用；753 在案 load-failure 阻塞），按仓既定手工回退路径执行（先例
+  p736/p748/750/751/752）。
+- **archived**：`git mv` 至 `docs/plans/archive/755-http-contract-startup-diagnosis.md`，
+  status=archived，completion_kind: **delivered**。KNOWN-DEBT P751-D1 同批销案（下述）。
+- **cleaned**：见下（收尾提交后回填核验）。
+
+### spec-sync 回写记录（v1 惯例保留）
+
+- canonical：assembly-manifest.md SD-01 节（`e586b9113` 随合并落 master）。
+- 派生视图：stdlib/plans.md 755 行；.autoos/specs.json P755-1/2/3；INDEX 再生（无 diff）。
+- KNOWN-DEBT：P751-D1 由"闭合候选"转**正式销案**（本轮合并提交内完成）。
+
+### production artifacts 观测（landing ≠ deployment）
+
+- `auto` CLI release 二进制未因本计划重建（本计划改动 VM native 契约面 + 测试基建；旧 release
+  二进制不含 755 修复，构建日期早于 2026-10-10）。web bundle（gen/front/vue/dist）与 daemon
+  类产物不受本计划触面影响。后续需要时 `cargo build --release` 重建。
