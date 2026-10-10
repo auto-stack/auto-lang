@@ -1,11 +1,12 @@
 ---
 plan_id: PLAN-750
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived                # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-draft-settle-race
 author: [zcode]
 created_at: 2026-10-10
 updated_at: 2026-10-10
 plan_revision: 1
+completion_kind: delivered
 current_step: 6
 total_steps: 7
 
@@ -448,6 +449,25 @@ HEAD e949b62 域（只读） | spec_inputs: docs/specs/auto-lang/ui/overview.md
   docs/specs/auto-lang/ui/overview.md 无既有重入契约冲突面；
   frontmatter new_spec_components 已定稿；spec-index 回读归 merge。
 - next: merge。
+
+### merge 合并收据（PLAN-750:r1，2026-10-10）
+
+| 检查点 | 证据 |
+|---|---|
+| prepared | reviewed ea513a627（基线 95d5d3297，rv1 pass）→ 投影后代 1918e3482；canonical diff=ui/overview.md SD-01 节（+42 行）+evidence/p750 六件；零 crates/ 变更 |
+| landed | master tip=**7b988b875**（ff-only 无 merge commit）；rebase 映射 ea513a627→594cde52b、1918e3482→7b988b875，`git range-diff` 2/2 全等（安全重写证明）；主干落账烟测=SD-01 在位+ledger P750-1/2 可读（800 items） |
+| ledger_refreshed | `.autoos/specs.json`（git 跟踪，worktree 经 p750_ledger.py upsert+回读核验——p736/p748 离线投影先例）：designs **P750-1**（SD-01 契约摘要）+reviews **P750-2**（rv1 收据含 external-pending 结构）；ui/plans.md 750 行；spec-index 再生=内容零变化（行尾噪声不收） |
+| archived | docs/plans/archive/750-vue-draft-settle-race.md + status archived + completion_kind delivered |
+| cleaned | wt-guard clean + worktree `D:/autostack/.wt/lang-750/auto-lang`/分支 plan-750-dev/组目录移除（见下） |
+
+observations：①AC-01/02/05 产品面终态 external-pending（owner=jade——应用
+supply-draft.md 的 .at in-flight 门后 matrix 全绿+vm_matrix 20/20+回执回填
+本档 §9）；②部署工件：本计划零代码变更，无重建面；PLAN-748 观察②
+（release 工件陈旧）维持在案，jade 复验窗协同；③**批量回归到期**：
+750%5==0 且收据 last_covered=740@2026-10-08（>48h 且期间有合并）→
+交 `/auto-plan:regress` 主检出单实例执行；④落地窗主检出携带并行会话
+WIP（ui/autodown_blocks.rs、autodown_editor/{core,widget}.rs、020 示例
+两 .at）——ff-only 未触碰，原样保留非本计划物。
 
 ## 10. 待澄清事项
 
