@@ -1068,10 +1068,17 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         // PLAN-738 T-12：生成 workspace 实际 lock 身份——生成产物的运行时
         // 依赖输入，与生成器自身 Cargo 输入（manifest provider 面）分开
         // 记录；未建 lock 时记 absent，复用门在 lock 出现/变化时判陈旧。
-        let workspace_lock =
-            std::fs::read(crate::rust_ui::ensure_shared_workspace(root_dir).join("Cargo.lock"))
-                .map(|bytes| format!("{:x}", fnv1a(&bytes)))
-                .unwrap_or_else(|_| "absent".into());
+        // P738-R9-01 fail-closed：NotFound=未物化记 absent；其它读错误
+        // 拒绝写收据（收据不得携带不可核验的 lock 身份）。
+        let workspace_lock = match std::fs::read(
+            crate::rust_ui::ensure_shared_workspace(root_dir).join("Cargo.lock"),
+        ) {
+            Ok(bytes) => format!("{:x}", fnv1a(&bytes)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => "absent".into(),
+            Err(e) => {
+                return Err(format!("workspace Cargo.lock unreadable: {e}").into());
+            }
+        };
         // A receipt must identify the assembly it actually used. Failure to
         // locate/hash stdlib is an error, never a reusable null identity.
         let record = serde_json::json!({

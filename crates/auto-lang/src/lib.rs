@@ -119,7 +119,7 @@ pub mod http_upload_service; // PLAN-730: 服务端上传宿主 executor（VM/�
 pub mod mcp; // Plan 265: MCP server for AI agent interaction
 pub mod module_cache;
 pub mod stdlib_assembly; // PLAN-738: stdlib 装配契约（inventory/manifest/provider 目录纯模型层）
-// Plan 096 Phase 0: Scenario-based compilation
+                         // Plan 096 Phase 0: Scenario-based compilation
 pub mod session;
 // Plan 096 Phase 0: AURA (Auto UI Representation Abstract)
 pub mod aura;

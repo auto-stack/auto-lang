@@ -4020,12 +4020,19 @@ pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
     // PLAN-738 T-12：生成 workspace lock 身份对拍——生成产物运行时依赖
     // 输入变化（lock 出现/更新）即陈旧；旧收据无此字段=不可核验，保守再生。
     let recorded_lock = record.get("workspace_lock").and_then(|v| v.as_str());
-    // current 侧 lock 未建与收据 "absent" 同词汇——归一化后对拍，避免
-    // 表示层差异（None vs "absent"）伪造陈旧。
-    let current_lock = std::fs::read(ensure_shared_workspace(project_dir).join("Cargo.lock"))
-        .ok()
-        .map(|bytes| format!("{:x}", crate::api_gen::fnv1a(&bytes)))
-        .or_else(|| Some("absent".to_string()));
+    // P738-R9-01 fail-closed：lock 未建（NotFound）与收据 "absent" 同词汇
+    // 对拍；**其它读取错误（权限/IO）不冒充 absent**——归 None（不可核验
+    // =保守陈旧），防止 recorded="absent" × 读错误 → absent/absent 假新鲜。
+    let current_lock = classify_lock_read(std::fs::read(
+        ensure_shared_workspace(project_dir).join("Cargo.lock"),
+    ))
+    .map(|bytes| {
+        if bytes.is_empty() {
+            "absent".to_string()
+        } else {
+            format!("{:x}", crate::api_gen::fnv1a(&bytes))
+        }
+    });
     // PLAN-738 R5-01：一次绑定状态机。生成时未建 lock（收据记 absent）
     // → 首次出现实际 lock 时判新鲜**并把实际 lock 身份写回收据**（一次性
     // 物化绑定，收据升级）——此后严格比较：依赖版本漂移/lock 删除/读取
@@ -4037,6 +4044,18 @@ pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
             bind_workspace_lock(&record_path, &mut record, materialized)
         }
         (recorded, current) => lock_freshness(recorded, current),
+    }
+}
+
+/// lock 读取分类（P738-R9-01）：NotFound=未物化（Some(空字节占位由调用
+/// 方归 absent）——为区分错误类型返回 Option<Vec<u8>>+内部语义；这里直接
+/// 返回 `Option<Vec<u8>>`，NotFound → Some(Vec::new())（空=absent 哨兵），
+/// 其它错误 → None（不可核验）。纯函数便于单测。
+fn classify_lock_read(result: std::io::Result<Vec<u8>>) -> Option<Vec<u8>> {
+    match result {
+        Ok(bytes) => Some(bytes),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(Vec::new()),
+        Err(_) => None,
     }
 }
 
@@ -5148,6 +5167,25 @@ version = \"0.2.0\"
             !backend_generation_is_fresh(&project),
             "旧收据缺字段=不可核验，保守陈旧"
         );
+    }
+
+    /// P738-R9-01：lock 读取分类——NotFound=未物化哨兵；权限/IO 错误=
+    /// None（不可核验），不冒充 absent（fail-closed）。
+    #[test]
+    fn classify_lock_read_fail_closed() {
+        assert_eq!(classify_lock_read(Ok(vec![1, 2])), Some(vec![1, 2]));
+        assert_eq!(
+            classify_lock_read(Err(std::io::Error::from(std::io::ErrorKind::NotFound))),
+            Some(Vec::new())
+        );
+        assert_eq!(
+            classify_lock_read(Err(std::io::Error::from(
+                std::io::ErrorKind::PermissionDenied
+            ))),
+            None
+        );
+        // 端到端语义：recorded=absent × 读错误（→None）必须陈旧。
+        assert!(!lock_freshness(Some("absent"), None));
     }
 
     /// Only two known equal fingerprints prove assembly freshness.

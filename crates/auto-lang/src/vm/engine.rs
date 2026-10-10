@@ -9840,11 +9840,10 @@ impl AutoVM {
                             // the value and pushed 0 — so `var x = stack.pop()` in
                             // flood-fill always got 0, making the loop never
                             // terminate (stack grew until OOM → process crash).
-                            let popped: Option<auto_val::Value> = if let Some(arr_ref) =
-                                self.get_heap_object(arr_key)
-                            {
-                                let mut arr = arr_ref.write().unwrap();
-                                if let Some(list) = arr
+                            let popped: Option<auto_val::Value> =
+                                if let Some(arr_ref) = self.get_heap_object(arr_key) {
+                                    let mut arr = arr_ref.write().unwrap();
+                                    if let Some(list) = arr
                                     .as_any_mut()
                                     .downcast_mut::<crate::vm::types::ListData<auto_val::Value>>()
                                 {
@@ -9852,9 +9851,9 @@ impl AutoVM {
                                 } else {
                                     None
                                 }
-                            } else {
-                                None
-                            };
+                                } else {
+                                    None
+                                };
                             // Push the popped value onto the operand stack (replacing receiver)
                             {
                                 task.ram.pop_nv();

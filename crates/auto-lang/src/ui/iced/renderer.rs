@@ -24761,20 +24761,19 @@ fn run_session(
             } else if state.desktop.launcher_app.is_some() {
                 let launcher_app = state.desktop.launcher_app.expect("launcher checked");
                 let build = || state.split_ref_launcher().map(|v| dynamic_view(v, false));
-                let launcher_client: iced::Element<'_, IcedMessage> = match std::panic::catch_unwind(
-                    std::panic::AssertUnwindSafe(build),
-                ) {
-                    Ok(Some(el)) => el,
-                    Ok(None) => iced::widget::text("[AutoUI 会话] launcher 缺失")
-                        .size(14)
-                        .into(),
-                    Err(payload) => {
-                        eprintln!(
+                let launcher_client: iced::Element<'_, IcedMessage> =
+                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(build)) {
+                        Ok(Some(el)) => el,
+                        Ok(None) => iced::widget::text("[AutoUI 会话] launcher 缺失")
+                            .size(14)
+                            .into(),
+                        Err(payload) => {
+                            eprintln!(
                             "[session] launcher view panicked (plan-453 T6 boundary): {payload:?}"
                         );
-                        desktop_crash_element()
-                    }
-                };
+                            desktop_crash_element()
+                        }
+                    };
                 layers.push(launcher_client.map(move |m| DM::App(launcher_app, m)));
             }
             // Plan 478 T4：switcher overlay 层（launcher 层邻位顶层；仅
