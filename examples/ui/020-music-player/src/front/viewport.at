@@ -24,6 +24,10 @@ widget Viewport {
 
             video {
                 src: .store.current_url
+                // 媒体引擎稳定键（2026-10-10 小组件独立播放配套）：主窗与
+                // dashboard mini 卡两个挂载点共享同一 mpv 运行时——升格/降格、
+                // 面板反复开关播放无缝交接，不会出现双引擎双声。
+                key: "media"
                 controls: false
                 preload: "auto"
                 playsinline: true

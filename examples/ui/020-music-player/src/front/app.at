@@ -117,6 +117,13 @@ widget App {
                     style: "h-8 w-10 px-0 text-muted-foreground text-sm"
                 }
             }
+
+            // 隐藏媒体宿主（2026-10-10 小组件独立播放配套）：mini 会话也要
+            // 有受控 <video> 挂载（1×1 absolute 隐藏，viewport.at 同款）——
+            // 否则孵化态（无窗）PlayPause 只翻 store 状态，mpv 引擎无处
+            // 挂靠，小组件不出声。与主窗 Viewport 共享 `key: "media"` 稳定
+            // 引擎，升格开窗零交接成本。
+            Viewport()
         }
     }
 
@@ -163,6 +170,20 @@ widget App {
         }
         .ToggleDarkMode -> {
             .dark_mode = !.dark_mode
+        }
+        // 2026-10-10 小组件独立播放配套：mini 卡三播控柄（R19 face 事件
+        // 直达本会话的落地面——根视图 .PlayPause 等绑定在此解析；此前只
+        // 有 Controls 子件有同名柄，孵化态 mini 按钮点击落 HandlerNotFound
+        // 死面）。委托 store，与 Controls 同语义（空曲库 SelectIndex(0)
+        // 开播在 store 侧）。
+        .PlayPause -> {
+            store.PlayPause()
+        }
+        .PrevTrack -> {
+            store.PrevTrack()
+        }
+        .NextTrack -> {
+            store.NextTrack()
         }
     }
 }
