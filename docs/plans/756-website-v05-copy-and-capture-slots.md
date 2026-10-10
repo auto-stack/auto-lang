@@ -8,7 +8,7 @@ updated_at: 2026-10-10
 plan_revision: 1
 current_step: 4
 total_steps: 4
-supersedes_spec_components: [docs/specs/website/design/ui-presentation.md, docs/specs/website/design/application-introductions.md]
+supersedes_spec_components: [docs/specs/website/design/ui-presentation.md, docs/specs/website/design/application-introductions.md, docs/specs/website/project.md]
 new_spec_components: []
 touched_goals: []
 affects: [website]
@@ -71,3 +71,15 @@ stage: review | plan_id: PLAN-756 | plan_revision: 1 | outcome: pass | reviewed_
 ## 10. 待澄清事项
 无阻塞。拍摄、候选冻结、部署不属本轮。手机目录布局/图片负载留后续 UI 工作，不声称已修复。
 
+
+## 11. 合入与规范同步收据
+
+stage: merge | key: PLAN-756:r1 | outcome: blocked (ledger only) | prepared: 2 reviewed design rules + faithful project/plans summary; spec-index regenerated with no content diff | landed: 0cc62c92380d9381e59788762609f5b9172b4a1d on master via --ff-only | ledger_refreshed: pending, no spec writer tool available; GET http://127.0.0.1:8080/api/specs?workspace=auto-lang refused connection | archived: pending per skill | cleaned: pending, worktree retained.
+
+Rebase mapping: e516408212f35893e63438ae20df41adda8daf2a → c61d182bd18a604dae7dfe077393961be782120e; a8edba7962f48747fc30f24229c1a11f27f639de → 0cc62c92380d9381e59788762609f5b9172b4a1d. git range-diff showed both commits equal (=); no source, dependency or reviewed-rule conflict. Main canonical files match the worktree; frozen consolidation patch SHA256 79ff99388ea6cde3c602d07da20dfdf9d3d5e6aeba9ceec2a4dbb687180df516.
+
+Canonical paths: docs/specs/website/design/ui-presentation.md, docs/specs/website/design/application-introductions.md, docs/specs/website/project.md; module navigation docs/specs/website/plans.md. SD-01/02 unchanged; project/plans lines only derive the same delivered rules and provenance. Pending projection: reuse designs items by canonical file and append PLAN-756 review/report source references through the SpecsStore writer; resolve actual item IDs on successful store read. No direct .autoos/specs.json edit or lifecycle bypass occurred.
+
+Integration smoke: main/worktree capture source, guide and canonical Spec bytes equal; source IDs match 12 guide rows; shared localeHref remains correct; git diff --check passed. Production observation: website/.vitepress/dist/index.html on main last written 2026-10-10 17:12:01 before landing; not rebuilt/deployed by this task. Verified bundle is in plan worktree. Rust/backend binaries untouched and Category A prohibits Cargo/docs_gen. No claim of public deployment, frozen artifacts, screenshot completion or W-02 acceptance.
+
+Before landing guard: wt-guard clean (zero reparse point); worktree Git clean. Current main foreign blueprints deletions and Plan 755 WIP preserved. No cleanup/archive until store-mediated projection readback succeeds. Per auto-plan-merge/SKILL.md: “If no store-mediated writer is reachable, record blocked; keep the Plan active.”

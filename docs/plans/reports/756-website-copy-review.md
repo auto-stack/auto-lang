@@ -33,3 +33,7 @@
 - P756-D1: mobile SectionNav opened list is tall/clipped by existing flex row layout. Capture slots did not modify SectionNav; future UI task should make the toggle/list vertical and check all chapter targets at 360/390.
 - P756-D2: original desktop PNGs (hero approx 5.2MB) and long release page retain their existing loading/scroll cost. Future image derivative and page-density work must preserve original image provenance and full-size links.
 - Next: merge/consolidation; actual product capture and candidate freeze remain separate.
+
+## Landing follow-through
+
+Code landed on master at 0cc62c92380d9381e59788762609f5b9172b4a1d after an equivalent linear rebase. Both range-diff entries were equal (=). Project and plans derived notes match the reviewed rules; index regeneration had no diff. Ledger endpoint refused connection and no writer tool was present; Plan stays reviewed and worktree is retained pending store-mediated projection, per merge skill. No deployment.

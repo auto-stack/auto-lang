@@ -35,9 +35,9 @@ website 的内容和页面完善可以现在推进；最终版本号、下载链
 - HTTP 口径以 [部署合同](../specs/stdlib/design/http-service-deployment.md) 及相关 API／文件传输交付收据为准，区分本机／单层可信反向代理支持与直接公网、内置 TLS、完整 WebSocket 等未认证范围。
 - Canvas 预览定位须由对应应用实际交付与候选演示确认，不能仅根据页面文案推定产品能力。
 - [website 现状](../specs/website/project.md) 和 [在线体验设计](../design/documents/website-interactive-experiences.md) 区分 v0.5 静态介绍／真实截图与 v0.5.1 Web 桌面／应用在线体验；介绍集合数量不等于发布应用数量或统一成熟度。
-- 既有 Kanban 示例图属于历史资料；PLAN-756 开发页将两端对照位置改为候选待拍槽。W-02 继续核对普通示例与 Musk Kanban 的关系及版本来源，不能用示例图证明 Musk 发布。
+- 既有 Kanban 示例图属于历史资料；PLAN-756 已合入源码，将两端对照位置改为候选待拍槽（公开部署另行确认）。W-02 继续核对普通示例与 Musk Kanban 的关系及版本来源，不能用示例图证明 Musk 发布。
 - PLAN-738 于 2026-10-10 已归档交付；本清单据实际计划状态更新，不替代应用验收或候选冻结。
-- PLAN-756 按用户批准先修网站文本并保留明确的截图待拍槽；逐图拍摄合同在 `docs/reports/website-v05-capture-guide.md`。文字修复不等于 W-02 通过，截图、工件与下载入口仍随冻结候选验收。
+- PLAN-756 按用户批准先修网站文本并保留明确的截图待拍槽；逐图拍摄合同见 [拍摄清单](../reports/website-v05-capture-guide.md)。文字修复不等于 W-02 通过，截图、工件与下载入口仍随冻结候选验收。
 
 ## 冻结与最终验收记录
 
