@@ -452,6 +452,8 @@ mod plan736_http_service_tests;
 mod plan738_assembly_probe_tests;
 // PLAN-738 T-02：stdlib_assembly 正式族（全库 inventory/provider 目录机器对照）
 mod plan738_stdlib_assembly_tests;
+// PLAN-755 T-01/T-03：HTTP 公共面契约覆盖走查 + CFFI merge 存活守卫
+mod plan755_http_contract_tests;
 // PLAN-730: 服务端上传（平台探针 + parser/预算/存储矩阵 + http_e2e_plan730 双端）
 mod plan730_http_upload_tests;
 // PLAN-712 T-17 第二层：router.param 的 VM 取值链（push → sync → 页 Init）。

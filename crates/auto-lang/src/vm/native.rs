@@ -339,6 +339,230 @@ impl NativeInterface {
             &["UploadSession"],
             "str",
         );
+        // PLAN-755 T-03：HTTP 公共面契约覆盖补齐（SD-01 覆盖完整性规则）。
+        // 以下家族此前 resolved+bound 但缺独立契约——真实程序引用即在编译期
+        // 以 SIGNATURE_UNVERIFIED 拒绝（751-R2 实证 #9937/#3108；41 项全量
+        // 缺口由 plan755_http_contract_tests 走查锁定）。签名逐字对齐
+        // stdlib/auto/http.at 公共声明；句柄/Receipt 的 wire 适配语义沿用本
+        // 节 error_shape 记法，不改绑定/shim/次序。
+        //
+        // Server 构造/路由链面：
+        native_interface.declare_contract_identity("auto.http.server", &[], &[], "Server");
+        native_interface.declare_method_contract_identity(
+            "auto.http.server_get",
+            "Server",
+            &["Server", "str", "fn(Request) Response"],
+            "Server",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.server_post",
+            "Server",
+            &["Server", "str", "fn(Request) Response"],
+            "Server",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.server_put",
+            "Server",
+            &["Server", "str", "fn(Request) Response"],
+            "Server",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.server_delete",
+            "Server",
+            &["Server", "str", "fn(Request) Response"],
+            "Server",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.server_static",
+            "Server",
+            &["Server", "str", "str"],
+            "Server",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.server_listen",
+            "Server",
+            &["Server", "str"],
+            "void",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.listen",
+            &[],
+            &["str", "int", "fn(str, str, str) str"],
+            "void",
+        );
+        // Response 构造面（Plan 346 redirect 在内）：
+        native_interface.declare_contract_identity("auto.http.response", &[], &[], "Response");        native_interface.declare_method_contract_identity(
+            "auto.http.response_status",
+            "Response",
+            &["Response", "int"],
+            "Response",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.response_header",
+            "Response",
+            &["Response", "str", "str"],
+            "Response",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.response_text",
+            "Response",
+            &["Response", "str"],
+            "Response",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.response_html",
+            "Response",
+            &["Response", "str"],
+            "Response",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.response_bytes",
+            "Response",
+            &["Response", "[]byte"],
+            "Response",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.response_redirect",
+            &[],
+            &["str", "int"],
+            "Response",
+        );
+        // Response sugar 构造族（ok/created/bad_request/not_found/internal_error）：
+        // inventory 从 Rust 签名推导的契约返回 int（句柄 id 栈载荷），与公共层
+        // Response 身份漂移——按 §5.3「返回按公共身份」在尾部覆盖重声明。
+        native_interface.declare_contract_identity("auto.http.ok", &[], &["str"], "Response");
+        native_interface.declare_contract_identity("auto.http.created", &[], &["str"], "Response");
+        native_interface.declare_contract_identity(
+            "auto.http.bad_request",
+            &[],
+            &["str"],
+            "Response",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.not_found",
+            &[],
+            &["str"],
+            "Response",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.internal_error",
+            &[],
+            &["str"],
+            "Response",
+        );
+        // 客户端面（get/request 族已有；同步 post_sync/bearer 与状态查询补齐）：
+        native_interface.declare_contract_identity("auto.http.post", &[], &["str", "str"], "Response");
+        native_interface.declare_contract_identity("auto.http.put", &[], &["str", "str"], "Response");
+        native_interface.declare_contract_identity("auto.http.delete", &[], &["str"], "Response");
+        native_interface.declare_contract_identity(
+            "auto.http.post_sync",
+            &[],
+            &["str", "str", "str"],
+            "str",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.post_bearer",
+            &[],
+            &["str", "str", "str"],
+            "str",
+        );
+        native_interface.declare_contract_identity("auto.http.last_status", &[], &[], "int");
+        // RequestBuilder 方法面（json[T] 为声明级泛型方法）：
+        native_interface.declare_method_contract_identity(
+            "auto.http.request_builder_header",
+            "RequestBuilder",
+            &["RequestBuilder", "str", "str"],
+            "RequestBuilder",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.request_builder_body",
+            "RequestBuilder",
+            &["RequestBuilder", "str"],
+            "RequestBuilder",
+        );
+        native_interface.declare_generic_method_contract_identity(
+            "auto.http.request_builder_json",
+            "RequestBuilder",
+            &["T"],
+            &["RequestBuilder", "T"],
+            "RequestBuilder",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.request_builder_timeout",
+            "RequestBuilder",
+            &["RequestBuilder", "int"],
+            "RequestBuilder",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.request_builder_send",
+            "RequestBuilder",
+            &["RequestBuilder"],
+            "Response",
+        );
+        // 流式面（post_stream 族 + close/iter 收尾；同 id 双名沿用
+        // stream_next 的方法形声明——自由函数形不核 receiver，两序皆过）：
+        native_interface.declare_contract_identity(
+            "auto.http.post_stream",
+            &[],
+            &["str", "str"],
+            "HTTPStream",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.post_stream_with_headers",
+            &[],
+            &["str", "str", "str"],
+            "HTTPStream",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http_stream.stream_close",
+            "HTTPStream",
+            &["HTTPStream"],
+            "void",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http_stream.stream_iter",
+            "HTTPStream",
+            &["HTTPStream"],
+            "int",
+        );
+        // SSE 逐步拉取面（PLAN-658/707）：
+        native_interface.declare_contract_identity("auto.http.sse_open", &[], &["str"], "int");
+        native_interface.declare_contract_identity("auto.http.sse_poll", &[], &["int"], "str");
+        native_interface.declare_contract_identity("auto.http.sse_close", &[], &["int"], "void");
+        native_interface.declare_contract_identity("auto.http.sse_error", &[], &["int"], "str");
+        // 文件传输面（download/wait/error/cancel 已有；upload/progress 补齐）：
+        native_interface.declare_contract_identity(
+            "auto.http.transfer_upload",
+            &[],
+            &["str", "str", "str"],
+            "FileTransfer",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.transfer_next_progress",
+            &[],
+            &["FileTransfer"],
+            "str",
+        );
+        // 服务端上传面（PLAN-730；metadata/error 已有，receive/commit/reject
+        // 为 751-R2 实证缺口 #9937 家族）：
+        native_interface.declare_contract_identity(
+            "auto.http.upload_receive",
+            &[],
+            &["UploadRequest", "str", "str", "str"],
+            "UploadSession",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.upload_commit",
+            &[],
+            &["UploadSession", "str"],
+            "UploadReceipt",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.upload_reject",
+            &[],
+            &["UploadSession", "int", "str"],
+            "UploadReceipt",
+        );
 
         native_interface
     }
@@ -462,6 +686,25 @@ impl NativeInterface {
         returns: &str,
     ) -> Option<u16> {
         let id = self.declare_contract_identity(name, &[], parameters, returns)?;
+        if let Some(contract) = self.contracts.get_mut(&id) {
+            contract.receiver = Some(receiver.into());
+            contract.is_static = false;
+        }
+        Some(id)
+    }
+
+    /// PLAN-755 T-03：泛型方法面变体——`RequestBuilder.json[T]` 一类声明级
+    /// 泛型方法需要 receiver 与 generics 同时随契约声明（§5.3 的方法变体
+    /// 会把 generics 清空，无法表达该形态）。
+    pub fn declare_generic_method_contract_identity(
+        &mut self,
+        name: &str,
+        receiver: &str,
+        generics: &[&str],
+        parameters: &[&str],
+        returns: &str,
+    ) -> Option<u16> {
+        let id = self.declare_contract_identity(name, generics, parameters, returns)?;
         if let Some(contract) = self.contracts.get_mut(&id) {
             contract.receiver = Some(receiver.into());
             contract.is_static = false;
