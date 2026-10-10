@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-751
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: empty-lock-identity-th-tail
 author: [zcode]
 created_at: 2026-10-10
@@ -273,6 +273,51 @@ tempfile 隔离 workspace + `AUTO_RUST_WORKSPACE` env 指向（沿既有 R5 状�
   （合同要素齐备，任务覆盖全部 AC 与 SD-01；授权=用户 2026-10-10 会话指令，
   见 §需求分析）。next: `/auto-plan:work` 于 `D:/autostack/.wt/lang-751/auto-lang`
   执行 T-01..T-06。
+- 2026-10-10 stage: work（/auto-plan:work）。plan_revision: 1。outcome: pass。
+  code_commit: `f16de5a19`（auto-man 实现+测试）+ `fe3d78937`（SD-01 spec 增量），
+  基面 `0884add2a`；依赖 auto-down 兄弟 detached@`895f8d0`（master）。task_ids:
+  T-01..T-06（T-06 复审/合并进行中）。evidence: 见各任务 [✅] 行。blockers: 无。
+  next: review。
+- 2026-10-10 stage: review（/auto-plan:review）。plan_revision: 1。
+  **outcome: pass**。reviewed_commit: `f16de5a19`+`fe3d78937`；base: `0884add2a`；
+  dependency: auto-down=`895f8d0`；spec_inputs:
+  docs/specs/auto-man/design/api-generation-integrity.md（§workspace lock
+  一次绑定，SD-01 增量随 fe3d78937 冻结）。
+  **独立性声明**：本复审在执行会话内进行（同上下文）——裁定从工件重建而非
+  执行者自述：关键验证在已提交修订上复跑（非沿用开发期输出）。
+  acceptance_results：
+  - AC-01 pass——`review751_empty_lock_identity_matrix` 复跑 PASS（1.324s）：
+    空文件一次绑定 `811c9dc5`（收据断言）、同空文件再生成收据仍
+    `811c9dc5`（生成端 api_gen.rs:1075 走同一 `workspace_lock_identity`）
+    且门 fresh——R11 反例（absent vs 811c9dc5 永久 stale）转正闭合。
+  - AC-02 pass——矩阵第 2/4/5/6 步（absent→空文件绑定 fresh；非空漂移/
+    删除/目录读错误均 stale）+ R5 状态机复跑 PASS（非空锚不回退）。
+  - AC-03 pass——`workspace_lock_identity_three_states` 复跑 PASS
+    （NotFound→Ok(None)、PermissionDenied→Err、Ok(vec![])→Some("811c9dc5")）
+    + 生成端 Err 臂保持 `workspace Cargo.lock unreadable` 拒写收据（文案
+    逐字核对）；端到端目录负例 stale。
+  - AC-04 pass——grep 复核：生产调用点恰两处（api_gen.rs:1075 生成端、
+    rust_ui.rs:4027 消费端）+ 测试引用；`classify_lock_read` 全仓零残留。
+  - AC-05 pass——th 102 selected/102 run（1962.969s 串行单实例），收据
+    `docs/plans/reports/751-th-full-receipt.md` 在树（含 16 项逐名分诊、
+    隔离复现矩阵、R9 承接 45 项交叉对照、归因边界）；AC 不要求全绿，
+    15 项确定性挂死+1 在册红作为发现登记 P751-D1（见 findings）。
+  - AC-06 pass——rustfmt --check 复跑 exit 0（两改动文件）；
+    `cargo check -p auto-man` 改动点零新警告（存量 26 警告旧行号）；
+    auto-man lib 354 run/351 pass/3 预存红（stash 基面 0/3 同红实证）；
+    裸 `cargo t` 5224/5212/12，红名全部已知族、零名册外新红。
+  findings（均在约定范围外、已登记非阻塞债务，不构成本计划必修项）：
+  - P751-D1（high）：plan730 上传族 14 项 + e2e_a_redirect_302 确定性挂死
+    （th 补跑发现；红移窗口=PLAN-738 系列；与 PLAN-751 diff 零因果——
+    th 面不编译 auto-man）。后续专项 bisect 修复。
+  - P751-D2（medium）：auto-man 3 项预存红（plan593 CSS 金样/shell-pack
+    过期/merged API 金样）——日常档盲区，已登记。
+  - 无未批准延期/范围缩减：R11 修复要求五要素（仅 NotFound=absent、成功
+    读取统一内容身份、共用分类实现、空文件一次绑定+再生成测试、保留读
+    错误矩阵）逐项对上；R11 探针场景已形式化为常驻回归测试（探针本体
+    依赖已清理的临时 worktree，以树内测试为准）。
+  evidence: 本记录内嵌命令/结果摘要 + docs/plans/reports/751-th-full-receipt.md
+  （durable，worktree 移除后可解析）。next: merge（/auto-plan:merge）。
 
 ## 待澄清事项
 
