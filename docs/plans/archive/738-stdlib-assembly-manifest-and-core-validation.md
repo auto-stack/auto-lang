@@ -99,6 +99,10 @@ affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persisten
 
 **2026-10-10 R10 独立复审：pass → reviewed，可重启 merge。** R9-01 双端闭合确证（gate：NotFound→absent 哨兵/其它错误→None 落入 `lock_freshness` `_ => false` 保守陈旧，反例 recorded="absent"×PermissionDenied 现判 false 有显式断言；生成侧非 NotFound 读错误 return Err 拒写收据）；R9-02 token 级核证（lib/engine 去空白 token 流逐字节一致、renderer 唯一差异=尾逗号移除 AST 等价）+ rustfmt 五文件机械干净；门禁全绿（plan738 73/73、tv 162/162 含 cb_web_mime PASS、api_gen 44+1 ignored、lock 状态机 1/1、三 crate check 零 error、**正式生成服务链 1/1@42.29s——R9-I 明确要求的重跑项，work 交接省略由本轮补跑**）；SD 沉淀与合同面（stdlib_assembly/native*/stdlib/**）在 19973b089..41b4d4be5 逐字节未扰动。三项 P4 观察登记（负例矩阵 bound×None 无显式断言、空 lock 文件归 absent 哨兵、服务链省略流程记录）。详见 [738-review-r10.md](reports/738-review-r10.md)。
 
+### cleaned 回执（2026-10-10）
+
+- wt-guard clean（lang-738/auto-lang 与 auto-down 与历史 verify-738-base/auto-lang 三处）→ worktree `lang-738/auto-lang` remove ✓、分支 `plan-738-dev` delete（9ff34ae0d 全并入 master 实证）✓、组目录 `lang-738/` 移除（auto-down 为未注册普通副本 27M，无 reparse point，一并清理）✓、陈旧 verify-738-base 组移除 ✓、worktree prune 后注册表零 738 残留 ✓。
+
 ### merge 最终收据（2026-10-10，PLAN-738:r3 全检查点闭合）
 
 - prepared ✓：`641f66a5f`（SD-01..07 沉淀，3713337d9 文档后代）
