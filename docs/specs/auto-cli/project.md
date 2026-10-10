@@ -61,3 +61,14 @@ graph LR
   进程锁定时，worktree 独立构建的产物与共享主二进制是两个事实源。
 - 主二进制替换（部署）是显式步骤：exe 锁定不强杀共享实例，保留部署
   观察项。
+
+## `auto stdlib`（PLAN-738）
+
+- `auto stdlib inspect [--module auto.http] --target vm|rust|c --environment
+  native|browser --format json [--check] [--actual <file.at>]`：inventory/
+  actual 模式区分；--actual 真实 dry 装配（resolve_uses，不执行 main/
+  网络/文件业务）。
+- 退出码：0=pass；1=check 违规（被引用闭包 missing/conflict/unverified/
+  unsupported）；2=错误；3=inventory partial（解析失败非零不吞）。
+- JSON 稳定排序、便携源 ID、无绝对路径泄漏；provider_claims 仅列当前
+  target 且实际装载的模块。

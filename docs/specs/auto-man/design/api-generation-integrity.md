@@ -27,6 +27,26 @@
 - `start_api_server` 的 `AUTO_REUSE_BACKEND=1` 复用臂经 `backend_generation_is_fresh`
   校验：ready 缺失/解析失败/源指纹失配 → 拒绝复用，回落 kill+重生成+spawn。
 
+### 装配指纹与收据身份（PLAN-738）
+
+- generation.json 收据 assembly 块（schema 4 双指纹）：业务 source_hashes
+  与 assembly 指纹各自记录；收据/烘焙常量（`__assembly_fingerprint`）/
+  在途核对/新鲜度门统一使用 **consumer_fingerprint**（同消费者跨时语义
+  与 schema 3 兼容）。
+- 生成装配引用闭包：endpoint 内联体 + db.at + 伴生 `src/back/*.at` back
+  模块全部按 **Embedded** 运行形态转译收集证明并入 manifest（back 产物经
+  qualify_a2r_std 链接内嵌镜像，不把 endpoint 面冒称全部装配）。
+
+### workspace lock 一次绑定（PLAN-738 R5-01）
+
+- ready 记录 `workspace_lock`（生成产物运行时依赖输入的 FNV 身份；未建
+  lock 记 absent）——与生成器自身 Cargo 输入（manifest provider 面）分开
+  记录。
+- 复用门为**一次绑定状态机**：absent → 首次出现实际 lock 时判新鲜并把
+  实际身份**绑定写回收据**（一次性收敛；写失败保守判陈旧）；此后严格
+  比较——依赖版本漂移/lock 删除/读取失败/旧收据缺字段均陈旧走再生臂。
+  纯 absent 豁免（永久放行后续漂移）是 R5 复审反例，禁止回退。
+
 ## 4. 错误传播（8 入口全部 `?`/Err）
 
 vue.rs（VueProject::generate 的 `let _ =` 静默丢弃/prepare_vue_sources/run 的

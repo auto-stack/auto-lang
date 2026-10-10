@@ -4,11 +4,19 @@
 > **范围**: `stdlib/auto/` 的公共 `.at` API、目标文件、VM native、a2r Rust runtime、生成服务与 AutoUI 消费路径。
 > **关联**: [stdlib 项目卡](../project.md)、[HTTP Server Spec](http-server.md)、[网络标准库 Spec](../../auto-lang/runtime/design/networking-stdlib.md)
 
-## 装配规则
+## 装配规则（PLAN-738 实际 provider 索引）
 
-- `stdlib/auto/` 中的公共 `.at` 声明与 `.vm.at`、`.rs.at`、`.c.at` 目标文件是不同层。目标文件缺失必须按缺口记录；相同 API 名称不自动代表行为一致。
-- 编译装载以 `crates/auto-lang/src/compile.rs` 的实际路径为准：公共 `.at` 先进入编译上下文，再按目标装载相应变体；`autovm_persistent.rs` 有独立的 VM 目标装载路径。`parser.rs::get_file_extensions` 是未使用的 helper，不作为装载事实来源。
-- AutoVM native shim、`a2r-std` 宿主库、由 `auto-man` 从 `back/api.at` 生成的 Axum 服务、Vue/AutoUI 适配器是不同后台路径；不存在一个跨所有路径自动共享的实现层。
+- **VM** = 名称/ID + 真实 shim 绑定双面成立才 Supported；ID 别名限明确
+  同 callee，两不同 callee 争 ID 报错。
+- **Rust** = producer 文件（含 `pub use` 转发链解析到定义文件，producer
+  身份=定义处）+ 独立逻辑签名。producer 面按运行形态分家：Standalone
+  =crates/a2r-std crate、Embedded=crates/auto-lang/src/a2r_std.rs 内嵌
+  镜像（如 3 参 post 认证面只在内嵌镜像存在——Standalone 诚实拒绝，
+  不冒称 Both）。
+- **C** = c.* 声明模块（`stdlib/c/*.c.at`，README 记载的 `use c.stdio`
+  合同）+ libc；stdlib auto.* ext 面（File.open 等）在 C 目标无发射
+  ——构建期 `STDASSEMBLY.TARGET_UNSUPPORTED` 诊断指引直连 c.* provider，
+  不产坏 C。
 
 ## 能力覆盖
 
@@ -67,3 +75,22 @@ VM HTTP/SSE 的请求绑定、所有权、取消和错误行为详见 [HTTP Serv
   边界：HTTP 专属种类在 Tauri 命令生成前被矩阵拒绝；merged 缺实现可定位
   失败（不再 warn+null）。back-proxy fn_meta 拼串分类取 primary 半段 +
   参数面补充。契约见 [api-transport-contract](api-transport-contract.md)。
+
+## 适配契约注册表（PLAN-738 T-10/R5-R7）
+
+发射侧适配（状态侧信道包装/数值 cast/三参元数分派/async 流 facade/
+bool→int if 壳/宽度归一）必须命中**独立声明的契约表**（ADAPTER_RULES），
+发射结构/producer 实形/公共投影一致才 signature_checked；类型名 pattern
+与公共 AST 复制不构成证明。纯适配面符号无裸名拼写（具名导入拒绝并指明
+限定拼写）。方法符号的 receiver/is_static 证据来自公共声明事实；序列面
+Vec<T>→[]T 按名身份；Null 哨兵返回族（parse/get/get_at 的 JsonValue? 面）
+与 producer 的 &Value 表示是登记的适配。
+
+签名证据显式含 mode：async producer 与调用点 `.await` 双向核对为证据，
+错配=漂移；`impl AsRef<str>` 视图适配与不透明资源类型（FileResponse/
+Upload*/Response/HTTPStream）按名身份，适配变体写入证明单独记录。
+
+## 已证漂移面（如实上报，不擅改公开 ABI）
+
+json.is_valid/is_null/as_bool：公共声明 int，Rust producer bool——跨
+拼写一致拒绝（VM 面 int 在案）；json.len 宽度归一经 cast 壳契约证明。

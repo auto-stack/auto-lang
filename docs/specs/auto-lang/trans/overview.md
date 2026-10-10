@@ -126,6 +126,25 @@ a2r 267、a2ts 85、a2j 10、a2gd 69 个 `.at` 用例；cookbook 163 个 `.at` �
   索引读、记录字面量 = json! 构造、标量入 Value 容器 = json! 包裹、
   typed 目标收访问器）。语义源 = VM List（异构值）。
 
+## 装配目标与引用闭包（PLAN-738）
+
+- Rust/C 发射先声明装配目标再装载/发射（trans_rust/trans_c 入口）；
+  VM 专用层（.vm.at）不进入 Rust/C 类型上下文，反之亦然；项目 Rust 模块
+  发射消费实际选定 `.rs.at` 层；stdlib auto.* 模块不转译为 C 产物。
+- 六核心引用闭包**全路径**：限定 Dot（含 Json 别名）、具名/裸名/通配
+  导入、`auto.<core>.<method>` 三段形状、for-in 流反糖、`fn expr` Await
+  臂、公共方法 receiver 调用（`Owner.method` 分母归属：模块限定/扁平
+  value_* helper/json 值绑定 def-use 直发/未接管发射臂四形态——前三
+  验证，第四诚实拒绝）——全部经 `verify_rust_reference`（契约表驱动）。
+  provider claim 无真实 callee=PROVIDER_CLAIM_NO_CALLEE；漂移=
+  SIGNATURE_DRIFT；未证明=SIGNATURE_UNVERIFIED，不产出成功产物。
+- receiver 带参方法（get/get_at/has_key 的 `v.x("k")`）为 parser 不支持
+  拼写（语言层拒绝）；模块拼写的无臂方法（type/as_number/as_array）经
+  未接管发射臂诚实拒绝。
+- 面外边界（记档不删）：类型名渲染、`json!` 宏复合、legacy 平面符号
+  （http_post）、无公共声明的 legacy 别名（json.get/get_u64 等，P738-D2
+  在案）。非六核心裸名映射（diff/frame/fs/env 等）不在 strict 面。
+
 ## 关键入口
 
 - `crates/auto-lang/src/trans.rs:Trans` — 后端统一 trait（`fn trans(&mut self, ast: Code, sink: &mut Sink)`）

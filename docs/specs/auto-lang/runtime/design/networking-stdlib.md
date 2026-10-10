@@ -63,6 +63,14 @@ plan-344（统一 HTTP 通讯架构：同步/异步 × 流式/非流式 × VM/a2
 roadmap）、plan-350（WebSocket）、plan-352（中间件/session/SSR/OpenAPI）均为设计态，
 未实现（各 plan 文件自述状态）。
 
+## 装配证据（PLAN-738）
+
+HTTP/SSE 面的 host-mapped Rust 能力不以缺 .rs.at 文件为由拒绝（producer
+文件+契约证明为准）；C 无 HTTP provider=Unsupported 不造实现；Rust
+producer 面按运行形态分家（Standalone/Embedded）——无 producer 的模块/
+方法在对应形态下诚实拒绝。服务侧新鲜度与 workspace lock 一次绑定见
+[api-generation-integrity.md](../../../auto-man/design/api-generation-integrity.md)。
+
 ## 显式非目标
 
 - WebSocket、TLS/HTTPS、HTTP/2/3：13 章 Open Questions，至今未实现（plan-350 仍设计态）。
