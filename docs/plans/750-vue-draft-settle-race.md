@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-750
-status: execution_done          # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-draft-settle-race
 author: [zcode]
 created_at: 2026-10-10
@@ -412,6 +412,42 @@ matrix-m1-run*.log}。
   review。AC 映射注记：AC-04/06/07 本仓已达成；AC-01/02/05 的产品
   面终态依赖 jade 应用供料（D 场景为修复前红复现器，绿证随 jade
   复验回执回填）；AC-03 结构性满足（vm 轨零触碰）。
+
+### review 复审记录（2026-10-10）
+
+stage: review | PLAN-750 | plan_revision 1 | outcome: **pass** |
+reviewed_commit: ea513a627bd1f3e7e2913c05ad836088fd9440c3 |
+base_commit: 95d5d3297 | dependency_revisions: 载体 ab7a650bd（干净
+构建，验后已清）+ auto-down 895f8d0（兄弟构建位，验后已清）+ jade
+HEAD e949b62 域（只读） | spec_inputs: docs/specs/auto-lang/ui/overview.md
+@95d5d3297（store facade 契约区为插入锚）|
+
+复审限制披露：与执行同会话——判定自工件重建（diff/证据文件/复现器
+独立重跑），未采信执行摘要。
+
+- 基线核验：worktree 零 dirty；diff 95d5d3297..ea513a627 = 仅 docs/
+  六文件 631 行（**零 crates/ 变更——Category A 门禁判定成立**）。
+- 独立重跑：D 场景在现役 exe 第三次复现完整失败签名（draft_begin×2/
+  双分配 d0002 空目录/checkpoint erev=2 卡死无 settle）——复现器
+  3/3 稳定；静载 RTT p50=3ms 下运行期首请求窗 15-27ms 仍捕获两键，
+  与负载敏感模型自洽。
+- acceptance_results：AC-03 pass（零 Rust 变更结构性满足+B 场景双
+  载体健康旁证）｜AC-04 pass（归因三证+独立重跑复核）｜AC-06 pass
+  （SD-01 42 行成文，diff 证实）｜AC-07 pass（supply-draft.md 验收
+  口径/不负项/落点建议齐备）｜**AC-01/AC-02/AC-05 = pass-on-contract
+  + external-pending**（auto-lang 侧契约=机制证明+稳定红复现器+修复
+  范式已交付；产品面终态绿依赖 jade 应用供料——**748-AC-14 先例
+  结构**，owner=jade，merge 后跟踪，复验回执回填本计划 §9）。
+- findings：F-R1 nonblocking（external-pending 登记，见上）｜F-R2
+  nonblocking（SD-01 内交叉引用「supply-draft.md §修复范式」实际
+  章节题为「§三、修复范式」——可寻址，措辞级）｜F-R3 nonblocking
+  （matrix-m1-run1.txt 为错误配置产物，保留为诚实记录，未采信）｜
+  F-R4 nonblocking（§5.1 矩阵设计被 gen-diff+双载体 D 更直接判别
+  取代，理由在 T-02 决策工件——判别目的达成）。
+- 规范增量复核：SD-01 描述现行行为与持久决策（非执行日记）；目标
+  docs/specs/auto-lang/ui/overview.md 无既有重入契约冲突面；
+  frontmatter new_spec_components 已定稿；spec-index 回读归 merge。
+- next: merge。
 
 ## 10. 待澄清事项
 
