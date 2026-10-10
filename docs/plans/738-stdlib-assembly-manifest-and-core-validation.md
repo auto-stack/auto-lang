@@ -76,6 +76,15 @@ affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persisten
 
 **2026-10-10 R8 独立复审：pass → reviewed。** R7-01 四级证据闭合（diff/矩阵 24 格/CLI 基线 exit0+JsonValue.has_key proof+漂移 exit1 DRIFT/产物 `if a2r_std::json::has_key(&v, "k") { 1 } else { 0 }` 配平）；R7-02 双面闭合（shadow 变量与本地 json 模块 exit0）；R7-03 裁量/R7-04 登记落地；全部门禁独立复现（tt 14 红全基线、非基线红=0，plan730 隔离绿）；SD-04/audit #11 与行为一致（approved）。两项 P3 观察登记（链式面收紧+过时注释、has_key_str 规则被 claim 门遮蔽）。详见 [738-review-r8.md](reports/738-review-r8.md)。
 
+### work 修复交接（2026-10-10，merge 实现冲突闭合 → 待 R9 复审重启 merge）
+
+- stage: work | plan_id: PLAN-738 | plan_revision: 3 | outcome: pass（merge needs_fix 的实现冲突已定位并修复）
+- code_commit: worktree plan-738-dev rebase 重放链 → 修复提交 `19973b089`（含 adfb7a5d1 SD 沉淀+rebase 合并面+主链修复）；clean
+- 根因（文件级二分+插桩实证）：rebase 冲突解决时 master 侧 `execute_autovm` 主链的「new()+register_std_shims+register_stdlib_ffi+merge_native_interface」re-merge 块回归——738 R2 合同已将 `AutoVM::new` 改为 `NativeInterface::production()`（三件套超集）并删除该冗余块；无契约的 `register_stdlib_ffi` 重注册按 merge 撤销语义覆盖 production() 声明的核心契约（插桩实证：AutoVM::new 后 http.get #2230 契约在 → re-merge 后无 → verify 假红）
+- 修复：删除主链冗余 re-merge 块（保留 pkg 入口的既有块与 738 合同一致）；`.rs` 级插桩全部移除
+- 门禁（19973b089 实跑）：cb_web_mime PASS；tv 162/162、plan738 73/73、plan724 5/5、CLI stdlib 10/10、api_gen 44/44、三 crate check 零错、rustfmt 干净、tt 非基线红=0（`plan748_breakpoint_probes::p748_t00` 主检出同红实证=master 预存非本树引入）、服务完整链 1/1@117s
+- next: R9 独立复审（定向：修复 diff 机制核证+门禁复现+SD 面未扰动）→ pass 即重启 merge（landed 及其后各步）
+
 ### merge 收据（2026-10-10，PLAN-738:r3 → needs_fix/实现冲突）
 
 - stage: merge | plan_id: PLAN-738 | plan_revision: 3 | outcome: needs_fix（落地受阻：rebase 实现冲突）
