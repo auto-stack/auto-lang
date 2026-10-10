@@ -1904,6 +1904,93 @@ fn main() {
         assert!(error.contains("JsonValue.len"), "{error}");
     }
 
+    /// P738-R6-01：公共方法双拼写漂移矩阵（keys/as_int/is_null ×
+    /// receiver/模块限定）。keys/as_int 基线零违规+方法 proof、漂移拒绝；
+    /// is_null 双拼写基线即拒（公共 int vs producer bool 真漂移——同
+    /// json.is_valid 族诚实面；模块拼写另经未接管发射臂拒绝）。
+    #[test]
+    fn receiver_method_drift_matrix_both_spellings() {
+        let repo_root = crate::stdlib_assembly::loader::repo_stdlib_root().unwrap();
+        let original = std::fs::read_to_string(repo_root.join("json.at")).unwrap();
+        let transpile = |name: &str, src: &str| -> Result<String, String> {
+            let mut sink =
+                crate::trans::rust::transpile_rust(name, src).map_err(|e| e.to_string())?;
+            String::from_utf8(sink.done().map_err(|e| e.to_string())?.to_vec())
+                .map_err(|e| e.to_string())
+        };
+        for (name, from_type, to_type) in [
+            ("keys", "[]str", "[]int"),
+            ("as_int", "int", "float"),
+            ("is_null", "int", "bool2"),
+        ] {
+            let decl_from = format!("pub fn JsonValue.{name}(self JsonValue) {from_type};");
+            let decl_to = format!("pub fn JsonValue.{name}(self JsonValue) {to_type};");
+            assert!(original.contains(&decl_from), "{name} 声明锚");
+            for (label, call) in [
+                (
+                    "receiver",
+                    format!(
+                        "let n = v.{name}()
+"
+                    ),
+                ),
+                (
+                    "module",
+                    format!(
+                        "let n = json.{name}(v)
+"
+                    ),
+                ),
+            ] {
+                let src = format!(
+                    "use auto.json
+fn main() {{
+    let v = json.parse(\"{{}}\")
+    {call}    print(n)
+}}"
+                );
+                let baseline = transpile(&format!("r6_{name}_{label}"), &src);
+                match name {
+                    "is_null" => {
+                        let error = baseline
+                            .expect_err("{name}/{label}: 公共 int vs producer bool 真漂移必须拒绝");
+                        assert!(
+                            error.contains("SIGNATURE_DRIFT")
+                                || error.contains("SIGNATURE_UNVERIFIED"),
+                            "{error}"
+                        );
+                    }
+                    _ => {
+                        baseline.unwrap_or_else(|e| panic!("{name}/{label} 基线必须零违规: {e}"));
+                    }
+                }
+                let isolated = tempfile::tempdir().unwrap();
+                std::fs::write(
+                    isolated.path().join("json.at"),
+                    original.replace(&decl_from, &decl_to),
+                )
+                .unwrap();
+                struct Restore(Option<std::ffi::OsString>);
+                impl Drop for Restore {
+                    fn drop(&mut self) {
+                        match &self.0 {
+                            Some(value) => std::env::set_var("AUTO_STDLIB_ROOT", value),
+                            None => std::env::remove_var("AUTO_STDLIB_ROOT"),
+                        }
+                    }
+                }
+                let _restore = Restore(std::env::var_os("AUTO_STDLIB_ROOT"));
+                std::env::set_var("AUTO_STDLIB_ROOT", isolated.path());
+                let error = transpile(&format!("r6d_{name}_{label}"), &src)
+                    .expect_err("{name}/{label} 漂移必须拒绝");
+                assert!(
+                    error.contains("SIGNATURE_DRIFT") || error.contains("SIGNATURE_UNVERIFIED"),
+                    "{error}"
+                );
+            }
+        }
+    }
+
     /// P738-R5-02 隔离：用户自定义类型的同名方法（len）不经核心门
     /// （发射不带核心 FQN，不误拒）。
     #[test]

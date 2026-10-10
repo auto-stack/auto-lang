@@ -1132,7 +1132,11 @@ impl RustTrans {
                     }
                     false
                 }
-                Expr::Ident(name) => self.json_value_vars.contains(name),
+                Expr::Ident(name) => {
+                    // P738-R6-01：json 值生产绑定的 def-use 集（新）与历史
+                    // 跟踪集并集——json 值实参正确分派 Value 面而非 str 变体。
+                    self.json_value_vars.contains(name) || self.json_value_bindings.contains(name)
+                }
                 _ => false,
             }
         } else {
@@ -5638,21 +5642,39 @@ impl RustTrans {
                 }
             }
         }
-        // ③ json 值接收者的直发方法（发射保留 `v.len()` 形态）。
-        if method == "len" && self.receiver_is_json_value(object) {
-            if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
-                "json",
-                "JsonValue.len",
-                &format!(
-                    "a2r_std::json::len(&{name})",
-                    name = match object {
-                        Expr::Ident(n) => n.to_string(),
-                        _ => "receiver".to_string(),
-                    }
-                ),
-                self.assembly_runtime,
-            )? {
-                self.assembly_references.push(proof);
+        // ③ json 值接收者的直发方法（发射保留 `v.keys()`/`v.len()` 等接收者
+        // 形态，无核心 FQN）——按公共方法分母归属（R6-01 泛化：全部公共
+        // 方法，不限 len），以等效零参限定形式验证（&Value producer 的
+        // 1 参面）。
+        if self.receiver_is_json_value(object) {
+            if let Some(symbol) = crate::stdlib_assembly::host::public_method_symbol("json", method)
+            {
+                let method_face = symbol.split('.').next_back().unwrap_or(method);
+                let name = match object {
+                    Expr::Ident(n) => n.to_string(),
+                    _ => "receiver".to_string(),
+                };
+                if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                    "json",
+                    &symbol,
+                    &format!("a2r_std::json::{method_face}(&{name})"),
+                    self.assembly_runtime,
+                )? {
+                    self.assembly_references.push(proof);
+                }
+            }
+        }
+        // ④ 模块方法拼写的未接管发射（`json.is_null(v)` 被通用 fall-through
+        // 原样保留、实参丢失——产物本不可编译）：公共方法面存在而该路径
+        // 不产生可核对的限定调用——诚实拒绝，不静默放行（R6-01）。
+        if let Expr::Ident(owner) = object {
+            if matches!(owner.as_str(), "json" | "Json")
+                && crate::stdlib_assembly::host::public_method_symbol("json", method).is_some()
+            {
+                return Err(format!(
+                    "STDASSEMBLY.SIGNATURE_UNVERIFIED: json.{method}: module-qualified method spelling has no verifiable emission (public method face exists; emitter left the call unresolved)"
+                )
+                .into());
             }
         }
         Ok(())
@@ -5691,15 +5713,20 @@ impl RustTrans {
                         module.as_str()
                     };
                     if core.contains(&module) {
-                        if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                        let proof = crate::stdlib_assembly::host::verify_rust_reference(
                             module,
                             symbol.as_str(),
                             text,
                             self.assembly_runtime,
-                        )? {
+                        )?;
+                        if let Some(proof) = proof {
                             self.assembly_references.push(proof);
+                            return Ok(());
                         }
-                        return Ok(());
+                        // P738-R6-01 落穿：裸名无公共顶层面（如 json.keys——
+                        // 公共面是 JsonValue.keys 方法）时按方法分母归属再
+                        // 验证，不静默放行。
+                        return self.collect_core_method_reference(object, symbol.as_str(), text);
                     }
                 }
                 return self.collect_core_method_reference(object, symbol.as_str(), text);

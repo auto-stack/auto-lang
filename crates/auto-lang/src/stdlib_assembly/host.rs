@@ -1475,6 +1475,17 @@ fn logical_type(ty: &syn::Type) -> Option<String> {
     let segment = path.path.segments.last()?;
     if !matches!(segment.arguments, syn::PathArguments::None) {
         return match segment.ident.to_string().as_str() {
+            // P738-R6-01：序列面 Vec<T> → []T（keys 的 Vec<String> 即公共
+            // []str 的 Rust 形态——列表资源面按名身份，同 §5.3 适配变体）。
+            "Vec" => {
+                let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+                    return None;
+                };
+                let syn::GenericArgument::Type(inner) = arguments.args.first()? else {
+                    return None;
+                };
+                Some(format!("[]{}", logical_type(inner)?))
+            }
             "Option" => {
                 let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
                     return None;

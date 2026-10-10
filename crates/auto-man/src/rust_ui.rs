@@ -4032,8 +4032,9 @@ pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
     // 失败均陈旧。旧收据缺字段=不可核验，保守再生（一次再生写入后收敛）。
     match (recorded_lock, current_lock.as_deref()) {
         (Some("absent"), Some(materialized)) if materialized != "absent" => {
-            bind_workspace_lock(&record_path, &mut record, materialized);
-            true
+            // R6-02：绑定写回收据失败=无法建立可核验身份，保守判陈旧
+            // （下一次成功写回收敛），不以未绑定状态放行。
+            bind_workspace_lock(&record_path, &mut record, materialized)
         }
         (recorded, current) => lock_freshness(recorded, current),
     }
@@ -4041,13 +4042,15 @@ pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
 
 /// 首次物化绑定：把实际 lock 身份写回收据的 workspace_lock 字段（保持
 /// 其余字段逐字不动——serde_json 值级更新，时间戳等不重写）。
-fn bind_workspace_lock(record_path: &Path, record: &mut serde_json::Value, lock: &str) {
-    if let Some(value) = record.get_mut("workspace_lock") {
-        if value.as_str() != Some(lock) {
-            *value = serde_json::Value::String(lock.to_string());
-            let _ = std::fs::write(record_path, record.to_string());
-        }
+fn bind_workspace_lock(record_path: &Path, record: &mut serde_json::Value, lock: &str) -> bool {
+    let Some(value) = record.get_mut("workspace_lock") else {
+        return false;
+    };
+    if value.as_str() == Some(lock) {
+        return true;
     }
+    *value = serde_json::Value::String(lock.to_string());
+    std::fs::write(record_path, record.to_string()).is_ok()
 }
 
 /// workspace lock 新鲜度（PLAN-738 T-12/R5-01）：双方一致才新鲜；首次
