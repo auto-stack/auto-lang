@@ -124,13 +124,8 @@ pub fn run_dynamic_client(
         FrameMode::Commands if opts.remote => {
             // PLAN-683（remote 模式）：headless iced 宿主——组件树照常
             // 渲染（tiny_skia 记录层截获），DisplayList v2 产线帧；覆盖
-            // 门不适用（组件覆盖 = iced 全集，结构保证）。
+            // 门不适用（组件覆盖 = iced 全集，构造保证）。
             let (per_app_pipe, app_end) = connect(&target, &opts.app_name, render)?;
-            let source = super::headless::HeadlessFrameSource::new(
-                component,
-                opts.width,
-                opts.height,
-            );
             let config = ClientConfig {
                 app_name: opts.app_name.clone(),
                 title: opts.title,
@@ -138,6 +133,42 @@ pub fn run_dynamic_client(
                 height: opts.height,
             };
             let reconnect = reconnect_for(&target, per_app_pipe);
+            // PLAN-102 D-2：MCP 共位门——显式 `AUTOUI_MCP_PORT` 才启动
+            //（musk canvas spawn 注入；桌面 outproc 子批/裸 `-q` 不设 =
+            // 行为零变化，不占 9247 族缺省口）。此前 rq 客户端臂绕过
+            // run_session，vtree/pick/state/act 面整面缺席。
+            let mcp_port = std::env::var("AUTOUI_MCP_PORT")
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .and_then(|v| v.parse::<u16>().ok());
+            if let Some(port) = mcp_port {
+                let (mcp_shared, mcp_rx) = crate::ui::mcp_server::start_mcp_server(
+                    component.widget_name().to_string(),
+                    port,
+                );
+                mcp_shared
+                    .lock()
+                    .unwrap()
+                    .set_backend_kind(crate::ui::mcp_server::BackendKind::Vm);
+                mcp_shared.lock().unwrap().set_headless_render(true);
+                let source = super::headless::McpHeadlessSource::new(
+                    component,
+                    opts.width,
+                    opts.height,
+                    mcp_shared,
+                    mcp_rx,
+                );
+                let (exit, source) =
+                    client_runtime::run_client_session_v2(app_end, source, config, reconnect);
+                if reconnect_pipe_target && matches!(exit, client_runtime::ClientExit::HostLost) {
+                    eprintln!("[rqhost-client] host lost → exit（exit-on-EOF 策略档）");
+                }
+                println!("[autodesk-client] exit={exit:?} revision={}", source.revision());
+                return Ok(());
+            }
+            let source =
+                super::headless::HeadlessFrameSource::new(component, opts.width, opts.height);
             let (exit, source) =
                 client_runtime::run_client_session_v2(app_end, source, config, reconnect);
             if reconnect_pipe_target && matches!(exit, client_runtime::ClientExit::HostLost) {

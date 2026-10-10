@@ -171,6 +171,10 @@ pub struct SharedState {
     /// Backend capability used by test-only MCP fixtures. Set by the renderer
     /// at startup so Rust mode can reject VM state injection explicitly.
     backend_kind: BackendKind,
+    /// PLAN-102 D-2：headless rq 渲染臂标记（无窗表面）。置位后
+    /// `autoui_screenshot` 快速失败（无窗口表面可截——帧由 DisplayList
+    /// 宿主承载；10s 超时等待对轮询型消费者是重复噪声）。
+    headless_render: bool,
     /// Monotonic ids and completion receipts for test-only fixture requests.
     fixture_next_id: u64,
     fixture_acks: HashMap<u64, FixtureAck>,
@@ -291,6 +295,7 @@ impl SharedState {
             styled_vtree: None,
             source_code: None,
             backend_kind: BackendKind::Unknown,
+            headless_render: false,
             fixture_next_id: 1,
             fixture_acks: HashMap::new(),
             screenshot_request: None,
@@ -396,6 +401,11 @@ impl SharedState {
             }
         }
         Ok(())
+    }
+
+    /// PLAN-102 D-2：headless rq 渲染臂标记（见字段注释）。
+    pub fn set_headless_render(&mut self, v: bool) {
+        self.headless_render = v;
     }
 
     pub fn set_backend_kind(&mut self, kind: BackendKind) {
@@ -2320,6 +2330,13 @@ fn tool_screenshot(shared: &SharedStateHandle, args: serde_json::Value) -> serde
     if crate::ui::native_dock::main_window_minimized(std::process::id()) {
         return error_result(
             "Screenshot skipped: desktop window is minimized (restore it and retry)".to_string(),
+        );
+    }
+    // PLAN-102 D-2：headless rq 渲染臂——无窗口表面可截（帧由 DisplayList
+    // 宿主承载）；无 iced 线程应答截图请求，快速失败替代 10s 挂起。
+    if shared.lock().unwrap().headless_render {
+        return error_result(
+            "Screenshot unavailable: headless rq render arm (frames are produced as DisplayList by the frame host)".to_string(),
         );
     }
     // Plan 371 Task 20: parse visual-regression options.
