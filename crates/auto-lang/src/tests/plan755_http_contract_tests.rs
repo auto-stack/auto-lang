@@ -108,15 +108,19 @@ fn plan755_http_public_face_contract_coverage() {
 fn plan755_http_contracts_survive_cffi_merge() {
     let mut interface = production_interface();
     let registry = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
-    let sampled: Vec<(String, u16)> = ["auto.http.get", "auto.http.upload_receive", "auto.http.response_redirect"]
-        .iter()
-        .filter_map(|name| {
-            registry
-                .peek_qualified(name)
-                .or_else(|| interface.resolve(name))
-                .map(|id| (name.to_string(), id))
-        })
-        .collect();
+    let sampled: Vec<(String, u16)> = [
+        "auto.http.get",
+        "auto.http.upload_receive",
+        "auto.http.response_redirect",
+    ]
+    .iter()
+    .filter_map(|name| {
+        registry
+            .peek_qualified(name)
+            .or_else(|| interface.resolve(name))
+            .map(|id| (name.to_string(), id))
+    })
+    .collect();
     assert!(sampled.len() == 3, "采样 native 名解析不全: {sampled:?}");
     for (name, id) in &sampled {
         assert!(

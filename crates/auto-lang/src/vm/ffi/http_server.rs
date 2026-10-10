@@ -944,6 +944,87 @@ fn format_f64_json(f: f64) -> String {
 }
 
 // =============================================================================
+// PLAN-755 T-02/R2（P755-R2-01）：e2e 启动结果有界上报共享核心
+// =============================================================================
+/// 三处 e2e 启动助手（plan730 `start_server`、plan326 `start_server`、
+/// `start_example_api_server`）统一经此 spawn：`crate::run` 的 Err 与
+/// **panic 原始载荷**都经通道回传，父线程在 ready 窗口内即时呈现真实
+/// 原因，不落入客户端 connect-refused 等待（751-R2：吞错 × 本机 ~2.15s/次
+/// 拒绝连接把启动失败藏成 nextest 120s TERMINATING）。
+///
+/// panic 载荷必须 downcast 提取字符串——`{panic:?}` 对 `Box<dyn Any>` 只会
+/// 得到 `Any { .. }`，丢失原因（R2 负向反例实证）。
+#[cfg(test)]
+pub(crate) fn spawn_outcome_reporter<F, T>(
+    stack_size: usize,
+    label: &str,
+    body: F,
+) -> std::sync::mpsc::Receiver<String>
+where
+    F: FnOnce() -> crate::error::AutoResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    let label = label.to_string();
+    let (outcome_tx, outcome_rx) = std::sync::mpsc::channel::<String>();
+    std::thread::Builder::new()
+        .stack_size(stack_size)
+        .spawn(move || {
+            let outcome = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+                Ok(Ok(_)) => format!("{label} returned Ok without serving"),
+                Ok(Err(err)) => format!("{label} failed: {err}"),
+                Err(panic) => format!("{label} panicked: {}", panic_payload_text(panic)),
+            };
+            let _ = outcome_tx.send(outcome);
+        })
+        .expect("spawn server thread");
+    outcome_rx
+}
+
+/// catch_unwind 载荷的字符串提取（`&'static str` / `String` / 未知兜底）。
+#[cfg(test)]
+pub(crate) fn panic_payload_text(panic: Box<dyn std::any::Any + Send>) -> String {
+    match panic.downcast::<String>() {
+        Ok(text) => *text,
+        Err(panic) => match panic.downcast::<&'static str>() {
+            Ok(text) => (*text).to_string(),
+            Err(_) => "<non-string panic payload>".to_string(),
+        },
+    }
+}
+
+#[cfg(test)]
+mod plan755_outcome_reporter_tests {
+    /// P755-R2-01 负向冻结：真实 spawn/通道/catch_unwind 路径必须转发 panic
+    /// 原始载荷——父线程侧消息携带原因，而不是 `Any { .. }`。
+    #[test]
+    fn panic_payload_is_forwarded_through_real_spawn_path() {
+        let rx = super::spawn_outcome_reporter::<_, String>(8 * 1024 * 1024, "test-run", || {
+            panic!("PLAN755_PANIC_PAYLOAD_MARKER")
+        });
+        let outcome = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("outcome reported");
+        assert!(
+            outcome.contains("PLAN755_PANIC_PAYLOAD_MARKER"),
+            "父线程消息丢失 panic 载荷: {outcome}"
+        );
+    }
+
+    #[test]
+    fn panic_payload_text_covers_string_static_and_foreign() {
+        assert_eq!(
+            super::panic_payload_text(Box::new(String::from("owned"))),
+            "owned"
+        );
+        assert_eq!(super::panic_payload_text(Box::new("static")), "static");
+        assert_eq!(
+            super::panic_payload_text(Box::new(755usize)),
+            "<non-string panic payload>"
+        );
+    }
+}
+
+// =============================================================================
 // Plan 326 Phase 3: serialization unit tests
 // =============================================================================
 #[cfg(test)]
@@ -1615,6 +1696,7 @@ mod plan326_tests {
     //   cargo test -p auto-lang --lib --features test-http-e2e -- --test-threads=1
     #[cfg(feature = "test-http-e2e")]
     mod http_e2e {
+        use super::super::spawn_outcome_reporter;
         use crate::vm::ffi::stdlib::clear_http_routes;
         use std::io::{Read, Write};
         use std::net::TcpStream;
@@ -1764,33 +1846,19 @@ mod plan326_tests {
         /// process reaps it on exit — fine because CI runs each `cargo test`
         /// invocation as a separate process).
         ///
-        /// PLAN-755 T-02: bounded startup diagnostics. A startup failure (e.g.
-        /// SIGNATURE_UNVERIFIED, `crate::run` returning Err within ~30ms) must
-        /// surface with its real reason inside the ready window instead of
-        /// being swallowed by `let _ =` and buried in client-side
-        /// connect-refused retries (~2.15s per attempt on this host — the
-        /// 751-R2 120s TERMINATING mechanism).
+        /// PLAN-755 T-02/R2: bounded startup diagnostics via the shared
+        /// outcome reporter (`spawn_outcome_reporter`). A startup failure (e.g.
+        /// SIGNATURE_UNVERIFIED, `crate::run` returning Err within ~30ms, or a
+        /// panic whose payload is forwarded) must surface with its real reason
+        /// inside the ready window instead of being swallowed by `let _ =` and
+        /// buried in client-side connect-refused retries (~2.15s per attempt on
+        /// this host — the 751-R2 120s TERMINATING mechanism).
         fn start_server(code: &str, port: u16) -> u16 {
             clear_http_routes();
             std::env::set_var("AUTO_HTTP_PORT", port.to_string());
             let code = code.to_string();
-            let (outcome_tx, outcome_rx) = std::sync::mpsc::channel::<String>();
-            let _server = std::thread::Builder::new()
-                .stack_size(8 * 1024 * 1024)
-                .spawn(move || {
-                    let outcome = match std::panic::catch_unwind(
-                        std::panic::AssertUnwindSafe(|| crate::run(&code)),
-                    ) {
-                        Ok(Ok(value)) => format!(
-                            "crate::run returned Ok ({} bytes) without serving",
-                            value.len()
-                        ),
-                        Ok(Err(err)) => format!("crate::run failed: {err}"),
-                        Err(panic) => format!("crate::run panicked: {panic:?}"),
-                    };
-                    let _ = outcome_tx.send(outcome);
-                })
-                .expect("spawn server thread");
+            let outcome_rx =
+                spawn_outcome_reporter(8 * 1024 * 1024, "crate::run", move || crate::run(&code));
             // Wait for the server to accept connections before returning, so the
             // first http_get doesn't race against a not-yet-bound listener.
             for _ in 0..50 {
@@ -1828,26 +1896,12 @@ mod plan326_tests {
             let source = std::fs::read_to_string(&entry)
                 .unwrap_or_else(|error| panic!("read {}: {error}", entry.display()));
             let source_path = entry.to_string_lossy().into_owned();
-            // PLAN-755 T-02：同 start_server 的有界启动诊断（Err/panic 不吞）。
-            let (outcome_tx, outcome_rx) = std::sync::mpsc::channel::<String>();
-            let _server = std::thread::Builder::new()
-                .stack_size(16 * 1024 * 1024)
-                .spawn(move || {
-                    let outcome = match std::panic::catch_unwind(
-                        std::panic::AssertUnwindSafe(|| {
-                            crate::run_with_capture_and_path(&source, &source_path)
-                        }),
-                    ) {
-                        Ok(Ok(value)) => format!(
-                            "run_with_capture_and_path returned Ok ({} bytes) without serving",
-                            value.0.len()
-                        ),
-                        Ok(Err(err)) => format!("run_with_capture_and_path failed: {err}"),
-                        Err(panic) => format!("run_with_capture_and_path panicked: {panic:?}"),
-                    };
-                    let _ = outcome_tx.send(outcome);
-                })
-                .expect("spawn real example API server");
+            // PLAN-755 T-02/R2：同 start_server 的有界启动诊断（共享上报核心，
+            // Err/panic 载荷不吞）。
+            let outcome_rx =
+                spawn_outcome_reporter(16 * 1024 * 1024, "run_with_capture_and_path", move || {
+                    crate::run_with_capture_and_path(&source, &source_path)
+                });
             for _ in 0..50 {
                 if TcpStream::connect(("127.0.0.1", port)).is_ok() {
                     return port;

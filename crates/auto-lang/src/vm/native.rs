@@ -391,7 +391,8 @@ impl NativeInterface {
             "void",
         );
         // Response 构造面（Plan 346 redirect 在内）：
-        native_interface.declare_contract_identity("auto.http.response", &[], &[], "Response");        native_interface.declare_method_contract_identity(
+        native_interface.declare_contract_identity("auto.http.response", &[], &[], "Response");
+        native_interface.declare_method_contract_identity(
             "auto.http.response_status",
             "Response",
             &["Response", "int"],
@@ -451,8 +452,18 @@ impl NativeInterface {
             "Response",
         );
         // 客户端面（get/request 族已有；同步 post_sync/bearer 与状态查询补齐）：
-        native_interface.declare_contract_identity("auto.http.post", &[], &["str", "str"], "Response");
-        native_interface.declare_contract_identity("auto.http.put", &[], &["str", "str"], "Response");
+        native_interface.declare_contract_identity(
+            "auto.http.post",
+            &[],
+            &["str", "str"],
+            "Response",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.put",
+            &[],
+            &["str", "str"],
+            "Response",
+        );
         native_interface.declare_contract_identity("auto.http.delete", &[], &["str"], "Response");
         native_interface.declare_contract_identity(
             "auto.http.post_sync",

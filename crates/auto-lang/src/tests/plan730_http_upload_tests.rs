@@ -255,27 +255,17 @@ mod http_e2e {
     /// SIGNATURE_UNVERIFIED，`crate::run` 32ms 即返 Err）被 `let _ =` 吞掉
     /// 后，客户端 connect-refused 等待把它藏成 nextest 120s TERMINATING
     /// （本机每次拒绝连接实测 ~2.15s，50+60 次重试远超击杀线）。run 的
-    /// Err/panic 必须在 ready 窗口内有界上报，不得落入客户端等待。
+    /// Err/panic 载荷必须在 ready 窗口内有界上报（R2 共享核心），不得落入
+    /// 客户端等待。
     pub(super) fn start_server(code: &str, port: u16) -> u16 {
         crate::vm::ffi::stdlib::clear_http_routes();
         std::env::set_var("AUTO_HTTP_PORT", port.to_string());
         let code = code.to_string();
-        let (outcome_tx, outcome_rx) = std::sync::mpsc::channel::<String>();
-        let _server = std::thread::Builder::new()
-            .stack_size(8 * 1024 * 1024)
-            .spawn(move || {
-                let outcome = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-                    || crate::run(&code),
-                )) {
-                    Ok(Ok(value)) => {
-                        format!("crate::run returned Ok ({} bytes) without serving", value.len())
-                    }
-                    Ok(Err(err)) => format!("crate::run failed: {err}"),
-                    Err(panic) => format!("crate::run panicked: {panic:?}"),
-                };
-                let _ = outcome_tx.send(outcome);
-            })
-            .expect("spawn server thread");
+        let outcome_rx = crate::vm::ffi::http_server::spawn_outcome_reporter(
+            8 * 1024 * 1024,
+            "crate::run",
+            move || crate::run(&code),
+        );
         for _ in 0..50 {
             if TcpStream::connect(("127.0.0.1", port)).is_ok() {
                 return port;
