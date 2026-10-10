@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-751
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: empty-lock-identity-th-tail
 author: [zcode]
 created_at: 2026-10-10
@@ -12,7 +12,7 @@ new_spec_components: [auto-man/design/api-generation-integrity.md]
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-man/design/api-generation-integrity.md]
-current_step: 0
+current_step: 4
 total_steps: 6
 ---
 
@@ -197,28 +197,55 @@ tempfile 隔离 workspace + `AUTO_RUST_WORKSPACE` env 指向（沿既有 R5 状�
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- **T-01 分类单点（rust_ui.rs）**
+- **T-01 分类单点（rust_ui.rs）** [✅ 已完成]
   依赖：无。文件：`crates/auto-man/src/rust_ui.rs`（~4020-4060）。
   操作：新增 `pub(crate) fn workspace_lock_identity`；消费端改用之（NotFound
   →absent、成功读取→内容指纹、Err→None）；删除 `classify_lock_read`；注释
   更新（absent 仅指 NotFound）。→ AC-01/03/04
   验证：`cargo check -p auto-man`。
-- **T-02 生成端对齐（api_gen.rs）**
+  [✅ 已完成] worktree lang-751 提交 `f16de5a19`（与 T-02 同提交）：消费端
+  `current_lock` 改经 `workspace_lock_identity(...).map(|id| id.unwrap_or_else
+  (absent)).ok()`；`classify_lock_read` 删除；`lock_freshness` 过时注释同步。
+  `cargo check -p auto-man` exit 0（组内补 auto-down 兄弟 detached@master
+  `895f8d0` 后通过，1m10s；存量 26 警告均在旧行号，改动点零新警告）。
+- **T-02 生成端对齐（api_gen.rs）** [✅ 已完成]
   依赖：T-01。文件：`crates/auto-man/src/api_gen.rs`（~1068-1081）。
   操作：收据 `workspace_lock` 写入改调 `crate::rust_ui::workspace_lock_identity`，
   三分支映射（指纹/absent/unreadable 拒写）。→ AC-01/04
   验证：`cargo check -p auto-man`。
-- **T-03 测试改写与新增**
+  [✅ 已完成] 同提交 `f16de5a19`：生成端三分支 `Ok(Some(fingerprint))/
+  Ok(None)→absent/Err→"workspace Cargo.lock unreadable: {e}"`，错误文案
+  逐字保持（R9-01 语义零变化）。
+- **T-03 测试改写与新增** [✅ 已完成]
   依赖：T-01/T-02。文件：`crates/auto-man/src/rust_ui.rs` tests 模块。
   操作：改写 `classify_lock_read_fail_closed`；新增
   `review751_empty_lock_identity_matrix`（六步矩阵，见测试设计）。
   → AC-01/02/03
   验证：`cargo nextest run -p auto-man --lib rust_ui::tests` 绿 + 既有
   738 遗产测试绿。
-- **T-04 工作树验证门**
+  [✅ 已完成] `workspace_lock_identity_three_states`（三态+空文件=811c9dc5
+  锚+fail-closed 端到端断言）+ `review751_empty_lock_identity_matrix`（六步：
+  absent→空文件一次绑定 811c9dc5→再生成收据同值且 fresh→非空漂移 stale→
+  删除 stale→目录读错误 stale）。nextest scoped：identity 5 项 5/5 绿（含
+  `review738_r5_lock_binding_state_machine` 1.300s PASS、
+  `review751_empty_lock_identity_matrix` 1.332s PASS——R11 反例转正）。
+- **T-04 工作树验证门** [✅ 已完成]
   依赖：T-03。操作：`cargo check -p auto-man`（零新警告）→ auto-man lib
   全套 → 裸 `cargo t` → `rustfmt --check`（rust_ui.rs / api_gen.rs）。
   → AC-06
+  [✅ 已完成] rustfmt 两文件 check exit 0（初跑有漂移已就地修复复验）；
+  auto-man lib 全套 `--no-fail-fast`：354 run / 351 pass / **3 fail，stash
+  基面复跑同 3 红 0/3**——预存红与本 diff 无关：`vue::plan593_index_css_
+  golden_tests::index_css_values_match_p1_baseline`（CSS 金样漂移）、
+  `rust_ui::tests::test_shell_pack_lib_freshness`（shell-pack 入库物过期
+  围栏，panic 文案自述需 regen）、`rust_ui::tests::merged_api_client_crud_
+  fallback_for_uncovered_endpoints`（merged API 金样漂移）——三项均
+  auto-man 面、日常档盲区，登记 KNOWN-DEBT 候选；裸 `cargo t --no-fail-fast`：
+  5224 run / 5212 pass / 12 fail（82.6s），红名全部落在已知预存族（p053_4/
+  plan502/plan707_client/748/plan606_029/projector/iced×2/ash/schema×2/
+  docs_gen；plan707/748/p053 具体成员每轮漂移，族级与 R5–R9+10-02 批量
+  回执一致，scoped 复跑 plan707_client_manual_next/748_static/p053_4 仍红
+  =确定性预存，非负载 flake），零名册外新红。
 - **T-05 th 全档串行收口**
   依赖：与本计划代码改动无耦合（auto-lang 面），T-04 后同 worktree 执行。
   操作：`cargo th --jobs 1 --no-fail-fast`（102 项，串行单实例）；逐名分诊
