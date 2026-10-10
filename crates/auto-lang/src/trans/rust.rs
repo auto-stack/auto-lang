@@ -5558,9 +5558,36 @@ impl RustTrans {
         let text = std::str::from_utf8(&emitted)
             .map_err(|e| e.to_string())?
             .to_string();
-        self.collect_core_reference(call, &text)?;
+        // R7-03：实参面从 AST 序列化（部分直发臂的文本丢参——AST 是
+        // 真实调用事实）。
+        let args_text = self.serialize_positional_args(call);
+        self.collect_core_reference(call, &text, &args_text)?;
         out.write_all(&emitted)?;
         Ok(())
+    }
+
+    /// 位置实参的发射文本（逗号连接；AST 事实——与发射文本互补，部分
+    /// 直发臂丢参时仍可构造等效限定形式）。
+    fn serialize_positional_args(&mut self, call: &Call) -> String {
+        let mut buffer = Vec::new();
+        for (index, arg) in call.args.args.iter().enumerate() {
+            if index > 0 {
+                buffer.extend_from_slice(b", ");
+            }
+            match arg {
+                Arg::Pos(expr) => {
+                    if self.expr(expr, &mut buffer).is_err() {
+                        return String::new();
+                    }
+                }
+                other => {
+                    if self.arg(other, &mut buffer).is_err() {
+                        return String::new();
+                    }
+                }
+            }
+        }
+        String::from_utf8_lossy(&buffer).into_owned()
     }
 
     /// P738-R5-02：receiver 调用的公共方法归属验证。三种发射形态统一收
@@ -5577,6 +5604,7 @@ impl RustTrans {
         object: &Expr,
         method: &str,
         text: &str,
+        args_text: &str,
     ) -> AutoResult<()> {
         for module in crate::stdlib_assembly::validate::CORE_MODULES {
             if !text.contains(&format!("a2r_std::{module}::")) {
@@ -5601,10 +5629,9 @@ impl RustTrans {
                 }
                 depth == 0
             };
-            if self_contained {
-                if let Some(symbol) =
-                    crate::stdlib_assembly::host::public_method_symbol(module, method)
-                {
+            if let Some(symbol) = crate::stdlib_assembly::host::public_method_symbol(module, method)
+            {
+                if self_contained {
                     if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
                         module,
                         &symbol,
@@ -5613,6 +5640,12 @@ impl RustTrans {
                     )? {
                         self.assembly_references.push(proof);
                     }
+                } else {
+                    // R7-01：公共方法面存在而形态不可核对——诚实拒绝。
+                    return Err(format!(
+                        "STDASSEMBLY.SIGNATURE_UNVERIFIED: {module}.{symbol}: emission form is not a self-contained call and cannot be verified (fragmented/chained emission)"
+                    )
+                    .into());
                 }
             }
             return Ok(());
@@ -5649,15 +5682,23 @@ impl RustTrans {
         if self.receiver_is_json_value(object) {
             if let Some(symbol) = crate::stdlib_assembly::host::public_method_symbol("json", method)
             {
-                let method_face = symbol.split('.').next_back().unwrap_or(method);
+                // 公共方法名→producer callee 反向别名（`type` 是 Rust
+                // 关键字，producer 面为 value_type——与 host 别名表对偶）。
+                let method_face = match symbol.split('.').next_back().unwrap_or(method) {
+                    "type" => "value_type",
+                    face => face,
+                };
                 let name = match object {
                     Expr::Ident(n) => n.to_string(),
                     _ => "receiver".to_string(),
                 };
+                // R7-03：携带真实实参面（`v.get("k")` → `get(&v, "k")`）。
+                let args = args_text;
+                let separator = if args.is_empty() { "" } else { ", " };
                 if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
                     "json",
                     &symbol,
-                    &format!("a2r_std::json::{method_face}(&{name})"),
+                    &format!("a2r_std::json::{method_face}(&{name}{separator}{args})"),
                     self.assembly_runtime,
                 )? {
                     self.assembly_references.push(proof);
@@ -5669,6 +5710,9 @@ impl RustTrans {
         // 不产生可核对的限定调用——诚实拒绝，不静默放行（R6-01）。
         if let Expr::Ident(owner) = object {
             if matches!(owner.as_str(), "json" | "Json")
+                && !self.local_var_types.contains_key(owner)
+                && !self.local_modules.contains(owner.as_str())
+                && !self.sibling_modules.contains(owner.as_str())
                 && crate::stdlib_assembly::host::public_method_symbol("json", method).is_some()
             {
                 return Err(format!(
@@ -5699,7 +5743,12 @@ impl RustTrans {
     /// 都在此收敛——限定 Dot 形状（含 Json 别名）、裸名导入/wildcard 拼写
     /// （重建限定文本验证）、裸名专用臂（发射文本自带 a2r_std::<core>::
     /// 限定）。无公共面的私有 producer 不获得公共声明证明（与 P1 同义）。
-    fn collect_core_reference(&mut self, call: &Call, text: &str) -> AutoResult<()> {
+    fn collect_core_reference(
+        &mut self,
+        call: &Call,
+        text: &str,
+        args_text: &str,
+    ) -> AutoResult<()> {
         let core = crate::stdlib_assembly::validate::CORE_MODULES;
         if let Expr::Dot(object, symbol) = call.name.as_ref() {
             if let Expr::Ident(module) = object.as_ref() {
@@ -5726,16 +5775,26 @@ impl RustTrans {
                         // P738-R6-01 落穿：裸名无公共顶层面（如 json.keys——
                         // 公共面是 JsonValue.keys 方法）时按方法分母归属再
                         // 验证，不静默放行。
-                        return self.collect_core_method_reference(object, symbol.as_str(), text);
+                        return self.collect_core_method_reference(
+                            object,
+                            symbol.as_str(),
+                            text,
+                            args_text,
+                        );
                     }
                 }
-                return self.collect_core_method_reference(object, symbol.as_str(), text);
+                return self.collect_core_method_reference(
+                    object,
+                    symbol.as_str(),
+                    text,
+                    args_text,
+                );
             }
             // P738-R5-02：receiver 方法调用（对象为变量/表达式）——发射
             // 文本带核心 FQN 时按该模块公共方法分母归属验证（JsonValue
             // 十二个公共方法面）；无公共面映射的 legacy 发射变体维持已
             // 登记边界（P738-D2），不冒称证明。
-            return self.collect_core_method_reference(object, symbol.as_str(), text);
+            return self.collect_core_method_reference(object, symbol.as_str(), text, args_text);
         }
         // 三段限定形状 `auto.<core>.<method>()`（Expr::Bina 链）：核心模块
         // 面同样走 strict 门——io/net 等无 Rust producer 的模块在此诚实
@@ -10214,9 +10273,6 @@ impl RustTrans {
                                     if let Arg::Pos(a) = &call.args.args[1] {
                                         self.expr(a, out)?;
                                     }
-                                }
-                                if !use_str {
-                                    write!(out, ")")?;
                                 }
                                 write!(out, ") {{ 1 }} else {{ 0 }}")?;
                             }

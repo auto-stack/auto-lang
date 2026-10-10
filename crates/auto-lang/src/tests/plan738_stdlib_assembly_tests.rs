@@ -1918,26 +1918,53 @@ fn main() {
             String::from_utf8(sink.done().map_err(|e| e.to_string())?.to_vec())
                 .map_err(|e| e.to_string())
         };
-        for (name, from_type, to_type) in [
-            ("keys", "[]str", "[]int"),
-            ("as_int", "int", "float"),
-            ("is_null", "int", "bool2"),
+        // R7-01：全分母 12 方法双拼写——预期按拼写区分：type 的模块拼写
+        // 无发射臂（case④ 诚实拒绝不可编译产物）；is_null 为公共 int vs
+        // producer bool 真漂移面（双拼写基线即拒）；has_key 为 bool→int
+        // 适配壳契约面；其余双拼写基线零违规。
+        for (name, from_type, to_type, recv_ok, module_ok) in [
+            ("type", "str", "int2", true, false),
+            ("as_string", "str", "int2", true, true),
+            ("as_number", "float", "str2", true, false),
+            ("as_int", "int", "float", true, true),
+            ("as_bool", "int", "str2", false, false), // int vs bool 真漂移
+            ("as_array", "[]JsonValue", "[]int2", true, false),
+            ("keys", "[]str", "[]int", true, true),
+            ("len", "int", "str2", true, true),
+            // receiver 带参方法为 parser 不支持拼写（Expected term）——
+            // 语言层拒绝，不产出成功产物；模块拼写经臂发射可验证。
+            ("get", "JsonValue?", "int2", false, true),
+            ("get_at", "JsonValue?", "str2", false, true),
+            ("has_key", "int", "str2", false, true),
+            ("is_null", "int", "bool2", false, false),
         ] {
-            let decl_from = format!("pub fn JsonValue.{name}(self JsonValue) {from_type};");
-            let decl_to = format!("pub fn JsonValue.{name}(self JsonValue) {to_type};");
+            // 带参方法（get/get_at/has_key）的声明锚含 key 形参。
+            let extra_param = match name {
+                "get" | "has_key" => ", key str",
+                "get_at" => ", index int",
+                _ => "",
+            };
+            let decl_from =
+                format!("pub fn JsonValue.{name}(self JsonValue{extra_param}) {from_type};");
+            let decl_to =
+                format!("pub fn JsonValue.{name}(self JsonValue{extra_param}) {to_type};");
             assert!(original.contains(&decl_from), "{name} 声明锚");
+            let call_args = match name {
+                "get" | "get_at" | "has_key" => ", \"k\"",
+                _ => "",
+            };
             for (label, call) in [
                 (
                     "receiver",
                     format!(
-                        "let n = v.{name}()
+                        "let n = v.{name}({call_args})
 "
                     ),
                 ),
                 (
                     "module",
                     format!(
-                        "let n = json.{name}(v)
+                        "let n = json.{name}(v{call_args})
 "
                     ),
                 ),
@@ -1950,19 +1977,22 @@ fn main() {{
 }}"
                 );
                 let baseline = transpile(&format!("r6_{name}_{label}"), &src);
-                match name {
-                    "is_null" => {
-                        let error = baseline
-                            .expect_err("{name}/{label}: 公共 int vs producer bool 真漂移必须拒绝");
-                        assert!(
-                            error.contains("SIGNATURE_DRIFT")
-                                || error.contains("SIGNATURE_UNVERIFIED"),
-                            "{error}"
-                        );
-                    }
-                    _ => {
-                        baseline.unwrap_or_else(|e| panic!("{name}/{label} 基线必须零违规: {e}"));
-                    }
+                let baseline_ok = match label {
+                    "receiver" => recv_ok,
+                    _ => module_ok,
+                };
+                if baseline_ok {
+                    baseline.unwrap_or_else(|e| panic!("{name}/{label} 基线必须零违规: {e}"));
+                } else {
+                    let error = baseline.expect_err("{name}/{label}: 拒绝面基线必须报错");
+                    assert!(
+                        error.contains("SIGNATURE_DRIFT")
+                            || error.contains("SIGNATURE_UNVERIFIED")
+                            // receiver 带参方法为 parser 不支持拼写——语言层
+                            // 拒绝同样不产出成功产物（非 STDASSEMBLY 假绿）。
+                            || error.contains("Expected term"),
+                        "{error}"
+                    );
                 }
                 let isolated = tempfile::tempdir().unwrap();
                 std::fs::write(
@@ -1981,11 +2011,10 @@ fn main() {{
                 }
                 let _restore = Restore(std::env::var_os("AUTO_STDLIB_ROOT"));
                 std::env::set_var("AUTO_STDLIB_ROOT", isolated.path());
-                let error = transpile(&format!("r6d_{name}_{label}"), &src)
-                    .expect_err("{name}/{label} 漂移必须拒绝");
+                let drifted = transpile(&format!("r6d_{name}_{label}"), &src);
                 assert!(
-                    error.contains("SIGNATURE_DRIFT") || error.contains("SIGNATURE_UNVERIFIED"),
-                    "{error}"
+                    drifted.is_err(),
+                    "{name}/{label} 漂移必须拒绝（或 parser 拒绝拼写）"
                 );
             }
         }

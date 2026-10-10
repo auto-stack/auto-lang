@@ -42,6 +42,9 @@ enum AdapterShape {
     /// `async { let (s,b,e,k) = <callee>(..).await; HttpResponse{..} }`
     /// ——PLAN-724 T-06 三参认证 tuple 元数分派（历史 HttpResponse 面）。
     ArityDispatchAsyncBlock,
+    /// `if <callee>(..) { 1 } else { 0 }`——bool→int 适配壳（公共面 int、
+    /// producer bool 的既有语义适配，如 json.has_key）。
+    BoolToIntIf,
 }
 
 /// producer 返回结构与公共返回的映射方式（契约声明，非类型名猜测）。
@@ -214,6 +217,23 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         extension_params: &[],
         public_return: "int",
     },
+    // —— json.len 模块拼写的宽度归一 cast 壳（`(.. as i64)`：公共 int、
+    // producer usize——与 last_status 同型的数值面适配）。——
+    AdapterRule {
+        shape: AdapterShape::ScalarCast,
+        module: "json",
+        symbol: "JsonValue.len",
+        runtime: RuntimeSpec::Both,
+        callee: "len",
+        arity: 1,
+        awaited: false,
+        producer_async: false,
+        producer_return: ProducerReturn::Scalar("int"),
+        param_facades: &[],
+        public_params: &["JsonValue"],
+        extension_params: &[],
+        public_return: "int",
+    },
     // —— PLAN-724 T-06 三参认证 tuple 元数分派：3 参 async post（producer
     // 仅内嵌镜像有）→ (status, body, error, kind) 重组 HttpResponse。公共
     // 声明为两参 post；api_key 位由契约单独冻结。——
@@ -333,6 +353,40 @@ const ADAPTER_RULES: &[AdapterRule] = &[
         extension_params: &[],
         public_return: "void",
     },
+    // —— json.has_key bool→int 适配壳（发射臂注释在案的既有语义适配：
+    // 公共面 int，Rust producer bool；Value 面与 str-receiver 视图两条）。——
+    AdapterRule {
+        shape: AdapterShape::BoolToIntIf,
+        module: "json",
+        symbol: "JsonValue.has_key",
+        runtime: RuntimeSpec::Both,
+        callee: "has_key",
+        arity: 2,
+        awaited: false,
+        producer_async: false,
+        producer_return: ProducerReturn::Scalar("bool"),
+        param_facades: &[],
+        public_params: &["JsonValue", "str"],
+        extension_params: &[],
+        public_return: "int",
+    },
+    AdapterRule {
+        shape: AdapterShape::BoolToIntIf,
+        module: "json",
+        symbol: "JsonValue.has_key",
+        runtime: RuntimeSpec::Both,
+        callee: "has_key_str",
+        arity: 2,
+        awaited: false,
+        producer_async: false,
+        producer_return: ProducerReturn::Scalar("bool"),
+        // str-receiver 视图：首个 &str 参数是公共 JsonValue 接收者的
+        // str 键查询形态（§5.3 参数适配变体）。
+        param_facades: &[("str", "JsonValue")],
+        public_params: &["JsonValue", "str"],
+        extension_params: &[],
+        public_return: "int",
+    },
 ];
 
 /// 结构观察结果：发射文本中可独立复核的事实。
@@ -368,6 +422,10 @@ fn observe_emission(module: &str, symbol: &str, emitted: &str) -> crate::AutoRes
     })?;
     let mut shape = AdapterShape::Plain;
     let mut cast_to_int = false;
+    // 剥括号外壳（`(x as i64)` 解析为 Paren 包 Cast——括号不透明）。
+    while let syn::Expr::Paren(paren) = expression {
+        expression = *paren.expr;
+    }
     // ScalarCast：`<call>() as i64`（cast 目标必须逻辑化为 int——公共面
     // 即 int；cast 到其它宽度/类型不是本契约的一部分）。
     if let syn::Expr::Cast(cast) = expression {
@@ -401,6 +459,31 @@ fn observe_emission(module: &str, symbol: &str, emitted: &str) -> crate::AutoRes
             }
         }
         _ => {}
+    }
+    // BoolToIntIf 适配壳：`if <call> { 1 } else { 0 }`——then/else 恰为
+    // 整型字面量 1/0，cond 为唯一主调用。
+    if let syn::Expr::If(if_expr) = expression {
+        let is_int_lit = |expr: &syn::Expr, value: i64| matches!(expr, syn::Expr::Lit(lit) if matches!(&lit.lit, syn::Lit::Int(i) if i.base10_digits() == value.to_string()));
+        let then_ok = if_expr.then_branch.stmts.len() == 1
+            && matches!(
+                &if_expr.then_branch.stmts[0],
+                syn::Stmt::Expr(e, None) if is_int_lit(e, 1)
+            );
+        let else_ok = match if_expr.else_branch.as_ref().map(|(_, expr)| expr.as_ref()) {
+            Some(syn::Expr::Block(else_block)) => {
+                else_block.block.stmts.len() == 1
+                    && matches!(
+                        &else_block.block.stmts[0],
+                        syn::Stmt::Expr(e, None) if is_int_lit(e, 0)
+                    )
+            }
+            _ => false,
+        };
+        if !(then_ok && else_ok) {
+            return Err(unproved(module, symbol, detail));
+        }
+        shape = AdapterShape::BoolToIntIf;
+        expression = *if_expr.cond.clone();
     }
     let syn::Expr::Call(call) = expression else {
         return Err(unproved(module, symbol, detail));
@@ -641,6 +724,7 @@ impl Emission {
             AdapterShape::ScalarCast => "scalar-cast",
             AdapterShape::StatusSideChannel => "status-side-channel",
             AdapterShape::ArityDispatchAsyncBlock => "arity-dispatch-async-block",
+            AdapterShape::BoolToIntIf => "bool-to-int-if",
         }
     }
 }
@@ -719,23 +803,40 @@ fn verify_adapted_reference(
             // §5.3：兼容 lowering 的参数适配变体单独记录，不冒称同形。
             adapters.push("impl AsRef<str> view adapter");
         }
-        let logical = logical_type(&parameter.ty).or_else(|| {
-            // 契约声明的参数 facade 视图（async 流句柄等）。
-            let syn::Type::Reference(reference) = parameter.ty.as_ref() else {
+        let type_segment = |ty: &syn::Type| -> Option<String> {
+            let syn::Type::Reference(reference) = ty else {
                 return None;
             };
             let syn::Type::Path(path) = reference.elem.as_ref() else {
                 return None;
             };
-            let segment = path.path.segments.last()?.ident.to_string();
+            path.path.segments.last().map(|s| s.ident.to_string())
+        };
+        // 契约声明的参数 facade 视图优先（按 producer 类型段名命中——
+        // async 流句柄 / str-receiver 键查询等 §5.3 适配变体）。
+        let declared_facade = type_segment(&parameter.ty).and_then(|segment| {
             rule.param_facades
                 .iter()
                 .find(|(producer, _)| *producer == segment)
-                .map(|(_, face)| {
-                    adapters.push("async facade handle view adapter");
-                    face.to_string()
-                })
+                .map(|(_, face)| face.to_string())
         });
+        let logical = match declared_facade {
+            Some(face) => {
+                adapters.push("declared param facade view adapter");
+                Some(face)
+            }
+            None => logical_type(&parameter.ty).or_else(|| {
+                type_segment(&parameter.ty).and_then(|segment| {
+                    rule.param_facades
+                        .iter()
+                        .find(|(producer, _)| *producer == segment)
+                        .map(|(_, face)| {
+                            adapters.push("async facade handle view adapter");
+                            face.to_string()
+                        })
+                })
+            }),
+        };
         parameters.push(logical.ok_or_else(|| {
             unproved(
                 module,
@@ -820,6 +921,9 @@ fn verify_adapted_reference(
         AdapterShape::ScalarCast => {
             adapters.push("scalar cast adapter (int width normalization)");
         }
+        AdapterShape::BoolToIntIf => {
+            adapters.push("bool-to-int if adapter (public int face, bool producer)");
+        }
         AdapterShape::Plain => {}
     }
     let mut error_shape = "Rust return value".to_string();
@@ -830,13 +934,26 @@ fn verify_adapted_reference(
         error_shape.push_str("; ");
         error_shape.push_str(adapter);
     }
+    // P738-R7：方法符号（`Owner.name`）的 receiver/is_static 来自公共
+    // 声明事实——适配路径与通用路径同源。
+    let owner = public
+        .name
+        .split('.')
+        .next()
+        .filter(|_| public.kind == super::model::SymbolKind::Method)
+        .map(str::to_string);
+    let is_static = public
+        .signature
+        .as_ref()
+        .map(|sig| sig.is_static)
+        .unwrap_or(false);
     let contract = crate::vm::native::NativeContract {
         parameter_modes: parameters.iter().map(|_| "View".into()).collect(),
         parameters,
         returns,
         producer: format!("{}::{}", producer_id, emission.callee),
-        receiver: None,
-        is_static: false,
+        receiver: owner,
+        is_static,
         generics: Vec::new(),
         error_shape,
     };
@@ -993,10 +1110,15 @@ fn verify_plain_reference(
     let mut error_shape = "Rust return value".to_string();
     // The selected parse implementation uses serde_json::Value::Null as its
     // nullable payload. This representation is identified explicitly.
-    if module == "json" && symbol == "parse" && emission.callee == "parse" && returns == "JsonValue"
-    {
+    // P738-R7：Null 哨兵族——parse 与 JsonValue.get/get_at 的缺键/失败
+    // 返回 Value::Null 哨兵而非 Option，与公共 JsonValue? 的既有表示适配。
+    let null_sentinel_face = matches!(
+        (module, symbol),
+        ("json", "parse") | ("json", "JsonValue.get") | ("json", "JsonValue.get_at")
+    );
+    if null_sentinel_face && returns == "JsonValue" {
         returns = "JsonValue?".into();
-        error_shape = "Value::Null sentinel on parse failure".into();
+        error_shape = "Value::Null sentinel on missing key / parse failure".into();
     }
     if producer_async {
         error_shape.push_str("; async producer consumed at call-site await");
@@ -1009,7 +1131,12 @@ fn verify_plain_reference(
         return Err(drifted(
             module,
             symbol,
-            "emitted arity / Rust producer arity",
+            &format!(
+                "emitted arity {} / Rust producer arity {} ({producer_id}::{})",
+                emission.arity,
+                parameters.len(),
+                emission.callee
+            ),
         ));
     }
     // P738-R5-02：方法符号（`Owner.name`）的 receiver/is_static 来自公共
