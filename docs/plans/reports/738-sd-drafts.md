@@ -88,13 +88,16 @@ merge 前若 T-14 后续提交改变行为，以最终提交复锚。
 - 项目 Rust 模块发射消费实际选定 `.rs.at` 层；C 发射消费完整 AST（声明
   锚+有 body 定义）；stdlib auto.* 模块不转译为 C 产物（provider=c.*+libc）。
 - **六核心引用闭包全路径**：限定 Dot（含 Json 别名）、具名/裸名/通配导入、
-  `auto.<core>.<method>` 三段形状、for-in 流反糖、`fn expr` Await 臂——
-  全部经 `verify_rust_reference`（契约表驱动）；provider claim 无真实 callee
-  =PROVIDER_CLAIM_NO_CALLEE；漂移=SIGNATURE_DRIFT；未证明=SIGNATURE_
-  UNVERIFIED，不产出成功产物。
+  `auto.<core>.<method>` 三段形状、for-in 流反糖、`fn expr` Await 臂、
+  **公共方法 receiver 调用**（`Owner.method` 分母归属：模块限定/扁平
+  value_* helper/json 值绑定直发三形态收敛，拆段片段与链式中间形态记
+  边界）——全部经 `verify_rust_reference`（契约表驱动）；provider claim
+  无真实 callee=PROVIDER_CLAIM_NO_CALLEE；漂移=SIGNATURE_DRIFT；未证明
+  =SIGNATURE_UNVERIFIED，不产出成功产物。方法符号的 receiver/is_static
+  证据来自公共声明事实。
 - 面外边界（记档不删）：类型名渲染、`json!` 宏复合、legacy 平面符号
-  （http_post）；无公共声明的 legacy 别名（json.get 等）与 JsonValue 接收者
-  分型面按 P738-D2/第四绑定面登记债务，不冒称已证明。
+  （http_post）、无公共声明的 legacy 别名（json.get/get_u64 等，P738-D2
+  在案）。
 - 非六核心裸名映射（diff/frame/fs/env 等）不在 strict 面，不收集证明。
 
 ## SD-05 modify `docs/specs/auto-man/design/api-generation-integrity.md`
@@ -105,10 +108,13 @@ merge 前若 T-14 后续提交改变行为，以最终提交复锚。
 - **生成装配引用闭包**：endpoint 内联体 + db.at + 伴生 `src/back/*.at`
   back 模块全部按 Embedded 运行形态转译收集证明并入 manifest——back 产物
   经 qualify_a2r_std 链接内嵌镜像，不把 endpoint 面冒称全部装配。
-- **workspace lock 收据身份**：ready 记录 `workspace_lock`（生成产物运行时
-  依赖输入的 FNV 身份；未建 lock 记 absent）——与生成器自身 Cargo 输入
-  （manifest provider 面）分开记录；复用门 lock_freshness 对拍，lock 出现/
-  变化/旧收据缺字段=陈旧走再生臂。
+- **workspace lock 收据身份（一次绑定）**：ready 记录 `workspace_lock`
+  （生成产物运行时依赖输入的 FNV 身份；未建 lock 记 absent）——与生成器
+  自身 Cargo 输入（manifest provider 面）分开记录。复用门为**一次绑定
+  状态机**：absent→首次出现实际 lock 时判新鲜并把实际身份绑定写回收据
+  （一次性收敛）；此后严格比较——依赖版本漂移/lock 删除/读取失败/旧
+  收据缺字段均陈旧走再生臂（R5-01 反例冻结：纯 absent 豁免会永久放行
+  后续漂移）。
 - 新鲜度门：`backend_generation_is_fresh` 比对当前 consumer_fingerprint vs
   收据指纹（仅双已知相等判新鲜）+ workspace lock 对拍；漂移或单侧缺失=陈
   旧。runtime serviceconfig/config_hash 不是 assembly 指纹，不混入。

@@ -17,7 +17,7 @@
 | 证据 | 任务 |
 |---|---|
 | AssemblyTarget 驱动层选择/persistent 双 bug 修复/VM 两入口同可见；同源 witness VM=41/Rust=42/C=43 | T-03（历史） |
-| 适配契约注册表（17 条）四方一致——Rust 适配链有独立可检查契约，无 blanket 豁免/Resolved-only 放行 | **T-10** [738-phase3-strict.md](738-phase3-strict.md) |
+| 适配契约注册表（15 条）四方一致——Rust 适配链有独立可检查契约，无 blanket 豁免/Resolved-only 放行 | **T-10** [738-phase3-strict.md](738-phase3-strict.md) |
 | 引用闭包全路径（导入/裸名/通配/三段/反糖/Await 臂/生成 back 模块） | **T-11** [738-phase3-reference-audit.md](738-phase3-reference-audit.md) |
 | 状态：**满足**（T-14：⑤腿 Rust 实编 1/1）；SD-01/02/03/04 | |
 

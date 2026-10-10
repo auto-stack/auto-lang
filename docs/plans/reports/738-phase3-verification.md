@@ -53,3 +53,21 @@
 - 全部执行验收（AC-01..08 执行面、T-09..T-14）闭合 → 计划置 `execution_done`。
 - 下一步：**未参与实现的独立 review agent** 按 `/auto-plan:review` 复核最终提交 `b3a4d660e`：全部 AC、实际 callee/manifest、`2c1b4a763..b3a4d660e` 完整 diff（T-09 分类 + T-10..14 语义面）、SD 正文、th 环境红基线归因。执行 agent 不自行宣告独立复审 pass。
 - 当前授权止于修复/验收/复审准备：不合入、不归档、不删 worktree。
+
+## 7. R5 修复轮收据（2026-10-10，最终提交 `68398d2d6`）
+
+R5 补充复审（[738-review-r5.md](738-review-r5.md)）三项必修闭合；§1-6 的 R3/R4 收据保留历史（其 pass 不覆盖 R5 反例）。
+
+| 门禁 | 结果 |
+|---|---|
+| 三 crate check | 零 error（auto-man `--tests` 的 plan734 fixture 6 错=R4-01 在案 master 预存） |
+| `cargo t plan738` | 72/72（含 R5 新 5 测：receiver 收集/漂移拒绝/用户隔离 + 一次绑定状态机 + 三目标真实三角） |
+| `cargo t plan724` / CLI stdlib / api_gen | 5/5、10/10、44/44（含 generation_consumer_identity 真实生成腿） |
+| freshness 族 | 双真值表（严格比较语义）+ `review738_r5_lock_binding_state_machine` 1/1；shell_pack 环境红在案 |
+| tt 全档 --no-fail-fast | 非基线红=0（R5-02 初版曾致 6 语料红——receiver 形态守卫+扁平 helper 切片修正后归零；基线红同 §2 名单） |
+| 裸 t 全档 --no-fail-fast | 5186 测：5170 绿/16 红全基线（13 master 预存+plan502/plan707_client/plan606 flake 族）；非基线红=0 |
+| `cargo tv` | 162/162 |
+| 服务完整链 | 1/1@64.66s（生成→收据→实编→serve→ready→业务→stdlib-only 失效→再生→重建，lock 一次绑定语义下） |
+| CLI 级 R5 反例复验 | 原始 exit0+`JsonValue.len` proof；len int→str 漂移 exit1+`SIGNATURE_DRIFT`（真实 auto.exe） |
+
+修复链：`bc0b95cfd`（三项主体）→ `796d279a4`（真值表对齐状态机）→ `68398d2d6`（守卫+切片，tt 归零）。R5 findings→AC 映射重开项（T-11..T-14）全部重闭；SD-04/05 重锚、SD-06/07 维持；acceptance 计数勘误清零。
