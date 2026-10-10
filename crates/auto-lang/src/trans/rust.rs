@@ -5578,15 +5578,37 @@ impl RustTrans {
             if !text.contains(&format!("a2r_std::{module}::")) {
                 continue;
             }
-            if let Some(symbol) = crate::stdlib_assembly::host::public_method_symbol(module, method)
-            {
-                if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
-                    module,
-                    &symbol,
-                    text,
-                    self.assembly_runtime,
-                )? {
-                    self.assembly_references.push(proof);
+            // 形态守卫：只验证自足的单表达式自由调用。部分发射臂（如
+            // `a2r_std::json::len((&` 拆段写）在 call 缓冲内留下不完整
+            // 片段、链式调用（`parse(..).len()`）不是自由 Call 形态——
+            // 这些形态不构成可独立核对的调用点文本，跳过并记边界（公共
+            // 方法证明由完整/构造形态路径承载，见 R5-02 测试）。
+            let self_contained = !text.contains(").") && {
+                let mut depth: i32 = 0;
+                for byte in text.bytes() {
+                    match byte {
+                        b'(' => depth += 1,
+                        b')' => depth -= 1,
+                        _ => {}
+                    }
+                    if depth < 0 {
+                        break;
+                    }
+                }
+                depth == 0
+            };
+            if self_contained {
+                if let Some(symbol) =
+                    crate::stdlib_assembly::host::public_method_symbol(module, method)
+                {
+                    if let Some(proof) = crate::stdlib_assembly::host::verify_rust_reference(
+                        module,
+                        &symbol,
+                        text,
+                        self.assembly_runtime,
+                    )? {
+                        self.assembly_references.push(proof);
+                    }
                 }
             }
             return Ok(());
@@ -5597,7 +5619,7 @@ impl RustTrans {
             ("a2r_std::value_to_int(", "json", "as_int"),
         ];
         for (marker, module, callee) in FLAT_HELPERS {
-            if let Some(arg_start) = text.find(marker).map(|i| i + marker.len() - 1) {
+            if let Some(arg_start) = text.find(marker).map(|i| i + marker.len()) {
                 if let Some(inner) = text[arg_start..].strip_suffix(')') {
                     let qualified = format!("a2r_std::{module}::{callee}({inner})");
                     if let Some(symbol) =
