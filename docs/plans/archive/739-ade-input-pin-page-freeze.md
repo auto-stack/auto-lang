@@ -20,7 +20,7 @@ total_steps: 5
 
 ## 0. 变更摘要
 
-jade-edit PLAN-037 探针在 PLAN-737 交付后报 F-037-R1：autodown_editor 应用
+auto-jade PLAN-037 探针在 PLAN-737 交付后报 F-037-R1：autodown_editor 应用
 键入后换页（文件树点击或正文 wikilink 导航），视面冻结在前页且粘滞（后续
 store 突变亦不刷新）；store 权威态正确。本计划根因修复：**`patch_input_values`
 的 `AutodownEditor` 臂把 update 期追踪的键入全文永久覆写回重建视面的编辑器
@@ -42,7 +42,7 @@ value**——键入事件不在 `input_state_map`（ADE 元素不参与该扫描
 - **G4（回归围栏）**：本仓新增真实节拍回归测试：键入节拍（on_change 消息
   → input_values 记账 → .at handler 落 state）→ 换页节拍（nav 消息派发 +
   retain 记账）→ 重建断言 vtree ADE value 随 store 切换。
-- **非目标**：不改 jade-edit 仓（其 probe 为外部验收）；不动 PLAN-732/737
+- **非目标**：不改 auto-jade 仓（其 probe 为外部验收）；不动 PLAN-732/737
   交付面（`ADE_LINK_DISPATCH`/应用栅栏/ade core）；不改 Input/Textarea/
   CodeEditor 的 patch 语义（其 iced widget 单向 value 无核内回声守卫，
   patch 仍必要）；不动 memo/epoch 域（缺陷单主假设已推翻，无需改动）。
@@ -76,11 +76,11 @@ nextest + 语料 harness；无新依赖。
 
 ### 4.1 授权与范围
 
-- **授权**（跨仓缺陷修复单，jade-edit PLAN-037 F-037-R1，2026-10-03）：
+- **授权**（跨仓缺陷修复单，auto-jade PLAN-037 F-037-R1，2026-10-03）：
   立项诊断修复；根因修复 + 本仓真实节拍回归测试；门禁按分级惯例；
   merge 后重建 master debug binary 并在回执注明新指纹；**不得改动
-  jade-edit 仓**（其探针重跑 P2b/P5 转绿 = 缺陷闭合，属 jade 侧 T-02 复验）。
-- 允许仓库：仅 D:/autostack/auto-lang（jade-edit 仓只读——本调查已只读
+  auto-jade 仓**（其探针重跑 P2b/P5 转绿 = 缺陷闭合，属 jade 侧 T-02 复验）。
+- 允许仓库：仅 D:/autostack/auto-lang（auto-jade 仓只读——本调查已只读
   消费其 src/front/*.at 与 tests/probe_native_wiki_link.mjs）。
 
 ### 4.2 根因定谳（调查证据链，推翻缺陷单主假设）

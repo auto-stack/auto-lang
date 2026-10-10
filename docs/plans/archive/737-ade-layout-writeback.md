@@ -20,7 +20,7 @@ total_steps: 6
 
 ## 变更摘要
 
-跨仓缺陷修复单（消费方 jade-edit PLAN-037 T-02 解锁门）：PLAN-732 已交付的
+跨仓缺陷修复单（消费方 auto-jade PLAN-037 T-02 解锁门）：PLAN-732 已交付的
 原生 wikilink 供给在真实 merged 生产窗口不可激活。插桩实测**推翻缺陷单的
 "DocLayout 写回脱节"假设**——布局写回每帧健康（w=876、blocks=8、links=5、
 press 逐块命中正确），真实根因两个，均已修复：

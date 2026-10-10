@@ -20,7 +20,7 @@ total_steps: 7
 
 ## 变更摘要
 
-修复 jade-edit 上游报告的「原生窗 UI 挂起（Event 1002）+ abort 崩溃（WER c0000409/FastFail 0x7）」双签名问题的两个根因：
+修复 auto-jade 上游报告的「原生窗 UI 挂起（Event 1002）+ abort 崩溃（WER c0000409/FastFail 0x7）」双签名问题的两个根因：
 
 1. **挂起根因**：PLAN-095 T-04 引入的 `focus_pending` 消费块存在 edition-2021 if-let 守卫跨块借用冲突
    （`renderer.rs` `if let Some(..) = state.app.focus_pending.borrow().clone()` 的 Ref 临时守卫活整个块，
@@ -225,7 +225,7 @@ RUST_BACKTRACE 分支保底开发态栈回溯。
   master 主检出复现同红，与本 diff 无关；state_file::lock_serializes 单独跑过
   =负载时序 flake）。结论：**本 diff 零新增红**。
 - [✅ 已完成] T-06 独立复审（2026-10-09，见「复审记录」）。
-- [ ] T-07 merge 回 master（Conventional Commit `fix(ui): … (Plan 747)`）、归档、回复 jade-edit 侧。
+- [ ] T-07 merge 回 master（Conventional Commit `fix(ui): … (Plan 747)`）、归档、回复 auto-jade 侧。
 
 ## 复审记录
 

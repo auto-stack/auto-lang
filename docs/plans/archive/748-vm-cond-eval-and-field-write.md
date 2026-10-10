@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-748
 status: archived                # drafting → executing → execution_done → reviewed → archived
-feature_name: VM 三断点修复 + vm 轨 iced 渲染器四件缺陷（musk PLAN-101 + jade-edit 供料，双 phase）
+feature_name: VM 三断点修复 + vm 轨 iced 渲染器四件缺陷（musk PLAN-101 + auto-jade 供料，双 phase）
 author: [agent]
 created_at: 2026-10-10
 updated_at: 2026-10-10
@@ -46,9 +46,9 @@ auto-musk PLAN-101（2026-10-09 实机）登记了三个 VM 渲染/执行引擎�
 修复后 musk 101 的绕开代码（mark 预拼 / JSON 克隆+动态键 / 静态样式串）
 **回退为直读条件并双端对拍通过**（101 §10 收口候选）。
 
-### Phase 2 — vm 轨 iced 渲染器四件缺陷（jade-edit 供料，T-06～T-11；2026-10-10 增补，plan_revision 2）
+### Phase 2 — vm 轨 iced 渲染器四件缺陷（auto-jade 供料，T-06～T-11；2026-10-10 增补，plan_revision 2）
 
-jade-edit 供料包（jade-edit `docs/upstream/2026-10-09-vm-layout-stretch-supply.md`
+auto-jade 供料包（auto-jade `docs/upstream/2026-10-09-vm-layout-stretch-supply.md`
 ，证据截图 jade `e2e/.runtime/exp5..13*.png`，exp5=健康基线对照）登记
 四个「vue 轨 CSS 渲染正常、vm 轨 iced 解释渲染破」的双轨差异，锚点在
 iced 渲染器与 autodown_editor 官方件：
@@ -77,7 +77,7 @@ iced 渲染器与 autodown_editor 官方件：
    padding:1rem 1.25rem`，editor/index.ts:1 随组件导入）；vm 轨官方件
    无此层，正文贴死分隔线。正根修：vm 件内建复刻该 padding。
 
-验收锚点：jade-edit **撤 workaround 层后**（侧栏回单层 overflow-y-auto
+验收锚点：auto-jade **撤 workaround 层后**（侧栏回单层 overflow-y-auto
 col、编辑器去 padding 容器——jade commit 4b398a4 两层 workaround）双轨
 逐像素同构 + 右栏面板可见 + 现有全部门绿。
 
@@ -98,7 +98,7 @@ col、编辑器去 padding 容器——jade commit 4b398a4 两层 workaround）�
 6. 既有回归零新增红（tv/tf/RC + daily 对拍；**master 预存红 P733-R2 六条
    为零增减基线，不是本计划修复对象**）。
 
-### Phase 2 目标（jade-edit 供料四件）
+### Phase 2 目标（auto-jade 供料四件）
 
 7. 件一/二/三在干净 master 基面复现定音（供料观测来自 release
    v0.4.2-2747-gab7a650bd 构建——stretch 代码与现 HEAD 一致，仍须干净
@@ -134,7 +134,7 @@ col、编辑器去 padding 容器——jade commit 4b398a4 两层 workaround）�
 
 - 不改 vue/web 轨与 auto-down 引擎 CSS（件四 padding 数值锚在引擎侧
   autodown-editor.css，vue 轨渲染链零改动）。
-- 不在 jade-edit 仓内修任何代码（上游根修，jade 侧只做撤层复验——
+- 不在 auto-jade 仓内修任何代码（上游根修，jade 侧只做撤层复验——
   669/682 先例流程；复验依赖 jade 会话协调，见 §10）。
 - 不推倒 StretchLine 两阶段架构本体与 line_fill_height 语义（修复落在
   final 遍落位载体、配给数学与 Scrollable 高解析，PLAN-655 语义保持）。
@@ -264,21 +264,21 @@ vm/codegen.rs `139f1baea40fa564`、handler_codegen.rs `408566622fe0d7fb`。
 
 ### Phase 2 授权与供料（2026-10-10 增补，plan_revision 2）
 
-用户 2026-10-10 指示：jade-edit 供料的 vm 轨 iced 渲染器四件缺陷
-（三件布局 + 一件呈现缺口），供料包 jade-edit
+用户 2026-10-10 指示：auto-jade 供料的 vm 轨 iced 渲染器四件缺陷
+（三件布局 + 一件呈现缺口），供料包 auto-jade
 `docs/upstream/2026-10-09-vm-layout-stretch-supply.md` 全文 + 证据截图
 jade `e2e/.runtime/exp5..13*.png`（exp5=健康基线对照，2026-10-10 在位
-核验），「走 auto-lang 自身 plan 流程立项，不直接改 jade-edit」「把
+核验），「走 auto-lang 自身 plan 流程立项，不直接改 auto-jade」「把
 上述问题更新到计划 748 里，作为独立的新 phase」。同 Phase 1：本增补
 属起草；work 授权待用户确认计划后另行给出。
 
-### Phase 2 已取证事实（jade-edit 实测，2026-10-08/09）
+### Phase 2 已取证事实（auto-jade 实测，2026-10-08/09）
 
 证据载体 release `auto 0.1.0+v0.4.2-2747-gab7a650bd`（2026-10-08 构建
 ）；供料复验时 auto-lang HEAD `1b05d3d44`——**stretch 代码与 2747 内涵
 一致**（ab7a650bd 为 HEAD 祖先，此后 renderer.rs/stretch_line.rs 仅
 focus/resize/fit 三件无关修复）。jade 侧实验均在 `auto run -r vm`
-merged 形态 + PrintWindow 截图 + 像素测量取得；jade-edit `src/front/
+merged 形态 + PrintWindow 截图 + 像素测量取得；auto-jade `src/front/
 app.at` 双轨单源（vue=CSS 渲染正常，vm=iced 解释渲染破）。
 
 | 件 | 症状 | 对照正常形态 |
@@ -332,7 +332,7 @@ overflow-y-auto col；②编辑器外包 px-5 py-4 容器 + 任意变体
   `.autodown-editor-content-wrapper { flex:1; padding:1rem 1.25rem;
   overflow-y:auto; … }`（经 editor/index.ts:1 随组件导入；1rem=16、
   1.25rem=20 逻辑 px）。DSL 侧注册 aura/schema.rs:3111；examples/ui
-  无使用例（jade-edit 为唯一实机消费者——仓内判绿须自带最小 fixture
+  无使用例（auto-jade 为唯一实机消费者——仓内判绿须自带最小 fixture
   /单测，像素对照依赖 jade 跨仓复验）。
 
 ### Phase 2 风险与约束（供料包修复约束四条 + 本仓两条）
@@ -513,7 +513,7 @@ examples 无使用例）+ jade 撤层双轨像素等值（jade 侧，AC-14）。
 2. 041-auto-edit 像素对照 + gallery 围栏（autoui-verifier
    test_widgets_gallery_vm.py）零漂移——重负载走机器级单实例闸门，
    主检出单实例；
-3. jade 撤层跨仓复验（jade-edit 仓，用户/jade 会话协调）：撤两层
+3. jade 撤层跨仓复验（auto-jade 仓，用户/jade 会话协调）：撤两层
    workaround（commit 4b398a4）→ vm_matrix merged 臂全绿 + 供料四
    复现形正确 + 双轨 PrintWindow 逐像素同构 + 右栏面板可见；
 4. 全量门：裸 `cargo t`（per-plan 复审门禁，fix-test-tiering——
@@ -645,7 +645,7 @@ comp（`build_dynamic_component`）、E2E（`auto run --render=vm` + pac.at 工�
 **通道**：headless（iced_test 全管线 .at→DynamicComponent→View→into_iced，
 layout_tests.rs p748_j1/j2/j3 探针，提交 29df32ec0）+ live（worktree 构建
 auto.exe，`auto run -r vm` merged + MCP include_bounds 几何 + PrintWindow
-像素测量；jade 真实 app 取 4b398a4^ pre-workaround 副本，不触 jade-edit 本体）。
+像素测量；jade 真实 app 取 4b398a4^ pre-workaround 副本，不触 auto-jade 本体）。
 
 | 件 | headless 最小形 | live 真 app（pre-workaround） | 定音 |
 |---|---|---|---|
@@ -716,7 +716,7 @@ P748_PROBE=1 配给过程 dump（env 门控，常驻）；③iced 0.14 `Limits::
 - changed_tasks: T-06～T-11（新增，total_steps 6→12）
 - changed_acceptance: AC-08～AC-15（新增）；AC-01..07 / T-00..05 /
   V01..05 原样保留（Phase 1 既有授权与契约不动）
-- evidence: 供料包全文（jade-edit docs/upstream/2026-10-09-vm-layout-
+- evidence: 供料包全文（auto-jade docs/upstream/2026-10-09-vm-layout-
   stretch-supply.md）+ 证据截图 exp5..13 在位核验（2026-10-10）+ 四件
   代码锚点 master 工作区实读（stretch_line.rs 头注/final 遍/探测遍、
   build_row StretchLine 分支、build_scrollable 显式高与 cap 臂、

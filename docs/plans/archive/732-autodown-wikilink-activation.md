@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-732
 status: archived            # drafting → executing → execution_done → reviewed → archived
-feature_name: autodown 编辑壳正文内链激活供给（jade-edit PLAN-037 上游供料 U-01..06）
+feature_name: autodown 编辑壳正文内链激活供给（auto-jade PLAN-037 上游供料 U-01..06）
 author: [agent]
 created_at: 2026-10-02
 updated_at: 2026-10-03
@@ -11,7 +11,7 @@ supersedes_spec_components: []
 new_spec_components:
   - "docs/specs/auto-lang/ui/design/autodown-wikilink.md（SD-01：add——内链语义消费/区间命中/激活出口/载荷/origin/兼容矩阵）"
   - "docs/specs/auto-lang/ui/architecture.md（SD-02：modify——ADR-27 内链激活供给裁定）"
-touched_goals: []             # 供料/下游谱驱动面（jade-edit PLAN-037 消费解锁），无 goals.md 正式 GOAL-NNN——731/728 先例注记式
+touched_goals: []             # 供料/下游谱驱动面（auto-jade PLAN-037 消费解锁），无 goals.md 正式 GOAL-NNN——731/728 先例注记式
 
 affects: [crates/auto-lang/src/ui/autodown_editor/, crates/auto-lang/src/ui/view.rs, crates/auto-lang/src/ui/aura_view_builder.rs, crates/auto-lang/src/ui/iced/]
 current_step: 6
@@ -22,7 +22,7 @@ total_steps: 6
 
 ## 0. 变更摘要
 
-jade-edit 仓 [PLAN-037](../../../jade-edit/docs/plans/037-native-wiki-link-navigation.md)（VM 原生正文内链导航，R-03b3）的消费合同要求本仓先交付原生 wikilink 供给。其[需求包](../../../jade-edit/docs/upstream/2026-10-native-wiki-link-supply.md)（U-01..06）与[契约冻结件](../../../jade-edit/docs/plans/attachments/037-native-link-contract.md)（C-01..06，jade 904547d）已冻结验收条款；本 Plan 在本仓独立承接，是五环链从"仅样式"到"可激活"的供给本体。
+auto-jade 仓 [PLAN-037](../../../jade-edit/docs/plans/037-native-wiki-link-navigation.md)（VM 原生正文内链导航，R-03b3）的消费合同要求本仓先交付原生 wikilink 供给。其[需求包](../../../jade-edit/docs/upstream/2026-10-native-wiki-link-supply.md)（U-01..06）与[契约冻结件](../../../jade-edit/docs/plans/attachments/037-native-link-contract.md)（C-01..06，jade 904547d）已冻结验收条款；本 Plan 在本仓独立承接，是五环链从"仅样式"到"可激活"的供给本体。
 
 **关键实勘结论（本 Plan 的地基）**：wikilink 语义载荷**已在模型里**——autodown-core（`D:/autostack/auto-down/autodown/packages/engine/rust`，auto-lang 经 `crates/auto-lang/Cargo.toml:172` path 依赖消费）的 markdown 解析链把 `[[inner]]` 产为带 `attr "wikilink" = <inner 原文>` 的 InlineSpan（markdown_parser.rs:1966 识别→:2869-2876 出 span）。缺口全在 auto-lang 编辑壳链路：`flatten_inlines`（core.rs:132-150）只读 `span.marks`、丢弃 `span.attrs`——目标与样式双双丢失。**因此本供给零 autodown-core 改动、零 auto-down 仓改动、零模型扩展**，纯 auto-lang 编辑壳/视图/降层五环补链。
 
@@ -59,7 +59,7 @@ Rust（`crates/auto-lang/src/ui/autodown_editor/**`、`view.rs`、`aura_view_bui
 ### 4.1 授权与消费合同
 
 - 授权：用户 2026-10-02 会话指令「用 auto-plan-new 到 auto-lang 去立项，满足前置条件」——**仅授权本仓立项起草**；实施（work/review/merge）须另行启动；无预算/自动续跑限制。
-- 消费方：jade-edit PLAN-037（executing 1/5，其 T-02 解锁门=本 Plan reviewed/delivered + 五项回执）。其契约冻结件 C-01..06 与回执清单为本 Plan AC 的对岸文本；**本 Plan 不得弱化 U-01..06 条款**，做不到报 needs_replan/blocker。
+- 消费方：auto-jade PLAN-037（executing 1/5，其 T-02 解锁门=本 Plan reviewed/delivered + 五项回执）。其契约冻结件 C-01..06 与回执清单为本 Plan AC 的对岸文本；**本 Plan 不得弱化 U-01..06 条款**，做不到报 needs_replan/blocker。
 - 上游链事实：autodown-core 为 auto-down 仓产出，本仓 path 依赖（crates/auto-lang/Cargo.toml:172）；模型已带 `wikilink` attr，**无接口缺口、无需 auto-down 供给**（jade 需求包 §3 的预判以实勘收窄）。
 
 ### 4.2 五环现状（源码实勘 2026-10-02T13:30Z，SHA256 见 jade 契约 §2）
@@ -172,7 +172,7 @@ Rust（`crates/auto-lang/src/ui/autodown_editor/**`、`view.rs`、`aura_view_bui
 - outcome: pass（drafting handoff——立项完成，work/review/merge 未授权未开始）
 - 任务/验收覆盖：6 任务覆盖 7 验收/2 SD；T-02..06 逐级依赖 T-01 冻结产物，路径/符号全部源码实勘（§4.2 行号级）。
 - 关键裁定：零 autodown-core/auto-down 改动（wikilink attr 已在模型，markdown_parser.rs:2869-2876 实勘）；载荷沿 Plan 499 M2 实参先例；MCP `__mcp_click` ghost 语义保持不变、只作负例锚；不做输入期解析承诺（B-6 族如实维持）。
-- next: work——用户授权后在专属 worktree `D:/autostack/.wt/lang-732/auto-lang`（分支 `plan-732-dev`）从 T-01 开始；jade-edit PLAN-037 的 T-02 解锁门在本 Plan reviewed/delivered + AC-07 回执后核验。
+- next: work——用户授权后在专属 worktree `D:/autostack/.wt/lang-732/auto-lang`（分支 `plan-732-dev`）从 T-01 开始；auto-jade PLAN-037 的 T-02 解锁门在本 Plan reviewed/delivered + AC-07 回执后核验。
 
 ### work 阶段收口记录（2026-10-03）
 

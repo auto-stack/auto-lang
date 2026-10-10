@@ -22,7 +22,7 @@ affects: [auto-lang/ui]       # 终版：仅 ui/overview.md 契约成文；零 R
 
 ## 0. 变更摘要
 
-jade-edit vue 轨（浏览器键入 → toolbar 保存）出现草稿检查点永不结算
+auto-jade vue 轨（浏览器键入 → toolbar 保存）出现草稿检查点永不结算
 （`event=saved` 墓碑缺失），导致 PLAN-032 LC 删除卫语句对「已保存页」
 永久误阻（同运行 `draft_state='sending'` 卡死 + 跨运行磁盘 checkpoint
 无墓碑双通道）。vm 轨同流程结算正常。
@@ -61,7 +61,7 @@ jade-edit vue 轨（浏览器键入 → toolbar 保存）出现草稿检查点�
   墓碑永留、检查点清理语义全部保持）。
 - 不放宽 PLAN-032 LC 卫语句（`draft_pending` 准确性依赖修复结算链，
   不是绕过卫语句）。
-- 不在本仓修改 jade-edit 的 `.at` 宿主代码（jade 侧修复经供料包
+- 不在本仓修改 auto-jade 的 `.at` 宿主代码（jade 侧修复经供料包
   交接，RC-C 分支下才产出）。
 - 不处理 jade e2e 的 D-21 负载窗瞬态族与 F-24-2 split 臂族（在案
   既有债，与本 bug 无关）。
@@ -99,7 +99,7 @@ vue 轨: 浏览器键入 → EngineEditor oninput → [转译 JS] useEditorStore
   转译）、`crates/auto-man/src/vue.rs`（vue 工程生成/store composable
   发射器）、AutoVM HTTP server（`--server vm` 路径）。
 - 复现/验证：browser-use 技能（浏览器键入）+ autoui-verifier 技能
-  脚本（`.agents/skills/autoui-verifier/scripts/`）；jade-edit 仓
+  脚本（`.agents/skills/autoui-verifier/scripts/`）；auto-jade 仓
   只读引用（e2e 工作区、spec、供料包）。
 - 载体矩阵构建：git worktree 干净构建 91ae002d3（v0.4.2-2730）、
   ab7a650bd（v0.4.2-2747）、主检出 HEAD（c72ff953b 域）。
@@ -109,9 +109,9 @@ vue 轨: 浏览器键入 → EngineEditor oninput → [转译 JS] useEditorStore
 ### 4.1 授权与输入
 
 - 需求来源：用户 prompt（2026-10-10）+ 上游供料包
-  `jade-edit docs/upstream/2026-10-10-draft-settle-supply.md`（随
+  `auto-jade docs/upstream/2026-10-10-draft-settle-supply.md`（随
   jade `303e515` 入库）。授权范围：**auto-lang 仓内走 plan 流程定位
-  并修复**；jade-edit 仓只读（证据/复现），修复不落 jade。
+  并修复**；auto-jade 仓只读（证据/复现），修复不落 jade。
 - 用户裁定要点：①vm 轨结算路径不得回归；②PLAN-031 语义保持；
   ③LC 卫语句不放宽；④建议排查面含 doc/epoch 绑定错位与
   v0.4.2-2835 域行为 diff。临时手动解法（清 `.jade/drafts/v1/`

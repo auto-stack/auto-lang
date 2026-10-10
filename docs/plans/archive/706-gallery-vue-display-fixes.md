@@ -2,7 +2,7 @@
 plan_id: PLAN-706
 status: archived              # 终态（2026-09-30 r2 merge pass——archived）
 # r2 重开（2026-09-29）：r1 交付簇携入的 vm UI 脏标/确认弹层交互面回归——追加修复
-# phase（T-09..T-11，§11）。立项=消费者仓 jade-edit PLAN-026 回执批冒烟败形实证 +
+# phase（T-09..T-11，§11）。立项=消费者仓 auto-jade PLAN-026 回执批冒烟败形实证 +
 # 用户直接裁定；rev1 交付记录（§8 勾选/§9 既有收据）原样保留。
 completion_kind: delivered     # r1+r2 双 phase delivered（r2 delivery 612514d5a）
 feature_name: gallery-vue-display-fixes
@@ -381,7 +381,7 @@ git -C D:/autostack/auto-os worktree add D:/autostack/.wt/lang-706/auto-os -b pl
 ### 2026-09-29 replan（r2 重开：vm UI 交互面回归修复 phase）
 
 - `stage: new` | `plan_id: PLAN-706` | `plan_revision: 2` | `outcome: pass`（修订稿完成——用户直接裁定立项 2026-09-29「既然是 706 引发的回归问题，那么应当在计划 706 添加一个新的 phase 去解决」；自 archived 重开）。
-- 立项依据：消费者仓 jade-edit PLAN-026 回执批冒烟败形（jade-edit commit `6243eb2` + 计划 §8/§9 全录）——**r1 交付簇（7b8a3ccbc gallery display fixes + 同窗携入的 plan047 memo 大宗）落 master 后，vm UI 脏标/确认弹层交互面出现消费者可复现的确定性回归**：新载体双 exe merged 臂四连断（debug 标脏弧进程死亡 ×2 同点 / release 脏关弧确认弹层栈积 ×2 同点），A/B 锚=旧 exe 同矩阵同 fixture 全绿在库。r1 的 AC-01..08 全部实机通过——本回归在其断言域之外（gallery 走查未覆盖「编辑→标脏→关闭确认」交互弧），属 r1 验证盲区非 r1 执行缺陷。
+- 立项依据：消费者仓 auto-jade PLAN-026 回执批冒烟败形（auto-jade commit `6243eb2` + 计划 §8/§9 全录）——**r1 交付簇（7b8a3ccbc gallery display fixes + 同窗携入的 plan047 memo 大宗）落 master 后，vm UI 脏标/确认弹层交互面出现消费者可复现的确定性回归**：新载体双 exe merged 臂四连断（debug 标脏弧进程死亡 ×2 同点 / release 脏关弧确认弹层栈积 ×2 同点），A/B 锚=旧 exe 同矩阵同 fixture 全绿在库。r1 的 AC-01..08 全部实机通过——本回归在其断言域之外（gallery 走查未覆盖「编辑→标脏→关闭确认」交互弧），属 r1 验证盲区非 r1 执行缺陷。
 - changed：frontmatter（status archived→drafting、plan_revision 2、total_steps 8→11、updated_at）；added：§11（T-09..T-11、AC-09..11、域协调注记）；rev1 全部内容原样保留（§0..§10、§8 勾选、§9 既有 stage:new/review/merge 记录不动）。
 - `next: work T-09`（bisect 定案起）；落地序与 PLAN-709（aura_view_builder 域在飞起草）协调注记见 §11.4。
 
@@ -425,16 +425,16 @@ git -C D:/autostack/auto-os worktree add D:/autostack/.wt/lang-706/auto-os -b pl
 
 ## 11. rev2 追加 phase（2026-09-29）：vm UI 脏标/确认弹层交互面回归修复
 
-### 11.1 回归实证（消费者仓一手实录，jade-edit PLAN-026 执行窗 2026-09-29）
+### 11.1 回归实证（消费者仓一手实录，auto-jade PLAN-026 执行窗 2026-09-29）
 
-**断言面**：jade-edit `tests/vm_matrix.mjs` merged 臂（进程内直调，AUTOUI_MCP_PORT 驱动真 UI）——r1 载体（09-28 15:02 debug exe，master@c8f86ef92 时代）同矩阵同 fixture **merged 16/16 ALL GREEN**（jade-edit `p25-merge-smoke.log`，09-29 19:42）；新载体（66c9cac19，`cargo build -p auto` 双 exe）**确定性断裂 ×4**：
+**断言面**：auto-jade `tests/vm_matrix.mjs` merged 臂（进程内直调，AUTOUI_MCP_PORT 驱动真 UI）——r1 载体（09-28 15:02 debug exe，master@c8f86ef92 时代）同矩阵同 fixture **merged 16/16 ALL GREEN**（auto-jade `p25-merge-smoke.log`，09-29 19:42）；新载体（66c9cac19，`cargo build -p auto` 双 exe）**确定性断裂 ×4**：
 
 | # | 载体 | 断点 | 形态 | 证据 |
 |---|---|---|---|---|
-| 1 | debug 09-29 21:26 | `[7 tab]` 标脏弧（typeWholeDoc 标脏→切回） | **进程死亡**（[B baseline] PASS 后 MCP 控制通道 SocketError other side closed；vm_matrix:673/674 双跑同点） | jade-edit `p26-matrix-r1/r2.log` |
-| 2 | release 09-29 21:19 | `[10b]` 脏关弧（关档触发关闭确认） | **确认弹层栈积 ×2 同点**（[7 tab]+[10 link] PASS 后 `button "Hello World" not found in region` @:774；fail-snap 实勘**双叠「有未保存的修改」确认弹层滞留**=脏态泄漏形） | jade-edit `p26-matrix-rel-r1/r2.log` + `fail-snap-1790689474787.txt` |
-| 3 | release | probe_mtime Init | **`probe_cases` 调用挂起 ×2**（done 恒 false——release 特异，debug 同分钟绿 r2 对照）= 第三断裂面 | jade-edit `p26-probe-mtime-rel-r2.log` |
-| 4 | 双载体 | 基线 v20 / probe_sb / probe 族 14 件 / build gen 面 | **全绿**（dump 结构面完好——回归居交互语义面非数据面；705 http 面已排除[probe HTTP 全绿]；vue.rs 生成面已排除[build ✓built 20.23s]） | jade-edit `p26-*` 全族 |
+| 1 | debug 09-29 21:26 | `[7 tab]` 标脏弧（typeWholeDoc 标脏→切回） | **进程死亡**（[B baseline] PASS 后 MCP 控制通道 SocketError other side closed；vm_matrix:673/674 双跑同点） | auto-jade `p26-matrix-r1/r2.log` |
+| 2 | release 09-29 21:19 | `[10b]` 脏关弧（关档触发关闭确认） | **确认弹层栈积 ×2 同点**（[7 tab]+[10 link] PASS 后 `button "Hello World" not found in region` @:774；fail-snap 实勘**双叠「有未保存的修改」确认弹层滞留**=脏态泄漏形） | auto-jade `p26-matrix-rel-r1/r2.log` + `fail-snap-1790689474787.txt` |
+| 3 | release | probe_mtime Init | **`probe_cases` 调用挂起 ×2**（done 恒 false——release 特异，debug 同分钟绿 r2 对照）= 第三断裂面 | auto-jade `p26-probe-mtime-rel-r2.log` |
+| 4 | 双载体 | 基线 v20 / probe_sb / probe 族 14 件 / build gen 面 | **全绿**（dump 结构面完好——回归居交互语义面非数据面；705 http 面已排除[probe HTTP 全绿]；vue.rs 生成面已排除[build ✓built 20.23s]） | auto-jade `p26-*` 全族 |
 
 **域定位（候选，非定案）**：载体 delta `c8f86ef92..66c9cac19` 中 **r1 合并携入的 UI 层大宗**——`aura_view_builder.rs +971` / `vm_bridge.rs +616`（plan047 memo_deps/vm_bridge 大宗同窗携带：43f02f195/ab84f1df9/ce71fff1b）/ `vue.rs` gallery display fixes（7b8a3ccbc：sidebar sub-button mapping/lucide fallback/scaffold transitive deps）。r1 主提交 7b8a3ccbc 自身 diff 不含 checkbox/menubar 域（消费者 grep 定案）——**肇事面需 T-09 bisect 定案**，不预设。
 
@@ -442,9 +442,9 @@ git -C D:/autostack/auto-os worktree add D:/autostack/.wt/lang-706/auto-os -b pl
 
 | ID | 任务 | 依赖 | 产出/文件 | 验证 | AC |
 |---|---|---|---|---|---|
-| T-09 | **bisect 定案**：git-archive A/B 于 delta `c8f86ef92..66c9cac19`（候选集=051b892ac 携入批[7b8a3ccbc/43f02f195/ab84f1df9/ce71fff1b 族]+705 簇 d37019d60..71aa3d71d[预期排除——HTTP 面绿]）；再现弧=标脏（INPUT_TEXT 整文构造）→切 tab→关闭确认弹层（消费者 harness `jade-edit tests/vm_matrix.mjs` [7 tab]/[10b] 弧可直接复用，或家族侧最小驱动） | — | 定案报告（肇事提交集+最小再现弧+触发机制初判） | 绿前红后（pre 提交绿/post 提交红同弧） | AC-09 |
+| T-09 | **bisect 定案**：git-archive A/B 于 delta `c8f86ef92..66c9cac19`（候选集=051b892ac 携入批[7b8a3ccbc/43f02f195/ab84f1df9/ce71fff1b 族]+705 簇 d37019d60..71aa3d71d[预期排除——HTTP 面绿]）；再现弧=标脏（INPUT_TEXT 整文构造）→切 tab→关闭确认弹层（消费者 harness `auto-jade tests/vm_matrix.mjs` [7 tab]/[10b] 弧可直接复用，或家族侧最小驱动） | — | 定案报告（肇事提交集+最小再现弧+触发机制初判） | 绿前红后（pre 提交绿/post 提交红同弧） | AC-09 |
 | T-10 | **修复实现**：按 T-09 定案——脏标投影/关闭确认弹层生命周期（开闭幂等/不栈积/关闭路径不致死）；范围=回归修复还原 rev1 前行为语义，零新特性；含家族侧单测（弹层开闭幂等/脏态切换弧） | T-09 | 修复提交（域随定案） | 家族单测绿 + 消费者再现弧绿 | AC-10 前半 |
-| T-11 | **收口验证**：家族面（cargo t UI 域 + gallery 实机抽查四页不回归）+ **消费者回执面**：重建 exe → jade-edit `tests/vm_matrix.mjs` merged 16/16 ALL GREEN（[7 tab] PASS + [10b] 无弹层滞留）+ e2e 全绿 + probe_mtime release 载体绿 | T-10 | 收口证据（家族+消费者双面） | 消费者矩阵 ALL GREEN = 本回归修复的定义性验收 | AC-10 后半, AC-11 |
+| T-11 | **收口验证**：家族面（cargo t UI 域 + gallery 实机抽查四页不回归）+ **消费者回执面**：重建 exe → auto-jade `tests/vm_matrix.mjs` merged 16/16 ALL GREEN（[7 tab] PASS + [10b] 无弹层滞留）+ e2e 全绿 + probe_mtime release 载体绿 | T-10 | 收口证据（家族+消费者双面） | 消费者矩阵 ALL GREEN = 本回归修复的定义性验收 | AC-10 后半, AC-11 |
 
 进度勾选（r2 work 阶段，2026-09-30；worktree `D:/autostack/.wt/lang-706/auto-lang` branch `plan-706-dev`，基 master 4dae03122）：
 
@@ -455,13 +455,13 @@ git -C D:/autostack/auto-os worktree add D:/autostack/.wt/lang-706/auto-os -b pl
 ### 11.3 验收标准（追加）
 
 - **AC-09**：bisect 定案报告在档——肇事提交集 + 最小再现弧 + 触发机制初判；pre/post A/B 同 harness 同弧绿红分明。
-- **AC-10**：修复后新 exe 下，jade-edit 消费面 `tests/vm_matrix.mjs` **merged 16/16 ALL GREEN**（[7 tab] 标脏弧与 [10b] 脏关弧 PASS；fail-snap 无双叠确认弹层）。
+- **AC-10**：修复后新 exe 下，auto-jade 消费面 `tests/vm_matrix.mjs` **merged 16/16 ALL GREEN**（[7 tab] 标脏弧与 [10b] 脏关弧 PASS；fail-snap 无双叠确认弹层）。
 - **AC-11**：probe_mtime release 载体挂起面复测绿（或定案为独立缺陷另立记账）；家族既有 UI 测试面零回归。
 
 ### 11.3+ AC 收口（2026-09-30 work 阶段）
 
 - **AC-09 PASS**：定案报告 `docs/plans/reports/706-bisect-verdict.md` 在档（first-bad=432068075 + 最小再现弧 + RC canary UAF 机制实证 + 死键伪命中第二面）；pre `c8f86ef92` GREEN / post RED 同弧同驱动（家族 tab-arc.mjs；A/B 另有消费者 p25/p26 在库）。
-- **AC-10 PASS（定义性验收）**：修复 exe（plan-706-dev 9420eb7a2 构建）下 jade-edit vm_matrix merged **16/16 ALL GREEN**——debug 与 release 双载体独立全绿；[7 tab] PASS、[10b] 无弹层滞留。
+- **AC-10 PASS（定义性验收）**：修复 exe（plan-706-dev 9420eb7a2 构建）下 auto-jade vm_matrix merged **16/16 ALL GREEN**——debug 与 release 双载体独立全绿；[7 tab] PASS、[10b] 无弹层滞留。
 - **AC-11 PASS（后半臂）**：probe_mtime release 挂起面定案为**独立预存缺陷**（old-carrier c8f86ef92 release 同挂 → P706-D1 另立记账；修复 exe debug 全案绿）；家族 UI 测试面零回归（ui:: 1616/1617，唯一红为 base 预存且 old-carrier 同红；plan047/plan046/memo/vm_bridge 定向全绿）。注：T-11 验证列的「e2e 全绿」定案为消费方 harness 预存 flaky（双载体同 flaky 无区分度，P706-D2）——非本回归面，不在本 phase 修复域。
 
 ### 11.4 域协调与边界
@@ -469,7 +469,7 @@ git -C D:/autostack/auto-os worktree add D:/autostack/.wt/lang-706/auto-os -b pl
 - **PLAN-709 在飞**（native slot interaction——aura_view_builder 域，drafting rev1 未动 src）：T-09/T-10 以 master 为基；若 709 先落 src，T-10 基其结果 rebase 重验（同域注意）。
 - **plan047 memo 大宗候选保留**：vm_bridge +616 与断裂域同窗，bisect 不因 7b8a3ccbc 是本计划主提交而预设其肇事——按证据定案；若定案落 plan047 提交，修复仍在本 phase 收口（回归经 706 合并窗携入消费者）。
 - **零产品特性扩张**：本 phase 仅还原交互语义；gallery 新能力面不在范围。
-- 消费者等待态：jade-edit PLAN-026 blocked-waiting（r1 裁定选项 a）——**AC-10 已兑现（2026-09-30，merged 16/16 ALL GREEN debug+release）= 其重入信号**。
+- 消费者等待态：auto-jade PLAN-026 blocked-waiting（r1 裁定选项 a）——**AC-10 已兑现（2026-09-30，merged 16/16 ALL GREEN debug+release）= 其重入信号**。
 - r2 work 落地注记：PLAN-709 未动 src（本 phase 基 master 4dae03122 无 rebase 需求）；plan047 提交定案为肇事（432068075）——修复按 §11.4 预设在本 phase 收口，plan047 交付语义不变（其单测面全绿）。
 
 ### stage: merge PLAN-706:r2
@@ -480,5 +480,5 @@ git -C D:/autostack/auto-os worktree add D:/autostack/.wt/lang-706/auto-os -b pl
 - `ledger_refreshed`: n/a——r2 零规范增量（无 canonical Specs 改动、无账本条目增删；r1 的 ADR-25/shadcn 传递依赖条目不受影响）
 - `archived`: docs/plans/archive/706-gallery-vue-display-fixes.md；status archived（终态）；completion_kind delivered（r1+r2 双 phase）
 - `cleaned`: wt-guard clean×3（auto-lang/auto-down/old-carrier）；worktree×3+old-carrier 移除、分支 plan-706-dev 删（was 612514d5a=landed tip）；组目录 .wt/lang-706/ 留 evidence+驱动脚本不入 git
-- `deployment_observation`: master release auto.exe 未重建（r1 同惯例）；桌面下次启动现场构建拾取；jade-edit 消费者以 master 612514d5a 重建双 exe 即得修复载体（其 PLAN-026 重入信号已生效=AC-10）
+- `deployment_observation`: master release auto.exe 未重建（r1 同惯例）；桌面下次启动现场构建拾取；auto-jade 消费者以 master 612514d5a 重建双 exe 即得修复载体（其 PLAN-026 重入信号已生效=AC-10）
 - `findings 承接`: P706-D1..D4 已在 KNOWN-DEBT-AND-RISKS.md 在册（probe_mtime release 挂起/消费者 e2e flaky/gallery 侧栏 quirk/705 e2e 门禁违例）

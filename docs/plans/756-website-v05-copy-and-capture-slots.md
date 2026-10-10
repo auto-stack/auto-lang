@@ -33,7 +33,7 @@ VitePress/Vue/TypeScript/Markdown；Category A，零 Rust 改动，不跑 Cargo/
 授权：用户已明确批准“先修复文本，截图留下空档，最后列出每个截图应该怎么去截”。旧规范禁止空位，本轮用户指令覆盖：允许有说明的文字待拍槽，不放假图/破图。同范围不再请求授权。
 
 ## 5. 详细设计
-首页/发布页统一 AutoEdit、AutoShell、AutoMusk、JadeEdit。Musk/Jade 待拍；AutoEdit 新增展示处待拍，已批准专题/总览原图不移除。保留 AutoDown/Jade Garden 资料出口。快速开始直达语言概览运行与构建；增加 AutoOS、Playground 近端出口。理念按钮写为阅读详情。修正中文分隔符。写清准备状态、后端依赖、历史统计时点和长期路线边界。
+首页/发布页统一 AutoEdit、AutoShell、AutoMusk、AutoJade。Musk/Jade 待拍；AutoEdit 新增展示处待拍，已批准专题/总览原图不移除。保留 AutoDown/Jade Garden 资料出口。快速开始直达语言概览运行与构建；增加 AutoOS、Playground 近端出口。理念按钮写为阅读详情。修正中文分隔符。写清准备状态、后端依赖、历史统计时点和长期路线边界。
 收口清单同步 738 archived，不勾选应用/候选验收。
 
 ### 规范增量

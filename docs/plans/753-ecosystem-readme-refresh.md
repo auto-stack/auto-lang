@@ -76,7 +76,7 @@ AGENTS.md §1 L1 明确要求「present for confirmation before executing」。�
 | docs/releases/v0.5.md | 截至 2026-09-30 的已合入历史，14e444f02，非冻结发行包 |
 | docs/plans/v05-release-closeout.md | 2026-10-09 用户发布门禁；既有文件仅读 |
 | website/.vitepress/theme/data/{applications,os-ai-introduction,desktop-showcase,release-v05}.ts | 生态、产品与截图 |
-| website/apps/{autoedit,autoshell,automusk,jadeedit}/index.md 与 zh 镜像 | 当前产品介绍，优先于旧首页宽泛宣传 |
+| website/apps/{autoedit,autoshell,automusk,auto-jade}/index.md 与 zh 镜像 | 当前产品介绍，优先于旧首页宽泛宣传 |
 | docs/tour、docs/script-to-ship、test/cookbook、parity | 实际语法、可运行例子与支持范围 |
 
 只读兄弟仓：auto-ai=f1c7794cbd29be95985b142d7eeebf512aba3e82；
@@ -94,7 +94,7 @@ os-ai-introduction.ts=82a30a079252edd0a14a1b77570e5b52e570ac75bea0392913190262f1
 - 旧 README 仍称 GPUI 为框架基础，提供 evaluator 切换，并把枚举/生成器/异步列为计划。
   当前主路径是 AutoVM、Vue/iced 和 Rust 发布；GPUI feature 已移除。
 - 中文首页保留大量英文内容；旧 pac.at 与转译命令须实际核对，不保留未验证示例。
-- 最新四产品为 AutoEdit/AutoShell/AutoMusk/JadeEdit；AutoDown 是文档与编辑器基础。
+- 最新四产品为 AutoEdit/AutoShell/AutoMusk/AutoJade；AutoDown 是文档与编辑器基础。
   28 Demo 是介绍集合，不是冻结发布数量、统一成熟度或全端验收结果。
 - Musk/Jade 当前网站素材合同为文字介绍，不能用旧发布 Musk 图片替代待准备的样例走查。
 - docs/language/specification.md 页头为 v0.2 Draft / 2026-04，不称其为最新 v0.5 概览，
