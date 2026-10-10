@@ -85,6 +85,8 @@ affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persisten
 - 门禁（19973b089 实跑）：cb_web_mime PASS；tv 162/162、plan738 73/73、plan724 5/5、CLI stdlib 10/10、api_gen 44/44、三 crate check 零错、rustfmt 干净、tt 非基线红=0（`plan748_breakpoint_probes::p748_t00` 主检出同红实证=master 预存非本树引入）、服务完整链 1/1@117s
 - next: R9 独立复审（定向：修复 diff 机制核证+门禁复现+SD 面未扰动）→ pass 即重启 merge（landed 及其后各步）
 
+**2026-10-10 R9（I+II 两轮独立复审）：needs_fix。** 主链修复机制确证有效（merge 撤销语义代码级闭环、两树合同面逐字节一致）、定向门禁全绿（cb_web_mime PASS/tv 162/plan738 73/服务链 1/1）；但 P738-R9-01（lock 读取非 NotFound 错误归一 absent，未绑定收据新鲜度门误放行——**reviewed 树既有缺陷非本修复引入**，probe+代码双证）与 P738-R9-02（4 点格式）必修；merge 重启 deferred 至修复新提交再复审 pass。详见 §9 R9-I（[738-review-r9.md](reports/738-review-r9.md)）/R9-II。
+
 ### merge 收据（2026-10-10，PLAN-738:r3 → needs_fix/实现冲突）
 
 - stage: merge | plan_id: PLAN-738 | plan_revision: 3 | outcome: needs_fix（落地受阻：rebase 实现冲突）
@@ -517,6 +519,29 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
   [R6 重开 2026-10-10] R5 needs_fix 后的重闭收据（`68398d2d6`，见 §9）经 R6 复核：R5-01/R5-03 闭合、R5-02 部分闭合（P738-R6-01）——本任务最终档须随新修复提交重跑受影响门禁+CLI 反例后再交下一轮独立 review。
 
 ## 9. 复审记录
+
+### 独立复审 R9-II（2026-10-10，needs_fix 确认 → executing；merge 修复轮定向·全新上下文）
+
+- stage: review
+- plan_id: PLAN-738
+- plan_revision: 3（验收合同不变）
+- outcome: **needs_fix（确认并发 R9-I 判决）**——本轮受派为 merge 修复轮定向复审（全新上下文）；定向面（修复机制/门禁/SD）**全 pass**，但并发 [R9-I 记录](reports/738-review-r9.md)（早期修订上下文会话，先落盘）的 P738-R9-01 经本轮**独立代码级核证成立**，按「不能以未验证状态放行」红线（R5-01/R6-02 同源原则）不得 restart merge——合并裁定=needs_fix，与 R9-I 一致
+- reviewed_commit: `19973b0899f27267db15a39669c124579f41a505`（worktree 入场/结束 clean，只读复审）；R8 reviewed `3713337d9`/SD `641f66a5f`（旧链）；rebase 基面 `1be1783fea`（=master tip 减 2 个 doc 提交，代码等价）；R9-I main 入场 `c212e1c7a`
+- dependency_revisions: auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`（只读未动，clean 复核）
+- 修复机制核证（verify don't trust，全部代码级实证，独立于 R9-I）：
+  - 主链块删除：lib.rs `execute_autovm_with_deadline` L1954-1959 旧 re-merge 块已删、注释在案；reviewed 树 3713337d9/641f66a5f 同位置**无该块**（仅 pkg 入口一处）；master 至今仍带（L1752-1755）——rebase 冲突面回归来源确证；pkg 入口（`create_vm_from_abt` L6030-33）保留=与 reviewed 合同一致
+  - production() 在位：engine.rs `AutoVM::new` L747-756=production()+CFFI merge、`new_with_capture` 委托；native.rs production()=三件套+末尾 `declare_contract_identity("auto.http.get",...)`（L270+）
+  - 撤销语义闭环：native.rs `merge()` L604-617 对 other 每个 shim 先 `contracts.remove`、末尾仅 extend other.contracts；`register_static` L356 显式 remove 不补写；`register_stdlib_ffi` 经 `register_shim_by_name`（stdlib.rs L9544）零契约——与 R2 既有测试 `final_merge_invalidates_cached_signature_proof`（reference.rs L312-319）语义一致；cb_web_mime 假红因果链代码级成立
+  - 语义面定位：`git diff 641f66a5f..19973b089` 全树 79 文件 +13029/−299=master 30 提交引入（746 deadline/747 panic 打印/749 display）+修复；738 合同面文件（stdlib_assembly/native.rs/native_catalog.rs/native_registry.rs/stdlib/**）两树**逐字节零差异**，codegen.rs 仅 +34 行=master PLAN-746 print 关键字拒绝——修复未扰动任何 738 合同面
+- P738-R9-01 独立核证（成立，必修补强证据）：rust_ui.rs L4025-28 `.ok().or_else(absent)` 任何读错误→absent；recorded="absent"（未绑定收据）×读取错误→absent/absent=**fresh 放行**——注释 L4029-32「读取失败均陈旧」仅对已绑定收据成立，未绑定面 fail-open；生成侧 api_gen.rs L1071-74 `unwrap_or_else(|_| absent)` 同吞非 NotFound 错误；**该缺陷为 reviewed 树既有非修复引入**（`git diff 641f66a5f..19973b089 -- rust_ui.rs api_gen.rs`=0 行，L4028/L1074 两树同源）——R5-R8 状态机负例未覆盖非 NotFound 读错误故漏网；R9-I probe 实测（is_fresh=true 反例）+本轮代码级复核双证；修复口径同意 R9-I：两端仅 NotFound→absent，其余错误传播生成失败/判陈旧，补 unbound/bound × NotFound/其他负例+恢复可读收敛证明
+- P738-R9-02 独立核证（成立，附归因）：四点实在（lib.rs:119 注释缩进/renderer.rs:24761/engine.rs:9840+9852，rustfmt 1.9.0-stable 同版本复现）；归因补充=四点均为 master 继承行（master 提交态 engine.rs 同检查 177 处、全树 15028 处；仓 CI 格式门仅 auto-lsp/a2r-std——auto-lsp-ci.yml 注释明言全仓 9000+ 文件非 fmt-clean），系 rebase 把 master 未格式化行并入 738 Phase3 已批量格式化文件所致；修复口径同意 R9-I：仅格式化该四点新提交重验，不扩大范围
+- acceptance_results: 本轮定向面 pass（修复机制/门禁/SD/tt 基线归因）；整体维持 R9-I 判定 AC-06 fail/AC-07 partial/AC-08 fail（R9-01 拖累）——R9-I AC 表本轮无异议
+- findings（新增观察）: P738-R9-03（P4 观察登记）：tt 基线组成本轮漂移全归因——musk×6→×1（master 30 提交修复 5 个）、plan730 本轮绿、p748_t00×2 为 master 新增（本轮主检出同红独立实证+归档计划 748 §T-00 在案=双证）、plan484_024 flake 本轮红（R9-I 轮绿，轮换同册）；plan707_client_manual 确定性分裂（worktree 3/3 红 vs 主检出 3/3 绿）=链上预存非 rebase/修复引入（触发输入 stdlib_assembly/native.rs/stdlib/auto/http.at 两树逐字节一致+R8 名册在案；master 绿=无 738 严格门，HTTPStream.close #2244 无契约=链上已册红面）——后续基线名册以本轮为准
+- evidence（全部 19973b089 worktree 独立实跑，与 R9-I 双份复现）: `cargo tv` 162/162（**cb_web_mime PASS@1.218s**）；`cargo t plan738` 73/73；plan724 5/5；CLI stdlib 10/10；api_gen 44+1 ignored；三 crate check 零 error（lib.rs 强制重编 0 警告）；tt 全档 5595 run/5584 pass/11 红全归因**非基线红=0**（7 红在 R8 名册+2 红 p748_t00×2 主检出同红+2 flake 隔离绿）；服务完整链 `--features test-http-e2e http_e2e_plan738 -- --ignored` 1/1@42.45s；SD 九文件 reviewed↔fixed `git diff --quiet` 全 IDENTICAL（修复提交零 docs 触面）；修复 hunk/提交面零 eprintln!/dbg! 新增（lib.rs 内 eprintln 均既有行 rustfmt 重排）
+- independence: 全新上下文 R9-II agent（用户受派 merge 修复轮定向复审），未参与本计划任何实现/复审；R9-I 为并发早期修订上下文记录（commit `85d111ddb`），两轮同 commit 独立到达一致 needs_fix 结论——交叉验证而非重复
+- omissions/debt: P738-R8-01/02 观察维持；P738-R9-03 观察登记；R9-I 的 HTTP 全档未完成段（45/102 停跑）随下轮收口
+- state: **executing**（R9-I 已重开 T-12/13/14、current_step=4，本轮维持）；不合入、不归档、不删 worktree；禁 tf
+- next: `/auto-plan:work PLAN-738` 在原 worktree 修复 P738-R9-01（lock 读错误归一 NotFound-only 双端+负例/收敛证明）与 P738-R9-02（四点格式化）——**修复面窄：rust_ui.rs/api_gen.rs lock 路径+4 格式点，不动 VM/契约面（本轮已证两树合同面逐字节一致，修复无需重跑 tv/契约门，按触面跑 tt/api_gen/服务链+格式门）**，新提交后独立复审（R10），pass 才 restart merge；merge 收据维持 needs_fix
 
 ### 补充复审 R9（2026-10-10，needs_fix → executing）
 
