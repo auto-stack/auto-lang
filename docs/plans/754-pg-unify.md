@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [playground-vue, auto-playground, website]
-current_step: 0
+current_step: 5
 total_steps: 6
 ---
 
@@ -164,6 +164,9 @@ website VitePress 页 props 接线；验证＝vue-tsc + dist 构建 + e2e（stan
 
 ## 9. 复审记录
 
+- 2026-10-10 `stage: work | PLAN-754 | r2 | outcome: pass | code plan-754-dev @ 8e55088c5
+  | tasks T-0..T-04 完成（T-05 门禁留 review/merge 档）| evidence：p754-unify-report.md
+  （双端截图/e2e 29 绿/探测排障实录）| blockers: 无 | next: review`
 - 2026-10-10 **plan_revision 1→2（用户裁定）**：website 与独立版同形——
   r1"双形态保留+IDE桥"废止，改为双端共用 PlaygroundIDEApp（sidebar+IDE）。
   任务/AC/SD 全量重订（T-0..T-5）；r1 卡片链 prepend_lib 对称化一并废止。
