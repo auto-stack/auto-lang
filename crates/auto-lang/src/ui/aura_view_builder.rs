@@ -1091,7 +1091,6 @@ impl<'a> AuraViewBuilder<'a> {
                 }
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
-
                     if let Some(child_widget) = registry.get(name) {
                         let prop_values: HashMap<String, AuraPropValue> = props.iter()
                             .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
@@ -2603,8 +2602,9 @@ impl<'a> AuraViewBuilder<'a> {
                 // PLAN-625 T-09(b): 非 icon 的 web-ecosystem 组件不再画 lucide
                 // glyph 占位（组件 ≠ 图标;ui-gallery AppViewport 实证=空盒无
                 // 信息）——降级为可读占位卡（组件名 + Web 专属提示）。
-                // 含 "icon" 的 tag 保持 glyph 路径（图标组件向后兼容）。
-                if tag.contains("icon") {
+                // PLAN-748 T-02: 判别器改为 lucide 名集成员资格
+                // （is_icon_component_tag），PascalCase lucide 名恢复 glyph。
+                if is_icon_component_tag(tag) {
                     self.convert_icon_component(tag, props, bindings)
                 } else {
                     self.convert_web_component_placeholder(tag, props, bindings)
@@ -4265,8 +4265,9 @@ impl<'a> AuraViewBuilder<'a> {
                 // PLAN-625 T-09(b): 非 icon 的 web-ecosystem 组件不再画 lucide
                 // glyph 占位（组件 ≠ 图标;ui-gallery AppViewport 实证=空盒无
                 // 信息）——降级为可读占位卡（组件名 + Web 专属提示）。
-                // 含 "icon" 的 tag 保持 glyph 路径（图标组件向后兼容）。
-                if tag.contains("icon") {
+                // PLAN-748 T-02: 判别器改为 lucide 名集成员资格
+                // （is_icon_component_tag），PascalCase lucide 名恢复 glyph。
+                if is_icon_component_tag(tag) {
                     self.convert_icon_component(tag, props, bindings)
                 } else {
                     self.convert_web_component_placeholder(tag, props, bindings)
@@ -14267,6 +14268,23 @@ fn pascal_to_kebab_icon(name: &str) -> String {
     out
 }
 
+/// PLAN-748 T-02 续腿：imported tag 的图标/网页组件判别——以 **lucide
+/// 全量名集成员资格**（kebab 化后查表）为准，含 "icon" 字样保持 glyph
+/// 向后兼容（PLAN-625 T-09(b) 兼容面）。PLAN-625 T-09(b) 的
+/// `tag.contains("icon")` 粗闸把 PascalCase lucide 名（Plus/Info/Trash2…）
+/// 全数误判为 web-ecosystem 组件 → 占位卡，musk 图标子件整体消失
+/// （p054_t1/t4 两红，P733-R2 族）；AppViewport 等真网页组件 ∉ 名集，
+/// 占位卡路径（T-09(b) 意图）保持。
+#[cfg(feature = "ui-iced")]
+fn is_icon_component_tag(tag: &str) -> bool {
+    tag.contains("icon") || crate::ui::iced::lucide_icon_known(&pascal_to_kebab_icon(tag))
+}
+
+#[cfg(not(feature = "ui-iced"))]
+fn is_icon_component_tag(tag: &str) -> bool {
+    tag.contains("icon")
+}
+
 /// PLAN-050 T9 (C7): 模板里的 `$t(KEY)` 标记 → i18n 查表替换（未命中回落
 /// key 本身）。提取侧对 `t("k")`/`i18n.t("k")` 文本产出该标记（见
 /// extract.rs call_name_t_key）。
@@ -19806,25 +19824,23 @@ mod tests {
         let registry = crate::ui::widget_registry::WidgetRegistry::new();
         let builder = AuraViewBuilder::with_registry_and_imports(&bridge, "Test", &registry, &imports);
 
-        // PLAN-668 A-05：PLAN-625 T-09(b) 裁定后,非 "icon" 字样的导入组件
-        // 降级 web 占位卡（不再 lucide 化——icons.at 用法已退役,glyph 路径
-        // 仅保留含 "icon" 的 tag 向后兼容）。
+        // PLAN-748 T-02：判别器改为 lucide 名集成员资格（含 "icon" 字样
+        // 向后兼容）——Folder ∈ lucide 名集恢复 glyph（A-05 曾按
+        // `tag.contains("icon")` 粗闸把 PascalCase lucide 名钉成占位卡，
+        // musk 图标子件整体消失 = p054_t1/t4 两红根因）。
         let node = AuraNode::element("Folder").with_prop("size", Expr::Int(14));
         let view = builder.build(&node);
-        match &view {
-            View::Column { children, .. } => {
-                let first_text = children.iter().find_map(|c| match c {
-                    View::Text { content, .. } => Some(content.clone()),
-                    _ => None,
-                });
-                assert_eq!(
-                    first_text.as_deref(),
-                    Some("⚙ Folder（Web 端组件）"),
-                    "非 icon tag 应降级占位卡; got {:?}",
-                    view
+        match view {
+            View::Image { src, style } => {
+                assert_eq!(src, "lucide:folder", "Folder 应映射 lucide:folder; got {src}");
+                let s = style.expect("size 应产出样式");
+                assert!(
+                    s.classes.iter().any(|c| matches!(c, StyleClass::Width(SizeValue::Pixels(p)) if (*p - 14.0).abs() < f32::EPSILON)),
+                    "width 应为 14px; got {:?}",
+                    s.classes
                 );
             }
-            other => panic!("期望占位卡 Column,得到 {other:?}"),
+            other => panic!("期望 View::Image（lucide glyph）,得到 {other:?}"),
         }
 
         // 含 "icon" 的 tag 保持 glyph 路径（625 向后兼容面）。
@@ -19841,6 +19857,35 @@ mod tests {
                 );
             }
             other => panic!("icon 字样 tag 期望 View::Image,得到 {other:?}"),
+        }
+
+        // PLAN-748 T-02：∉ lucide 名集的网页生态组件（AppViewport 形）保持
+        // T-09(b) 占位卡路径（判别器换名集后意图面不动）。
+        let ext_vp = crate::ast::ui::ExtImport {
+            kind: crate::ast::ui::ExtImportKind::Component,
+            symbols: vec![crate::ast::Name::from("AppViewport")],
+            path: "src/front/viewport.vue".into(),
+            call_args: vec![],
+            ref_fields: vec![],
+        };
+        let imports_vp = vec![crate::ast::Stmt::UseWeb(vec![ext_vp])];
+        let builder_vp = AuraViewBuilder::with_registry_and_imports(&bridge, "Test", &registry, &imports_vp);
+        let node_vp = AuraNode::element("AppViewport").with_prop("app", Expr::Str("demo-1".into()));
+        let view_vp = builder_vp.build(&node_vp);
+        match &view_vp {
+            View::Column { children, .. } => {
+                let first_text = children.iter().find_map(|c| match c {
+                    View::Text { content, .. } => Some(content.clone()),
+                    _ => None,
+                });
+                assert_eq!(
+                    first_text.as_deref(),
+                    Some("⚙ AppViewport（Web 端组件）"),
+                    "∉ lucide 名集的组件应保持占位卡; got {:?}",
+                    view_vp
+                );
+            }
+            other => panic!("期望占位卡 Column,得到 {other:?}"),
         }
 
         // 未导入的同名 tag 不映射（registry/常规 fallback 优先语义不变）

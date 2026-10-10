@@ -47,6 +47,14 @@ pub mod icon_file;
 /// PLAN-617 后续：lucide 全量字形表（由 scripts/gen-lucide-table.mjs 生成，勿手改）。
 /// PLAN-706: pub(crate) — vue 生成器用 `is_known` 校验字面量图标名，防非法 import。
 pub(crate) mod lucide_generated;
+
+/// PLAN-748 T-02：lucide 名集成员资格（kebab 名二分查全量表）。图标组件/
+/// 网页生态组件的判别真值源——`Plus`/`Info` 等 PascalCase lucide 名命中
+/// （走 glyph 路径），`AppViewport` 等 ∉ 表（走 web 占位卡，PLAN-625
+/// T-09(b) 意图保持）。勿在生成文件内改可见性，经本包装暴露。
+pub(crate) fn lucide_icon_known(kebab: &str) -> bool {
+    lucide_generated::lookup(kebab).is_some()
+}
 // Plan 462 T3/T4: VirtualWindow 组合层（单 OS 窗口多 App，路线 A）。
 pub mod virtual_window;
 pub mod broker_surface;
