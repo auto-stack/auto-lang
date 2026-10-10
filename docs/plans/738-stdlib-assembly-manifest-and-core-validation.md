@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-738
-status: executing
+status: execution_done
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-10
 plan_revision: 3
-current_step: 4  # R7 needs_fix（P738-R7-01/02）重开 T-11/T-13/T-14；T-01/T-09/T-10/T-12 维持闭合（R7 口径，同 R6 重开时计数）
+current_step: 7  # R7 必修闭合（3713337d9）：全分母矩阵验收；T-01/T-09..T-14 完成重闭；T-02..T-08 保持打开待 R8 复核确认
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -62,6 +62,18 @@ affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persisten
 - next: `/auto-plan:review PLAN-738`（R7）——独立上下文复核 `6c3943327` 与 R6-01/02/03 闭合；仍不合入/不归档/不删 worktree
 
 **2026-10-10 R7 独立复审：needs_fix。** R6-01 矩阵面（keys/as_int/is_null 双拼写）/R6-02/R6-03 闭合确证，门禁全复现；但全分母普查发现 `json.has_key(v,"k")` 漂移后仍 exit0 无 proof（P738-R7-01 必修，拆段写+守卫跳过）与 case④ 误伤 `json` 同名局部变量/本地模块（P738-R7-02 必修回归）。重开 T-11/T-13/T-14，详见 [738-review-r7.md](reports/738-review-r7.md)。原 R3/R4 pass 面未被扰动（修复链只触 4 文件）；修复属于现有 revision 3 合同，不增 revision、不降 AC。
+### work 修复交接（2026-10-10，R7 必修闭合 → execution_done）
+
+- stage: work
+- plan_id: PLAN-738
+- plan_revision: 3
+- outcome: pass（R7-01/02/03(裁量)/04(登记) 闭合；next=R8 独立复审）
+- code_commit: worktree plan-738-dev `6c3943327` → `3713337d9`（3 files +265/−53）；clean
+- task_ids: R7 重开的 T-11/T-13/T-14 重闭（R5/R6/R7 口径 current_step=7）
+- evidence: `receiver_method_drift_matrix_both_spellings` 全分母 12 方法×双拼写（绿面基线零违规+proof/漂移 exit 拒；真漂移面 is_null/as_bool 基线即拒；parser 拒绝面；无臂 case④）；plan738 73/73、plan724 5/5、CLI 10/10、api_gen 44/44、tv 162/162、tt 非基线红=0、服务链 1/1@109.5s
+- blockers: 无。教训：①发射臂的多闭括号类 bug 会以「守卫跳过」形态在闭包层复活——拆段/丢参臂必须逐臂核对配平；②receiver 带参方法在 Auto parser 层的拼写支持要与矩阵预期区分（语言层拒绝≠闭包放行）；③适配语义（bool→int 壳、Null 哨兵、宽度归一）是**分母级**的——逐方法打补丁不如先全分母矩阵再按类建契约。
+- next: `/auto-plan:review PLAN-738`（R8）——独立上下文复核 `3713337d9` 与 R7-01/02 闭合（含全分母矩阵与抽查）；仍不合入/不归档/不删 worktree
+
 **2026-10-10 R5 补充复审：needs_fix。** 当前修复基线为既有 worktree `9c255993b`，保留 T-09/T-10 与所有历史代码/正例，不回滚到 R2。必修项=首次 lock 物化豁免永久放行后续漂移、公开 JsonValue receiver 方法未进入 strict 门、消费者三角验收使用 clone 替代实际生成器且缺 VM/C 对拍。重开 T-11..T-14，详见 [738-review-r5.md](reports/738-review-r5.md)。原 R4 pass 保留历史，本轮反例使整体通过结论失效；修复属于现有 revision 3 合同，不增 revision、不降 AC。
 
 ## 1. 目标
@@ -434,6 +446,7 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
   [R6 重开 2026-10-10] R6 实测（真实 auto.exe）：`len` 闭合确证，但 `v.keys()`/`json.keys(v)`/`v.is_null()`/`v.as_int()` 漂移后仍 exit 0 无 proof——shape③ len-only、模块限定方法裸名未命中不落穿方法归属、value_to_int 腿死码；「公共方法 receiver 调用进 strict 门」仅部分成立。修复要求见 §9 R6 / [738-review-r6.md](reports/738-review-r6.md) P738-R6-01。
   [✅ 已完成·R6 修复重闭] R6-01 修复（worktree `6c3943327`）：receiver 方法面泛化全公共方法（shape③ 全方法/模块面落穿 public_method_symbol/未接管发射臂 case④ 诚实拒绝/json 值实参 Value 面分派修正/Vec<T>→[]T 序列面）；双拼写漂移矩阵（keys/as_int/is_null × receiver/模块限定）落为正式测试——keys/as_int 基线零违规+proof+漂移拒绝，is_null 双拼写基线即拒（公共 int vs producer bool 真漂移诚实面）。R6-02：bind 写失败保守判陈旧。
   [R7 重开 2026-10-10] R7 全分母普查（真实 auto.exe）：矩阵面闭合确证，但分母成员 has_key 的模块拼写 `json.has_key(v,"k")` 漂移后仍 exit0 无 proof（发射臂拆段写括号不平衡+形态守卫跳过，P738-R7-01）；case④ 误伤 `json` 同名局部变量/本地模块（P738-R7-02）。「泛化到全部公共方法」未完全成立。修复要求见 §9 R7 / [738-review-r7.md](reports/738-review-r7.md)，验收须扩到 12 方法双拼写分母全量。
+  [✅ 已完成·R7 修复重闭] worktree `3713337d9`：R7-01/02 闭合——has_key 发射括号 bug 修复、全分母 12 方法双拼写矩阵（正式测试，绿面/真漂移面/parser 拒绝面/无臂 case④ 四类预期）、BoolToIntIf+len ScalarCast 契约、Paren 剥壳、AST 实参序列化、Null 哨兵族扩展、守卫诚实拒绝、case④ local 排除。
 
 ### Phase 3 / T-12：manifest 共同身份与多消费者三角对拍（R5 重开）
 
@@ -464,6 +477,7 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
   [R6 重开 2026-10-10] SD-05 与行为一致确证；SD-04「receiver 全路径/未证明=SIGNATURE_UNVERIFIED 不产出成功产物」与实际行为不符（P738-R6-01），须随修复重锚或如实缩面。
   [✅ 已完成·R6 修复重闭] SD-04 按实际行为重锚（四形态 receiver 面+真漂移面诚实拒绝+Vec 序列面）；reference-audit #11 行更新；verification §8 补 R6 轮+plan498 flake 入册（R6-03）。
   [R7 重开 2026-10-10] SD-04「未证明=SIGNATURE_UNVERIFIED 不产出成功产物」与 audit #11「12 方法分母归属三形态验证+第四拒绝」被 P738-R7-01 反例证伪（`json.has_key(v,"k")` 漂移 exit0 产出成功产物）；面外边界清单缺 has_key 模块拼写守卫跳过格与 len/mod 契约缺口——须随 R7-01/02 修复再锚。
+  [✅ 已完成·R7 修复重闭] SD-04 增补（适配契约族/Null 哨兵族/parser 拼写边界/无臂拒绝面）；verification §9 R7 轮收据。
 
 ### Phase 3 / T-14：最终提交门禁、真实验收与独立 review 交接（R5 重开）
 
@@ -482,6 +496,7 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
   [R6 重开 2026-10-10] R5 needs_fix 后的重闭收据（`68398d2d6`，见 §9）经 R6 复核：R5-01/R5-03 闭合、R5-02 部分闭合（P738-R6-01）——本任务最终档须随新修复提交重跑受影响门禁+CLI 反例后再交下一轮独立 review。
 
 ## 9. 复审记录
+  [✅ 已完成·R7 修复重闭] 最终提交 `3713337d9`：plan738 73/73、plan724 5/5、CLI 10/10、api_gen 44/44、tv 162/162、tt 非基线红=0、服务链 1/1@109.5s。
 
 ### 独立复审 R7（2026-10-10，needs_fix → executing）
 

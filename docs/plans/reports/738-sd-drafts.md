@@ -95,9 +95,13 @@ merge 前若 T-14 后续提交改变行为，以最终提交复锚。
   `verify_rust_reference`（契约表驱动）；provider claim 无真实 callee
   =PROVIDER_CLAIM_NO_CALLEE；漂移=SIGNATURE_DRIFT；未证明
   =SIGNATURE_UNVERIFIED，不产出成功产物。方法符号的 receiver/is_static
-  证据来自公共声明事实；序列面 Vec<T>→[]T 按名身份；既有真漂移面
-  （JsonValue.is_null/is_valid 公共 int vs Rust producer bool）双拼写
-  一致拒绝，不擅改公开 ABI。
+  证据来自公共声明事实；序列面 Vec<T>→[]T 按名身份；适配契约族含 bool→int if 壳
+  （has_key）、宽度归一 cast 壳（len/last_status）、Null 哨兵返回族
+  （parse/get/get_at 的 JsonValue? 面）；receiver 带参方法（get/get_at/
+  has_key）为 parser 不支持拼写（语言层拒绝）；模块拼写的无臂方法
+  （type/as_number/as_array 等）经未接管发射臂诚实拒绝。既有真漂移面
+  （JsonValue.is_null/is_valid/as_bool 公共 int vs Rust producer bool）
+  双拼写一致拒绝，不擅改公开 ABI。
 - 面外边界（记档不删）：类型名渲染、`json!` 宏复合、legacy 平面符号
   （http_post）、无公共声明的 legacy 别名（json.get/get_u64 等，P738-D2
   在案）。

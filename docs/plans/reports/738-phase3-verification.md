@@ -75,3 +75,11 @@ R5 补充复审（[738-review-r5.md](738-review-r5.md)）三项必修闭合；§
 ## 8. R6 修复轮收据（2026-10-10，最终提交见 git log）
 
 R6 复审（[738-review-r6.md](738-review-r6.md)）P738-R6-01 必修闭合：receiver 方法面泛化到全部公共方法（shape③ 全方法 + 模块面落穿 + 未接管发射臂 case④ 诚实拒绝 + json 值实参 Value 面分派修正 + Vec<T>→[]T 序列面）；双拼写漂移矩阵（keys/as_int/is_null × receiver/模块限定）落为正式测试 `receiver_method_drift_matrix_both_spellings`——keys/as_int 基线零违规+proof/漂移拒绝，is_null 双拼写基线即拒（公共 int vs producer bool 真漂移，同 is_valid 族诚实面）。R6-02：bind 写失败保守判陈旧。R6-03：plan498_bar_group_emphasis 入 flake 名册（隔离复跑绿）。SD-04/reference-audit #11 按实际行为重锚。受影响门禁见下表（本节提交时附齐）。
+
+## 9. R7 修复轮收据（2026-10-10，最终提交 `3713337d9`）
+
+R7 复审（[738-review-r7.md](738-review-r7.md)）P738-R7-01/02 必修闭合：
+- **R7-01**：`json.has_key` 发射臂双闭括号 bug 修复（产物编译错在案）；全分母 12 方法 × 双拼写矩阵落为正式测试（`receiver_method_drift_matrix_both_spellings`）——绿面（as_string/as_number/as_int/as_array/keys/len/get/get_at/has_key 的可写拼写）基线零违规+proof+漂移拒绝；真漂移面（is_null/as_bool 公共 int vs producer bool）双拼写基线即拒；parser 不支持拼写（get/get_at/has_key receiver 带参）语言层拒绝；无臂模块拼写（type/as_number/as_array）case④ 诚实拒绝。
+- **R7-02**：case④ 增 local 变量/模块排除（`let json="abc"` shadow 不误拒）。
+- 新适配契约：BoolToIntIf（has_key）/len ScalarCast（宽度归一）；observe 剥 Paren 壳；AST 实参序列化（shape③ 构造不再依赖缺陷发射文本）；Null 哨兵族扩展（get/get_at 与 parse 同族）；守卫跳过改诚实拒绝（公共面存在而形态不可核对=UNVERIFIED）。
+- 门禁（3713337d9）：plan738 73/73、plan724 5/5、CLI 10/10、api_gen 44/44、tv 162/162、tt 非基线红=0、freshness 双真值表+lock 状态机（shell_pack 环境红在案）、服务完整链 1/1@109.5s。
