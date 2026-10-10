@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-738
-status: reviewed
+completion_kind: delivered
+status: archived
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
@@ -97,6 +98,15 @@ affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persisten
 - next: R10 独立复审（定向：R9-01/02 闭合+修复树面）→ pass 重启 merge
 
 **2026-10-10 R10 独立复审：pass → reviewed，可重启 merge。** R9-01 双端闭合确证（gate：NotFound→absent 哨兵/其它错误→None 落入 `lock_freshness` `_ => false` 保守陈旧，反例 recorded="absent"×PermissionDenied 现判 false 有显式断言；生成侧非 NotFound 读错误 return Err 拒写收据）；R9-02 token 级核证（lib/engine 去空白 token 流逐字节一致、renderer 唯一差异=尾逗号移除 AST 等价）+ rustfmt 五文件机械干净；门禁全绿（plan738 73/73、tv 162/162 含 cb_web_mime PASS、api_gen 44+1 ignored、lock 状态机 1/1、三 crate check 零 error、**正式生成服务链 1/1@42.29s——R9-I 明确要求的重跑项，work 交接省略由本轮补跑**）；SD 沉淀与合同面（stdlib_assembly/native*/stdlib/**）在 19973b089..41b4d4be5 逐字节未扰动。三项 P4 观察登记（负例矩阵 bound×None 无显式断言、空 lock 文件归 absent 哨兵、服务链省略流程记录）。详见 [738-review-r10.md](reports/738-review-r10.md)。
+
+### merge 最终收据（2026-10-10，PLAN-738:r3 全检查点闭合）
+
+- prepared ✓：`641f66a5f`（SD-01..07 沉淀，3713337d9 文档后代）
+- landed ✓：rebase（master 前进两次均干净重放，diff 纯 docs 核证）→ 修复合并链 `19973b089`（主链冗余 re-merge 回归修复，R9 确证）→ `41b4d4be5`（R9 必修）→ `9ff34ae0d`（终 rebase）= delivery commit；主检出 `git merge --ff-only` 线性落地，master tip==delivery==plan-738-dev；他人 UI WIP（6 文件）以 stash@{0}「738-merge-handoff」+ `/d/autostack/.738-wip-handoff.patch`（569 行）交还，未卷入
+- ledger_refreshed ✓：designs P738-1/2 + tests P738-3 + reviews P738-4 + reports P738-5 upsert 回读核验（commit 2af1d4576，748/749 先例）；spec-index.py INDEX.md 刷新
+- archived ✓：git mv docs/plans/archive/ + status: archived + completion_kind: delivered
+- 批量回归：到期（last_covered=740，>48h 且 740 后有合并）→ 交 `/auto-plan:regress`（主检出单实例）
+- 产物观察：auto-lang 为库仓（无运行服务/daemon/web bundle）；消费者二进制（auto.exe 等）由各使用方重建——本计划代码已入 master，无陈旧生产进程需重启
 
 ### merge 收据（2026-10-10，PLAN-738:r3 → needs_fix/实现冲突）
 
