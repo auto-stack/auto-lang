@@ -1149,6 +1149,47 @@ NULL 守卫——0 参 widget handler 派发带 λ 的 store msg 后读 `__state
 jade facade 切换实机 P2 面真因）。带参 handler 的泄漏值恰等自身故不可见；
 守卫语料须覆盖「0 参 handler × store λ 派发」组合（plan624 p2 臂）。
 
+
+## vue 轨 store handler 事件重入与 await 悬窗契约（PLAN-750）
+
+### 派发时序契约（SD-01）
+
+`.at` 单源双轨（vm 解释 / vue 转译 JS）下，store/widget handler 的派发
+时序契约钉死如下（语料：`docs/plans/evidence/p750/`（jade-edit 实机
+A/B/C/D 场景双载体对照）；实证基线 auto-lang master @ ab7a650bd 与
+HEAD 双载体，2026-10-10）：
+
+1. **handler 体原子域**：handler 从入口到最后一个显式 `await`（vue 轨：
+   转译 async fn 内的 await；vm 轨：契约调用挂起）之间的同步段原子执行
+   ——外部事件不会插入同步段中间。
+2. **await 悬窗可重入**：handler 在 await 挂起期间，**同 store 的新事件
+   可重入启动新的 handler 调用**（两轨一致——vm 轨 INPUT_TEXT 通道与
+   vue 轨引擎事件同理；jade editor_store 排水循环的身份重查模式即按此
+   模型设计）。宿主不得假定「await 期间无重入」；重入安全性由身份重查
+   （按稳定 id 重扫）而非调用互斥达成。
+3. **悬窗内身份分配的单飞责任在宿主**：悬窗内做「分配型」状态变更
+   （首次身份分配：`x == ""` → `x = await alloc()` 形态）时，重入调用会
+   走同一分配臂产生**双分配并覆写身份**——身份重查兜不住「身份被换」。
+   分配臂必须加 in-flight 门（范式：分配前置位、重入跳过分配只更新
+   数据面、in-flight 调用的续体收尾排水；见 PLAN-750 供料包草案
+   `evidence/p750/supply-draft.md` §修复范式）。jade d0003 卡死+
+   d0004 空目录双分配事故的实机直证（同运行 d0001 erev=1 单键弧健康、
+   d0003 erev=2 双键弧卡死并存）。
+4. **双轨事件节奏分野**：vm 轨输入经 MCP 往返串行（事件间隔 ≫ 悬窗），
+   vue 轨引擎事件逐键直达（首挂载编辑器逐键发射存活——重挂载后
+   blur 冲刷为 D-17 既有边界；间隔可 ~5ms < 悬窗 15-60ms）。**vue 轨
+   宿主必须按「事件可落进任意 await 悬窗」设计**；vm 轨绿不能作为该
+   设计缺席的证据。
+5. **保存流天然屏障（非契约保证）**：保存型 handler 自身的写盘+读回
+   两个 await 通常构成回执屏障（settle 检查前在途回执已落账）——这是
+   观测事实（p750 场景 B/C 双载体绿），**不构成可依赖的时序保证**；
+   settle 类操作仍应以确认账（seq/erev）为准而非时序。
+
+vue 轨事件派发**不提供**跨 handler 串行化（排队等待前序 handler 完成
+含其全部 await）：串行化会把后续键入的时延耦合到前序排水链（jade
+PLAN-031 T-05 逐键 POST 风暴正是要规避的形态）。若个别应用需要互斥，
+由宿主 .at 以 in-flight 门/信号位表达（本节第 3 条范式）。
+
 ## icon 字符串协议族（PLAN-018）
 
 icon 通道是**字符串协议**：pac `icon:` → 注册表 `AppRegistryEntry.icon` →

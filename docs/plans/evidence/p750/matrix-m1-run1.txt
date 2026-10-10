@@ -1,0 +1,26 @@
+
+Running 1 test using 1 worker
+
+  x  1 e2e\matrix.spec.ts:151:1 › vue 六检查（vm 矩阵同单） (79ms)
+
+
+  1) e2e\matrix.spec.ts:151:1 › vue 六检查（vm 矩阵同单） ───────────────────────────────────────────────────
+
+    Error: page.goto: Protocol error (Page.navigate): Cannot navigate to invalid URL
+    Call log:
+      - navigating to "/", waiting until "load"
+
+
+      164 |
+      165 |   // 1 boot
+    > 166 |   await page.goto('/')
+          |              ^
+      167 |   await expect(page.getByText('AutoJade', { exact: true }).first()).toBeVisible()
+      168 |   await expect(page.getByText('ready', { exact: true }).first()).toBeVisible({ timeout: 15_000 })
+      169 |   console.log('[1 boot] PASS')
+        at D:\autostack\jade-edit\e2e\matrix.spec.ts:166:14
+
+    Error Context: test-results\e2e-matrix-vue-六检查（vm-矩阵同单）\error-context.md
+
+  1 failed
+    e2e\matrix.spec.ts:151:1 › vue 六检查（vm 矩阵同单） ────────────────────────────────────────────────────
