@@ -17,7 +17,7 @@ touched_goals:
   - GOAL-007
 
 affects: [auto-lang/vm, auto-lang/ui]
-current_step: 1
+current_step: 10
 total_steps: 12
 plan_revision: 4
 ---
@@ -571,16 +571,16 @@ examples 无使用例）+ jade 撤层双轨像素等值（jade 侧，AC-14）。
 |---|---|---|---|---|
 | [x] T-00 | 无 | worktree lang-748（plan-748-dev，基 master **e5a77106a**——重取基面含 PLAN-749 G1-G3/STR_CAT 修复，待澄清#6 前置落实）；探针 `plan748_breakpoint_probes`（提交 e9d953ec4）；**定音报告见 §9 T-00 节** | V01 | 01 |
 | [x] T-01 | T-00 ②定音 | **证伪改判**（T-00 定音）：fn 段三臂（静态 `W:5`/动态 `D:6`/无 await `N:7`）全绿 + E2E 完整管线（handler_App_Init resumed to completion，静态写 marker=W:5）绿——musk 101 §10① 观测为 dirty 构建陈旧（v0.4.2-2730-dirty vs e5a77106a 之间的修复，749 E2E 同管线佐证）；无修复对象，探针钉死为回归面（AC-02 按 AC-01"或证伪并改判"条款关闭） | V01/V02 | 02 |
-| [ ] T-02 | T-00 ①定音 | **范围收缩改判**（T-00 定音）+**首腿已修**（`2e2164b5e`）：根件三形态绿证伪根件面；真红族分解——**三腿同根已翻绿**：p053_1 两红 + p053_6 = `.store.X` 泛名展平空快照拒展平（resolve_expr_to_value Dot 臂与 read_state/store_source_field 三套口径不一致，Plan 633 搭车语义）→ Dot(Dot(self,store),X) 无条件展平修复（musk_vm_track 97/6→100/3；plan733 2/2+plan749 13/13+aura 215/215+tv 162/162 零回归）。**剩余**：p054×2（图标子件渲染进 button 内容子树/ml_auto+tint——挂载面续修）归 T-02；p053_4（merged `#[api]` CALL_NAT 3142 发射）**异根改派**（codegen 面，KNOWN-DEBT 另立条目） | V02/V03 | 03 |
+| [x] T-02 | T-00 ①定音 | **范围收缩改判**（T-00 定音）+**首腿已修**（`2e2164b5e`）+**续腿已修**（`3ec6a4914`，2026-10-10）：①`.store.X` 泛名展平三红翻绿（musk_vm_track 97/6→100/3）；②p054×2 图标子件渲染根修——PLAN-625 T-09(b) `tag.contains("icon")` 粗闸把 PascalCase lucide 名（Plus/Info/…）误判为 web 组件→占位卡；判别器改 **lucide 名集成员资格**（`is_icon_component_tag`：含 icon 字样向后兼容 ∥ `iced::lucide_icon_known` 名集二分查表，不动生成文件），AppViewport ∉ 名集保持 T-09(b) 占位卡意图；plan050 契约测试同步纠正（A-05 曾把粗闸钉成契约）+AppViewport 锁死断言；musk_vm_track **102/103**（唯一余红=p053_4 异根，KNOWN-DEBT 在案）+plan050/plan633/plan733/plan051 10/10+aura 53/53；定音副产物：plan051 模块级图标测试为 corpus 未寻址空洞绿（P748-D1 登记）；③p053_4（merged `#[api]` CALL_NAT 3142 发射）**异根改派**（codegen 面，P733-R2 条目③在案） | V02/V03 | 03 |
 | [x] T-03 | T-00 ③核验 | **证伪改判**（T-00 定音）：动态 style 字段引用在 row/checkbox/progress 三元素全部产出（`style: .store.X` → Style 载体 BorderColor/TextColor/BackgroundColor 枚举实拍）——计划 §4 静态臂清单（checkbox :8326/progress :8265）与现 master 实态不符（相关臂已收口）；musk 101 §10③ 观测为 dirty 构建陈旧。**残留小项**：Style::parse 词表丢弃的非 button 臂 WARN 对齐（独立于断点③复现与否，静默丢弃面仍在——T-11 收口时顺手或另立小项） | V01/V03 | 04 |
-| [ ] T-04 | T-01～T-03 | musk 101 双 variant 跨仓对拍（AUTO_EXE 锁 748 构建） | V04 | 05 |
-| [ ] T-05 | T-04 | 全量门 + 提交 + §9 记录 + KNOWN-DEBT 更新 + owned 清理 | V03/V05 | 06,07 |
-| [ ] T-06 | 无（与 T-00 同 worktree，可并行/先行） | 四件定音探针（供料复现形 headless dump + 类序三变体树 diff）+ 判定报告（件四确证豁免） | V06 | 08,09,10 |
-| [ ] T-07 | T-06 件一定音 | stretch_line/载体层交叉轴拉伸修复（Fixed(effective) 落位或 min 传递补偿）+ 复现形单测 | V07/V08 | 08,12,13 |
-| [ ] T-08 | T-06 件二定音 | build_scrollable 显式高子树零几何 + 类序无关修复（顺序敏感层去敏）+ 乱序 golden | V07 | 09 |
-| [ ] T-09 | T-06 件三定音 | 主轴配给定宽预留修复（组装期主轴语义三元组或配给数学最小修正）+ 复现形单测 | V07/V08 | 10,12,13 |
-| [ ] T-10 | 无（件四豁免定音） | autodown_editor vm 件内建 wrapper padding（16/20px，锚引擎 css:103）+ padding 断言单测 | V07 | 11 |
-| [ ] T-11 | T-07～T-10 | 既有面零漂移（008/041/gallery）+ jade 撤层跨仓复验 + 裸 cargo t 全量门 + KNOWN-DEBT 更新 + 提交 | V08/V09/V10 | 12,13,14,15 |
+| [x] T-04 | T-01～T-03 | **收缩版完成**（T-00 定音裁定：回退版三形态已被探针等价语料覆盖证明）：musk 真实 app（含 101 workaround 代码）在 748 构建（bb494c762）上 `auto run -r vm` 冒烟通过——snapshot 756 行完整视图树、无崩溃、workaround 形态继续工作（MUSK_BACKEND=vm + AUTOUI_MCP_PORT 通道，2026-10-10 实录）。双 variant 全量对拍随 101 worktree 退役（275a187 cleaned）降为冒烟确认 | V04 | 05 |
+| [ ] T-05 | T-04 | 全量门 + 提交 + §9 记录 + KNOWN-DEBT 更新 + owned 清理（裸 cargo t 已于 T-07 后跑 5133/5145 零新增红；收尾待 T-11 合并跑） | V03/V05 | 06,07 |
+| [x] T-06 | 无 | 四件定音探针 + 判定报告（§9 Phase 2 定音报告；提交 29df32ec0——p748_j1/j2/j3 复现形 headless 探针 + stretch_line P748_PROBE dump + live VM 双通道）：**件一复现**（jade 真 app pre-workaround：视口 Fill 拉伸正常、内层内容 col 止于内容高 163/675，bg 随之止步——根因=转写层非 StretchLine，供料定位证伪）；**件二/件三不复现**（HEAD 干净构建 headless+live 双通道、最小形+真 app、类序首位/末位等价、右栏 288 满高可见、配给精确 588=1100−224−288——stretch_line.rs 与 release 2747 逐字节一致、renderer/layout/view_builder diff 均不含布局路径，release 观测无法归因代码差，登记观察项交 jade 撤层复验销案）；**件四确证**（widget 全模块零 padding 载体） | V06 | 08,09,10 |
+| [x] T-07 | T-06 件一定音 | **件一根修**（`4b4a7251e`）：滚动转写视觉类上移视口层——split_scroll_visual_classes（StyleClass::is_visual_paint 新谓词：bg/border/rounded/shadow/ring 族）双现场拆分，视口 View::Container 镜像原显式 Width/Height 类缺省补 Full（iced 0.14 Limits Shrink 置 compression 位、Fill 子件塌内容高 42px 实证），Scrollable ensure_full_scroll_dims Fill×Fill，内容 col 拿剥离余集；无视觉类零包装层。**live 终验**：jade-real 侧栏视口容器 224×675 承载 bg-card/border-r 满高（像素 (100,250..700)=rgb(13,20,37) 精确色），右栏 backlinks_open=true 满高可见。布局档 65/67（唯二在案存量红）+裸 cargo t 5133/5145 零新增红 | V07/V08 | 08,12,13 |
+| [x] T-08 | T-06 件二定音 | **证伪改判**（T-06 定音）：件二在 HEAD 不复现（真 app + 最小形、首位/末位 h-full 几何全等、子树非零）；回归锁已落地（p748_j2_explicit_height_scrollable_class_order_invariant 三变体等价断言）+ stretch_line 探针 dump 留档 | V06/V07 | 09 |
+| [x] T-09 | T-06 件三定音 | **证伪改判**（T-06 定音）：件三在 HEAD 不复现（[w-56,flex-1,w-72] 配给精确、右栏满高可见，live 实测 @rect(812,32,288,675)）；回归锁已落地（p748_j3_fixed_flex_fixed_allocation）；release 2747 观测与 HEAD 代码差无法归因（stretch_line 逐字节一致）——观察项交 jade 撤层复验（AC-14）销案 | V06/V07 | 10,12,13 |
+| [x] T-10 | 无 | **件四根修**（`bb494c762`）：autodown_editor 内建引擎等值 wrapper padding（CONTENT_PAD_Y=16/X=20，锚引擎 css:103 单一真源）——widget 四点联动（layout 内缩/draw 原点平移/update 命中坐标/IME 锚）+ plan732 全管线点击坐标同步 + 常量单源锁 + 布局级断言（sentinel y=内容高+32 实测 88.6=56.6+32）；autodown_editor 127 测全绿（autodown feature 档） | V07 | 11 |
+| [ ] T-11 | T-07～T-10 | 判绿收口（部分完成）：布局档 65/67 ✓+裸 cargo t 零新增红 ✓+P733-R2/P748-D1 KNOWN-DEBT 落账 ✓；**余**：041/gallery 像素对照 + jade 撤层跨仓复验（AC-14，owner=jade 会话） | V08/V09/V10 | 12,13,14,15 |
 
 ## 复审记录
 
@@ -619,6 +619,57 @@ comp（`build_dynamic_component`）、E2E（`auto run --render=vm` + pac.at 工�
   门禁；Phase 2（T-06～T-11 jade 四件）按计划可先行/续后
 - T-02 首腿增量（2026-10-10 续）：`.store.X` 泛名展平根修 `2e2164b5e`
   （P733-R2 三红翻绿 p053_1×2+p053_6；p053_4 异根改派；p054×2 续修）
+
+### Phase 2 定音报告（T-06，2026-10-10，worktree lang-748 干净基面 e5a77106a+，jade 供料四件）
+
+**通道**：headless（iced_test 全管线 .at→DynamicComponent→View→into_iced，
+layout_tests.rs p748_j1/j2/j3 探针，提交 29df32ec0）+ live（worktree 构建
+auto.exe，`auto run -r vm` merged + MCP include_bounds 几何 + PrintWindow
+像素测量；jade 真实 app 取 4b398a4^ pre-workaround 副本，不触 jade-edit 本体）。
+
+| 件 | headless 最小形 | live 真 app（pre-workaround） | 定音 |
+|---|---|---|---|
+| 一 stretch 拉伸 | 绿（视口 224×768 拉伸） | **复现**：视口 Scrollable 675 满高 ✓，内层内容 col 163（=内容高），bg/border 随之止步 | **转写层根因**：needs_scroll 把整串 style clone 给滚动内容 col；`flex-col` 显式显示类阻断 from_style 对 overflow-y 的 height=Fill 推断 → 内容止于内容高。CSS 语义 bg/border 属滚动容器本体（视口）。**StretchLine 无罪**（供料"final 遍 min_h 未兑现"定位证伪——P748-SL dump 实证 final 遍 min_h=768/节点 768 全兑现） |
+| 二 显式高×类序 | 绿（三变体几何全等） | **不复现**：首位/末位 h-full 均正常（视口 224×675、子树非零） | 证伪。类序敏感观测无法在 HEAD 复现 |
+| 三 定宽挤尾 | 绿（B=512=1024−224−288 精确） | **不复现**：右栏 @rect(812,32,288,675) 满高可见，中栏 588 精确 | 证伪。release 2747 观测与 HEAD 无代码差可归因（stretch_line.rs 逐字节一致、renderer/layout/view_builder diff 均为桌面窗/条件求值面） |
+| 四 editor padding | — | 确证缺口（widget.rs 全模块零 padding 载体） | 直接修（T-10） |
+
+**触发类二分（件一）**：jade-real 侧栏 10 类变体逐跑——最小集
+（w-56 bg-card overflow-y-auto）在真 app 也绿（from_style 对无显示类的
+overflow-y 推断 height=Fill 使内容 col 满高）；加 `flex-col` 即复现（Fill
+推断被显示类阻断）。`hidden md:flex` 为 Plan 409 在案设计（桌面窗=md+ 宽度
+语义剥前缀，md:flex→flex/by-design，改判非缺口）。
+
+**结论与处置**：件一转写层根修（T-07，视觉类上移视口层——CSS 同构）；
+件二/三证伪改判 + 回归锁钉死（防环境性回归）；件四 T-10 根修。件二/三的
+release 2747 观测（exp5..13）与 HEAD 构建差异无法归因代码——可能性收敛
+release 构建管线（feature 集/profile）或当次实验环境；**由 jade 撤层复验
+（AC-14）终局销案**：撤 workaround 后双轨等值 + 右栏可见即四件全闭环。
+
+**副产物**：①plan051_p2 模块级图标测试 corpus 未寻址空洞绿（locate_corpus
+三候选 nextest CWD 全 miss→SKIPPED 静默 pass，P748-D1 登记）；②stretch_line
+P748_PROBE=1 配给过程 dump（env 门控，常驻）；③iced 0.14 `Limits::(Shrink)`
+置 compression 位、Fill 子件在压缩轴解析内容高的实证（42px 复现，视口容器
+尺寸镜像修法的依据）。
+
+### work 阶段性交接（2026-10-10 续，executing——Phase 2 主体完成，T-05/T-11 余量）
+
+- stage: work | plan_id: PLAN-748 | plan_revision: 4 | outcome: pass（T-02 续腿 + T-04/T-06..T-10 单元）
+- code_commit: plan-748-dev `3ec6a4914`（T-02 续腿图标判别器）/`29df32ec0`
+  （T-06 探针）/`4b4a7251e`（T-07 件一根修）/`bb494c762`（T-10 件四根修）；
+  base: master `e5a77106a`
+- task_ids: T-02 ✓（续腿 p054×2 翻绿，musk_vm_track 102/103）、T-04 ✓（收缩
+  版冒烟）、T-06 ✓、T-07 ✓、T-08 ✓（证伪改判+回归锁）、T-09 ✓（证伪改判+
+  回归锁）、T-10 ✓；**T-05/T-11 余量**：041/gallery 像素对照 + jade 撤层
+  跨仓复验（AC-14，owner=jade 会话）+ 合并收尾门
+- evidence: §Phase 2 定音报告（双通道四件判定）；T-07 live 像素终验
+  （bg-card rgb(13,20,37) 满高）；T-10 布局级断言（sentinel y=内容高+32）；
+  裸 cargo t 5133/5145 零新增红（12 红全在案：批量回执 known_reds_seen/
+  REG-4 跨仓脱同步/p053_4/P748 探针 harness 边界×2/plan606/plan707）；
+  布局档 65/67（唯二在案存量红）；autodown_editor 127/127（autodown 档）
+- blockers: 无阻断；AC-14（jade 撤层复验）依赖 jade 侧时点（§10.4）
+- next: review（T-05/T-11 余量随 review/merge 收口：gallery 像素对照 +
+  jade 复验回执 + 收尾裸 cargo t 复跑）
 
 ### new 阶段交接（草稿准备完成）
 
