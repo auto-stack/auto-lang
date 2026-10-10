@@ -335,3 +335,10 @@ fastfail 崩溃且审计无行时，优先按栈溢出排查（重建符号 + RU
 | id | 级别 | 领域 | 内容 | 锚点 |
 |---|---|---|---|---|
 | P748-D1 | low | 测试基础设施 | **plan051_p2 模块级图标测试空洞绿**——`locate_corpus` 三候选路径（CARGO_MANIFEST_DIR 相对 / CWD 相对 / ../../ 相对）在 nextest 进程 CWD（crate 根）下全 miss `test/ui/plan051_p2_modules/pac.at`（语料实存仓根 test/ui/），`build_component_from_app` 返回 None → SKIPPED 分支静默 pass——该测试自落地起未真正跑过图标臂（PLAN-748 T-02 续腿定音插桩实证：全程零触 imported 分派臂）。清偿方向：locate_corpus 补仓根锚定（env!("CARGO_MANIFEST_DIR") 上溯两级）或断言 corpus 必达（miss 即 fail），防 SKIPPED 假绿 | crates/auto-lang/src/tests/plan051_p2_tests.rs:22（locate_corpus）/ :60（SKIPPED 分支） |
+
+## PLAN-751 执行登记（2026-10-10，work @lang-751）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P751-D1 | high | HTTP e2e 挂死族 | **plan730 上传 e2e 整族（14 项）+ e2e_a_redirect_302 确定性挂死**——服务端 accept 后不响应（60s×2 read timeout 累计 120s 被 nextest TERMINATING）；隔离单跑确定性复现（vm_plain_endpoint_untouched / e2e_a_redirect_302_with_location 均 TIMEOUT 120.0s）；与负载无关（同条件 plan326 兄弟 39 项 0.6s 全绿）。红移窗口=PLAN-738 系列（plan734 时代 th 99/101 绿 `ae9b7a7e2` → 738 后转红；http_server.rs 最后触碰=R2 `bade1845c`，其后 `19973b089` 触及 http 族契约注册撤销语义；R2 收据自述 th 绿与本轮矛盾）。**根因 bisect + 修复走后续专项计划**；候选锚点 `dd9ffe35b`/`19973b089` | docs/plans/reports/751-th-full-receipt.md；crates/auto-lang/src/tests/plan730_http_upload_tests.rs:254（start_server）/ crates/auto-lang/src/vm/ffi/http_server.rs |
+| P751-D2 | medium | auto-man 日常档盲区 | **auto-man lib 3 项预存红**（基面 stash 实证 0/3 同红，与 PLAN-751 diff 无关）：`vue::plan593_index_css_golden_tests::index_css_values_match_p1_baseline`（CSS 金样漂移）、`rust_ui::tests::test_shell_pack_lib_freshness`（shell-pack 入库物过期，panic 自述需重跑 regen_shell_pack#[ignore]+提交）、`rust_ui::tests::merged_api_client_crud_fallback_for_uncovered_endpoints`（merged API 客户端金样漂移）。根因：日常档 `cargo t` 只 `-p auto-lang`，auto-man 面长期脱离例行门禁——清偿方向：修复三红 + 将 auto-man scoped 面纳入复审触面清单 | crates/auto-man/src/rust_ui.rs:5743/6203；crates/auto-man/src/vue.rs（plan593 金样） |

@@ -12,7 +12,7 @@ new_spec_components: [auto-man/design/api-generation-integrity.md]
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [auto-man/design/api-generation-integrity.md]
-current_step: 4
+current_step: 5
 total_steps: 6
 ---
 
@@ -246,11 +246,21 @@ tempfile 隔离 workspace + `AUTO_RUST_WORKSPACE` env 指向（沿既有 R5 状�
   docs_gen；plan707/748/p053 具体成员每轮漂移，族级与 R5–R9+10-02 批量
   回执一致，scoped 复跑 plan707_client_manual_next/748_static/p053_4 仍红
   =确定性预存，非负载 flake），零名册外新红。
-- **T-05 th 全档串行收口**
+- **T-05 th 全档串行收口** [✅ 已完成]
   依赖：与本计划代码改动无耦合（auto-lang 面），T-04 后同 worktree 执行。
   操作：`cargo th --jobs 1 --no-fail-fast`（102 项，串行单实例）；逐名分诊
   新红（对照 R9 名册与批量回执在册红）；写
   `docs/plans/reports/751-th-full-receipt.md`。→ AC-05
+  [✅ 已完成] 2026-10-10 worktree lang-751：**102 selected / 102 run**（R9 的
+  57 项未跑全部补跑 + 45 项全部重跑），86 pass / 2 fail / 14 timeout，
+  1962.969s。逐名分诊：back_proxy 在册基线红（两轮同形）；plan730 interop
+  109.988s 确定性失败（R9 同形 109.655s）；**plan730 上传族 13 项 +
+  e2e_a_redirect_302 确定性挂死**（隔离复现单跑 TIMEOUT 120s，非负载 flake，
+  挂死机制=服务端 accept 后不响应），归因 PLAN-738 系列红移窗口（plan734
+  时代 th 99/101 绿），与 PLAN-751 diff 零因果（th 面不编译 auto-man）——
+  根因 bisect 登记为 P751-D1 债务走后续专项。收据：
+  `docs/plans/reports/751-th-full-receipt.md`（含复跑矩阵与 R9 承接 45 项
+  交叉对照）。
 - **T-06 复审、合并、归档、清理**
   依赖：T-04/T-05。操作：`/auto-plan:review`（独立复审，证据绑修订）→
   merge 回 master（Conventional Commit）→ spec 沉淀（SD-01 + specs.json/
