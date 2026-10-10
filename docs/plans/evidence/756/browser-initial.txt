@@ -1,0 +1,59 @@
+[WebServer] (node:46844) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:32632) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 78 tests using 2 workers
+(node:20444) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:38452) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:20444) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:38452) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:6804) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:6804) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+·········································F····································
+
+  1) [chromium] › tests\v05-copy.spec.ts:10:1 › both Chinese docs gallery entrances resolve to the shared application 
+
+    Error: [2mexpect([22m[31mpage[39m[2m).[22mtoHaveURL[2m([22m[32mexpected[39m[2m)[22m failed
+
+    Expected pattern: [32m/\/ui\/gallery\/index\.html$/[39m
+    Received string:  [31m"http://localhost:4406/ui/gallery/#/"[39m
+    Timeout: 5000ms
+
+    Call log:
+    [2m  - Expect "toHaveURL" with timeout 5000ms[22m
+    [2m    3 × unexpected value "http://localhost:4406/ui/gallery/"[22m
+    [2m    - waiting for" http://localhost:4406/ui/gallery/" navigation to finish...[22m
+    [2m    - navigated to "http://localhost:4406/ui/gallery/"[22m
+    [2m    2 × unexpected value "http://localhost:4406/ui/gallery/"[22m
+    [2m    4 × unexpected value "http://localhost:4406/ui/gallery/#/"[22m
+
+
+      14 |   for (const link of await links.all()) await expect(link).toHaveAttribute('href', '/ui/gallery/index.html')
+      15 |   await links.last().click()
+    > 16 |   await expect(page).toHaveURL(/\/ui\/gallery\/index\.html$/)
+         |                      ^
+      17 |   await expect(page).toHaveTitle(/widgets-gallery/)
+      18 |   await expect(page.getByText('PAGE NOT FOUND', { exact: true })).toHaveCount(0)
+      19 | })
+        at D:\autostack\.wt\lang-756\auto-lang\website\tests\v05-copy.spec.ts:16:22
+
+    Error Context: test-results\v05-copy-both-Chinese-docs-48f61-e-to-the-shared-application-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\v05-copy-both-Chinese-docs-48f61-e-to-the-shared-application-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\v05-copy-both-Chinese-docs-48f61-e-to-the-shared-application-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › tests\v05-copy.spec.ts:10:1 › both Chinese docs gallery entrances resolve to the shared application 
+  77 passed (3.1m)

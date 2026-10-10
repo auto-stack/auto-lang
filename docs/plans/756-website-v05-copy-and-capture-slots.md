@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-756
-status: drafting
+status: reviewed
 feature_name: website-v05-copy-and-capture-slots
 author: [agent]
 created_at: 2026-10-10
 updated_at: 2026-10-10
 plan_revision: 1
-current_step: 0
+current_step: 4
 total_steps: 4
 supersedes_spec_components: [docs/specs/website/design/ui-presentation.md, docs/specs/website/design/application-introductions.md]
 new_spec_components: []
@@ -53,14 +53,20 @@ worktree npm run build；适用 Playwright/浏览器路由与文字检查；360/
 - AC-05：构建、实际行为、双语五宽度和补丁卫生通过；零 Rust 测试；完成内容提交。
 
 ## 8. 执行步骤
-- [ ] T-01：双语首页/release 数据/ReleaseLanding/HomeDemo/learning-navigation/prepare-content 修文案与入口（AC-01/02）。
-- [ ] T-02：截图文字槽接首页/发布页与必要专题；新建 docs/reports/website-v05-capture-guide.md（AC-03/04）。
-- [ ] T-03：worktree 准备两处 Spec 增量；main 修正发布收口簿记（AC-04）。
-- [ ] T-04：worktree 构建/行为/几何验证/提交，复核 AC（AC-05）。
+- [✅] T-01：双语首页/release 数据/ReleaseLanding/HomeDemo/learning-navigation/prepare-content 修文案与入口（AC-01/02）。
+- [✅] T-02：截图文字槽接首页/发布页与必要专题；新建 docs/reports/website-v05-capture-guide.md（AC-03/04）。
+- [✅] T-03：worktree 准备两处 Spec 增量；main 修正发布收口簿记（AC-04）。
+- [✅] T-04：worktree 构建/行为/几何验证/提交，复核 AC（AC-05）。
+
+执行：用户授权后于独立 worktree 开始；T-01/02/03 已完成，T-04 已完成。源码提交 e516408212f35893e63438ae20df41adda8daf2a；worktree clean。
 
 ## 9. 复审记录
 stage: new | revision: 1 | outcome: pass | authorization: 用户本轮明确批准 | next: work。
 同会话依据实际 diff/产物重建评审证据，不声称外部独立审查。
+
+stage: work | plan_id: PLAN-756 | plan_revision: 1 | outcome: pass | code_commit: e516408212f35893e63438ae20df41adda8daf2a | task_ids: T-01..04 | evidence: npm run build 156.77s；78项首轮77通过/1测试URL断言错误，修正后v05-copy 5/5通过；截图ID/清单12/12匹配；git diff --check通过 | blockers: none | next: review。
+
+stage: review | plan_id: PLAN-756 | plan_revision: 1 | outcome: pass | reviewed_commit: e516408212f35893e63438ae20df41adda8daf2a | base_commit: d6e4819ba686298238237ae6f473da77b22478bf | dependency_revisions/spec_inputs/acceptance_results: [review](reports/756-website-copy-review.md) | findings: P756-D1/D2 nonblocking/outside scope | frozen_delta: evidence/756/spec-delta.patch | next: merge。
 
 ## 10. 待澄清事项
 无阻塞。拍摄、候选冻结、部署不属本轮。手机目录布局/图片负载留后续 UI 工作，不声称已修复。

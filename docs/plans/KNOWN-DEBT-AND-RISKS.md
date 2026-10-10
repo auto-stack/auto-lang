@@ -1,3 +1,10 @@
+### P756（2026-10-10，网站文字修复复核：范围外 UI 观察）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P756-D1 | low | website SectionNav 手机目录 | 已有目录 toggle/list 在手机展开时呈 flex 横排，列表高且部分入口受限；本轮仅文字/待拍槽，未改目录。后续改为纵向展开，360/390 检查全部章节可达与标题遮挡 | website/.vitepress/theme/components/SectionNav.vue；reports/756-website-copy-review.md |
+| P756-D2 | low | website v05 原图负载与阅读密度 | 已有桌面首图约5.2MB、发布页较长；本轮保留有效原图与内容。后续生成展示派生图并保留完整原图/来源，另复核手机滚动和章节密度 | website/public/desktop-showcase/02-desktop-dark.png；reports/756-website-copy-review.md |
+
 ### PG-MEM（2026-10-09，playground 全量示例走查实测登记——走查副产品）
 
 | id | 级别 | 领域 | 内容 | 锚点 |

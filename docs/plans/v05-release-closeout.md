@@ -1,6 +1,6 @@
 # v0.5 发布收口清单
 
-> 更新：2026-10-09；依据：用户确认的发布顺序与 website 独立验收要求。
+> 更新：2026-10-10；依据：用户确认的发布顺序与 website 独立验收要求。
 > 本文件是跨项目发布跟踪清单，不替代实施 Plan、独立复审或各仓交付收据。
 > 未勾选项均待验收；既有网站构建、截图和应用介绍不能直接视为冻结版本证据。
 
@@ -12,7 +12,7 @@ website 的内容和页面完善可以现在推进；最终版本号、下载链
 
 ## 发布门禁
 
-- [ ] R-01：完成 [PLAN-738](738-stdlib-assembly-manifest-and-core-validation.md) 独立复审与交付收口；应用按各仓实际里程碑和验收收据确认发布集合，重点核对 auto-os 与 Musk Kanban。
+- [ ] R-01：[PLAN-738](archive/738-stdlib-assembly-manifest-and-core-validation.md) 已独立复审并以 `archived / delivered` 收口；应用仍按各仓实际里程碑和验收收据确认发布集合，重点核对 auto-os 与 Musk Kanban。本项整体继续待应用验收。
 - [ ] R-02：website 同步完善，完成下表 W-01..04 的冻结前工作；版本及素材依赖项明确登记。
 - [ ] R-03：冻结发行候选，记录各仓 commit/tag、构建环境、发行工件及校验值。
 - [ ] R-04：以冻结候选完成 W-01..04 最终验收，核对截图、实际版本与下载链接；下载后的安装、快速开始和示例运行通过。
@@ -35,8 +35,9 @@ website 的内容和页面完善可以现在推进；最终版本号、下载链
 - HTTP 口径以 [部署合同](../specs/stdlib/design/http-service-deployment.md) 及相关 API／文件传输交付收据为准，区分本机／单层可信反向代理支持与直接公网、内置 TLS、完整 WebSocket 等未认证范围。
 - Canvas 预览定位须由对应应用实际交付与候选演示确认，不能仅根据页面文案推定产品能力。
 - [website 现状](../specs/website/project.md) 和 [在线体验设计](../design/documents/website-interactive-experiences.md) 区分 v0.5 静态介绍／真实截图与 v0.5.1 Web 桌面／应用在线体验；介绍集合数量不等于发布应用数量或统一成熟度。
-- 当前发布页使用既有 Kanban 示例截图；W-02 须确认其与 Musk Kanban 的关系及版本来源，不能直接复用为 Musk 发布证明。
-- PLAN-738 当前 frontmatter 为 `execution_done`，独立复审仍待完成；本清单不改变其实施合同或状态。
+- 既有 Kanban 示例图属于历史资料；PLAN-756 开发页将两端对照位置改为候选待拍槽。W-02 继续核对普通示例与 Musk Kanban 的关系及版本来源，不能用示例图证明 Musk 发布。
+- PLAN-738 于 2026-10-10 已归档交付；本清单据实际计划状态更新，不替代应用验收或候选冻结。
+- PLAN-756 按用户批准先修网站文本并保留明确的截图待拍槽；逐图拍摄合同在 `docs/reports/website-v05-capture-guide.md`。文字修复不等于 W-02 通过，截图、工件与下载入口仍随冻结候选验收。
 
 ## 冻结与最终验收记录
 
