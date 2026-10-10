@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-752
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done               # drafting → executing → execution_done → reviewed → archived
 feature_name: pg-bootstrap-lib
 author: [agent]
 created_at: 2026-10-09
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [auto-playground, auto-lang, playground-vue]
-current_step: 0
+current_step: 5
 total_steps: 5
 ---
 
@@ -170,25 +170,36 @@ pub fn bootstrap_lib_source() -> Option<&'static str>
 
 ## 8. 执行步骤
 
-- [ ] T-01 auto-lang 公开面：`bootstrap_lib_source()`（OnceLock 缓存，
+- [x] T-01 auto-lang 公开面：`bootstrap_lib_source()`（OnceLock 缓存，
   AUTO_LIB_FILES 序拼接，缺失跳过）。文件：crates/auto-lang/src/lib.rs。
-  验证：新增单测（非空/含 eval 符号/缓存同一性）+ `cargo t bootstrap_lib`。AC-01
-- [ ] T-02 playground 接线：RunRequest.prepend_lib → run_handler →
+  验证：plan752_bootstrap_lib_source_present_and_cached PASS（>100KB/含 eval_str_cat/
+  缓存同一性）；commit 已在 fc76d2fb4 链。AC-01
+- [x] T-02 playground 接线：RunRequest.prepend_lib → run_handler →
   vm_runner（仅裸 source 路径拼接）。文件：crates/auto-playground/src/
   routes/run.rs、vm_runner.rs。验证：`cargo check -p auto-playground` +
   定向 curl 正负对照（a2r_hello 带/不带 prepend_lib）。AC-01, AC-02
-- [ ] T-03 前端契约：NoteMeta.prependLib + usePlaygroundFull 透传 +
+- [x] T-03 前端契约：NoteMeta.prependLib + usePlaygroundFull 透传 +
   App.vue 组前缀判定。文件：packages/auto-playground-vue（types/
   AutoPlaygroundFull/usePlaygroundFull）、frontend/src/App.vue。
-  验证：vue-tsc 过 + worktree dist 重建 + e2e 拦截断言。AC-03
-- [ ] T-04 全量走查复验：run_all_examples_mem.py 全量——vm-bootstrap 组
+  验证：dist 重建 + e2e 拦截断言 2 条（bootstrap 发 true/其他组不发）——
+  注意 worktree 需补 frontend/public/playground-data/notes.json（gitignored），
+  缺失时侧栏空树（e2e 首败环境因）。AC-03
+- [x] T-04 全量走查复验：run_all_examples_mem.py 全量——vm-bootstrap 组
   报错降至个位数并逐条归因；内存曲线平坦；demo 组全绿。
-  验收档：scratch/playground-check/p752-report.md。AC-01, AC-02, AC-04
-- [ ] T-05 复审门禁：plan746 单测、run-timeout e2e、裸 `cargo t` 红集对拍、
+  验收档：scratch/playground-check/p752-report.md（worktree）。vm-bootstrap 105 条：
+  104 成功/80 golden 逐字节一致/24+1 余红全部=仓库既有 #[ignore] 隔离态
+  （vm_file_tests.rs:1773+ 与 aavm_runner_tests.rs 逐条 #[ignore] 实证）；
+  demo 28/28；内存 32→63MB（峰值 127MB 回落，无泄露）。AC-01, AC-02, AC-04
+- [x] T-05 复审门禁：plan746 单测、run-timeout e2e、裸 `cargo t` 红集对拍、
   `cargo tv`；spec 增量落库（merge 档）。AC-04, AC-05
+  实录：plan746 9/9、plan752 1/1、tv 162/162、e2e 7/7、红集对拍 14=14
+  （互差 plan484/plan707×2 为并行负载 flake，隔离复跑绿——同 PLAN-746 复审结论）
 
 ## 9. 复审记录
 
+- 2026-10-09 `stage: work | PLAN-752 | r1 | outcome: pass | code plan-752-dev @ fc76d2fb4
+  （+spec 预埋）| tasks T-01..T-05 全完成 | evidence：单测/tv/e2e/全量走查（p752-report.md）/
+  红集对拍零新增 | blockers: 无 | next: review`
 - 2026-10-09 `/auto-plan:new` r1 起草：`stage: new`，PLAN-752 revision 1。
   `outcome: pass`（用户已批"按流程立项做掉"，授权内可开工）。
   `next: work`。已定谳：范围=vm-bootstrap 组 only（aavm 组非 lib 问题，预验证
