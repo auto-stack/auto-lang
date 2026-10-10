@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-751
-status: reviewed               # drafting → executing → execution_done → reviewed → archived
+status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: empty-lock-identity-th-tail
 author: [zcode]
 created_at: 2026-10-10
@@ -318,6 +318,33 @@ tempfile 隔离 workspace + `AUTO_RUST_WORKSPACE` env 指向（沿既有 R5 状�
     依赖已清理的临时 worktree，以树内测试为准）。
   evidence: 本记录内嵌命令/结果摘要 + docs/plans/reports/751-th-full-receipt.md
   （durable，worktree 移除后可解析）。next: merge（/auto-plan:merge）。
+- 2026-10-10 stage: merge（/auto-plan:merge）。plan_revision: 1。
+  **outcome: pass；completion_kind: delivered**。收据 PLAN-751:r1 五检查点：
+  - **prepared**：reviewed 基线（226ebfbbb 代码 + ba9b4281b spec，rebase 前
+    f16de5a19/fe3d78937——rebase 零冲突补丁等价，old→new 映射在案）；canonical
+    spec diff=SD-01（api-generation-integrity.md 三态单点行）；投影目标=
+    .autoos/specs.json P751-1（designs）/P751-2（reviews）/P751-3（reports）+
+    auto-man/plans.md 751 行 + INDEX.md 再生（scripts/p751_ledger.py +
+    scripts/spec-index.py，沿 p736/p748/p750 验证先例）；delivery_commit=
+    `d79282eb6`（reviewed 提交的 docs/projection-only 后代，实现与依赖零变化）。
+  - **landed**：master `git merge --ff-only plan-751-dev` 成功，master tip=
+    `d79282eb6`=delivery commit（无 merge commit）；主检出冒烟归因注记：主检
+    出工作树带有**他方在途 WIP**（crates/auto-lang/src/ui/autodown_* 等，
+    非本计划产物、未包含在本 landing）——落地内容的编译/测试证据绑定于
+    worktree 干净树（cargo check -p auto-man exit 0、auto-man 354 run、
+    裸 cargo t 5224 run、th 102 run 均在同内容上执行）。
+  - **ledger_refreshed**：.autoos/specs.json（仓 git 跟踪，随分支落地）——
+    P751-1/2/3 upsert 回读核验（805 items）；INDEX.md 再生（26 projects）。
+  - **archived**：docs/plans/archive/751-empty-lock-identity-th-tail.md
+    （git mv，status: archived）。
+  - **cleaned**：wt-guard 双仓 clean（auto-down 兄弟 + auto-lang 主仓）→
+    `git worktree remove` 双仓 → 分支 plan-751-dev 删除（was d79282eb6=已
+    落地）→ 组目录 D:/autostack/.wt/lang-751 移除，`.wt/` 下零 751 残留
+    （grep 复核 exit 1）。
+  观察项（landing≠deployment）：auto.exe 发布二进制未随本计划重建（auto-man
+  codegen 为开发面 CLI，非运行中守护进程消费）——下次发布构建时自然收敛，
+  不构成运行态缺陷。
+  next: worktree 清理 + 批量回归到期判定（/auto-plan:regress）。
 
 ## 待澄清事项
 
