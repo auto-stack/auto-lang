@@ -297,10 +297,10 @@ test.describe('v05 release page', () => {
     await expect(details).toHaveAttribute('open')
   })
 
-  test('kanban comparison present with both arms', async ({ page }) => {
+  test('kanban comparison reserves both verified-candidate captures', async ({ page }) => {
     await page.goto('/zh/v05/')
-    await expect(page.locator('.kanban-pair .evidence-image img[src="/v05/kanban-web.png"]')).toHaveCount(1)
-    await expect(page.locator('.kanban-pair .evidence-image img[src="/v05/kanban-desktop.png"]')).toHaveCount(1)
+    await expect(page.locator('.kanban-pair [data-capture-id="SHOT-11"]')).toHaveCount(1)
+    await expect(page.locator('.kanban-pair [data-capture-id="SHOT-12"]')).toHaveCount(1)
   })
 })
 

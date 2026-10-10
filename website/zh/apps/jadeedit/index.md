@@ -5,6 +5,10 @@ outline: [2, 3]
 editLink: false
 ---
 
+<script setup>
+import ScreenshotSlot from '../../../.vitepress/theme/components/ScreenshotSlot.vue'
+</script>
+
 # JadeEdit：文档与本地知识工作台
 
 JadeEdit 是面向 AutoDown（`.ad`）文档和本地知识库的编辑器。它从写好一篇文档开始，把页面之间的链接、搜索、标签和目录组织逐步连接起来，服务于日常记录与个人知识整理。
@@ -13,7 +17,7 @@ JadeEdit 是面向 AutoDown（`.ad`）文档和本地知识库的编辑器。它
 
 [全部应用](/zh/apps) · [AutoDown 与 Jade Garden 资料](/zh/apps/autodown/)
 
-<!-- Screenshot slot: JadeEdit main interface after its Milestone, using one coherent knowledge-base fixture. -->
+<ScreenshotSlot capture-id="SHOT-07" />
 
 ## 从一篇文档开始
 
@@ -33,7 +37,7 @@ JadeEdit 是面向 AutoDown（`.ad`）文档和本地知识库的编辑器。它
 
 链接与显示名有各自的规则，移动页面、修改标题和重命名文件也不是同一种操作。页面改名会涉及引用更新，文件删除会留下待处理的悬空关系；应用逐步完善这些操作的预览、确认与保护。
 
-<!-- Screenshot slot: links/backlinks and search, continuing with the same knowledge-base fixture. -->
+<ScreenshotSlot capture-id="SHOT-08" />
 
 ## 组织工作区与保护未保存内容
 
@@ -41,7 +45,7 @@ JadeEdit 是面向 AutoDown（`.ad`）文档和本地知识库的编辑器。它
 
 目前已有单文档重载保护、本地草稿检查点与重启后的恢复副本。恢复草稿时先打开副本，不直接覆盖原文件；草稿受到保护也不等于正文已经保存。多文档文件操作的保护仍在实施与收口中，本页不将其写成已经完全提供的数据安全保证。
 
-<!-- Screenshot slot: draft recovery or a document-operation confirmation, after the corresponding behavior is accepted. -->
+<ScreenshotSlot capture-id="SHOT-09" />
 
 ## 同一工程的 Web 与桌面路径
 

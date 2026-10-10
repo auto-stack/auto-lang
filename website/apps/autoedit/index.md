@@ -6,6 +6,7 @@ editLink: false
 ---
 
 <script setup>
+import ScreenshotSlot from '../../.vitepress/theme/components/ScreenshotSlot.vue'
 import EvidenceImage from '../../.vitepress/theme/components/EvidenceImage.vue'
 </script>
 
@@ -32,7 +33,7 @@ A typical sequence is to find a file, open related tabs, read and make focused e
 
 Large-file handling reduces unnecessary highlighting and full-document operations. Practical limits and performance depend on the runtime and operation; development measurements are not presented here as universal performance guarantees.
 
-<!-- Screenshot slot: project search / find-and-replace using a reproducible source fixture. -->
+<ScreenshotSlot capture-id="SHOT-02" />
 
 ## Compare files, directories, and editing buffers
 
@@ -46,7 +47,7 @@ Comparisons support reading and checking changes after editing.
 
 You can jump from a comparison to the corresponding file, edit, save, and compare again. This differs from editing directly inside a diff row, which still needs further development. Directory synchronization includes confirmation; check the destination and affected entries first.
 
-<!-- Screenshot slot: side-by-side diff, followed by the edit/save/recompare operation. -->
+<ScreenshotSlot capture-id="SHOT-03" />
 
 ## Its role in AI-assisted work
 

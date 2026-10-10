@@ -24,6 +24,8 @@
 
 /** locale 前缀规则：zh 变体 = '/zh' + path（'/' 例外）。与 theme/data/navigation.ts switchLocaleHref 同口径。 */
 export function localeHref(path, zh) {
+  // Public SPA resources are shared by both languages.
+  if (path.startsWith('/ui/') && (path.endsWith('.html') || path.startsWith('/ui/demos/'))) return path
   if (!zh) return path
   if (path === '/') return '/zh/'
   return '/zh' + path

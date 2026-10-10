@@ -6,6 +6,7 @@ editLink: false
 ---
 
 <script setup>
+import ScreenshotSlot from '../../../.vitepress/theme/components/ScreenshotSlot.vue'
 import EvidenceImage from '../../../.vitepress/theme/components/EvidenceImage.vue'
 </script>
 
@@ -32,7 +33,7 @@ AutoEdit 是 Auto 生态中的轻量文本编辑器。它把浏览、比较和�
 
 大文件有单独的处理模式，用来减少不必要的高亮与全文操作。实际可处理的规模与性能取决于运行形态和具体操作；这里不将开发期测量数值作为通用性能承诺。
 
-<!-- Screenshot slot: project search / find-and-replace using a reproducible source fixture. -->
+<ScreenshotSlot capture-id="SHOT-02" />
 
 ## 比较文件、目录与编辑缓冲区
 
@@ -46,7 +47,7 @@ AutoEdit 的差异比较既服务于阅读，也服务于修改后的复查。
 
 从差异视图可以跳转到对应文件侧编辑，保存后重新比较。这个回路与“直接在差异行中原位编辑”不同，后者仍需另外完善。目录同步操作有确认步骤，应先检查目标和变化范围。
 
-<!-- Screenshot slot: side-by-side diff, followed by the edit/save/recompare operation. -->
+<ScreenshotSlot capture-id="SHOT-03" />
 
 ## 它在 AI 工作流里的角色
 

@@ -20,6 +20,8 @@ The initial writing phase was image-free. PLAN-723 introduces the approved AutoE
 
 AutoShell's existing evidence and interactive examples remain at /apps/autoshell/guide/ and the ZH mirror, using unchanged AutoShellLanding.vue. The introduction links the guide; the guide links back. Retain the native ls overview, mode records and their provenance, script tabs, keyboard navigation, copy, downloads, and version/platform boundaries. Release AutoShellPreview remains unchanged.
 
+PLAN-756 user direction permits explicit text-only pending-capture slots for this writing phase. Home and v0.5 use the same four-product applicationCopy source, with pending AutoEdit/Musk/Jade images; approved AutoEdit detail/overview and Shell captures remain. Product operation slots and release comparison/Playground slots bind to SHOT-01..12 in docs/reports/website-v05-capture-guide.md. Slots have no image request and are not delivery evidence. Musk Kanban/Canvas and Jade milestone imagery require their own candidate acceptance; old Kanban or Jade Garden material cannot fill them.
+
 ## Verification
 
 Build and verify SSR, routes, local links, outline/locale behavior, approved image hashes and loading, absence of unready-product images/iframes/backend requests, original guide interactions, and EN/ZH at five widths in both themes. Demo introductions stay in the overview, with native disclosures and shareable anchors; only the four main products retain standalone detail topics. Legacy demo URLs redirect to the overview. Demo images follow [the capture catalog contract](demo-capture-catalog.md). Prepared Spec changes belong to the plan worktree until landing. Category A does not trigger Cargo tests or docs_gen.

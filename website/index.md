@@ -10,6 +10,10 @@ import HomeHero from './.vitepress/theme/components/HomeHero.vue'
 import HomeDemo from './.vitepress/theme/components/HomeDemo.vue'
 import AutoShellPreview from './.vitepress/theme/components/AutoShellPreview.vue'
 import FeatureCard from './.vitepress/theme/components/FeatureCard.vue'
+import ScreenshotSlot from './.vitepress/theme/components/ScreenshotSlot.vue'
+import { applicationCopy } from './.vitepress/theme/data/applications'
+const applications = applicationCopy(false).apps
+const captureIds = { autoedit: 'SHOT-01', automusk: 'SHOT-04', jadeedit: 'SHOT-07' }
 const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
 onMounted(() => {
   if (sessionStorage.getItem('auto-lang-checked')) return;
@@ -23,26 +27,28 @@ onMounted(() => {
 <div class="landing-page" style="--page-accent-1: #6366f1; --page-accent-2: #8b5cf6">
 
 <HomeHero
-  badge="v0.5 is now available"
+  badge="v0.5 milestone"
   badge-link="/v05/"
   title=": AI × Lang × OS"
   description="Auto is a dynamic-meets-static, cross-ecosystem language.<br>Script instantly on the AutoVM — ship the same source as Rust."
   primary-text="Get Started"
-  primary-link="/docs/"
+  primary-link="/docs/language/overview#running-and-building"
   secondary-text="Try Online"
   secondary-link="/playground"
 />
+
+<p class="section-desc release-status">Milestone introductions and development material are available; release artifacts and download links await candidate freeze.</p>
 
 <HomeDemo />
 
 <div class="pillars-section">
   <h2 class="section-title">One Language, Every Layer</h2>
-  <p class="section-desc">v0.5 turns Auto from a language into a complete platform for building modern applications.</p>
+  <p class="section-desc">v0.5 connects the language, cross-renderer UI, virtual desktop and applications; readiness varies by path.</p>
   <div class="pillars-grid">
     <FeatureCard icon="🌐" title="Language" description="Actor concurrency, Rust-like generics, comptime metaprogramming, and memory safety." color="rgba(99, 102, 241, 0.15)" link="/docs/language" />
-    <FeatureCard icon="🦀" title="Rust" description="AutoVM as a Rust scripting environment. A2R transpiles Auto to production-grade Rust. Dual stdlib modes." color="rgba(222, 165, 132, 0.15)" link="/rust" />
+    <FeatureCard icon="🦀" title="Rust" description="AutoVM as a Rust scripting environment. a2r emits Rust; supported interfaces depend on concrete signatures and verified corpus." color="rgba(222, 165, 132, 0.15)" link="/rust" />
     <FeatureCard icon="🐍" title="Python" description="Call Python code directly from AutoVM. a2py transpiles Auto to Python." color="rgba(59, 130, 246, 0.15)" link="/python" />
-    <FeatureCard icon="🎨" title="UI" description="Vue and Tauri are mature. Desktop (Rust/iced) is usable. Harmony and Android demos validated." color="rgba(168, 85, 247, 0.15)" link="/ui" />
+    <FeatureCard icon="🎨" title="UI" description="Vue/Web and iced/desktop are the main paths; Harmony and Jetpack Compose are at feasibility-demo maturity." color="rgba(168, 85, 247, 0.15)" link="/ui" />
     <FeatureCard icon="🤖" title="AI" :description="copy.home.ai" color="rgba(236, 72, 153, 0.15)" link="/ai" />
     <FeatureCard icon="💻" title="OS" :description="copy.home.os" color="rgba(20, 184, 166, 0.15)" link="/os" />
   </div>
@@ -50,27 +56,16 @@ onMounted(() => {
 
 <div class="apps-section">
   <h2 class="section-title">Built with Auto</h2>
-  <p class="section-desc">Real applications that prove the platform works.</p>
+  <p class="section-desc">Applications for code, commands, development tasks and knowledge; each topic describes current progress.</p>
   <div class="apps-grid">
-    <div class="app-card">
-      <div class="app-shot"><AutoShellPreview lang="en" /></div>
-      <h3>AutoShell</h3>
-      <p>An interactive shell, field-based pipelines and multiline AutoScript. Explore practical use cases and observed runs.</p>
-      <a href="/apps/autoshell/">Learn more →</a>
-    </div>
-    <div class="app-card">
-      <div class="app-shot"><img src="/v05/automusk-app.png" alt="AutoMusk coding agent main interface" loading="lazy" /></div>
-      <h3>AutoMusk</h3>
-      <p>General-purpose coding agent built on AutoPlan, implemented in Auto itself.</p>
-      <a href="/apps/automusk/">Learn more →</a>
-    </div>
-    <div class="app-card">
-      <div class="app-shot"><img src="/v05/autodown-desktop.png" alt="AutoDown Jade Garden desktop edition" loading="lazy" /></div>
-      <h3>AutoDown</h3>
-      <p>An Auto dialect that combines Markdown and YAML for structured knowledge bases.</p>
-      <a href="/apps/autodown/">Learn more →</a>
+    <div v-for="app in applications" :key="app.key" class="app-card">
+      <div class="app-shot"><AutoShellPreview v-if="app.key === 'autoshell'" lang="en" /><ScreenshotSlot v-else :capture-id="captureIds[app.key]" /></div>
+      <h3>{{ app.name }}</h3>
+      <p>{{ app.summary }}</p>
+      <a :href="'/apps/' + app.key + '/'">Learn more →</a>
     </div>
   </div>
+  <p class="section-desc">AutoDown supplies document and editor foundations; Jade Garden is an existing knowledge-base project, described separately from JadeEdit. <a href="/apps/autodown/">Related resources →</a></p>
 </div>
 
 <div class="apps-section">
@@ -84,7 +79,7 @@ onMounted(() => {
 
 <div class="cta-section">
   <h2 class="section-title">What's New in v0.5</h2>
-  <p class="section-desc">The biggest milestone yet: Rust integration, Python support, dual stdlib modes, mature AutoUI, AutoAI architecture, and AutoOS foundations.</p>
+  <p class="section-desc">Rust/Python interoperability, Vue/iced UI, AutoAI and the AutoOS application ecosystem; see the notes for support boundaries.</p>
   <div class="cta-actions">
     <a href="/docs/releases/v0.5" class="cta-btn cta-primary">Read Release Notes</a>
     <a href="/playground" class="cta-btn cta-secondary">Open Playground</a>

@@ -1,10 +1,11 @@
 // PLAN-715 T-06：v0.5 发布页内容数据（EN/ZH 同构）。
 // 内容全部自旧版 v05/index.md 按映射表（docs/reports/p715-website-ui-baseline.md §6）
 // 迁移：理念长文进 details、统计后移至历程、TODO 开始菜单占位换 desktop-launcher.png、
-// AutoEdit 去空图位保留文字。计数/日期/来源/无冻结标签声明逐字保全。
+// PLAN-756：四主应用与待拍槽更新；历史计数和来源保留，运行条件按实际范围说明。
 // 实图尺寸实测（2560×1600 等）用于宽高占位防 CLS。
 
 import { desktopShots } from './desktop-showcase'
+import { applicationCopy } from './applications'
 
 export interface ReleaseShot {
   src: string
@@ -36,8 +37,9 @@ export interface ReleaseFlagship {
   href?: string
   linkLabel?: string
   image?: ReleaseShot
-  /** AutoShell 用原生主图组件；AutoEdit 无实图——只保留文字，不放假图位 */
-  kind: 'image' | 'autoshell' | 'none'
+  /** AutoShell 保留原生主图；新候选场景用文字待拍槽。 */
+  captureId?: string
+  kind: 'image' | 'autoshell' | 'none' | 'pending'
 }
 
 export interface ReleaseCard {
@@ -46,16 +48,29 @@ export interface ReleaseCard {
   description: string
 }
 
+
+function flagshipItems(zh: boolean): ReleaseFlagship[] {
+  const emoji: Record<string, string> = { autoedit: '📝', autoshell: '🐚', automusk: '🤖', jadeedit: '📄' }
+  const captures: Record<string, string> = { autoedit: 'SHOT-01', automusk: 'SHOT-04', jadeedit: 'SHOT-07' }
+  return applicationCopy(zh).apps.map(app => ({
+    name: app.name, emoji: emoji[app.key], desc: app.summary,
+    href: (zh ? '/zh' : '') + '/apps/' + app.key + '/',
+    linkLabel: zh ? '了解这个应用 →' : 'Explore this application →',
+    captureId: captures[app.key], kind: app.key === 'autoshell' ? 'autoshell' : 'pending',
+  }))
+}
+
 const en = {
   hero: {
-    badge: 'The biggest update yet',
+    badge: 'v0.5 milestone',
     titlePre: 'Auto',
-    title: ': v0.5 Is Here',
+    title: ': The v0.5 Milestone',
     description: 'Dynamic dev with static shipping, decoupled frontends, and Language as OS — three ideas have grown into a platform. This time, Auto starts to become itself.',
     primaryText: 'Read the Release Notes',
     primaryLink: '/docs/releases/v0.5',
-    secondaryText: 'See it in action ↓',
+    secondaryText: 'See the desktop ↓',
     secondaryLink: '#desktop',
+    status: 'This page introduces the v0.5 milestone. Release artifacts and download links await candidate freeze; dated captures remain historical evidence.',
     heroShot: {
       src: '/desktop-showcase/02-desktop-dark.png',
       label: 'Desktop',
@@ -82,7 +97,7 @@ const en = {
       details: [
         'Most languages make you choose: scripting gives instant iteration but leaves performance at the door; systems languages deliver native speed but tax every idea with a compile cycle. Auto refuses to choose.',
         'In development, the AutoVM interprets your code — instant startup, hot reload, with REPL and LSP at your side.',
-        'At release, the same source transpiles to native Rust via a2r (or to C via a2c).',
+        'At release, a2r transpiles supported sources to Rust. The C generator has its own scope; complete MCU delivery remains a longer-term direction.',
         'Not just Rust — this dynamic-static pairing is the shared design origin of every ecosystem across Auto\'s map.',
         'A dynamic-static pairing for every ecosystem — UI development (VM/iced hot-reload preview ↔ transpiled release), MCU and Godot dynamic/static pairings still being explored in stages, scientific computing (use.py calls PyTorch directly ↔ a2r ships the service). Before entering any ecosystem, two questions must be answered: how does it run dynamically, and how does it ship statically?',
         'Hot reload is the soul of the dynamic side — the value of dynamic mode is more than fast startup: edit without restarting, keep your running state, and see exactly what you just changed. AutoUI desktop development supports hot reload; state preservation depends on the path and the change.',
@@ -162,23 +177,7 @@ const en = {
       'Tokenized light/dark theming — one theme declaration, one look across both ends; the example ecosystem defaults to dark, one CLI flag flips to light.',
     ],
     compareTitle: 'One example, two ends',
-    compareDesc: 'The same kanban example rendered by the Vue (web) arm and the iced (desktop) arm — both are real captures checked into this repository. They demonstrate one source growing two ends; per-item equality is covered by the corpus checks, not implied by these images.',
-    kanbanWeb: {
-      src: '/v05/kanban-web.png',
-      label: 'Web (Vue)',
-      alt: 'Kanban example rendered by the Vue web arm',
-      caption: 'Kanban example — Vue (web) arm',
-      width: 1480,
-      height: 900,
-    } as ReleaseShot,
-    kanbanDesktop: {
-      src: '/v05/kanban-desktop.png',
-      label: 'Desktop (iced)',
-      alt: 'Kanban example rendered by the iced desktop arm',
-      caption: 'Kanban example — iced (desktop) arm',
-      width: 2560,
-      height: 1600,
-    } as ReleaseShot,
+    compareDesc: 'The matching Vue and native desktop views will use one kanban fixture and source revision. These capture slots await candidate verification. The example is separate from Musk Kanban; images alone do not establish behavioral parity.',
     arch: {
       src: 'One .at',
       srcSub: 'Components · State · Event contract',
@@ -190,80 +189,33 @@ const en = {
     },
     galleryLinks: [
       { href: '/ui/gallery/index.html', title: '🧩 Widgets Gallery', sub: '46+ components, alive and interactive' },
-      { href: '/ui/demos/', title: '🗂️ Demo Apps Gallery', sub: '28 system apps, playable online' },
+      { href: '/apps#system-apps', title: '🗂️ System apps and demos', sub: '28 introductions with captures and per-app conditions' },
       { href: '/ui/charts/index.html', title: '📊 Charts Gallery', sub: 'Area · bar · line · donut' },
     ],
   },
 
   flagship: {
     navLabel: 'Apps',
-    title: 'Four Flagship Apps: Auto Meets Rust',
-    desc: 'The desktop answers "what can Auto run?" — these four apps answer "what can Auto do?". An agent, a shell, a knowledge base, an editor: four entirely different application paradigms, built from Auto apps and Rust services, with dedicated pages for further exploration.',
-    items: [
-      {
-        name: 'AutoMusk',
-        emoji: '🤖',
-        desc: 'The agent for developing Auto apps, backed by the auto-ai architecture: Client/Daemon centrally schedules LLM compute. Driven by the AutoPlan mode, its five frontend views are generated from a single .at source, backed by Rust services.',
-        href: '/apps/automusk/',
-        linkLabel: 'Landing page →',
-        image: {
-          src: '/v05/automusk-app.png',
-          alt: 'AutoMusk main interface',
-          label: 'AutoMusk',
-          caption: '',
-          width: 2560,
-          height: 1600,
-        },
-        kind: 'image',
-      },
-      {
-        name: 'AutoShell',
-        emoji: '🐚',
-        desc: 'A Rust shell with AutoLang as its embedded scripting and GUI language, combining the best of AutoLang + NuShell + Fish + Warp: commands exchange typed objects instead of text streams. Backed by the auto-term terminal infrastructure, with a built-in security sandbox and 79 agent tools.',
-        href: '/apps/autoshell/',
-        linkLabel: 'Landing page →',
-        kind: 'autoshell',
-      },
-      {
-        name: 'AutoDown',
-        emoji: '📄',
-        desc: 'The Auto language knowledge base: a Markdown+YAML dialect and Jade Garden, an Obsidian-like vault, with the jade-edit editor built in. Frontend and backend logic live in one .at source, with Web and desktop shapes.',
-        href: '/apps/autodown/',
-        linkLabel: 'Landing page →',
-        image: {
-          src: '/v05/autodown-desktop.png',
-          alt: 'AutoDown desktop edition',
-          label: 'AutoDown',
-          caption: '',
-          width: 2560,
-          height: 1600,
-        },
-        kind: 'image',
-      },
-      {
-        name: 'AutoEdit',
-        emoji: '📝',
-        desc: 'A text editor for the Auto language with an evolving code-editing experience — an editor written in Auto, editing Auto. The ultimate form of dogfooding. (Dedicated page and screenshots are pending; this description is all we claim today.)',
-        kind: 'none',
-      },
-    ] as ReleaseFlagship[],
+    title: 'Four Main Applications',
+    desc: 'AutoEdit for code and text, AutoShell for commands and scripts, AutoMusk for AI-assisted development, and JadeEdit for documents and knowledge. Features, prerequisites and readiness are described individually.',
+    items: flagshipItems(false),
   },
 
   systemApps: {
     navLabel: 'System apps',
-    title: '28 System App Demos',
-    desc: 'Whether a desktop deserves to be opened every day depends on what apps it ships with. AutoOS\'s answer is 28. App features and maturity vary; 20+ more (calculator, clock, todo, weather, notes, chat, book reader, kanban, photo gallery...) have runnable demos at various stages of polish — all collected in the Demo Apps Gallery.',
-    galleryHref: '/ui/demos/',
-    galleryLabel: 'Demo Apps Gallery',
+    title: '28 System App and Demo Introductions',
+    desc: 'The directory groups 28 introductions with real captures, typical actions and runtime conditions. This is an introduction set, not a release-app count or universal online-playability claim. The older gallery has a different sample set; broader Web desktop and application experiences are planned for v0.5.1.',
+    galleryHref: '/apps#system-apps',
+    galleryLabel: 'Browse the application introductions',
     cards: [
       { icon: '🎵', title: 'Music Player', description: 'Web and desktop music-player forms, with playlists, progress and cover art; real media interactions continue to improve.' },
       { icon: '🎬', title: 'Video Player', description: 'Web and desktop video-player forms with real media services; desktop controls and hit testing continue to improve.' },
-      { icon: '🗂️', title: 'File Manager', description: 'A complete file browser: directory tree, preview, multi-select operations — a real window on the virtual desktop.' },
-      { icon: '🚀', title: 'Launcher', description: 'The app launcher — the entry point to all 28 system apps, and the foundation of the AutoOS start menu.' },
-      { icon: '🃏', title: 'FreeCell', description: 'The classic card game fully recreated, running on both AutoUI backends.' },
-      { icon: '💣', title: 'Minesweeper', description: 'Minesweeper, fully playable — logic, timer, and difficulty levels.' },
+      { icon: '🗂️', title: 'File Manager', description: 'A file-browser demo with directory, preview and selection interfaces; data and supported operations are described individually.' },
+      { icon: '🚀', title: 'Launcher', description: 'The application launcher and start-menu foundation; available entries depend on the desktop build.' },
+      { icon: '🃏', title: 'FreeCell', description: 'A card-game demo; its introduction describes the supported controls and runtime path.' },
+      { icon: '💣', title: 'Minesweeper', description: 'A Minesweeper demo showing the board, flags, timer and difficulty selection.' },
       { icon: '🧱', title: 'Tetris', description: 'Tetris: falling, rotation, line clears, scoring, smooth keyboard control.' },
-      { icon: '🖥️', title: 'Sys Monitor', description: 'System monitor: KPI curves + process table, fed by real system data.' },
+      { icon: '🖥️', title: 'Sys Monitor', description: 'System-monitor charts and a process table; distinguish sample data from a connected system service.' },
     ] as ReleaseCard[],
   },
 
@@ -271,16 +223,16 @@ const en = {
     navLabel: 'Playground',
     badge: 'Playground',
     title: 'The New Playground: An Auto Lab in Your Browser',
-    desc: 'Nearly all Auto example code is browsable out of the box, with new Debug support — corpus, golden samples, and book snippets run right in your browser.',
-    narrative: 'Beyond the language and the desktop, we also moved the lab into the browser. It used to take a repo clone to try an example; now 1280+ corpus snippets run on demand right on the page — with the AutoVM\'s internal state visible while they execute.',
+    desc: 'Read and edit corpus notes, golden samples and book snippets in the browser. Running, transpiling and debugging require a configured Playground backend.',
+    narrative: 'The Playground brings corpus browsing to the website. Reading and editing need no backend; connect a local or co-deployed service to run supported examples. Debugging coverage depends on the execution path.',
     points: [
-      '1280+ corpus notes — 460 VM golden samples, 158 AAVM bootstrap corpus files, 634 book fences, and 28 demo examples.',
+      'Corpus snapshot (2026-09-07) — 460 VM golden samples, 158 AAVM files, 634 book fences and 28 demo examples; the current browser lists the generated collection.',
       'Debug support — pair it with a local backend to watch the AutoVM execute, no longer just a black box.',
-      'Run / transpile online — the same source, interpreted or transpiled to Rust/Python for parity checks.',
+      'Run / transpile with a backend — inspect execution and generated Rust/Python for supported examples; one result is not itself a parity test.',
     ],
     stats: [
       { value: '460', label: 'VM Golden Samples', description: 'Corpus as tests.', color: '#6366f1' },
-      { value: '634', label: 'Book Fences', description: 'Eight books you can run as you read.', color: '#8b5cf6' },
+      { value: '634', label: 'Book Fences', description: 'Eight books with browsable snippets; execution needs a backend.', color: '#8b5cf6' },
       { value: 'Debug', label: 'Debug Support', description: 'Watch it execute.', color: '#14b8a6' },
     ],
   },
@@ -343,7 +295,7 @@ const en = {
     statsNote: 'Scale figures are a September 7, 2026 repository snapshot including tests and corpus; token usage is author-provided. September 30 audit: 8,033 commits from v0.3 to 14e444f02; no frozen v0.5 tag yet.',
     timeline: [
       { version: 'v0.3', title: 'The language kernel stood up', text: 'Type system, ownership and borrowing, pattern matching — the foundation of a language was laid.' },
-      { version: 'v0.4', title: 'Runtime and transpilers', text: 'The AutoVM became fully capable, a2r transpilation reached production grade, and the AI-agent infrastructure was built — Auto started running real applications.' },
+      { version: 'v0.4', title: 'Runtime and transpilers', text: 'AutoVM and a2r expanded their supported paths, while AI-agent infrastructure started supporting real application workflows.' },
       { version: 'v0.5', title: 'Desktop and app ecosystem', text: 'The AutoUI dual-backend architecture matured, the AutoOS virtual desktop became usable, and Auto apps and Rust services formed a desktop ecosystem.' },
     ],
   },
@@ -354,7 +306,7 @@ const en = {
     desc: 'Near-term work and longer-term directions. Independent OS forms and knowledge collaboration have no fixed release date.',
     cards: [
       { icon: '🖥️', title: 'AutoOS', description: 'Improve the virtual desktop and host integration; explore independent systems using existing kernels. An AutoOS kernel remains longer-term research, without a delivery date.' },
-      { icon: '📱', title: 'AutoUI', description: 'HarmonyOS ecosystem support; initial Android / iOS support via Jetpack Compose.' },
+      { icon: '📱', title: 'AutoUI', description: 'Build on Harmony and Jetpack Compose feasibility demos; complete Android and iOS delivery still needs further work and validation.' },
       { icon: '🤖', title: 'ROS2 Ecosystem', description: 'Robotics node development on Rust/Python, plugging into DORA-RS and beyond.' },
       { icon: '🎮', title: 'Godot Ecosystem', description: 'Fuller GDScript support and native Scene/Node capabilities, fitting into the Godot development workflow.' },
       { icon: '🔩', title: 'MCU Ecosystem', description: 'Embedded: Auto transpiles to C, and the AutoMan build system takes Auto into the microcontroller world.' },
@@ -364,9 +316,9 @@ const en = {
 
   cta: {
     title: 'Try Auto Today',
-    desc: 'Run scripts instantly, ship as Rust — from the browser to your machine, up and running in five minutes.',
+    desc: 'Read an example, then prepare the toolchain with the run and build guide. Browsing needs no backend; execution and debugging require a service.',
     primaryText: 'Get Started',
-    primaryLink: '/docs/',
+    primaryLink: '/docs/language/overview#running-and-building',
     secondaryText: 'Open Playground',
     secondaryLink: '/playground',
   },
@@ -374,14 +326,15 @@ const en = {
 
 const zh = {
   hero: {
-    badge: '迄今最大更新',
+    badge: 'v0.5 里程碑',
     titlePre: 'Auto',
-    title: '：v0.5 来了',
+    title: '：v0.5 里程碑',
     description: '动态开发、静态发布；前端解耦、语言即 OS —— 三个理念长成了一个平台。这一次，Auto 开始成为它自己。',
     primaryText: '阅读发布说明',
     primaryLink: '/zh/docs/releases/v0.5',
-    secondaryText: '先看实际效果 ↓',
+    secondaryText: '查看桌面实景 ↓',
     secondaryLink: '#desktop',
+    status: '本页介绍 v0.5 里程碑。发行工件与下载入口待候选冻结后确认；已有截图按标注日期保留。',
     heroShot: {
       src: '/desktop-showcase/02-desktop-dark.png',
       label: '桌面',
@@ -408,7 +361,7 @@ const zh = {
       details: [
         '大多数语言让你二选一：脚本带来即时迭代，却把性能挡在门外；系统语言给出原生速度，却让每个想法都付一次编译税。Auto 拒绝选择。',
         '开发态，AutoVM 解释执行你的代码 —— 即时启动、热重载，REPL 与 LSP 随侍在侧。',
-        '发布态，同一份源码经 a2r 转译为原生 Rust（或经 a2c 到 C）。',
+        '发布态，a2r 将受支持的源码转译为 Rust。C 生成器有独立覆盖范围，完整 MCU 交付仍属后续方向。',
         '不止 Rust —— 这一动一静的配对，是 Auto 版图上所有生态共同的设计原点。',
         '每个生态都有一动静配对 —— UI 开发（VM/iced 热重载预览 ↔ 转译发布）、MCU 与 Godot 的动静配对在分阶段探索、科学计算（use.py 直接调 PyTorch ↔ a2r 发布服务）。进入任何生态前都要回答两个问题：动态怎么跑，静态怎么发？',
         '热重载是动态侧的灵魂 —— 动态模式的价值不只是启动快：改了不用重启、运行状态还在、所见即所改。AutoUI 桌面开发支持热重载；状态能否保留取决于路径与改动。',
@@ -488,23 +441,7 @@ const zh = {
       '令牌化深浅主题 —— 一份主题声明，两端同一观感；示例生态默认深色，一个 CLI 开关切到浅色。',
     ],
     compareTitle: '同一个例子，两端',
-    compareDesc: '同一个看板示例，分别由 Vue（Web）臂与 iced（桌面）臂渲染 —— 两张都是本仓入库的真实截图。它们证明的是"一份源码长出两端"；逐项一致性由语料检查覆盖，不由这两张图暗示。',
-    kanbanWeb: {
-      src: '/v05/kanban-web.png',
-      label: 'Web（Vue）',
-      alt: '看板示例的 Vue Web 臂渲染',
-      caption: '看板示例 —— Vue（Web）臂',
-      width: 1480,
-      height: 900,
-    } as ReleaseShot,
-    kanbanDesktop: {
-      src: '/v05/kanban-desktop.png',
-      label: '桌面（iced）',
-      alt: '看板示例的 iced 桌面臂渲染',
-      caption: '看板示例 —— iced（桌面）臂',
-      width: 2560,
-      height: 1600,
-    } as ReleaseShot,
+    compareDesc: '两端将使用同一看板数据与源码版本，分别拍摄 Vue/Web 与原生桌面视图；当前留下候选待拍位置。此示例与 Musk Kanban 分开，图片本身不证明逐项行为一致。',
     arch: {
       src: '一份 .at',
       srcSub: '组件 · 状态 · 事件契约',
@@ -516,80 +453,33 @@ const zh = {
     },
     galleryLinks: [
       { href: '/ui/gallery/index.html', title: '🧩 组件画廊', sub: '46+ 组件，活的、可交互' },
-      { href: '/ui/demos/', title: '🗂️ 应用演示画廊', sub: '28 个系统应用，在线可玩' },
+      { href: '/zh/apps#system-apps', title: '🗂️ 系统应用与 Demo', sub: '28 项介绍、截图与各自运行条件' },
       { href: '/ui/charts/index.html', title: '📊 图表画廊', sub: '面积 · 柱 · 线 · 环' },
     ],
   },
 
   flagship: {
     navLabel: '旗舰应用',
-    title: '四大旗舰应用：Auto 遇见 Rust',
-    desc: '桌面回答了"Auto 能跑什么？"—— 这四个应用回答"Auto 能做什么？"。一个 Agent、一个 Shell、一个知识库、一个编辑器：四种完全不同的应用范式，由 Auto 应用与 Rust 服务构成，均有专题页可深入。',
-    items: [
-      {
-        name: 'AutoMusk',
-        emoji: '🤖',
-        desc: '开发 Auto 应用的 Agent，由 auto-ai 架构支撑：Client/Daemon 集中调度 LLM 算力。由 AutoPlan 模式驱动，五个前端视图从单一 .at 源生成，Rust 服务殿后。',
-        href: '/zh/apps/automusk/',
-        linkLabel: '专题页 →',
-        image: {
-          src: '/v05/automusk-app.png',
-          alt: 'AutoMusk 主界面',
-          label: 'AutoMusk',
-          caption: '',
-          width: 2560,
-          height: 1600,
-        },
-        kind: 'image',
-      },
-      {
-        name: 'AutoShell',
-        emoji: '🐚',
-        desc: '以 AutoLang 为内嵌脚本与 GUI 语言的 Rust Shell，融合 AutoLang + NuShell + Fish + Warp 之长：命令之间交换类型化对象而非文本流。auto-term 终端基建加持，内置安全沙箱与 79 个 Agent 工具。',
-        href: '/zh/apps/autoshell/',
-        linkLabel: '专题页 →',
-        kind: 'autoshell',
-      },
-      {
-        name: 'AutoDown',
-        emoji: '📄',
-        desc: 'Auto 语言的知识库：Markdown+YAML 方言与类 Obsidian 的知识库 Jade Garden，内置 jade-edit 编辑器。前后端逻辑同一 .at 源，Web 与桌面双形态。',
-        href: '/zh/apps/autodown/',
-        linkLabel: '专题页 →',
-        image: {
-          src: '/v05/autodown-desktop.png',
-          alt: 'AutoDown 桌面版',
-          label: 'AutoDown',
-          caption: '',
-          width: 2560,
-          height: 1600,
-        },
-        kind: 'image',
-      },
-      {
-        name: 'AutoEdit',
-        emoji: '📝',
-        desc: '面向 Auto 语言的文本编辑器，代码编辑体验持续演进 —— 用 Auto 写的编辑器编辑 Auto，吃狗粮的最高形态。（专题页与截图尚待补齐；当前只声明这段描述。）',
-        kind: 'none',
-      },
-    ] as ReleaseFlagship[],
+    title: '四个主应用',
+    desc: 'AutoEdit 用于代码与文本，AutoShell 用于命令与脚本，AutoMusk 用于 AI 辅助开发，JadeEdit 用于文档与知识。各应用分别说明功能、运行条件与当前进展。',
+    items: flagshipItems(true),
   },
 
   systemApps: {
     navLabel: '系统应用',
-    title: '28 个系统应用演示',
-    desc: '一个桌面配不配每天打开，取决于它带什么应用。AutoOS 的答案是 28 个。应用功能与成熟度不一；另有 20+（计算器、时钟、Todo、天气、笔记、聊天、阅读器、看板、相册……）有不同完成度的可运行演示 —— 全部收录在应用演示画廊。',
-    galleryHref: '/ui/demos/',
-    galleryLabel: '应用演示画廊',
+    title: '28 项系统应用与 Demo 介绍',
+    desc: '应用目录整理了 28 项介绍，提供实图、典型操作与运行条件。这是介绍集合，不是发布应用数量或全部在线可玩的承诺。旧交互画廊的示例集合不同；更完整的 Web 桌面和应用体验安排在 v0.5.1。',
+    galleryHref: '/zh/apps#system-apps',
+    galleryLabel: '浏览应用介绍',
     cards: [
       { icon: '🎵', title: '音乐播放器', description: 'Web 与桌面两种形态，带播放列表、进度与封面；真实媒体交互持续完善。' },
       { icon: '🎬', title: '视频播放器', description: 'Web 与桌面两种形态，接真实媒体服务；桌面端控件与命中测试持续完善。' },
-      { icon: '🗂️', title: '文件管理器', description: '完整的文件浏览器：目录树、预览、多选操作 —— 虚拟桌面上的真窗口。' },
-      { icon: '🚀', title: '启动器', description: '应用启动器 —— 全部 28 个系统应用的入口，也是 AutoOS 开始菜单的基座。' },
-      { icon: '🃏', title: 'FreeCell', description: '经典纸牌游戏完整复刻，双 AutoUI 后端可玩。' },
-      { icon: '💣', title: '扫雷', description: '扫雷完整可玩 —— 逻辑、计时与难度分级。' },
+      { icon: '🗂️', title: '文件管理器', description: '文件浏览示例，展示目录、预览与选择界面；数据来源和实际操作见应用介绍。' },
+      { icon: '🚀', title: '启动器', description: '应用启动器与开始菜单基座；可用入口取决于实际桌面构建与接入应用。' },
+      { icon: '🃏', title: 'FreeCell', description: '纸牌游戏示例；支持的操作与运行路径见应用介绍。' },
+      { icon: '💣', title: '扫雷', description: '扫雷示例，展示棋盘、标记、计时与难度选择。' },
       { icon: '🧱', title: '俄罗斯方块', description: '方块下落、旋转、消行、计分，键盘操控顺滑。' },
-      { icon: '🖥️', title: '系统监视器', description: '系统监视器：KPI 曲线 + 进程表，由真实系统数据驱动。' },
+      { icon: '🖥️', title: '系统监视器', description: '系统监视器的曲线与进程表界面；示例数据和接入系统服务后的数据分别说明。' },
     ] as ReleaseCard[],
   },
 
@@ -597,16 +487,16 @@ const zh = {
     navLabel: 'Playground',
     badge: 'Playground',
     title: '新 Playground：浏览器里的 Auto 实验室',
-    desc: '几乎所有 Auto 示例代码开箱可浏览，新增 Debug 支持 —— 语料、金样与书籍片段直接在浏览器里运行。',
-    narrative: '语言与桌面之外，我们还把实验室搬进了浏览器。过去要 clone 仓库才能试例子；现在 1280+ 语料片段在页面上按需运行 —— AutoVM 的内部状态在执行时可见。',
+    desc: '在浏览器中阅读、编辑仓内语料、金样和书籍片段；运行、转译与调试需要连接已配置的 Playground 后端。',
+    narrative: 'Playground 把语料浏览带进网站。阅读和编辑无需后端；连接本地或配套部署的服务后，再运行受支持的示例并查看结果。调试覆盖以具体路径为准。',
     points: [
-      '1280+ 语料笔记 —— 460 个 VM 金样、158 个 AAVM 自举语料、634 个书籍围栏、28 个 Demo 示例。',
+      '语料快照（2026-09-07） —— 460 个 VM 金样、158 个 AAVM 文件、634 个书籍围栏、28 个 Demo 示例；当前集合以页面清单为准。',
       'Debug 支持 —— 配合本地后端观看 AutoVM 执行，不再是黑盒。',
-      '在线运行 / 转译 —— 同一份源码，解释执行或转译到 Rust/Python 做 parity 检查。',
+      '连接后端运行 / 转译 —— 对受支持的示例查看执行与 Rust/Python 生成结果；一次运行结果本身不等同于 parity 验证。',
     ],
     stats: [
       { value: '460', label: 'VM 金样', description: '语料即测试。', color: '#6366f1' },
-      { value: '634', label: '书籍围栏', description: '八本书边读边跑。', color: '#8b5cf6' },
+      { value: '634', label: '书籍围栏', description: '八本书的可浏览片段；执行需要后端。', color: '#8b5cf6' },
       { value: 'Debug', label: '调试支持', description: '看着它执行。', color: '#14b8a6' },
     ],
   },
@@ -653,7 +543,7 @@ const zh = {
   philosophy: {
     navLabel: '理念与历程',
     title: 'v0.5 背后的理念',
-    desc: '每条理念在上方只有一句话；完整论述在下方可展开 —— 本次重组没有删减任何论点。',
+    desc: '了解动态开发、层层解耦与 LaOS 的实现思路，并区分当前能力和长期方向。',
     journeyTitle: '五个月，三步',
     journeyDesc: '从 v0.3 到 v0.5（2026 年 4 月 — 9 月），每个版本都回答了一个新问题。',
     leads: [
@@ -669,7 +559,7 @@ const zh = {
     statsNote: '规模数字为 2026 年 9 月 7 日仓库快照，含测试与语料；Token 用量为作者提供。9 月 30 日审计：v0.3 至 14e444f02 共 8,033 次提交；尚无冻结的 v0.5 标签。',
     timeline: [
       { version: 'v0.3', title: '语言内核立住', text: '类型系统、所有权与借用、模式匹配 —— 一门语言的地基完成。' },
-      { version: 'v0.4', title: '运行时与转译器', text: 'AutoVM 能力齐备，a2r 转译达到生产级，AI Agent 基础设施建成 —— Auto 开始运行真实应用。' },
+      { version: 'v0.4', title: '运行时与转译器', text: 'AutoVM 与 a2r 扩展已支持路径，AI Agent 基础设施开始支撑真实应用工作流。' },
       { version: 'v0.5', title: '桌面与应用生态', text: 'AutoUI 双后端架构成熟，AutoOS 虚拟桌面可用，Auto 应用与 Rust 服务形成桌面生态。' },
     ],
   },
@@ -680,7 +570,7 @@ const zh = {
     desc: '近期工作与长期方向。独立 OS 形态和知识协作没有固定交付日期。',
     cards: [
       { icon: '🖥️', title: 'AutoOS', description: '继续完善虚拟桌面与宿主集成，探索复用现有内核的独立系统。自有内核属更长期研究，不承诺交付时间。' },
-      { icon: '📱', title: 'AutoUI', description: '鸿蒙生态支持；经 Jetpack Compose 的初始 Android / iOS 支持。' },
+      { icon: '📱', title: 'AutoUI', description: '在已有鸿蒙与 Jetpack Compose 可行性演示上推进移动端支持；Android / iOS 的完整交付仍需后续验证。' },
       { icon: '🤖', title: 'ROS2 生态', description: 'Rust/Python 上的机器人节点开发，接入 DORA-RS 等。' },
       { icon: '🎮', title: 'Godot 生态', description: '更完整的 GDScript 支持与原生 Scene/Node 能力，融入 Godot 开发工作流。' },
       { icon: '🔩', title: 'MCU 生态', description: '嵌入式：Auto 转译到 C，AutoMan 构建系统把 Auto 带进微控制器世界。' },
@@ -690,9 +580,9 @@ const zh = {
 
   cta: {
     title: '今天就试试 Auto',
-    desc: '脚本即时跑，发布即 Rust —— 从浏览器到本机，五分钟跑起来。',
+    desc: '先阅读示例，再按运行与构建说明准备工具链。浏览 Playground 无需后端；执行与调试需要配套服务。',
     primaryText: '快速开始',
-    primaryLink: '/zh/docs/',
+    primaryLink: '/zh/docs/language/overview#运行与构建',
     secondaryText: '打开 Playground',
     secondaryLink: '/zh/playground',
   },

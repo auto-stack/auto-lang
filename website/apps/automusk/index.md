@@ -5,6 +5,10 @@ outline: [2, 3]
 editLink: false
 ---
 
+<script setup>
+import ScreenshotSlot from '../../.vitepress/theme/components/ScreenshotSlot.vue'
+</script>
+
 # AutoMusk: a coding agent built around Plans and Specs
 
 AutoMusk brings project conversations, tool use, and development activity into one workspace. A Plan organizes one change; Specs preserve the project's existing knowledge and constraints.
@@ -13,7 +17,7 @@ The practical goal is continuity: requirements, decisions, code changes, and ver
 
 [All applications](/apps) · [AutoAI architecture](/ai)
 
-<!-- Screenshot slot: overview from the agreed sample-project walkthrough, after AutoMusk preparation is complete. -->
+<ScreenshotSlot capture-id="SHOT-04" />
 
 ## Start a conversation in a project
 
@@ -38,7 +42,7 @@ The four-stage method forms a reviewable Plan, implements the change, checks act
 
 Repository development skills and the application's Relay flow are separate entry points. The skills' worktree, review, landing, and consolidation rules are not automatically enforced by every application run. Failed review currently requires follow-up repair and another review. Restarting the service does not resume active Relay runs held in memory.
 
-<!-- Screenshot slot: the same sample project's Plan, confirmation gate, tool activity, and reviewed result. -->
+<ScreenshotSlot capture-id="SHOT-05" />
 
 ## Models, tools, and application responsibilities
 
@@ -65,3 +69,9 @@ The application and its demonstration workflow remain in development. Durable ru
 This introduction reflects current README and architecture material as of **2026-10-01**.
 
 [AI history and outlook](/articles/auto-ai-history) · [AutoEdit](/apps/autoedit/) · [Application overview](/apps)
+
+## Kanban and preview in the release candidate
+
+The release scope, workflow and captures for Musk Kanban and Canvas preview still require candidate acceptance. The ordinary Kanban example is separate from Musk delivery evidence.
+
+<ScreenshotSlot capture-id="SHOT-06" />

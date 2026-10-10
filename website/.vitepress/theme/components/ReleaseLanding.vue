@@ -13,6 +13,12 @@ import AutoShellPreview from './AutoShellPreview.vue'
 import FeatureCard from './FeatureCard.vue'
 import StatCard from './StatCard.vue'
 import SectionNav from './SectionNav.vue'
+import ScreenshotSlot from './ScreenshotSlot.vue'
+
+function splitPoint(point: string) {
+  const parts = point.split(/\s+—{1,2}\s+/)
+  return { label: parts[0], body: parts.slice(1).join(' — ') }
+}
 
 const route = useRoute()
 const zh = computed(() => route.path === '/zh' || route.path.startsWith('/zh/'))
@@ -21,11 +27,11 @@ const navSections = computed(() => releaseNavSections(zh.value))
 const prefix = computed(() => (zh.value ? '/zh' : ''))
 const t = computed(() => zh.value ? {
   zoom: '放大查看', close: '关闭', original: '打开原图', gallery: '桌面视图',
-  detailsHint: '展开完整论述', arch: 'AutoUI 架构', compare: '同一示例的两端',
+  detailsHint: '阅读理念详情', arch: 'AutoUI 架构', compare: '同一示例的两端',
   launchCompare: '一源两端对照', flagshipLink: '专题页 →',
 } : {
   zoom: 'View full size', close: 'Close', original: 'Open original', gallery: 'Desktop views',
-  detailsHint: 'Expand full story', arch: 'AutoUI architecture', compare: 'One example, two ends',
+  detailsHint: 'Read the full story', arch: 'AutoUI architecture', compare: 'One example, two ends',
   launchCompare: 'One source, two arms', flagshipLink: 'Landing page →',
 })
 </script>
@@ -38,6 +44,7 @@ const t = computed(() => zh.value ? {
       <div class="badge">{{ c.hero.badge }}</div>
       <h1 class="title"><span class="accent">{{ c.hero.titlePre }}</span>{{ c.hero.title }}</h1>
       <p class="description">{{ c.hero.description }}</p>
+      <p class="section-desc">{{ c.hero.status }}</p>
       <div class="actions">
         <a :href="c.hero.primaryLink" class="btn btn-primary">{{ c.hero.primaryText }}</a>
         <a :href="c.hero.secondaryLink" class="btn btn-secondary">{{ c.hero.secondaryText }}</a>
@@ -88,9 +95,10 @@ const t = computed(() => zh.value ? {
       <div class="desktop-body">
         <p class="narrative">{{ c.desktop.narrative }}</p>
         <ul class="rel-points">
-          <li v-for="(p, i) in c.desktop.points" :key="i"><strong>{{ p.split(' — ')[0] }}</strong><span> — {{ p.split(' — ').slice(1).join(' — ') }}</span></li>
+          <li v-for="(p, i) in c.desktop.points" :key="i"><strong>{{ splitPoint(p).label }}</strong><span v-if="splitPoint(p).body"> — {{ splitPoint(p).body }}</span></li>
         </ul>
       </div>
+      <p><a :href="prefix + '/autoos/'" class="inline-link">{{ zh ? '了解 AutoOS 与运行条件 →' : 'Explore AutoOS and its runtime conditions →' }}</a></p>
       <div class="desktop-gallery">
         <DesktopShowcase embedded />
       </div>
@@ -105,7 +113,7 @@ const t = computed(() => zh.value ? {
           <p class="autoui-desc">{{ c.autoui.desc }}</p>
           <p class="narrative">{{ c.autoui.narrative }}</p>
           <ul class="rel-points">
-            <li v-for="(p, i) in c.autoui.points" :key="i"><strong>{{ p.split(' — ')[0] }}</strong><span> — {{ p.split(' — ').slice(1).join(' — ') }}</span></li>
+            <li v-for="(p, i) in c.autoui.points" :key="i"><strong>{{ splitPoint(p).label }}</strong><span v-if="splitPoint(p).body"> — {{ splitPoint(p).body }}</span></li>
           </ul>
           <div class="arch-diagram" :aria-label="t.arch">
             <div class="arch-node arch-src"><strong>{{ c.autoui.arch.src }}</strong><span>{{ c.autoui.arch.srcSub }}</span></div>
@@ -127,26 +135,8 @@ const t = computed(() => zh.value ? {
           <h3 class="visual-caption">{{ t.launchCompare }}</h3>
           <p class="visual-note">{{ c.autoui.compareDesc }}</p>
           <div class="kanban-pair">
-            <figure>
-              <EvidenceImage
-                :src="c.autoui.kanbanWeb.src"
-                :alt="c.autoui.kanbanWeb.alt"
-                :caption="c.autoui.kanbanWeb.caption"
-                :zoom-label="t.zoom" :close-label="t.close" :original-label="t.original"
-                :width="c.autoui.kanbanWeb.width" :height="c.autoui.kanbanWeb.height"
-              />
-              <figcaption>{{ c.autoui.kanbanWeb.label }}</figcaption>
-            </figure>
-            <figure>
-              <EvidenceImage
-                :src="c.autoui.kanbanDesktop.src"
-                :alt="c.autoui.kanbanDesktop.alt"
-                :caption="c.autoui.kanbanDesktop.caption"
-                :zoom-label="t.zoom" :close-label="t.close" :original-label="t.original"
-                :width="c.autoui.kanbanDesktop.width" :height="c.autoui.kanbanDesktop.height"
-              />
-              <figcaption>{{ c.autoui.kanbanDesktop.label }}</figcaption>
-            </figure>
+            <ScreenshotSlot capture-id="SHOT-11" />
+            <ScreenshotSlot capture-id="SHOT-12" />
           </div>
         </div>
       </div>
@@ -167,10 +157,11 @@ const t = computed(() => zh.value ? {
             <AutoShellPreview v-if="item.kind === 'autoshell'" :lang="zh ? 'zh' : 'en'" />
             <img v-else-if="item.kind === 'image' && item.image" :src="item.image.src" :alt="item.image.alt" loading="lazy"
               :width="item.image.width" :height="item.image.height" />
-            <p v-else class="flagship-noimage">{{ zh ? '（专题页与截图待补齐——不放置占位空图。）' : '(Dedicated page and screenshots pending — no placeholder image.)' }}</p>
+            <ScreenshotSlot v-else-if="item.captureId" :capture-id="item.captureId" />
           </div>
         </article>
       </div>
+      <p class="section-desc">{{ zh ? 'AutoDown 提供文档与编辑器基础，Jade Garden 是已有知识库工程，与 JadeEdit 分别介绍。' : 'AutoDown supplies document and editor foundations. Jade Garden is an existing knowledge-base project, described separately from JadeEdit.' }} <a :href="prefix + '/apps/autodown/'" class="inline-link">{{ zh ? '相关资料 →' : 'Related resources →' }}</a></p>
     </section>
 
     <!-- 6. 系统应用 / 语言工具链 / Playground -->
@@ -188,11 +179,13 @@ const t = computed(() => zh.value ? {
           <p class="sub-desc">{{ c.playground.desc }}</p>
           <p class="narrative">{{ c.playground.narrative }}</p>
           <ul class="rel-points">
-            <li v-for="(p, i) in c.playground.points" :key="i"><strong>{{ p.split(' — ')[0] }}</strong><span> — {{ p.split(' — ').slice(1).join(' — ') }}</span></li>
+            <li v-for="(p, i) in c.playground.points" :key="i"><strong>{{ splitPoint(p).label }}</strong><span v-if="splitPoint(p).body"> — {{ splitPoint(p).body }}</span></li>
           </ul>
           <div class="rel-cards rel-cards-tight">
             <StatCard v-for="s in c.playground.stats" :key="s.label" v-bind="s" />
           </div>
+          <p><a :href="prefix + '/playground'" class="inline-link">{{ zh ? '浏览 Playground 与后端说明 →' : 'Browse Playground and backend setup →' }}</a></p>
+          <ScreenshotSlot capture-id="SHOT-10" />
         </div>
       </div>
 
@@ -203,7 +196,7 @@ const t = computed(() => zh.value ? {
           <p class="sub-desc">{{ c.language.desc }}</p>
           <p class="narrative">{{ c.language.narrative }}</p>
           <ul class="rel-points">
-            <li v-for="(p, i) in c.language.points" :key="i"><strong>{{ p.split(' — ')[0] }}</strong><span> — {{ p.split(' — ').slice(1).join(' — ') }}</span></li>
+            <li v-for="(p, i) in c.language.points" :key="i"><strong>{{ splitPoint(p).label }}</strong><span v-if="splitPoint(p).body"> — {{ splitPoint(p).body }}</span></li>
           </ul>
         </div>
         <div class="matrix" aria-label="bootstrap matrix">

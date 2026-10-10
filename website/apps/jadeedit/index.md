@@ -5,6 +5,10 @@ outline: [2, 3]
 editLink: false
 ---
 
+<script setup>
+import ScreenshotSlot from '../../.vitepress/theme/components/ScreenshotSlot.vue'
+</script>
+
 # JadeEdit: documents and local knowledge
 
 JadeEdit is an editor for AutoDown (`.ad`) documents and local knowledge bases. Starting with writing a document, it connects page links, search, tags, and directory organization to support everyday notes and personal knowledge.
@@ -13,7 +17,7 @@ It is a separate application alongside AutoEdit. AutoEdit focuses on code and te
 
 [All applications](/apps) · [AutoDown and Jade Garden resources](/apps/autodown/)
 
-<!-- Screenshot slot: JadeEdit main interface after its Milestone, using one coherent knowledge-base fixture. -->
+<ScreenshotSlot capture-id="SHOT-07" />
 
 ## Start with a document
 
@@ -33,7 +37,7 @@ Editing experience and reliable document operations are near-term priorities. A 
 
 Links and display names follow distinct rules. Moving a page, changing its title, and renaming a file are different operations. Renaming can update references; deletion leaves missing-link relationships to resolve. Previews, confirmation, and protection for these operations continue to develop.
 
-<!-- Screenshot slot: links/backlinks and search, continuing with the same knowledge-base fixture. -->
+<ScreenshotSlot capture-id="SHOT-08" />
 
 ## Organize the workspace and protect unsaved content
 
@@ -41,7 +45,7 @@ Local workspace operations include creation, renaming, moving, the trash, and so
 
 Single-document reload protection, local draft checkpoints, and recovery copies after restart have implementations. Recovering a draft first opens a copy without overwriting the original file. A protected draft is still unsaved content. Protection across multi-document file operations is being implemented and consolidated; this introduction does not claim a complete data-safety guarantee.
 
-<!-- Screenshot slot: draft recovery or a document-operation confirmation, after the corresponding behavior is accepted. -->
+<ScreenshotSlot capture-id="SHOT-09" />
 
 ## Web and desktop paths from one project
 

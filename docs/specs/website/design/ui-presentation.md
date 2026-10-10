@@ -28,6 +28,7 @@
 - 规模统计与数据来源注记（快照日期、Token 来源、无冻结标签声明）放历程区，不放首屏；计数/日期/来源逐字保全。
 - 章节导航 `SectionNav.vue`：桌面吸顶（top = `--site-nav-height`）横向快捷条、手机可展开目录；当前章节 IntersectionObserver 跟踪 + hash 点击即时反馈；目标章节 `scroll-margin-top` = 顶栏 + 导航条高度，标题不被两层 sticky 遮挡。
 - 无有效实图的应用保留文字、不放假占位图/死链；开始菜单等补图须用来源匹配的入库实图。
+- PLAN-756 用户明确要求先修文本、截图留空：本轮首页/v0.5/产品专题可用有标题、场景和 `SHOT-01..12` 的文字待拍槽。槽不渲染图片、不冒充已完成展示，拍摄合同在 `docs/reports/website-v05-capture-guide.md`；新图验收后替换为 EvidenceImage。现有获准桌面、Shell 和 AutoEdit 专题原图保留。四主应用从 applicationCopy 取数；AutoDown/Jade Garden 作为相关资料，与 JadeEdit 分开。发布状态明示里程碑与待冻结工件，运行/转译/调试明示后端条件。
 - PLAN-720 桌面截图：本批发布首图使用无展开窗口的深色桌面；桌面选择器先呈现浅/深主题，再看 Launcher、游戏多窗口、编辑器工作布局。作者数据在 `desktop-showcase.ts` 单源维护，中英文同构；OS 总览仅双主题预览并引导到完整专题。caption 明确小组件应用启动并最小化的前提，源 PNG 字节保全、2560×1600 占位、非首图 lazy、原图可访问。主题对照表示截图切换，不宣称操作静态图片会切换实际桌面状态。
 
 ## 4. 测试服务隔离与回归纪律（SD-06）
