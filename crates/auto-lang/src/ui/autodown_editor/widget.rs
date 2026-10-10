@@ -179,8 +179,12 @@ impl<'a, M: Clone> DocEditor<'a, M> {
             return input_method::InputMethod::Disabled;
         };
         input_method::InputMethod::Enabled {
+            // PLAN-748 T-10：IME 光标锚进内容坐标系（wrapper padding 偏移）。
             cursor: Rectangle::new(
-                Point::new(bounds.x + caret.x, bounds.y + caret.y),
+                Point::new(
+                    bounds.x + caret.x + CONTENT_PAD_X,
+                    bounds.y + caret.y + CONTENT_PAD_Y,
+                ),
                 Size::new(caret.w.max(1.0), caret.h),
             ),
             purpose: input_method::Purpose::Normal,
@@ -225,10 +229,11 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
         limits: &iced::advanced::layout::Limits,
     ) -> Node {
         // Fill 宽语义下解析（418 修复口径）；高为实测内容高（Shrink）。
+        // PLAN-748 T-10：内容在 wrapper padding 内测量（宽内缩、高外扩）。
         let max = limits.max();
         let width = limits.resolve(self.width, Length::Shrink, max).width;
-        let frame = self.measure(width.max(1.0));
-        Node::new(Size::new(width, frame.height.max(BODY_MIN_H)))
+        let frame = self.measure((width - 2.0 * CONTENT_PAD_X).max(1.0));
+        Node::new(Size::new(width, (frame.height + 2.0 * CONTENT_PAD_Y).max(BODY_MIN_H)))
     }
 
     fn update(
@@ -250,7 +255,8 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
             }
         }
 
-        let local = |p: Point| (p.x - bounds.x, p.y - bounds.y);
+        // PLAN-748 T-10：鼠标命中坐标进内容坐标系（padding 内缩）。
+        let local = |p: Point| (p.x - bounds.x - CONTENT_PAD_X, p.y - bounds.y - CONTENT_PAD_Y);
         let input = match event {
             Event::Mouse(mouse::Event::ButtonPressed(button)) => {
                 if !cursor.is_over(bounds) {
@@ -357,8 +363,12 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
         let bounds = layout.bounds();
         let state = tree.state.downcast_ref::<WidgetState>();
 
-        let frame = self.measure(bounds.width.max(1.0));
+        // PLAN-748 T-10：内容在 padding 内测量/绘制（原点平移见 to_rect
+        // 与下方文本坐标 ox/oy）。
+        let frame = self.measure((bounds.width - 2.0 * CONTENT_PAD_X).max(1.0));
         let list = &frame.list;
+        let ox = bounds.x + CONTENT_PAD_X;
+        let oy = bounds.y + CONTENT_PAD_Y;
 
         *state.last_frame.borrow_mut() = Some(std::sync::Arc::new(list.clone()));
         *state.last_caret.borrow_mut() = list.caret.as_ref().map(|c| c.rect);
@@ -399,7 +409,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                     wrapping: adv_text::Wrapping::None,
                     shaping: adv_text::Shaping::Advanced,
                 },
-                Point::new(bounds.x + run.x, bounds.y + run.y),
+                Point::new(ox + run.x, oy + run.y),
                 to_color(run.color),
                 bounds,
             );
@@ -408,7 +418,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                 let mid_y = run.y + run.size * 0.55;
                 fill_quad(
                     renderer,
-                    Rectangle::new(Point::new(bounds.x + run.x, bounds.y + mid_y), Size::new(approx_w, 1.4)),
+                    Rectangle::new(Point::new(ox + run.x, oy + mid_y), Size::new(approx_w, 1.4)),
                     to_color(run.color),
                 );
             }
@@ -417,7 +427,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                 let base_y = run.y + run.size * 0.88;
                 fill_quad(
                     renderer,
-                    Rectangle::new(Point::new(bounds.x + run.x, bounds.y + base_y), Size::new(approx_w, 1.2)),
+                    Rectangle::new(Point::new(ox + run.x, oy + base_y), Size::new(approx_w, 1.2)),
                     to_color(run.color),
                 );
             }
@@ -457,7 +467,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                     wrapping: adv_text::Wrapping::Word,
                     shaping: adv_text::Shaping::Advanced,
                 },
-                Point::new(bounds.x + preedit.origin.x, bounds.y + preedit.origin.y),
+                Point::new(ox + preedit.origin.x, oy + preedit.origin.y),
                 to_color(preedit.color),
                 bounds,
             );
@@ -485,7 +495,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                         wrapping: adv_text::Wrapping::None,
                         shaping: adv_text::Shaping::Advanced,
                     },
-                    Point::new(bounds.x + item.rect.x + 8.0, bounds.y + item.rect.y + 3.0),
+                    Point::new(ox + item.rect.x + 8.0, oy + item.rect.y + 3.0),
                     to_color(menu.fg),
                     bounds,
                 );
@@ -501,7 +511,7 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                         wrapping: adv_text::Wrapping::None,
                         shaping: adv_text::Shaping::Advanced,
                     },
-                    Point::new(bounds.x + item.rect.x + 8.0, bounds.y + item.rect.y + 18.0),
+                    Point::new(ox + item.rect.x + 8.0, oy + item.rect.y + 18.0),
                     to_color(menu.dim),
                     bounds,
                 );
@@ -528,6 +538,14 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
 }
 
 const BODY_MIN_H: f32 = 24.0;
+
+/// PLAN-748 T-10（jade 件四）：内容 wrapper padding——对齐 auto-down 引擎
+/// CSS `autodown/packages/engine/src/editor/styles/autodown-editor.css:103`
+/// `.autodown-editor-content-wrapper { padding: 1rem 1.25rem }`（1rem=16、
+/// 1.25rem=20 逻辑 px）。vue 轨由引擎样式层承担；vm 件内建等值层使双轨
+/// 呈现等值（jade 撤 px-5 py-4 临时层后零改动复验）。单一真源=引擎 CSS。
+const CONTENT_PAD_Y: f32 = 16.0;
+const CONTENT_PAD_X: f32 = 20.0;
 
 fn run_font(mono: bool, bold: bool, italic: bool) -> Font {
     // PLAN-054 复审反馈（两臂同字形）：sans 钉 Inter——只读臂全轨默认
@@ -556,8 +574,13 @@ fn mono_iced_font() -> Font {
     }
 }
 
+/// core 内容坐标 → 屏幕坐标。PLAN-748 T-10：内容原点平移 wrapper padding
+/// （见 CONTENT_PAD_X/Y 头注）。
 fn to_rect(origin: Rectangle, r: Rect) -> Rectangle {
-    Rectangle::new(Point::new(origin.x + r.x, origin.y + r.y), Size::new(r.w, r.h))
+    Rectangle::new(
+        Point::new(origin.x + r.x + CONTENT_PAD_X, origin.y + r.y + CONTENT_PAD_Y),
+        Size::new(r.w, r.h),
+    )
 }
 
 fn fill_quad(renderer: &mut iced::Renderer, rect: Rectangle, color: Color) {
@@ -661,11 +684,16 @@ mod tests {
         let sk = storage_key("p732_r_real_event");
         let core = autodown_editor(&sk);
         core.sync_external("见 [[目标页#锚点甲]] 与普通文本。", true);
+        // PLAN-748 T-10：预测量与 widget layout 同宽（wrapper padding 内缩），
+        // 点击坐标 = core 坐标 + padding（屏幕系）。
         crate::ui::code_editor::core::with_font_system(|fs| {
-            let _ = core.render_frame(fs, 400.0, WHITE, None);
+            let _ = core.render_frame(fs, 400.0 - 2.0 * CONTENT_PAD_X, WHITE, None);
         });
         let region = core.link_regions()[0].clone();
-        let (cx, cy) = (region.rect.x + region.rect.w / 2.0, region.rect.y + region.rect.h / 2.0);
+        let (cx, cy) = (
+            region.rect.x + region.rect.w / 2.0 + CONTENT_PAD_X,
+            region.rect.y + region.rect.h / 2.0 + CONTENT_PAD_Y,
+        );
 
         #[derive(Debug, Clone, PartialEq)]
         enum LinkMsg {
@@ -762,5 +790,17 @@ mod tests {
             &mut messages,
         );
         assert!(messages.is_empty(), "拖选零激活：{messages:?}");
+    }
+
+    /// PLAN-748 T-10（jade 件四）：内容 wrapper padding 常量与引擎 CSS 单源
+    /// 等值——autodown-editor.css:103 `padding: 1rem 1.25rem`（1rem=16、
+    /// 1.25rem=20 逻辑 px）。vue 轨由引擎样式承担，vm 件内建等值层——
+    /// 数值漂移即双轨呈现分叉，本测钉死。行为锁见上测（真实 iced 事件
+    /// 全管线点击命中已含 padding 坐标系），双轨像素等值归 jade 撤层
+    /// 复验（AC-14）。
+    #[test]
+    fn p748_content_wrapper_padding_matches_engine_css() {
+        assert_eq!(CONTENT_PAD_Y, 16.0, "上下 padding = 1rem（引擎 css :103）");
+        assert_eq!(CONTENT_PAD_X, 20.0, "左右 padding = 1.25rem（引擎 css :103）");
     }
 }

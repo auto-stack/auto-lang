@@ -3805,3 +3805,50 @@ fn p748_j1_scroll_visual_classes_move_to_viewport() {
         std::mem::discriminant(&row2[0])
     );
 }
+
+#[cfg(all(feature = "autodown", feature = "code-editor"))]
+/// 件四（PLAN-748 T-10）：autodown_editor wrapper padding 布局级断言——
+/// DocEditor 节点高 = 内容实测高 + 2×16（上下 padding，引擎 css :103
+/// `padding: 1rem 1.25rem` 等值内建）；哨兵文本 y 揭示节点高（列堆叠
+/// spacing=0）。宽内缩（600−40）两侧同源测量。
+#[test]
+fn p748_t10_editor_wrapper_padding_in_layout() {
+    use crate::ui::autodown_editor::widget::DocEditor;
+    use crate::ui::autodown_editor::{autodown_editor, storage_key};
+    use crate::ui::code_editor::theme::Rgba;
+
+    static FS: std::sync::OnceLock<std::sync::RwLock<cosmic_text::FontSystem>> =
+        std::sync::OnceLock::new();
+    crate::ui::code_editor::core::set_font_system_call(|with| {
+        let mut guard = FS
+            .get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new()))
+            .write()
+            .unwrap();
+        with(&mut guard);
+    });
+    const WHITE: Rgba = Rgba { r: 1., g: 1., b: 1., a: 1. };
+    let sk = storage_key("p748_t10_layout");
+    let core = autodown_editor(&sk);
+    core.sync_external("甲段落文本。\n\n乙段落文本。\n", true);
+    let frame = crate::ui::code_editor::core::with_font_system(|fs| {
+        core.render_frame(fs, 600.0 - 40.0, WHITE, None)
+    });
+    assert!(frame.height > 40.0, "内容必须可测，实测 {:.1}", frame.height);
+
+    let editor: iced::Element<'static, ()> =
+        DocEditor::<()>::new(&sk, WHITE).width(iced::Length::Fixed(600.0)).into();
+    let sentinel: iced::Element<'static, ()> = styled_view("T10SENT").into_iced();
+    let col: iced::Element<'static, ()> =
+        iced::widget::Column::with_children(vec![editor, sentinel]).spacing(0).into();
+    let mut ui = simulator(col);
+    let (_sx, sy, _sw, _sh) = bounds_of(&mut ui, "T10SENT");
+    eprintln!(
+        "[P748-T10] content_h={:.1} sentinel_y={:.1} (期望 ≈ content+32)",
+        frame.height, sy
+    );
+    assert!(
+        (sy - (frame.height + 32.0)).abs() < 2.0,
+        "编辑器节点高必须 = 内容高({:.1}) + 2×16 padding，哨兵 y={:.1}",
+        frame.height, sy
+    );
+}
