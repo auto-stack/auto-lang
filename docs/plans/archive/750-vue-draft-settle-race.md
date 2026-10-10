@@ -458,7 +458,7 @@ HEAD e949b62 域（只读） | spec_inputs: docs/specs/auto-lang/ui/overview.md
 | landed | master tip=**7b988b875**（ff-only 无 merge commit）；rebase 映射 ea513a627→594cde52b、1918e3482→7b988b875，`git range-diff` 2/2 全等（安全重写证明）；主干落账烟测=SD-01 在位+ledger P750-1/2 可读（800 items） |
 | ledger_refreshed | `.autoos/specs.json`（git 跟踪，worktree 经 p750_ledger.py upsert+回读核验——p736/p748 离线投影先例）：designs **P750-1**（SD-01 契约摘要）+reviews **P750-2**（rv1 收据含 external-pending 结构）；ui/plans.md 750 行；spec-index 再生=内容零变化（行尾噪声不收） |
 | archived | docs/plans/archive/750-vue-draft-settle-race.md + status archived + completion_kind delivered |
-| cleaned | wt-guard clean + worktree `D:/autostack/.wt/lang-750/auto-lang`/分支 plan-750-dev/组目录移除（见下） |
+| cleaned | wt-guard clean（reparse 零命中）+ worktree `D:/autostack/.wt/lang-750/auto-lang` 移除 + 分支 plan-750-dev 删除（was 7b988b875，全提交已 landed）+ 组目录移除；worktree 注册表零残留 |
 
 observations：①AC-01/02/05 产品面终态 external-pending（owner=jade——应用
 supply-draft.md 的 .at in-flight 门后 matrix 全绿+vm_matrix 20/20+回执回填
