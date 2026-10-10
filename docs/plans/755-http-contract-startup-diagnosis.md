@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-755
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: http-contract-startup-diagnosis
 author: [zcode-agent]
 created_at: 2026-10-10
@@ -8,12 +8,12 @@ updated_at: 2026-10-10
 plan_revision: 1
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
+supersedes_spec_components: []   # SD-01 为 modify 既有文档规则增补，非整体替换
+new_spec_components: [docs/specs/stdlib/design/assembly-manifest.md]  # 新增「公共面契约覆盖完整性」节（PLAN-755）
 touched_goals: [GOAL-003, GOAL-016]  # 引用 docs/specs/goals.md 的 GOAL-NNN
 
-affects: [stdlib, auto-vm]     # 受影响的 specs 路径；SD-01 为 modify 既有文档，frontmatter 归属复审定稿
-current_step: 0
+affects: [stdlib, auto-vm]     # 受影响的 specs 路径
+current_step: 7
 total_steps: 7
 ---
 
@@ -217,49 +217,70 @@ gate 可达性 | 处置`。gate 可达 = 该 id 会被 `stdlib/auto/http.at` 某
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
 - **T-01 契约缺口盘点表**（分析工件，无代码改动；依赖：无；AC-02）
-  - 操作：按 §5.1 口径生成三方对账终表（stdlib.rs 注册 × http.at 公共声明 × native.rs 现契约），挂
-    `docs/plans/reports/755-contract-inventory.md`；覆盖 §4 初盘全部家族并以代码为限。
-  - 验证：复审抽 5 项对源核证；gate 可达集逐条标注。
+  - [x] [✅ 已完成] 走查测试自动产出缺口清单：41 项缺契约 + 5 项 inventory 契约漂移（ok 族返回
+    int vs 公共面 Response）；13 项 resolved-but-unbound 知情登记（CALL_SPEC 分派名异 id，另案）。
+    表格落 [reports/755-contract-inventory.md](reports/755-contract-inventory.md)；别名错位疑点解除
+    （auto.http.stream_next 与 auto.http_stream.stream_next 经 catalog 同 id 2242）。
 - **T-02 夹具启动诊断有界化 + 120s 分解**（仅测试代码；依赖：无，**必须先于 T-03 提交**；AC-01）
-  - 文件：`crates/auto-lang/src/tests/plan730_http_upload_tests.rs:254-271,341-405`；
-    `crates/auto-lang/src/vm/ffi/http_server.rs:1625-1646,1766-1785`。
-  - 操作：按 §5.3 通道化捕获 + 有界上报 + 计时分解。
-  - 验证：契约未修基面上
-    `cargo nextest run -p auto-lang --lib --features test-http-e2e http_e2e_plan730_vm_plain_endpoint_untouched`
-    与 `... e2e_a_redirect_302_with_location` → 快速失败且失败信息含 SIGNATURE_UNVERIFIED（或诊断工件
-    记录实际形态）；产出 `docs/plans/reports/755-startup-diagnosis.md`。
+  - [x] [✅ 已完成] worktree 提交 `327069006`（三助手：plan730 start_server、http_server
+    start_server、start_example_api_server）。契约未修基面验证：两原反例由 120s TERMINATING 转
+    **2.15s FAIL 且信息含 SIGNATURE_UNVERIFIED（#9937/#3108）**。120s 分解实测：run 32ms 快返被吞
+    → 拒绝连接 ~2.15s/次 × ready-poll 50 次（107.6s）+ 客户端 60 次重试爬行 → nextest 120s 击杀；
+    read 相位从未到达，"60s×2 read timeout"证伪。工件
+    [reports/755-startup-diagnosis.md](reports/755-startup-diagnosis.md)；T-08 不触发（无第二缺陷）。
 - **T-03 契约补齐**（依赖：T-01、T-02；AC-02/AC-03）
-  - 文件：`crates/auto-lang/src/vm/native.rs:270-341`（声明扩列）；别名错位坐实则同步
-    `crates/auto-lang/src/vm/ffi/stdlib.rs:9768-9774`。
-  - 操作：按 §5.2 逐条补真实契约、保序、merge 存活复核、防回退断言。
-  - 验证：`cargo check -p auto-lang` 零错；r2 探针复演双臂无 SIGNATURE_UNVERIFIED；守卫测试扩列通过。
+  - [x] [✅ 已完成] worktree 提交 `00e7f712c`：production() 尾部 +46 条声明（41 新增 + 5 漂移
+    覆盖）+ `declare_generic_method_contract_identity`（RequestBuilder.json[T]）。走查守卫
+    `plan755_http_public_face_contract_coverage`（覆盖+signature_matches+空转守卫）与
+    `plan755_http_contracts_survive_cffi_merge`（AutoVM::new 同款 merge 存活）两测 PASS；门逻辑
+    零触碰（diff 仅声明侧与测试）。
 - **T-04 真实链路与 wire 复验（scoped）**（依赖：T-03；AC-04）
-  - 验证：直接单滤串 nextest 跑两项原反例 + plan730 族抽样（multipart/wire_caps 等）→ 期望 PASS；
-    未过项按 T-02 夹具真实原因分诊。
+  - [x] [✅ 已完成] 两原反例经真实 `crate::run` 启动成功并过 wire 断言：
+    `http_e2e_plan730_vm_plain_endpoint_untouched` PASS 0.588s（200 + body 730730）、
+    `e2e_a_redirect_302_with_location` PASS 0.589s（302 + Location:/new + follow 到达）。plan730
+    族全量转 T-05 全档对账覆盖。
 - **T-05 完整串行 th 全档对账**（依赖：T-04；AC-05）
-  - 操作：低负载单实例 `cargo th`；对账 751 收据 16 项未过名单；产出
-    `docs/plans/reports/755-th-full-receipt.md`。
+  - [x] [✅ 已完成] 串行单实例 `--jobs 1 --no-fail-fast`：**102 run / 101 pass / 1 fail / 0
+    timeout，186.390s**（751 基线 86/2/14、1962.969s）。对账：14 timeout 全清（13 plan730 + 1
+    redirect）、interop 转绿、back_proxy 维持在册基线红同形未恶化、86 绿零回归。附加观测：并行态
+    `vm_quoted_boundary_wire` 曾 flake（隔离与串行均 PASS，serial 纪律自证）。收据
+    [reports/755-th-full-receipt.md](reports/755-th-full-receipt.md)。
 - **T-06 复审门禁 + 健康检查**（依赖：T-05；AC-03/AC-06）
-  - 操作：worktree 裸 `cargo t` + `cargo tv`；AC-03 逐 hunk 审计；警告/格式/调试残留检查。
+  - [x] [✅ 已完成] 日常档 `cargo t --no-fail-fast`：5227 run / 5215 pass / 12 fail / 105s——12 红
+    全部预存归档：musk_p053_4（在册 P733-R2 ③，主检出基线同红实证）、plan606/schema_drift×2
+    （在册）、ash/projector/p748×2/iced×2（主检出基线同红实证 6/7）、plan502（双端隔离 PASS=负载
+    flake）、docs_gen kitchen_sink（非本计划触面，schema 族在册）。`cargo tv` 162/162 PASS。
+    触碰文件零新增编译警告（强制重编核验）、fmt --check 干净。AC-03 门保持：diff 仅契约声明/测试/
+    规范文档，verify_core_reference/verify_assembly_references/CORE_MODULES 零触碰。
 - **T-07 规范增量与簿记**（依赖：T-06；AC-07）
-  - 操作：SD-01 落 assembly-manifest.md；frontmatter spec-impact 定稿；KNOWN-DEBT P751-D1 闭合注记；
-    计划状态翻转。
+  - [x] [✅ 已完成] SD-01「公共面契约覆盖完整性」节落 assembly-manifest.md（worktree 提交
+    `4ce645516`，随 merge 发布）；frontmatter spec-impact 定稿；KNOWN-DEBT P751-D1 闭合候选注记
+    已写（复审定稿）；T-08 未触发（诊断证实无第二缺陷）。
 - **T-08（条件）第二缺陷处置**（依赖：T-02 结论）
-  - 仅当 755-startup-diagnosis.md 证实契约之外存在独立缺陷时启用：夹具/测试面小修留本计划追加任务；
-    触及生产 HTTP 实现的大改另立计划报用户裁定。
+  - [x] [✅ 不触发] 755-startup-diagnosis.md 实证契约错误完全解释超时（放大器=本机 ~2.15s/次拒绝
+    连接成本），无第二缺陷；任务关闭。
 
 ## 9. 复审记录
 
 - 2026-10-10 draft handoff（/auto-plan:new）：stage `new`；PLAN-755 rev 1；outcome `pass`（立项授权在案，
   范围=契约补齐+启动诊断+th 复验）；next `work`（待用户确认本计划后进入执行，worktree
   `D:/autostack/.wt/lang-755/auto-lang`）。
+- 2026-10-10 work handoff（/auto-plan:work）：stage `work`；plan_id PLAN-755；plan_revision 1；
+  outcome `pass`；code_commits（branch `plan-755-dev`，base `d6e4819ba`）=
+  `327069006`（T-02 夹具诊断有界化）/ `00e7f712c`（T-01/T-03 契约补齐+走查守卫）/
+  `4ce645516`（T-07 SD-01 规范节，随 merge 发布）；依赖 auto-down detached@`895f8d0`。
+  task_ids T-01..T-07 全完成、T-08 不触发。evidence：reports/{755-startup-diagnosis,
+  755-contract-inventory,755-th-full-receipt}.md；两原反例 scoped PASS（0.59s）；串行 th
+  102/101 pass/0 timeout（186.4s）；日常档 12 红全预存归档（基线同红/在册/隔离过三类实证）；
+  tv 162/162；零新增警告+fmt 干净。blockers 无。next `review`（/auto-plan:review，独立复审
+  AC-01..AC-07 与 SD-01 规范增量，复审门已含本档证据）。
 
 ## 10. 待澄清事项
 
-1. **120s 分解结论的分支**（T-02/T-08）：若坐实第二独立缺陷，处置走本计划内追加任务还是另立——默认
-   小修留本计划、生产实现大改另立报用户。
-2. **`.at` 公共声明与真实 ABI 矛盾**（T-03 规则 4）：改 `stdlib/auto/http.at` 公共面是否超授权——默认
-   视为需用户确认的公共面变更，触发时带证据上报。
-3. **interop fail（109.988s）归因**：是否与契约缺口同因，T-05 对账时定；若另有原因按 T-08 分支处理。
-4. **全档 th 时段**：~33min 单实例真 TCP 串行，与机器上其他测试负载错峰（含批量回归 DUE 状态联动，
-   见 751-R2 §4——regress 发车前须重查机器负载）。
+1. ~~**120s 分解结论的分支**（T-02/T-08）~~ **已销案**：实测分解闭合（契约错误被吞 × ~2.15s/次拒绝
+   连接爬行 → 120s 击杀），无第二缺陷，T-08 未触发。
+2. **`.at` 公共声明与真实 ABI 矛盾**（T-03 规则 4）：本轮未触发（46 条声明全部 signature_matches
+   通过，无 .at 面改动）；规则保留供后续。
+3. ~~**interop fail（109.988s）归因**~~ **已销案**：与契约缺口同因——服务真实启动后互操作链 PASS
+   （T-05 对账表 #2）。
+4. **全档 th 时段**：已按单实例串行执行完毕（186.4s）；后续批量回归若触 HTTP 面沿用 serial 纪律。

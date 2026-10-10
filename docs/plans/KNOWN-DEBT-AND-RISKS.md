@@ -359,6 +359,11 @@ fastfail 崩溃且审计无行时，优先按栈溢出排查（重建符号 + RU
 - 原 102 项计数保留历史；本轮没有再跑完整 th，不外推全绿。详情与新证据：[751-review-r2.md](reports/751-review-r2.md)。738/751 归档终态保持，修复走后续专用 worktree。
 - 原未修改的 `http_e2e_plan730_vm_plain_endpoint_untouched` 本轮独立复跑仍 timeout（120.046s，exit 100）；其长等待与有界诊断快返契约错误的差异尚未接通，不能直接等同。
 
+### PLAN-755 闭合更新（2026-10-10，work @lang-755）
+
+- **P751-D1 闭合候选（复审时定稿）**：PLAN-755 已按专项修复并全档复验——①根因实证：契约错误（`SIGNATURE_UNVERIFIED` #9937/#3108，`crate::run` 32ms 快返）被夹具 `let _ =` 吞掉 + 本机拒绝连接 ~2.15s/次 × ready-poll 50 次 + 客户端 60 次重试爬行 = nextest 120s TERMINATING；"accept 后不响应/60s×2 read timeout"旧机制证伪（read 相位从未到达），见 [755-startup-diagnosis.md](reports/755-startup-diagnosis.md)。②修复：HTTP 公共面 41 项缺契约补齐 + 5 项 inventory 契约漂移覆盖 + 走查/merge 存活常驻守卫（[755-contract-inventory.md](reports/755-contract-inventory.md)）；夹具启动诊断有界化。③复验：串行全档 th **102 项 101 过/1 红（仅 back_proxy 在册基线红）/0 超时，186.4s**——14 timeout 清零、interop 转绿、86 绿零回归（[755-th-full-receipt.md](reports/755-th-full-receipt.md)）。bisect 候选锚点（dd9ffe35b/19973b089）随根因实证销案；规范增量 SD-01（公共面契约覆盖完整性）落 assembly-manifest.md。
+- P751-D2（auto-man 盲区）不在 PLAN-755 范围，保持开放。
+
 ### P753（2026-10-10，README 计划知识投影前置阻塞）
 
 | id | 级别 | 领域 | 内容 | 锚点 |
