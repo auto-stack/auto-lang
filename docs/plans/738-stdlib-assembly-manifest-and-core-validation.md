@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-738
-status: execution_done
+status: executing
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-10
 plan_revision: 3
-current_step: 7  # R5 口径：T-01/T-09..T-14 完成闭合（修复链 bc0b95cfd/796d279a4/68398d2d6）；T-02..T-08 保持打开待 R6 复核确认（R5 裁定计数法）
+current_step: 4  # R6 口径：T-01/T-09/T-10/T-12 闭合（R5-01/R5-03 经 R6 确证）；T-11（R5-02 receiver 面）/T-13（SD-04）/T-14（最终收据）因 P738-R6-01 重开；T-02..T-08 维持打开
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -418,6 +418,7 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [x] 新增 `738-phase3-reference-audit.{md,json}`，逐路径关联入口、collector、最终 callee、proof、测试与例外边界；执行 `cargo t plan738`、use_semantics/native_registry/autovm_persistent 等实际触面 scoped 族。完成条件：六核心引用闭包无未经证明的放行，VM preflight 结果和最终 manifest 无陈旧证明。映射 T-02/03/04/07、AC-01..05/07/08、SD-01..05/07。
   [✅ 已完成] [738-phase3-reference-audit.md](reports/738-phase3-reference-audit.md) + [json](reports/738-phase3-reference-audit.json)：plan738 67/67（t11_reference_closure 5 测）、plan724 5/5、api_gen 43/43、freshness 1/1、tt 非基线红=0（15 红全分诊）、use_semantics/native_registry/autovm_persistent/module_cache 7/13/20/16 全绿；VM 闭包走查沿用 R2 已闭合路径在案。
   [✅ 已完成·R5 修复重闭] R5-02 修复（worktree `bc0b95cfd`/`68398d2d6`）：公共方法 receiver 调用进 strict 门——`Owner.method` 分母归属 + 三发射形态收敛（模块限定/扁平 value_* helper/json 值绑定 def-use 直发）+ 方法 receiver/is_static 契约来自公共声明 + 形态守卫（拆段片段/链式中间态记边界）；CLI 级反例闭合（漂移 exit1+SIGNATURE_DRIFT+JsonValue.len proof 在案，原 exit0）；tt 6 语料回归修复后非基线红=0。
+  [R6 重开 2026-10-10] R6 实测（真实 auto.exe）：`len` 闭合确证，但 `v.keys()`/`json.keys(v)`/`v.is_null()`/`v.as_int()` 漂移后仍 exit 0 无 proof——shape③ len-only、模块限定方法裸名未命中不落穿方法归属、value_to_int 腿死码；「公共方法 receiver 调用进 strict 门」仅部分成立。修复要求见 §9 R6 / [738-review-r6.md](reports/738-review-r6.md) P738-R6-01。
 
 ### Phase 3 / T-12：manifest 共同身份与多消费者三角对拍（R5 重开）
 
@@ -445,6 +446,7 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 - [x] 完成条件：正文准确、所有 AC/SD 均有任务与证据，未批准遗漏不转债务。本步骤只改计划/报告，不发布 canonical/ledger，不跑 Cargo/docs_gen；映射原 T-02/06/07/08、AC-01/05/07/08、SD-01..07。
   [✅ 已完成] 本步骤零 Cargo/docs_gen；canonical/ledger 留 merge 阶段。
   [✅ 已完成·R5 修复重闭] SD-04/SD-05 重锚（receiver 全路径入 strict 面、lock 一次绑定语义）；acceptance 计数勘误清零（17→15）。
+  [R6 重开 2026-10-10] SD-05 与行为一致确证；SD-04「receiver 全路径/未证明=SIGNATURE_UNVERIFIED 不产出成功产物」与实际行为不符（P738-R6-01），须随修复重锚或如实缩面。
 
 ### Phase 3 / T-14：最终提交门禁、真实验收与独立 review 交接（R5 重开）
 
@@ -460,8 +462,31 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
   [✅ 已完成] 验收对账（[738-phase3-acceptance.md](reports/738-phase3-acceptance.md) T-14 栏已补最终收据）：AC-01..08 执行面全部闭合（T-08 最终档=本任务）→ **status: execution_done**。交接：独立 review agent 复核 `b3a4d660e`——全部 AC、实际 callee/manifest、`2c1b4a763..b3a4d660e` 完整 diff（T-09 分类+T-10..14 语义面）、SD 正文、th 环境红基线归因。
 - [x] 独立复审 pass 才允许 `reviewed`；needs_fix 返回本 phase，needs_replan 修订具体合同而不降 AC。当前授权止于修复/验收/复审准备，不合入/归档/删除 worktree，merge 时再 canonical/ledger/Design33/索引及 wt-guard。映射原 T-07/08、AC-01..08、SD-01..07。
   [✅ R4 独立复审 pass 2026-10-10] 当前 state=reviewed（R3 全 AC/SD 实现面 pass + R4 定向复核 R3-01/02 修复与受影响门禁）；不合入/归档/删 worktree（merge 待授权）。
+  [R6 重开 2026-10-10] R5 needs_fix 后的重闭收据（`68398d2d6`，见 §9）经 R6 复核：R5-01/R5-03 闭合、R5-02 部分闭合（P738-R6-01）——本任务最终档须随新修复提交重跑受影响门禁+CLI 反例后再交下一轮独立 review。
 
 ## 9. 复审记录
+
+### 独立复审 R6（2026-10-10，needs_fix → executing）
+
+- stage: review
+- plan_id: PLAN-738
+- plan_revision: 3（验收合同不变；本次发现缺口不增 revision）
+- outcome: **needs_fix**（R5-01/R5-03 闭合确证；R5-02 部分闭合——receiver 公共方法面仅 len 形态入门，P738-R6-01 必修）
+- reviewed_commit: `68398d2d61a6e93a908a01e1442c8dff65983204`（worktree 入场 clean，只读复审，结束 clean）；修复链 `9c255993b`→`bc0b95cfd`→`796d279a4`→`68398d2d6` diff = 恰 6 文件（host/manifest/tests/trans rust/api_gen/rust_ui），与声称触面一致，R3/R4 pass 面外未被扰动
+- base_commit: R5 reviewed `9c255993b`；Phase 3 diff base `2c1b4a763`；merge-base `6d69dbdc7`
+- dependency_revisions: auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`（只读未动）
+- spec_inputs: 沿 R5 基线七 canonical + SD 终稿；本轮 **not approved**——SD-04 receiver 全路径/未证明即拒绝措辞与实际行为不符（详见 R6-01），须随修复重锚或如实缩面
+- acceptance_results: AC-01/02/04/06 pass（R5-01/R5-03 闭合确证+未触面沿用）；AC-03 fail / AC-05/07/08 受 P738-R6-01 拖累
+- findings:
+  - **P738-R6-01（P1 必修）**：receiver 公共方法面仅 `len`（+value_len 扁平 helper）入 strict 门——真实 CLI 实测（隔离 AUTO_STDLIB_ROOT+真实 auto.exe）：`JsonValue.keys` []str→[]int 漂移后 `v.keys()`（逐字发射）与 `json.keys(v)`（FQN 发射）均仍 exit 0 无 proof；`v.is_null()`（可编译 serde 固有方法旁路，producer bool vs 公共 int）int→str 漂移 exit 0；`v.as_int()` 无 proof。根因=shape③ len-only（`if method == "len"`）、模块限定方法裸名公共面未命中即 return 不落穿 `public_method_symbol`、shape② value_to_int 腿死码（to_int 无别名映射）；SD-04/T-11 重闭/交接「公共方法 receiver 调用进 strict 门……未证明=SIGNATURE_UNVERIFIED」过度声明；reference-audit 未随 R5-02 更新。R5 修复合同「对未经证明的被引用核心方法拒绝，不能仅写债务保留放行」未全兑现。
+  - P738-R6-02（观察）：`bind_workspace_lock` 忽略收据写错误——持续写失败时 absent→fresh 可在漂移内容上重复触发（仅退化 FS 角落）。
+  - P738-R6-03（观察）：tt 全档 `plan498_bar_group_emphasis` 为未在册 flake（隔离复跑绿），建议入 verification §2 flake 族名单。
+- evidence: [738-review-r6.md](reports/738-review-r6.md)（CLI 反例四形状表/门禁全表/SD 对照）；R5-01 状态机测试 1/1 复现+真值表独立运行；R5-03 `t12_manifest_identity` 2/2+`generation_consumer_identity` 1/1（零 clone、Result 断言、Embedded/Standalone 差异钉死、C fixture 差异在案）；门禁：plan738 72/72、plan724 5/5、CLI 10/10、api_gen 44/44、tv 162/162、tt 非基线红=0（plan498 flake 隔离绿）、裸 t 17 红全基线/flake、三 crate check 零 error
+- independence: 全新上下文 R6 agent，未参与本计划任何实现/复审
+- omissions/debt: R5-01/R5-03 无遗留；R5-02 残余面=11/12 JsonValue 公共方法 receiver 形态（含 1 个可编译旁路），登记不等于批准延期
+- state: executing，T-11（R5-02 receiver 面）/T-13（SD-04）/T-14（最终收据随新提交重跑）重开；T-01/T-09/T-10/T-12 维持闭合；current_step=4（R6 口径）
+- next: `/auto-plan:work PLAN-738` 修复 P738-R6-01（顺带裁量 R6-02/R6-03），重跑受影响门禁+CLI 反例，更新 SD-04/reference-audit，新最终提交后再独立 review；不合入/不归档/不删 worktree
+
   [✅ 已完成·R5 修复重闭] 最终提交 `68398d2d6`：plan738 72/72（含 R5 新 5 测）、plan724 5/5、CLI 10/10、api_gen 44/44、freshness 双真值表+状态机 1/1、tt 非基线红=0、服务完整链 1/1@64.7s（lock 绑定语义下）、裸 t/tv 收据见 verification 更新。
 
 ### 补充复审 R5（2026-10-10，needs_fix → work）
