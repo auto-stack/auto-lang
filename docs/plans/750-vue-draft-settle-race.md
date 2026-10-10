@@ -1,20 +1,20 @@
 ---
 plan_id: PLAN-750
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done          # drafting → executing → execution_done → reviewed → archived
 feature_name: vue-draft-settle-race
 author: [zcode]
 created_at: 2026-10-10
 updated_at: 2026-10-10
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 7
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: []
-new_spec_components: []        # 预置：SD-01 → docs/specs/auto-lang/ui/overview.md（vue 轨 store handler 事件重入与 await 悬窗契约节）
+new_spec_components: [SD-01 → docs/specs/auto-lang/ui/overview.md「vue 轨 store handler 事件重入与 await 悬窗契约（PLAN-750）」节]
 touched_goals: []             # docs/specs/goals.md 无直接 GOAL 条目（下游 jade 修复类）
 
-affects: [auto-lang/ui, auto-lang/vm, auto-man]   # 按归因分支收敛，review 时定稿
+affects: [auto-lang/ui]       # 终版：仅 ui/overview.md 契约成文；零 Rust 代码变更
 ---
 
 # [PLAN-750] vue 轨草稿检查点保存不结算——Edit 分配悬窗重入竞态（定位与根修）
@@ -294,26 +294,83 @@ vue 轨: 浏览器键入 → EngineEditor oninput → [转译 JS] useEditorStore
 > 并行纪律：worktree 内只跑 check/scoped 档；载体矩阵构建用独立
 > worktree（lang-750-m2/m3/m4 临时构建位，验后即清，wt-guard 护栏）。
 
-- [ ] T-00 契约锚定与基面复核：读 ui/auto-man/trans specs 现状
+- [x] T-00 契约锚定与基面复核：读 ui/auto-man/trans specs 现状
   成文定位 SD-01 落点；复核主检出 dirty 六文件与 10-10 构建的
   关系（确认 M5 需不需要 HEAD+dirty 格）。验证：SD-01 落点草案
   入 §9。涉及：docs/specs/auto-lang/ui/overview.md 等。
-- [ ] T-01 最小复现仪器化：jade HEAD + 干净 ws + 双字符快速键入
+  [✅ 已完成] SD-01 落点定谳：`docs/specs/auto-lang/ui/overview.md`
+  store facade 契约区（PLAN-622「store facade 消费位语义」/PLAN-624
+  「跨状态与短路语义」两节之后新开节——该文件已承载「web 轨发射
+  Pinia，VM 轨原生解释」的 store 语义先例）。dirty 六文件已被并行
+  会话收编提交（主检出 crates/** 面现干净，余 examples/020 两 .at
+  为他组示例 WIP 非本计划触面）——M5「HEAD+dirty」格随之失效，
+  HEAD 干净构建即现 frontier；M1 用主检出现存 exe（v0.4.2-2853-
+  gc72ff953b-dirty，10-10 11:18 构建=失败工件本体）作基线。
+- [x] T-01 最小复现仪器化：jade HEAD + 干净 ws + 双字符快速键入
   →保存→删除全弧；采 console 四类行 + `.jade/drafts` 形态 +
   draft API RTT。验证：M1 格复现 4/4 形态（含 d00XX+1 空目录
   签名）。产出：evidence/p750/repro.md + 脚本。
-- [ ] T-02 载体矩阵判别：构建 ab7a650bd/91ae002d3 载体，跑
+  [✅ 已完成] evidence/p750/{repro.mjs,repro.md}。四场景实测（fetch
+  钩子记录 API 时间线+请求体）：A（两轮 insertText+blur，轮间距
+  ~50ms）健康；B（matrix 忠实 [4edit]+[5save]）健康 settle；C（输入后
+  立即保存）健康——Save 流 write_wiki+read_wiki 双 await 构成回执
+  屏障；**D（`keyboard.type('XY',{delay:0})`）完整复现失败签名**：
+  draft_begin×2 重入 → 双 alloc（d0001+**d0002 空目录**）→ 单
+  checkpoint erev=2 卡死无 settle——与供料包 d0003+d0004 逐字段同构。
+  注意：jade 身份改名批后草稿根为 `.auto-jade/drafts/v1`（非 `.jade`）。
+  另：直接跑真实 matrix.spec 需 jade 空窗（共享工作区/端口被并行会话
+  占用时结果被污染——本计划两轮尝试实录在案，未采信）。
+- [x] T-02 载体矩阵判别：构建 ab7a650bd/91ae002d3 载体，跑
   §5.1 矩阵全格 + gen diff。验证：归因定谳记录（提交号级或
   RC-C 证伪）入 §9；AC-04。
-- [ ] T-03 根修落地（按 T-02 分支）：分支 A/B 修 auto-lang 对应
+  [✅ 已完成] **定谳 RC-C（潜伏竞态，非 auto-lang 回归）**，三证：
+  ①codegen 零 diff——同份 jade 源分别用 ab7a650bd（v2747 绿时代
+  载体，干净构建于 .wt/lang-750-m4，配 auto-down 895f8d0 兄弟）与
+  现役 exe `build -r vue --gen-only`，34 组件 src 树逐字节恒等
+  （M3/M4 的前端轴收缩为该 diff，成立即出局 RC-A）；②后端恒等——
+  两载体 draft API RTT 恒等（静载 p50 1-5ms）+ B 场景双载体全协议
+  链健康（RC-B 出局）；③**D 场景在 ab7a650bd 同等复现完整失败
+  签名**（双 begin/双 alloc/erev=2 单 checkpoint/空 doc 目录）——
+  绿时代载体同败=一直潜伏。触发条件定谳：引擎首挂载逐键发射
+  （~5ms 间隔）×分配悬窗（静载 ~15ms、批量负载 25-60ms）——
+  matrix `type({delay:25})` 弧在批跑自加载下窗口稳定越键间隔=4/4
+  确定性；静载单跑（含 10-09 绿）窗口不足故绿；vm 轨 MCP 往返
+  串行免疫。91ae002d3（M5）随 RC-C 定谳失去必要性（2730→2747 窗
+  内唯一代码变更=iced renderer，vue 面恒等已由 ①③ 覆盖），未建。
+  决策工件全表：evidence/p750/repro.md §二。
+- [x] T-03 根修落地（按 T-02 分支）：分支 A/B 修 auto-lang 对应
   面 + 回归锁；分支 C 产 jade 供料包草稿。验证：AC-01/AC-02/
   AC-05（改后复现配方全绿）。
-- [ ] T-04 门禁与 vm 不回归：cargo check/t + 触面档 + vm 轨结算
+  [✅ 已完成·分支 C] auto-lang 侧零代码变更（无回归可修——RC-C
+  三证）；产出三件：①evidence/p750/repro.md 证据档案（机制链+
+  归因矩阵+触发条件）；②evidence/p750/supply-draft.md jade 供料
+  包草稿（.at 分配臂 in-flight 门修复范式+正确性论证+验收口径，
+  落点建议 jade docs/upstream/）；③SD-01 契约成文（见 T-06）。
+  AC-01/AC-02 产品面达成依赖 jade 应用供料（D 场景=修复前红的
+  稳定复现器，jade 打守卫后同场景转绿即闭环——AC-05 分支 C 形态
+  的回归锁由该复现工具承载，绿证随 jade 复验回执回填）。
+- [x] T-04 门禁与 vm 不回归：cargo check/t + 触面档 + vm 轨结算
   探针复测。验证：AC-03 + 零新红。
-- [ ] T-05 交接件定稿：供料包回执节（复验口径：matrix.spec 全绿
+  [✅ 已完成·Category A 判定] 本计划**零 `crates/` 下 Rust 源码
+  变更**（改动面=docs/specs + docs/plans + evidence 脚本 .mjs）——
+  按 AGENTS.md Category A 纪律**不跑** cargo t/docs_gen。AC-03
+  （vm 轨零回归）结构性满足：vm 轨运行时零触碰；旁证=B 场景双
+  载体（含 vm 后端 `--server vm`）全协议链健康 settle + 供料包
+  对照臂（jade 10-10 vm 轨探针 saved 即时落在案）。
+- [x] T-05 交接件定稿：供料包回执节（复验口径：matrix.spec 全绿
   + vm_matrix 20/20 + 真脏档阻断对照）。验证：AC-07。
-- [ ] T-06 规范增量落账：SD-01（及条件 SD-02）成文 + spec-index
+  [✅ 已完成] evidence/p750/supply-draft.md §三验收口径（含批量
+  负载窗跑 ≥2 轮的否证纪律——负载是触发条件，静载单跑不构成
+  否证）+ §四不负项边界。jade 会话取用后按其 upstream 惯例入库
+  与回执（669/682 先例流程）。
+- [x] T-06 规范增量落账：SD-01（及条件 SD-02）成文 + spec-index
   回读。验证：AC-06。
+  [✅ 已完成] SD-01 落 docs/specs/auto-lang/ui/overview.md（store
+  facade 契约区之后新节，五条：handler 原子域/悬窗可重入/身份分配
+  单飞责任在宿主（含范式指针）/双轨事件节奏分野/保存流屏障非契约
+  + 不提供跨 handler 串行化的负面契约）；SD-02 随 RC-B 出局不落。
+  spec-index 回读归 review/merge 收口（ui/overview 内容节不入
+  INDEX 面）。
 - [ ] T-07 复审交接：execution_done → /auto-plan:review。
 
 依赖：T-02 依赖 T-01 配方；T-03 依赖 T-02 定谳；T-04..T-06 依赖
@@ -323,17 +380,55 @@ T-03；T-05/T-06 可并行。
 
 （work/review 过程追记；T-02 决策工件与矩阵全表落此处）
 
+### T-02 归因决策工件（2026-10-10，work 执行期）
+
+| 判别项 | 方法 | 结果 |
+|---|---|---|
+| RC-A 前端 codegen 回归 | 同份 jade 源 × {ab7a650bd, 现役 exe} `build -r vue --gen-only` 全树 diff | **零 diff**（34 组件逐字节恒等）→ 出局 |
+| RC-B 后端 RTT 回归 | 双载体 `--server vm` draft API 采样 ×20 + B 场景协议链对照 | 恒等（静载 p50 1-5ms；双载体 B 场景均健康 settle）→ 出局 |
+| RC-C 潜伏竞态 | D 场景双载体对照 | **双载体同败**（含 v2747 绿时代载体）→ **定谳** |
+
+触发条件定谳：引擎首挂载逐键发射（~5ms 间隔）× 分配悬窗（vite 代理
+静载 ~15ms / 批量负载 25-60ms）。jade 4/4 确定性 = 全套件批跑自加载
+使窗口稳定越过 `type({delay:25})` 键间隔；历史静载单跑绿同构自洽；
+vm 轨 MCP 往返串行免疫；同运行单键弧（erev=1）健康/双键弧（erev=2）
+卡死并存为分界直证。全证据：evidence/p750/{repro.md,repro.mjs,
+matrix-m1-run*.log}。
+
+修复归属：主体=jade .at 分配臂 in-flight 门（供料包 supply-draft.md
+§三范式）；auto-lang=契约成文（SD-01）+证据工件+复现工具，零代码变更。
+
+### work 交接记录
+
 - 2026-10-10 stage:new | PLAN-750 | plan_revision 1 | 立项期静态
   根因链与 d0004 空目录签名实证在 §4.3；归因三假设（RC-A/B/C）
   与判别矩阵设计在 §4.4/§5.1 | next: work（T-00 起步）。
+- 2026-10-10 stage:work | PLAN-750 | plan_revision 1 | outcome:
+  pass | code_commit: plan-750-dev @ D:/autostack/.wt/lang-750/
+  auto-lang（docs/specs SD-01 + evidence/p750 五件；零 crates/ 变更）
+  | task_ids: T-00..T-06 | evidence: T-02 决策工件（上表）+ repro.md
+  四场景 + D 场景双载体失败签名复现 + supply-draft.md 交接件；T-04
+  Category A 判定（零 Rust 变更不跑 t） | blockers: 无 | next:
+  review。AC 映射注记：AC-04/06/07 本仓已达成；AC-01/02/05 的产品
+  面终态依赖 jade 应用供料（D 场景为修复前红复现器，绿证随 jade
+  复验回执回填）；AC-03 结构性满足（vm 轨零触碰）。
 
 ## 10. 待澄清事项
 
-- Q1（信息性，T-02 可自答）：供料包 release 2747「同败」A/B 的
-  前端 gen 由哪个 exe 再生（若为 2835 产物则其结论只排除后端
-  2747→2835 域，未排除前端 codegen 面——§4.2 推理已内建）。
-- Q2（分支 C 时需用户裁定）：auto-lang 是否在 vue 轨事件派发层
-  加防御性串行化（运行时行为变更，波及全部 vue 应用），还是
-  契约成文 + jade 侧 .at 守卫即收口。
-- Q3（非阻塞）：PLAN-748 观察②「release 工件未重建」与本计划
-  修复后 jade 复验所需 release 重建时序（jade 侧 D-01 门协同）。
+- Q1（已答）：release 2747「同败」A/B 的前端 gen 为 2835 域产物
+  （serve-back.mjs 默认主检出 exe；jade gen 于 10-10 再生）——该 A/B
+  只排除后端轴；本计划 T-02 以源码副本双向 regen diff 补齐前端轴
+  判别（零 diff），归因完整。
+- Q2（保留用户裁定，建议**不加**）：auto-lang 是否在 vue 轨事件派发
+  层加防御性串行化。执行期新增反面证据：串行化使后续键入时延耦合
+  前序排水链（32 圈排水 ×HTTP 往返）——恰为 jade PLAN-031 T-05 逐键
+  POST 风暴要规避的形态；jade .at 排水循环的身份重查模式按「悬窗可
+  重入」模型设计，串行化与其模型正交。SD-01 已按负面契约成文
+  （「不提供跨 handler 串行化」）——如用户裁定加串行化，需修订
+  SD-01 并另立计划（行为变更波及全部 vue 应用）。
+- Q3（非阻塞）：PLAN-748 观察②「release 工件未重建」与本计划修复
+  后 jade 复验所需 release 重建时序（jade 侧 D-01 门协同）——jade
+  应用供料后随其复验节奏处理。
+- Q4（执行期新增，非阻塞）：jade 并行会话与 e2e 共享工作区/端口
+  （e2e/.runtime/workspace、8211/4443）——双会话同窗跑 e2e 会互相
+  污染（本计划实录两轮）。jade 复验 PLAN-750 供料时需独占窗。
