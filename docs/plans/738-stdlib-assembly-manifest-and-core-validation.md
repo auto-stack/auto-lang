@@ -87,6 +87,15 @@ affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persisten
 
 **2026-10-10 R9（I+II 两轮独立复审）：needs_fix。** 主链修复机制确证有效（merge 撤销语义代码级闭环、两树合同面逐字节一致）、定向门禁全绿（cb_web_mime PASS/tv 162/plan738 73/服务链 1/1）；但 P738-R9-01（lock 读取非 NotFound 错误归一 absent，未绑定收据新鲜度门误放行——**reviewed 树既有缺陷非本修复引入**，probe+代码双证）与 P738-R9-02（4 点格式）必修；merge 重启 deferred 至修复新提交再复审 pass。详见 §9 R9-I（[738-review-r9.md](reports/738-review-r9.md)）/R9-II。
 
+### work 修复交接（2026-10-10，R9 必修闭合 → 待 R10 复审重启 merge）
+
+- stage: work | plan_id: PLAN-738 | plan_revision: 3 | outcome: pass（R9-01/02 闭合）
+- code_commit: worktree plan-738-dev `19973b089` → `41b4d4be5`（5 files +74/−31）；clean
+- R9-01：gate `classify_lock_read`（NotFound=Some(空)=absent 哨兵；权限/IO 错误=None 不可核验→保守陈旧——recorded="absent"×读错误不再假新鲜，纯函数单测 classify_lock_read_fail_closed 含端到端断言 lock_freshness(absent, None)=false）；生成侧读错误（非 NotFound）拒写收据（Err fail-closed）
+- R9-02：lib.rs/renderer.rs/engine.rs 四格式点 rustfmt 收敛（三 crate check 零错）
+- 门禁（41b4d4be5）：classify 1/1、双真值表、api_gen 44/44、lock 状态机 1/1（shell_pack=R3 在案预存）；cb_web_mime PASS、plan738 73/73 抽验；R9 已证合同面两树逐字节一致——VM/契约/服务链门禁不重复全跑
+- next: R10 独立复审（定向：R9-01/02 闭合+修复树面）→ pass 重启 merge
+
 ### merge 收据（2026-10-10，PLAN-738:r3 → needs_fix/实现冲突）
 
 - stage: merge | plan_id: PLAN-738 | plan_revision: 3 | outcome: needs_fix（落地受阻：rebase 实现冲突）
