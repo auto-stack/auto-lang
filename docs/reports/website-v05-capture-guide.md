@@ -1,7 +1,7 @@
 # Website / v0.5 截图拍摄清单
 
-更新：2026-10-10 · PLAN-756/758。**AutoJade 的主图与知识关系画廊已采用用户提供的深色准备态实拍；草稿恢复及其他待拍位保留。**
-首页与 v0.5 使用同一组产品主图；专题页使用同一组工程、数据和版本继续展示操作，避免每页重新搭景。页面的 `SHOT-01..12` 对应下表。已批准的桌面、Shell、AutoEdit 专题图继续保留，不能因此视为候选已验收。
+更新：2026-10-10/11 · PLAN-756/757/758。**AutoEdit 的 SHOT-01/02 已用 VM 深色实拍接入，SHOT-03 因比较布局缺陷待修复后重拍；AutoJade 的主图与知识关系画廊已采用用户提供的深色准备态实拍；其余待拍位保留。**
+首页与 v0.5 使用同一组产品主图；专题页使用同一组工程、数据和版本继续展示操作，避免每页重新搭景。页面的 `SHOT-01..12` 对应下表。AutoEdit 使用它自身的源码工程目录，来源与操作见 [捕获目录](p757-autoedit-capture-catalog.json)。已批准的桌面、Shell 实图及 AutoEdit 历史文件继续保留；已接入素材不等于整个发行候选已验收。
 
 ## 先准备一次可复现的拍摄环境
 
@@ -16,9 +16,9 @@
 
 | ID / 建议文件 | 页面位置 | 准备与操作 | 必须入镜 / 验收 |
 |---|---|---|---|
-| **SHOT-01** `autoedit-workspace.png` | 双语首页、v0.5 的 AutoEdit 主图 | 在 `auto-edit/specs/auto-edit` 准备工程，按对应版本运行 `auto run -r vm`。打开 `website-demo`，创建 `main.at`、`README.md`、一个配置文件；打开两个标签，在 `main.at` 做一次小修改并保存。 | 左侧项目树、标签、可读 Auto 源码、状态栏。无未解释报错；既有 `apps/autoedit/overview-dark.png` 可作构图参考，复用时必须保留 2026-10-01 来源，不能改称新候选实拍。 |
-| **SHOT-02** `autoedit-search.png` | AutoEdit 专题“编辑、搜索与文件保存” | 延续 SHOT-01 工程，在两个文件放入同一个函数名；执行跨文件搜索，点击第二个结果定位到文件。 | 搜索词、两个真实结果、对应文件的匹配位置；结果与源码对应。不要把普通查找截图标作跨文件搜索。 |
-| **SHOT-03** `autoedit-diff.png` | AutoEdit 专题“比较文件、目录与缓冲区” | 用同一小文件制作 before/after 两个版本，包含一处新增、一处修改；打开实际双文件比较，定位到一个差异块。另保存“跳到文件侧编辑→保存→重新比较”的操作记录。 | 两侧路径与正文、增改块、差异导航。不要宣称差异行可原位编辑；单张主图展示比较，后续操作靠真实记录佐证。 |
+| **SHOT-01，已拍** `autoedit-workspace.png` | 双语首页、v0.5、应用概览与 AutoEdit 专题主图 | 在干净 AutoEdit 副本的 `specs/auto-edit` 运行 `auto run -r vm --theme dark`。启动器将该工程目录设为 workspace；展开 `src/back`，打开真实 `api.at` 与 `fsys.at`，选中后者；收起前端目录。 | 项目树、两个实际源码标签、中文注释与语法高亮、状态栏。完整 VM/Iced 原生客户区 PNG 为 2560×1600；无重绘、拼接或拉伸。旧 `overview-dark.png` 保留 2026-10-01 历史来源。 |
+| **SHOT-02，已拍** `autoedit-search.png` | AutoEdit 专题“编辑、搜索与文件保存” | 延续同一工程，打开查找栏输入 `fn ws_root`；从“编辑→跨文件查找”打开结果，再点“搜索”，等待完成。两个结果分别在 `src/back/api.at:28` 和 `tests/probe_session_app/src/back/api.at:28`；实际点击两者核对正文，拍主源码匹配位置。 | 搜索词、2 处结果、对应源码和高亮。搜索会同步阻塞窗口，必须等完成；不把零结果或加载中画面拍成成功。通过应用 MCP 输入查找词，避免本次观察到的原生输入同时落入代码区。 |
+| **SHOT-03，待布局修复后重拍** `autoedit-diff.png` | AutoEdit 专题“比较文件、目录与缓冲区” | 从 Git 提取同一个 `src/front/status_bar.at` 在 `5eb71997` 与 `f9ae2a64` 的原始字节为隔离 `status-before.at` / `status-after.at`。使用“工具→比较文件”选择两者；本次通过正式 `AUTO_DIFF_A/B` 路径入口加载。功能已核查，真实差异为 `+16/-1`、1 个 hunk；跳到 B 文件侧、在末尾加一个空格并保存后，自动重比为 `+17/-1`、2 个 hunk。 | 当前 VM 也有空白编辑区挤压差异正文的布局问题；完整问题图见 [原图](media/p757-autoedit-diff-layout.png)，未放入宣传页。布局修复后再拍双方文件名、正文、增改块与导航。Git 版本的原始 hash 和保存后的副本 hash 分开登记；不能写成差异行可原位编辑。 |
 | **SHOT-04** `musk-workspace.png` | 首页、v0.5、AutoMusk 专题主图 | 按 `auto-musk/README.md` 配置 aaid/模型；生成主 Vue UI：`auto build --gen-only`，在 `gen/front/vue` 安装依赖并构建，回仓库根运行 `musk serve`。从实际启动日志打开地址，不猜端口。选择 `website-demo`，发起“阅读项目并说明一个小改动”，等待至少一次真实工具调用返回。 | 项目名、请求、正常消息及工具活动；不露提供商密钥。不要用旧 v0.1.0 桌面图代替新工作台。若模型服务不可用，保留空位，不摆拍成功结果。 |
 | **SHOT-05** `musk-plan-review.png` | AutoMusk 专题 Plan 工作流 | 沿 SHOT-04 同一项目创建一个小 Plan，经过用户确认后执行，再完成对应复审；打开能显示任务与验证结果的视图。 | Plan 名称/状态、具体任务、测试或复审结果；能够对应项目里的真实 Plan 与改动。不要以 Relay 流程结束代替 Plan 已验收/归档；不能展示重启恢复等尚未验收能力。 |
 | **SHOT-06** `musk-kanban-canvas.png` | AutoMusk 专题发布候选场景 | **前置：确认 Musk Kanban/Canvas 的实际发布范围及可用入口。** 使用候选中受支持的操作：创建或打开真实任务，选择其对应的可预览产物，启动实际预览，等待内容完成显示。把任务与预览并排放在同一应用工作区。 | 任务与实际预览的关联、预览内容及入口状态；caption 明确预览对象和运行条件。若候选只支持外部打开，分别拍两张并如实写明，不拼成内嵌 Canvas。不可用时继续留空；不复用普通 Kanban 截图。 |
@@ -44,7 +44,7 @@ Web / 原生的准备依赖、参数或界面若在冻结版本变化，以该�
 | `desktop-showcase/05-games-dark.png` | 实际启动俄罗斯方块、纸牌、扫雷，完成至少一次有效操作；拖动三个窗口并排，游戏主体和任务栏可见。不要使用三个不同会话的拼图。 |
 | `desktop-showcase/06-productivity-dark.png` | AutoEdit 左半屏打开示例代码；Todo 右上放三个演示任务，Calendar 右下选实际日期；拖动/缩放后拍同时存在的工作布局。 |
 | `apps/autoshell/ash-01.png` | 在支持的 AutoShell 原生终端入口，用隔离目录真实运行彩色 `ls`；目录含短文件名、子目录及不同类型文件。命令和完整彩色表格入镜，保留原生滚动/提示符。按 Shell guide 的版本/平台记来源，不能用网站拟真终端替代。 |
-| `apps/autoedit/overview-dark.png` | 当前专题/应用总览已批准原图可继续引用；候选重拍按 SHOT-01，保留旧来源，更新图片时记录新文件哈希和实际版本。 |
+| `apps/autoedit/overview-dark.png` | 历史文件保留；当前专题/应用总览已换 SHOT-01 的 VM 深色原图。旧图不能重标拍摄日期或冒充本次源码版本。 |
 | `v05/autodown-{desktop,web}.png` | 当前仅为 AutoDown/Jade Garden 历史资料。若重拍，进入 **AutoDown 对应 showcase 工程**，相同 vault/正文分别运行 VM 和 Vue，拍目录、编辑与预览三窗格；明确标为 Jade Garden，不用来填写 AutoJade 空位。 |
 | `v05/kanban-{web,desktop}.png` | AutoOS 历史资料中保留的旧图不能绑定新候选；新对照按 SHOT-11/12 拍摄。若继续展示旧图，保留旧来源并与 Musk Kanban 分开。 |
 

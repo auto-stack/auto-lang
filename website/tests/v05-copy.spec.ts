@@ -19,12 +19,43 @@ test('both Chinese docs gallery entrances resolve to the shared application', as
 })
 
 for (const prefix of ['', '/zh']) {
+  test(`${prefix || 'en'} AutoEdit captures load original pixels and retain keyboard zoom`, async ({ page }) => {
+    await page.goto(`${prefix}/apps/autoedit/`)
+    for (const id of ['SHOT-01', 'SHOT-02']) {
+      const slot = page.locator(`[data-capture-id="${id}"]`)
+      const trigger = slot.locator('.evidence-image')
+      await trigger.scrollIntoViewIfNeeded()
+      await expect.poll(() => trigger.locator('img').evaluate((img: HTMLImageElement) => [img.naturalWidth, img.naturalHeight])).toEqual([2560, 1600])
+      await trigger.focus()
+      await page.keyboard.press('Enter')
+      const dialog = slot.locator('dialog[open]')
+      await expect(dialog).toBeVisible()
+      const original = dialog.locator('.dialog-footer a')
+      const originalPath = await original.getAttribute('href')
+      const popupReady = page.waitForEvent('popup')
+      await original.click()
+      const popup = await popupReady
+      await popup.waitForLoadState()
+      expect(new URL(popup.url()).pathname).toBe(originalPath)
+      expect((await popup.request.get(popup.url())).ok()).toBeTruthy()
+      await popup.close()
+      await page.keyboard.press('Escape')
+      await expect(dialog).not.toBeAttached()
+      await expect(trigger).toBeFocused()
+    }
+    await expect(page.locator('[data-capture-id="SHOT-03"] img')).toHaveCount(0)
+  })
+
   test(`${prefix || 'en'} release keeps pending scenes distinct from existing evidence`, async ({ page }) => {
     await page.goto(`${prefix}/v05/`)
     const names = await page.locator('#flagship h3').allTextContents()
     expect(names.map(name => name.replace(/^\S+\s+/, ''))).toEqual(['AutoEdit', 'AutoShell', 'AutoMusk', 'AutoJade'])
+    const workspace = page.locator('[data-capture-id="SHOT-01"]')
+    await expect(workspace.locator('.evidence-image img')).toHaveAttribute('src', '/v05/candidate/autoedit-workspace.png')
+    await expect(workspace).not.toContainText('Capture pending')
+    await expect(workspace).not.toContainText('截图待补')
     await expect(page.locator('[data-capture-id="SHOT-07"] .evidence-image img')).toHaveAttribute('src', '/apps/auto-jade/p1-main-dark.png')
-    for (const id of ['SHOT-01', 'SHOT-04', 'SHOT-10', 'SHOT-11', 'SHOT-12']) {
+    for (const id of ['SHOT-04', 'SHOT-10', 'SHOT-11', 'SHOT-12']) {
       const slot = page.locator(`[data-capture-id="${id}"]`)
       await expect(slot).toHaveCount(1)
       await expect(slot.locator('img')).toHaveCount(0)

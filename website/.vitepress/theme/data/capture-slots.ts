@@ -1,5 +1,7 @@
-// Capture contracts: docs/reports/website-v05-capture-guide.md.
+// Capture contracts and completed originals: docs/reports/website-v05-capture-guide.md.
 export const CAPTURE_IMAGES: Record<string, { src: string; width: number; height: number; caption: [string, string] }> = {
+  'SHOT-01': { src: '/v05/candidate/autoedit-workspace.png', width: 2560, height: 1600, caption: ['AutoEdit own-source workspace · VM/Iced, dark · Windows · 2026-10-10 · f9ae2a64', 'AutoEdit 自仓源码工作区 · VM/Iced 深色 · Windows · 2026-10-10 · f9ae2a64'] },
+  'SHOT-02': { src: '/v05/candidate/autoedit-search.png', width: 2560, height: 1600, caption: ['Search across source and a session test module · VM/Iced, dark · Windows · 2026-10-10 · f9ae2a64', '源码与会话测试模块的跨文件搜索 · VM/Iced 深色 · Windows · 2026-10-10 · f9ae2a64'] },
   'SHOT-07': { src: '/apps/auto-jade/p1-main-dark.png', width: 1933, height: 1245, caption: ['AutoJade workspace · dark · product manual sample · provided 2026-10-10 · release preparation', 'AutoJade 文档工作台 · 深色 · 产品手册示例库 · 用户提供 2026-10-10 · 发布准备态'] },
 }
 

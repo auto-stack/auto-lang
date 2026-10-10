@@ -7,7 +7,6 @@ editLink: false
 
 <script setup>
 import ScreenshotSlot from '../../.vitepress/theme/components/ScreenshotSlot.vue'
-import EvidenceImage from '../../.vitepress/theme/components/EvidenceImage.vue'
 </script>
 
 # AutoEdit: a code and text workspace
@@ -16,7 +15,7 @@ AutoEdit is the Auto ecosystem's lightweight text editor. Browsing, comparing, a
 
 [All applications](/apps) · [System apps and examples](/apps#system-apps)
 
-<EvidenceImage src="/apps/autoedit/overview-dark.png" alt="autoedit native main interface" caption="AutoEdit dark native workspace · user-provided 2026-10-01 main capture" :width="1924" :height="1247" :framed="false" loading="eager" zoom-label="Enlarge image" close-label="Close" original-label="View original" />
+<ScreenshotSlot capture-id="SHOT-01" loading="eager" />
 
 ## Start with a file in a project
 
@@ -57,17 +56,17 @@ AutoEdit and [AutoJade](/apps/auto-jade/) remain separate products. AutoEdit emp
 
 ## Current progress and runtime
 
-Editing, search, and file and directory comparisons have implementations and verification material. Native delivery, performance work, and experience details continue; the Milestone is not described as completed.
+The core editor code is settled. The project's M4.4 closeout records completed editing, search, comparison, and the current performance acceptance. These results describe that tested configuration; release downloads and broader platform coverage have their own delivery conditions.
 
-The source project lives in `specs/auto-edit` in the `auto-edit` repository. With the matching Auto toolchain and project dependencies prepared, the development entry for a native VM window is:
+The source project lives in `specs/auto-edit` in the `auto-edit` repository. With the matching Auto toolchain and sibling dependencies prepared, start the VM desktop window in dark mode:
 
 ```sh
 cd specs/auto-edit
-auto run -r vm
+auto run -r vm --theme dark
 ```
 
-A Vue generation path also exists. Desktop and web prerequisites and feature coverage need separate confirmation. Consult the relevant version's delivery notes for compiled releases, installation, and performance measurements.
+A Vue generation path and a Rust portable build path also exist. The Rust interface still needs debugging and visual validation; the captures here use VM/Iced. Desktop and web prerequisites and feature coverage need separate confirmation. Consult the relevant version's delivery notes for releases, installation, and performance measurements.
 
-This introduction reflects project specifications and source as of **2026-10-01**. Future captures will identify their runtime and operation.
+Project progress was checked against the M4.4 closeout on **2026-10-10**. Screenshot captions identify their actual runtime and capture date.
 
 [AutoUI desktop runtime](/ui-desktop) · [AutoOS virtual desktop](/autoos/)

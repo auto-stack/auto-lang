@@ -402,7 +402,7 @@ fastfail 崩溃且审计无行时，优先按栈溢出排查（重建符号 + RU
 
 | id | 级别 | 领域 | 内容 | 锚点 |
 |---|---|---|---|---|
-| P757-D1 | high（用户指示需修改） | AutoEdit VM/iced 比较视图布局 | 双文件比较视图上方空白编辑区挤压差异正文，真实画面不适合宣传（问题图 `docs/reports/p757-capture/media/p757-autoedit-diff-layout.png`，+16/-1 一个 hunk 的真实差异被压缩）。功能本身已核查可用（保存后自动重比 +17/-1 两个 hunk 在案）。**SHOT-03 宣传图因此留空**，布局修复后按拍摄合同重拍（指南行"待布局修复后重拍"）。 | PLAN-757 §9/§10；docs/reports/website-v05-capture-guide.md SHOT-03 行 |
-| P757-D2 | low | AutoEdit 原生查找输入焦点 | 原生键盘输入查找词时焦点可能同时落入代码区（本次经应用 MCP 输入规避）；产品侧待修 | PLAN-757 r2 复审 findings；p757-autoedit-verification.md |
-| P757-D3 | low | AutoEdit 同步搜索阻塞 | 跨文件搜索同步阻塞窗口直至完成，大仓长尾体验差；拍摄时须等待完成 | 同上 |
+| P757-D1 | high（用户指示需修改） | AutoEdit VM/iced 比较视图布局 | 双文件比较视图正文上方大片空白编辑区、差异挤在下半部（并排与内联均观察到；`h-0 w-0` 隐藏 code_editor 为排查线索，未确证根因）；真实画面不适合宣传（问题图 `docs/reports/p757-capture/media/p757-autoedit-diff-layout.png`，+16/-1 一个 hunk 被压缩）。功能本身已核查可用（保存后自动重比 +17/-1 两个 hunk 在案）。**SHOT-03 宣传图因此留空**，布局修复后按拍摄合同重拍（指南行"待布局修复后重拍"）。 | PLAN-757 §9/§10；[诊断原图](../reports/media/p757-autoedit-diff-layout.png)；[捕获目录](../reports/p757-autoedit-capture-catalog.json)；auto-edit specs/auto-edit/src/front/app.at 比较隐藏编辑器 |
+| P757-D2 | high | VM 查找输入与焦点路由 | 原生键入（聚焦查找输入后输入 ws_root）同时落入查找框与活动内置 untitled main.at 正文（样例缓冲区未保存，真实源码未受写入）；合格搜索图改用应用 MCP FindInput handler 规避。需专门复现焦点/键盘路由，不能把 MCP 成功当原生链无缺陷。 | [捕获目录](../reports/p757-autoedit-capture-catalog.json)；vm2.stderr.log；PLAN-757 r2 findings |
+| P757-D3 | low | VM 搜索响应 | 跨文件搜索扫描完整工程时同步阻塞原生窗口，完成后真实返回 ws_root=22、fn ws_root=2；未计精确时延不外推通用性能，拍摄须等待完成 | [搜索状态](../reports/p757-autoedit-search-state.txt)；AutoEdit fsys.at search_files_json |
 | P757-D4 | low | website 首次搜索索引加载 | VitePress local search 首次加载索引长尾，并行负载下 e2e 偶发超时（新端口单 worker 复跑 19.6s 过） | 同上 |

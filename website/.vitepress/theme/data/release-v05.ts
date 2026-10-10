@@ -70,7 +70,7 @@ export interface ReleaseFlagship {
   href?: string
   linkLabel?: string
   image?: ReleaseShot
-  /** AutoShell 保留原生主图；新候选场景用文字待拍槽。 */
+  /** Completed captures and text-only pending scenes share stable IDs. */
   captureId?: string
   kind: 'image' | 'autoshell' | 'none' | 'capture' | 'pending'
 }
