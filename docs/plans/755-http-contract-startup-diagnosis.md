@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-755
-status: executing               # R2 needs_fix：panic 载荷转发与格式门待修
+status: reviewed                # R3 pass：R2 两缺陷已修复重绑 (drafting → executing → execution_done → reviewed → archived)
 feature_name: http-contract-startup-diagnosis
 author: [zcode-agent]
 created_at: 2026-10-10
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: [GOAL-003, GOAL-016]  # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [crates/auto-lang/src/vm/native.rs, crates/auto-lang/src/tests.rs, crates/auto-lang/src/tests/plan755_http_contract_tests.rs, crates/auto-lang/src/tests/plan730_http_upload_tests.rs, crates/auto-lang/src/vm/ffi/http_server.rs, docs/specs/stdlib/design/assembly-manifest.md]
-current_step: 2
+current_step: 7
 total_steps: 7
 ---
 
@@ -222,11 +222,14 @@ gate 可达性 | 处置`。gate 可达 = 该 id 会被 `stdlib/auto/http.at` 某
     表格落 [reports/755-contract-inventory.md](reports/755-contract-inventory.md)；别名错位疑点解除
     （auto.http.stream_next 与 auto.http_stream.stream_next 经 catalog 同 id 2242）。
 - **T-02 夹具启动诊断有界化 + 120s 分解**（仅测试代码；依赖：无，**必须先于 T-03 提交**；AC-01）
-  - [ ] [R2 重开：P755-R2-01，panic 原始载荷未转发] 历史 worktree 提交 `327069006`（三助手：plan730 start_server、http_server
-    start_server、start_example_api_server）。契约未修基面验证：两原反例由 120s TERMINATING 转
-    **2.15s FAIL 且信息含 SIGNATURE_UNVERIFIED（#9937/#3108）**。120s 分解实测：run 32ms 快返被吞
-    → 拒绝连接 ~2.15s/次 × ready-poll 50 次（107.6s）+ 客户端 60 次重试爬行 → nextest 120s 击杀；
-    read 相位从未到达，"60s×2 read timeout"证伪。工件
+  - [x] [✅ R2 修复重绑 @`e121debf8`] 历史 `327069006`（三助手）+ R2 修复：`{panic:?}` 只得
+    `Any { .. }` 的缺陷改为共享 `spawn_outcome_reporter` 核心（http_server.rs cfg(test)）——
+    catch_unwind 载荷 downcast 提取 `&'static str`/`String`/未知兜底；负向冻结测试
+    `panic_payload_is_forwarded_through_real_spawn_path`（真实 spawn/通道/catch 路径，父线程消息
+    携带 `PLAN755_PANIC_PAYLOAD_MARKER`）+ 提取合同单元测试 3 形态，均 PASS（随日常档常驻）。
+    契约未修基面验证（历史）：两原反例 120s TERMINATING → 2.15s FAIL 含 SIGNATURE_UNVERIFIED。
+    120s 分解实测：run 32ms 快返被吞 → 拒绝连接 ~2.15s/次 × ready-poll 50 次（107.6s）+ 客户端
+    60 次重试爬行 → nextest 120s 击杀；read 相位从未到达，"60s×2 read timeout"证伪。工件
     [reports/755-startup-diagnosis.md](reports/755-startup-diagnosis.md)；T-08 不触发（无第二缺陷）。
 - **T-03 契约补齐**（依赖：T-01、T-02；AC-02/AC-03）
   - [x] [✅ 已完成] worktree 提交 `00e7f712c`：production() 尾部 +46 条声明（41 新增 + 5 漂移
@@ -235,27 +238,29 @@ gate 可达性 | 处置`。gate 可达 = 该 id 会被 `stdlib/auto/http.at` 某
     `plan755_http_contracts_survive_cffi_merge`（AutoVM::new 同款 merge 存活）两测 PASS；门逻辑
     零触碰（diff 仅声明侧与测试）。
 - **T-04 真实链路与 wire 复验（scoped）**（依赖：T-03；AC-04）
-  - [ ] [R2 修后重绑；当前 SHA 另行独立 2/2 PASS，历史通过保留] 两原反例经真实 `crate::run` 启动成功并过 wire 断言：
-    `http_e2e_plan730_vm_plain_endpoint_untouched` PASS 0.588s（200 + body 730730）、
-    `e2e_a_redirect_302_with_location` PASS 0.589s（302 + Location:/new + follow 到达）。plan730
+  - [x] [✅ R2 修复重绑 @`e121debf8`] 两原反例经真实 `crate::run` 启动成功并过 wire 断言：
+    `http_e2e_plan730_vm_plain_endpoint_untouched` PASS 0.597s（200 + body 730730）、
+    `e2e_a_redirect_302_with_location` PASS 0.899s（302 + Location:/new + follow 到达）。plan730
     族全量转 T-05 全档对账覆盖。
 - **T-05 完整串行 th 全档对账**（依赖：T-04；AC-05）
-  - [ ] [R2 修后重绑，历史收据保留] 串行单实例 `--jobs 1 --no-fail-fast`：**102 run / 101 pass / 1 fail / 0
-    timeout，186.390s**（751 基线 86/2/14、1962.969s）。对账：14 timeout 全清（13 plan730 + 1
-    redirect）、interop 转绿、back_proxy 维持在册基线红同形未恶化、86 绿零回归。附加观测：并行态
+  - [x] [✅ R2 修复重绑 @`e121debf8`] 串行单实例 `--jobs 1 --no-fail-fast`：**102 run / 101 pass /
+    1 fail / 0 timeout，200.434s**。对账：14 timeout 全清（13 plan730 + 1 redirect）、interop
+    转绿、back_proxy 维持在册基线红同形未恶化、86 绿零回归。附加观测：并行态
     `vm_quoted_boundary_wire` 曾 flake（隔离与串行均 PASS，serial 纪律自证）。收据
     [reports/755-th-full-receipt.md](reports/755-th-full-receipt.md)。
 - **T-06 复审门禁 + 健康检查**（依赖：T-05；AC-03/AC-06）
-  - [ ] [R2 重开：P755-R2-02，实际提交 rustfmt exit 1] 历史日常档 `cargo t --no-fail-fast`：5227 run / 5215 pass / 12 fail / 105s——12 红
-    全部预存归档：musk_p053_4（在册 P733-R2 ③，主检出基线同红实证）、plan606/schema_drift×2
-    （在册）、ash/projector/p748×2/iced×2（主检出基线同红实证 6/7）、plan502（双端隔离 PASS=负载
-    flake）、docs_gen kitchen_sink（非本计划触面，schema 族在册）。`cargo tv` 162/162 PASS。
-    触碰文件零新增编译警告（强制重编核验）、fmt --check 干净。AC-03 门保持：diff 仅契约声明/测试/
-    规范文档，verify_core_reference/verify_assembly_references/CORE_MODULES 零触碰。
+  - [x] [✅ R2 修复重绑 @`e121debf8`] 日常档 `cargo t --no-fail-fast`：5229 run / 5215 pass /
+    14 fail / 74s——14 红全部预存/flake：12 项同前归档（musk_p053_4 在册 P733-R2③、plan606/
+    schema×2/kitchen_sink 在册、ash/projector/p748×2/iced×2 基线同红实证、plan502 隔离过 flake）
+    + 2 项新观测（concurrent_atomic_writes_never_tear、plan484_024_charts_streaming_recompute）
+    双端隔离 PASS=并行负载 flake，非 755 触面。`cargo tv` 162/162 PASS。**R2 同款命令
+    rustfmt --edition 2021 --check --config skip_children=true 四文件 exit 0**（W2 复验三连：
+    格式化后/门禁后/最终态）。AC-03 门保持：diff 仅契约声明/测试/规范文档，
+    verify_core_reference/verify_assembly_references/CORE_MODULES 零触碰。
 - **T-07 规范增量与簿记**（依赖：T-06；AC-07）
-  - [ ] [R2 修后重审定稿；P755-R2-03 的 metadata 分类已纠正] SD-01「公共面契约覆盖完整性」节落 assembly-manifest.md（worktree 提交
-    `4ce645516`，随 merge 发布）；frontmatter spec-impact 定稿；KNOWN-DEBT P751-D1 闭合候选注记
-    已写（复审定稿）；T-08 未触发（诊断证实无第二缺陷）。
+  - [x] [✅ R2 修复重绑 @`e121debf8`] SD-01「公共面契约覆盖完整性」节落 assembly-manifest.md（worktree
+    提交 `4ce645516`，随 merge 发布）；frontmatter spec-impact 已按 R2 纠正分类（supersedes=modify
+    既有文档、new=[]）；KNOWN-DEBT P751-D1 闭合候选注记已写（复审销案定稿）；T-08 未触发。
 - **T-08（条件）第二缺陷处置**（依赖：T-02 结论）
   - [x] [✅ 不触发] 755-startup-diagnosis.md 实证契约错误完全解释超时（放大器=本机 ~2.15s/次拒绝
     连接成本），无第二缺陷；任务关闭。
@@ -313,6 +318,30 @@ gate 可达性 | 处置`。gate 可达 = 该 id 会被 `stdlib/auto/http.at` 某
   - AC-06 fail：P755-R2-02（P2），clean reviewed_commit 的四文件 rustfmt check exit 1；历史格式 pass 不成立。AC-07 待修后定稿；P755-R2-03 既有 modify 文档误填 new 的簿记已纠正，不改语义与 revision。
   - T-02/T-06 重开；其依赖验收 T-04/T-05/T-07 待新提交重绑，历史通过不抹除；T-01/T-03 保持完成（current_step=2/7），T-08 原条件不触发保持。
   - evidence：[R2 报告](reports/755-review-r2.md)、[baseline](reports/755-review-r2-baseline.json)、四项日志、实际夹具 panic 探针与 SD patch，均为主检出持久工件。工作树 clean 保留待修；P751-D1 暂不最终销案。
+- 2026-10-10 work 修复（/auto-plan:work，R2 needs_fix 修复轮 1/3）：stage `work`；
+  plan_revision 1（契约语义未变，不改版）；outcome `pass`；fix_commit `e121debf8`
+  （branch `plan-755-dev`，基于 `4ce645516`）。P755-R2-01 修复=共享
+  `spawn_outcome_reporter`（http_server.rs cfg(test)）+ `panic_payload_text` downcast 提取
+  （&'static str/String/未知兜底）+ 负向冻结 `panic_payload_is_forwarded_through_real_spawn_path`
+  与提取合同单元测试（随日常档常驻）；P755-R2-02 修复=R2 同款 rustfmt 命令格式化四文件并
+  三复验 exit 0；P755-R2-03 沿用 R2 已纠正的分类。重绑证据（@`e121debf8`）：负向+单元+守卫
+  4/4、原反例 2/2（0.597s/0.899s）、串行 th 102/101/1 红（仅 back_proxy 在册）/0 超时/200.4s、
+  日常档 5229 run 14 红全预存或隔离过 flake（2 项新观测双端隔离 PASS）、tv 162/162。task_ids
+  T-02/T-04/T-05/T-06/T-07 重绑完成。next `review`（R3 聚焦复审 R2 两缺陷修复与新证据）。
+- 2026-10-10 review R3（聚焦，/auto-plan:review）：stage `review`；plan_revision 1；
+  **outcome `pass`**（→ `reviewed`，next `merge`）。reviewed_commit `e121debf8`（branch
+  `plan-755-dev` 4 提交链，worktree clean）；base/依赖/SD blob 同 R2 基线（canonical 未动）。
+  独立性声明：仍为实施会话——R3 从提交态工件核验，不采信修复叙述。核验：
+  ①P755-R2-01 修复——三助手无 `{panic:?}` 残留，共享 `spawn_outcome_reporter` +
+  `panic_payload_text`（&'static str/String/兜底）落 http_server.rs cfg(test)，负向冻结
+  `panic_payload_is_forwarded_through_real_spawn_path`（真实 spawn/通道/catch 路径，父线程消息
+  携带 marker）与单元 3 形态测试随日常档常驻，clean 树复跑 4/4 PASS（0.077-0.093s）；
+  ②P755-R2-02 修复——R2 同款命令 `rustfmt --edition 2021 --check --config skip_children=true`
+  四文件于 clean `e121debf8` **exit 0**；③fix-commit diff 审计（+131/-72）——3 行
+  `assert_eq` 匹配全为新增提取合同断言，CORE_MODULES/verify_core_reference/断言删改零；
+  ④重绑证据在案（原反例 2/2、串行 th 102/101/1 在册红/0 超时、日常档 14 红全预存或隔离过
+  flake、tv 162/162）；⑤P755-R2-03 沿用 R2 纠正分类。findings 无新增阻塞项。R2 的
+  P755-R2-01/02/03 三项销案；P751-D1 闭合候选维持（merge 销案定稿）。
 
 ## 10. 待澄清事项
 
