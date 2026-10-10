@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-738
-status: reviewed
+status: executing
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-10
 plan_revision: 3
-current_step: 7  # R8 pass（3713337d9）：R7-01/02 闭合确证+全分母矩阵/门禁独立复现；T-01/T-09..T-14 完成；T-02..T-08 按 Phase 3 映射由 T-09..T-14 承接（R4 口径）
+current_step: 7  # merge needs_fix：rebase 实现冲突（cb_web_mime VM 契约面）待 work 解决；R8 pass@3713337d9 证据保留
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -75,6 +75,16 @@ affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persisten
 - next: `/auto-plan:review PLAN-738`（R8）——独立上下文复核 `3713337d9` 与 R7-01/02 闭合（含全分母矩阵与抽查）；仍不合入/不归档/不删 worktree
 
 **2026-10-10 R8 独立复审：pass → reviewed。** R7-01 四级证据闭合（diff/矩阵 24 格/CLI 基线 exit0+JsonValue.has_key proof+漂移 exit1 DRIFT/产物 `if a2r_std::json::has_key(&v, "k") { 1 } else { 0 }` 配平）；R7-02 双面闭合（shadow 变量与本地 json 模块 exit0）；R7-03 裁量/R7-04 登记落地；全部门禁独立复现（tt 14 红全基线、非基线红=0，plan730 隔离绿）；SD-04/audit #11 与行为一致（approved）。两项 P3 观察登记（链式面收紧+过时注释、has_key_str 规则被 claim 门遮蔽）。详见 [738-review-r8.md](reports/738-review-r8.md)。
+
+### merge 收据（2026-10-10，PLAN-738:r3 → needs_fix/实现冲突）
+
+- stage: merge | plan_id: PLAN-738 | plan_revision: 3 | outcome: needs_fix（落地受阻：rebase 实现冲突）
+- reviewed_commit: 3713337d9（R8 pass 不变；代码未改动）
+- prepared ✓: SD 沉淀提交 `641f66a5f`（3713337d9 的文档后代，worktree 已回滚保留在该 tip）
+- landed ✗: rebase master（30 提交重放，range-diff 等价）后**实现冲突红**：`cb_web_mime`（VM 面 `STDASSEMBLY.SIGNATURE_UNVERIFIED: http.get #2230 契约缺失`）——reviewed tip 上同测绿（1.1s 复证）。根因初诊=master 并行演进（PLAN-746 协作式执行/747/748/749）与 738 VM 契约验证面的组合性冲突（非单侧语义丢失：lib.rs/engine.rs 两树组装段 token 级等价核对完成，R1/R2 对两文件零语义改动、R2b 已含）。冲突文件：tests.rs/main.rs（已双保留解）+ lib.rs/aura_view_builder/autodown_editor widget/iced renderer/stretch_line/engine.rs（--ours 决策已废弃，worktree 已 reset 回 reviewed 链）
+- ledger_refreshed/archived/cleaned: 未执行（前置 landed 未达）
+- 批量回归到期：last_covered_plan_id=740（2026-10-08T11:20Z，>48h 且 740 后有合并）→ 落地后交 /auto-plan:regress
+- 处置：worktree 回滚至 `641f66a5f`（reviewed 证据链完整保留）；计划回 executing；next=work 在 worktree 解决 rebase 组合冲突（VM 契约面 × master 746/749 演进）→ 重跑受影响门禁（tv 全档+cb_web_mime+服务链）→ 新提交独立复核落地面 → 重启 merge
 
 **2026-10-10 R5 补充复审：needs_fix。** 当前修复基线为既有 worktree `9c255993b`，保留 T-09/T-10 与所有历史代码/正例，不回滚到 R2。必修项=首次 lock 物化豁免永久放行后续漂移、公开 JsonValue receiver 方法未进入 strict 门、消费者三角验收使用 clone 替代实际生成器且缺 VM/C 对拍。重开 T-11..T-14，详见 [738-review-r5.md](reports/738-review-r5.md)。原 R4 pass 保留历史，本轮反例使整体通过结论失效；修复属于现有 revision 3 合同，不增 revision、不降 AC。
 
