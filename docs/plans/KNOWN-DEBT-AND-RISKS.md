@@ -267,6 +267,8 @@
 
 原计划归档终态保持。下项为实际反例确证的后续必修候选，须另走修复流程；登记不代表批准延期。R9 两项修复已确证闭合，不撤销其闭合记录。
 
+2026-10-10 闭合更新：P738-R11-01 已由 PLAN-751 `226ebfbbb` 修复，归档后独立补充复验原 R11 探针 1/1（1.55s），空文件一次绑定/再生成身份均 `811c9dc5` 且 fresh，读错误与恢复矩阵通过；正式生成服务完整链 1/1（361.01s，测试夹具仅适配缓存路径）。原反例登记保留历史；后续 HTTP 能力缺口见 P751-D1 / [751-review-r2.md](reports/751-review-r2.md)。
+
 | ID | 级别 | 问题 | 证据与修复要求 |
 |---|---|---|---|
 | P738-R11-01 | medium / P2 | 空 Cargo.lock 生产/消费身份不一致 | 落地 `9ff34ae0d`，api_gen.rs:1076 成功读取空字节写 `811c9dc5`，rust_ui.rs:4030 归 absent；实际生成成功后门判 stale，absent 首次空文件出现也未绑定。仅 NotFound=absent，成功读取统一实际内容身份；补正式生成/消费空文件、漂移/删除及读错误恢复矩阵。AC-06/07，SD-05；[R11](reports/738-review-r11.md)，探针 0/1（1.40s） |
@@ -342,6 +344,12 @@ fastfail 崩溃且审计无行时，优先按栈溢出排查（重建符号 + RU
 |---|---|---|---|---|
 | P751-D1 | high | HTTP e2e 挂死族 | **plan730 上传 e2e 整族（14 项）+ e2e_a_redirect_302 确定性挂死**——服务端 accept 后不响应（60s×2 read timeout 累计 120s 被 nextest TERMINATING）；隔离单跑确定性复现（vm_plain_endpoint_untouched / e2e_a_redirect_302_with_location 均 TIMEOUT 120.0s）；与负载无关（同条件 plan326 兄弟 39 项 0.6s 全绿）。红移窗口=PLAN-738 系列（plan734 时代 th 99/101 绿 `ae9b7a7e2` → 738 后转红；http_server.rs 最后触碰=R2 `bade1845c`，其后 `19973b089` 触及 http 族契约注册撤销语义；R2 收据自述 th 绿与本轮矛盾）。**根因 bisect + 修复走后续专项计划**；候选锚点 `dd9ffe35b`/`19973b089` | docs/plans/reports/751-th-full-receipt.md；crates/auto-lang/src/tests/plan730_http_upload_tests.rs:254（start_server）/ crates/auto-lang/src/vm/ffi/http_server.rs |
 | P751-D2 | medium | auto-man 日常档盲区 | **auto-man lib 3 项预存红**（基面 stash 实证 0/3 同红，与 PLAN-751 diff 无关）：`vue::plan593_index_css_golden_tests::index_css_values_match_p1_baseline`（CSS 金样漂移）、`rust_ui::tests::test_shell_pack_lib_freshness`（shell-pack 入库物过期，panic 自述需重跑 regen_shell_pack#[ignore]+提交）、`rust_ui::tests::merged_api_client_crud_fallback_for_uncovered_endpoints`（merged API 客户端金样漂移）。根因：日常档 `cargo t` 只 `-p auto-lang`，auto-man 面长期脱离例行门禁——清偿方向：修复三红 + 将 auto-man scoped 面纳入复审触面清单 | crates/auto-man/src/rust_ui.rs:5743/6203；crates/auto-man/src/vue.rs（plan593 金样） |
+
+### PLAN-751 R2 补充分诊更新（2026-10-10）
+
+- **P751-R2-01（high/P1，P751-D1 的实证入口）**：落地树 `d79282eb6` 的原上传与重定向程序，通过实际 `crate::run` 在启动前即返回 `STDASSEMBLY.SIGNATURE_UNVERIFIED`，分别缺 `http.upload_receive #9937` 与 `http.response_redirect #3108` 的独立 producer/adapter 契约（探针 0/1、0.10s；shim 实际存在）。后续需审计最终公共 HTTP provider/ABI 并补真实合同，保留严格门，再验 wire/完整 th；不是 751 lock 修改引入。
+- **P751-R2-02（medium/P2，纠正 D1 归因边界）**：D1 上述「accept 后不响应、60s×2」只能保留为执行者假设，尚非确证机制；重定向实际配置 5s read timeout；原两 start_server 均丢弃 run Err。历史表为 plan730 13 timeout + interop fail，另 redirect timeout，不能把 interop 也计为 120s 挂死。需有界保留启动 Err/panic/readiness，再接通原 120 秒等待位置。last-touch 非根因证据；代码引入校验锚点 `d82eb02eb` 是新候选，尚未 good/bad 对拍，不签署精确归因。
+- 原 102 项计数保留历史；本轮没有再跑完整 th，不外推全绿。详情与新证据：[751-review-r2.md](reports/751-review-r2.md)。738/751 归档终态保持，修复走后续专用 worktree。
 ### P753（2026-10-10，README 计划知识投影前置阻塞）
 
 | id | 级别 | 领域 | 内容 | 锚点 |

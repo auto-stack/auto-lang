@@ -1,5 +1,7 @@
 # PLAN-751 完整串行 th 验收收据（2026-10-10）
 
+> R2 补充分诊（2026-10-10）：下列 102 项执行计数与超时是历史观测，**具体「accept 后不响应/60s×2」机制未获阶段证据，不作已确定根因**。当前落地树上，原上传及重定向源通过实际 `crate::run` 启动前即返回独立契约缺失：`http.upload_receive #9937` / `http.response_redirect #3108`（诊断探针 0/1、0.10s）；原助手忽略 run Err。重定向 read timeout 实际为 5s。原 120 秒等待须有界捕获启动错误再追踪；last-touch/候选提交不能直接定因。详见 [751-review-r2.md](751-review-r2.md) 与其 baseline/探针。
+
 - 计划：PLAN-751 T-05 / AC-05（承接 PLAN-738 R9 移交的 HTTP 全档尾项：45/102 → 补齐 102/102）。
 - 执行环境：worktree `D:/autostack/.wt/lang-751/auto-lang`（分支 plan-751-dev）。
   **被测 auto-lang 代码 = master `0884add2a` 的 auto-lang 面**——PLAN-751 的实现提交

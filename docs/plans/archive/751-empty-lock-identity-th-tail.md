@@ -1,5 +1,7 @@
 ---
 plan_id: PLAN-751
+plan_revision: 1
+completion_kind: delivered
 status: archived              # drafting → executing → execution_done → reviewed → archived
 feature_name: empty-lock-identity-th-tail
 author: [zcode]
@@ -7,12 +9,12 @@ created_at: 2026-10-10
 updated_at: 2026-10-10
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: [auto-man/design/api-generation-integrity.md]
-touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
+supersedes_spec_components: [docs/specs/auto-man/design/api-generation-integrity.md]
+new_spec_components: []
+touched_goals: [GOAL-003]
 
-affects: [auto-man/design/api-generation-integrity.md]
-current_step: 5
+affects: [crates/auto-man/src/rust_ui.rs, crates/auto-man/src/api_gen.rs, docs/specs/auto-man/design/api-generation-integrity.md]
+current_step: 6
 total_steps: 6
 ---
 
@@ -261,13 +263,24 @@ tempfile 隔离 workspace + `AUTO_RUST_WORKSPACE` env 指向（沿既有 R5 状�
   根因 bisect 登记为 P751-D1 债务走后续专项。收据：
   `docs/plans/reports/751-th-full-receipt.md`（含复跑矩阵与 R9 承接 45 项
   交叉对照）。
-- **T-06 复审、合并、归档、清理**
+- **T-06 复审、合并、归档、清理** [✅ 已完成；批量回归已移交、执行待 owner 收口]
   依赖：T-04/T-05。操作：`/auto-plan:review`（独立复审，证据绑修订）→
   merge 回 master（Conventional Commit）→ spec 沉淀（SD-01 + specs.json/
   索引）→ 归档本计划 → `wt-guard` → 移除 worktree/分支/组目录；merge 后
   按到期判定批量回归（如到期交 `/auto-plan:regress` 主检出单实例执行）。
 
 ## 复审记录
+
+### 归档后独立补充复验 R2（2026-10-10）
+
+- stage: review；plan_id: PLAN-751；plan_revision: 1；outcome: **needs_fix（后续 HTTP 能力/分诊项；751 空 lock 修复单项 pass）**。738/751 archived 终态不回退，原非目标保持，不在此复查中修实现。
+- reviewed_commit: `d79282eb6d671ebd279fd823b48be4cba9e592ea`；code=`226ebfbbb637ade69e8d6b38ee05f400e9110452`；base=`226ebfbbb^`，执行者旧基面=`0884add2a`；dependency auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`；规范/lock 哈希与最终证据见 baseline。
+- AC-01..04 **pass**：独立复跑原 R11 探针 1/1（1.55s），空文件两次身份均 `811c9dc5` 且 fresh，生成端/未绑定/已绑定读错误及恢复可读均过；两生产调用点共用三态函数，SD-01 一致。真实生成服务完整链 1/1（361.01s，含冷编译；仅临时 cfg(test) 缓存路径适配，业务断言不变，结束逐字节恢复）。
+- AC-05 **partial**：102 项历史收据的计数成立，挂死机制还需纠正。P751-R2-01（P1）：原上传/重定向程序经实际 `crate::run` 在启动前被 `SIGNATURE_UNVERIFIED` 拒绝，分别缺 `http.upload_receive #9937` / `http.response_redirect #3108` 的独立契约；真实诊断探针 0/1（0.10s），不是网络负载推断。P751-R2-02（P2）：原助手忽略 run Err；「accept 后不响应/60s×2」缺阶段证据，重定向实际读 timeout=5s；精确 120 秒位置及引入提交未确定。
+- AC-06：两文件格式通过；执行者完整日常/auto-man 记录保留历史，本轮不外推新的全档 pass。收尾元数据按实际 SD modify/T-06 merge 收据补齐（revision、exact Spec 路径/modify 分类、GOAL-003、6/6），不改合同。
+- evidence: [R2 报告](../reports/751-review-r2.md)、[baseline](../reports/751-review-r2-baseline.json)、原 R11/HTTP/服务夹具探针与测试段日志。本上下文曾做 R11、未实施 751；独立于 751 实现，不宣称全新上下文全库审计。
+- next: 单独 HTTP 专项修复：真实 producer 契约覆盖+有界启动错误传播+原 HTTP wire/完整 th 复验；勿降低严格门。批量回归 DUE 主要由 750 触发，旧收据截至 16:08 CST 尚不足 48h，753 当时未归档；020 WIP owner 收口后执行 regress。
+
 
 - 2026-10-10 stage: new（/auto-plan:new）。plan_revision: 1。outcome: pass
   （合同要素齐备，任务覆盖全部 AC 与 SD-01；授权=用户 2026-10-10 会话指令，

@@ -1,0 +1,21 @@
+Test execution output; preceding compiler warnings omitted.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 08s
+────────────
+ Nextest run ID 5adadfe0-0916-484e-9b6c-b98920d29226 with nextest profile: default
+    Starting 1 test across 1 binary (6850 tests skipped)
+        SLOW [> 60.000s] (───) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_plain_endpoint_untouched
+ TERMINATING [>120.000s] (───) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_plain_endpoint_untouched
+     TIMEOUT [ 120.046s] (1/1) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_plain_endpoint_untouched
+  stdout ───
+
+    running 1 test
+    test tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_plain_endpoint_untouched has been running for over 60 seconds
+  stderr ───
+    warning: 'nil' is deprecated: use 'null' instead
+
+    (test timed out)
+
+────────────
+     Summary [ 120.092s] 1 test run: 0 passed, 1 timed out, 6850 skipped
+     TIMEOUT [ 120.046s] (1/1) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_plain_endpoint_untouched
+error: test run failed
