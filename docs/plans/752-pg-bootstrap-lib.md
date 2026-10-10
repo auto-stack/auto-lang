@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-752
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: pg-bootstrap-lib
 author: [agent]
 created_at: 2026-10-09
