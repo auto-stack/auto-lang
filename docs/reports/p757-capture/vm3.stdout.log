@@ -1,0 +1,187 @@
+---------------------------
+AutoNexus / Auto CLI
+---------------------------
+Loading AmConfig from Some("C:\\Users\\zhaop\\.auto\\auto-man\\am.at")...
+AmConfig: AmConfig {
+  name: default
+  index: {
+    soutek: git@codeup.aliyun.com:soutek/auto-stack/auto-index.git
+    boe: git@codeup.aliyun.com:soutek/boe/index.git
+    default: git@gitee.com:auto-stack/auto-index.git
+  }
+}
+
+
+Loaded port: windows_ninja
+port NAME: windows_ninja
+all index: {"soutek": "git@codeup.aliyun.com:soutek/auto-stack/auto-index.git", "boe": "git@codeup.aliyun.com:soutek/boe/index.git", "default": "git@gitee.com:auto-stack/auto-index.git"}
+used index: ["default"]
+10:11:44 [INFO] loading index store from C:/Users/zhaop/.auto/auto-man/index/default
+setting port builder: windows_ninja ninja, at build
+10:11:44 [INFO] AutoCache initialized for project: auto-edit
+  Frontend dev server port: 4041 (from pac.at)
+  VM window title: 编辑器 (from pac.at)
+  UI theme: dark (from cli)
+10:11:44 [INFO] Running project ...
+
+------------ output ------------
+
+  ✓ vm+vm merged mode: backend runs in-process (no HTTP server)
+Running VM interpreter UI (backend: vm, merged)
+10:11:44 [INFO] Downloading deps
+10:11:44 [WARN] ext stub: `official` has no VM-target implementation (web-ecosystem source) — no-op platform stub, arity 0
+10:11:45 [INFO] System theme: None
+10:11:45 [INFO] Window attributes for id `Id(
+    1,
+)`: WindowAttributes {
+    inner_size: Some(
+        Logical(
+            LogicalSize {
+                width: 1280.0,
+                height: 800.0,
+            },
+        ),
+    ),
+    min_inner_size: None,
+    max_inner_size: None,
+    position: Some(
+        Logical(
+            LogicalPosition {
+                x: 80.0,
+                y: 80.0,
+            },
+        ),
+    ),
+    resizable: true,
+    enabled_buttons: WindowButtons(
+        CLOSE | MINIMIZE | MAXIMIZE,
+    ),
+    title: "编辑器",
+    maximized: false,
+    visible: false,
+    transparent: false,
+    blur: false,
+    decorations: true,
+    window_icon: None,
+    preferred_theme: None,
+    resize_increments: None,
+    content_protected: false,
+    window_level: Normal,
+    active: true,
+    cursor: Icon(
+        Default,
+    ),
+    parent_window: None,
+    fullscreen: None,
+    platform_specific: PlatformSpecificWindowAttributes {
+        owner: None,
+        menu: None,
+        taskbar_icon: None,
+        no_redirection_bitmap: false,
+        drag_and_drop: true,
+        skip_taskbar: false,
+        class_name: "Window Class",
+        decoration_shadow: false,
+        backdrop_type: Auto,
+        clip_children: true,
+        border_color: None,
+        title_background_color: None,
+        title_text_color: None,
+        corner_preference: Some(
+            Default,
+        ),
+    },
+}
+10:11:45 [INFO] Settings {
+    present_mode: AutoVsync,
+    backends: Backends(
+        NOOP | VULKAN | GL | METAL | DX12 | BROWSER_WEBGPU,
+    ),
+    default_font: Font {
+        family: Name(
+            "Inter",
+        ),
+        weight: Normal,
+        stretch: Normal,
+        style: Normal,
+    },
+    default_text_size: Pixels(
+        16.0,
+    ),
+    antialiasing: Some(
+        MSAAx4,
+    ),
+}
+10:11:45 [INFO] Available adapters: [
+    AdapterInfo {
+        name: "NVIDIA GeForce RTX 4060 Ti",
+        vendor: 4318,
+        device: 10245,
+        device_type: DiscreteGpu,
+        driver: "NVIDIA",
+        driver_info: "617.14",
+        backend: Vulkan,
+    },
+    AdapterInfo {
+        name: "NVIDIA GeForce RTX 4060 Ti",
+        vendor: 4318,
+        device: 10245,
+        device_type: DiscreteGpu,
+        driver: "32.0.16.1714",
+        driver_info: "",
+        backend: Dx12,
+    },
+    AdapterInfo {
+        name: "NVIDIA GeForce RTX 4060 Ti",
+        vendor: 4318,
+        device: 10245,
+        device_type: DiscreteGpu,
+        driver: "32.0.16.1714",
+        driver_info: "",
+        backend: Dx12,
+    },
+    AdapterInfo {
+        name: "Microsoft Basic Render Driver",
+        vendor: 5140,
+        device: 140,
+        device_type: Cpu,
+        driver: "10.0.26100.9278",
+        driver_info: "",
+        backend: Dx12,
+    },
+    AdapterInfo {
+        name: "NVIDIA GeForce RTX 4060 Ti/PCIe/SSE2",
+        vendor: 4318,
+        device: 0,
+        device_type: Other,
+        driver: "",
+        driver_info: "4.6.0 NVIDIA 617.14",
+        backend: Gl,
+    },
+]
+10:11:45 [INFO] Selected: AdapterInfo {
+    name: "NVIDIA GeForce RTX 4060 Ti",
+    vendor: 4318,
+    device: 10245,
+    device_type: DiscreteGpu,
+    driver: "NVIDIA",
+    driver_info: "617.14",
+    backend: Vulkan,
+}
+10:11:45 [INFO] Available formats: Copied {
+    it: Iter(
+        [
+            Bgra8UnormSrgb,
+            Rgba8UnormSrgb,
+            Bgra8Unorm,
+            Rgba8Unorm,
+            Rgba16Float,
+            Rgb10a2Unorm,
+        ],
+    ),
+}
+10:11:45 [INFO] Available alpha modes: [
+    Opaque,
+    PreMultiplied,
+]
+10:11:45 [INFO] Selected format: Bgra8Unorm with alpha mode: PreMultiplied

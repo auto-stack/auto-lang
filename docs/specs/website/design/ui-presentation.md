@@ -34,6 +34,8 @@
 
 ## 4. 测试服务隔离与回归纪律（SD-06）
 
+PLAN-757：ScreenshotSlot 根据 CAPTURE_IMAGES 的合格记录展示 EvidenceImage；未登记图像的 ID 继续渲染纯文字槽。AutoEdit 自仓工作区与跨文件搜索为 SHOT-01/02，使用 VM/Iced 深色模式；工作区图在双语首页/v0.5/概览/专题共用。SHOT-03 已核查真实源码两版本比较，但 VM 布局空白区挤压正文，仍留待拍槽并保存诊断原图。Rust 界面尚需调试，其试运行画面不作为宣传图。原 PNG 字节及宽高完整保存，不重绘/拼接，放大、原图和回焦沿用 EvidenceImage。专题首图 eager，其余 lazy；历史 AutoEdit 原图保留用于旧资料。其他九个拍摄合同与冻结条件保留；合格两图不等于发行候选 W-02 全部通过。
+
 PLAN-719 补充：OS/AI 介绍、AutoOS 与 desktop 专题使用默认文档阅读布局，概要/双语关系图由 `IntroductionFrame.vue` 呈现，Markdown 正文默认展开且可 SSR/search。关系示意显著标注，呈现宿主内核及渲染/合成设施；真实图遵循 PLAN-720，禁止用假代码输出/无限模型/缺依据数字墙作为能力证据。历史文章用目录、锚点和来源链接；五宽度两主题几何及十二路由 × 390/1440 × 深浅共 48 图校验实际正文。规则见 [OS/AI introduction](os-ai-introduction.md)。
 
 PLAN-718 补充（交付契约，规则见 [learning-reading](design/learning-reading.md)）：移动阅读 `.VPLocalNav` 的 sticky 偏移包含统一顶栏 56px 内部行和 1px 底边框；锚点 scroll-margin 按"顶栏+目录条"两层实际高度让位（`--site-reading-offset`）；窄屏目录弹层触发按钮触达 ≥44px（清零弹层根节点垂直 padding，条高保持不变）。AutoFence 操作栏在源码上方占独立文档流空间。截图使用数据中的原始 URL，不按 locale 再拼前缀；校验 pathname、正文非 404、语言正确后才接收图片（截图 manifest 随报告入库，`*.json` 有 `!docs/reports/**` 白名单）。715 原中文 `/zh/zh/` 图片无效，新证据使用修正后的脚本；独立 preview 直接启动 Node 进程，避免 Windows shell 子进程残留。

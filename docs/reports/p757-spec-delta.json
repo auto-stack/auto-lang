@@ -1,0 +1,45 @@
+{
+  "plan_id": "PLAN-757",
+  "plan_revision": 2,
+  "spec_delta": [
+    {
+      "path": "docs/specs/website/design/application-introductions.md",
+      "base_commit": "aea687684ae09c49ed1c32be1040b1290e36ffb1",
+      "before_sha256": "80e4457de969d004852222ce9ce3b147c1481c63f40a9cb5a112607284efbb1e",
+      "prepared_sha256": "847846fc93081ac2cfb352c87aa318e2dd0be82839494e00aac401650cf63853"
+    },
+    {
+      "path": "docs/specs/website/design/ui-presentation.md",
+      "base_commit": "aea687684ae09c49ed1c32be1040b1290e36ffb1",
+      "before_sha256": "a0cf669dca1293bc27847a64ddbce2e2c24af0a2394505b089c000c9591adac4",
+      "prepared_sha256": "fd391adbd4b763277bc9a4bdfb508ecf2f056243d1d2269d06af28e8163b96fb"
+    }
+  ],
+  "dependency_revisions": {
+    "auto-down": "895f8d0f9355c9f5ec3ce8fca268bdb768395846",
+    "auto-edit": "f9ae2a64361f74ad8565fc5df5c4a9aeb5fc10f2"
+  },
+  "m4_4_source": {
+    "path": "auto-edit/docs/specs/00-overview.md",
+    "sha256": "af1003dad52808cadeb9edd6cef4ee2e34af663e3bab74c099a5fd9b40713d60"
+  },
+  "evidence_hashes": {
+    "docs/reports/p757-capture/cli-build.log.gz": "4ef108de56dd1137f38b4dcfe681b0b8a271bf59cdfe5d7150de2da9a18a9413",
+    "docs/reports/p757-capture/status-after.at": "53bf6a042a9b2cb7aa14f940e1f00e65ea50545dc306897ded1991ba0a161b73",
+    "docs/reports/p757-capture/status-before.at": "f7694d7c67263d57885fb02634ff1a672710f914c157f1826bfd5ddf3f401ced",
+    "docs/reports/p757-capture/vm.stderr.log": "e94012bbe4b2962312d5fb56e01dfba353228c051862d2b972c45978aece30be",
+    "docs/reports/p757-capture/vm.stdout.log": "803a5d8bfc632417be1af6e57184dd0f813376ae42b3ce59db6ff980e509490e",
+    "docs/reports/p757-capture/vm2.stderr.log": "4cd08523af8a8d427533c19103f4dd25ec4ad1704982363aa909be687f74d148",
+    "docs/reports/p757-capture/vm2.stdout.log": "f976cd64d829d3d06dd9ca2f2d5b17e7527eb363635d833c6ba36ad24ac19a43",
+    "docs/reports/p757-capture/vm3.stderr.log": "0c3d85e9ccc13063998d7fd83b2ba27223746f3a406905666db9cf9193e64204",
+    "docs/reports/p757-capture/vm3.stdout.log": "c1760e70d171e409ca018d7ad2116756fee736a8ec7f0665c20d18784a12380e",
+    "docs/reports/p757-capture/vm4.stderr.log": "d15330c8d956c920129f4468d8e6651d6d47918819f3d262b24cc074a624dfe9",
+    "docs/reports/p757-capture/vm4.stdout.log": "f5a1013014fea4a68ee2da526be8301f13e0cf51accfa68ff5be7588313368e6",
+    "docs/reports/p757-capture/website-build.log": "9f85f7b251b06e0053a474181afda394c29305a2f3f78ac6f795cdee52c56c4e",
+    "docs/reports/p757-capture/website-capture-zoom.log": "586de91035c83d3b648b4d2cac67d904da6b879e8d37876a256c66c16852e68d",
+    "docs/reports/p757-capture/website-search-final.log": "ba1e3ec3cb63f5bb93ca4b8948efa347424a54638564f55aa1ae36ec4db16583",
+    "docs/reports/p757-capture/website-search-recheck.log": "e2a10d10142fa3579abc529afd3d93129f20afe2affcfa6877f1b4fc73158f4e",
+    "docs/reports/p757-capture/website-search-timeout-trace.zip": "14b1b114e3c2cb4db033d555a140c6990dd8e4d02060152b9967abd0ff904231",
+    "docs/reports/p757-capture/website-tests.log": "cd8cb41fa9462c313dd07a190c4765a6dab5b029de2f18ccbc3b4cd8a40fbde9"
+  }
+}

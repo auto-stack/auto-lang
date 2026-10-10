@@ -1,0 +1,19 @@
+[X9] entering vm interpreter
+[ACTION-CONFIG] warning: shortcut "Ctrl+f" bound twice — first wins
+[ACTION-CONFIG] warning: shortcut "F7" bound twice — first wins
+[ACTION-CONFIG] loaded DSL actions D:\autostack\.wt\lang-757\auto-edit\specs\auto-edit\src\front\app.at: 27 actions, 0 menus, 10 toolbar items, 0 OS keymap overrides
+[AUTO-USE-DIAG] P-15 use 模块 `{ package` 解析失败（items: ["official from \"./components\" }"]）——候选基目录均无对应 .at/mod.at（PLAN-664）。该导入静默跳过，引用其符号的面将落空。
+[CALL_HANDLER] widget=App event_name=Init fn_name=handler_App_Init args=[]
+AutoUI MCP: listening on http://127.0.0.1:9577
+AutoUI MCP: first state sync in view()
+[CALL_HANDLER_FOR_NOT_FOUND] fn_name=handler__ActFind not in exports
+[syslog][error][vm:front/app] [VM-HANDLER] App.ActFind failed: handler not found: .ActFind
+[CALL_HANDLER] widget=App event_name=ActFind fn_name=handler_App_ActFind args=[]
+[X9-ALIVE] 1791626886
+[X9-ALIVE] 1791626916
+[X9-ALIVE] 1791626946
+[X9-ALIVE] 1791626976
+[X9-ALIVE] 1791627006
+[X9-ALIVE] 1791627036
+[X9-ALIVE] 1791627066
+[X9-ALIVE] 1791627096

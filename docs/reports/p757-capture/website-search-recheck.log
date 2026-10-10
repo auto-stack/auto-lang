@@ -1,0 +1,57 @@
+
+[1A[2K[WebServer] (node:7408) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+[1A[2K[WebServer] (node:25560) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+
+
+[1A[2K(node:38316) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:38316) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[1A[2K[1/1] [chromium] › tests\site-ui.spec.ts:143:3 › site search › AutoShell query hits the AutoShell topic page
+[1A[2K  1) [chromium] › tests\site-ui.spec.ts:143:3 › site search › AutoShell query hits the AutoShell topic page 
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator:  locator('.VPLocalSearchBox .results')
+    Expected: visible
+    Received: hidden
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 20000ms[22m
+    [2m  - waiting for locator('.VPLocalSearchBox .results')[22m
+    [2m    16 × locator resolved to <ul class="results" data-v-68e678c9="">…</ul>[22m
+    [2m       - unexpected value "hidden"[22m
+
+
+      146 |     await input.fill('AutoShell')
+      147 |     const results = page.locator('.VPLocalSearchBox .results')
+    > 148 |     await expect(results).toBeVisible({ timeout: 20000 })
+          |                           ^
+      149 |     const hrefs = await results.getByRole('link').evaluateAll((els) => els.map((e) => (e as HTMLAnchorElement).getAttribute('href')))
+      150 |     expect(hrefs.some((h) => h && h.includes('autoshell'))).toBeTruthy()
+      151 |   })
+        at D:\autostack\.wt\lang-757\auto-lang\website\tests\site-ui.spec.ts:148:27
+
+    Error Context: test-results-p757-search\site-ui-site-search-AutoSh-95407-ts-the-AutoShell-topic-page-chromium\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results-p757-search\site-ui-site-search-AutoSh-95407-ts-the-AutoShell-topic-page-chromium\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results-p757-search\site-ui-site-search-AutoSh-95407-ts-the-AutoShell-topic-page-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+[1A[2K  1 failed
+    [chromium] › tests\site-ui.spec.ts:143:3 › site search › AutoShell query hits the AutoShell topic page 
