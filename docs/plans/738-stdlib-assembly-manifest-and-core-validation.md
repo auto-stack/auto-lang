@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-738
-status: execution_done
+status: reviewed
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-10
 plan_revision: 3
-current_step: 7  # R7 必修闭合（3713337d9）：全分母矩阵验收；T-01/T-09..T-14 完成重闭；T-02..T-08 保持打开待 R8 复核确认
+current_step: 7  # R8 pass（3713337d9）：R7-01/02 闭合确证+全分母矩阵/门禁独立复现；T-01/T-09..T-14 完成；T-02..T-08 按 Phase 3 映射由 T-09..T-14 承接（R4 口径）
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -73,6 +73,8 @@ affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persisten
 - evidence: `receiver_method_drift_matrix_both_spellings` 全分母 12 方法×双拼写（绿面基线零违规+proof/漂移 exit 拒；真漂移面 is_null/as_bool 基线即拒；parser 拒绝面；无臂 case④）；plan738 73/73、plan724 5/5、CLI 10/10、api_gen 44/44、tv 162/162、tt 非基线红=0、服务链 1/1@109.5s
 - blockers: 无。教训：①发射臂的多闭括号类 bug 会以「守卫跳过」形态在闭包层复活——拆段/丢参臂必须逐臂核对配平；②receiver 带参方法在 Auto parser 层的拼写支持要与矩阵预期区分（语言层拒绝≠闭包放行）；③适配语义（bool→int 壳、Null 哨兵、宽度归一）是**分母级**的——逐方法打补丁不如先全分母矩阵再按类建契约。
 - next: `/auto-plan:review PLAN-738`（R8）——独立上下文复核 `3713337d9` 与 R7-01/02 闭合（含全分母矩阵与抽查）；仍不合入/不归档/不删 worktree
+
+**2026-10-10 R8 独立复审：pass → reviewed。** R7-01 四级证据闭合（diff/矩阵 24 格/CLI 基线 exit0+JsonValue.has_key proof+漂移 exit1 DRIFT/产物 `if a2r_std::json::has_key(&v, "k") { 1 } else { 0 }` 配平）；R7-02 双面闭合（shadow 变量与本地 json 模块 exit0）；R7-03 裁量/R7-04 登记落地；全部门禁独立复现（tt 14 红全基线、非基线红=0，plan730 隔离绿）；SD-04/audit #11 与行为一致（approved）。两项 P3 观察登记（链式面收紧+过时注释、has_key_str 规则被 claim 门遮蔽）。详见 [738-review-r8.md](reports/738-review-r8.md)。
 
 **2026-10-10 R5 补充复审：needs_fix。** 当前修复基线为既有 worktree `9c255993b`，保留 T-09/T-10 与所有历史代码/正例，不回滚到 R2。必修项=首次 lock 物化豁免永久放行后续漂移、公开 JsonValue receiver 方法未进入 strict 门、消费者三角验收使用 clone 替代实际生成器且缺 VM/C 对拍。重开 T-11..T-14，详见 [738-review-r5.md](reports/738-review-r5.md)。原 R4 pass 保留历史，本轮反例使整体通过结论失效；修复属于现有 revision 3 合同，不增 revision、不降 AC。
 
@@ -496,6 +498,25 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
   [R6 重开 2026-10-10] R5 needs_fix 后的重闭收据（`68398d2d6`，见 §9）经 R6 复核：R5-01/R5-03 闭合、R5-02 部分闭合（P738-R6-01）——本任务最终档须随新修复提交重跑受影响门禁+CLI 反例后再交下一轮独立 review。
 
 ## 9. 复审记录
+
+### 独立复审 R8（2026-10-10，pass → reviewed）
+
+- stage: review
+- plan_id: PLAN-738
+- plan_revision: 3（验收合同不变；本轮闭合 R7 必修项，不增 revision）
+- outcome: **pass**（R7-01/R7-02 闭合确证；R7-03 裁量与 R7-04 登记落地；全分母矩阵与门禁独立复现；两项 P3 观察登记）
+- reviewed_commit: `3713337d97f37d68bddaca22ce16fb152cfc8db5`（worktree 入场 clean，只读复审，结束 clean）；修复链 diff `6c3943327..3713337d9` = 恰 3 文件 +265/−53（host/tests/trans rust），与声称触面一致，R3–R7 已验面外未被扰动
+- base_commit: R7 reviewed `6c3943327`；Phase 3 diff base `2c1b4a763`；merge-base `6d69dbdc7`
+- dependency_revisions: auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`（只读未动）
+- spec_inputs: 沿 R7 基线七 canonical + SD 终稿；本轮 **approved**——SD-04 重锚描述（四形态/适配契约族/Null 哨兵/parser 拼写边界/真漂移面）与 3713337d9 行为逐条一致，reference-audit #11 同步相符
+- acceptance_results: AC-01..08 全 pass（R7 拖累项解除：AC-03 has_key/mod 漂移检出闭合；AC-05/07/08 SD-04/audit 与行为再一致）
+- findings: 无必修。P738-R8-01（P3 观察）链式核心调用面（`json.parse(s).len()`）由 R5 在案「记边界跳过」收紧为诚实拒绝——合同正确（R5「不能仅写债务保留放行」），全仓资产零命中；残留=形态守卫注释过时（rust.rs L5613-5617 仍写「跳过并记边界」）+无测试钉死+SD/audit 未点名该子面，建议 merge 顺手处理。P738-R8-02（P3 观察）str 实参 `json.has_key(s,"k")` 被 PROVIDER_CLAIM_NO_CALLEE 门拒（has_key_str 无公共面）——新增 has_key_str BoolToIntIf 规则在该面不可达（防御性），fail-closed 非回归
+- evidence: [738-review-r8.md](reports/738-review-r8.md)（R7-01 四级证据/12×2 矩阵表/门禁全表/SD 对照）；CLI 实测全用 3713337d9 构建的真实 auto.exe+隔离 AUTO_STDLIB_ROOT；门禁：plan738 73/73、plan724 5/5、CLI 10/10、api_gen 44/44（1 ignored）、tv 162/162、tt 5558 run/14 红全基线（plan730 固定端口族环境红隔离复跑绿，plan484_024 本轮绿——flake 族轮换同册；非基线红=0）、三 crate check 零 error（触面文件零新警告）、debug 残留 0、服务完整链 1/1@25.84s
+- independence: 全新上下文 R8 agent，未参与本计划任何实现/复审
+- omissions/debt: P738-R8-01/02 为观察项（登记不等于批准延期）；P738-D2 legacy 边界维持
+- state: **reviewed**（current_step=7：T-01/T-09..T-14 完成；T-02..T-08 按 Phase 3 映射由 T-09..T-14 承接，R4 口径保持）；不合入、不归档、不删 worktree；禁 tf（批量回归归 `/auto-plan:regress` 到期判定）
+- next: `/auto-plan:merge PLAN-738`（授权后）——canonical/ledger 沉淀、Design33/索引、wt-guard+worktree 清理；P738-R8-01 过时注释/链式面测试建议随 merge 顺手处理或转 D3b 清单
+
   [✅ 已完成·R7 修复重闭] 最终提交 `3713337d9`：plan738 73/73、plan724 5/5、CLI 10/10、api_gen 44/44、tv 162/162、tt 非基线红=0、服务链 1/1@109.5s。
 
 ### 独立复审 R7（2026-10-10，needs_fix → executing）
