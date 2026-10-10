@@ -1069,12 +1069,14 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         // 依赖输入，与生成器自身 Cargo 输入（manifest provider 面）分开
         // 记录；未建 lock 时记 absent，复用门在 lock 出现/变化时判陈旧。
         // P738-R9-01 fail-closed：NotFound=未物化记 absent；其它读错误
-        // 拒绝写收据（收据不得携带不可核验的 lock 身份）。
-        let workspace_lock = match std::fs::read(
+        // 拒绝写收据（收据不得携带不可核验的 lock 身份）。P738-R11-01：
+        // 分类/指纹与复用门共用 workspace_lock_identity 单点——空文件
+        // =实际内容身份 811c9dc5，两端不再漂移。
+        let workspace_lock = match crate::rust_ui::workspace_lock_identity(std::fs::read(
             crate::rust_ui::ensure_shared_workspace(root_dir).join("Cargo.lock"),
-        ) {
-            Ok(bytes) => format!("{:x}", fnv1a(&bytes)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => "absent".into(),
+        )) {
+            Ok(Some(fingerprint)) => fingerprint,
+            Ok(None) => "absent".into(),
             Err(e) => {
                 return Err(format!("workspace Cargo.lock unreadable: {e}").into());
             }

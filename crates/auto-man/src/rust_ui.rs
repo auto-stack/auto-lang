@@ -4020,19 +4020,15 @@ pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
     // PLAN-738 T-12：生成 workspace lock 身份对拍——生成产物运行时依赖
     // 输入变化（lock 出现/更新）即陈旧；旧收据无此字段=不可核验，保守再生。
     let recorded_lock = record.get("workspace_lock").and_then(|v| v.as_str());
-    // P738-R9-01 fail-closed：lock 未建（NotFound）与收据 "absent" 同词汇
-    // 对拍；**其它读取错误（权限/IO）不冒充 absent**——归 None（不可核验
-    // =保守陈旧），防止 recorded="absent" × 读错误 → absent/absent 假新鲜。
-    let current_lock = classify_lock_read(std::fs::read(
+    // P738-R9-01 fail-closed + R11-01 身份单点：absent 仅指 NotFound；成功
+    // 读取（含零字节空文件）一律实际内容指纹（空文件=811c9dc5，与生成端
+    // 收据同口径）；**其它读取错误（权限/IO）不冒充 absent**——归 None
+    // （不可核验=保守陈旧），防止 recorded="absent" × 读错误 → 假新鲜。
+    let current_lock: Option<String> = workspace_lock_identity(std::fs::read(
         ensure_shared_workspace(project_dir).join("Cargo.lock"),
     ))
-    .map(|bytes| {
-        if bytes.is_empty() {
-            "absent".to_string()
-        } else {
-            format!("{:x}", crate::api_gen::fnv1a(&bytes))
-        }
-    });
+    .map(|identity| identity.unwrap_or_else(|| "absent".to_string()))
+    .ok();
     // PLAN-738 R5-01：一次绑定状态机。生成时未建 lock（收据记 absent）
     // → 首次出现实际 lock 时判新鲜**并把实际 lock 身份写回收据**（一次性
     // 物化绑定，收据升级）——此后严格比较：依赖版本漂移/lock 删除/读取
@@ -4047,15 +4043,20 @@ pub(crate) fn backend_generation_is_fresh(project_dir: &Path) -> bool {
     }
 }
 
-/// lock 读取分类（P738-R9-01）：NotFound=未物化（Some(空字节占位由调用
-/// 方归 absent）——为区分错误类型返回 Option<Vec<u8>>+内部语义；这里直接
-/// 返回 `Option<Vec<u8>>`，NotFound → Some(Vec::new())（空=absent 哨兵），
-/// 其它错误 → None（不可核验）。纯函数便于单测。
-fn classify_lock_read(result: std::io::Result<Vec<u8>>) -> Option<Vec<u8>> {
+/// lock 读取→身份分类单点（P738-R11-01）：生成端写收据（api_gen.rs）与
+/// 复用门对拍**共用**，杜绝两端口径漂移。三态：NotFound=未物化
+/// （`Ok(None)`，由调用方归 "absent"）；成功读取=实际内容身份（fnv1a
+/// 指纹——**零字节文件也是实际身份 `811c9dc5`**，不与 absent 合并：R11
+/// 反例=生成端记指纹、复用门归 absent，空 lock 再生成成功后未变输入仍被
+/// 判 stale）；其它读错误=`Err`（不可核验——生成端拒绝写收据、复用门
+/// 保守判陈旧，P738-R9-01 fail-closed）。纯函数便于单测。
+pub(crate) fn workspace_lock_identity(
+    result: std::io::Result<Vec<u8>>,
+) -> Result<Option<String>, std::io::Error> {
     match result {
-        Ok(bytes) => Some(bytes),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(Vec::new()),
-        Err(_) => None,
+        Ok(bytes) => Ok(Some(format!("{:x}", crate::api_gen::fnv1a(&bytes)))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
     }
 }
 
@@ -4074,8 +4075,8 @@ fn bind_workspace_lock(record_path: &Path, record: &mut serde_json::Value, lock:
 
 /// workspace lock 新鲜度（PLAN-738 T-12/R5-01）：双方一致才新鲜；首次
 /// 物化（absent→实际值）由调用方在绑定收据后判新鲜；absent/absent=
-/// 尚无 lock 物化，新鲜；其余（值漂移/lock 消失/读取失败归一 absent 对
-/// 实值/收据缺字段）一律陈旧。
+/// 尚无 lock 物化，新鲜；其余（值漂移/lock 消失/读取失败→None 不可
+/// 核验/收据缺字段）一律陈旧。
 fn lock_freshness(recorded: Option<&str>, current: Option<&str>) -> bool {
     match (recorded, current) {
         (Some(a), Some(b)) => a == b,
@@ -5169,23 +5170,128 @@ version = \"0.2.0\"
         );
     }
 
-    /// P738-R9-01：lock 读取分类——NotFound=未物化哨兵；权限/IO 错误=
-    /// None（不可核验），不冒充 absent（fail-closed）。
+    /// P738-R9-01 fail-closed + R11-01 三态身份：NotFound=Ok(None)（调用
+    /// 方归 absent）；成功读取（含零字节）=Ok(Some(实际内容指纹))——空
+    /// 文件也是实际身份 811c9dc5，不与 absent 合并；权限/IO 错误=Err
+    /// （不可核验，不冒充 absent）。
     #[test]
-    fn classify_lock_read_fail_closed() {
-        assert_eq!(classify_lock_read(Ok(vec![1, 2])), Some(vec![1, 2]));
+    fn workspace_lock_identity_three_states() {
         assert_eq!(
-            classify_lock_read(Err(std::io::Error::from(std::io::ErrorKind::NotFound))),
-            Some(Vec::new())
+            workspace_lock_identity(Ok(vec![1, 2])).unwrap(),
+            Some(format!("{:x}", crate::api_gen::fnv1a(&[1, 2])))
+        );
+        // R11 反例锚：零字节文件=实际内容身份，两端同口径。
+        assert_eq!(
+            workspace_lock_identity(Ok(Vec::new())).unwrap(),
+            Some("811c9dc5".to_string())
         );
         assert_eq!(
-            classify_lock_read(Err(std::io::Error::from(
-                std::io::ErrorKind::PermissionDenied
-            ))),
+            workspace_lock_identity(Err(std::io::Error::from(std::io::ErrorKind::NotFound)))
+                .unwrap(),
             None
         );
+        assert!(workspace_lock_identity(Err(std::io::Error::from(
+            std::io::ErrorKind::PermissionDenied
+        )))
+        .is_err());
         // 端到端语义：recorded=absent × 读错误（→None）必须陈旧。
         assert!(!lock_freshness(Some("absent"), None));
+    }
+
+    /// P738-R11-01：空 lock 生成/消费身份对拍矩阵——生成端收据与复用门
+    /// 对同一空文件必须记同一实际身份（811c9dc5）；absent→空文件一次绑定；
+    /// 同空文件再生成后未变输入不得判 stale（R11 反例转正：修复前门把空
+    /// 文件归 absent，与收据指纹永不相等 → 永久陈旧）；此后非空漂移/
+    /// 删除/非 NotFound 读错误均陈旧。真实 generate_api +
+    /// backend_generation_is_fresh，隔离 workspace（沿 R5 状态机测试形态）。
+    #[test]
+    fn review751_empty_lock_identity_matrix() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("project");
+        let isolated_workspace = dir.path().join("workspace");
+        std::fs::create_dir_all(project.join("src/back")).unwrap();
+        std::fs::write(
+            project.join("pac.at"),
+            "{ name: \"plan751-empty-lock\", scene: \"workspace\" }",
+        )
+        .unwrap();
+        std::fs::write(
+            project.join("src/back/api.at"),
+            "#[api(method = \"GET\", path = \"/api/answer\")]
+pub fn answer() int { return 42 }
+",
+        )
+        .unwrap();
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => std::env::set_var("AUTO_RUST_WORKSPACE", value),
+                    None => std::env::remove_var("AUTO_RUST_WORKSPACE"),
+                }
+            }
+        }
+        let _restore = Restore(std::env::var_os("AUTO_RUST_WORKSPACE"));
+        std::env::set_var("AUTO_RUST_WORKSPACE", &isolated_workspace);
+        crate::api_gen::generate_api(&project, "rust").unwrap();
+        let ws = ensure_shared_workspace(&project);
+        let receipt_path = ws.join(back_member_name(&project)).join("generation.json");
+        let read_lock_field = || {
+            serde_json::from_str::<serde_json::Value>(
+                &std::fs::read_to_string(&receipt_path).unwrap(),
+            )
+            .unwrap()["workspace_lock"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        let lock_path = ws.join("Cargo.lock");
+        // 1) 生成时尚无 lock：收据 absent，门新鲜。
+        assert_eq!(read_lock_field(), "absent", "生成时尚无 lock");
+        assert!(backend_generation_is_fresh(&project), "无 lock 物化时新鲜");
+        // 2) 空文件出现：门新鲜（一次绑定），收据绑定实际身份 811c9dc5。
+        std::fs::write(&lock_path, b"").unwrap();
+        assert!(
+            backend_generation_is_fresh(&project),
+            "absent→空文件首次物化必须新鲜（一次绑定）"
+        );
+        assert_eq!(
+            read_lock_field(),
+            format!("{:x}", crate::api_gen::fnv1a(b"")),
+            "空文件必须绑定实际内容身份（811c9dc5），不得归 absent"
+        );
+        assert!(
+            backend_generation_is_fresh(&project),
+            "绑定后同空文件仍新鲜"
+        );
+        // 3) R11 反例转正：同一空文件上再生成——收据仍记 811c9dc5（两端
+        //    一致），业务与 lock 均未变，门必须新鲜。
+        crate::api_gen::generate_api(&project, "rust").unwrap();
+        assert_eq!(
+            read_lock_field(),
+            format!("{:x}", crate::api_gen::fnv1a(b"")),
+            "生成端对空文件必须记同一实际身份（两端一致）"
+        );
+        assert!(
+            backend_generation_is_fresh(&project),
+            "空 lock 再生成成功后未变输入不得判 stale"
+        );
+        // 4) 非空漂移：陈旧。
+        std::fs::write(&lock_path, b"version = 4\n").unwrap();
+        assert!(
+            !backend_generation_is_fresh(&project),
+            "空→非空内容漂移必须陈旧"
+        );
+        // 5) 删除：陈旧（已绑定实际身份后消失≠absent/absent）。
+        std::fs::remove_file(&lock_path).unwrap();
+        assert!(!backend_generation_is_fresh(&project), "lock 删除必须陈旧");
+        // 6) 非 NotFound 读错误（目录占位）：不可核验=保守陈旧（R9-01）。
+        std::fs::create_dir(&lock_path).unwrap();
+        assert!(
+            !backend_generation_is_fresh(&project),
+            "读错误（非 NotFound）不可核验，保守陈旧"
+        );
+        std::fs::remove_dir(&lock_path).unwrap();
     }
 
     /// Only two known equal fingerprints prove assembly freshness.
