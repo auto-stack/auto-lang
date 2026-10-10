@@ -1,5 +1,12 @@
 # PLAN-738 补充复审 R9（2026-10-10，needs_fix）
 
+> **后续闭合注记（2026-10-10 merge 收口时加，正文判定保留原样）**：
+> - P738-R9-01/02 已在 worktree 提交 `41b4d4be5` 闭合——gate 侧 `classify_lock_read`（NotFound=absent 哨兵 / 其它读错误=None 不可核验→保守陈旧，端到端断言 `lock_freshness(absent, None)=false`）；生成侧非 NotFound 读错误 Err 拒写收据；四格式点 rustfmt 收敛（token 等价核证）。
+> - 独立复审 R10（[738-review-r10.md](738-review-r10.md)）pass：两项闭合确证 + 门禁全绿（含本报告要求重跑的正式生成服务链 1/1@42.29s 补跑）；R8 全 AC/SD pass 与本轮主链修复证据合一。
+> - 计划已 merge（delivery `9ff34ae0d`，ff-only 线性）并归档（delivered）——本文"executing/current_step=4/不进入 merge"等为当时判定，均已被后续轮次接续。
+> - **未闭合尾巴（移交）**：§"本轮门禁"的 HTTP 全档仅完成 45/102（2 fail 在册基线+环境族，57 项未跑）——本报告明确不记全档通过；该段随批量回归到期收口（`/auto-plan:regress`，th 串行档含逐名分诊），已在归档计划 merge 收据点名移交。
+> - 本报告补充提供的证据（三项 ignored 真编译见证 3/3：Rust host provider、VM=41/Rust=42/C=43、C stdio=65；帧时序/断连取消两项 PASS）作为 R10 判定的旁证保留。
+
 - stage: review / plan_revision: 3 / outcome: **needs_fix**。
 - reviewed_commit: `19973b0899f27267db15a39669c124579f41a505`，入场与结束实现树 clean。
 - main 入场：`c212e1c7a71b0bfea6972b0d1c9b86d78eeb794b`；重放基面 `1be1783fea45162fbcae0c6a21859d2fa2588608`；修复父提交 `adfb7a5d1`；前次通过树 `3713337d97f37d68bddaca22ce16fb152cfc8db5`。

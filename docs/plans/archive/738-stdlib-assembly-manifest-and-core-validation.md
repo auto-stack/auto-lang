@@ -109,7 +109,7 @@ affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persisten
 - landed ✓：rebase（master 前进两次均干净重放，diff 纯 docs 核证）→ 修复合并链 `19973b089`（主链冗余 re-merge 回归修复，R9 确证）→ `41b4d4be5`（R9 必修）→ `9ff34ae0d`（终 rebase）= delivery commit；主检出 `git merge --ff-only` 线性落地，master tip==delivery==plan-738-dev；他人 UI WIP（6 文件）以 stash@{0}「738-merge-handoff」+ `/d/autostack/.738-wip-handoff.patch`（569 行）交还，未卷入
 - ledger_refreshed ✓：designs P738-1/2 + tests P738-3 + reviews P738-4 + reports P738-5 upsert 回读核验（commit 2af1d4576，748/749 先例）；spec-index.py INDEX.md 刷新
 - archived ✓：git mv docs/plans/archive/ + status: archived + completion_kind: delivered
-- 批量回归：到期（last_covered=740，>48h 且 740 后有合并）→ 交 `/auto-plan:regress`（主检出单实例）
+- 批量回归：到期（last_covered=740，>48h 且 740 后有合并）→ 交 `/auto-plan:regress`（主检出单实例）；**点名尾巴**：R9-I（[738-review-r9.md](../reports/738-review-r9.md)）的 HTTP 串行全档仅完成 45/102（2 fail 在册基线+环境族、57 项未跑，该报告明确不记全档通过）——th 逐名分诊随批量回归轮一并收口，不外推为全档通过
 - 产物观察：auto-lang 为库仓（无运行服务/daemon/web bundle）；消费者二进制（auto.exe 等）由各使用方重建——本计划代码已入 master，无陈旧生产进程需重启
 
 ### merge 收据（2026-10-10，PLAN-738:r3 → needs_fix/实现冲突）
