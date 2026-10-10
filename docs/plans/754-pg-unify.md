@@ -1,11 +1,11 @@
 ---
 plan_id: PLAN-754
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing               # drafting → executing → execution_done → reviewed → archived
 feature_name: pg-unify
 author: [agent]
 created_at: 2026-10-10
 updated_at: 2026-10-10
-plan_revision: 1
+plan_revision: 2
 
 supersedes_spec_components: []
 new_spec_components: []
@@ -13,64 +13,57 @@ touched_goals: []
 
 affects: [playground-vue, auto-playground, website]
 current_step: 0
-total_steps: 5
+total_steps: 6
 ---
 
 # [PLAN-754] playground 双端统一：运行契约对齐 + IDE 深链桥
 
 ## 0. 变更摘要
 
-统一 playground 的两个消费面——**独立版**（auto-playground 后端自服务 SPA，
-`frontend/src/App.vue` = NotesSidebar + AutoPlaygroundFull IDE）与 **website 版**
-（VitePress `/playground` 页 = NotesExplorer + PlaygroundCard 卡片）——在两条
-已知的分裂点上收口：
+**r2（2026-10-10 用户裁定）**：website `/playground` 与独立版**同形**——双端共用
+新组件 `PlaygroundIDEApp`（侧栏 NotesSidebar + AutoPlaygroundFull IDE + 笔记组
+运行契约 + `?note=` 深链 + apiBase 可参），统一为 sidebar+IDE 形态。
+r1 的"双形态保留 + IDE 桥"方案废止（Explorer+Card 组件保留导出，书页内嵌
+运行器仍用；`/playground` 页不再用它）。运行契约统一由"同组件同请求路径"
+天然达成；卡片链 prepend_lib 对称化随 r1 一并废止（书页不嵌 bootstrap 语料）。
 
-1. **运行契约分裂**：website 卡片链（SnippetRunner → usePlayground）不发
-   `prepend_lib`（PLAN-752 只接了 usePlaygroundFull）→ vm-bootstrap 组笔记在
-   website 跑不了（`Undefined symbol`），独立版已可跑。统一：usePlayground
-   补对称通道，卡片链按 note.id 组前缀透传。
-2. **IDE 桥休眠**：组件层 `ideMode`/`ide-mode` 契约早已存在
-   （NotesExplorer.vue:79/89/150，payload `{noteId, source, projectDir, files}`），
-   但 website 端无 props → 卡片显示禁用的"在 IDE 中打开"；独立版 App.vue 无
-   URL 深链，即便有桥也无处可跳。统一：website 有可达后端时桥激活并跳
-   独立 SPA 笔记深链；App.vue 支持 `?note=<id>` 深链直接载入。
-
-**非统一项（历史裁定保留）**：两端的宿主形态不动——sidebar+IDE（独立版，
-dfcaf9117 用户裁定）与 Explorer+Card（website，Plan 582 设计）各自保留；
-不重做 UI、不动 VitePress 结构、不合并 manifest 管线（notes.json 三输出
-已是单一事实源）。
+r1 原始动机（双端分裂调查）保留为背景：website 卡片链缺 prepend_lib、
+ideMode 桥两头空、App.vue 无深链——r2 以更彻底的方式一并解决。
 
 ## 1. 目标
 
-- G-1：双端运行行为一致——同一笔记在 website 与独立版产出相同结果
-  （含 vm-bootstrap 前置拼接、60s 超时）。
-- G-2：website 用户一键进 IDE：卡片"在 IDE 中打开"在有可达后端时可用，
-  跳转独立 SPA 并直接载入该笔记。
-- G-3：深链可分享：`http://<backend>/?note=<id>` 打开即载对应笔记。
+- G-1：**双端同形**——website `/playground`（含 zh）渲染与独立版一致的
+  sidebar+IDE 宿主（同一组件 `PlaygroundIDEApp`）。
+- G-2：**同契约**——同一笔记双端运行请求一致（timeout 60s / prepend_lib
+  组判定，组件内聚，不再依赖宿主记得传）。
+- G-3：**可分享深链**——`?note=<id>` 双端打开即载。
+- G-4：独立版零回归（e2e 全绿）；website 构建修复（dedupe 依赖入册）。
+
+**非目标（r2）**：
+- 不删 NotesExplorer/PlaygroundCard/SnippetRunner（书页内嵌等宿主仍用，
+  仅 `/playground` 页弃用 Explorer 形态）。
+- 不动后端 Rust；不动 manifest 管线。
+- 不做 VitePress 以外的 website 结构改动。
 
 ## 2. 架构方案
 
 ```
-website /playground（VitePress，静态）
-  NotesExplorer ──探测 /api 可达──▶ ideMode = true
-    PlaygroundCard ──note.id 前缀──▶ SnippetRunner(prependLib)
-      │ Run/Trans（契约与独立版对齐：60s + prepend_lib）
-      └─ "在 IDE 中打开" ──emit ide-mode──▶ 跳 <backend-origin>/?note=<id>
-                                                │
-独立 SPA（App.vue）                              ▼
-  启动解析 ?note= ──useNotes.byId──▶ 自动 select+loadNote（现有侧栏载路）
+packages/auto-playground-vue
+  └─ PlaygroundIDEApp.vue（新, 宿主壳内聚）
+       ├─ NotesSidebar（分组树+搜索, 现有）
+       ├─ AutoPlaygroundFull（IDE, 现有）
+       │    └─ usePlaygroundFull({ apiBase })   ← API_BASE 参数化(原常量 '/api')
+       ├─ noteMeta 构造 + prependLib 组前缀判定（自 App.vue 迁入）
+       └─ ?note=<id> 深链启动载入 + history.replaceState 清参
+
+独立版 frontend/src/App.vue     → <PlaygroundIDEApp :api-base="'/api'" />
+website /playground（theme 包裹）→ <PlaygroundIDEApp :api-base="探测" />
+                                    探测: fetch(origin+/api/examples) → 同源
+                                    失败 → http://127.0.0.1:3030（本地后端约定）
 ```
 
-- `usePlayground` 增 `setPrependLib`（与 Full 对称）；`SnippetRunner` 增
-  `prependLib?: boolean` prop → 请求体；`PlaygroundCard` 由 `note-id` 前缀
-  （已有 prop，NotesExplorer.vue:48 传入）派生 `prependLib` 传入 SnippetRunner。
-- NotesExplorer 增 `backendUrl?: string`（探测/桥目标）；website playground.md
-  传入并由轻量探测（fetch `${api}/examples`，复用 usePlayground 的
-  backendDown/retryBackend 语义）决定 ideMode 与跳转 origin；`@ide-mode` 处理
-  = `window.open(`${backendOrigin}/?note=${payload.noteId}`)`。
-  探测失败保持现状（ideMode=false + 降级提示，零回归）。
-- App.vue 启动时读 `URLSearchParams(location.search).get('note')` → byId 命中则
-  onSelect（复用现有点选载路，不新造载入逻辑）；无效 id 静默回退欢迎态。
+后端缺席时：manifest 静态可浏览（笔记树/代码/期望输出可看），Run 走
+usePlaygroundFull 错误面（现有 Error 展示 + Plan 582 backendDown 降级哲学）。
 
 ## 3. 技术栈
 
@@ -102,80 +95,80 @@ website VitePress 页 props 接线；验证＝vue-tsc + dist 构建 + e2e（stan
 
 ## 5. 详细设计
 
-### 运行契约对齐（G-1）
+### PlaygroundIDEApp 组件（新）
 
-- `usePlayground`：`const prependLib = ref(false)` + `setPrependLib`（导出）；
-  projectRequestBody 追加 `if (prependLib.value) body.prepend_lib = true`。
-- `SnippetRunner`：`prependLib?: boolean`（默认 false）→ setup 调
-  `setPrependLib(props.prependLib)`（watch 同步 prop 变化）。
-- `PlaygroundCard`：`const prependLib = computed(() => props.noteId?.startsWith('vm-bootstrap/'))` 传入 SnippetRunner。
-- 验收抽样：website 链路下 a2r_hello 卡片运行输出 = `ok`（独立版同源）。
+- props：`apiBase?: string`（默认 `/api`）、`manifestBase?: string`
+  （默认 `/playground-data/notes.json`）。
+- 内部聚合：useNotes(manifestBase) + 搜索过滤（App.vue 现有 visibleGroups
+  逻辑迁入）+ noteMeta 构造（含 prependLib 组前缀）+ AutoPlaygroundFull
+  watch 同步 + `?note=` 启动载入。
+- 深链：onMounted 解析 → byId 命中 → select+loadNote → replaceState 清参。
 
-### IDE 深链桥（G-2/G-3）
+### usePlaygroundFull apiBase 参数化
 
-- `NotesExplorer` 增 `backendUrl?: string`（默认 ''）：空 → ideMode 恒 false
-  （现状）；非空 → mount 时 `fetch(backendUrl + '/api/examples')` 成功则
-  ideMode=true（失败保持 false，不弹错——复用静默降级哲学）。
-- website `playground.md`：`<NotesExplorer backend-url="" />` 静态页不能硬编
-  → 传空由页内脚本注入？**简化裁定**：VitePress 页内 `<script setup>` 不行
-  （markdown）；改由 theme 层包裹组件 `website/.vitepress/theme/components/
-  PlaygroundPage.vue`：探测 `location.origin`（部署形态 website 与后端同域）
-  + fallback `http://127.0.0.1:3030`；`@ide-mode` → `window.open(
-  `${backendOrigin}/?note=${noteId}`, '_blank')`。playground.md 换用
-  `<PlaygroundPage />`。
-- App.vue 深链：onMounted 读 `?note=` → `byId` 命中 → `activeNoteId`+`loadNote`；
-  深链命中后可选 `history.replaceState` 清参（防刷新重复载入——载入幂等，
-  可不清理，取不清理）。
+- `usePlaygroundFull(options?: { apiBase?: string })`；模块级 `API_BASE`
+  常量改为 options 回落（默认 '/api'），fetch 调用点改用实例值。
 
-### 规范增量
+### website 接线
+
+- `website/.vitepress/theme/components/PlaygroundIDEPage.vue`（新）：探测
+  apiBase（同源 → fallback 127.0.0.1:3030）后渲染 `<PlaygroundIDEApp>`；
+  `playground.md`/`zh/playground.md` 换用该组件（保留 backend 提示块）。
+
+### 规范增量（r2 修订）
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | modify | docs/specs/playground-vue/project.md | before：prependLib 仅 usePlaygroundFull 通道；after：双 composable 对称支持，卡片链按 note-id 组前缀自动派生 | 双端契约一致 | AC-01 |
-| SD-02 | add | docs/specs/playground-vue/project.md | ideMode 桥契约补全：backendUrl 探测激活 + ide-mode 跳 `<backend>/?note=<id>` 深链；App.vue 启动解析 ?note 载入 | 双端入口互通可分享 | AC-02, AC-03 |
-| SD-03 | add | docs/specs/website/project.md | /playground 页经 PlaygroundPage 包裹：后端探测（同源→127.0.0.1:3030 fallback）决定 IDE 桥可用性 | website 模块现状记录 | AC-02 |
+| SD-01 | add | docs/specs/playground-vue/project.md | PlaygroundIDEApp 宿主契约：双端同形组件；apiBase/manifestBase props；?note= 深链；组运行契约内聚 | 双端统一（r2 用户裁定） | AC-01, AC-02, AC-03 |
+| SD-02 | add | docs/specs/website/project.md | /playground 页形态=PlaygroundIDEApp（apiBase 探测：同源→127.0.0.1:3030）；Explorer+Card 降级为书页内嵌宿主 | website 现状记录 | AC-01, AC-03 |
+| SD-03 | add | docs/specs/website/project.md | website 构建依赖修复：dedupe 契约包（highlight.js 等）须入 package.json 依赖（PLAN-718 dedupe 强制根解析的入册要求） | 构建稳健性（本次截图受阻实证） | AC-04 |
+
+(r1 的 SD-01/02/03 由上述替代；卡片链 prepend_lib 对称化随 r1 废止。)
 
 ## 6. 测试设计
 
-- 组件 e2e（standalone frontend/tests 新增 unify spec）：
-  ① `?note=demo/04-fibonacci` 打开 → 编辑器自动载入斐波那契（标题栏断言）；
-  ② 卡片链契约：PlaygroundCard 渲染 vm-bootstrap 笔记时 /api/run 请求体含
-  prepend_lib=true（组件级挂载或经 NotesExplorer 集成态）；
-  ③ 非 bootstrap 笔记不含 prepend_lib。
-- website 冒烟：`npm run docs:build`（或 vitepress build）过 + 页面渲染
-  NotesExplorer（构建期即锚）；桥激活为运行时行为，由 ② 的组件级测试覆盖
-  契约，运行时探测不单独 e2e（静态部署依赖后端在场）。
-- 回归：run-timeout.spec 7/7 不动全绿（Full 链路与本计划正交）。
+- standalone e2e（frontend/tests/unify.spec.ts 新）：
+  ① `/?note=demo/04-fibonacci` 打开 → 编辑器载入斐波那契且 Run 出数；
+  ② `/?note=vm-bootstrap/a2r_hello` → Run 输出 `ok`（组契约经宿主内聚生效）；
+  ③ 无效 note id → 回退欢迎态不崩。
+- website 构建冒烟：`npm run build` 过 + preview 渲染截图（sidebar+IDE 形态）。
+- 回归：既有 e2e 全量（run-timeout 7 条等）绿 = App.vue 瘦壳零行为漂移。
 
 ## 7. 验收标准
 
 | id | 标准 | 验证方法 |
 |---|---|---|
-| AC-01 | website 卡片链运行 vm-bootstrap 笔记（a2r_hello 抽样）输出 `ok` 且请求体含 prepend_lib=true；非 bootstrap 笔记请求体不含 | e2e ②③ + 对照独立版输出 |
-| AC-02 | 后端在场时 website 卡片"在 IDE 中打开"可点击并打开 `<backend>/?note=<id>`；后端缺席时保持禁用+提示（零回归） | 组件级测试 + 人工走查 |
-| AC-03 | `http://127.0.0.1:3030/?note=demo/01-hello` 打开即载 Hello 笔记可直接 Run | e2e ① |
-| AC-04 | 双端宿主形态未变（App.vue 仍 sidebar+IDE；website 仍 Explorer+Card）；既有 e2e 23/23 + plan746/752 测试全绿 | 全量 e2e + 单测 |
-| AC-05 | 复审门禁：裸 `cargo t` 红集无新增（本计划零 Rust 改动应为恒等）、vue-tsc/dist 构建过、spec 增量落库 | 复审档 |
+| AC-01 | website 构建产物 `/playground` 渲染 sidebar+IDE 宿主（preview 截图/e2e：侧栏分组树 + IDE 工作区 + 选中笔记载入） | website build + preview 截图 |
+| AC-02 | `?note=<id>` 深链双端打开即载（demo 笔记 + vm-bootstrap 笔记各一） | e2e ①② |
+| AC-03 | apiBase 探测：后端在场可 Run；缺席时静态浏览可用且不白屏（错误面降级） | preview 双场景走查 |
+| AC-04 | 独立版零回归：frontend e2e 全量绿；website 依赖入册后构建稳定（dedupe 包全在 package.json） | 全量 e2e + package.json 审计 |
+| AC-05 | 复审门禁：cargo t 红集对拍（零 Rust 改动应恒等）、vue-tsc 过、spec 增量落库 | 复审档 |
 
 ## 8. 执行步骤
 
-- [ ] T-01 契约对称：usePlayground.setPrependLib + SnippetRunner prop +
-  PlaygroundCard 组前缀派生。文件：packages/auto-playground-vue（composables/
-  usePlayground.ts、components/SnippetRunner.vue、PlaygroundCard.vue）。
-  验证：vue-tsc + 组件 e2e ②③。AC-01
-- [ ] T-02 独立版深链：App.vue `?note=` 解析载入。文件：frontend/src/App.vue。
-  验证：e2e ①。AC-03
-- [ ] T-03 website 桥：PlaygroundPage.vue 包裹（探测+跳转）+ playground.md
-  接线 + NotesExplorer backendUrl。文件：website/.vitepress/theme/components/
-  PlaygroundPage.vue（新）、website/playground.md、zh 版、NotesExplorer.vue。
-  验证：vitepress build + AC-02 组件级断言。AC-02
-- [ ] T-04 全量 e2e + 回归：frontend/tests 全量 23+新 spec、plan746/752 单测。
-  验收档：scratch/playground-check/p754-unify-report.md。AC-04
-- [ ] T-05 复审门禁：cargo t 红集对拍（预期与 master 恒等）、vue-tsc、
-  spec 增量落库（merge 档）。AC-05
+- [ ] T-0 website 依赖入册：dedupe 契约包审计（highlight.js/@codemirror/*/
+  vue/lucide-vue-next/@lezer/highlight）全部入 website/package.json 依赖 +
+  lockfile。验证：删除根 node_modules 后 npm ci && npm run build 过。
+- [ ] T-1 usePlaygroundFull apiBase 参数化 + PlaygroundIDEApp 组件新建
+  （聚合 App.vue 全部宿主逻辑）。文件：packages/auto-playground-vue。
+  验证：vue-tsc + 导出登记 index.ts。AC-02
+- [ ] T-2 standalone App.vue 瘦壳化（换用 PlaygroundIDEApp）。文件：
+  crates/auto-playground/frontend/src/App.vue。验证：既有 e2e 全量绿 +
+  新 unify spec ①②③。AC-02, AC-04
+- [ ] T-3 website 接线：PlaygroundIDEPage.vue + playground.md/zh 换用 +
+  apiBase 探测。验证：npm run build + preview 截图（AC-01/AC-03 走查）。
+- [ ] T-4 验收档：scratch/playground-check/p754-unify-report.md（截图 +
+  e2e 实录 + 双端对照）。AC-01, AC-03
+- [ ] T-5 复审门禁：cargo t 红集对拍、vue-tsc、spec 预埋（merge 档落库）。
+  AC-04, AC-05
 
 ## 9. 复审记录
 
+- 2026-10-10 **plan_revision 1→2（用户裁定）**：website 与独立版同形——
+  r1"双形态保留+IDE桥"废止，改为双端共用 PlaygroundIDEApp（sidebar+IDE）。
+  任务/AC/SD 全量重订（T-0..T-5）；r1 卡片链 prepend_lib 对称化一并废止。
+  Explorer+Card 组件保留导出（书页内嵌宿主用）。授权：用户 2026-10-10
+  "不对，website上也要做成sidebar+IDE形态吧"+ "OK，开工"。
 - 2026-10-10 `/auto-plan:new` r1 起草：`stage: new`，PLAN-754 revision 1。
   `outcome: pass`（用户已批统一诉求，授权范围内可开工；非目标清单=保留
   历史裁定的边界）。`next: work`。Q-1：website 桥探测的同源/fallback 顺序
