@@ -203,6 +203,47 @@ os-ai-introduction.ts=82a30a079252edd0a14a1b77570e5b52e570ac75bea0392913190262f1
 - next: /auto-plan:merge 合入已复审文档与 SD；投影读取失败时停止写入，保留 reviewed 计划，
   不归档/清理，不声称工作流完整通过。
 
+### 2026-10-10 /auto-plan:merge — PLAN-753:r1
+
+- stage: merge；outcome: blocked（publication-only；README/规范已 landed；账本未刷新）；
+  status 保持 reviewed，T-05 / AC-06 的生命周期部分仍待完成。
+- prepared: revision 1 复审、SD-01/02 frozen hashes、18 个本计划文件已提交，worktree clean；
+  涉及 canonical targets 均在 docs/specs/website，非 ledger-only 知识。
+- reviewed_commit `884aeed8a6e526c0cd6525c70ecead2e9edf21c9`
+  → delivery_commit `ba9ff44e81f5f97f77f1daa7f8c7b0a23b6e078f`。
+  在 worktree rebase master 后，range-diff `f68e1690e..884aeed8a master..ba9ff44e8`
+  为 `1: 884aeed8a = 1: ba9ff44e8` 全等。期间 master 仅增加 751/753 计划簿记；
+  实现、网站作者数据、SD 目标与只读依赖均无语义变化。
+- landed: master `f55c0f664` → `ba9ff44e8`，git merge --ff-only。合入当刻 main tip
+  精确等于 delivery_commit；落地后 204 条本地/仓内路径、8 条证据图片链接均存在；
+  4 篇正文与两个 canonical Spec hash 同复审 baseline，git diff --check 通过。
+- guard: 合入前 `wt-guard: clean — D:/autostack/.wt/lang-753/auto-lang 下无任何 reparse point`。
+- preserved WIP: music-player app.at SHA256
+  `e7c71053a9afcc8a954505ac0a91dc5c48f7f9aeecfda990cf268989ce0dbb24`；
+  viewport.at `303175bac4b23ec47c4d52be6c5a508f6e8ef4ff6d7207d14de2bc118240d819`，
+  合入前后相同；未提交已有临时文件、兄弟仓或本地发布跟踪文件。
+- ledger_refreshed: **未完成**；workspace `D:/autostack/auto-lang`，
+  `.autoos/specs.json` 仍为 SHA256
+  `3a4dc390529f95045f6bc93013b421645fc1f914cf3642d024dbfab23f80a968`；
+  task-owned GET /api/specs 在当前 store 500，顶层只含 sections 而缺少当前 store 必需
+  document metadata；load failure 后未尝试写入、手工 JSON 迁移或删除重建。
+- 待投影映射（不是成功 upsert 收据）：designs 的新增 contract 候选 ID `P753-1`，
+  file=docs/specs/website/design/ecosystem-readme.md；module overview 已有
+  `P713-1` / `P720-1` 指向 docs/specs/website/project.md，恢复 store 后先核对现势项，
+  不制造第三个同 target 项；reviews 候选 `P753-2`，reports 候选 `P753-3`，
+  历史 file 指向本计划/验证报告并携 reviewed/delivery commit 与 canonical source hashes。
+- archived / cleaned: **未执行**。保留活动计划、plan-753-dev、lang-753/{auto-lang,auto-down}；
+  临时预览与 task-owned store probe 服务已停止。记录与实物一致，未声明 delivered 终态。
+- production artifacts: website 构建于本次工作副本，路由已浏览验证；本任务无部署/发布授权，
+  公开站点部署未更新。零 Rust 改动，现有 runtime/release binaries 未重建，也不声称其验收。
+- batch due audit: 旧收据 covered=740/3c2f3c347、2026-10-08T11:20Z；
+  其后 750（5 倍数）已落地，故 DUE；此次时钟距收据约 45h，不能沿用“>48h”说法。
+  此项已由 751 收尾登记 blocked；主检出 music-player 未提交代码不满足 regress 的
+  “main checkout is clean apart from documented shared bookkeeping”，未运行或覆盖旧收据。
+  本 Category A 内容验证完整；全局批量门禁仍待其前置条件满足，不能记绿。
+- next: 受支持的 store-mediated 账本恢复后，只继续未完成的投影/回读 → archive → fresh guard
+  → 双仓 worktree/branch/空组清理；先核对成功 landed 祖先与 hash，不重复合入或重写现势 Spec。
+
 ## 10. 待澄清事项
 
 - 已解决：用户确认 revision 1，授权继续执行。
