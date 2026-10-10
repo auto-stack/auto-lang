@@ -5500,6 +5500,30 @@
       "fn-call-semantics",
       "view-condition"
      ]
+    },
+    {
+     "id": "P752-1",
+     "title": "playground /api/run prepend_lib——AAVM v1 自举语料可运行化（PLAN-752）",
+     "content": "PLAN-752:r1 交付落账（canonical 唯源=docs/specs/auto-playground/project.md，delivery 5b3b4e257）。prepend_lib: bool（默认 false）为真时裸 source 路径按 AUTO_LIB_FILES（lib-legacy 12 文件依赖序，golden is_bootstrap 同款清单，单一事实源 pub(crate) 常量）前置拼接自举 lib；官方宿主对 vm-bootstrap 组笔记（note.id 前缀）自动开启；走查 105 条 104 成功/80 golden 逐字节一致，余为仓库既有 #[ignore] 隔离态；project/files 路径不拼接。",
+     "tags": [
+      "plan-752",
+      "auto-playground",
+      "commit:5b3b4e257",
+      "docsha:1eb0447aba0a"
+     ],
+     "file": "docs/specs/auto-playground/project.md"
+    },
+    {
+     "id": "P752-2",
+     "title": "playground-vue noteMeta.prependLib 透传契约（PLAN-752）",
+     "content": "PLAN-752:r1 交付落账（canonical 唯源=docs/specs/playground-vue/project.md，delivery 5b3b4e257）。noteMeta 增可选 prependLib?: boolean——宿主按笔记组前缀（vm-bootstrap/）判定，AutoPlaygroundFull watch 透传 usePlaygroundFull.setPrependLib → 请求体 prepend_lib（false 不发送，零影响非 bootstrap 笔记）。",
+     "tags": [
+      "plan-752",
+      "playground-vue",
+      "commit:5b3b4e257",
+      "docsha:7245a95af926"
+     ],
+     "file": "docs/specs/playground-vue/project.md"
     }
    ]
   },
