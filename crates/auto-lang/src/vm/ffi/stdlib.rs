@@ -1049,7 +1049,10 @@ fn backtrace_requested() -> bool {
 /// 打印失败绝不升级为 panic-in-panic/abort（与 std `_eprint` 的
 /// panic-on-failure 语义唯一差异点，仅丢失 backtrace 能力）。
 fn print_panic_tolerant(info: &std::panic::PanicHookInfo<'_>) {
-    let name = std::thread::current().name().unwrap_or("<unnamed>").to_string();
+    let name = std::thread::current()
+        .name()
+        .unwrap_or("<unnamed>")
+        .to_string();
     let loc = info
         .location()
         .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))

@@ -7,7 +7,7 @@ mod plan703_supply_probes;
 mod plan710_supply_probes;
 mod plan728_bench; // PLAN-728 T-08: 阶梯基准谱（#[ignore] 显式跑，JSONL 入 docs/reports）
 mod plan728_supply_probes; // PLAN-728: 文件后援分页 rope 探针族（710 形态）
-// PLAN-716 供料包: 组B 帧时间戳通道（VM/a2r 双轨+门控+开销两态）+组C 窗口投影
+                           // PLAN-716 供料包: 组B 帧时间戳通道（VM/a2r 双轨+门控+开销两态）+组C 窗口投影
 mod plan716_supply_probes;
 // KNOWN-DEBT 396 rider (Plan 415-B1): stdlib .rs.at ↔ a2r-std signature parity
 #[cfg(feature = "test-trans")]
@@ -44,7 +44,7 @@ mod list_tests; // Comprehensive List operation tests (Plan 051)
 mod may_tests;
 mod mem_tests;
 mod trait_vm_tests; // Plan 417-E4: spec default-method inheritance
-// Plan 565 P0: mem-profile 归因报告（#[ignore] 诊断，仅 mem-profile feature）
+                    // Plan 565 P0: mem-profile 归因报告（#[ignore] 诊断，仅 mem-profile feature）
 mod fs_tree_parity; // PLAN-681: fs.tree VM/a2r-std 双轨逐字节对拍 (P670-D1 缺口④/AC-05)
 #[cfg(feature = "mem-profile")]
 mod mem_profile_report_tests;
@@ -66,8 +66,8 @@ mod test_let_generic;
 mod use_semantics_tests;
 mod vm_functions_tests;
 mod vm_json_float_read_tests; // Plan 474: __json_object 浮点字段 Dot 读回归（plan011④） // Plan 545: use 命名空间语义（bare=命名空间 / : * = 显式全量）
-                                                                                         // vm_tests and autovm_tests merged - Plan 118
-                                                                                         // autovm_tests removed - tests consolidated into vm_tests
+                              // vm_tests and autovm_tests merged - Plan 118
+                              // autovm_tests removed - tests consolidated into vm_tests
 mod actor_state_tests;
 mod actor_tests; // Plan 327 Phase 1: Task/Msg actor handler execution
 mod autodown_tests;

@@ -10537,7 +10537,9 @@ impl Codegen {
                             crate::ast::Arg::Pair(k, _) => Some(k.to_string()),
                             // Parser turns `end=" "` into a Bina(Asn) assignment
                             // expression arg (dup+store codegen, stack leak).
-                            crate::ast::Arg::Pos(crate::ast::Expr::Bina(lhs, op, _)) if *op == Op::Asn => {
+                            crate::ast::Arg::Pos(crate::ast::Expr::Bina(lhs, op, _))
+                                if *op == Op::Asn =>
+                            {
                                 Some(format!("{:?}", lhs))
                             }
                             _ => None,

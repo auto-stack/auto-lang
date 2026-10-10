@@ -41,7 +41,11 @@ pub fn stretch_line<Message: Clone + 'static>(
     spacing: f32,
     fill_height: bool,
 ) -> StretchLine<'static, Message> {
-    StretchLine { children, spacing, fill_height }
+    StretchLine {
+        children,
+        spacing,
+        fill_height,
+    }
 }
 
 pub struct StretchLine<'a, Message> {
@@ -79,7 +83,10 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
     for StretchLine<'_, Message>
 {
     fn size(&self) -> Size<Length> {
-        Size { width: Length::Shrink, height: Length::Shrink }
+        Size {
+            width: Length::Shrink,
+            height: Length::Shrink,
+        }
     }
 
     fn children(&self) -> Vec<Tree> {
@@ -124,7 +131,9 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
                 let s = c.as_widget().size();
                 eprintln!(
                     "[P748-SL] child[{i}] widget_len=({:?},{:?}) portion={:.1}",
-                    s.width, s.height, fill_portion(s.width)
+                    s.width,
+                    s.height,
+                    fill_portion(s.width)
                 );
             }
         }
@@ -136,9 +145,10 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
                     Size::new(available.max(0.0), f32::INFINITY),
                     Size::new(false, false),
                 );
-                let node = child
-                    .as_widget_mut()
-                    .layout(&mut tree.children[i], renderer, &child_limits);
+                let node =
+                    child
+                        .as_widget_mut()
+                        .layout(&mut tree.children[i], renderer, &child_limits);
                 let w = node.size().width;
                 available -= w;
                 final_w[i] = w;
@@ -159,7 +169,10 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
                     0.0
                 };
                 if probe {
-                    eprintln!("[P748-SL] width-pass child[{i}] fill share={:.1}", final_w[i]);
+                    eprintln!(
+                        "[P748-SL] width-pass child[{i}] fill share={:.1}",
+                        final_w[i]
+                    );
                 }
             }
         }
@@ -184,7 +197,8 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
             if probe {
                 eprintln!(
                     "[P748-SL] measure child[{i}] w={:.1} natural_h_child={:.1}",
-                    final_w[i], node.size().height
+                    final_w[i],
+                    node.size().height
                 );
             }
         }
@@ -207,8 +221,9 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
                 Size::new(final_w[i], effective),
                 Size::new(false, false),
             );
-            nodes[i] =
-                child.as_widget_mut().layout(&mut tree.children[i], renderer, &child_limits);
+            nodes[i] = child
+                .as_widget_mut()
+                .layout(&mut tree.children[i], renderer, &child_limits);
             if probe {
                 let s = nodes[i].size();
                 eprintln!(
@@ -238,7 +253,9 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
     ) {
         for (i, child) in self.children.iter_mut().enumerate() {
             if let Some(cl) = layout.children().nth(i) {
-                child.as_widget_mut().operate(&mut tree.children[i], cl, renderer, operation);
+                child
+                    .as_widget_mut()
+                    .operate(&mut tree.children[i], cl, renderer, operation);
             }
         }
     }
@@ -321,9 +338,7 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
     }
 }
 
-impl<'a, Message: Clone + 'static> From<StretchLine<'a, Message>>
-    for Element<'a, Message>
-{
+impl<'a, Message: Clone + 'static> From<StretchLine<'a, Message>> for Element<'a, Message> {
     fn from(line: StretchLine<'a, Message>) -> Self {
         Element::new(line)
     }

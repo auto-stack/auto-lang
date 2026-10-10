@@ -21,8 +21,7 @@ use crate::vm::task::AutoTask;
 // ═══════════ 断点①②：fn 段驱动（与 handler 段同一 engine 段机制）═══════════
 
 fn p748_compile(code: &str) -> crate::vm::engine::AutoVM {
-    let (vm, _stdout, _entry, _object_type) =
-        crate::create_vm_from_source(code).expect("compile");
+    let (vm, _stdout, _entry, _object_type) = crate::create_vm_from_source(code).expect("compile");
     vm
 }
 
@@ -45,10 +44,7 @@ fn p748_spawn_server(body: &'static str) -> (std::thread::JoinHandle<()>, u16) {
 }
 
 /// 段驱动到 Parked(HttpRequest)，等结果就绪后 resume，返回续体终态与返回串。
-fn p748_drive_park_resume(
-    vm: &crate::vm::engine::AutoVM,
-    name: &str,
-) -> Result<String, String> {
+fn p748_drive_park_resume(vm: &crate::vm::engine::AutoVM, name: &str) -> Result<String, String> {
     let mut task = AutoTask::new(0, 65536, 0);
     let outcome = vm.call_fn_by_name_segment(&mut task, name, 0);
     let seg = match &outcome {
@@ -59,10 +55,7 @@ fn p748_drive_park_resume(
             let req_id = *id;
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
             while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
-                assert!(
-                    std::time::Instant::now() < deadline,
-                    "server 应答超时"
-                );
+                assert!(std::time::Instant::now() < deadline, "server 应答超时");
                 std::thread::sleep(std::time::Duration::from_millis(5));
             }
             seg.clone()
@@ -237,10 +230,7 @@ store SelStore {
 fn build_p748_t00() -> crate::ui::dynamic::DynamicComponent {
     let dir = tempfile::TempDir::new().unwrap();
     let base = dir.path();
-    for (rel, src) in [
-        ("host.at", P748_T00_HOST),
-        ("sel_store.at", P748_T00_STORE),
-    ] {
+    for (rel, src) in [("host.at", P748_T00_HOST), ("sel_store.at", P748_T00_STORE)] {
         std::fs::write(base.join(rel), src).unwrap();
     }
     let host_path: std::path::PathBuf = base.join("host.at").to_path_buf();
@@ -265,7 +255,10 @@ fn p748_view_debug(comp: &mut crate::ui::dynamic::DynamicComponent) -> String {
 fn p748_t00_condition_matrix_root() {
     let mut comp = build_p748_t00();
     let debug = p748_view_debug(&mut comp);
-    eprintln!("[t00-①root] {}", debug.chars().take(2000).collect::<String>());
+    eprintln!(
+        "[t00-①root] {}",
+        debug.chars().take(2000).collect::<String>()
+    );
 
     assert!(
         debug.contains("BARE_FALSE"),
@@ -291,7 +284,10 @@ fn p748_t00_condition_matrix_root() {
 fn p748_t00_style_faces() {
     let mut comp = build_p748_t00();
     let debug = p748_view_debug(&mut comp);
-    eprintln!("[t00-③style] {}", debug.chars().take(2400).collect::<String>());
+    eprintln!(
+        "[t00-③style] {}",
+        debug.chars().take(2400).collect::<String>()
+    );
 
     // 文本子节点在 = 元素渲染骨架在；style 载体断言：渲染树存解析后枚举
     // 形态（bg-primary→BackgroundColor(Primary)），定位 DYN row 自身区段。
@@ -422,4 +418,3 @@ fn p748_t00_handler_noawait_arm() {
         "无 await 静态写为 musk 实证可用通道"
     );
 }
-

@@ -60,7 +60,10 @@ fn plan746_generous_deadline_normal_run_unchanged() {
     let (result, stdout, _, _) =
         crate::run_with_capture_and_bytecode_with_deadline("print(1 + 2)", Some(deadline))
             .expect("normal run with generous deadline must succeed");
-    assert!(stdout.contains('3'), "stdout should contain 3, got: {stdout}");
+    assert!(
+        stdout.contains('3'),
+        "stdout should contain 3, got: {stdout}"
+    );
     let _ = result;
 }
 
@@ -70,7 +73,10 @@ fn plan746_no_deadline_infinite_loop_is_opt_in() {
     // 的表征——无限循环 None 面不可测试因真会挂，由上一组 opt-in 面覆盖）。
     let (result, stdout, _, _) = crate::run_with_capture_and_bytecode_with_meta("print(42)")
         .expect("default unlimited path must succeed");
-    assert!(stdout.contains("42"), "stdout should contain 42, got: {stdout}");
+    assert!(
+        stdout.contains("42"),
+        "stdout should contain 42, got: {stdout}"
+    );
     let _ = result;
 }
 
@@ -82,7 +88,6 @@ fn plan746_execution_thread_panic_returns_err() {
     let res = crate::run_with_capture_and_bytecode_with_meta("'\n");
     assert!(res.is_err(), "hostile input must return Err, got Ok");
 }
-
 
 #[test]
 fn plan746_print_kwargs_rejected_at_compile_time() {
@@ -106,9 +111,15 @@ fn plan746_print_kwargs_loop_shape_fails_fast() {
     print(i, end=\" \")
 }",
     );
-    assert!(res.is_err(), "loop with kwargs print must fail at compile time");
     assert!(
-        res.err().map(|e| e.to_string()).unwrap_or_default().contains("keyword arguments"),
+        res.is_err(),
+        "loop with kwargs print must fail at compile time"
+    );
+    assert!(
+        res.err()
+            .map(|e| e.to_string())
+            .unwrap_or_default()
+            .contains("keyword arguments"),
         "error should mention keyword arguments"
     );
 }
@@ -122,15 +133,24 @@ fn plan746_concurrent_deadlines_independent() {
             let dl = std::time::Instant::now() + std::time::Duration::from_secs(2);
             let start = std::time::Instant::now();
             let r = crate::run_with_capture_and_bytecode_with_deadline("for true {}", Some(dl));
-            (start.elapsed(), r.map(|(res, out, _, _)| (res, out.len())).map_err(|e| e.to_string()))
+            (
+                start.elapsed(),
+                r.map(|(res, out, _, _)| (res, out.len()))
+                    .map_err(|e| e.to_string()),
+            )
         }));
     }
     for h in handles {
         let (elapsed, r) = h.join().unwrap();
         assert!(
-            r.err().map(|e| e.contains("ExecutionTimeout")).unwrap_or(false),
+            r.err()
+                .map(|e| e.contains("ExecutionTimeout"))
+                .unwrap_or(false),
             "expected ExecutionTimeout"
         );
-        assert!(elapsed < std::time::Duration::from_secs(10), "deadline not enforced: {elapsed:?}");
+        assert!(
+            elapsed < std::time::Duration::from_secs(10),
+            "deadline not enforced: {elapsed:?}"
+        );
     }
 }

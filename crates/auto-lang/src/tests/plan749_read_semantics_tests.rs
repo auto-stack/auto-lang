@@ -22,9 +22,13 @@ use crate::vm::task::AutoTask;
 
 // ── 驱动助手（fn 上下文）──
 
-fn p749_compile(code: &str) -> (crate::vm::engine::AutoVM, std::sync::Arc<std::sync::RwLock<String>>) {
-    let (vm, stdout, _entry, _object_type) =
-        crate::create_vm_from_source(code).expect("compile");
+fn p749_compile(
+    code: &str,
+) -> (
+    crate::vm::engine::AutoVM,
+    std::sync::Arc<std::sync::RwLock<String>>,
+) {
+    let (vm, stdout, _entry, _object_type) = crate::create_vm_from_source(code).expect("compile");
     (vm, stdout)
 }
 
@@ -42,10 +46,7 @@ fn p749_call_ret(
 }
 
 /// 段驱动并取返回串（strings 池解码）。
-fn p749_call_str(
-    vm: &crate::vm::engine::AutoVM,
-    name: &str,
-) -> Result<String, String> {
+fn p749_call_str(vm: &crate::vm::engine::AutoVM, name: &str) -> Result<String, String> {
     let nv = p749_call_ret(vm, name)?;
     if auto_val::is_string(nv) {
         let idx = auto_val::decode_string(nv) as usize;
@@ -158,7 +159,10 @@ fn probe_raw() bool {
         auto_val::is_bool(nv),
         "GET_FIELD push for bool field must be TAG_BOOL (Plan 402 口径); {dump}"
     );
-    assert!(auto_val::decode_bool(nv), "bool value must decode true; {dump}");
+    assert!(
+        auto_val::decode_bool(nv),
+        "bool value must decode true; {dump}"
+    );
 }
 
 /// S1-c：显示面——`r.ok` 的串化必须显示 "true"（musk 观测：-2147483648）。
@@ -549,7 +553,10 @@ fn build_p749() -> crate::ui::dynamic::DynamicComponent {
     let base = dir.path();
     let host = p749_host_src();
     let store = p749_store_src();
-    for (rel, src) in [("host.at", host.as_str()), ("r749_store.at", store.as_str())] {
+    for (rel, src) in [
+        ("host.at", host.as_str()),
+        ("r749_store.at", store.as_str()),
+    ] {
         std::fs::write(base.join(rel), src).unwrap();
     }
     let host_path: std::path::PathBuf = base.join("host.at").to_path_buf();
@@ -560,24 +567,15 @@ fn build_p749() -> crate::ui::dynamic::DynamicComponent {
     comp
 }
 
-fn p749_state_str(
-    comp: &crate::ui::dynamic::DynamicComponent,
-    field: &str,
-) -> String {
+fn p749_state_str(comp: &crate::ui::dynamic::DynamicComponent, field: &str) -> String {
     match comp.read_state(field) {
         Ok(auto_val::Value::Str(s)) => s.as_str().to_string(),
         other => format!("<{field} not str: {other:?}>"),
     }
 }
 
-fn p749_state_bool(
-    comp: &crate::ui::dynamic::DynamicComponent,
-    field: &str,
-) -> bool {
-    matches!(
-        comp.read_state(field),
-        Ok(auto_val::Value::Bool(true))
-    )
+fn p749_state_bool(comp: &crate::ui::dynamic::DynamicComponent, field: &str) -> bool {
+    matches!(comp.read_state(field), Ok(auto_val::Value::Bool(true)))
 }
 
 /// 三上下文主矩阵：handler 段读格 + 视图/computed 渲染格。
@@ -701,8 +699,7 @@ fn p749_view_condition_faces() {
          (G1 真值位布线——AC-03 条件位/真值位双面；严格布尔语义见注释)",
     );
     assert!(
-        debug.contains("COMPUTED_CALL_NONEMPTY")
-            && !debug.contains("COMPUTED_CALL_EMPTY"),
+        debug.contains("COMPUTED_CALL_NONEMPTY") && !debug.contains("COMPUTED_CALL_EMPTY"),
         "view condition comparing single-segment computed (`.c_run != \"\"`) \
          must take non-empty branch"
     );

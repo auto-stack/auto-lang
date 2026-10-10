@@ -5,24 +5,30 @@
 // text_color, background_color, border, rounded, width, height) where Iced supports them.
 // Unsupported properties (margin) are silently skipped.
 
-use crate::ui::view::View as AbstractView;
-use crate::ui::component::Component;
 use crate::ui::app::AppResult;
-use crate::ui::style::iced_adapter::{IcedStyle, IcedAlign, IcedJustify, IcedSize, IcedFontWeight, IcedFontSize, IcedShadowSize, IcedOverflow};
-use crate::ui::style::{Style, StyleClass, Color, SizeValue};
-use std::fmt::Debug;
+use crate::ui::component::Component;
+use crate::ui::style::iced_adapter::{
+    IcedAlign, IcedFontSize, IcedFontWeight, IcedJustify, IcedOverflow, IcedShadowSize, IcedSize,
+    IcedStyle,
+};
+use crate::ui::style::{Color, SizeValue, Style, StyleClass};
+use crate::ui::view::View as AbstractView;
+use iced::widget::{
+    button, checkbox, column, container, mouse_area, pick_list, row, scrollable, svg, text,
+    text_editor, text_input, tooltip,
+};
 use std::collections::HashMap;
-use iced::widget::{button, checkbox, column, container, mouse_area, pick_list, row, scrollable, svg, text, text_editor, text_input, tooltip};
+use std::fmt::Debug;
 
 use crate::ui::dynamic::DynamicComponent;
 // PLAN-042 T-02：诊断家族双写（eprintln 载重站点 → `crate::syslog!` 宏，
 // stderr 归档层保留 + 环实时层入环）。
-use crate::ui::syslog::SyslogLevel;
-use crate::ui::interpreter::DynamicMessage;
-use crate::ui::debug_id_map::DebugIdMap;
 use crate::aura::{AuraNodeId, SpanInfo};
-use crate::session::CompilerSession;
 use crate::parser::Parser;
+use crate::session::CompilerSession;
+use crate::ui::debug_id_map::DebugIdMap;
+use crate::ui::interpreter::DynamicMessage;
+use crate::ui::syslog::SyslogLevel;
 
 // Thread-local storage for the last input text value.
 // Used by the static code path to pass input text from on_input callbacks
@@ -84,7 +90,7 @@ fn text_editor_text_transparent(
 /// Plan 057 续(Tab 补全):把 iced KeyPress 规范化为 .at onkeydown 的键名
 /// ("tab"/"up"/"down"/"ctrl.r"/"ctrl.right"…)。修饰键前缀 ctrl./alt./shift.。
 fn key_press_to_binding_name(kp: &text_editor::KeyPress) -> String {
-    use iced::keyboard::{Key, key};
+    use iced::keyboard::{key, Key};
     let base = match &kp.key {
         Key::Named(n) => match n {
             key::Named::Tab => "tab".to_string(),
@@ -110,9 +116,15 @@ fn key_press_to_binding_name(kp: &text_editor::KeyPress) -> String {
         return String::new();
     }
     let mut name = String::new();
-    if kp.modifiers.control() { name.push_str("ctrl."); }
-    if kp.modifiers.alt() { name.push_str("alt."); }
-    if kp.modifiers.shift() && matches!(kp.key, Key::Named(_)) { name.push_str("shift."); }
+    if kp.modifiers.control() {
+        name.push_str("ctrl.");
+    }
+    if kp.modifiers.alt() {
+        name.push_str("alt.");
+    }
+    if kp.modifiers.shift() && matches!(kp.key, Key::Named(_)) {
+        name.push_str("shift.");
+    }
     name + &base
 }
 
@@ -267,7 +279,10 @@ fn le_kill_motion(key: &str, motion: text_editor::Motion) -> Option<String> {
         (c.text(), le_cursor_offset(c))
     };
     let line_start = text[..cur].rfind('\n').map(|i| i + 1).unwrap_or(0);
-    let line_end = text[cur..].find('\n').map(|i| cur + i).unwrap_or(text.len());
+    let line_end = text[cur..]
+        .find('\n')
+        .map(|i| cur + i)
+        .unwrap_or(text.len());
     let range = match motion {
         text_editor::Motion::End => cur..line_end,
         text_editor::Motion::Home => line_start..cur,
@@ -354,9 +369,7 @@ fn le_execute(
                 Some(t) => {
                     let text = textarea_perform_action(
                         key,
-                        text_editor::Action::Edit(text_editor::Edit::Paste(
-                            std::sync::Arc::new(t),
-                        )),
+                        text_editor::Action::Edit(text_editor::Edit::Paste(std::sync::Arc::new(t))),
                     );
                     Some(sync(&text))
                 }
@@ -487,18 +500,27 @@ fn line_edit_keymap(mode: &str) -> std::collections::HashMap<String, LineEditOp>
             m.insert("D".into(), LineEditOp::Kill(Motion::End));
             m.insert("d".into(), LineEditOp::BeginPending);
             m.insert("i".into(), LineEditOp::SetMode("vi-insert"));
-            m.insert("I".into(), LineEditOp::Seq(vec![
-                LineEditOp::SetMode("vi-insert"),
-                LineEditOp::Native(Binding::Move(Motion::Home)),
-            ]));
-            m.insert("a".into(), LineEditOp::Seq(vec![
-                LineEditOp::SetMode("vi-insert"),
-                LineEditOp::Native(Binding::Move(Motion::Right)),
-            ]));
-            m.insert("A".into(), LineEditOp::Seq(vec![
-                LineEditOp::SetMode("vi-insert"),
-                LineEditOp::Native(Binding::Move(Motion::End)),
-            ]));
+            m.insert(
+                "I".into(),
+                LineEditOp::Seq(vec![
+                    LineEditOp::SetMode("vi-insert"),
+                    LineEditOp::Native(Binding::Move(Motion::Home)),
+                ]),
+            );
+            m.insert(
+                "a".into(),
+                LineEditOp::Seq(vec![
+                    LineEditOp::SetMode("vi-insert"),
+                    LineEditOp::Native(Binding::Move(Motion::Right)),
+                ]),
+            );
+            m.insert(
+                "A".into(),
+                LineEditOp::Seq(vec![
+                    LineEditOp::SetMode("vi-insert"),
+                    LineEditOp::Native(Binding::Move(Motion::End)),
+                ]),
+            );
             m.insert("enter".into(), nat(Binding::Enter));
         }
         _ => {}
@@ -556,8 +578,16 @@ where
                 if pfx == "d" && name == "d" {
                     // dd = kill 整行:先 kill 到行首,再 kill 到行尾
                     if let Some(oc) = on_change.as_ref() {
-                        let _ = le_execute(&action_key, LineEditOp::Kill(text_editor::Motion::Home), oc);
-                        return le_execute(&action_key, LineEditOp::Kill(text_editor::Motion::End), oc);
+                        let _ = le_execute(
+                            &action_key,
+                            LineEditOp::Kill(text_editor::Motion::Home),
+                            oc,
+                        );
+                        return le_execute(
+                            &action_key,
+                            LineEditOp::Kill(text_editor::Motion::End),
+                            oc,
+                        );
                     }
                     return Some(text_editor::Binding::Sequence(vec![]));
                 }
@@ -618,8 +648,16 @@ where
 {
     // In inspect-capture mode, render read-only (no on_action) so
     // wrap_debug's mouse_area can capture hover/click.
-    let on_change = if inspect_capture_active() { None } else { on_change };
-    let on_submit = if inspect_capture_active() { None } else { on_submit };
+    let on_change = if inspect_capture_active() {
+        None
+    } else {
+        on_change
+    };
+    let on_submit = if inspect_capture_active() {
+        None
+    } else {
+        on_submit
+    };
     // Plan 053 M4: Enter fires the on_submit (onenter) handler instead of
     // on_change. Plan 057 续:ghost 嵌入内容,派发前剥离已知后缀。
     let is_enter = |action: &text_editor::Action| {
@@ -672,10 +710,8 @@ where
         editor
             .on_action(move |action| {
                 let enter = is_enter(&action);
-                let text = strip_ghost_suffix(
-                    &action_key,
-                    &textarea_perform_action(&action_key, action),
-                );
+                let text =
+                    strip_ghost_suffix(&action_key, &textarea_perform_action(&action_key, action));
                 if enter {
                     IcedMessage {
                         widget: sm_clone.widget.clone(),
@@ -766,7 +802,10 @@ impl iced_widget::core::text::Highlighter for SpanHighlighter {
     type Iterator<'a> = std::vec::IntoIter<(std::ops::Range<usize>, SpanKind)>;
 
     fn new(settings: &Self::Settings) -> Self {
-        Self { lines: settings.lines.clone(), line_idx: 0 }
+        Self {
+            lines: settings.lines.clone(),
+            line_idx: 0,
+        }
     }
 
     fn update(&mut self, settings: &Self::Settings) {
@@ -803,31 +842,31 @@ fn span_kind_to_format(
     };
     match highlight {
         SpanKind::Command => iced_widget::core::text::highlighter::Format {
-            color: Some(c(52, 211, 153)),   // emerald-400
+            color: Some(c(52, 211, 153)), // emerald-400
             font: Some(bold),
         },
         SpanKind::ExternalCmd => iced_widget::core::text::highlighter::Format {
-            color: Some(c(125, 211, 252)),  // sky-300
+            color: Some(c(125, 211, 252)), // sky-300
             font: None,
         },
         SpanKind::String => iced_widget::core::text::highlighter::Format {
-            color: Some(c(252, 211, 77)),   // amber-300
+            color: Some(c(252, 211, 77)), // amber-300
             font: None,
         },
         SpanKind::Variable => iced_widget::core::text::highlighter::Format {
-            color: Some(c(248, 113, 113)),  // red-400
+            color: Some(c(248, 113, 113)), // red-400
             font: None,
         },
         SpanKind::Operator => iced_widget::core::text::highlighter::Format {
-            color: Some(c(244, 114, 182)),  // pink-400
+            color: Some(c(244, 114, 182)), // pink-400
             font: Some(bold),
         },
         SpanKind::Redirect | SpanKind::Comment => iced_widget::core::text::highlighter::Format {
-            color: Some(c(156, 163, 175)),  // gray-400
+            color: Some(c(156, 163, 175)), // gray-400
             font: None,
         },
         SpanKind::Flag => iced_widget::core::text::highlighter::Format {
-            color: Some(c(216, 180, 254)),  // purple-300
+            color: Some(c(216, 180, 254)), // purple-300
             font: None,
         },
         SpanKind::Ghost => iced_widget::core::text::highlighter::Format {
@@ -864,7 +903,10 @@ fn build_span_lines(highlight: &[(String, String)], value: &str, ghost: &str) ->
     }
     // 防线:段文本拼接必须恰为 value —— CJK 字节钳制等来源可能造成缺口/重叠。
     if concat != value {
-        return SpanSettings { text: String::new(), lines: Vec::new() };
+        return SpanSettings {
+            text: String::new(),
+            lines: Vec::new(),
+        };
     }
     if !ghost.is_empty() {
         full.push((value.len()..value.len() + ghost.len(), SpanKind::Ghost));
@@ -880,20 +922,29 @@ fn build_span_lines(highlight: &[(String, String)], value: &str, ghost: &str) ->
                 Some(rel) => {
                     let nl = s + rel;
                     if nl > s {
-                        lines.last_mut().unwrap().push((s - line_start..nl - line_start, kind));
+                        lines
+                            .last_mut()
+                            .unwrap()
+                            .push((s - line_start..nl - line_start, kind));
                     }
                     lines.push(Vec::new());
                     line_start = nl + 1;
                     s = nl + 1;
                 }
                 None => {
-                    lines.last_mut().unwrap().push((s - line_start..r.end - line_start, kind));
+                    lines
+                        .last_mut()
+                        .unwrap()
+                        .push((s - line_start..r.end - line_start, kind));
                     s = r.end;
                 }
             }
         }
     }
-    SpanSettings { text: content, lines }
+    SpanSettings {
+        text: content,
+        lines,
+    }
 }
 
 /// Plan 446 批五 U3: textarea 超大内容降级门槛(字节)。
@@ -950,9 +1001,8 @@ fn get_textarea_content(key: &str, value: &str) -> &'static text_editor::Content
     // Phase 1: ensure the entry exists (under lock)
     {
         let mut map = TEXTAREA_CONTENTS.lock().unwrap();
-        map.entry(key.to_string()).or_insert_with(|| {
-            Box::leak(Box::new(text_editor::Content::with_text(value)))
-        });
+        map.entry(key.to_string())
+            .or_insert_with(|| Box::leak(Box::new(text_editor::Content::with_text(value))));
     }
     // Phase 2: update content in-place (under lock) — ONLY when the text
     // actually changed. Unconditionally replacing on every render reset the
@@ -965,9 +1015,7 @@ fn get_textarea_content(key: &str, value: &str) -> &'static text_editor::Content
         if let Some(content) = map.get_mut(key) {
             if content.text() != value {
                 **content = text_editor::Content::with_text(value);
-                content.perform(text_editor::Action::Move(
-                    text_editor::Motion::DocumentEnd,
-                ));
+                content.perform(text_editor::Action::Move(text_editor::Motion::DocumentEnd));
             }
         }
     }
@@ -1031,7 +1079,10 @@ fn get_textarea_content_rich(key: &str, value: &str, ghost: &str) -> &'static te
         // (或树位移重置后的行首),而期望在完整 input 末尾。
         let boundary_moved = {
             let mut last = TEXTAREA_LAST_INPUT.lock().unwrap();
-            let moved = last.get(key).map(|(v, g)| v != value || g != ghost).unwrap_or(true);
+            let moved = last
+                .get(key)
+                .map(|(v, g)| v != value || g != ghost)
+                .unwrap_or(true);
             last.insert(key.to_string(), (value.to_string(), ghost.to_string()));
             moved
         };
@@ -1041,20 +1092,21 @@ fn get_textarea_content_rich(key: &str, value: &str, ghost: &str) -> &'static te
                 // 保持光标字节偏移(编辑点,钳回 value 区);外部变更(历史/
                 // 补全/ghost 接受)维持 value 末尾 —— C-b 后打字不再被拽尾。
                 let echo = TEXTAREA_ECHO_KEYS.lock().unwrap().remove(key);
-                let preserve = if echo { Some(le_cursor_offset(content)) } else { None };
+                let preserve = if echo {
+                    Some(le_cursor_offset(content))
+                } else {
+                    None
+                };
                 **content = text_editor::Content::with_text(&want);
                 match preserve {
                     Some(off) => {
                         le_move_to_offset(content, &want, off.min(value.len()));
                     }
                     None => {
-                        content.perform(text_editor::Action::Move(
-                            text_editor::Motion::DocumentEnd,
-                        ));
+                        content
+                            .perform(text_editor::Action::Move(text_editor::Motion::DocumentEnd));
                         for _ in 0..ghost.chars().count() {
-                            content.perform(text_editor::Action::Move(
-                                text_editor::Motion::Left,
-                            ));
+                            content.perform(text_editor::Action::Move(text_editor::Motion::Left));
                         }
                     }
                 }
@@ -1158,9 +1210,15 @@ pub(crate) fn axis_fix_col_child<M: Clone + Debug>(mut c: AbstractView<M>) -> Ab
 /// PLAN-642 T-11: distributed（justify-between/around/evenly）列判定——
 /// 与 build_column 的垫片发射共用同一口径，子项 grow 剥离条件随之同步。
 pub(crate) fn style_is_distributed(style: Option<&Style>) -> bool {
-    style.map(IcedStyle::from_style).and_then(|is| is.justify_content).is_some_and(|j| {
-        matches!(j, IcedJustify::Between | IcedJustify::Around | IcedJustify::Evenly)
-    })
+    style
+        .map(IcedStyle::from_style)
+        .and_then(|is| is.justify_content)
+        .is_some_and(|j| {
+            matches!(
+                j,
+                IcedJustify::Between | IcedJustify::Around | IcedJustify::Evenly
+            )
+        })
 }
 
 /// PLAN-642 T-11: distributed 列的直接子修正——剥 grow（Flex1/FlexAuto/
@@ -1171,9 +1229,16 @@ pub(crate) fn style_is_distributed(style: Option<&Style>) -> bool {
 /// min-content 钳制永不隐没；iced 无该钳制，distributed 列里 grow 让渡
 /// 给垫片独占（子项保持自然高，justify 分布语义不变；欠额场景差异仅为
 /// "grow 子不再撑高"，由垫片吸收等量空隙）。
-pub(crate) fn axis_fix_col_child_distributed<M: Clone + Debug>(mut c: AbstractView<M>) -> AbstractView<M> {
+pub(crate) fn axis_fix_col_child_distributed<M: Clone + Debug>(
+    mut c: AbstractView<M>,
+) -> AbstractView<M> {
     if let Some(classes) = view_classes_mut(&mut c) {
-        classes.retain(|cl| !matches!(cl, StyleClass::Flex1 | StyleClass::FlexAuto | StyleClass::Grow));
+        classes.retain(|cl| {
+            !matches!(
+                cl,
+                StyleClass::Flex1 | StyleClass::FlexAuto | StyleClass::Grow
+            )
+        });
     }
     c
 }
@@ -1215,7 +1280,9 @@ impl ViewportAnchor {
 
 /// 从节点样式提取其**自身**建立的视口边界（仅 arbitrary px 定值，>0）。
 fn viewport_boundary_of(style: Option<&Style>) -> ViewportAnchor {
-    let Some(s) = style else { return ViewportAnchor::NONE };
+    let Some(s) = style else {
+        return ViewportAnchor::NONE;
+    };
     let mut a = ViewportAnchor::NONE;
     for c in &s.classes {
         match c {
@@ -1268,7 +1335,9 @@ fn column_definite_height_no_overflow(style: Option<&Style>) -> bool {
     for c in &s.classes {
         match c {
             StyleClass::Height(SizeValue::Pixels(px)) if *px > 0.0 => definite = true,
-            StyleClass::OverflowYAuto | StyleClass::OverflowYHidden | StyleClass::OverflowHidden => return false,
+            StyleClass::OverflowYAuto
+            | StyleClass::OverflowYHidden
+            | StyleClass::OverflowHidden => return false,
             _ => {}
         }
     }
@@ -1290,26 +1359,24 @@ fn child_has_margin_y_auto<M: Clone + Debug>(v: &AbstractView<M>) -> bool {
         _ => return false,
     };
     let Some(s) = style else { return false };
-    s.classes.iter().any(|c| matches!(c, StyleClass::MarginYAuto | StyleClass::MarginAuto))
+    s.classes
+        .iter()
+        .any(|c| matches!(c, StyleClass::MarginYAuto | StyleClass::MarginAuto))
 }
 
 fn expand_margin_y_auto_walk<M: Clone + Debug>(v: &mut AbstractView<M>) {
-    let transform_children = matches!(v, AbstractView::Column { .. })
-        && {
-            let style = match &*v {
-                AbstractView::Column { style, .. } => style.as_ref(),
-                _ => None,
-            };
-            column_definite_height_no_overflow(style)
+    let transform_children = matches!(v, AbstractView::Column { .. }) && {
+        let style = match &*v {
+            AbstractView::Column { style, .. } => style.as_ref(),
+            _ => None,
         };
+        column_definite_height_no_overflow(style)
+    };
     if transform_children {
         if let AbstractView::Column { children, .. } = v {
             for c in children.iter_mut() {
                 if child_has_margin_y_auto(c) {
-                    let inner = std::mem::replace(
-                        c,
-                        AbstractView::Empty,
-                    );
+                    let inner = std::mem::replace(c, AbstractView::Empty);
                     *c = AbstractView::Column {
                         children: vec![inner],
                         spacing: 0,
@@ -1423,7 +1490,11 @@ fn rewrite_viewport_node<M: Clone + Debug>(v: &mut AbstractView<M>, anchor: View
 fn effective_spacing(legacy: u16, style: Option<&Style>, horizontal: bool) -> f32 {
     if let Some(s) = style {
         let iced_style = IcedStyle::from_style(s);
-        let axis = if horizontal { iced_style.gap_x } else { iced_style.gap_y };
+        let axis = if horizontal {
+            iced_style.gap_x
+        } else {
+            iced_style.gap_y
+        };
         if let Some(g) = axis.or(iced_style.gap) {
             return g;
         }
@@ -1451,20 +1522,25 @@ fn iced_padding(legacy: u16, style: Option<&Style>) -> iced::Padding {
 fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
     use iced::Background;
     let has_radius = is.has_border_radius();
-    let border = if is.rounded || is.border || has_radius || is.border_width.map_or(false, |w| w > 0.0) {
-        let width = is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 });
-        let color = is.border_color.unwrap_or_else(|| {
-            let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
-            iced::Color::from_rgb8(r, g, b)
-        });
-        iced::Border {
-            color: if width > 0.0 { color } else { iced::Color::TRANSPARENT },
-            width,
-            radius: is.effective_border_radius(),
-        }
-    } else {
-        iced::Border::default()
-    };
+    let border =
+        if is.rounded || is.border || has_radius || is.border_width.map_or(false, |w| w > 0.0) {
+            let width = is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 });
+            let color = is.border_color.unwrap_or_else(|| {
+                let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+                iced::Color::from_rgb8(r, g, b)
+            });
+            iced::Border {
+                color: if width > 0.0 {
+                    color
+                } else {
+                    iced::Color::TRANSPARENT
+                },
+                width,
+                radius: is.effective_border_radius(),
+            }
+        } else {
+            iced::Border::default()
+        };
     let shadow = if is.shadow {
         let (offset_y, blur) = match is.shadow_size {
             Some(IcedShadowSize::Sm) => (1.0, 2.0),
@@ -1491,41 +1567,38 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
         iced::Shadow::default()
     };
     // Build background: use gradient if both from/to colors present, else solid
-    let background = if is.gradient_clip_text
-        && is.gradient_from.is_some()
-        && is.gradient_to.is_some()
-    {
-        // PLAN-625 T-05: 渐变裁剪文字降级——渐变仅填充文字(CSS bg-clip:text),
-        // iced 无对应能力;按底盒绘制会形成透明文字+实心渐变块,整体抑制,
-        // 文字回落继承色(from_style 臂已清 transparent text_color)。
-        None
-    } else if is.gradient_from.is_some() && is.gradient_to.is_some() {
-        let from = is.gradient_from.unwrap();
-        let to = is.gradient_to.unwrap();
-        let angle = match is.gradient_dir {
-            Some(crate::ui::style::GradientDir::ToB) | None => 180.0_f32.to_radians(),
-            Some(crate::ui::style::GradientDir::ToT) => 0.0,
-            Some(crate::ui::style::GradientDir::ToR) => 90.0_f32.to_radians(),
-            Some(crate::ui::style::GradientDir::ToL) => 270.0_f32.to_radians(),
-            Some(crate::ui::style::GradientDir::ToBR) => 135.0_f32.to_radians(),
-            Some(crate::ui::style::GradientDir::ToBL) => 225.0_f32.to_radians(),
-            Some(crate::ui::style::GradientDir::ToTR) => 45.0_f32.to_radians(),
-            Some(crate::ui::style::GradientDir::ToTL) => 315.0_f32.to_radians(),
+    let background =
+        if is.gradient_clip_text && is.gradient_from.is_some() && is.gradient_to.is_some() {
+            // PLAN-625 T-05: 渐变裁剪文字降级——渐变仅填充文字(CSS bg-clip:text),
+            // iced 无对应能力;按底盒绘制会形成透明文字+实心渐变块,整体抑制,
+            // 文字回落继承色(from_style 臂已清 transparent text_color)。
+            None
+        } else if is.gradient_from.is_some() && is.gradient_to.is_some() {
+            let from = is.gradient_from.unwrap();
+            let to = is.gradient_to.unwrap();
+            let angle = match is.gradient_dir {
+                Some(crate::ui::style::GradientDir::ToB) | None => 180.0_f32.to_radians(),
+                Some(crate::ui::style::GradientDir::ToT) => 0.0,
+                Some(crate::ui::style::GradientDir::ToR) => 90.0_f32.to_radians(),
+                Some(crate::ui::style::GradientDir::ToL) => 270.0_f32.to_radians(),
+                Some(crate::ui::style::GradientDir::ToBR) => 135.0_f32.to_radians(),
+                Some(crate::ui::style::GradientDir::ToBL) => 225.0_f32.to_radians(),
+                Some(crate::ui::style::GradientDir::ToTR) => 45.0_f32.to_radians(),
+                Some(crate::ui::style::GradientDir::ToTL) => 315.0_f32.to_radians(),
+            };
+            use iced::gradient::Linear;
+            // Plan 527 T4: from/via/to 多 stop + 位置百分比(默认 0/50/100)——
+            // iced 0.14 Linear::add_stop 任意 offset,via 缺席时保持双 stop 旧观感。
+            let mut lin = Linear::new(angle).add_stop(is.gradient_from_pos.unwrap_or(0.0), from);
+            if let Some(via) = is.gradient_via {
+                lin = lin.add_stop(is.gradient_via_pos.unwrap_or(0.5), via);
+            }
+            Some(Background::Gradient(
+                lin.add_stop(is.gradient_to_pos.unwrap_or(1.0), to).into(),
+            ))
+        } else {
+            is.background_color.map(Background::Color)
         };
-        use iced::gradient::Linear;
-        // Plan 527 T4: from/via/to 多 stop + 位置百分比(默认 0/50/100)——
-        // iced 0.14 Linear::add_stop 任意 offset,via 缺席时保持双 stop 旧观感。
-        let mut lin = Linear::new(angle)
-            .add_stop(is.gradient_from_pos.unwrap_or(0.0), from);
-        if let Some(via) = is.gradient_via {
-            lin = lin.add_stop(is.gradient_via_pos.unwrap_or(0.5), via);
-        }
-        Some(Background::Gradient(
-            lin.add_stop(is.gradient_to_pos.unwrap_or(1.0), to).into()
-        ))
-    } else {
-        is.background_color.map(Background::Color)
-    };
     iced::widget::container::Style {
         background,
         text_color: is.text_color,
@@ -1622,15 +1695,15 @@ fn table_row_rule<M: 'static>() -> iced::Element<'static, M> {
     iced::widget::container(
         iced::widget::Space::new()
             .width(iced::Length::Shrink)
-            .height(iced::Length::Fixed(0.0),
-        ))
-        .width(iced::Length::Fill)
-        .height(iced::Length::Fixed(1.0))
-        .style(move |_| iced::widget::container::Style {
-            background: Some(iced::Background::Color(iced::Color::from_rgb8(r, g, b))),
-            ..Default::default()
-        })
-        .into()
+            .height(iced::Length::Fixed(0.0)),
+    )
+    .width(iced::Length::Fill)
+    .height(iced::Length::Fixed(1.0))
+    .style(move |_| iced::widget::container::Style {
+        background: Some(iced::Background::Color(iced::Color::from_rgb8(r, g, b))),
+        ..Default::default()
+    })
+    .into()
 }
 
 /// Plan-050 C1: content-subtree 按钮的内容对齐决策——web flex 语义到 iced
@@ -1684,26 +1757,33 @@ fn plan414_content_alignment(
 /// 语义。判定独立成函数钉住契约：mt-auto 经 master 通用 mt-<size> 路径解析，
 /// 曾有专用变体被通用路径打死的前科，此函数是回归防线。
 fn plan050_mt_auto_spacer(classes: &[StyleClass]) -> bool {
-    classes.iter().any(|x| matches!(x, StyleClass::MarginTop(SizeValue::Auto)))
+    classes
+        .iter()
+        .any(|x| matches!(x, StyleClass::MarginTop(SizeValue::Auto)))
 }
 
 fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     use iced::Background;
     let has_radius = is.has_border_radius();
-    let border = if is.rounded || is.border || has_radius || is.border_width.map_or(false, |w| w > 0.0) {
-        let width = is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 });
-        let color = is.border_color.unwrap_or_else(|| {
-            let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
-            iced::Color::from_rgb8(r, g, b)
-        });
-        iced::Border {
-            color: if width > 0.0 { color } else { iced::Color::TRANSPARENT },
-            width,
-            radius: is.effective_border_radius(),
-        }
-    } else {
-        iced::Border::default()
-    };
+    let border =
+        if is.rounded || is.border || has_radius || is.border_width.map_or(false, |w| w > 0.0) {
+            let width = is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 });
+            let color = is.border_color.unwrap_or_else(|| {
+                let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+                iced::Color::from_rgb8(r, g, b)
+            });
+            iced::Border {
+                color: if width > 0.0 {
+                    color
+                } else {
+                    iced::Color::TRANSPARENT
+                },
+                width,
+                radius: is.effective_border_radius(),
+            }
+        } else {
+            iced::Border::default()
+        };
     let shadow = if is.shadow {
         let (offset_y, blur) = match is.shadow_size {
             Some(IcedShadowSize::Sm) => (1.0, 2.0),
@@ -1733,15 +1813,19 @@ fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
     // 背景/文字 alpha 乘以倍率(visible 而非静默;disabled:opacity-50 等
     // 变体类经 merged_with_variant 到此消费)。
     let opacity = is.opacity.unwrap_or(1.0);
-    let fade = |c: iced::Color| iced::Color { a: c.a * opacity, ..c };
+    let fade = |c: iced::Color| iced::Color {
+        a: c.a * opacity,
+        ..c
+    };
     iced::widget::button::Style {
         background: is.background_color.map(|c| Background::Color(fade(c))),
         text_color: fade(is.text_color.unwrap_or_else(|| {
             // Plan 408: dark-mode-aware default (equivalent to vue body text-foreground).
             crate::ui::style::iced_adapter::resolve_semantic_rgb(
                 &crate::ui::style::Color::OnBackground,
-            ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
-             .unwrap_or(iced::Color::BLACK)
+            )
+            .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+            .unwrap_or(iced::Color::BLACK)
         })),
         border,
         shadow,
@@ -1786,16 +1870,48 @@ fn font_weight_to_iced(weight: &IcedFontWeight) -> iced::Font {
     // 被选中(Medium 此前近似映射 Semibold,内嵌后恢复正身);bold/light
     // 超出内嵌字重由 cosmic-text 合成/回退。
     match weight {
-        IcedFontWeight::Bold => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Bold, ..Default::default() },
-        IcedFontWeight::Medium => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Medium, ..Default::default() },
+        IcedFontWeight::Bold => iced::Font {
+            family: INTER_FONT.family,
+            weight: iced::font::Weight::Bold,
+            ..Default::default()
+        },
+        IcedFontWeight::Medium => iced::Font {
+            family: INTER_FONT.family,
+            weight: iced::font::Weight::Medium,
+            ..Default::default()
+        },
         IcedFontWeight::Normal => INTER_FONT,
-        IcedFontWeight::Light => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Light, ..Default::default() },
-        IcedFontWeight::ExtraLight => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Thin, ..Default::default() },
-        IcedFontWeight::SemiBold => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Semibold, ..Default::default() },
+        IcedFontWeight::Light => iced::Font {
+            family: INTER_FONT.family,
+            weight: iced::font::Weight::Light,
+            ..Default::default()
+        },
+        IcedFontWeight::ExtraLight => iced::Font {
+            family: INTER_FONT.family,
+            weight: iced::font::Weight::Thin,
+            ..Default::default()
+        },
+        IcedFontWeight::SemiBold => iced::Font {
+            family: INTER_FONT.family,
+            weight: iced::font::Weight::Semibold,
+            ..Default::default()
+        },
         // Plan 527 T5: 全字重档拆分(thin/extrabold/black 正身)
-        IcedFontWeight::Thin => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Thin, ..Default::default() },
-        IcedFontWeight::ExtraBold => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::ExtraBold, ..Default::default() },
-        IcedFontWeight::Black => iced::Font { family: INTER_FONT.family, weight: iced::font::Weight::Black, ..Default::default() },
+        IcedFontWeight::Thin => iced::Font {
+            family: INTER_FONT.family,
+            weight: iced::font::Weight::Thin,
+            ..Default::default()
+        },
+        IcedFontWeight::ExtraBold => iced::Font {
+            family: INTER_FONT.family,
+            weight: iced::font::Weight::ExtraBold,
+            ..Default::default()
+        },
+        IcedFontWeight::Black => iced::Font {
+            family: INTER_FONT.family,
+            weight: iced::font::Weight::Black,
+            ..Default::default()
+        },
     }
 }
 
@@ -1819,8 +1935,12 @@ fn wrap_with_margin<M: Clone + Debug + 'static>(
 ) -> iced::Element<'static, M> {
     use iced::widget::container;
     let (top, right, bottom, left) = is.effective_margin();
-    let needs_wrap = top != 0.0 || bottom != 0.0 || left != 0.0 || right != 0.0
-        || is.margin_left_auto || is.margin_right_auto;
+    let needs_wrap = top != 0.0
+        || bottom != 0.0
+        || left != 0.0
+        || right != 0.0
+        || is.margin_left_auto
+        || is.margin_right_auto;
     if !needs_wrap {
         return el;
     }
@@ -1838,10 +1958,14 @@ fn wrap_with_margin<M: Clone + Debug + 'static>(
         cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
     } else if is.margin_left_auto {
         // ml-auto: push content to the right
-        cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Right);
+        cont = cont
+            .width(iced::Length::Fill)
+            .align_x(iced::alignment::Horizontal::Right);
     } else if is.margin_right_auto {
         // mr-auto: push content to the left
-        cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Left);
+        cont = cont
+            .width(iced::Length::Fill)
+            .align_x(iced::alignment::Horizontal::Left);
     }
     cont.into()
 }
@@ -1870,8 +1994,16 @@ fn apply_column_style<M: Clone + Debug + 'static>(
     // 覆盖 base，同按钮臂语义）；无 hover 声明 = None，走原路径。
     let hover_cs = style
         .filter(|s| s.has_variant(crate::ui::style::Variant::Hover))
-        .map(|s| build_container_style(&IcedStyle::merged_with_variant(s, crate::ui::style::Variant::Hover)));
-    let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is)) || hover_cs.is_some();
+        .map(|s| {
+            build_container_style(&IcedStyle::merged_with_variant(
+                s,
+                crate::ui::style::Variant::Hover,
+            ))
+        });
+    let has_visual = iced_style
+        .as_ref()
+        .map_or(false, |is| needs_visual_wrap(is))
+        || hover_cs.is_some();
     let pd = iced_padding(padding, style);
 
     // Apply width/height/alignment to column
@@ -1894,7 +2026,10 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         // 恒占满 70% 宽，短消息也被撑开，与 vue 轨 content-hug 分叉）。
         // 收窄由尾部 MaxWidthPct 委托 widget 在 layout 期完成。
         // Height — skip when justify needs it on container instead
-        let needs_v_align = matches!(is.justify_content, Some(IcedJustify::Center | IcedJustify::End));
+        let needs_v_align = matches!(
+            is.justify_content,
+            Some(IcedJustify::Center | IcedJustify::End)
+        );
         if !needs_v_align {
             if let Some(ref h) = is.height {
                 col = col.height(iced_length(h));
@@ -1929,8 +2064,13 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         .as_ref()
         .map(|is| is.effective_margin())
         .unwrap_or((0.0, 0.0, 0.0, 0.0));
-    let needs_margin_wrap = mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0
-        || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto || is.margin_top_auto);
+    let needs_margin_wrap = mt != 0.0
+        || mb != 0.0
+        || ml != 0.0
+        || mr != 0.0
+        || iced_style.as_ref().map_or(false, |is| {
+            is.margin_left_auto || is.margin_right_auto || is.margin_top_auto
+        });
 
     let el = if needs_wrap {
         // PLAN-642 T-12: overflow-hidden + justify-Center/End 列的 scroll 兜底。
@@ -1946,9 +2086,9 @@ fn apply_column_style<M: Clone + Debug + 'static>(
         // height/Fill 语义与 Shrink scroll 组合会破坏布局(画廊根 h-screen
         // 实测整页塌缩),维持原状。
         let overflow_fallback = (justify_center || justify_end)
-            && iced_style
-                .as_ref()
-                .map_or(false, |is| matches!(is.overflow_y, Some(IcedOverflow::Hidden)));
+            && iced_style.as_ref().map_or(false, |is| {
+                matches!(is.overflow_y, Some(IcedOverflow::Hidden))
+            });
         let inner: iced::Element<'static, M> = if overflow_fallback {
             let col_el: iced::Element<'static, M> = col.into();
             let sc = iced::widget::scrollable(col_el)
@@ -1999,7 +2139,10 @@ fn apply_column_style<M: Clone + Debug + 'static>(
             } else {
                 iced::Length::Fill
             };
-            cont = cont.width(col_w).height(col_h).align_y(iced::alignment::Vertical::Bottom);
+            cont = cont
+                .width(col_w)
+                .height(col_h)
+                .align_y(iced::alignment::Vertical::Bottom);
         } else {
             // Non-justify wrap: propagate column's width and height to container
             if let Some(ref is) = iced_style {
@@ -2011,27 +2154,32 @@ fn apply_column_style<M: Clone + Debug + 'static>(
                 // 无 align_self 维持块级 Fill（AI 消息 hairline 全宽不回归）。
                 match is.align_self {
                     Some(crate::ui::style::iced_adapter::IcedAlign::End) => {
-                        cont = cont.width(iced::Length::Shrink)
+                        cont = cont
+                            .width(iced::Length::Shrink)
                             .align_x(iced::alignment::Horizontal::Right);
                     }
                     Some(crate::ui::style::iced_adapter::IcedAlign::Start) => {
-                        cont = cont.width(iced::Length::Shrink)
+                        cont = cont
+                            .width(iced::Length::Shrink)
                             .align_x(iced::alignment::Horizontal::Left);
                     }
                     Some(crate::ui::style::iced_adapter::IcedAlign::Center) => {
-                        cont = cont.width(iced::Length::Shrink)
+                        cont = cont
+                            .width(iced::Length::Shrink)
                             .align_x(iced::alignment::Horizontal::Center);
                     }
                     _ => {
-                        let col_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
-                            || is.width.is_none();
+                        let col_width_fill =
+                            matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
+                                || is.width.is_none();
                         if col_width_fill {
                             cont = cont.width(iced::Length::Fill);
                         } else if let Some(ref w) = is.width {
                             cont = cont.width(iced_length(w));
                         }
-                        let col_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)))
-                            || is.min_height.map_or(false, |mh| mh >= 9999.0);
+                        let col_height_fill =
+                            matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)))
+                                || is.min_height.map_or(false, |mh| mh >= 9999.0);
                         if col_height_fill {
                             cont = cont.height(iced::Length::Fill);
                         } else if let Some(ref h) = is.height {
@@ -2039,7 +2187,9 @@ fn apply_column_style<M: Clone + Debug + 'static>(
                         } else if let Some(mh) = is.min_height {
                             cont = cont.height(iced::Length::Fixed(mh));
                         }
-                        if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
+                        if let Some(mw) = is.max_width {
+                            cont = cont.max_width(mw);
+                        }
                     }
                 }
             }
@@ -2056,7 +2206,9 @@ fn apply_column_style<M: Clone + Debug + 'static>(
                 });
             }
         }
-        if let Some(id) = widget_id { cont = cont.id(id); }
+        if let Some(id) = widget_id {
+            cont = cont.id(id);
+        }
         cont.into()
     } else if col_max_width.is_some() || col_max_width_pct.is_some() {
         let mut cont = container(col.padding(pd));
@@ -2064,7 +2216,8 @@ fn apply_column_style<M: Clone + Debug + 'static>(
             // PLAN-080 T-01: pct-only（无 px max-width、无显式 width）不
             // Fill——Shrink 抱合 + 尾部 pct 收窄 = CSS 语义；px max-width
             // 保留既有 Fill 块级语义（Container::max_width 收 Fill 子件）。
-            let pct_only = col_max_width.is_none() && col_max_width_pct.is_some() && is.width.is_none();
+            let pct_only =
+                col_max_width.is_none() && col_max_width_pct.is_some() && is.width.is_none();
             let col_width_fill = !pct_only
                 && (matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)))
                     || is.width.is_none());
@@ -2073,8 +2226,9 @@ fn apply_column_style<M: Clone + Debug + 'static>(
             } else if let Some(ref w) = is.width {
                 cont = cont.width(iced_length(w));
             }
-            let col_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)))
-                || is.min_height.map_or(false, |mh| mh >= 9999.0);
+            let col_height_fill =
+                matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)))
+                    || is.min_height.map_or(false, |mh| mh >= 9999.0);
             if col_height_fill {
                 cont = cont.height(iced::Length::Fill);
             } else if let Some(ref h) = is.height {
@@ -2083,8 +2237,12 @@ fn apply_column_style<M: Clone + Debug + 'static>(
                 cont = cont.height(iced::Length::Fixed(mh));
             }
         }
-        if let Some(mw) = col_max_width { cont = cont.max_width(mw); }
-        if let Some(id) = widget_id { cont = cont.id(id); }
+        if let Some(mw) = col_max_width {
+            cont = cont.max_width(mw);
+        }
+        if let Some(id) = widget_id {
+            cont = cont.id(id);
+        }
         cont.into()
     } else if let Some(id) = widget_id {
         // G4e (411 P2-B #1): plain (unstyled) columns dropped the widget
@@ -2099,21 +2257,33 @@ fn apply_column_style<M: Clone + Debug + 'static>(
     let el = if needs_margin_wrap {
         let mut cont = container(el);
         if mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0 {
-            cont = cont.padding(iced::Padding { top: mt, right: mr, bottom: mb, left: ml });
+            cont = cont.padding(iced::Padding {
+                top: mt,
+                right: mr,
+                bottom: mb,
+                left: ml,
+            });
         }
         // Handle mx-auto / ml-auto / mr-auto / mt-auto
         if let Some(ref is) = iced_style {
             // PLAN-080: mt-auto 推底——列内自动上边距吃满剩余空间（CSS flex
             // 语义），iced 无原生承载，套 Fill 高 + align_y(Bottom) 容器。
             if is.margin_top_auto {
-                cont = cont.width(iced::Length::Fill).height(iced::Length::Fill).align_y(iced::alignment::Vertical::Bottom);
+                cont = cont
+                    .width(iced::Length::Fill)
+                    .height(iced::Length::Fill)
+                    .align_y(iced::alignment::Vertical::Bottom);
             }
             if is.margin_left_auto && is.margin_right_auto {
                 cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
             } else if is.margin_left_auto {
-                cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Right);
+                cont = cont
+                    .width(iced::Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Right);
             } else if is.margin_right_auto {
-                cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Left);
+                cont = cont
+                    .width(iced::Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Left);
             }
         }
         cont.into()
@@ -2189,8 +2359,16 @@ fn apply_row_style<M: Clone + Debug + 'static>(
     // PLAN-002 B：hover 变体类 → 第二套已构建样式（同 apply_column_style）。
     let hover_cs = style
         .filter(|s| s.has_variant(crate::ui::style::Variant::Hover))
-        .map(|s| build_container_style(&IcedStyle::merged_with_variant(s, crate::ui::style::Variant::Hover)));
-    let has_visual = iced_style.as_ref().map_or(false, |is| needs_visual_wrap(is)) || hover_cs.is_some();
+        .map(|s| {
+            build_container_style(&IcedStyle::merged_with_variant(
+                s,
+                crate::ui::style::Variant::Hover,
+            ))
+        });
+    let has_visual = iced_style
+        .as_ref()
+        .map_or(false, |is| needs_visual_wrap(is))
+        || hover_cs.is_some();
     let pd = iced_padding(padding, style);
     let row_max_width = iced_style.as_ref().and_then(|is| is.max_width);
     let row_max_width_pct = iced_style.as_ref().and_then(|is| is.max_width_pct);
@@ -2218,46 +2396,58 @@ fn apply_row_style<M: Clone + Debug + 'static>(
         cont = cont.padding(pd);
         // Propagate row's width/height to wrapping container
         if let Some(ref is) = iced_style {
-            let row_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)));
+            let row_width_fill =
+                matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)));
             if row_width_fill {
                 cont = cont.width(iced::Length::Fill);
             } else if let Some(ref w) = is.width {
                 cont = cont.width(iced_length(w));
             }
-            let row_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)));
+            let row_height_fill =
+                matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)));
             if row_height_fill {
                 cont = cont.height(iced::Length::Fill);
             } else if let Some(ref h) = is.height {
                 cont = cont.height(iced_length(h));
             }
         }
-        if let Some(mw) = row_max_width { cont = cont.max_width(mw); }
+        if let Some(mw) = row_max_width {
+            cont = cont.max_width(mw);
+        }
         if let Some(ref is) = iced_style {
             let cs = build_container_style(is);
             cont = cont.style(layout_style_fn(cs, hover_cs, hover.clone()));
         }
-        if let Some(id) = widget_id { cont = cont.id(id); }
+        if let Some(id) = widget_id {
+            cont = cont.id(id);
+        }
         cont.into()
     } else if row_max_width.is_some() || row_max_width_pct.is_some() {
         r = r.padding(pd);
         let mut cont = container(r);
         // Propagate row's width/height to wrapping container
         if let Some(ref is) = iced_style {
-            let row_width_fill = matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)));
+            let row_width_fill =
+                matches!(is.width, Some(IcedSize::Full | IcedSize::FillPortion(_)));
             if row_width_fill {
                 cont = cont.width(iced::Length::Fill);
             } else if let Some(ref w) = is.width {
                 cont = cont.width(iced_length(w));
             }
-            let row_height_fill = matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)));
+            let row_height_fill =
+                matches!(is.height, Some(IcedSize::Full | IcedSize::FillPortion(_)));
             if row_height_fill {
                 cont = cont.height(iced::Length::Fill);
             } else if let Some(ref h) = is.height {
                 cont = cont.height(iced_length(h));
             }
         }
-        if let Some(mw) = row_max_width { cont = cont.max_width(mw); }
-        if let Some(id) = widget_id { cont = cont.id(id); }
+        if let Some(mw) = row_max_width {
+            cont = cont.max_width(mw);
+        }
+        if let Some(id) = widget_id {
+            cont = cont.id(id);
+        }
         cont.into()
     } else if let Some(id) = widget_id {
         // G4e: same as apply_column_style — keep the id on plain rows.
@@ -2272,20 +2462,34 @@ fn apply_row_style<M: Clone + Debug + 'static>(
         .as_ref()
         .map(|is| is.effective_margin())
         .unwrap_or((0.0, 0.0, 0.0, 0.0));
-    let needs_margin_wrap = mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0
-        || iced_style.as_ref().map_or(false, |is| is.margin_left_auto || is.margin_right_auto || is.margin_top_auto);
+    let needs_margin_wrap = mt != 0.0
+        || mb != 0.0
+        || ml != 0.0
+        || mr != 0.0
+        || iced_style.as_ref().map_or(false, |is| {
+            is.margin_left_auto || is.margin_right_auto || is.margin_top_auto
+        });
     let el = if needs_margin_wrap {
         let mut cont = container(el);
         if mt != 0.0 || mb != 0.0 || ml != 0.0 || mr != 0.0 {
-            cont = cont.padding(iced::Padding { top: mt, right: mr, bottom: mb, left: ml });
+            cont = cont.padding(iced::Padding {
+                top: mt,
+                right: mr,
+                bottom: mb,
+                left: ml,
+            });
         }
         if let Some(ref is) = iced_style {
             if is.margin_left_auto && is.margin_right_auto {
                 cont = cont.width(iced::Length::Fill).center_x(iced::Length::Fill);
             } else if is.margin_left_auto {
-                cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Right);
+                cont = cont
+                    .width(iced::Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Right);
             } else if is.margin_right_auto {
-                cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Left);
+                cont = cont
+                    .width(iced::Length::Fill)
+                    .align_x(iced::alignment::Horizontal::Left);
             }
         }
         cont.into()
@@ -2316,7 +2520,12 @@ fn apply_container_style<M: Clone + Debug + 'static>(
     // PLAN-002 B：hover 变体类 → 第二套已构建样式（同 apply_column_style）。
     let hover_cs = style
         .filter(|s| s.has_variant(crate::ui::style::Variant::Hover))
-        .map(|s| build_container_style(&IcedStyle::merged_with_variant(s, crate::ui::style::Variant::Hover)));
+        .map(|s| {
+            build_container_style(&IcedStyle::merged_with_variant(
+                s,
+                crate::ui::style::Variant::Hover,
+            ))
+        });
 
     if let Some(ref s) = style {
         let is = IcedStyle::from_style(s);
@@ -2327,40 +2536,68 @@ fn apply_container_style<M: Clone + Debug + 'static>(
             // container directly (not to a nested inner container).
             if center_x {
                 match is.width {
-                    Some(ref ws) => { cont = cont.width(iced_length(ws)); }
-                    None => { cont = cont.width(iced::Length::Fill); }
+                    Some(ref ws) => {
+                        cont = cont.width(iced_length(ws));
+                    }
+                    None => {
+                        cont = cont.width(iced::Length::Fill);
+                    }
                 }
-                if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
+                if let Some(mw) = is.max_width {
+                    cont = cont.max_width(mw);
+                }
                 cont = cont.align_x(iced::alignment::Horizontal::Center);
             } else {
                 if let Some(ref ws) = is.width {
                     cont = cont.width(iced_length(ws));
                 } else if let Some(w) = width {
-                    if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); }
+                    if w > 0 {
+                        cont = cont.width(iced::Length::Fixed(w as f32));
+                    }
                 }
-                if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
+                if let Some(mw) = is.max_width {
+                    cont = cont.max_width(mw);
+                }
             }
 
             if center_y {
                 match is.height {
-                    Some(ref h) => { cont = cont.height(iced_length(h)); }
-                    None => { cont = cont.height(iced::Length::Fill); }
+                    Some(ref h) => {
+                        cont = cont.height(iced_length(h));
+                    }
+                    None => {
+                        cont = cont.height(iced::Length::Fill);
+                    }
                 }
-                if let Some(mh) = is.max_height { cont = cont.max_height(mh); }
+                if let Some(mh) = is.max_height {
+                    cont = cont.max_height(mh);
+                }
                 cont = cont.align_y(iced::alignment::Vertical::Center);
             } else {
                 match is.height {
-                    Some(ref h) => { cont = cont.height(iced_length(h)); }
-                    None => { if let Some(h) = height { if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); } } }
+                    Some(ref h) => {
+                        cont = cont.height(iced_length(h));
+                    }
+                    None => {
+                        if let Some(h) = height {
+                            if h > 0 {
+                                cont = cont.height(iced::Length::Fixed(h as f32));
+                            }
+                        }
+                    }
                 }
-                if let Some(mh) = is.max_height { cont = cont.max_height(mh); }
+                if let Some(mh) = is.max_height {
+                    cont = cont.max_height(mh);
+                }
             }
         } else {
             // Normal (non-centered) container
             if let Some(ref ws) = is.width {
                 cont = cont.width(iced_length(ws));
             } else if let Some(w) = width {
-                if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); }
+                if w > 0 {
+                    cont = cont.width(iced::Length::Fixed(w as f32));
+                }
             } else if let Some(mw) = is.min_width {
                 // PLAN-051 P2-④: min-w 消费（语义近似=Fixed 下限——内容更宽
                 // 时 iced 不再撑大,自滚/截断场景正确;登记）。沿 Column 臂
@@ -2372,10 +2609,14 @@ fn apply_container_style<M: Clone + Debug + 'static>(
                 });
             }
             match is.height {
-                Some(ref h) => { cont = cont.height(iced_length(h)); }
+                Some(ref h) => {
+                    cont = cont.height(iced_length(h));
+                }
                 None => {
                     if let Some(h) = height {
-                        if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); }
+                        if h > 0 {
+                            cont = cont.height(iced::Length::Fixed(h as f32));
+                        }
                     } else if let Some(mh) = is.min_height {
                         // PLAN-051 P2-④: min-h 消费——musk input-compose 的
                         // min-h-20 此前被丢 → 输入框容器高度塌 0。
@@ -2387,8 +2628,12 @@ fn apply_container_style<M: Clone + Debug + 'static>(
                     }
                 }
             }
-            if let Some(mw) = is.max_width { cont = cont.max_width(mw); }
-            if let Some(mh) = is.max_height { cont = cont.max_height(mh); }
+            if let Some(mw) = is.max_width {
+                cont = cont.max_width(mw);
+            }
+            if let Some(mh) = is.max_height {
+                cont = cont.max_height(mh);
+            }
         }
 
         // Visual styles (background, border, rounded, shadow)
@@ -2397,12 +2642,28 @@ fn apply_container_style<M: Clone + Debug + 'static>(
             cont = cont.style(layout_style_fn(cs, hover_cs, hover.clone()));
         }
     } else {
-        if let Some(w) = width { if w > 0 { cont = cont.width(iced::Length::Fixed(w as f32)); } }
-        if let Some(h) = height { if h > 0 { cont = cont.height(iced::Length::Fixed(h as f32)); } }
+        if let Some(w) = width {
+            if w > 0 {
+                cont = cont.width(iced::Length::Fixed(w as f32));
+            }
+        }
+        if let Some(h) = height {
+            if h > 0 {
+                cont = cont.height(iced::Length::Fixed(h as f32));
+            }
+        }
 
         // No style but centering requested — fill parent and align center
-        if center_x { cont = cont.width(iced::Length::Fill).align_x(iced::alignment::Horizontal::Center); }
-        if center_y { cont = cont.height(iced::Length::Fill).align_y(iced::alignment::Vertical::Center); }
+        if center_x {
+            cont = cont
+                .width(iced::Length::Fill)
+                .align_x(iced::alignment::Horizontal::Center);
+        }
+        if center_y {
+            cont = cont
+                .height(iced::Length::Fill)
+                .align_y(iced::alignment::Vertical::Center);
+        }
     }
 
     let el: iced::Element<'static, M> = if let Some(id) = widget_id {
@@ -2520,10 +2781,8 @@ fn build_row<M: Clone + Debug + 'static>(
         children.reverse();
     }
     let (lead, between, trail) = row_justify_spacers(justify);
-    let spacer = |portion: u16| {
-        iced::widget::Space::new()
-                            .width(iced::Length::FillPortion(portion))
-    };
+    let spacer =
+        |portion: u16| iced::widget::Space::new().width(iced::Length::FillPortion(portion));
     let stretch = iced_style.as_ref().map_or(false, |is| is.items_stretch);
     // 行自身定高（非 Shrink 显式高；含 flex-1 在 Column 直接子位被
     // axis_fix_col_child 转写的 Height(Full)）→ StretchLine 有界入射时
@@ -2558,7 +2817,12 @@ fn build_row<M: Clone + Debug + 'static>(
         if let Some(p) = trail {
             items.push(spacer(p).into());
         }
-        row([crate::ui::iced::stretch_line::stretch_line(items, eff_spacing as f32, line_fill_height).into()])
+        row([crate::ui::iced::stretch_line::stretch_line(
+            items,
+            eff_spacing as f32,
+            line_fill_height,
+        )
+        .into()])
     } else {
         let mut row_widget = row([]).spacing(eff_spacing);
         if let Some(p) = lead {
@@ -2579,7 +2843,10 @@ fn build_row<M: Clone + Debug + 'static>(
         }
         row_widget
     };
-    apply_side_borders(apply_row_style(row_widget, padding, style, widget_id, hover), iced_style.as_ref())
+    apply_side_borders(
+        apply_row_style(row_widget, padding, style, widget_id, hover),
+        iced_style.as_ref(),
+    )
 }
 
 /// Build a Column from pre-built child elements + shared `apply_column_style`.
@@ -2610,13 +2877,11 @@ pub(crate) fn build_column<M: Clone + Debug + 'static>(
     // Fill+align_x(End) 容器(iced 列无子项对齐;musk 用户消息列
     // `items-end` 此前被静默丢弃,气泡与 header 贴左)。仅 End 臂新增,
     // Start/Center 维持既有(忽略)行为,零回归面。
-    let align_end = iced_style
-        .as_ref()
-        .map_or(false, |is| is.align_items == Some(crate::ui::style::iced_adapter::IcedAlign::End));
-    let spacer = |portion: u16| {
-        iced::widget::Space::new()
-                            .height(iced::Length::FillPortion(portion))
-    };
+    let align_end = iced_style.as_ref().map_or(false, |is| {
+        is.align_items == Some(crate::ui::style::iced_adapter::IcedAlign::End)
+    });
+    let spacer =
+        |portion: u16| iced::widget::Space::new().height(iced::Length::FillPortion(portion));
     let mut col_widget = column([]).spacing(eff_spacing);
     let mut first = true;
     for child in children {
@@ -2660,7 +2925,10 @@ pub(crate) fn build_column<M: Clone + Debug + 'static>(
     // 内层 col 同样携带 max-h 样式,此处再包 Fixed(N) 把 intrinsic 钉死在 N,
     // 外层 Shrink 解析为 min(N, N) = N,Shrink 封顶完全失效。max-h 现在统一由
     // build_scrollable 的 cap 分支处理(CSS max-height 语义)。
-    apply_side_borders(apply_column_style(col_widget, padding, style, widget_id, hover), iced_style.as_ref())
+    apply_side_borders(
+        apply_column_style(col_widget, padding, style, widget_id, hover),
+        iced_style.as_ref(),
+    )
 }
 
 /// Build a Container around a single pre-built child + shared
@@ -2679,7 +2947,9 @@ fn build_container<M: Clone + Debug + 'static>(
     let cont = container(child);
     let iced_style = style.map(IcedStyle::from_style);
     apply_side_borders(
-        apply_container_style(cont, padding, width, height, center_x, center_y, style, widget_id, hover),
+        apply_container_style(
+            cont, padding, width, height, center_x, center_y, style, widget_id, hover,
+        ),
         iced_style.as_ref(),
     )
 }
@@ -2696,20 +2966,27 @@ struct PendingScrollOffsetEntry {
     pending: Option<(f32, f32)>,
 }
 
-fn pending_scroll_offsets() -> &'static std::sync::Mutex<std::collections::HashMap<String, PendingScrollOffsetEntry>> {
-    static REG: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, PendingScrollOffsetEntry>>> =
-        std::sync::OnceLock::new();
+fn pending_scroll_offsets(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, PendingScrollOffsetEntry>> {
+    static REG: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, PendingScrollOffsetEntry>>,
+    > = std::sync::OnceLock::new();
     REG.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
 /// build 面登记：绑定值变化（>0.5px）才入队。
 pub(crate) fn note_scroll_offset(id: &str, offset: (f32, f32)) {
     let mut reg = pending_scroll_offsets().lock().unwrap();
-    let entry = reg.entry(id.to_string()).or_insert(PendingScrollOffsetEntry {
-        last_requested: offset,
-        pending: Some(offset),
-    });
-    let (dx, dy) = (offset.0 - entry.last_requested.0, offset.1 - entry.last_requested.1);
+    let entry = reg
+        .entry(id.to_string())
+        .or_insert(PendingScrollOffsetEntry {
+            last_requested: offset,
+            pending: Some(offset),
+        });
+    let (dx, dy) = (
+        offset.0 - entry.last_requested.0,
+        offset.1 - entry.last_requested.1,
+    );
     if dx.abs() > 0.5 || dy.abs() > 0.5 {
         entry.last_requested = offset;
         entry.pending = Some(offset);
@@ -2723,7 +3000,6 @@ pub(crate) fn drain_pending_scroll_offsets() -> Vec<(String, (f32, f32))> {
         .filter_map(|(id, e)| e.pending.take().map(|off| (id.clone(), off)))
         .collect()
 }
-
 
 /// Build a Scrollable around a single pre-built child. Width/height come
 /// from style (preferred) or the legacy numeric fields; id is set when the
@@ -2832,38 +3108,62 @@ fn build_scrollable<M: Clone + Debug + 'static>(
                 IcedSize::Full | IcedSize::Screen => s = s.width(iced::Length::Fill),
                 IcedSize::FillPortion(n) => s = s.width(iced::Length::FillPortion(*n)),
                 IcedSize::Shrink => s = s.width(iced::Length::Shrink),
-                IcedSize::Percent(v) => s = s.width(iced::Length::FillPortion(percent_fill_units(*v))),
+                IcedSize::Percent(v) => {
+                    s = s.width(iced::Length::FillPortion(percent_fill_units(*v)))
+                }
             }
         } else if let Some(w) = width {
-            if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); }
+            if w > 0 {
+                s = s.width(iced::Length::Fixed(w as f32));
+            }
         }
         match is.height {
             Some(IcedSize::Fixed(f)) => {
-                if cap.is_none() { s = s.height(iced::Length::Fixed(f as f32)); }
+                if cap.is_none() {
+                    s = s.height(iced::Length::Fixed(f as f32));
+                }
             }
             Some(IcedSize::Full | IcedSize::Screen) => {
-                if cap.is_none() { s = s.height(iced::Length::Fill); }
+                if cap.is_none() {
+                    s = s.height(iced::Length::Fill);
+                }
             }
             Some(IcedSize::FillPortion(n)) => {
-                if cap.is_none() { s = s.height(iced::Length::FillPortion(n)); }
+                if cap.is_none() {
+                    s = s.height(iced::Length::FillPortion(n));
+                }
             }
             Some(IcedSize::Shrink) => {
-                if cap.is_none() { s = s.height(iced::Length::Shrink); }
+                if cap.is_none() {
+                    s = s.height(iced::Length::Shrink);
+                }
             }
             Some(IcedSize::Percent(v)) => {
-                if cap.is_none() { s = s.height(iced::Length::FillPortion(percent_fill_units(v))); }
+                if cap.is_none() {
+                    s = s.height(iced::Length::FillPortion(percent_fill_units(v)));
+                }
             }
             None => {
                 if cap.is_none() {
                     if let Some(h) = height {
-                        if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); }
+                        if h > 0 {
+                            s = s.height(iced::Length::Fixed(h as f32));
+                        }
                     }
                 }
             }
         }
     } else {
-        if let Some(w) = width { if w > 0 { s = s.width(iced::Length::Fixed(w as f32)); } }
-        if let Some(h) = height { if h > 0 { s = s.height(iced::Length::Fixed(h as f32)); } }
+        if let Some(w) = width {
+            if w > 0 {
+                s = s.width(iced::Length::Fixed(w as f32));
+            }
+        }
+        if let Some(h) = height {
+            if h > 0 {
+                s = s.height(iced::Length::Fixed(h as f32));
+            }
+        }
     }
     // Plan 409 §10 续 4: 半透明悬浮滚动条(接近 vue:thumb 半透明、track 透明、细)。
     s = s.style(|_theme: &iced::Theme, _status: scrollable::Status| scrollbar_style());
@@ -2900,7 +3200,10 @@ fn scrollbar_style() -> scrollable::Style {
     let rail = scrollable::Rail {
         background: None,
         border,
-        scroller: scrollable::Scroller { background: thumb, border },
+        scroller: scrollable::Scroller {
+            background: thumb,
+            border,
+        },
     };
     scrollable::Style {
         container: container::Style::default(),
@@ -2931,7 +3234,13 @@ fn derive_input_id(
 ) -> iced::widget::Id {
     match primary {
         Some((widget, event)) => format!("auto_input_{}_{}", widget, event).into(),
-        None => format!("auto_input_{}_{}_{}", placeholder, width.unwrap_or(0), password).into(),
+        None => format!(
+            "auto_input_{}_{}_{}",
+            placeholder,
+            width.unwrap_or(0),
+            password
+        )
+        .into(),
     }
 }
 
@@ -2961,7 +3270,8 @@ fn build_input_shape<M: Clone + Debug + 'static>(
     let effective_style = style.or(default_style.as_ref());
     if let Some(s) = effective_style {
         let iced_style = IcedStyle::from_style(s);
-        let effective_width = iced_style.width
+        let effective_width = iced_style
+            .width
             .map(|w| match w {
                 IcedSize::Fixed(f) => Some(f as u16),
                 IcedSize::Full | IcedSize::Screen => None,
@@ -3007,28 +3317,35 @@ fn build_input_shape<M: Clone + Debug + 'static>(
             });
         }
 
-        let bg = iced_style.background_color.unwrap_or(iced::Color::TRANSPARENT);
+        let bg = iced_style
+            .background_color
+            .unwrap_or(iced::Color::TRANSPARENT);
         let border_color = iced_style.border_color.unwrap_or_else(|| {
             let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
             iced::Color::from_rgb8(r, g, b)
         });
-        let border_width = iced_style.border_width.unwrap_or(if iced_style.border { 1.0 } else { 1.0 });
+        let border_width =
+            iced_style
+                .border_width
+                .unwrap_or(if iced_style.border { 1.0 } else { 1.0 });
         let radius = iced_style.border_radius.unwrap_or(6.0);
         let value_color = iced_style.text_color.unwrap_or_else(|| {
             crate::ui::style::iced_adapter::resolve_semantic_rgb(
                 &crate::ui::style::Color::OnBackground,
-            ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
-             .unwrap_or(iced::Color::WHITE)
+            )
+            .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+            .unwrap_or(iced::Color::WHITE)
         });
         let placeholder_color = crate::ui::style::iced_adapter::resolve_semantic_rgb(
             &crate::ui::style::Color::OnSurface,
-        ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
-         .unwrap_or(iced::Color::from_rgba(0.6, 0.6, 0.6, 0.7));
+        )
+        .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+        .unwrap_or(iced::Color::from_rgba(0.6, 0.6, 0.6, 0.7));
 
-        let focus_border_color = crate::ui::style::iced_adapter::resolve_semantic_rgb(
-            &crate::ui::style::Color::Primary,
-        ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
-         .unwrap_or(iced::Color::from_rgb8(59, 130, 246));
+        let focus_border_color =
+            crate::ui::style::iced_adapter::resolve_semantic_rgb(&crate::ui::style::Color::Primary)
+                .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                .unwrap_or(iced::Color::from_rgb8(59, 130, 246));
         let focus_border_width = (border_width + 1.0).max(2.0);
 
         input_widget = input_widget.style(move |_theme, status| {
@@ -3123,16 +3440,20 @@ fn percent_floating_layer<M: Clone + Debug + 'static>(
     };
     let mut col = iced::widget::Column::<M>::new()
         .width(iced::Length::Fill)
-        .height(if top_units.is_some() { iced::Length::Fill } else { iced::Length::Shrink });
+        .height(if top_units.is_some() {
+            iced::Length::Fill
+        } else {
+            iced::Length::Shrink
+        });
     if let Some(tu) = top_units {
         col = col.push(iced::widget::Space::new().height(iced::Length::FillPortion(tu)));
     }
-    let mut mid = iced::widget::Row::<M>::new().width(iced::Length::Fill).height(
-        match (h_units, top_units) {
+    let mut mid = iced::widget::Row::<M>::new()
+        .width(iced::Length::Fill)
+        .height(match (h_units, top_units) {
             (Some(hu), Some(_)) => iced::Length::FillPortion(hu),
             _ => iced::Length::Shrink,
-        },
-    );
+        });
     if let Some(lu) = left_units {
         mid = mid.push(iced::widget::Space::new().width(iced::Length::FillPortion(lu)));
     }
@@ -3150,7 +3471,10 @@ fn percent_floating_layer<M: Clone + Debug + 'static>(
             col = col.push(iced::widget::Space::new().height(iced::Length::FillPortion(filler)));
         }
     }
-    let col = col.padding(iced::Padding { top: top_px, ..iced::Padding::ZERO });
+    let col = col.padding(iced::Padding {
+        top: top_px,
+        ..iced::Padding::ZERO
+    });
     col.into()
 }
 
@@ -3177,8 +3501,14 @@ mod plan732_wikilink_payload_tests {
         let (clean, args) = crate::ui::dynamic::decode_payload(&iced_msg.event);
         assert_eq!(clean, "OpenWikiLink", "事件名与 PAYLOAD_SEP 不冲突");
         assert_eq!(args.len(), 2, "双实参到齐");
-        assert!(matches!(&args[0], auto_val::Value::Str(s) if s.as_str() == "目标页"), "{args:?}");
-        assert!(matches!(&args[1], auto_val::Value::Str(s) if s.as_str() == "锚点甲"), "{args:?}");
+        assert!(
+            matches!(&args[0], auto_val::Value::Str(s) if s.as_str() == "目标页"),
+            "{args:?}"
+        );
+        assert!(
+            matches!(&args[1], auto_val::Value::Str(s) if s.as_str() == "锚点甲"),
+            "{args:?}"
+        );
 
         // 无锚变体：空串实参在位（decode 后 args[1] = Str("")，非空缺）。
         let msg = DynamicMessage::Typed {
@@ -3192,7 +3522,10 @@ mod plan732_wikilink_payload_tests {
         let iced_msg = IcedMessage::from_dynamic(&msg);
         let (clean, args) = crate::ui::dynamic::decode_payload(&iced_msg.event);
         assert_eq!(clean, "OpenWikiLink");
-        assert!(matches!(&args[1], auto_val::Value::Str(s) if s.as_str().is_empty()), "{args:?}");
+        assert!(
+            matches!(&args[1], auto_val::Value::Str(s) if s.as_str().is_empty()),
+            "{args:?}"
+        );
     }
 }
 
@@ -3203,17 +3536,21 @@ mod plan737_mcp_link_dispatch_tests {
     use crate::ui::autodown_editor::DocInput;
     use crate::ui::code_editor::core::{EditorButton, NullClipboard};
 
-    const WHITE: crate::ui::code_editor::theme::Rgba =
-        crate::ui::code_editor::theme::Rgba { r: 1., g: 1., b: 1., a: 1. };
+    const WHITE: crate::ui::code_editor::theme::Rgba = crate::ui::code_editor::theme::Rgba {
+        r: 1.,
+        g: 1.,
+        b: 1.,
+        a: 1.,
+    };
 
     fn run_fs<R>(f: impl FnOnce(&mut cosmic_text::FontSystem) -> R) -> R {
         static FS: std::sync::OnceLock<std::sync::RwLock<cosmic_text::FontSystem>> =
             std::sync::OnceLock::new();
         crate::ui::code_editor::core::set_font_system_call(|with| {
-            let mut guard =
-                FS.get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new()))
-                    .write()
-                    .unwrap();
+            let mut guard = FS
+                .get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new()))
+                .write()
+                .unwrap();
             with(&mut guard);
         });
         crate::ui::code_editor::core::with_font_system(f)
@@ -3235,16 +3572,30 @@ mod plan737_mcp_link_dispatch_tests {
         let sk = ade::storage_key(key);
         // 生产节拍第一腿：lowering 期 sync 先于 DocEditor::new 注册——首帧
         // no-op（UNREGISTERED，返回 false）。
-        assert!(!ade::autodown_editor_sync(&sk, "见 [[目标页#锚点甲]] 文。", true));
+        assert!(!ade::autodown_editor_sync(
+            &sk,
+            "见 [[目标页#锚点甲]] 文。",
+            true
+        ));
         // 编辑壳注册（第二腿此前）→ 次帧 sync 真重建。
         let core = ade::autodown_editor(key);
-        assert!(ade::autodown_editor_sync(&sk, "见 [[目标页#锚点甲]] 文。", true));
+        assert!(ade::autodown_editor_sync(
+            &sk,
+            "见 [[目标页#锚点甲]] 文。",
+            true
+        ));
         run_fs(|fs| {
             let _ = core.render_frame(fs, 600.0, WHITE, None);
         });
-        let region = core.link_regions().first().cloned().expect("布局写回含链接命中区");
-        let (cx, cy) =
-            (region.rect.x + region.rect.w / 2.0, region.rect.y + region.rect.h / 2.0);
+        let region = core
+            .link_regions()
+            .first()
+            .cloned()
+            .expect("布局写回含链接命中区");
+        let (cx, cy) = (
+            region.rect.x + region.rect.w / 2.0,
+            region.rect.y + region.rect.h / 2.0,
+        );
 
         // 装配期注册（convert_view_messages AutodownEditor 臂同款闭包——
         // 消息构造单源：Typed 双 Str → from_dynamic/encode_payload）。
@@ -3266,14 +3617,22 @@ mod plan737_mcp_link_dispatch_tests {
             run_fs(|fs| {
                 core.handle_input(
                     fs,
-                    DocInput::MousePressed { button: EditorButton::Left, x, y },
+                    DocInput::MousePressed {
+                        button: EditorButton::Left,
+                        x,
+                        y,
+                    },
                     &mut NullClipboard,
                 )
             });
             run_fs(|fs| {
                 core.handle_input(
                     fs,
-                    DocInput::MouseReleased { button: EditorButton::Left, x, y },
+                    DocInput::MouseReleased {
+                        button: EditorButton::Left,
+                        x,
+                        y,
+                    },
                     &mut NullClipboard,
                 )
             })
@@ -3288,8 +3647,14 @@ mod plan737_mcp_link_dispatch_tests {
         assert_eq!(msg.widget, key);
         let (clean, args) = crate::ui::dynamic::decode_payload(&msg.event);
         assert_eq!(clean, "OpenWikiLink");
-        assert!(matches!(&args[0], auto_val::Value::Str(s) if s.as_str() == "目标页"), "{args:?}");
-        assert!(matches!(&args[1], auto_val::Value::Str(s) if s.as_str() == "锚点甲"), "{args:?}");
+        assert!(
+            matches!(&args[0], auto_val::Value::Str(s) if s.as_str() == "目标页"),
+            "{args:?}"
+        );
+        assert!(
+            matches!(&args[1], auto_val::Value::Str(s) if s.as_str() == "锚点甲"),
+            "{args:?}"
+        );
 
         // 归一形键同样命中（装配键域直查）。
         assert!(ade_link_dispatch_message(&sk, &act).is_some());
@@ -3309,13 +3674,23 @@ mod plan737_mcp_link_dispatch_tests {
         run_fs(|fs| {
             let _ = core.render_frame(fs, 600.0, WHITE, None);
         });
-        let region = core.link_regions().first().cloned().expect("链接命中区在案");
-        let (cx, cy) =
-            (region.rect.x + region.rect.w / 2.0, region.rect.y + region.rect.h / 2.0);
+        let region = core
+            .link_regions()
+            .first()
+            .cloned()
+            .expect("链接命中区在案");
+        let (cx, cy) = (
+            region.rect.x + region.rect.w / 2.0,
+            region.rect.y + region.rect.h / 2.0,
+        );
         let out = run_fs(|fs| {
             core.handle_input(
                 fs,
-                DocInput::MousePressed { button: EditorButton::Left, x: cx, y: cy },
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x: cx,
+                    y: cy,
+                },
                 &mut NullClipboard,
             )
         });
@@ -3396,18 +3771,33 @@ pub(crate) struct FocusableInput {
 
 fn collect_focusable_inputs(view: &AbstractView<IcedMessage>, out: &mut Vec<FocusableInput>) {
     match view {
-        AbstractView::Input { placeholder, on_change, on_submit, width, password, .. } => {
+        AbstractView::Input {
+            placeholder,
+            on_change,
+            on_submit,
+            width,
+            password,
+            ..
+        } => {
             let primary = on_change
                 .as_ref()
                 .map(|m| (m.widget.as_str(), m.event.as_str()))
-                .or_else(|| on_submit.as_ref().map(|m| (m.widget.as_str(), m.event.as_str())));
+                .or_else(|| {
+                    on_submit
+                        .as_ref()
+                        .map(|m| (m.widget.as_str(), m.event.as_str()))
+                });
             out.push(FocusableInput {
                 id: derive_input_id(primary, placeholder, *width, *password),
                 widget: primary.map(|(w, _)| w.to_string()).unwrap_or_default(),
                 event: primary.map(|(_, e)| e.to_string()).unwrap_or_default(),
             });
         }
-        AbstractView::Textarea { placeholder, on_change, .. } => {
+        AbstractView::Textarea {
+            placeholder,
+            on_change,
+            ..
+        } => {
             // 与 Textarea 构建臂的 Id 派生严格同式（主键优先/legacy 回退）。
             let legacy = format!("__textarea_{}", placeholder.len());
             let id = match on_change.as_ref() {
@@ -3424,13 +3814,17 @@ fn collect_focusable_inputs(view: &AbstractView<IcedMessage>, out: &mut Vec<Focu
         }
         AbstractView::Column { children, .. }
         | AbstractView::Row { children, .. }
-        | AbstractView::List { items: children, .. } => {
+        | AbstractView::List {
+            items: children, ..
+        } => {
             for child in children {
                 collect_focusable_inputs(child, out);
             }
         }
         AbstractView::MouseArea { content, .. } => collect_focusable_inputs(content, out),
-        AbstractView::Popover { anchor, content, .. } => {
+        AbstractView::Popover {
+            anchor, content, ..
+        } => {
             if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
                 collect_focusable_inputs(w, out);
             }
@@ -3498,7 +3892,11 @@ fn focus_pending_step(
 /// PLAN-095 T-03: 浮层根声明 pointer-events-none → 被动框（不截获下方点选）。
 pub(crate) fn abs_layer_passthrough<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> bool {
     extract_view_style(view)
-        .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::PointerEventsNone)))
+        .map(|s| {
+            s.classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::PointerEventsNone))
+        })
         .unwrap_or(false)
 }
 
@@ -3524,7 +3922,6 @@ fn build_floating_layer_full<M: Clone + Debug + 'static>(
     capture: bool,
     content_units: (Option<u16>, Option<u16>),
 ) -> iced::Element<'static, M> {
-
     // PLAN-536 重测修正(2026-09-04)：悬浮层几何改**显式 spacer**——原
     // container(Fill)+align_x 在 Stack 子路径不生效(× 落左上,musk 会话卡
     // 实测),spacer 是不会说谎的几何：top spacer 垂直定位,水平方向
@@ -3572,7 +3969,9 @@ fn build_floating_layer_full<M: Clone + Debug + 'static>(
             }
         })
     };
-    let top = position.top.unwrap_or(crate::ui::view::OverlayLength::Px(0.0));
+    let top = position
+        .top
+        .unwrap_or(crate::ui::view::OverlayLength::Px(0.0));
     let top = match top {
         crate::ui::view::OverlayLength::Px(v) => v,
         crate::ui::view::OverlayLength::Percent(_) => 0.0, // % top 交由 padding 形态见下
@@ -3623,7 +4022,9 @@ fn build_floating_layer_full<M: Clone + Debug + 'static>(
     let column = if right_anchored {
         column.width(iced::Length::Fill)
     } else {
-        column.width(iced::Length::Shrink).height(iced::Length::Shrink)
+        column
+            .width(iced::Length::Shrink)
+            .height(iced::Length::Shrink)
     };
     column.into()
 }
@@ -3671,7 +4072,10 @@ pub struct GridCellSpec {
 /// Extract `(span, explicit_width)` from a grid cell `View`'s style.
 fn grid_cell_spec<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> GridCellSpec {
     let style = extract_view_style(view);
-    let mut spec = GridCellSpec { span: 1, explicit_width: false };
+    let mut spec = GridCellSpec {
+        span: 1,
+        explicit_width: false,
+    };
     if let Some(s) = style {
         for c in &s.classes {
             match c {
@@ -3779,7 +4183,9 @@ fn build_grid<M: Clone + Debug + 'static>(
             }
             rows.push(row_b.into());
         }
-        let col_widget = column(rows).spacing(gap as f32).align_x(iced::Alignment::Center);
+        let col_widget = column(rows)
+            .spacing(gap as f32)
+            .align_x(iced::Alignment::Center);
         return apply_column_style(col_widget, 0, style, widget_id, None);
     }
 
@@ -3817,7 +4223,8 @@ fn build_grid<M: Clone + Debug + 'static>(
         // this the final row's cells would stretch into the empty tracks.
         if occupied < cols {
             row_b = row_b.push(
-                iced::widget::Space::new().width(iced::Length::FillPortion((cols - occupied) as u16)),
+                iced::widget::Space::new()
+                    .width(iced::Length::FillPortion((cols - occupied) as u16)),
             );
         }
         rows.push(row_b.into());
@@ -3896,7 +4303,9 @@ pub(crate) fn wrap_layout_events<'a, M: Clone + 'static>(
 
 /// PLAN-002 B：布局件 hover 标志——仅当样式声明了 `hover:` 变体类时构造
 /// （无声明 = None，零开销路径不变）。标志与样式闭包共享（apply_*_style）。
-pub(crate) fn layout_hover_flag(style: Option<&Style>) -> Option<crate::ui::iced::hover_area::HoverFlag> {
+pub(crate) fn layout_hover_flag(
+    style: Option<&Style>,
+) -> Option<crate::ui::iced::hover_area::HoverFlag> {
     style
         .filter(|s| s.has_variant(crate::ui::style::Variant::Hover))
         .map(|_| crate::ui::iced::hover_area::HoverFlag::default())
@@ -3934,8 +4343,9 @@ fn cached_media_handle(
 ) -> iced::widget::image::Handle {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
-    static CACHE: OnceLock<Mutex<HashMap<u128, (std::sync::Arc<[u8]>, iced::widget::image::Handle)>>> =
-        OnceLock::new();
+    static CACHE: OnceLock<
+        Mutex<HashMap<u128, (std::sync::Arc<[u8]>, iced::widget::image::Handle)>>,
+    > = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     let mut guard = cache.lock().expect("media handle cache poisoned");
     if let Some((prev, handle)) = guard.get(&asset.0) {
@@ -4002,62 +4412,78 @@ fn render_image_surface<M: Clone + Debug + 'static>(
     } else {
         None
     };
-    let mut inner: iced::Element<'static, M> = if let Some((asset_id, source_width, source_height, rgba)) = pixels {
-        let zoom = zoom.clamp(0.05, 64.0);
-        let viewport = iced::Rectangle {
-            x: 0.0,
-            y: 0.0,
-            width: width.max(source_width) as f32,
-            height: height.max(source_height) as f32,
-        };
-        let geometry = crate::ui::iced::image_surface::image_surface_geometry(
-            viewport,
-            iced::Size::new(source_width as f32, source_height as f32),
-            ImageSurfaceFit::parse(&fit),
-            zoom,
-            offset_x,
-            offset_y,
-            rotation as f32,
-        );
-        let display_width = geometry.rotated_bounds.width.max(1.0);
-        let display_height = geometry.rotated_bounds.height.max(1.0);
-        let radians = (rotation.rem_euclid(360) as f32).to_radians();
-        let mut image = iced::widget::image(cached_media_handle(asset_id, source_width, source_height, rgba))
+    let mut inner: iced::Element<'static, M> =
+        if let Some((asset_id, source_width, source_height, rgba)) = pixels {
+            let zoom = zoom.clamp(0.05, 64.0);
+            let viewport = iced::Rectangle {
+                x: 0.0,
+                y: 0.0,
+                width: width.max(source_width) as f32,
+                height: height.max(source_height) as f32,
+            };
+            let geometry = crate::ui::iced::image_surface::image_surface_geometry(
+                viewport,
+                iced::Size::new(source_width as f32, source_height as f32),
+                ImageSurfaceFit::parse(&fit),
+                zoom,
+                offset_x,
+                offset_y,
+                rotation as f32,
+            );
+            let display_width = geometry.rotated_bounds.width.max(1.0);
+            let display_height = geometry.rotated_bounds.height.max(1.0);
+            let radians = (rotation.rem_euclid(360) as f32).to_radians();
+            let mut image = iced::widget::image(cached_media_handle(
+                asset_id,
+                source_width,
+                source_height,
+                rgba,
+            ))
             .content_fit(object_fit)
             .filter_method(filter_method)
             .rotation(iced::Radians::from(radians));
-        if width > 0 { image = image.width(iced::Length::Fixed(display_width.max(width as f32 + offset_x.abs()))); }
-        else if let Some(w) = width_hint { image = image.width(w); }
-        if height > 0 { image = image.height(iced::Length::Fixed(display_height.max(height as f32 + offset_y.abs()))); }
-        else if let Some(h) = height_hint { image = image.height(h); }
-        // Keep the translation in the clipping layout as well as in the
-        // geometry calculation. This makes pan state observable without ever
-        // moving decode or filesystem work onto the render thread.
-        container(image)
-            .padding(iced::Padding {
-                top: offset_y.max(0.0),
-                right: (-offset_x).max(0.0),
-                bottom: (-offset_y).max(0.0),
-                left: offset_x.max(0.0),
-            })
-            .into()
-    } else {
-        let label = if alt.is_empty() {
-            "Image unavailable".to_string()
+            if width > 0 {
+                image = image.width(iced::Length::Fixed(
+                    display_width.max(width as f32 + offset_x.abs()),
+                ));
+            } else if let Some(w) = width_hint {
+                image = image.width(w);
+            }
+            if height > 0 {
+                image = image.height(iced::Length::Fixed(
+                    display_height.max(height as f32 + offset_y.abs()),
+                ));
+            } else if let Some(h) = height_hint {
+                image = image.height(h);
+            }
+            // Keep the translation in the clipping layout as well as in the
+            // geometry calculation. This makes pan state observable without ever
+            // moving decode or filesystem work onto the render thread.
+            container(image)
+                .padding(iced::Padding {
+                    top: offset_y.max(0.0),
+                    right: (-offset_x).max(0.0),
+                    bottom: (-offset_y).max(0.0),
+                    left: offset_x.max(0.0),
+                })
+                .into()
         } else {
-            alt
+            let label = if alt.is_empty() {
+                "Image unavailable".to_string()
+            } else {
+                alt
+            };
+            let mut placeholder = container(text(label).size(14))
+                .center_x(iced::Length::Fill)
+                .center_y(iced::Length::Fill);
+            if let Some(w) = width_hint {
+                placeholder = placeholder.width(w);
+            }
+            if let Some(h) = height_hint {
+                placeholder = placeholder.height(h);
+            }
+            placeholder.into()
         };
-        let mut placeholder = container(text(label).size(14))
-            .center_x(iced::Length::Fill)
-            .center_y(iced::Length::Fill);
-        if let Some(w) = width_hint {
-            placeholder = placeholder.width(w);
-        }
-        if let Some(h) = height_hint {
-            placeholder = placeholder.height(h);
-        }
-        placeholder.into()
-    };
 
     let mut surface = container(inner).clip(true);
     if let Some(w) = width_hint {
@@ -4068,9 +4494,7 @@ fn render_image_surface<M: Clone + Debug + 'static>(
     }
     if let Some(ref style) = is {
         let background = style.background_color.map(iced::Background::Color);
-        let border_color = style
-            .border_color
-            .unwrap_or(iced::Color::TRANSPARENT);
+        let border_color = style.border_color.unwrap_or(iced::Color::TRANSPARENT);
         let border_width = style.border_width.unwrap_or(0.0);
         let border_radius = style.border_radius.unwrap_or(0.0);
         surface = surface.style(move |_theme| container::Style {
@@ -4171,9 +4595,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
                 el
             }
-            AbstractView::Text { content, style, selectable, .. } => {
+            AbstractView::Text {
+                content,
+                style,
+                selectable,
+                ..
+            } => {
                 // Plan 409 §10 续 20: font-mono 的 Text 当代码 → Rich 语法高亮。
-                let is_code = style.as_ref()
+                let is_code = style
+                    .as_ref()
                     .map(|s| IcedStyle::from_style(s).font_family.as_deref() == Some("mono"))
                     .unwrap_or(false);
                 if is_code {
@@ -4186,8 +4616,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         })
                     });
                     let spans = highlight_code(&content, lang.as_deref());
-                    let mut rich = iced::widget::text::Rich::<(), M>::with_spans(spans)
-                        .font(iced::Font { family: iced::font::Family::Monospace, ..iced::Font::DEFAULT });
+                    let mut rich =
+                        iced::widget::text::Rich::<(), M>::with_spans(spans).font(iced::Font {
+                            family: iced::font::Family::Monospace,
+                            ..iced::Font::DEFAULT
+                        });
                     if let Some(ref s) = style {
                         if let Some(fs) = effective_font_size(&IcedStyle::from_style(s)) {
                             rich = rich.size(fs);
@@ -4286,9 +4719,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     if let Some(color) = iced_style.text_color {
                         span = span.color(color);
-                    } else if let Some((r, g, b)) = crate::ui::style::iced_adapter::resolve_semantic_rgb(
-                        &crate::ui::style::Color::OnBackground,
-                    ) {
+                    } else if let Some((r, g, b)) =
+                        crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                            &crate::ui::style::Color::OnBackground,
+                        )
+                    {
                         span = span.color(iced::Color::from_rgb8(r, g, b));
                     }
                     if let Some(ref weight) = iced_style.font_weight {
@@ -4300,7 +4735,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             "mono" => iced::font::Family::Monospace,
                             _ => iced::font::Family::SansSerif,
                         };
-                        let weight = iced_style.font_weight.as_ref().map(font_weight_to_iced).unwrap_or(iced::Font::DEFAULT);
+                        let weight = iced_style
+                            .font_weight
+                            .as_ref()
+                            .map(font_weight_to_iced)
+                            .unwrap_or(iced::Font::DEFAULT);
                         span = span.font(iced::Font {
                             family: fam,
                             weight: weight.weight,
@@ -4330,102 +4769,114 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let el: iced::Element<'static, M> = rich.into();
                     wrap_with_margin(el, &iced_style)
                 } else {
-                let mut text_widget = text(content);
+                    let mut text_widget = text(content);
 
-                if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
+                    if let Some(ref s) = style {
+                        let iced_style = IcedStyle::from_style(s);
 
-                    if let Some(fs) = effective_font_size(&iced_style) {
-                        text_widget = text_widget.size(fs);
-                    }
-                    if let Some(color) = iced_style.text_color {
-                        text_widget = text_widget.color(color);
-                    } else {
-                        // Plan 408: no explicit text color → apply dark-mode-aware
-                        // default (equivalent to vue's body { text-foreground }
-                        // inheritance). Without this, iced defaults to BLACK which
-                        // is invisible on dark backgrounds.
-                        if let Some((r, g, b)) = crate::ui::style::iced_adapter::resolve_semantic_rgb(
-                            &crate::ui::style::Color::OnBackground,
-                        ) {
-                            text_widget = text_widget.color(iced::Color::from_rgb8(r, g, b));
+                        if let Some(fs) = effective_font_size(&iced_style) {
+                            text_widget = text_widget.size(fs);
                         }
-                    }
-                    if let Some(ref weight) = iced_style.font_weight {
-                        text_widget = text_widget.font(font_weight_to_iced(weight));
-                    }
-                    // Apply font family (font-serif/sans/mono)
-                    if let Some(ref family) = iced_style.font_family {
-                        let fam = match family.as_str() {
-                            "serif" => iced::font::Family::Serif,
-                            "mono" => iced::font::Family::Monospace,
-                            _ => iced::font::Family::SansSerif,
-                        };
-                        let weight = iced_style.font_weight.as_ref().map(font_weight_to_iced).unwrap_or(iced::Font::DEFAULT);
-                        text_widget = text_widget.font(iced::Font {
-                            family: fam,
-                            weight: weight.weight,
-                            stretch: weight.stretch,
-                            style: weight.style,
-                        });
-                    }
-                    // Plan 527 T5: 行高 —— 绝对档(leading-3..10)优先,相对倍率次之
-                    if let Some(px) = iced_style.line_height_px {
-                        text_widget = text_widget
-                            .line_height(iced::widget::text::LineHeight::Absolute(iced::Pixels(px)));
-                    } else if let Some(lh) = iced_style.line_height {
-                        text_widget =
-                            text_widget.line_height(iced::widget::text::LineHeight::Relative(lh));
-                    }
-                    // Apply width (e.g., from flex-1)
-                    if let Some(ref w) = iced_style.width {
-                        text_widget = text_widget.width(iced_length(w));
-                    }
-                    if let Some(ref align) = iced_style.text_align {
-                        use crate::ui::style::iced_adapter::IcedTextAlign;
-                        if iced_style.width.is_none() {
-                            text_widget = text_widget.width(iced::Length::Fill);
-                        }
-                        match align {
-                            IcedTextAlign::Center => {
-                                text_widget = text_widget.align_x(iced::alignment::Horizontal::Center);
+                        if let Some(color) = iced_style.text_color {
+                            text_widget = text_widget.color(color);
+                        } else {
+                            // Plan 408: no explicit text color → apply dark-mode-aware
+                            // default (equivalent to vue's body { text-foreground }
+                            // inheritance). Without this, iced defaults to BLACK which
+                            // is invisible on dark backgrounds.
+                            if let Some((r, g, b)) =
+                                crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                    &crate::ui::style::Color::OnBackground,
+                                )
+                            {
+                                text_widget = text_widget.color(iced::Color::from_rgb8(r, g, b));
                             }
-                            IcedTextAlign::Right => {
-                                text_widget = text_widget.align_x(iced::alignment::Horizontal::Right);
+                        }
+                        if let Some(ref weight) = iced_style.font_weight {
+                            text_widget = text_widget.font(font_weight_to_iced(weight));
+                        }
+                        // Apply font family (font-serif/sans/mono)
+                        if let Some(ref family) = iced_style.font_family {
+                            let fam = match family.as_str() {
+                                "serif" => iced::font::Family::Serif,
+                                "mono" => iced::font::Family::Monospace,
+                                _ => iced::font::Family::SansSerif,
+                            };
+                            let weight = iced_style
+                                .font_weight
+                                .as_ref()
+                                .map(font_weight_to_iced)
+                                .unwrap_or(iced::Font::DEFAULT);
+                            text_widget = text_widget.font(iced::Font {
+                                family: fam,
+                                weight: weight.weight,
+                                stretch: weight.stretch,
+                                style: weight.style,
+                            });
+                        }
+                        // Plan 527 T5: 行高 —— 绝对档(leading-3..10)优先,相对倍率次之
+                        if let Some(px) = iced_style.line_height_px {
+                            text_widget = text_widget.line_height(
+                                iced::widget::text::LineHeight::Absolute(iced::Pixels(px)),
+                            );
+                        } else if let Some(lh) = iced_style.line_height {
+                            text_widget = text_widget
+                                .line_height(iced::widget::text::LineHeight::Relative(lh));
+                        }
+                        // Apply width (e.g., from flex-1)
+                        if let Some(ref w) = iced_style.width {
+                            text_widget = text_widget.width(iced_length(w));
+                        }
+                        if let Some(ref align) = iced_style.text_align {
+                            use crate::ui::style::iced_adapter::IcedTextAlign;
+                            if iced_style.width.is_none() {
+                                text_widget = text_widget.width(iced::Length::Fill);
                             }
-                            IcedTextAlign::Left => {}
+                            match align {
+                                IcedTextAlign::Center => {
+                                    text_widget =
+                                        text_widget.align_x(iced::alignment::Horizontal::Center);
+                                }
+                                IcedTextAlign::Right => {
+                                    text_widget =
+                                        text_widget.align_x(iced::alignment::Horizontal::Right);
+                                }
+                                IcedTextAlign::Left => {}
+                            }
                         }
                     }
-                }
 
-                // 2026-08-22(侧栏描述换行治理):truncate/whitespace-nowrap →
-                // 单行(Wrapping::None)+ clip 容器裁横向溢出,对齐 CSS truncate。
-                let wrap_none = style.as_ref()
-                    .map(|s| IcedStyle::from_style(s).wrap_none)
-                    .unwrap_or(false);
-                if wrap_none {
-                    text_widget = text_widget
-                        .wrapping(iced::widget::text::Wrapping::None)
-                        .width(iced::Length::Fill);
-                }
-                let el: iced::Element<'static, M> = if wrap_none {
-                    iced::widget::container(text_widget)
-                        .width(iced::Length::Fill)
-                        .clip(true)
-                        .into()
-                } else if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    // PLAN-619 R4: `height`（如 sidebar_group_label 契约的
-                    // `h-8`）此前在这一臂被整条忽略——Text 直接进 iced，盒子
-                    // 高度只剩行盒，分组标签比 Vue 矮 16px 并连带整个列表上移。
-                    // `items-center` 同步折成盒内纵向居中（CSS `display:flex;
-                    // align-items:center` 的行内等价）。
-                    let box_height = iced_style
-                        .height
+                    // 2026-08-22(侧栏描述换行治理):truncate/whitespace-nowrap →
+                    // 单行(Wrapping::None)+ clip 容器裁横向溢出,对齐 CSS truncate。
+                    let wrap_none = style
                         .as_ref()
-                        .map(iced_length)
-                        .or_else(|| iced_style.min_height.filter(|mh| *mh < 9999.0).map(iced::Length::Fixed));
-                    let has_box_style = iced_style.background_color.is_some()
+                        .map(|s| IcedStyle::from_style(s).wrap_none)
+                        .unwrap_or(false);
+                    if wrap_none {
+                        text_widget = text_widget
+                            .wrapping(iced::widget::text::Wrapping::None)
+                            .width(iced::Length::Fill);
+                    }
+                    let el: iced::Element<'static, M> = if wrap_none {
+                        iced::widget::container(text_widget)
+                            .width(iced::Length::Fill)
+                            .clip(true)
+                            .into()
+                    } else if let Some(ref s) = style {
+                        let iced_style = IcedStyle::from_style(s);
+                        // PLAN-619 R4: `height`（如 sidebar_group_label 契约的
+                        // `h-8`）此前在这一臂被整条忽略——Text 直接进 iced，盒子
+                        // 高度只剩行盒，分组标签比 Vue 矮 16px 并连带整个列表上移。
+                        // `items-center` 同步折成盒内纵向居中（CSS `display:flex;
+                        // align-items:center` 的行内等价）。
+                        let box_height =
+                            iced_style.height.as_ref().map(iced_length).or_else(|| {
+                                iced_style
+                                    .min_height
+                                    .filter(|mh| *mh < 9999.0)
+                                    .map(iced::Length::Fixed)
+                            });
+                        let has_box_style = iced_style.background_color.is_some()
                         || iced_style.border
                         || iced_style.has_border_radius()
                         || iced_style.border_width.map_or(false, |w| w > 0.0)
@@ -4444,65 +4895,79 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         || box_height.is_some()
                         || iced_style.shadow;
 
-                    if has_box_style {
-                        let pad = iced_padding_from_is(&iced_style, 0);
-                        let cs = build_container_style(&iced_style);
-                        let mut cont = iced::widget::container(text_widget)
-                            .padding(pad)
-                            .style(move |_| cs);
-                        if let Some(mw) = iced_style.max_width {
-                            cont = cont.max_width(mw);
-                        }
-                        if let Some(mh) = iced_style.max_height {
-                            cont = cont.max_height(mh);
-                        }
-                        if let Some(h) = box_height {
-                            cont = cont.height(h);
-                            if matches!(
-                                iced_style.align_items,
-                                Some(crate::ui::style::iced_adapter::IcedAlign::Center)
-                            ) {
-                                cont = cont.align_y(iced::alignment::Vertical::Center);
+                        if has_box_style {
+                            let pad = iced_padding_from_is(&iced_style, 0);
+                            let cs = build_container_style(&iced_style);
+                            let mut cont = iced::widget::container(text_widget)
+                                .padding(pad)
+                                .style(move |_| cs);
+                            if let Some(mw) = iced_style.max_width {
+                                cont = cont.max_width(mw);
                             }
-                        }
-                        let el: iced::Element<'static, M> = cont.into();
-                        match iced_style.max_width_pct {
-                            Some(pct) => crate::ui::iced::max_width::MaxWidthPct::new(el, pct / 100.0).into(),
-                            None => el,
+                            if let Some(mh) = iced_style.max_height {
+                                cont = cont.max_height(mh);
+                            }
+                            if let Some(h) = box_height {
+                                cont = cont.height(h);
+                                if matches!(
+                                    iced_style.align_items,
+                                    Some(crate::ui::style::iced_adapter::IcedAlign::Center)
+                                ) {
+                                    cont = cont.align_y(iced::alignment::Vertical::Center);
+                                }
+                            }
+                            let el: iced::Element<'static, M> = cont.into();
+                            match iced_style.max_width_pct {
+                                Some(pct) => {
+                                    crate::ui::iced::max_width::MaxWidthPct::new(el, pct / 100.0)
+                                        .into()
+                                }
+                                None => el,
+                            }
+                        } else {
+                            text_widget.into()
                         }
                     } else {
                         text_widget.into()
+                    };
+                    let el = if let Some(ref s) = style {
+                        let iced_style = IcedStyle::from_style(s);
+                        wrap_with_margin(el, &iced_style)
+                    } else {
+                        el
+                    };
+                    match style
+                        .as_ref()
+                        .and_then(|s| IcedStyle::from_style(s).max_width_pct)
+                    {
+                        Some(pct) => {
+                            crate::ui::iced::max_width::MaxWidthPct::new(el, pct / 100.0).into()
+                        }
+                        None => el,
                     }
-                } else {
-                    text_widget.into()
-                };
-                let el = if let Some(ref s) = style {
-                    let iced_style = IcedStyle::from_style(s);
-                    wrap_with_margin(el, &iced_style)
-                } else {
-                    el
-                };
-                match style.as_ref().and_then(|s| IcedStyle::from_style(s).max_width_pct) {
-                    Some(pct) => crate::ui::iced::max_width::MaxWidthPct::new(el, pct / 100.0).into(),
-                    None => el,
-                }
                 }
             }
 
-            AbstractView::Button { label, content, onclick, style, on_right_click, disabled } => {
+            AbstractView::Button {
+                label,
+                content,
+                onclick,
+                style,
+                on_right_click,
+                disabled,
+            } => {
                 // Plan 418 P2-3 续: EE03 PUA marker carries an icon-button
                 // tooltip (synthesized toolbar buttons embed the action title
                 // there — the label itself stays icon-only so the resting
                 // render is a bare svg). Stripped here; wrapped around the
                 // final element at the arm's end.
-                let (label, pua_tooltip): (String, Option<String>) =
-                    match label.find('\u{EE03}') {
-                        Some(i) => (
-                            label[..i].to_string(),
-                            Some(label[i + '\u{EE03}'.len_utf8()..].to_string()),
-                        ),
-                        None => (label, None),
-                    };
+                let (label, pua_tooltip): (String, Option<String>) = match label.find('\u{EE03}') {
+                    Some(i) => (
+                        label[..i].to_string(),
+                        Some(label[i + '\u{EE03}'.len_utf8()..].to_string()),
+                    ),
+                    None => (label, None),
+                };
                 let iced_style = style.as_ref().map(|s| IcedStyle::from_style(s));
 
                 // Plan 409 §6: if the button carries a content subtree (a `link`
@@ -4532,13 +4997,18 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // `flex items-center justify-center` 居中,iced 无 flex——此处对
                 // 双固定尺寸按钮:内边距清零 + 内容在盒内双向居中,复现 CSS 语义。
                 let fixed_both = matches!(
-                    (iced_style.as_ref().and_then(|is| is.width), iced_style.as_ref().and_then(|is| is.height)),
+                    (
+                        iced_style.as_ref().and_then(|is| is.width),
+                        iced_style.as_ref().and_then(|is| is.height)
+                    ),
                     (
                         Some(crate::ui::style::iced_adapter::IcedSize::Fixed(_)),
                         Some(crate::ui::style::iced_adapter::IcedSize::Fixed(_))
                     )
                 );
-                let button_content: iced::Element<'static, M> = if let Some(mut content_view) = content {
+                let button_content: iced::Element<'static, M> = if let Some(mut content_view) =
+                    content
+                {
                     if let Some(color) = inherit_color {
                         inherit_text_color(&mut content_view, color);
                     }
@@ -4569,13 +5039,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         ) {
                             Some(handle)
                         } else {
-                            crate::ui::iced::native_icon::parse_field(icon_name).map(
-                                |icon| {
-                                    iced::widget::image::Handle::from_rgba(
-                                        icon.w, icon.h, icon.rgba,
-                                    )
-                                },
-                            )
+                            crate::ui::iced::native_icon::parse_field(icon_name).map(|icon| {
+                                iced::widget::image::Handle::from_rgba(icon.w, icon.h, icon.rgba)
+                            })
                         }
                     };
                     if let Some(handle) = raster_icon {
@@ -4602,11 +5068,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         } else {
                             let mut tw = text(text_label.to_string());
                             if let Some(ref is) = iced_style {
-                                if let Some(ref fs) = is.font_size { tw = tw.size(font_size_to_f32(fs)); }
-                                if let Some(c) = is.text_color { tw = tw.color(c); }
+                                if let Some(ref fs) = is.font_size {
+                                    tw = tw.size(font_size_to_f32(fs));
+                                }
+                                if let Some(c) = is.text_color {
+                                    tw = tw.color(c);
+                                }
                             }
                             // PLAN-615 T-03 (W1): 同按钮标签行高钳（图标与文字盒错位同源）。
-                            let has_lh = iced_style.as_ref().is_some_and(|s| s.line_height.is_some() || s.line_height_px.is_some());
+                            let has_lh = iced_style.as_ref().is_some_and(|s| {
+                                s.line_height.is_some() || s.line_height_px.is_some()
+                            });
                             if !has_lh {
                                 tw = tw.line_height(iced::widget::text::LineHeight::Relative(1.0));
                             }
@@ -4623,12 +5095,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         // 按钮自身 hover:text-*(浏览器里 button:hover 的 color 经
                         // 继承级联到内联 SVG,此处以 svg 自身 Hovered 状态近似 ——
                         // 命中区为图标盒而非整个按钮,图标贴文本时差异可忽略)。
-                        let text_color = iced_style.as_ref().and_then(|is| is.text_color)
-                            .or_else(|| {
-                                crate::ui::style::iced_adapter::resolve_semantic_rgb(
-                                    &crate::ui::style::Color::OnBackground,
-                                ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
-                            });
+                        let text_color =
+                            iced_style
+                                .as_ref()
+                                .and_then(|is| is.text_color)
+                                .or_else(|| {
+                                    crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                        &crate::ui::style::Color::OnBackground,
+                                    )
+                                    .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                                });
                         let hover_color = style.as_ref().and_then(|s| {
                             s.hover_classes.iter().find_map(|c| match c {
                                 StyleClass::TextColor(color) => {
@@ -4663,11 +5139,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             .height(iced::Length::Fixed(icon_px));
                         let mut tw = text(text_label.to_string());
                         if let Some(ref is) = iced_style {
-                            if let Some(ref fs) = is.font_size { tw = tw.size(font_size_to_f32(fs)); }
-                            if let Some(c) = is.text_color { tw = tw.color(c); }
+                            if let Some(ref fs) = is.font_size {
+                                tw = tw.size(font_size_to_f32(fs));
+                            }
+                            if let Some(c) = is.text_color {
+                                tw = tw.color(c);
+                            }
                         }
                         // PLAN-615 T-03 (W1): 同按钮标签行高钳（图标与文字盒错位同源）。
-                        let has_lh = iced_style.as_ref().is_some_and(|s| s.line_height.is_some() || s.line_height_px.is_some());
+                        let has_lh = iced_style
+                            .as_ref()
+                            .is_some_and(|s| s.line_height.is_some() || s.line_height_px.is_some());
                         if !has_lh {
                             tw = tw.line_height(iced::widget::text::LineHeight::Relative(1.0));
                         }
@@ -4705,11 +5187,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         // Apply the button's own text styles to the first line (title).
                         if i == 0 {
                             if let Some(ref is) = iced_style {
-                                tw = tw.size(is.font_size.as_ref().map_or(default_size, font_size_to_f32));
+                                tw = tw.size(
+                                    is.font_size.as_ref().map_or(default_size, font_size_to_f32),
+                                );
                                 if let Some(color) = is.text_color {
                                     tw = tw.color(color);
                                 }
-                                tw = tw.font(is.font_weight.as_ref().map_or(default_weight, font_weight_to_iced));
+                                tw = tw.font(
+                                    is.font_weight
+                                        .as_ref()
+                                        .map_or(default_weight, font_weight_to_iced),
+                                );
                             } else {
                                 tw = tw.size(default_size).font(default_weight);
                             }
@@ -4731,11 +5219,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         if is.underline {
                             span = span.underline(true);
                         }
-                        span = span.size(is.font_size.as_ref().map_or(default_size, font_size_to_f32));
+                        span =
+                            span.size(is.font_size.as_ref().map_or(default_size, font_size_to_f32));
                         if let Some(color) = is.text_color {
                             span = span.color(color);
                         }
-                        span = span.font(is.font_weight.as_ref().map_or(default_weight, font_weight_to_iced));
+                        span = span.font(
+                            is.font_weight
+                                .as_ref()
+                                .map_or(default_weight, font_weight_to_iced),
+                        );
                         let mut rich = iced::widget::text::Rich::<(), M>::with_spans(vec![span]);
                         if let Some(ref align) = is.text_align {
                             let _ = align;
@@ -4753,11 +5246,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         rich.into()
                     } else {
                         let mut text_widget = text(label.clone());
-                        text_widget = text_widget.size(is.font_size.as_ref().map_or(default_size, font_size_to_f32));
+                        text_widget = text_widget
+                            .size(is.font_size.as_ref().map_or(default_size, font_size_to_f32));
                         if let Some(color) = is.text_color {
                             text_widget = text_widget.color(color);
                         }
-                        text_widget = text_widget.font(is.font_weight.as_ref().map_or(default_weight, font_weight_to_iced));
+                        text_widget = text_widget.font(
+                            is.font_weight
+                                .as_ref()
+                                .map_or(default_weight, font_weight_to_iced),
+                        );
                         // PLAN-615 T-03 (W1): 按钮标签行盒钳到 1.0 行高——iced 0.14 文本
                         // 默认 Relative(1.3)，额外 leading 全部落在字形上方，无高度类
                         // 按钮（shrink 高度 = 行盒高）的字形在按钮内系统性偏下（calc 数字
@@ -4767,7 +5265,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         // web 侧 Tailwind text-lg 行高 1.75rem 与 iced 的盒高差是既有
                         // 双端差异，不在本钳范围（双端按钮高度 parity 另行台账）。
                         if is.line_height.is_none() && is.line_height_px.is_none() {
-                            text_widget = text_widget.line_height(iced::widget::text::LineHeight::Relative(1.0));
+                            text_widget = text_widget
+                                .line_height(iced::widget::text::LineHeight::Relative(1.0));
                         }
                         // Plan 411: text-center/left/right on button labels — wide
                         // buttons (e.g. preview-card tabs) need horizontal alignment.
@@ -4779,10 +5278,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             text_widget = text_widget.width(iced::Length::Fill);
                             match align {
                                 crate::ui::style::iced_adapter::IcedTextAlign::Center => {
-                                    text_widget = text_widget.align_x(iced::alignment::Horizontal::Center);
+                                    text_widget =
+                                        text_widget.align_x(iced::alignment::Horizontal::Center);
                                 }
                                 crate::ui::style::iced_adapter::IcedTextAlign::Right => {
-                                    text_widget = text_widget.align_x(iced::alignment::Horizontal::Right);
+                                    text_widget =
+                                        text_widget.align_x(iced::alignment::Horizontal::Right);
                                 }
                                 crate::ui::style::iced_adapter::IcedTextAlign::Left => {}
                             }
@@ -4846,10 +5347,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     cont.into()
                 } else if has_width && (p050_ax.is_some() || p050_ay.is_some()) {
-                    let mut c = iced::widget::container(button_content)
-                        .width(iced::Length::Fill);
-                    if let Some(ax) = p050_ax { c = c.align_x(ax); }
-                    if let Some(ay) = p050_ay { c = c.align_y(ay); }
+                    let mut c = iced::widget::container(button_content).width(iced::Length::Fill);
+                    if let Some(ax) = p050_ax {
+                        c = c.align_x(ax);
+                    }
+                    if let Some(ay) = p050_ay {
+                        c = c.align_y(ay);
+                    }
                     c.into()
                 } else {
                     button_content
@@ -4880,7 +5384,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     // their own svg Status styling (see Image lucide arm /
                     // PUA icon arm, 2026-08-21 方案 A), other pre-built child
                     // content is unaffected.
-                                   // Plan 527 T6: 变体管道泛化 —— base+变体合并构建各状态样式(变体后应用
+                    // Plan 527 T6: 变体管道泛化 —— base+变体合并构建各状态样式(变体后应用
                     // 胜出,`hover:` 先例同构);无声明时等价 base。iced 状态
                     // 回调面:Hovered→hover、Pressed→active(缺 active 声明时
                     // 回 hover,保持 legacy 行为)、Focused→focus、
@@ -4948,15 +5452,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         // size instead of collapsing to ~0.
                         btn = btn.padding(8.0);
                     }
-                    if let Some(ref w) = is.width { btn = btn.width(iced_length(w)); }
-                    if let Some(ref h) = is.height { btn = btn.height(iced_length(h)); }
+                    if let Some(ref w) = is.width {
+                        btn = btn.width(iced_length(w));
+                    }
+                    if let Some(ref h) = is.height {
+                        btn = btn.height(iced_length(h));
+                    }
                 } else {
                     // No style prop at all: chromeless instead of iced Primary.
                     // Plan 408: chromeless + dark-mode-aware text color.
                     let default_text = crate::ui::style::iced_adapter::resolve_semantic_rgb(
                         &crate::ui::style::Color::OnBackground,
-                    ).map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
-                     .unwrap_or(iced::Color::WHITE);
+                    )
+                    .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                    .unwrap_or(iced::Color::WHITE);
                     btn = btn.style(move |_, _| iced::widget::button::Style {
                         background: None,
                         text_color: default_text,
@@ -4982,9 +5491,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let el: iced::Element<'static, M> = btn.into();
                 let el: iced::Element<'static, M> = if let Some(right_msg) = on_right_click {
                     if !inspect_capture_active() {
-                        mouse_area(el)
-                            .on_right_press(right_msg)
-                            .into()
+                        mouse_area(el).on_right_press(right_msg).into()
                     } else {
                         el
                     }
@@ -5030,7 +5537,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::Row { children, spacing, padding, style, onclick, on_right_click } => {
+            AbstractView::Row {
+                children,
+                spacing,
+                padding,
+                style,
+                onclick,
+                on_right_click,
+            } => {
                 // 轴向修正(概要页对拍,EDGE-16 家族):见 axis_fix_row_child。
                 // PLAN-022 T-03:absolute 子脱流叠层(镜像 render_dynamic_view
                 // Row 臂/PLAN-530 步骤3)——into_iced 此前无分区,absolute 子
@@ -5049,14 +5563,23 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         normal.push(axis_fix_row_child(child).into_iced());
                     }
                 }
-                let base = build_row(normal, spacing, padding, style.as_ref(), None, hover.clone());
+                let base = build_row(
+                    normal,
+                    spacing,
+                    padding,
+                    style.as_ref(),
+                    None,
+                    hover.clone(),
+                );
                 let el: iced::Element<'static, M> = if absolute.is_empty() {
                     base
                 } else {
                     let mut stk = iced::widget::Stack::new().push(base);
                     for child in absolute {
                         // PLAN-051 P2: 空层不渲染不入栈(同 render_dynamic_view)。
-                        if is_empty_stack_layer(&child) { continue; }
+                        if is_empty_stack_layer(&child) {
+                            continue;
+                        }
                         // PLAN-536 T10: 偏移判定在 move 前取好(child 随分区 move)。
                         let pos = dynamic_abs_layer_position(&child);
                         // PLAN-095 T-03: 被动框穿透（pointer-events-none 根
@@ -5070,14 +5593,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         // 空白区穿透);零偏移层无 spacer,外层 opaque 边界
                         // 本=内容矩形,保持（穿透根除外）。
                         let abs_el = match pos {
-                            Some(pos) => build_floating_layer_full(abs_el, pos, !passthrough, units),
+                            Some(pos) => {
+                                build_floating_layer_full(abs_el, pos, !passthrough, units)
+                            }
                             None if !passthrough => iced::widget::opaque(abs_el),
                             None => abs_el,
                         };
                         stk = stk.push(abs_el);
                     }
-                    let clip = style.as_ref()
-                        .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
+                    let clip = style
+                        .as_ref()
+                        .map(|s| {
+                            s.classes
+                                .iter()
+                                .any(|c| matches!(c, StyleClass::OverflowHidden))
+                        })
                         .unwrap_or(false);
                     stk.clip(clip).into()
                 };
@@ -5086,7 +5616,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 wrap_layout_events(el, onclick, on_right_click, hover)
             }
 
-            AbstractView::Column { children, spacing, padding, style, onclick, on_right_click } => {
+            AbstractView::Column {
+                children,
+                spacing,
+                padding,
+                style,
+                onclick,
+                on_right_click,
+            } => {
                 // 轴向修正:flex-1 主轴语义转写,见 axis_fix_col_child。
                 // PLAN-050 P2 #3: mt-auto → 列内弹性占位——此前 margin 系静默
                 // 跳过,`mt-auto` 工具行（rail 底部工具栏）失去贴底语义。
@@ -5103,21 +5640,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let mut els: Vec<iced::Element<'static, M>> = Vec::new();
                 for i in &flow_idx {
                     let c = &children[*i];
-                    let mt_auto = extract_view_style(c)
-                        .map_or(false, |s| plan050_mt_auto_spacer(&s.classes));
+                    let mt_auto =
+                        extract_view_style(c).map_or(false, |s| plan050_mt_auto_spacer(&s.classes));
                     if mt_auto {
                         els.push(iced::widget::Space::new().height(iced::Length::Fill).into());
                     }
-                    let align_self = extract_view_style(c)
-                        .and_then(|s| crate::ui::style::iced_adapter::IcedStyle::from_style(s).align_self);
+                    let align_self = extract_view_style(c).and_then(|s| {
+                        crate::ui::style::iced_adapter::IcedStyle::from_style(s).align_self
+                    });
                     let el = if distributed {
                         axis_fix_col_child_distributed(c.clone())
                     } else {
                         axis_fix_col_child(c.clone())
                     }
                     .into_iced();
-                    let el = match align_self
-                    {
+                    let el = match align_self {
                         Some(crate::ui::style::iced_adapter::IcedAlign::End) => {
                             iced::widget::container(el)
                                 .width(iced::Length::Fill)
@@ -5149,7 +5686,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let mut stk = iced::widget::Stack::new().push(base);
                     for &i in &abs_idx {
                         // PLAN-051 P2: 空层不渲染不入栈(挡死下层交互件聚焦/点击)。
-                        if is_empty_stack_layer(&children[i]) { continue; }
+                        if is_empty_stack_layer(&children[i]) {
+                            continue;
+                        }
                         // PLAN-095 T-03: 被动框穿透 + 百分比几何入参。
                         let passthrough_b = abs_layer_passthrough(&children[i]);
                         let units_b = overlay_percent_units(&children[i]);
@@ -5159,14 +5698,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         // PLAN-023 T-02: 同 Row 臂——opaque 下沉 content 级,
                         // 零偏移分支维持外层 opaque（穿透根除外）。
                         let abs_el = match dynamic_abs_layer_position(&children[i]) {
-                            Some(pos) => build_floating_layer_full(abs_el, pos, !passthrough_b, units_b),
+                            Some(pos) => {
+                                build_floating_layer_full(abs_el, pos, !passthrough_b, units_b)
+                            }
                             None if !passthrough_b => iced::widget::opaque(abs_el),
                             None => abs_el,
                         };
                         stk = stk.push(abs_el);
                     }
-                    let clip = style.as_ref()
-                        .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
+                    let clip = style
+                        .as_ref()
+                        .map(|s| {
+                            s.classes
+                                .iter()
+                                .any(|c| matches!(c, StyleClass::OverflowHidden))
+                        })
                         .unwrap_or(false);
                     stk.clip(clip).into()
                 };
@@ -5182,7 +5728,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 password,
                 style,
             } => {
-                let mut input_widget = build_input_shape(&placeholder, &value, width, password, style.as_ref());
+                let mut input_widget =
+                    build_input_shape(&placeholder, &value, width, password, style.as_ref());
 
                 // Wire on_input for text change tracking
                 if let Some(msg) = on_change {
@@ -5206,7 +5753,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, keymap, .. } => {
+            AbstractView::Textarea {
+                placeholder,
+                value,
+                on_change,
+                on_submit,
+                height,
+                style,
+                keymap,
+                ..
+            } => {
                 // Plan 446 批五 U3:超大内容降级只读预览(rust 模式同款守卫,
                 // 机理见 TEXTAREA_INLINE_EDIT_CAP)。
                 if textarea_needs_preview(&value) {
@@ -5218,124 +5774,181 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         el
                     }
                 } else {
-                let key = format!("__textarea_{}", placeholder.len());
+                    let key = format!("__textarea_{}", placeholder.len());
 
-                let content = get_textarea_content(&key, &value);
-                let ph: &'static str = leaked_placeholder(&placeholder);
-                let mut editor = text_editor(content).placeholder(ph);
-                // PLAN-051 P2: 稳定 Id——iced text_editor 点击聚焦的前提
-                  // (update 内 state.focus(id) 仅在 id 存在时执行;无 Id 则点
-                  // 击永不聚焦=无光标无法输入,composer 命中区修复后仍复现
-                  // 的最后缺口)。镜像 ash-gui 臂的 textarea_{key} 派生。
-                  // PLAN-095 T-04 注：VM 动态主路径(render_dynamic_view)的
-                  // Textarea 臂以 on_input handler 主键派生 Id（聚焦寻址面）；
-                  // 本泛型臂保 legacy 键（非 IcedMessage 树不可读 handler）。
-                editor = editor
-                    .id(iced::widget::Id::from(format!("textarea_{}", key)))
-                    // 此前不消费,可见容器内可点区只有顶部 30px 条(composer 命中区)。
-                    .height(textarea_editor_height(height, style.as_ref()));
+                    let content = get_textarea_content(&key, &value);
+                    let ph: &'static str = leaked_placeholder(&placeholder);
+                    let mut editor = text_editor(content).placeholder(ph);
+                    // PLAN-051 P2: 稳定 Id——iced text_editor 点击聚焦的前提
+                    // (update 内 state.focus(id) 仅在 id 存在时执行;无 Id 则点
+                    // 击永不聚焦=无光标无法输入,composer 命中区修复后仍复现
+                    // 的最后缺口)。镜像 ash-gui 臂的 textarea_{key} 派生。
+                    // PLAN-095 T-04 注：VM 动态主路径(render_dynamic_view)的
+                    // Textarea 臂以 on_input handler 主键派生 Id（聚焦寻址面）；
+                    // 本泛型臂保 legacy 键（非 IcedMessage 树不可读 handler）。
+                    editor = editor
+                        .id(iced::widget::Id::from(format!("textarea_{}", key)))
+                        // 此前不消费,可见容器内可点区只有顶部 30px 条(composer 命中区)。
+                        .height(textarea_editor_height(height, style.as_ref()));
 
-                // Plan 053 后续(ash-gui VM): apply class-driven text styling.
-                // Previously the whole style prop was ignored (`style: _`), so the
-                // Vue transparent-textarea + colored-overlay technique rendered the
-                // typed text TWICE — once in the editor's default color, once in
-                // the overlay spans. Applying text_color makes `text-transparent`
-                // hide the editor copy (caret rides the same color), leaving only
-                // the overlay; the placeholder stays a visible muted gray.
-                if let Some(ref s) = style {
-                    let is = IcedStyle::from_style(s);
-                    if let Some(fs) = effective_font_size(&is) {
-                        editor = editor.size(fs);
-                    }
-                    if is.text_color.is_some() {
-                        let mut value_color = is.text_color.unwrap();
-                        // PLAN-051 P2: 全透明 value 色(如 musk composer 的
-                        // text-transparent+backdrop 叠加技法)在 VM 侧回退为可见
-                        // 前景——VM 无 backdrop 渲染层,透明即"输入成功但不可视"。
-                        // Vue 轨自渲染其 textarea,不受此臂影响。
-                        if value_color.a <= 0.001 {
-                            value_color = crate::ui::style::theme::resolve_semantic_rgb(
-                                &crate::ui::style::Color::OnBackground,
-                            )
-                            .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
-                            .unwrap_or(iced::Color::WHITE);
+                    // Plan 053 后续(ash-gui VM): apply class-driven text styling.
+                    // Previously the whole style prop was ignored (`style: _`), so the
+                    // Vue transparent-textarea + colored-overlay technique rendered the
+                    // typed text TWICE — once in the editor's default color, once in
+                    // the overlay spans. Applying text_color makes `text-transparent`
+                    // hide the editor copy (caret rides the same color), leaving only
+                    // the overlay; the placeholder stays a visible muted gray.
+                    if let Some(ref s) = style {
+                        let is = IcedStyle::from_style(s);
+                        if let Some(fs) = effective_font_size(&is) {
+                            editor = editor.size(fs);
                         }
-                        let value_color = value_color;
-                        editor = editor.style(move |_theme, _status| {
-                            iced::widget::text_editor::Style {
-                                background: iced::Background::Color(iced::Color::TRANSPARENT),
-                                border: iced::Border::default(),
-                                placeholder: iced::Color::from_rgba(0.55, 0.58, 0.65, 0.7),
-                                value: value_color,
-                                selection: iced::Color::from_rgba(0.3, 0.5, 0.9, 0.35),
+                        if is.text_color.is_some() {
+                            let mut value_color = is.text_color.unwrap();
+                            // PLAN-051 P2: 全透明 value 色(如 musk composer 的
+                            // text-transparent+backdrop 叠加技法)在 VM 侧回退为可见
+                            // 前景——VM 无 backdrop 渲染层,透明即"输入成功但不可视"。
+                            // Vue 轨自渲染其 textarea,不受此臂影响。
+                            if value_color.a <= 0.001 {
+                                value_color = crate::ui::style::theme::resolve_semantic_rgb(
+                                    &crate::ui::style::Color::OnBackground,
+                                )
+                                .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+                                .unwrap_or(iced::Color::WHITE);
                             }
-                        });
+                            let value_color = value_color;
+                            editor = editor.style(move |_theme, _status| {
+                                iced::widget::text_editor::Style {
+                                    background: iced::Background::Color(iced::Color::TRANSPARENT),
+                                    border: iced::Border::default(),
+                                    placeholder: iced::Color::from_rgba(0.55, 0.58, 0.65, 0.7),
+                                    value: value_color,
+                                    selection: iced::Color::from_rgba(0.3, 0.5, 0.9, 0.35),
+                                }
+                            });
+                        }
                     }
-                }
 
-                // Plan 053 M4: Enter fires on_submit (onenter) — the newline is
-                // already inserted by content.perform; input_value carries the
-                // post-Enter content so the handler's bound field picks it up.
-                let is_enter = |action: &text_editor::Action| {
-                    matches!(action, text_editor::Action::Edit(text_editor::Edit::Enter))
-                };
-                let el: iced::Element<'static, M> = if let Some(msg) = on_change {
-                    let action_key = key.clone();
-                    let submit_clone = on_submit.clone();
-                    editor.on_action(move |action| {
-                        if is_enter(&action) {
-                            if let Some(sm) = submit_clone.clone() {
+                    // Plan 053 M4: Enter fires on_submit (onenter) — the newline is
+                    // already inserted by content.perform; input_value carries the
+                    // post-Enter content so the handler's bound field picks it up.
+                    let is_enter = |action: &text_editor::Action| {
+                        matches!(action, text_editor::Action::Edit(text_editor::Edit::Enter))
+                    };
+                    let el: iced::Element<'static, M> = if let Some(msg) = on_change {
+                        let action_key = key.clone();
+                        let submit_clone = on_submit.clone();
+                        editor
+                            .on_action(move |action| {
+                                if is_enter(&action) {
+                                    if let Some(sm) = submit_clone.clone() {
+                                        let text = textarea_perform_action(&action_key, action);
+                                        INPUT_TEXT.with(|t| *t.borrow_mut() = text);
+                                        return sm.clone();
+                                    }
+                                }
                                 let text = textarea_perform_action(&action_key, action);
                                 INPUT_TEXT.with(|t| *t.borrow_mut() = text);
-                                return sm.clone();
-                            }
-                        }
-                        let text = textarea_perform_action(&action_key, action);
-                        INPUT_TEXT.with(|t| *t.borrow_mut() = text);
-                        msg.clone()
-                    }).into()
-                } else {
-                    editor.into()
-                };
-                if let Some(ref s) = style {
-                    let is = IcedStyle::from_style(s);
-                    wrap_with_margin(el, &is)
-                } else {
-                    el
-                }
+                                msg.clone()
+                            })
+                            .into()
+                    } else {
+                        editor.into()
+                    };
+                    if let Some(ref s) = style {
+                        let is = IcedStyle::from_style(s);
+                        wrap_with_margin(el, &is)
+                    } else {
+                        el
+                    }
                 }
             }
 
-            AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, readonly, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style: _ } => {
-                build_code_editor_generic(
-                    &key, &value, &lang, line_numbers, wrap, vi,
-                    highlight_current_line, readonly, tab_width, font_size, &search,
-                    on_change, on_cursor, on_context_menu,
-                )
-            }
+            AbstractView::CodeEditor {
+                key,
+                value,
+                lang,
+                line_numbers,
+                wrap,
+                vi,
+                highlight_current_line,
+                readonly,
+                tab_width,
+                font_size,
+                on_change,
+                on_cursor,
+                on_context_menu,
+                search,
+                style: _,
+            } => build_code_editor_generic(
+                &key,
+                &value,
+                &lang,
+                line_numbers,
+                wrap,
+                vi,
+                highlight_current_line,
+                readonly,
+                tab_width,
+                font_size,
+                &search,
+                on_change,
+                on_cursor,
+                on_context_menu,
+            ),
 
             // PLAN-009 P1: terminal 组件——状态入注册表(terminal(key,…)),
             // feed 数据面甲(props)经 iced widget 每帧消费;T4 交互事件经
             // 固定消息上抛,载荷读注册表(selected_text/scroll_offset/menu)。
             // PLAN-656 T-06: synthetic managed content——logical extent 自绘
             // widget（host 注册表 draw 期 viewport 观察）。
-            AbstractView::ManagedScrollContent { key, logical_w, logical_h, .. } => {
-                crate::ui::iced::managed_content::ManagedScrollContentWidget::new(key.clone(), logical_w, logical_h)
-                    .into_element()
-            }
+            AbstractView::ManagedScrollContent {
+                key,
+                logical_w,
+                logical_h,
+                ..
+            } => crate::ui::iced::managed_content::ManagedScrollContentWidget::new(
+                key.clone(),
+                logical_w,
+                logical_h,
+            )
+            .into_element(),
 
-            AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, history, scheme, shortcuts, style } => {
+            AbstractView::Terminal {
+                key,
+                cols,
+                rows,
+                lines,
+                scroll_offset,
+                preedit,
+                on_select,
+                on_menu,
+                on_input,
+                cursor_row,
+                cursor_col,
+                history,
+                scheme,
+                shortcuts,
+                style,
+            } => {
                 let core = crate::ui::terminal::terminal(&key, cols, rows);
                 // PLAN-018 D10:scheme prop 随帧落注册表(显式 ≥0 覆盖;
                 // -1 = 跟随主题,绘制期解析)。
                 core.set_scheme(scheme);
                 crate::ui::terminal::terminal_feed(core, &lines);
                 // PLAN-022 T-03 探针(DBG 门控):喂入面数值(key/行数/首行)。
-                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
-                    let first = lines.first().map(|l| l.chars().take(40).collect::<String>())
+                if std::env::var("AUTO_MA_DBG")
+                    .map(|v| v == "1")
+                    .unwrap_or(false)
+                {
+                    let first = lines
+                        .first()
+                        .map(|l| l.chars().take(40).collect::<String>())
                         .unwrap_or_default();
-                    eprintln!("[P22-FEED] key={key} lines={} cols={cols} rows={rows} first={first:?}",
-                        lines.len());
+                    eprintln!(
+                        "[P22-FEED] key={key} lines={} cols={cols} rows={rows} first={first:?}",
+                        lines.len()
+                    );
                 }
                 // PLAN-022:scroll_offset prop 非零才落位(014 光标哨兵同
                 // 款)——0 恒写会把引擎泵回写的 display_offset 每帧清零,
@@ -5372,8 +5985,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     // PLAN-022 T-02 换装:虚拟滚动模式 + 官方 scrollable
                     // 包装(见下);width 仍为 016 网格公式。
                     virtual_scroll: true,
-                    width: iced::Length::Fixed(cols as f32 * crate::ui::terminal::iced::cell_w() + 2.0 * crate::ui::terminal::iced::PAD),
-                    height: iced::Length::Fixed(rows as f32 * crate::ui::terminal::iced::CELL_H + 2.0 * crate::ui::terminal::iced::PAD),
+                    width: iced::Length::Fixed(
+                        cols as f32 * crate::ui::terminal::iced::cell_w()
+                            + 2.0 * crate::ui::terminal::iced::PAD,
+                    ),
+                    height: iced::Length::Fixed(
+                        rows as f32 * crate::ui::terminal::iced::CELL_H
+                            + 2.0 * crate::ui::terminal::iced::PAD,
+                    ),
                 }
                 .into();
                 // 固定网格尺寸 ≠ 客户区:右/底余量(≤一格宽/一行高)若露出
@@ -5416,9 +6035,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // 观察)吞一次,防回灌环路。首帧 bound=-1 → 强制绑定贴底
                 // (终端惯例:打开即实时视图)。
                 let scroll_key = format!("terminal_scroll_{}", key);
-                if let Some(y) =
-                    <crate::ui::terminal::iced::Terminal<M>>::bind_request_y(core)
-                {
+                if let Some(y) = <crate::ui::terminal::iced::Terminal<M>>::bind_request_y(core) {
                     if std::env::var("P024_TRACE").is_ok() {
                         eprintln!(
                             "[P024-TRACE] bind key={key} scroll_to y={y:.1} hist={} off={}",
@@ -5435,9 +6052,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .width(iced::Length::Fill)
                     .height(iced::Length::Fill)
                     .id(scroll_key)
-                    .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
-                        scrollbar_style()
-                    })
+                    .style(
+                        |_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
+                            scrollbar_style()
+                        },
+                    )
                     .into();
                 // PLAN-024(用户实机门实录):视口级底色容器——画布高
                 // (rows×CELL_H+2PAD)与视口高的**非整行残差**(DPI 下可达
@@ -5461,26 +6080,49 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, on_link, placeholder, style: _ } => {
-                build_autodown_editor_generic(&key, &value, is_final, on_change, on_focus, on_link, placeholder)
-            }
+            AbstractView::AutodownEditor {
+                key,
+                value,
+                is_final,
+                on_change,
+                on_focus,
+                on_link,
+                placeholder,
+                style: _,
+            } => build_autodown_editor_generic(
+                &key,
+                &value,
+                is_final,
+                on_change,
+                on_focus,
+                on_link,
+                placeholder,
+            ),
 
-            AbstractView::Checkbox { is_checked, label, on_toggle, style } => {
+            AbstractView::Checkbox {
+                is_checked,
+                label,
+                on_toggle,
+                style,
+            } => {
                 let iced_style = style.as_ref().map(IcedStyle::from_style);
 
-                let cb_size = iced_style.as_ref().and_then(|is| {
-                    match (&is.width, &is.height) {
+                let cb_size = iced_style
+                    .as_ref()
+                    .and_then(|is| match (&is.width, &is.height) {
                         (Some(IcedSize::Fixed(w)), Some(IcedSize::Fixed(h))) => Some(w.min(*h)),
                         (Some(IcedSize::Fixed(w)), None) => Some(*w),
                         (None, Some(IcedSize::Fixed(h))) => Some(*h),
                         _ => None,
-                    }
-                }).unwrap_or(20.0);
+                    })
+                    .unwrap_or(20.0);
 
-                let primary_color = iced_style.as_ref()
+                let primary_color = iced_style
+                    .as_ref()
                     .and_then(|is| is.text_color)
                     .unwrap_or(iced::Color::from_rgb8(59, 130, 246)); // blue-500 or text-{color}
-                let border_radius = iced_style.as_ref()
+                let border_radius = iced_style
+                    .as_ref()
                     .map(|is| is.effective_border_radius())
                     .unwrap_or(4.0.into());
                 let custom_border_color = iced_style.as_ref().and_then(|is| is.border_color);
@@ -5493,14 +6135,17 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         | iced::widget::checkbox::Status::Hovered { is_checked }
                         | iced::widget::checkbox::Status::Disabled { is_checked } => is_checked,
                     };
-                    let is_hovered = matches!(status, iced::widget::checkbox::Status::Hovered { .. });
+                    let is_hovered =
+                        matches!(status, iced::widget::checkbox::Status::Hovered { .. });
 
                     let border_color = if is_checked {
                         primary_color
                     } else if is_hovered {
-                        custom_border_color.unwrap_or(iced::Color::from_rgb8(156, 163, 175)) // gray-400
+                        custom_border_color.unwrap_or(iced::Color::from_rgb8(156, 163, 175))
+                    // gray-400
                     } else {
-                        custom_border_color.unwrap_or(iced::Color::from_rgb8(209, 213, 219)) // gray-300
+                        custom_border_color.unwrap_or(iced::Color::from_rgb8(209, 213, 219))
+                        // gray-300
                     };
 
                     let background = if is_checked {
@@ -5529,7 +6174,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
                 // Plan 309 续篇 II: drop the handler in inspect-capture mode so
                 // the checkbox is non-interactive (wrap_debug mouse_area picks).
-                let handler = if inspect_capture_active() { None } else { on_toggle };
+                let handler = if inspect_capture_active() {
+                    None
+                } else {
+                    on_toggle
+                };
                 let checkbox_with_handler = if let Some(msg) = handler {
                     checkbox_widget.on_toggle(move |_| msg.clone())
                 } else {
@@ -5614,7 +6263,18 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 )
             }
 
-            AbstractView::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll, axes, scrollbar_policy, controller } => {
+            AbstractView::Scrollable {
+                child,
+                width,
+                height,
+                style,
+                auto_scroll,
+                offset,
+                on_scroll,
+                axes,
+                scrollbar_policy,
+                controller,
+            } => {
                 // Plan 049 → 057 续:仅 `auto_scroll` 标记的主列表挂固定 Id
                 // (snap_to_end 目标)。此前所有 Scrollable 共享该 Id,块内 max-h
                 // 滚动区会抢先命中 snap/scroll 操作 → 自动滚动失灵。
@@ -5628,10 +6288,26 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 };
                 // PLAN-656: 泛型路径 controller 直传（测量缓存包装仅在动态
                 // 臂可行——M 具体；此处无用户 on-scroll 时不缓存测量）。
-                build_scrollable(child.into_iced(), width, height, style.as_ref(), scroll_id, offset, on_scroll, axes, scrollbar_policy, controller.as_ref())
+                build_scrollable(
+                    child.into_iced(),
+                    width,
+                    height,
+                    style.as_ref(),
+                    scroll_id,
+                    offset,
+                    on_scroll,
+                    axes,
+                    scrollbar_policy,
+                    controller.as_ref(),
+                )
             }
 
-            AbstractView::Grid { cols, gap, cells, style } => {
+            AbstractView::Grid {
+                cols,
+                gap,
+                cells,
+                style,
+            } => {
                 let els: Vec<(iced::Element<'static, M>, GridCellSpec)> = cells
                     .into_iter()
                     .map(|c| {
@@ -5644,15 +6320,23 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
             // Plan 409 §10 续 5: Overlay = iced Stack 分层。base 在底,content 浮
             // 在上层(按 position 定位),不挤压 base 布局。opaque 吃点击穿透。
-            AbstractView::Overlay { base, content, position } => {
+            AbstractView::Overlay {
+                base,
+                content,
+                position,
+            } => {
                 let base_el = base.into_iced();
                 // PLAN-023 T-02: build_floating_layer 已含 content 级 opaque,
                 // 不再包外层(spacer 空白区穿透到 base,命中=内容矩形)。
                 // PLAN-095 T-03: Overlay content 穿透判定（被动框不拦点选）。
                 let overlay_passthrough = abs_layer_passthrough(&content);
                 let overlay_units = overlay_percent_units(&content);
-                let content_el =
-                    build_floating_layer_full(content.into_iced(), position, !overlay_passthrough, overlay_units);
+                let content_el = build_floating_layer_full(
+                    content.into_iced(),
+                    position,
+                    !overlay_passthrough,
+                    overlay_units,
+                );
                 iced::widget::stack![base_el, content_el].into()
             }
 
@@ -5662,16 +6346,38 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // Plan 499 M2: 带 on_move 时再包 PointerArea——坐标换算(bounds
             // px → coords 逻辑幅面)+ ≤30Hz 限频 + 量化去重;不带 on_move
             // 的存量 mouse-area 映射零改动。
-            AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
+            AbstractView::MouseArea {
+                content,
+                on_enter,
+                on_exit,
+                on_double_click,
+                on_click,
+                on_context_menu,
+                on_release,
+                on_move,
+                logical_extent,
+                style,
+            } => {
                 // PLAN-021 T-05 取证(AUTO_MA_DBG=1 门控):构建面接线状态。
-                if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
-                    let (sw, sh) = style.as_ref().map(|s| {
-                        let is = IcedStyle::from_style(s);
-                        (format!("{:?}", is.width), format!("{:?}", is.height))
-                    }).unwrap_or_else(|| ("None".into(), "None".into()));
-                    eprintln!("[MA_BUILD] press={} release={} dbl={} rclick={} move={} w={sw} h={sh}",
-                        on_click.is_some(), on_release.is_some(), on_double_click.is_some(),
-                        on_context_menu.is_some(), on_move.is_some());
+                if std::env::var("AUTO_MA_DBG")
+                    .map(|v| v == "1")
+                    .unwrap_or(false)
+                {
+                    let (sw, sh) = style
+                        .as_ref()
+                        .map(|s| {
+                            let is = IcedStyle::from_style(s);
+                            (format!("{:?}", is.width), format!("{:?}", is.height))
+                        })
+                        .unwrap_or_else(|| ("None".into(), "None".into()));
+                    eprintln!(
+                        "[MA_BUILD] press={} release={} dbl={} rclick={} move={} w={sw} h={sh}",
+                        on_click.is_some(),
+                        on_release.is_some(),
+                        on_double_click.is_some(),
+                        on_context_menu.is_some(),
+                        on_move.is_some()
+                    );
                 }
                 // PLAN-021 线 B 根修:iced 0.14 mouse_area layout 直通子件,
                 // 事件面 `!cursor.is_over(自身 bounds)` 即早退——尺寸类原挂
@@ -5684,8 +6390,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     Some(s) => {
                         let is = IcedStyle::from_style(s);
                         let mut c = iced::widget::container(content.into_iced());
-                        if let Some(ref ws) = is.width { c = c.width(iced_length(ws)); }
-                        if let Some(ref hs) = is.height { c = c.height(iced_length(hs)); }
+                        if let Some(ref ws) = is.width {
+                            c = c.width(iced_length(ws));
+                        }
+                        if let Some(ref hs) = is.height {
+                            c = c.height(iced_length(hs));
+                        }
                         c.into()
                     }
                     None => content.into_iced(),
@@ -5726,9 +6436,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         if let Some((w, h)) = logical_extent {
                             pa = pa.extent(w, h);
                         }
-                        let f = std::sync::Arc::new(
-                            move |x: f32, y: f32| handler.call(x, y),
-                        );
+                        let f = std::sync::Arc::new(move |x: f32, y: f32| handler.call(x, y));
                         pa.on_move(f).into()
                     } else {
                         inner
@@ -5759,7 +6467,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // 无路径 op)+ PenArea 事件层(pen 三件套,按下门控/限频/出界
             // 收笔)。inspect 捕获态丢事件臂(与其余 handler 同规则)。
             // PLAN-661 T-05：PenArea 增 tap 命中层（onhit + canvas_hit_test）。
-            AbstractView::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, on_hit, style } => {
+            AbstractView::Canvas {
+                scene,
+                logical_extent,
+                clear,
+                on_pen_start,
+                on_pen_move,
+                on_pen_end,
+                on_hit,
+                style,
+            } => {
                 let painter = CanvasPainter {
                     scene: scene.clone(),
                     clear: clear.clone(),
@@ -5771,40 +6488,44 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     .width(iced::Length::Fill)
                     .height(iced::Length::Fill)
                     .into();
-                let wrapped: iced::Element<'static, M> =
-                    if !inspect_capture_active() && (on_pen_start.is_some() || on_pen_move.is_some() || on_pen_end.is_some() || on_hit.is_some()) {
-                        let mut pa = crate::ui::iced::pen_area::PenArea::new(canvas_el);
-                        if let Some((w, h)) = logical_extent {
-                            pa = pa.extent(w, h);
-                        }
-                        if let Some(h) = on_pen_start {
-                            let f = std::sync::Arc::new(move |x: f32, y: f32| h.call(x, y));
-                            pa = pa.on_pen_start(f);
-                        }
-                        if let Some(h) = on_pen_move {
-                            let f = std::sync::Arc::new(move |x: f32, y: f32| h.call(x, y));
-                            pa = pa.on_pen_move(f);
-                        }
-                        if let Some(h) = on_pen_end {
-                            let f = std::sync::Arc::new(move |x: f32, y: f32| h.call(x, y));
-                            pa = pa.on_pen_end(f);
-                        }
-                        // PLAN-661 T-05：tap 命中（R-1）——hit_test 从 scene
-                        // nodes 构建（声明序倒序 topmost），PenArea 容差
-                        // tap 判定后派发 onhit(id)。
-                        if let Some(h) = on_hit {
-                            let nodes = scene.nodes.clone();
-                            let f = std::sync::Arc::new(move |id: String| h.call(id));
-                            pa = pa
-                                .on_hit(f)
-                                .hit_test(std::sync::Arc::new(move |x: f32, y: f32| {
-                                    crate::ui::view::canvas_hit_test(&nodes, x, y)
-                                }));
-                        }
-                        pa.into()
-                    } else {
-                        canvas_el
-                    };
+                let wrapped: iced::Element<'static, M> = if !inspect_capture_active()
+                    && (on_pen_start.is_some()
+                        || on_pen_move.is_some()
+                        || on_pen_end.is_some()
+                        || on_hit.is_some())
+                {
+                    let mut pa = crate::ui::iced::pen_area::PenArea::new(canvas_el);
+                    if let Some((w, h)) = logical_extent {
+                        pa = pa.extent(w, h);
+                    }
+                    if let Some(h) = on_pen_start {
+                        let f = std::sync::Arc::new(move |x: f32, y: f32| h.call(x, y));
+                        pa = pa.on_pen_start(f);
+                    }
+                    if let Some(h) = on_pen_move {
+                        let f = std::sync::Arc::new(move |x: f32, y: f32| h.call(x, y));
+                        pa = pa.on_pen_move(f);
+                    }
+                    if let Some(h) = on_pen_end {
+                        let f = std::sync::Arc::new(move |x: f32, y: f32| h.call(x, y));
+                        pa = pa.on_pen_end(f);
+                    }
+                    // PLAN-661 T-05：tap 命中（R-1）——hit_test 从 scene
+                    // nodes 构建（声明序倒序 topmost），PenArea 容差
+                    // tap 判定后派发 onhit(id)。
+                    if let Some(h) = on_hit {
+                        let nodes = scene.nodes.clone();
+                        let f = std::sync::Arc::new(move |id: String| h.call(id));
+                        pa = pa
+                            .on_hit(f)
+                            .hit_test(std::sync::Arc::new(move |x: f32, y: f32| {
+                                crate::ui::view::canvas_hit_test(&nodes, x, y)
+                            }));
+                    }
+                    pa.into()
+                } else {
+                    canvas_el
+                };
                 build_container(
                     wrapped,
                     0,
@@ -5821,21 +6542,30 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // Plan 422: 锚定弹层 —— wrapper widget(Tooltip 同型),open 时
             // 经 iced overlay 机制置顶;chrome 由 content 自带。inspect 捕获
             // 模式下丢 on_dismiss(与其余 handler 同规则)。
-            AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
+            AbstractView::Popover {
+                anchor,
+                content,
+                placement,
+                open,
+                on_dismiss,
+            } => {
                 use crate::ui::iced::popover::Popover as PopoverWidget;
                 use crate::ui::view::PopoverAnchor;
-                let (anchor_point, anchor_is_empty, anchor_el): (Option<(f32, f32)>, bool, iced::Element<'static, M>) =
-                    match anchor {
-                        PopoverAnchor::Widget(w) => {
-                            let empty = matches!(&*w, AbstractView::Empty);
-                            (None, empty, w.into_iced())
-                        }
-                        // 坐标锚:零尺寸占位(anchor 轨道不影响布局),
-                        // 面板定位由 at_point 决定。
-                        PopoverAnchor::Point { x, y } => {
-                            (Some((x, y)), false, iced::widget::Space::new().into())
-                        }
-                    };
+                let (anchor_point, anchor_is_empty, anchor_el): (
+                    Option<(f32, f32)>,
+                    bool,
+                    iced::Element<'static, M>,
+                ) = match anchor {
+                    PopoverAnchor::Widget(w) => {
+                        let empty = matches!(&*w, AbstractView::Empty);
+                        (None, empty, w.into_iced())
+                    }
+                    // 坐标锚:零尺寸占位(anchor 轨道不影响布局),
+                    // 面板定位由 at_point 决定。
+                    PopoverAnchor::Point { x, y } => {
+                        (Some((x, y)), false, iced::widget::Space::new().into())
+                    }
+                };
                 let mut p = PopoverWidget::new(anchor_el, content.into_iced())
                     .placement(placement)
                     .open(open)
@@ -5846,7 +6576,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 if let Some((x, y)) = anchor_point {
                     p = p.at_point(x, y);
                 }
-                let handler = if inspect_capture_active() { None } else { on_dismiss };
+                let handler = if inspect_capture_active() {
+                    None
+                } else {
+                    on_dismiss
+                };
                 if let Some(msg) = handler {
                     p = p.on_dismiss(msg);
                 }
@@ -5862,7 +6596,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let checkbox_widget = checkbox(is_selected);
 
                 // Plan 309 续篇 II: drop the handler in inspect-capture mode.
-                let handler = if inspect_capture_active() { None } else { on_select };
+                let handler = if inspect_capture_active() {
+                    None
+                } else {
+                    on_select
+                };
                 let checkbox_with_handler = if let Some(msg) = handler {
                     checkbox_widget.on_toggle(move |_| msg.clone())
                 } else {
@@ -5881,9 +6619,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                 }
 
-                row![checkbox_with_handler, label_widget]
-                    .spacing(4)
-                    .into()
+                row![checkbox_with_handler, label_widget].spacing(4).into()
             }
 
             AbstractView::Select {
@@ -5896,16 +6632,22 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
                 // Plan 309 续篇 II: in inspect-capture mode, render as static
                 // text (the None branch) so it doesn't capture the press.
-                let on_select = if inspect_capture_active() { None } else { on_select };
+                let on_select = if inspect_capture_active() {
+                    None
+                } else {
+                    on_select
+                };
                 match on_select {
                     Some(callback) => {
                         let options_clone = options.clone();
-                        let picklist_widget = pick_list(options, selected_value, move |selected_string| {
-                            let index = options_clone.iter()
-                                .position(|s| *s == selected_string)
-                                .unwrap_or(0);
-                            callback.call(index, selected_string.as_str())
-                        });
+                        let picklist_widget =
+                            pick_list(options, selected_value, move |selected_string| {
+                                let index = options_clone
+                                    .iter()
+                                    .position(|s| *s == selected_string)
+                                    .unwrap_or(0);
+                                callback.call(index, selected_string.as_str())
+                            });
                         picklist_widget.into()
                     }
                     None => {
@@ -5916,7 +6658,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::List { items, spacing, style } => {
+            AbstractView::List {
+                items,
+                spacing,
+                style,
+            } => {
                 let eff_spacing = effective_spacing(spacing, style.as_ref(), false);
                 let eff_padding = if let Some(ref s) = style {
                     let iced_style = IcedStyle::from_style(s);
@@ -5996,7 +6742,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let Some(change_handler) = on_change else {
                         unreachable!("guarded above");
                     };
-                    let mut slider_widget = slider(min..=max, value, move |v| change_handler.call(v));
+                    let mut slider_widget =
+                        slider(min..=max, value, move |v| change_handler.call(v));
 
                     if let Some(step_value) = step {
                         slider_widget = slider_widget.step(step_value);
@@ -6006,12 +6753,24 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            AbstractView::ProgressBar { progress, style, on_seek } => {
+            AbstractView::ProgressBar {
+                progress,
+                style,
+                on_seek,
+            } => {
                 use iced::widget::progress_bar;
                 let (is, height, width, radius) = if let Some(ref s) = style {
                     let is = IcedStyle::from_style(s);
-                    let h = is.height.as_ref().map(iced_length).unwrap_or(iced::Length::Fixed(8.0));
-                    let w = is.width.as_ref().map(iced_length).unwrap_or(iced::Length::Fill);
+                    let h = is
+                        .height
+                        .as_ref()
+                        .map(iced_length)
+                        .unwrap_or(iced::Length::Fixed(8.0));
+                    let w = is
+                        .width
+                        .as_ref()
+                        .map(iced_length)
+                        .unwrap_or(iced::Length::Fill);
                     let r = if is.has_border_radius() || is.rounded {
                         is.effective_border_radius()
                     } else {
@@ -6019,15 +6778,26 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     };
                     (Some(is), h, w, r)
                 } else {
-                    (None, iced::Length::Fixed(8.0), iced::Length::Fill, iced::border::Radius::from(9999.0))
+                    (
+                        None,
+                        iced::Length::Fixed(8.0),
+                        iced::Length::Fill,
+                        iced::border::Radius::from(9999.0),
+                    )
                 };
 
-                let (pr_r, pr_g, pr_b) = crate::ui::style::theme::resolve_semantic_rgb(&crate::ui::style::Color::Primary)
-                    .unwrap_or((99, 102, 241));
-                let bar_color = is.as_ref().and_then(|i| i.text_color.or(i.background_color))
+                let (pr_r, pr_g, pr_b) = crate::ui::style::theme::resolve_semantic_rgb(
+                    &crate::ui::style::Color::Primary,
+                )
+                .unwrap_or((99, 102, 241));
+                let bar_color = is
+                    .as_ref()
+                    .and_then(|i| i.text_color.or(i.background_color))
                     .unwrap_or_else(|| iced::Color::from_rgb8(pr_r, pr_g, pr_b));
-                let (bg_r, bg_g, bg_b) = crate::ui::style::theme::resolve_semantic_rgb(&crate::ui::style::Color::Secondary)
-                    .unwrap_or((226, 232, 240));
+                let (bg_r, bg_g, bg_b) = crate::ui::style::theme::resolve_semantic_rgb(
+                    &crate::ui::style::Color::Secondary,
+                )
+                .unwrap_or((226, 232, 240));
                 let bg_color = iced::Color::from_rgb8(bg_r, bg_g, bg_b);
 
                 let pb = progress_bar(0.0..=1.0, progress)
@@ -6047,7 +6817,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // 悬停不 scrub）。没有 `onseek` 时是纯展示条，零行为差异。
                 let seekable: iced::Element<'_, M> = if let Some(handler) = on_seek.clone() {
                     let f = std::sync::Arc::new(move |frac: f32| handler.call(frac, 0.0));
-                    crate::ui::iced::seek_area::SeekArea::new(cont).on_seek(f).into()
+                    crate::ui::iced::seek_area::SeekArea::new(cont)
+                        .on_seek(f)
+                        .into()
                 } else {
                     cont.into()
                 };
@@ -6059,7 +6831,6 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             }
 
             // Plan 010: Unified Navigation Components
-
             AbstractView::Accordion {
                 items,
                 allow_multiple: _,
@@ -6079,21 +6850,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
 
                     let header_button = if let Some(callback) = &on_toggle {
                         let callback_clone = callback.clone();
-                        button(text(header_text))
-                            .on_press(callback_clone.call(idx, !item.expanded))
+                        button(text(header_text)).on_press(callback_clone.call(idx, !item.expanded))
                     } else {
                         button(text(header_text))
                     };
 
-                    let children_view: iced::Element<M> = if item.expanded && !item.children.is_empty() {
-                        let mut children_col = column([]);
-                        for child in item.children {
-                            children_col = children_col.push(child.into_iced());
-                        }
-                        children_col.into()
-                    } else {
-                        text("").into()
-                    };
+                    let children_view: iced::Element<M> =
+                        if item.expanded && !item.children.is_empty() {
+                            let mut children_col = column([]);
+                            for child in item.children {
+                                children_col = children_col.push(child.into_iced());
+                            }
+                            children_col.into()
+                        } else {
+                            text("").into()
+                        };
 
                     let section = container(column![header_button, children_view].spacing(4));
                     accordion_widget = accordion_widget.push(section);
@@ -6191,8 +6962,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         // ③ 内容面板自带边框（左/右/下，顶部开口）→ 边框的
                         //    连接可见。
                         let bg = token_rgb(crate::design_tokens::registry::TokenName::Background);
-                        let strip_bg =
-                            token_rgb(crate::design_tokens::registry::TokenName::Muted);
+                        let strip_bg = token_rgb(crate::design_tokens::registry::TokenName::Muted);
                         let cell_bg =
                             token_rgb(crate::design_tokens::registry::TokenName::Secondary);
                         let active_fg =
@@ -6213,8 +6983,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         let mut strip = row([]);
                         for (idx, label) in labels.iter().enumerate() {
                             let is_active = idx == selected;
-                            let label_color =
-                                if is_active { active_fg } else { inactive_fg };
+                            let label_color = if is_active { active_fg } else { inactive_fg };
                             let cell_fill = if is_active { bg } else { cell_bg };
                             let radius = if is_active {
                                 top_radius.unwrap_or_default()
@@ -6224,9 +6993,19 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             // 激活 cell 底部开口：padding-bottom 0（其余三边
                             // 1px 内衬露出边框色）。
                             let frame_pad = if is_active {
-                                iced::Padding { top: 1.0, right: 1.0, bottom: 0.0, left: 1.0 }
+                                iced::Padding {
+                                    top: 1.0,
+                                    right: 1.0,
+                                    bottom: 0.0,
+                                    left: 1.0,
+                                }
                             } else {
-                                iced::Padding { top: 1.0, right: 1.0, bottom: 1.0, left: 1.0 }
+                                iced::Padding {
+                                    top: 1.0,
+                                    right: 1.0,
+                                    bottom: 1.0,
+                                    left: 1.0,
+                                }
                             };
 
                             // cell 本体：外层 frame（bg=边框色，padding 内衬）
@@ -6264,8 +7043,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             cell_hit = cell_hit.style(move |_theme, _status| {
                                 iced::widget::button::Style {
                                     background: None,
-                                    text_color: label_color
-                                        .unwrap_or(iced::Color::WHITE),
+                                    text_color: label_color.unwrap_or(iced::Color::WHITE),
                                     border: iced::Border {
                                         radius,
                                         ..iced::Border::default()
@@ -6277,12 +7055,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         }
 
                         let mut tabs_widget = column([]);
-                        tabs_widget = tabs_widget.push(container(strip).height(36.0).style(
-                            move |_| container::Style {
-                                background: strip_bg.map(iced::Background::Color),
-                                ..container::Style::default()
-                            },
-                        ));
+                        tabs_widget =
+                            tabs_widget.push(container(strip).height(36.0).style(move |_| {
+                                container::Style {
+                                    background: strip_bg.map(iced::Background::Color),
+                                    ..container::Style::default()
+                                }
+                            }));
 
                         if let Some(content) = contents.get(selected) {
                             // 面板自带边框：外层 bg=边框色 + padding
@@ -6299,7 +7078,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                         }),
                                 )
                                 .width(iced::Length::Fill)
-                                .padding(iced::Padding { top: 0.0, right: 1.0, bottom: 1.0, left: 1.0 })
+                                .padding(iced::Padding {
+                                    top: 0.0,
+                                    right: 1.0,
+                                    bottom: 1.0,
+                                    left: 1.0,
+                                })
                                 .style(move |_| container::Style {
                                     background: Some(iced::Background::Color(frame_rgb)),
                                     ..container::Style::default()
@@ -6358,10 +7142,18 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // 整窗 screenshot 服务全部请求）+ 本帧 fallback lucide 图标
             // （复用 Image 臂路径，含 native wid "N<slot>" parse 失败
             // 天然走 fallback——待澄清②）。
-            AbstractView::WindowThumbnail { wid, fallback_icon, style } => {
+            AbstractView::WindowThumbnail {
+                wid,
+                fallback_icon,
+                style,
+            } => {
                 let is = style.as_ref().map(|s| IcedStyle::from_style(s));
-                let eff_w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
-                let eff_h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
+                let eff_w = is
+                    .as_ref()
+                    .and_then(|is| is.width.as_ref().map(iced_length));
+                let eff_h = is
+                    .as_ref()
+                    .and_then(|is| is.height.as_ref().map(iced_length));
                 let wid_opt = wid.parse::<u64>().ok().map(crate::ui::session::Wid);
                 let snap = wid_opt.and_then(crate::ui::iced::snapshot::snapshot_window_stale);
                 if let Some((snap, fresh)) = snap {
@@ -6371,8 +7163,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             crate::ui::iced::snapshot::request_capture(w);
                         }
                     }
-                    let handle =
-                        iced::widget::image::Handle::from_rgba(snap.w, snap.h, snap.rgba);
+                    let handle = iced::widget::image::Handle::from_rgba(snap.w, snap.h, snap.rgba);
                     let mut img = iced::widget::image(handle)
                         .filter_method(iced::widget::image::FilterMethod::Nearest);
                     if let Some(w) = eff_w {
@@ -6383,10 +7174,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     // 缩略 chrome：消费面 style 类（border/rounded/bg）落在
                     // 包裹 container 上（与 Image 臂 container 约束同型）。
-                    let border_radius =
-                        is.as_ref().and_then(|is| is.border_radius).unwrap_or(0.0);
-                    let border_width =
-                        is.as_ref().and_then(|is| is.border_width).unwrap_or(0.0);
+                    let border_radius = is.as_ref().and_then(|is| is.border_radius).unwrap_or(0.0);
+                    let border_width = is.as_ref().and_then(|is| is.border_width).unwrap_or(0.0);
                     let border_color = is
                         .as_ref()
                         .and_then(|is| is.border_color)
@@ -6442,22 +7231,31 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
             // tile 定位沿 title_menu 的 padding-left/top 形态（Fill 容器
             // + 内层 Fixed 内容）。盒尺寸取 style Fixed 宽高（缺省 176×64
             // ——shell 卡片消费形态），数据缺席 = 纯壁纸底。
-            AbstractView::WorkspacePreview { ws, fallback_icon, style } => {
+            AbstractView::WorkspacePreview {
+                ws,
+                fallback_icon,
+                style,
+            } => {
                 use crate::ui::iced::workspace_preview as wp;
                 let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                 let box_w = is
                     .as_ref()
                     .and_then(|is| is.width.clone())
-                    .and_then(|w| match w { IcedSize::Fixed(f) => Some(f), _ => None })
+                    .and_then(|w| match w {
+                        IcedSize::Fixed(f) => Some(f),
+                        _ => None,
+                    })
                     .unwrap_or(176.0);
                 let box_h = is
                     .as_ref()
                     .and_then(|is| is.height.clone())
-                    .and_then(|h| match h { IcedSize::Fixed(f) => Some(f), _ => None })
+                    .and_then(|h| match h {
+                        IcedSize::Fixed(f) => Some(f),
+                        _ => None,
+                    })
                     .unwrap_or(64.0);
                 let data = wp::current();
-                let border_radius =
-                    is.as_ref().and_then(|is| is.border_radius).unwrap_or(0.0);
+                let border_radius = is.as_ref().and_then(|is| is.border_radius).unwrap_or(0.0);
                 let mut layers: Vec<iced::Element<'static, M>> = Vec::new();
                 // ① 壁纸底层（2026-09-22 升级：非 `#` spec——图片路径/
                 // builtin:——直绘真壁纸（desktop_wallpaper_element 同源
@@ -6482,11 +7280,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
                         })
                         .unwrap_or(iced::Color::from_rgb8(0x33, 0x33, 0x44));
-                    let bg_style =
-                        move |_t: &iced::Theme| iced::widget::container::Style {
-                            background: Some(iced::Background::Color(bg)),
-                            ..Default::default()
-                        };
+                    let bg_style = move |_t: &iced::Theme| iced::widget::container::Style {
+                        background: Some(iced::Background::Color(bg)),
+                        ..Default::default()
+                    };
                     layers.push(
                         iced::widget::container(iced::widget::Space::new())
                             .width(iced::Length::Fill)
@@ -6503,16 +7300,14 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     };
                     if let Some(tiles) = d.workspaces.get(ws.as_str()) {
                         for t in tiles {
-                            let (tx, ty, tw, th) =
-                                wp::tile_rect(t, d.usable, box_w, box_h);
+                            let (tx, ty, tw, th) = wp::tile_rect(t, d.usable, box_w, box_h);
                             if tw <= 0.5 || th <= 0.5 {
                                 continue;
                             }
                             let wid_opt = Some(t.wid).map(crate::ui::session::Wid);
-                            let snap = wid_opt
-                                .and_then(crate::ui::iced::snapshot::snapshot_window_stale);
-                            let inner: iced::Element<'static, M> = if let Some((snap, fresh)) =
-                                snap
+                            let snap =
+                                wid_opt.and_then(crate::ui::iced::snapshot::snapshot_window_stale);
+                            let inner: iced::Element<'static, M> = if let Some((snap, fresh)) = snap
                             {
                                 if !fresh {
                                     if let Some(w) = wid_opt {
@@ -6537,10 +7332,9 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
                                 .unwrap_or(iced::Color::from_rgb8(0x44, 0x44, 0x55));
                                 let icon_src = format!("lucide:{fallback_icon}");
-                                let icon_style = crate::ui::style::Style::parse(
-                                    "w-4 h-4 text-muted-foreground",
-                                )
-                                .ok();
+                                let icon_style =
+                                    crate::ui::style::Style::parse("w-4 h-4 text-muted-foreground")
+                                        .ok();
                                 let icon_el = AbstractView::<M>::Image {
                                     src: icon_src,
                                     style: icon_style,
@@ -6582,10 +7376,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let mut cont = iced::widget::container(root)
                     .width(iced::Length::Shrink)
                     .height(iced::Length::Shrink);
-                if let Some(w) = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length)) {
+                if let Some(w) = is
+                    .as_ref()
+                    .and_then(|is| is.width.as_ref().map(iced_length))
+                {
                     cont = cont.width(w);
                 }
-                if let Some(h) = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length)) {
+                if let Some(h) = is
+                    .as_ref()
+                    .and_then(|is| is.height.as_ref().map(iced_length))
+                {
                     cont = cont.height(h);
                 }
                 cont.style(move |_t| iced::widget::container::Style {
@@ -6616,9 +7416,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let raster_icon: Option<iced::widget::image::Handle> = {
                     let dark = crate::ui::style::theme::dark_mode();
                     let iconfile = display_px
-                        .and_then(|px| {
-                            crate::ui::iced::icon_file::load_sized(&src, dark, px)
-                        })
+                        .and_then(|px| crate::ui::iced::icon_file::load_sized(&src, dark, px))
                         .or_else(|| crate::ui::iced::icon_file::load(&src, dark));
                     if let Some(handle) = iconfile {
                         Some(handle)
@@ -6645,14 +7443,19 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 if src.starts_with("lucide:") {
                     let icon_name = &src[7..];
                     let is = style.as_ref().map(|s| IcedStyle::from_style(s));
-                    let w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
-                    let h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
+                    let w = is
+                        .as_ref()
+                        .and_then(|is| is.width.as_ref().map(iced_length));
+                    let h = is
+                        .as_ref()
+                        .and_then(|is| is.height.as_ref().map(iced_length));
                     // Plan 518 G4②:大尺寸细线——固定宽或高 ≥48px 的独立图标
                     // 用 stroke-width 1.5（stella 线性观感）;PUA 按钮内嵌路径
                     // 尺寸随字号（<48px）保持默认 2。
-                    let large = [&w, &h].into_iter().flatten().any(|len| {
-                        matches!(len, iced::Length::Fixed(v) if *v >= 48.0)
-                    });
+                    let large = [&w, &h]
+                        .into_iter()
+                        .flatten()
+                        .any(|len| matches!(len, iced::Length::Fixed(v) if *v >= 48.0));
                     let sw = if large { 1.5 } else { 2.0 };
                     // PLAN-621: icon state=on 的激活加重——builder 已按
                     // 「基档 + 0.5」算好绝对值放进 StrokeWidth 类，此处只读
@@ -6690,18 +7493,16 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 _ => None,
                             })
                         });
-                        let handle =
-                            get_or_create_svg_handle(&src, svg_str.as_bytes().to_vec());
-                        let mut svg_widget =
-                            iced::widget::svg(handle).style(move |_, status| {
-                                let color = match status {
-                                    iced::widget::svg::Status::Hovered => {
-                                        hover_color.unwrap_or(base_color)
-                                    }
-                                    _ => base_color,
-                                };
-                                iced::widget::svg::Style { color: Some(color) }
-                            });
+                        let handle = get_or_create_svg_handle(&src, svg_str.as_bytes().to_vec());
+                        let mut svg_widget = iced::widget::svg(handle).style(move |_, status| {
+                            let color = match status {
+                                iced::widget::svg::Status::Hovered => {
+                                    hover_color.unwrap_or(base_color)
+                                }
+                                _ => base_color,
+                            };
+                            iced::widget::svg::Style { color: Some(color) }
+                        });
                         if base_color.a < 1.0 {
                             svg_widget = svg_widget.opacity(base_color.a);
                         }
@@ -6727,8 +7528,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // 像素 RGB);多彩文档保持原色(tint 会毁掉配色)。
                 if let Some(doc) = src.strip_prefix("svgdoc:") {
                     let is = style.as_ref().map(|s| IcedStyle::from_style(s));
-                    let w = is.as_ref().and_then(|is| is.width.as_ref().map(iced_length));
-                    let h = is.as_ref().and_then(|is| is.height.as_ref().map(iced_length));
+                    let w = is
+                        .as_ref()
+                        .and_then(|is| is.width.as_ref().map(iced_length));
+                    let h = is
+                        .as_ref()
+                        .and_then(|is| is.height.as_ref().map(iced_length));
                     // 混合色文档(静态色 + currentColor,如 donut 的灰底环 +
                     // accent 主弧)不能用整体 tint:tint 栅格化后全像素替换,
                     // 静态色环也被涂成主色(概要页 Memory donut 全黑的根因)。
@@ -6791,15 +7596,28 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 let bytes = load_image_bytes(&src);
                 let is = style.as_ref().map(|s| IcedStyle::from_style(s));
                 let eff_w = is.as_ref().and_then(|is| is.width.map(|w| iced_length(&w)));
-                let eff_h = is.as_ref().and_then(|is| is.height.map(|h| iced_length(&h)));
-                let px_w = is.as_ref().and_then(|is| is.width).and_then(|w| match w { IcedSize::Fixed(f) => Some(f), _ => None });
-                let px_h = is.as_ref().and_then(|is| is.height).and_then(|h| match h { IcedSize::Fixed(f) => Some(f), _ => None });
+                let eff_h = is
+                    .as_ref()
+                    .and_then(|is| is.height.map(|h| iced_length(&h)));
+                let px_w = is.as_ref().and_then(|is| is.width).and_then(|w| match w {
+                    IcedSize::Fixed(f) => Some(f),
+                    _ => None,
+                });
+                let px_h = is.as_ref().and_then(|is| is.height).and_then(|h| match h {
+                    IcedSize::Fixed(f) => Some(f),
+                    _ => None,
+                });
                 let border_radius = is.as_ref().and_then(|is| is.border_radius).unwrap_or(0.0);
                 let border_width = is.as_ref().and_then(|is| is.border_width).unwrap_or(0.0);
-                let border_color = is.as_ref().and_then(|is| is.border_color)
+                let border_color = is
+                    .as_ref()
+                    .and_then(|is| is.border_color)
                     .unwrap_or(iced::Color::TRANSPARENT);
                 let shadow = is.as_ref().map_or(false, |is| is.shadow);
-                let bg = is.as_ref().and_then(|is| is.background_color).map(iced::Background::Color);
+                let bg = is
+                    .as_ref()
+                    .and_then(|is| is.background_color)
+                    .map(iced::Background::Color);
 
                 let eff_img_w = match (px_w, border_width) {
                     (Some(w), bw) if bw > 0.0 => Some((w - 2.0 * bw).max(0.0)),
@@ -6818,24 +7636,44 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 };
 
                 if let Some(data) = bytes {
-                    let data = if border_radius > 100.0 && (src.ends_with(".svg") || src.contains("/svg")) {
+                    let data = if border_radius > 100.0
+                        && (src.ends_with(".svg") || src.contains("/svg"))
+                    {
                         String::from_utf8(data)
-                            .map(|mut s| { s = s.replace("rx=\"0\" ry=\"0\"", "rx=\"140\" ry=\"140\""); s.into_bytes() })
+                            .map(|mut s| {
+                                s = s.replace("rx=\"0\" ry=\"0\"", "rx=\"140\" ry=\"140\"");
+                                s.into_bytes()
+                            })
                             .unwrap_or_else(|e| e.into_bytes())
                     } else {
                         data
                     };
                     // Use cached handle to avoid flickering — same URL reuses the same Handle
-                    let inner: iced::Element<'static, M> = if src.ends_with(".svg") || src.contains("/svg") || src.contains("image/svg+xml") {
+                    let inner: iced::Element<'static, M> = if src.ends_with(".svg")
+                        || src.contains("/svg")
+                        || src.contains("image/svg+xml")
+                    {
                         let handle = get_or_create_svg_handle(&src, data);
                         let mut svg_widget = svg(handle);
-                        if let Some(w) = eff_img_w { svg_widget = svg_widget.width(iced::Length::Fixed(w)); }
-                        else if let Some(w) = eff_w { svg_widget = svg_widget.width(w); }
-                        if let Some(h) = eff_img_h { svg_widget = svg_widget.height(iced::Length::Fixed(h)); }
-                        else if let Some(h) = eff_h { svg_widget = svg_widget.height(h); }
+                        if let Some(w) = eff_img_w {
+                            svg_widget = svg_widget.width(iced::Length::Fixed(w));
+                        } else if let Some(w) = eff_w {
+                            svg_widget = svg_widget.width(w);
+                        }
+                        if let Some(h) = eff_img_h {
+                            svg_widget = svg_widget.height(iced::Length::Fixed(h));
+                        } else if let Some(h) = eff_h {
+                            svg_widget = svg_widget.height(h);
+                        }
                         svg_widget.into()
                     } else {
-                        let handle = get_or_create_image_handle(&src, data, img_border_radius, eff_img_w, eff_img_h);
+                        let handle = get_or_create_image_handle(
+                            &src,
+                            data,
+                            img_border_radius,
+                            eff_img_w,
+                            eff_img_h,
+                        );
                         let mut img_widget = iced::widget::image(handle);
                         // Plan 527 T4: object-fit → ContentFit(缺失时 iced 默认 Contain)
                         if let Some(fit) = is.as_ref().and_then(|is| is.object_fit) {
@@ -6844,13 +7682,21 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 crate::ui::style::ObjectFit::Cover => iced::ContentFit::Cover,
                                 crate::ui::style::ObjectFit::Fill => iced::ContentFit::Fill,
                                 crate::ui::style::ObjectFit::None => iced::ContentFit::None,
-                                crate::ui::style::ObjectFit::ScaleDown => iced::ContentFit::ScaleDown,
+                                crate::ui::style::ObjectFit::ScaleDown => {
+                                    iced::ContentFit::ScaleDown
+                                }
                             });
                         }
-                        if let Some(w) = eff_img_w { img_widget = img_widget.width(iced::Length::Fixed(w)); }
-                        else if let Some(w) = eff_w { img_widget = img_widget.width(w); }
-                        if let Some(h) = eff_img_h { img_widget = img_widget.height(iced::Length::Fixed(h)); }
-                        else if let Some(h) = eff_h { img_widget = img_widget.height(h); }
+                        if let Some(w) = eff_img_w {
+                            img_widget = img_widget.width(iced::Length::Fixed(w));
+                        } else if let Some(w) = eff_w {
+                            img_widget = img_widget.width(w);
+                        }
+                        if let Some(h) = eff_img_h {
+                            img_widget = img_widget.height(iced::Length::Fixed(h));
+                        } else if let Some(h) = eff_h {
+                            img_widget = img_widget.height(h);
+                        }
                         img_widget.into()
                     };
 
@@ -6858,8 +7704,12 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         .center_x(eff_w.unwrap_or(iced::Length::Shrink))
                         .center_y(eff_h.unwrap_or(iced::Length::Shrink))
                         .clip(true);
-                    if let Some(w) = eff_w { cont = cont.width(w); }
-                    if let Some(h) = eff_h { cont = cont.height(h); }
+                    if let Some(w) = eff_w {
+                        cont = cont.width(w);
+                    }
+                    if let Some(h) = eff_h {
+                        cont = cont.height(h);
+                    }
                     if border_radius > 0.0 || border_width > 0.0 || shadow || bg.is_some() {
                         let br = if border_radius >= 9999.0 {
                             match (px_w, px_h) {
@@ -6877,7 +7727,11 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             background: bg,
                             border: iced::Border::default().rounded(br).width(bw).color(bc),
                             shadow: if shadow {
-                                iced::Shadow { offset: iced::Vector::new(0.0, 2.0), blur_radius: 8.0, color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.15) }
+                                iced::Shadow {
+                                    offset: iced::Vector::new(0.0, 2.0),
+                                    blur_radius: 8.0,
+                                    color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.15),
+                                }
                             } else {
                                 iced::Shadow::default()
                             },
@@ -6892,13 +7746,19 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     let mut cont = container(child)
                         .center_x(iced::Length::Fill)
                         .center_y(iced::Length::Fill);
-                    let placeholder_bg = is.as_ref().and_then(|is| is.background_color)
+                    let placeholder_bg = is
+                        .as_ref()
+                        .and_then(|is| is.background_color)
                         .unwrap_or_else(|| iced::Color::from_rgb(0.24, 0.47, 0.85));
                     let br = border_radius.max(9999.0);
                     let bw = border_width;
                     let bc = border_color;
-                    if let Some(w) = eff_w { cont = cont.width(w); }
-                    if let Some(h) = eff_h { cont = cont.height(h); }
+                    if let Some(w) = eff_w {
+                        cont = cont.width(w);
+                    }
+                    if let Some(h) = eff_h {
+                        cont = cont.height(h);
+                    }
                     cont = cont.style(move |_| container::Style {
                         background: Some(iced::Background::Color(placeholder_bg)),
                         border: iced::Border::default().rounded(br).width(bw).color(bc),
@@ -6930,26 +7790,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 // Callback messages are retained in the View contract and
                 // consumed by the input adapter (Task 25); this paint pass
                 // must not synthesize duplicate notifications.
-                let _ = (
-                    on_error,
-                    on_loaded,
-                    on_wheel,
-                    on_pan,
-                    on_double_click,
-                );
+                let _ = (on_error, on_loaded, on_wheel, on_pan, on_double_click);
                 render_image_surface(
-                    src,
-                    alt,
-                    width,
-                    height,
-                    quality,
-                    fit,
-                    zoom,
-                    offset_x,
-                    offset_y,
-                    rotation,
-                    filter,
-                    style,
+                    src, alt, width, height, quality, fit, zoom, offset_x, offset_y, rotation,
+                    filter, style,
                 )
             }
 
@@ -7002,7 +7846,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     on_media_error,
                     style,
                 )
-            },
+            }
         }
     }
 }
@@ -7049,7 +7893,11 @@ fn render_video<M: Clone + Debug + 'static>(
                 volume,
                 muted,
                 rate,
-                src: if src.is_empty() { None } else { Some(src.clone()) },
+                src: if src.is_empty() {
+                    None
+                } else {
+                    Some(src.clone())
+                },
                 epoch: crate::ui::mpv::contract::next_down_epoch(),
             },
             width: 0,
@@ -7093,15 +7941,27 @@ fn render_video<M: Clone + Debug + 'static>(
     #[cfg(not(feature = "mpv-widget"))]
     {
         let _ = (
-            src, paused, position, volume, muted, rate, style,
-            on_time_update, on_loaded_metadata, on_play_state, on_ended, on_media_error,
+            src,
+            paused,
+            position,
+            volume,
+            muted,
+            rate,
+            style,
+            on_time_update,
+            on_loaded_metadata,
+            on_play_state,
+            on_ended,
+            on_media_error,
         );
         // 诚实占位：说明本后端没接上原生播放，而不是留一块黑。
         let text = if label.is_empty() {
             "视频：本后端未启用原生播放（构建时未开 `mpv-widget`）".to_string()
         } else {
-            format!("{label}
-本后端未启用原生播放（构建时未开 `mpv-widget`）")
+            format!(
+                "{label}
+本后端未启用原生播放（构建时未开 `mpv-widget`）"
+            )
         };
         iced::widget::container(iced::widget::text(text).size(13))
             .width(Length::Fill)
@@ -7109,7 +7969,9 @@ fn render_video<M: Clone + Debug + 'static>(
             .center_x(Length::Fill)
             .center_y(Length::Fill)
             .style(|_theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgb(0.06, 0.06, 0.08))),
+                background: Some(iced::Background::Color(iced::Color::from_rgb(
+                    0.06, 0.06, 0.08,
+                ))),
                 text_color: Some(iced::Color::from_rgb(0.6, 0.6, 0.65)),
                 ..Default::default()
             })
@@ -7132,7 +7994,8 @@ pub(crate) fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
     use std::collections::HashMap;
     use std::sync::Mutex;
 
-    static CACHE: std::sync::OnceLock<Mutex<HashMap<String, Option<Vec<u8>>>>> = std::sync::OnceLock::new();
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<String, Option<Vec<u8>>>>> =
+        std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
     // Check cache first
@@ -7182,9 +8045,13 @@ pub(crate) fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
             let payload = &rest[comma_pos + 1..];
             if meta.contains(";base64") {
                 use base64::Engine;
-                base64::engine::general_purpose::STANDARD.decode(payload.trim()).ok()
+                base64::engine::general_purpose::STANDARD
+                    .decode(payload.trim())
+                    .ok()
             } else {
-                urlencoding::decode(payload).map(|s| s.into_owned().into_bytes()).ok()
+                urlencoding::decode(payload)
+                    .map(|s| s.into_owned().into_bytes())
+                    .ok()
             }
         } else {
             None
@@ -7201,17 +8068,29 @@ pub(crate) fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
                 .build()
                 .unwrap_or_default()
         });
-        client.get(url).send().ok()?.bytes().ok().map(|b| b.to_vec())
+        client
+            .get(url)
+            .send()
+            .ok()?
+            .bytes()
+            .ok()
+            .map(|b| b.to_vec())
     } else {
         // Try loading from local file path
         std::fs::read(url).ok()
     };
 
     if result.is_some() {
-        cache.lock().unwrap().insert(url.to_string(), result.clone());
+        cache
+            .lock()
+            .unwrap()
+            .insert(url.to_string(), result.clone());
         negative.lock().unwrap().remove(url);
     } else if is_local_file {
-        negative.lock().unwrap().insert(url.to_string(), Instant::now());
+        negative
+            .lock()
+            .unwrap()
+            .insert(url.to_string(), Instant::now());
     } else {
         cache.lock().unwrap().insert(url.to_string(), None);
     }
@@ -7230,7 +8109,8 @@ fn get_or_create_image_handle(
     use std::collections::HashMap;
     use std::sync::Mutex;
 
-    static CACHE: std::sync::OnceLock<Mutex<HashMap<String, iced::widget::image::Handle>>> = std::sync::OnceLock::new();
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<String, iced::widget::image::Handle>>> =
+        std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
     let cache_key = format!("{url}#r={border_radius}_{layout_w:?}_{layout_h:?}");
@@ -7247,8 +8127,10 @@ fn get_or_create_image_handle(
                 let r_px = if border_radius >= 9999.0 {
                     (w.min(h) as f32) / 2.0
                 } else {
-                    let scale_x = layout_w.map_or(1.0, |lw| if lw > 0.0 { w as f32 / lw } else { 1.0 });
-                    let scale_y = layout_h.map_or(1.0, |lh| if lh > 0.0 { h as f32 / lh } else { 1.0 });
+                    let scale_x =
+                        layout_w.map_or(1.0, |lw| if lw > 0.0 { w as f32 / lw } else { 1.0 });
+                    let scale_y =
+                        layout_h.map_or(1.0, |lh| if lh > 0.0 { h as f32 / lh } else { 1.0 });
                     let scale = (scale_x + scale_y) / 2.0;
                     (border_radius * scale).min((w.min(h) as f32) / 2.0)
                 };
@@ -7264,7 +8146,9 @@ fn get_or_create_image_handle(
                         let py_val = ((y as f32 + 0.5) - cy).abs();
                         let qx = px_val - (half_w - r_px);
                         let qy = py_val - (half_h - r_px);
-                        let dist = (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt() + qx.max(qy).min(0.0) - r_px;
+                        let dist = (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt()
+                            + qx.max(qy).min(0.0)
+                            - r_px;
                         if dist > 0.5 {
                             rgba.get_pixel_mut(x, y).0[3] = 0;
                         } else if dist > -0.5 {
@@ -7300,7 +8184,9 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
     match view {
         AbstractView::Text { style, .. } => {
             let has_explicit_color = style.as_ref().map_or(false, |s| {
-                s.classes.iter().any(|c| matches!(c, StyleClass::TextColor(_)))
+                s.classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::TextColor(_)))
             });
             if !has_explicit_color {
                 let mut inherited = style.take().unwrap_or_default();
@@ -7318,7 +8204,9 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
         // OnBackground 回退,亮色主题下白钮白标不可见。
         AbstractView::Image { style, .. } => {
             let has_explicit_color = style.as_ref().map_or(false, |s| {
-                s.classes.iter().any(|c| matches!(c, StyleClass::TextColor(_)))
+                s.classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::TextColor(_)))
             });
             if !has_explicit_color {
                 let mut inherited = style.take().unwrap_or_default();
@@ -7328,7 +8216,9 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
         }
         AbstractView::ImageSurface { style, .. } => {
             let has_explicit_color = style.as_ref().map_or(false, |s| {
-                s.classes.iter().any(|c| matches!(c, StyleClass::TextColor(_)))
+                s.classes
+                    .iter()
+                    .any(|c| matches!(c, StyleClass::TextColor(_)))
             });
             if !has_explicit_color {
                 let mut inherited = style.take().unwrap_or_default();
@@ -7336,7 +8226,11 @@ fn inherit_text_color<M: Clone + Debug>(view: &mut AbstractView<M>, color: Color
                 *style = Some(inherited);
             }
         }
-        AbstractView::Row { children, .. } | AbstractView::Column { children, .. } | AbstractView::List { items: children, .. } => {
+        AbstractView::Row { children, .. }
+        | AbstractView::Column { children, .. }
+        | AbstractView::List {
+            items: children, ..
+        } => {
             for child in children {
                 inherit_text_color(child, color);
             }
@@ -7465,7 +8359,8 @@ fn get_or_create_svg_handle(url: &str, data: Vec<u8>) -> iced::widget::svg::Hand
     use std::collections::HashMap;
     use std::sync::Mutex;
 
-    static CACHE: std::sync::OnceLock<Mutex<HashMap<String, iced::widget::svg::Handle>>> = std::sync::OnceLock::new();
+    static CACHE: std::sync::OnceLock<Mutex<HashMap<String, iced::widget::svg::Handle>>> =
+        std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
     let mut lock = cache.lock().unwrap();
@@ -7482,13 +8377,16 @@ fn extract_initials(src: &str) -> String {
     if let Some(query) = src.split('?').nth(1) {
         for param in query.split('&') {
             if let Some(value) = param.strip_prefix("seed=") {
-                let initials: String = value.split(|c: char| !c.is_alphanumeric())
+                let initials: String = value
+                    .split(|c: char| !c.is_alphanumeric())
                     .filter(|s| !s.is_empty())
                     .filter_map(|p| p.chars().next())
                     .map(|c| c.to_ascii_uppercase())
                     .take(2)
                     .collect();
-                if !initials.is_empty() { return initials; }
+                if !initials.is_empty() {
+                    return initials;
+                }
             }
         }
     }
@@ -7505,23 +8403,31 @@ pub(crate) fn shadcn_theme(dark: bool) -> iced::Theme {
     let (background, text) = if dark {
         // --background: hsl(222.2 47.4% 7%) / --foreground: hsl(210 40% 98%)
         // (Plan 518 stella 重校:dark #141a29 精修蓝黑)
-        (iced::Color::from_rgb8(20, 26, 41), iced::Color::from_rgb8(248, 250, 252))
+        (
+            iced::Color::from_rgb8(20, 26, 41),
+            iced::Color::from_rgb8(248, 250, 252),
+        )
     } else {
         // light 暖纸系 #f5f1e8 / 墨色 #2a2723(Plan 518 stella 对齐)
-        (iced::Color::from_rgb8(245, 241, 232), iced::Color::from_rgb8(42, 39, 35))
+        (
+            iced::Color::from_rgb8(245, 241, 232),
+            iced::Color::from_rgb8(42, 39, 35),
+        )
     };
     // Plan 458: primary follows the accent preset thread-local (default
     // indigo) instead of hardcoded indigo-500, so `auto run --accent` /
     // pac.at `accent:` drive window-level iced defaults too. Unknown names
     // keep the legacy indigo-500 fallback.
-    let primary = crate::ui::style::theme::accent_primary_rgb(
-        &crate::ui::style::theme::accent_name(),
-        dark,
-    )
-    .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
-    .unwrap_or_else(|| iced::Color::from_rgb8(99, 102, 241));
+    let primary =
+        crate::ui::style::theme::accent_primary_rgb(&crate::ui::style::theme::accent_name(), dark)
+            .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
+            .unwrap_or_else(|| iced::Color::from_rgb8(99, 102, 241));
     iced::Theme::custom(
-        if dark { "AutoShadcnDark" } else { "AutoShadcnLight" },
+        if dark {
+            "AutoShadcnDark"
+        } else {
+            "AutoShadcnLight"
+        },
         iced::theme::Palette {
             background,
             text,
@@ -7563,9 +8469,13 @@ pub fn startup_window_size() -> iced::Size {
 }
 
 /// Extract initial content size from root view's style when `window: "fit"` is declared.
-pub fn extract_root_view_fit_size<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Option<iced::Size> {
+pub fn extract_root_view_fit_size<M: Clone + std::fmt::Debug>(
+    view: &AbstractView<M>,
+) -> Option<iced::Size> {
     let style = match view {
-        AbstractView::Column { style, .. } | AbstractView::Row { style, .. } | AbstractView::Container { style, .. } => style.as_ref(),
+        AbstractView::Column { style, .. }
+        | AbstractView::Row { style, .. }
+        | AbstractView::Container { style, .. } => style.as_ref(),
         _ => None,
     }?;
     let layout = crate::ui::style::BoxLayout::from_style(style);
@@ -7649,7 +8559,8 @@ fn font_size_to_f32(font_size: &crate::ui::style::iced_adapter::IcedFontSize) ->
 
 /// Get effective font size in pixels, preferring arbitrary pixel value over named size.
 fn effective_font_size(iced_style: &IcedStyle) -> Option<f32> {
-    iced_style.font_size_arbitrary
+    iced_style
+        .font_size_arbitrary
         .or_else(|| iced_style.font_size.as_ref().map(font_size_to_f32))
 }
 
@@ -7693,7 +8604,10 @@ pub(crate) const PAYLOAD_SEP: char = '\u{1F}';
 fn write_ghost_state(component: &mut crate::ui::dynamic::DynamicComponent, id: i32, h: f32) {
     let frac = |v: f64| auto_val::Value::Double(v + 0.001);
     if id >= 0 {
-        let _ = component.write_state("ghost_id", auto_val::Value::Str(format!("block-{id}").into()));
+        let _ = component.write_state(
+            "ghost_id",
+            auto_val::Value::Str(format!("block-{id}").into()),
+        );
         let _ = component.write_state("ghost_height", frac(h as f64));
     } else {
         let _ = component.write_state("ghost_id", auto_val::Value::Str(String::new().into()));
@@ -7709,7 +8623,10 @@ fn parse_drag_points(pts: &str) -> Vec<(f32, f32)> {
         .filter(|s| !s.is_empty())
         .filter_map(|p| {
             let mut it = p.split(',');
-            match (it.next()?.trim().parse::<f32>().ok(), it.next()?.trim().parse::<f32>().ok()) {
+            match (
+                it.next()?.trim().parse::<f32>().ok(),
+                it.next()?.trim().parse::<f32>().ok(),
+            ) {
                 (Some(x), Some(y)) => Some((x, y)),
                 _ => None,
             }
@@ -7830,10 +8747,7 @@ static ADE_LINK_DISPATCH: std::sync::OnceLock<
 
 /// PLAN-737：合成通道派发注册（lowering 装配期；同 key 覆写）。
 #[cfg(all(feature = "autodown", feature = "code-editor"))]
-pub(crate) fn ade_link_dispatch_register(
-    sk: &str,
-    cb: crate::ui::view::LinkCallback<IcedMessage>,
-) {
+pub(crate) fn ade_link_dispatch_register(sk: &str, cb: crate::ui::view::LinkCallback<IcedMessage>) {
     ADE_LINK_DISPATCH
         .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
         .lock()
@@ -7885,14 +8799,21 @@ pub(crate) struct TodoItem {
 
 /// Sync `state.app.todos` (Rust-side) to VM state so the `for todo in .todos` loop can read them.
 fn sync_todos_to_vm(todos: &[TodoItem], component: &mut DynamicComponent) {
-    let values: Vec<auto_val::Value> = todos.iter().enumerate().map(|(i, t)| {
-        let mut obj = auto_val::Obj::new();
-        obj.set("id", auto_val::Value::Int(i as i32));
-        obj.set("text", auto_val::Value::str(&t.text));
-        obj.set("done", auto_val::Value::Bool(t.done));
-        auto_val::Value::Obj(Box::new(obj))
-    }).collect();
-    let _ = component.write_state("todos", auto_val::Value::Array(auto_val::Array::from(values)));
+    let values: Vec<auto_val::Value> = todos
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            let mut obj = auto_val::Obj::new();
+            obj.set("id", auto_val::Value::Int(i as i32));
+            obj.set("text", auto_val::Value::str(&t.text));
+            obj.set("done", auto_val::Value::Bool(t.done));
+            auto_val::Value::Obj(Box::new(obj))
+        })
+        .collect();
+    let _ = component.write_state(
+        "todos",
+        auto_val::Value::Array(auto_val::Array::from(values)),
+    );
 }
 
 /// Parse an indexed event name like "Toggle:3" into (base, Some(index)).
@@ -7908,53 +8829,61 @@ fn parse_indexed_event(event: &str) -> (&str, Option<usize>) {
 
 /// Build view rows for each todo item.
 fn build_todo_rows(items: &[TodoItem], widget_name: &str) -> Vec<AbstractView<DynamicMessage>> {
-    items.iter().enumerate().map(|(i, item)| {
-        let display = if item.done {
-            format!("~~{}~~", item.text)
-        } else {
-            item.text.clone()
-        };
-        AbstractView::Row {
-            onclick: None, on_right_click: None,
-            children: vec![
-                AbstractView::Checkbox {
-                    is_checked: item.done,
-                    label: String::new(),
-                    on_toggle: Some(DynamicMessage::Typed {
-                        widget_name: widget_name.to_string(),
-                        event_name: format!("Toggle:{}", i),
-                        args: vec![],
-                    }),
-                    style: None,
-                },
-                AbstractView::Text {
-                    content: display,
-                    style: None,
-                    selectable: false,
-                },
-                AbstractView::Button {
-                    disabled: false,
-                    label: "x".into(),
-                    onclick: DynamicMessage::Typed {
-                        widget_name: widget_name.to_string(),
-                        event_name: format!("Delete:{}", i),
-                        args: vec![],
+    items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let display = if item.done {
+                format!("~~{}~~", item.text)
+            } else {
+                item.text.clone()
+            };
+            AbstractView::Row {
+                onclick: None,
+                on_right_click: None,
+                children: vec![
+                    AbstractView::Checkbox {
+                        is_checked: item.done,
+                        label: String::new(),
+                        on_toggle: Some(DynamicMessage::Typed {
+                            widget_name: widget_name.to_string(),
+                            event_name: format!("Toggle:{}", i),
+                            args: vec![],
+                        }),
+                        style: None,
                     },
-                    style: None,
-                    on_right_click: None,
-                    content: None,
-                },
-            ],
-            spacing: 0,
-            padding: 0,
-            style: Some("w-full items-center gap-3 py-3 border-b".into()),
-        }
-    }).collect()
+                    AbstractView::Text {
+                        content: display,
+                        style: None,
+                        selectable: false,
+                    },
+                    AbstractView::Button {
+                        disabled: false,
+                        label: "x".into(),
+                        onclick: DynamicMessage::Typed {
+                            widget_name: widget_name.to_string(),
+                            event_name: format!("Delete:{}", i),
+                            args: vec![],
+                        },
+                        style: None,
+                        on_right_click: None,
+                        content: None,
+                    },
+                ],
+                spacing: 0,
+                padding: 0,
+                style: Some("w-full items-center gap-3 py-3 border-b".into()),
+            }
+        })
+        .collect()
 }
 
 /// Recursively walk the view tree and replace the `__TODO_LIST__` marker text
 /// with a Column containing the todo rows.
-fn replace_marker(view: &mut AbstractView<DynamicMessage>, todo_views: Vec<AbstractView<DynamicMessage>>) {
+fn replace_marker(
+    view: &mut AbstractView<DynamicMessage>,
+    todo_views: Vec<AbstractView<DynamicMessage>>,
+) {
     match view {
         AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => {
             for child in children.iter_mut() {
@@ -7968,8 +8897,9 @@ fn replace_marker(view: &mut AbstractView<DynamicMessage>, todo_views: Vec<Abstr
                                 spacing: 0,
                                 padding: 0,
                                 style: None,
-            onclick: None, on_right_click: None,
-        };
+                                onclick: None,
+                                on_right_click: None,
+                            };
                         }
                         return;
                     }
@@ -7997,7 +8927,11 @@ fn replace_marker(view: &mut AbstractView<DynamicMessage>, todo_views: Vec<Abstr
 }
 
 /// Inject dynamic todo rows into the view tree by replacing the marker.
-fn inject_todo_list(view: &mut AbstractView<DynamicMessage>, todos: &[TodoItem], widget_name: &str) {
+fn inject_todo_list(
+    view: &mut AbstractView<DynamicMessage>,
+    todos: &[TodoItem],
+    widget_name: &str,
+) {
     let todo_views = build_todo_rows(todos, widget_name);
     replace_marker(view, todo_views);
 }
@@ -8013,7 +8947,15 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
     match view {
         AbstractView::Empty => AbstractView::Empty,
 
-        AbstractView::Text { content, style, selectable } => AbstractView::Text { content, style, selectable },
+        AbstractView::Text {
+            content,
+            style,
+            selectable,
+        } => AbstractView::Text {
+            content,
+            style,
+            selectable,
+        },
 
         AbstractView::Button {
             label,
@@ -8039,10 +8981,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             onclick,
             on_right_click,
         } => AbstractView::Row {
-            children: children
-                .into_iter()
-                .map(convert_view_messages)
-                .collect(),
+            children: children.into_iter().map(convert_view_messages).collect(),
             spacing,
             padding,
             style,
@@ -8061,10 +9000,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             onclick,
             on_right_click,
         } => AbstractView::Column {
-            children: children
-                .into_iter()
-                .map(convert_view_messages)
-                .collect(),
+            children: children.into_iter().map(convert_view_messages).collect(),
             spacing,
             padding,
             style,
@@ -8110,7 +9046,10 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             style,
             highlight,
             ghost,
-            keydown: keydown.into_iter().map(|(k, m)| (k, IcedMessage::from_dynamic(&m))).collect(),
+            keydown: keydown
+                .into_iter()
+                .map(|(k, m)| (k, IcedMessage::from_dynamic(&m)))
+                .collect(),
             keymap,
         },
 
@@ -8169,7 +9108,10 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             // （单源闭包；真实事件泵的 widget publish 路径零变化）。
             #[cfg(all(feature = "autodown", feature = "code-editor"))]
             if let Some(cb) = &on_link {
-                ade_link_dispatch_register(&crate::ui::autodown_editor::storage_key(&key), cb.clone());
+                ade_link_dispatch_register(
+                    &crate::ui::autodown_editor::storage_key(&key),
+                    cb.clone(),
+                );
             }
             #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
             let _ = &on_link;
@@ -8180,7 +9122,9 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
                 on_change: on_change.map(|m| IcedMessage::from_dynamic(&m)),
                 // Plan 044 T2: 块聚焦读出回调跨消息类型包装（FocusCallback newtype）。
                 on_focus: on_focus.map(|cb| {
-                    crate::ui::view::FocusCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
+                    crate::ui::view::FocusCallback::new(move |m| {
+                        IcedMessage::from_dynamic(&cb.call(m))
+                    })
                 }),
                 on_link,
                 placeholder,
@@ -8249,7 +9193,9 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             offset,
             // Plan 043 T1: 滚动读出回调跨消息类型包装（ScrollCallback newtype）。
             on_scroll: on_scroll.map(|cb| {
-                crate::ui::view::ScrollCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
+                crate::ui::view::ScrollCallback::new(move |m| {
+                    IcedMessage::from_dynamic(&cb.call(m))
+                })
             }),
             // PLAN-656: 纯数据透传。
             axes,
@@ -8289,10 +9235,7 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             col_widths,
             on_col_resize,
         } => AbstractView::Table {
-            headers: headers
-                .into_iter()
-                .map(convert_view_messages)
-                .collect(),
+            headers: headers.into_iter().map(convert_view_messages).collect(),
             rows: rows
                 .into_iter()
                 .map(|r| r.into_iter().map(convert_view_messages).collect())
@@ -8304,85 +9247,115 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             col_widths,
             // Plan 045 T1: 列宽拖拽回调跨消息类型包装（ScrollCallback 同款）。
             on_col_resize: on_col_resize.map(|cb| {
-                crate::ui::view::ColResizeCallback::new(move |m| IcedMessage::from_dynamic(&cb.call(m)))
+                crate::ui::view::ColResizeCallback::new(move |m| {
+                    IcedMessage::from_dynamic(&cb.call(m))
+                })
             }),
         },
 
-        AbstractView::ProgressBar { progress, style, on_seek } => {
-            AbstractView::ProgressBar {
-                progress,
-                style,
-                on_seek: on_seek.map(|h| {
-                    crate::ui::view::PointerMoveHandler::new(move |x, y| {
-                        IcedMessage::from_dynamic(&h.call(x, y))
-                    })
-                }),
-            }
-        }
+        AbstractView::ProgressBar {
+            progress,
+            style,
+            on_seek,
+        } => AbstractView::ProgressBar {
+            progress,
+            style,
+            on_seek: on_seek.map(|h| {
+                crate::ui::view::PointerMoveHandler::new(move |x, y| {
+                    IcedMessage::from_dynamic(&h.call(x, y))
+                })
+            }),
+        },
 
-        AbstractView::Image { src, style } => {
-            AbstractView::Image { src, style }
-        }
-        AbstractView::ImageSurface { src, alt, width, height, quality, fit, zoom, offset_x, offset_y, rotation, filter, on_error, on_loaded, on_wheel, on_pan, on_double_click, style } => {
-            AbstractView::ImageSurface {
-                src,
-                alt,
-                width,
-                height,
-                quality,
-                fit,
-                zoom,
-                offset_x,
-                offset_y,
-                rotation,
-                filter,
-                on_error: on_error.map(|m| IcedMessage::from_dynamic(&m)),
-                on_loaded: on_loaded.map(|m| IcedMessage::from_dynamic(&m)),
-                on_wheel: on_wheel.map(|m| IcedMessage::from_dynamic(&m)),
-                on_pan: on_pan.map(|m| IcedMessage::from_dynamic(&m)),
-                on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
-                style,
-            }
-        }
+        AbstractView::Image { src, style } => AbstractView::Image { src, style },
+        AbstractView::ImageSurface {
+            src,
+            alt,
+            width,
+            height,
+            quality,
+            fit,
+            zoom,
+            offset_x,
+            offset_y,
+            rotation,
+            filter,
+            on_error,
+            on_loaded,
+            on_wheel,
+            on_pan,
+            on_double_click,
+            style,
+        } => AbstractView::ImageSurface {
+            src,
+            alt,
+            width,
+            height,
+            quality,
+            fit,
+            zoom,
+            offset_x,
+            offset_y,
+            rotation,
+            filter,
+            on_error: on_error.map(|m| IcedMessage::from_dynamic(&m)),
+            on_loaded: on_loaded.map(|m| IcedMessage::from_dynamic(&m)),
+            on_wheel: on_wheel.map(|m| IcedMessage::from_dynamic(&m)),
+            on_pan: on_pan.map(|m| IcedMessage::from_dynamic(&m)),
+            on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
+            style,
+        },
 
         // PLAN-617 T-19: `video` **必须**显式臂——否则掉进下方 `_ => Empty`
         // 兜底，VM 动态路径下整个播放面静默消失（与上面 Grid / MouseArea / select
         // 同一坑：这已经是第四次踩它了）。
         // PLAN-712 T-04: 上行 handler 随消息类型重映射（DynamicMessage →
         // IcedMessage，ScrollCallback 臂同款 Arc 包装）。
-        AbstractView::Video { src, paused, position, volume, muted, rate, label, on_time_update, on_loaded_metadata, on_play_state, on_ended, on_media_error, style } => {
-            AbstractView::Video {
-                src,
-                paused,
-                position,
-                volume,
-                muted,
-                rate,
-                label,
-                on_time_update: on_time_update.map(|cb| {
-                    crate::ui::view::MediaEventHandler::new(move |p| {
-                        IcedMessage::from_dynamic(&cb.call(p))
-                    })
-                }),
-                on_loaded_metadata: on_loaded_metadata.map(|cb| {
-                    crate::ui::view::MediaEventHandler::new(move |p| {
-                        IcedMessage::from_dynamic(&cb.call(p))
-                    })
-                }),
-                on_play_state: on_play_state.map(|cb| {
-                    crate::ui::view::MediaEventHandler::new(move |p| {
-                        IcedMessage::from_dynamic(&cb.call(p))
-                    })
-                }),
-                on_ended: on_ended.map(|m| IcedMessage::from_dynamic(&m)),
-                on_media_error: on_media_error.map(|cb| {
-                    crate::ui::view::MediaEventHandler::new(move |p| {
-                        IcedMessage::from_dynamic(&cb.call(p))
-                    })
-                }),
-                style,
-            }
-        }
+        AbstractView::Video {
+            src,
+            paused,
+            position,
+            volume,
+            muted,
+            rate,
+            label,
+            on_time_update,
+            on_loaded_metadata,
+            on_play_state,
+            on_ended,
+            on_media_error,
+            style,
+        } => AbstractView::Video {
+            src,
+            paused,
+            position,
+            volume,
+            muted,
+            rate,
+            label,
+            on_time_update: on_time_update.map(|cb| {
+                crate::ui::view::MediaEventHandler::new(move |p| {
+                    IcedMessage::from_dynamic(&cb.call(p))
+                })
+            }),
+            on_loaded_metadata: on_loaded_metadata.map(|cb| {
+                crate::ui::view::MediaEventHandler::new(move |p| {
+                    IcedMessage::from_dynamic(&cb.call(p))
+                })
+            }),
+            on_play_state: on_play_state.map(|cb| {
+                crate::ui::view::MediaEventHandler::new(move |p| {
+                    IcedMessage::from_dynamic(&cb.call(p))
+                })
+            }),
+            on_ended: on_ended.map(|m| IcedMessage::from_dynamic(&m)),
+            on_media_error: on_media_error.map(|cb| {
+                crate::ui::view::MediaEventHandler::new(move |p| {
+                    IcedMessage::from_dynamic(&cb.call(p))
+                })
+            }),
+            style,
+        },
 
         // Plan 319: recurse into Grid cells. MUST be explicit — the `_ => Empty`
         // catch-all below would silently drop the entire grid (the calendar's
@@ -8402,7 +9375,11 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // Overlay has no messages of its own, but both layers must survive the
         // DynamicMessage → IcedMessage bridge. Otherwise absolute-positioned
         // gallery examples lose their entire preview before reaching the renderer.
-        AbstractView::Overlay { base, content, position } => AbstractView::Overlay {
+        AbstractView::Overlay {
+            base,
+            content,
+            position,
+        } => AbstractView::Overlay {
             base: Box::new(convert_view_messages(*base)),
             content: Box::new(convert_view_messages(*content)),
             position,
@@ -8410,7 +9387,13 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
 
         // Plan 422: Popover 携带 on_dismiss 消息 —— MUST be explicit,否则掉进
         // 下方 `_ => Empty` 兜底,弹层在 VM 模式整体消失(menubar 迁移的生命线)。
-        AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
+        AbstractView::Popover {
+            anchor,
+            content,
+            placement,
+            open,
+            on_dismiss,
+        } => {
             use crate::ui::view::PopoverAnchor;
             let anchor = match anchor {
                 PopoverAnchor::Widget(w) => {
@@ -8433,15 +9416,27 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // p-1 空壳(8×8 亮点+首开定位漂移,526 KNOWN-DEBT 🟢×2 的真根因;
         // 497 交付时只加了 into_iced 臂,本映射通道漏臂——Grid 319/menubar
         // 422/496 MouseArea 同坑第四例)。
-        AbstractView::WindowThumbnail { wid, fallback_icon, style } => {
-            AbstractView::WindowThumbnail { wid, fallback_icon, style }
-        }
+        AbstractView::WindowThumbnail {
+            wid,
+            fallback_icon,
+            style,
+        } => AbstractView::WindowThumbnail {
+            wid,
+            fallback_icon,
+            style,
+        },
 
         // PLAN-012 W3：显式臂——A1 fence（缺臂落 Empty 兜底，PLAN-002
         // 同坑第五例防线）。
-        AbstractView::WorkspacePreview { ws, fallback_icon, style } => {
-            AbstractView::WorkspacePreview { ws, fallback_icon, style }
-        }
+        AbstractView::WorkspacePreview {
+            ws,
+            fallback_icon,
+            style,
+        } => AbstractView::WorkspacePreview {
+            ws,
+            fallback_icon,
+            style,
+        },
 
         // OS-013 T3: terminal 显式臂——PLAN-009 P1 只接了 at-gen 直渲染
         // (Component → into_iced)与检视占位,VM 动态应用经本转换落
@@ -8449,32 +9444,54 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // menu/input 三消息经 from_dynamic 映射;行文本/光标格原样透传
         // (数据已在 convert_terminal 物化)。
         // PLAN-656 T-06: managed content 纯数据透传。
-        AbstractView::ManagedScrollContent { key, logical_w, logical_h, axes } => {
-            AbstractView::ManagedScrollContent { key, logical_w, logical_h, axes }
-        }
+        AbstractView::ManagedScrollContent {
+            key,
+            logical_w,
+            logical_h,
+            axes,
+        } => AbstractView::ManagedScrollContent {
+            key,
+            logical_w,
+            logical_h,
+            axes,
+        },
 
-        AbstractView::Terminal { key, cols, rows, lines, scroll_offset, preedit, on_select, on_menu, on_input, cursor_row, cursor_col, history, scheme, shortcuts, style } => {
-            AbstractView::Terminal {
-                key,
-                cols,
-                rows,
-                lines,
-                scroll_offset,
-                preedit,
-                on_select: on_select.map(|m| IcedMessage::from_dynamic(&m)),
-                on_menu: on_menu.map(|m| IcedMessage::from_dynamic(&m)),
-                on_input: on_input.map(|m| IcedMessage::from_dynamic(&m)),
-                cursor_row,
-                cursor_col,
-                history,
-                scheme,
-                shortcuts: shortcuts
-                    .iter()
-                    .map(|(k, m)| (k.clone(), IcedMessage::from_dynamic(m)))
-                    .collect(),
-                style,
-            }
-        }
+        AbstractView::Terminal {
+            key,
+            cols,
+            rows,
+            lines,
+            scroll_offset,
+            preedit,
+            on_select,
+            on_menu,
+            on_input,
+            cursor_row,
+            cursor_col,
+            history,
+            scheme,
+            shortcuts,
+            style,
+        } => AbstractView::Terminal {
+            key,
+            cols,
+            rows,
+            lines,
+            scroll_offset,
+            preedit,
+            on_select: on_select.map(|m| IcedMessage::from_dynamic(&m)),
+            on_menu: on_menu.map(|m| IcedMessage::from_dynamic(&m)),
+            on_input: on_input.map(|m| IcedMessage::from_dynamic(&m)),
+            cursor_row,
+            cursor_col,
+            history,
+            scheme,
+            shortcuts: shortcuts
+                .iter()
+                .map(|(k, m)| (k.clone(), IcedMessage::from_dynamic(m)))
+                .collect(),
+            style,
+        },
 
         // Plan 496 M5: MouseArea 必须显式臂——此前 VM 动态路径走 `_ => Empty`
         // 兜底(484 图表族经 Rust codegen 不经本转换,故未暴露)。桌面图标
@@ -8482,28 +9499,46 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
         // Plan 498 M0: 增 on_click 映射(chart legend 点击切换显隐)。
         // Plan 499 M2: on_move handler 递归复合(调用产出 DynamicMessage 经
         // from_dynamic 编码为 IcedMessage;逻辑坐标在闭包现场追加)。
-        AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
-            AbstractView::MouseArea {
-                content: Box::new(convert_view_messages(*content)),
-                on_enter: on_enter.map(|m| IcedMessage::from_dynamic(&m)),
-                on_exit: on_exit.map(|m| IcedMessage::from_dynamic(&m)),
-                on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
-                on_click: on_click.map(|m| IcedMessage::from_dynamic(&m)),
-                on_context_menu: on_context_menu.map(|m| IcedMessage::from_dynamic(&m)),
-                on_release: on_release.map(|m| IcedMessage::from_dynamic(&m)),
-                on_move: on_move.map(|h| {
-                    crate::ui::view::PointerMoveHandler::new(move |x, y| {
-                        IcedMessage::from_dynamic(&h.call(x, y))
-                    })
-                }),
-                logical_extent,
-                style,
-            }
-        }
+        AbstractView::MouseArea {
+            content,
+            on_enter,
+            on_exit,
+            on_double_click,
+            on_click,
+            on_context_menu,
+            on_release,
+            on_move,
+            logical_extent,
+            style,
+        } => AbstractView::MouseArea {
+            content: Box::new(convert_view_messages(*content)),
+            on_enter: on_enter.map(|m| IcedMessage::from_dynamic(&m)),
+            on_exit: on_exit.map(|m| IcedMessage::from_dynamic(&m)),
+            on_double_click: on_double_click.map(|m| IcedMessage::from_dynamic(&m)),
+            on_click: on_click.map(|m| IcedMessage::from_dynamic(&m)),
+            on_context_menu: on_context_menu.map(|m| IcedMessage::from_dynamic(&m)),
+            on_release: on_release.map(|m| IcedMessage::from_dynamic(&m)),
+            on_move: on_move.map(|h| {
+                crate::ui::view::PointerMoveHandler::new(move |x, y| {
+                    IcedMessage::from_dynamic(&h.call(x, y))
+                })
+            }),
+            logical_extent,
+            style,
+        },
 
         // Plan 563: 画布 —— 显式臂(缺臂落 Empty 兜底,496 MouseArea
         // 同坑);pen handler 包装同 on_move。
-        AbstractView::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, on_hit, style } => {
+        AbstractView::Canvas {
+            scene,
+            logical_extent,
+            clear,
+            on_pen_start,
+            on_pen_move,
+            on_pen_end,
+            on_hit,
+            style,
+        } => {
             AbstractView::Canvas {
                 scene,
                 logical_extent,
@@ -8634,9 +9669,7 @@ impl iced_futures::subscription::Recipe for AppTickRecipe {
         let (event, poll, ms, widget_event) = match self.kind {
             AppTickKind::Event(ev, ms) => (Some(ev), None, ms, None),
             AppTickKind::Poll(f, ms) => (None, Some(f), ms, None),
-            AppTickKind::WidgetEvent(w, ev, ms) => {
-                (None, None, ms, Some((w, ev)))
-            }
+            AppTickKind::WidgetEvent(w, ev, ms) => (None, None, ms, Some((w, ev))),
         };
         let app = self.app;
         let start = tokio::time::Instant::now() + std::time::Duration::from_millis(ms);
@@ -8665,7 +9698,10 @@ impl iced_futures::subscription::Recipe for AppTickRecipe {
                 // 空拍（无事件）以 `Some(None)` 项表示、由流级 filter_map 剔除
                 // —— 若直接 yield `None`，unfold 语义是**流终止**（Poll 变体
                 // 首个空轮询即死，459 实测 MCP 动作全丢）。
-                Some((msg.map(|m| DM::App(app, m)), (iv, app, event, poll, widget_event)))
+                Some((
+                    msg.map(|m| DM::App(app, m)),
+                    (iv, app, event, poll, widget_event),
+                ))
             },
         )
         .filter_map(|msg| async move { msg })
@@ -8696,34 +9732,30 @@ fn frame_pump_sub(
     app: crate::ui::session::AppId,
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
     use crate::ui::session::DesktopMessage as DM;
-    iced_futures::subscription::filter_map(
-        (app, "plan711_frame_pump"),
-        move |event| match event {
-            iced_futures::subscription::Event::Interaction {
-                event:
-                    iced::event::Event::Window(iced::window::Event::RedrawRequested(_)),
-                ..
-            } => {
-                if std::env::var("AUTO_SCHED_DIAG").ok().as_deref() == Some("1") {
-                    let t0 = crate::ui::dynamic::sched_diag_t0();
-                    eprintln!(
-                        "[SCHED-DIAG] frame_msg enqueue t={}ms app={:?}",
-                        t0.elapsed().as_millis(),
-                        app
-                    );
-                }
-                Some(DM::App(
-                    app,
-                    crate::ui::iced::IcedMessage {
-                        widget: String::new(),
-                        event: "__frame_pump".to_string(),
-                        input_value: None,
-                    },
-                ))
+    iced_futures::subscription::filter_map((app, "plan711_frame_pump"), move |event| match event {
+        iced_futures::subscription::Event::Interaction {
+            event: iced::event::Event::Window(iced::window::Event::RedrawRequested(_)),
+            ..
+        } => {
+            if std::env::var("AUTO_SCHED_DIAG").ok().as_deref() == Some("1") {
+                let t0 = crate::ui::dynamic::sched_diag_t0();
+                eprintln!(
+                    "[SCHED-DIAG] frame_msg enqueue t={}ms app={:?}",
+                    t0.elapsed().as_millis(),
+                    app
+                );
             }
-            _ => None,
-        },
-    )
+            Some(DM::App(
+                app,
+                crate::ui::iced::IcedMessage {
+                    widget: String::new(),
+                    event: "__frame_pump".to_string(),
+                    input_value: None,
+                },
+            ))
+        }
+        _ => None,
+    })
 }
 
 /// PLAN-735 T-02（轴①——发放/送达节奏观测）：RedrawRequested 送达
@@ -8736,25 +9768,21 @@ fn frame_pump_sub(
 fn redraw_diag_sub(
     app: crate::ui::session::AppId,
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
-    iced_futures::subscription::filter_map(
-        (app, "plan735_redraw_diag"),
-        move |event| match event {
-            iced_futures::subscription::Event::Interaction {
-                event:
-                    iced::event::Event::Window(iced::window::Event::RedrawRequested(_)),
-                ..
-            } => {
-                let t0 = crate::ui::dynamic::sched_diag_t0();
-                eprintln!(
-                    "[SCHED-DIAG] redraw_deliver t={}ms app={:?}",
-                    t0.elapsed().as_millis(),
-                    app
-                );
-                None
-            }
-            _ => None,
-        },
-    )
+    iced_futures::subscription::filter_map((app, "plan735_redraw_diag"), move |event| match event {
+        iced_futures::subscription::Event::Interaction {
+            event: iced::event::Event::Window(iced::window::Event::RedrawRequested(_)),
+            ..
+        } => {
+            let t0 = crate::ui::dynamic::sched_diag_t0();
+            eprintln!(
+                "[SCHED-DIAG] redraw_deliver t={}ms app={:?}",
+                t0.elapsed().as_millis(),
+                app
+            );
+            None
+        }
+        _ => None,
+    })
 }
 
 /// Plan 051 C7: timer 块条目订阅——每 `interval_ms` 产一条
@@ -8794,11 +9822,12 @@ fn widget_tick(
 /// `AUTOUI_PANIC_PROBE=1` 时，demo 的 `.panic_probe` 事件在 update 边界
 /// panic（落 catch_unwind），并记录肇事 App —— 其后的 view 出口仅对该
 /// App 持续 panic（落崩溃页元素），另一窗口不受影响。非 demo 运行零影响。
-static PANIC_PROBE_CRASHED_APP: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
+static PANIC_PROBE_CRASHED_APP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn panic_probe_enabled() -> bool {
-    std::env::var("AUTOUI_PANIC_PROBE").map(|v| v == "1").unwrap_or(false)
+    std::env::var("AUTOUI_PANIC_PROBE")
+        .map(|v| v == "1")
+        .unwrap_or(false)
 }
 
 /// 探针事件匹配：DSL handler 名风格不一（`PanicProbe` / `panic_probe`），
@@ -8809,8 +9838,9 @@ fn is_panic_probe_event(event: &str) -> bool {
 
 /// Global MCP action channel receiver (Plan 278).
 /// Set once at startup by `run_dynamic_iced`, polled by `mcp_action_subscription`.
-static MCP_ACTION_RX: std::sync::OnceLock<std::sync::Mutex<Option<std::sync::mpsc::Receiver<crate::ui::mcp_server::ActionMessage>>>> =
-    std::sync::OnceLock::new();
+static MCP_ACTION_RX: std::sync::OnceLock<
+    std::sync::Mutex<Option<std::sync::mpsc::Receiver<crate::ui::mcp_server::ActionMessage>>>,
+> = std::sync::OnceLock::new();
 
 /// Plan 412 续(toast 堆叠视觉):kind → (边框色, 背景色, 标题)。success 绿 /
 /// error 红 / warning 琥珀 / default zinc 边框;info 用主题 accent(与页面
@@ -8818,9 +9848,9 @@ static MCP_ACTION_RX: std::sync::OnceLock<std::sync::Mutex<Option<std::sync::mps
 /// zinc-700 在暗色主题下几乎与背景融为一体。
 fn toast_palette(kind: &str) -> ((u8, u8, u8), (u8, u8, u8), &'static str) {
     match kind {
-        "success" => ((34, 197, 94), (34, 197, 94), "Success"),     // green-500
-        "error" => ((239, 68, 68), (239, 68, 68), "Error"),           // red-500
-        "warning" => ((245, 158, 11), (245, 158, 11), "Warning"),     // amber-500
+        "success" => ((34, 197, 94), (34, 197, 94), "Success"), // green-500
+        "error" => ((239, 68, 68), (239, 68, 68), "Error"),     // red-500
+        "warning" => ((245, 158, 11), (245, 158, 11), "Warning"), // amber-500
         "info" => {
             let accent = crate::ui::style::iced_adapter::resolve_semantic_rgb(
                 &crate::ui::style::Color::Primary,
@@ -8828,7 +9858,7 @@ fn toast_palette(kind: &str) -> ((u8, u8, u8), (u8, u8, u8), &'static str) {
             .unwrap_or((59, 130, 246)); // blue-500(仅解析失败时退回)
             (accent, accent, "Info")
         }
-        _ => ((113, 113, 122), (24, 24, 27), "Notification"),        // zinc-500 / zinc-900
+        _ => ((113, 113, 122), (24, 24, 27), "Notification"), // zinc-500 / zinc-900
     }
 }
 
@@ -8846,11 +9876,17 @@ fn build_toast_card(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
     let msg_color = iced::Color::from_rgb8(161, 161, 170); // zinc-400
 
     let card_body = iced::widget::column![
-        iced::widget::text(title.to_string()).size(14).style(move |_| {
-            iced::widget::text::Style { color: Some(title_color) }
-        }),
+        iced::widget::text(title.to_string())
+            .size(14)
+            .style(move |_| {
+                iced::widget::text::Style {
+                    color: Some(title_color),
+                }
+            }),
         iced::widget::text(t.msg.clone()).size(14).style(move |_| {
-            iced::widget::text::Style { color: Some(msg_color) }
+            iced::widget::text::Style {
+                color: Some(msg_color),
+            }
         }),
     ]
     .spacing(4);
@@ -8866,10 +9902,7 @@ fn build_toast_card(t: &ToastReq) -> iced::Element<'static, IcedMessage> {
         .width(iced::Length::Fill)
         .max_width(360)
         .style(move |_: &iced::Theme| iced::widget::container::Style {
-            background: Some(iced::Background::Color(iced::Color {
-                a: bg_a,
-                ..bgc
-            })),
+            background: Some(iced::Background::Color(iced::Color { a: bg_a, ..bgc })),
             border: iced::Border {
                 color: iced::Color { a: bd_a, ..br },
                 width: 1.0,
@@ -8922,11 +9955,7 @@ impl<M: Clone + 'static> iced::widget::canvas::Program<M> for CanvasPainter {
         use iced::widget::canvas::{Frame, LineCap, LineJoin, Path, Stroke};
         let mut frame = Frame::new(renderer, bounds.size());
         if let Some(clear) = &self.clear {
-            frame.fill_rectangle(
-                iced::Point::ORIGIN,
-                bounds.size(),
-                canvas_css_color(clear),
-            );
+            frame.fill_rectangle(iced::Point::ORIGIN, bounds.size(), canvas_css_color(clear));
         }
         let (sx, sy) = match self.extent {
             Some((w, h)) if bounds.width > 0.0 && bounds.height > 0.0 => {
@@ -9014,7 +10043,8 @@ impl<M: Clone + 'static> iced::widget::canvas::Program<M> for CanvasPainter {
 /// 圆角 + 半透明填充,贴卡侧直角无边线(canvas 实现,iced Border 无法表达
 /// 单边无边框,clip 也只是矩形裁剪)。
 #[derive(Clone)]
-struct ToastPeekPainter {    line: iced::Color,
+struct ToastPeekPainter {
+    line: iced::Color,
     body: iced::Color,
     /// 露出侧(圆角所在)在顶部?
     round_top: bool,
@@ -9055,7 +10085,10 @@ impl iced::widget::canvas::Program<IcedMessage> for ToastPeekPainter {
         let mut frame = Frame::new(renderer, bounds.size());
         // 开放路径的 fill 隐式闭合(贴卡侧直线),描边只画三边。
         frame.fill(&path, self.body);
-        frame.stroke(&path, Stroke::default().with_color(self.line).with_width(1.0));
+        frame.stroke(
+            &path,
+            Stroke::default().with_color(self.line).with_width(1.0),
+        );
         vec![frame.into_geometry()]
     }
 }
@@ -9095,7 +10128,11 @@ fn build_toast_peek(
     // 双侧缩进(sonner 的后卡是整体 scale,左右同时收):锚侧每层 +8px,
     // 对侧由 max_width 收 18px/层;center 锚两侧各 4px。外层 wrapper 用
     // padding + align_x 把条带从槽边缘推离,右缘不再与前卡贴齐。
-    let (pad_anchor, pad_off) = if h_anchor == 1 { (4.0f32, 4.0) } else { (8.0f32, 0.0) };
+    let (pad_anchor, pad_off) = if h_anchor == 1 {
+        (4.0f32, 4.0)
+    } else {
+        (8.0f32, 0.0)
+    };
     let (pad_left, pad_right) = if h_anchor == 0 {
         (pad_anchor, pad_off)
     } else {
@@ -9141,8 +10178,20 @@ fn build_toast_peek(
 /// 移除后其余上移补位(标准 toast 库行为)。边距 16px、卡片间距 8px。
 fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage> {
     let parse_pos = |pos: &str| -> (usize, usize) {
-        let v = if pos.starts_with("top") { 0 } else if pos.starts_with("bottom") { 2 } else { 1 };
-        let h = if pos.ends_with("left") { 0 } else if pos.ends_with("right") { 2 } else { 1 };
+        let v = if pos.starts_with("top") {
+            0
+        } else if pos.starts_with("bottom") {
+            2
+        } else {
+            1
+        };
+        let h = if pos.ends_with("left") {
+            0
+        } else if pos.ends_with("right") {
+            2
+        } else {
+            1
+        };
         (v, h)
     };
     // 3×3 槽位分组(保序:同槽按加入顺序 = 最旧到最新)。
@@ -9188,7 +10237,12 @@ fn build_toast_layer(toasts: &[ToastReq]) -> iced::Element<'static, IcedMessage>
             if depth == 0 {
                 c = c.push(build_toast_card(&toasts[idxs[rank]]));
             } else if depth <= 4 {
-                c = c.push(build_toast_peek(&toasts[idxs[rank]], depth, top_anchor, h_anchor));
+                c = c.push(build_toast_peek(
+                    &toasts[idxs[rank]],
+                    depth,
+                    top_anchor,
+                    h_anchor,
+                ));
             }
         }
         c.into()
@@ -9275,7 +10329,10 @@ fn mcp_ack_apply(mcp_shared: &Option<crate::ui::mcp_server::SharedStateHandle>, 
     if let (Some(id), Some(mcp)) = (ack, mcp_shared) {
         mcp.lock().unwrap().finish_fixture(
             id,
-            crate::ui::mcp_server::FixtureAck::Applied { changed: vec![], trigger: None },
+            crate::ui::mcp_server::FixtureAck::Applied {
+                changed: vec![],
+                trigger: None,
+            },
         );
     }
 }
@@ -9286,9 +10343,11 @@ fn mcp_ack_apply(mcp_shared: &Option<crate::ui::mcp_server::SharedStateHandle>, 
 /// uses devtools_subscription/devtools_update).
 fn map_mcp_action(action: crate::ui::mcp_server::ActionMessage) -> Option<IcedMessage> {
     match action.target {
-        crate::ui::mcp_server::ActionTarget::Event { widget, event } => {
-            Some(IcedMessage { widget, event, input_value: action.value })
-        }
+        crate::ui::mcp_server::ActionTarget::Event { widget, event } => Some(IcedMessage {
+            widget,
+            event,
+            input_value: action.value,
+        }),
         crate::ui::mcp_server::ActionTarget::Path { .. } => None,
         crate::ui::mcp_server::ActionTarget::Fixture { request_id } => {
             let payload = action.value.unwrap_or_default();
@@ -9372,9 +10431,7 @@ impl iced_futures::subscription::Recipe for McpPushRecipe {
                     }
                 }
             });
-        rx_msg
-            .map(move |msg| DM::App(app, msg))
-            .boxed()
+        rx_msg.map(move |msg| DM::App(app, msg)).boxed()
     }
 }
 
@@ -9383,10 +10440,7 @@ impl iced_futures::subscription::Recipe for McpPushRecipe {
 /// 过冲累积漂移，末 2ms 自旋兜精度）；动作经 `SharedState::send_action`
 /// 异步直推（与 MCP 工具同一 action 通道；**无 applied 栅栏**——栅栏会
 /// 把驱动闭成「应用率」回路，破坏吞吐勘定语义）。
-fn spawn_drive_probe(
-    mcp_shared: crate::ui::mcp_server::SharedStateHandle,
-    trigger_file: String,
-) {
+fn spawn_drive_probe(mcp_shared: crate::ui::mcp_server::SharedStateHandle, trigger_file: String) {
     std::thread::spawn(move || {
         let mut consumed_offset: u64 = 0;
         loop {
@@ -9415,8 +10469,7 @@ fn spawn_drive_probe(
                 if parts.len() != 5 || parts[0] != "scroll" {
                     continue;
                 }
-                let (Ok(hz), Ok(count)) =
-                    (parts[1].parse::<f64>(), parts[2].parse::<usize>())
+                let (Ok(hz), Ok(count)) = (parts[1].parse::<f64>(), parts[2].parse::<usize>())
                 else {
                     continue;
                 };
@@ -9440,16 +10493,11 @@ fn spawn_drive_probe(
                     loop {
                         match deadline.checked_duration_since(std::time::Instant::now()) {
                             None => break,
-                            Some(remaining)
-                                if remaining
-                                    <= std::time::Duration::from_millis(2) =>
-                            {
+                            Some(remaining) if remaining <= std::time::Duration::from_millis(2) => {
                                 std::hint::spin_loop();
                             }
                             Some(remaining) => {
-                                std::thread::sleep(
-                                    remaining - std::time::Duration::from_millis(2),
-                                );
+                                std::thread::sleep(remaining - std::time::Duration::from_millis(2));
                             }
                         }
                     }
@@ -9519,7 +10567,8 @@ fn apply_mcp_fixture(
                 }
             }
         };
-        let incoming = match crate::ui::mcp_server::fixture_json_to_value(raw, 0, &mut array_items) {
+        let incoming = match crate::ui::mcp_server::fixture_json_to_value(raw, 0, &mut array_items)
+        {
             Ok(value) => value,
             Err(error) => {
                 return crate::ui::mcp_server::FixtureAck::Error {
@@ -9561,18 +10610,41 @@ fn apply_mcp_fixture(
     // {widget, event, input?}（namespaced 键派发）。
     enum FixtureTrigger {
         Handler(String),
-        WidgetEvent { widget: String, event: String, input: Option<String> },
+        WidgetEvent {
+            widget: String,
+            event: String,
+            input: Option<String>,
+        },
     }
-    let trigger = root.get("trigger").and_then(|value| value.as_object()).and_then(|trigger| {
-        let handler = trigger.get("handler").and_then(|value| value.as_str()).filter(|s| !s.is_empty());
-        if let Some(handler) = handler {
-            return Some(FixtureTrigger::Handler(handler.to_string()));
-        }
-        let widget = trigger.get("widget").and_then(|value| value.as_str()).filter(|s| !s.is_empty())?;
-        let event = trigger.get("event").and_then(|value| value.as_str()).filter(|s| !s.is_empty())?;
-        let input = trigger.get("input").and_then(|value| value.as_str()).map(str::to_string);
-        Some(FixtureTrigger::WidgetEvent { widget: widget.to_string(), event: event.to_string(), input })
-    });
+    let trigger = root
+        .get("trigger")
+        .and_then(|value| value.as_object())
+        .and_then(|trigger| {
+            let handler = trigger
+                .get("handler")
+                .and_then(|value| value.as_str())
+                .filter(|s| !s.is_empty());
+            if let Some(handler) = handler {
+                return Some(FixtureTrigger::Handler(handler.to_string()));
+            }
+            let widget = trigger
+                .get("widget")
+                .and_then(|value| value.as_str())
+                .filter(|s| !s.is_empty())?;
+            let event = trigger
+                .get("event")
+                .and_then(|value| value.as_str())
+                .filter(|s| !s.is_empty())?;
+            let input = trigger
+                .get("input")
+                .and_then(|value| value.as_str())
+                .map(str::to_string);
+            Some(FixtureTrigger::WidgetEvent {
+                widget: widget.to_string(),
+                event: event.to_string(),
+                input,
+            })
+        });
     let trigger_label = trigger.as_ref().map(|t| match t {
         FixtureTrigger::Handler(name) => format!("handler:{name}"),
         FixtureTrigger::WidgetEvent { widget, event, .. } => format!("{widget}.{event}"),
@@ -9615,7 +10687,11 @@ fn apply_mcp_fixture(
         };
         // 正规化后必为 WidgetEvent（handler 形态已解析归属或提前回错）。
         let (widget, event, input) = match trigger {
-            FixtureTrigger::WidgetEvent { widget, event, input } => (widget, event, input),
+            FixtureTrigger::WidgetEvent {
+                widget,
+                event,
+                input,
+            } => (widget, event, input),
             FixtureTrigger::Handler(_) => {
                 unreachable!("handler form normalized to widget form above")
             }
@@ -9826,11 +10902,9 @@ fn json_to_auto_val(v: &serde_json::Value) -> auto_val::Value {
             }
         }
         serde_json::Value::String(s) => auto_val::Value::str(s),
-        serde_json::Value::Array(arr) => {
-            auto_val::Value::Array(auto_val::Array {
-                values: arr.iter().map(json_to_auto_val).collect(),
-            })
-        }
+        serde_json::Value::Array(arr) => auto_val::Value::Array(auto_val::Array {
+            values: arr.iter().map(json_to_auto_val).collect(),
+        }),
         serde_json::Value::Object(map) => {
             let mut obj = auto_val::Obj::new();
             for (k, val) in map {
@@ -10040,7 +11114,9 @@ async fn http_sse_loop(
                                 // 提取 `data:` 行。
                                 let data: String = frame
                                     .lines()
-                                    .filter_map(|l| l.strip_prefix("data:").map(|s| s.trim_start().to_string()))
+                                    .filter_map(|l| {
+                                        l.strip_prefix("data:").map(|s| s.trim_start().to_string())
+                                    })
                                     .collect::<Vec<_>>()
                                     .join("\n");
                                 if data.is_empty() {
@@ -10098,7 +11174,10 @@ fn table_cell_text(cell: &auto_val::Value) -> String {
         }
         if let Some(t) = o.get("Tagged") {
             if let auto_val::Value::Obj(tg) = t {
-                return tg.get("text").map(|v| v.as_str().to_string()).unwrap_or_default();
+                return tg
+                    .get("text")
+                    .map(|v| v.as_str().to_string())
+                    .unwrap_or_default();
             }
         }
     }
@@ -10109,14 +11188,22 @@ fn table_cell_text(cell: &auto_val::Value) -> String {
 /// 引号加倍;含逗号/引号/换行的字段整体加引号。
 fn table_to_csv(tbl: &auto_val::Obj) -> Option<String> {
     let cols: Vec<String> = match tbl.get("columns") {
-        Some(auto_val::Value::Array(a)) => a.values.iter().map(|v| csv_escape(&table_cell_text(v))).collect(),
+        Some(auto_val::Value::Array(a)) => a
+            .values
+            .iter()
+            .map(|v| csv_escape(&table_cell_text(v)))
+            .collect(),
         _ => return None,
     };
     let mut out = cols.join(",");
     if let Some(auto_val::Value::Array(rows)) = tbl.get("rows") {
         for r in rows.values.iter() {
             if let auto_val::Value::Array(cells) = r {
-                let line: Vec<String> = cells.values.iter().map(|c| csv_escape(&table_cell_text(c))).collect();
+                let line: Vec<String> = cells
+                    .values
+                    .iter()
+                    .map(|c| csv_escape(&table_cell_text(c)))
+                    .collect();
                 out.push('\n');
                 out.push_str(&line.join(","));
             }
@@ -10197,7 +11284,10 @@ fn sort_table_rows(block: &mut auto_val::Obj, sort_col: i32, sort_dir: i32) {
     // 取 output.Table.rows(原序由服务端/SSE 写入 —— 注意:一旦原地重排,
     // "原序"丢失;接受此限制:清空过滤/切换排序均基于当前序的稳定重排,
     // bash 也无"恢复原序"键;列指示 ● 未排序态在首次点击后不再出现)。
-    let query = block.get("table_filter_q").map(|v| v.as_str().to_lowercase()).unwrap_or_default();
+    let query = block
+        .get("table_filter_q")
+        .map(|v| v.as_str().to_lowercase())
+        .unwrap_or_default();
     let mut rows: Vec<Value> = {
         let out = match block.get("output") {
             Some(Value::Obj(o)) => o.clone(),
@@ -10219,7 +11309,9 @@ fn sort_table_rows(block: &mut auto_val::Obj, sort_col: i32, sort_dir: i32) {
                 Value::Array(a) => &a.values,
                 _ => return false,
             };
-            cells.iter().any(|c| table_cell_text(c).to_lowercase().contains(&query))
+            cells
+                .iter()
+                .any(|c| table_cell_text(c).to_lowercase().contains(&query))
         });
     }
     // 排序(稳定:选择排序取"应排最前"者,按方向)
@@ -10234,12 +11326,12 @@ fn sort_table_rows(block: &mut auto_val::Obj, sort_col: i32, sort_dir: i32) {
                 let tb = table_row_text(&remaining[best], sc as i64);
                 let (na, va) = table_numeric_prefix(&ta);
                 let (nb, vb) = table_numeric_prefix(&tb);
-                let a_first = if va && vb {
-                    na < nb
+                let a_first = if va && vb { na < nb } else { ta < tb };
+                let take = if sort_dir > 0 {
+                    a_first
                 } else {
-                    ta < tb
+                    !a_first && ta != tb
                 };
-                let take = if sort_dir > 0 { a_first } else { !a_first && ta != tb };
                 if take {
                     best = i;
                 }
@@ -10289,7 +11381,8 @@ fn update_block_in_state(
             let m = component.materialize_obj_value(b);
             match m {
                 auto_val::Value::Obj(obj) => {
-                    let id_matches = obj.get("id")
+                    let id_matches = obj
+                        .get("id")
                         .map(|v| v.as_int() as i64 == block_id)
                         .unwrap_or(false);
                     if !id_matches {
@@ -10301,7 +11394,8 @@ fn update_block_in_state(
             }
         }
         if let auto_val::Value::Obj(obj) = b {
-            let id_matches = obj.get("id")
+            let id_matches = obj
+                .get("id")
                 .map(|v| v.as_int() as i64 == block_id)
                 .unwrap_or(false);
             if !id_matches {
@@ -10311,15 +11405,24 @@ fn update_block_in_state(
             if event == "command_output" {
                 // Append chunk to streamed_text.
                 let chunk = payload.get("chunk").and_then(|x| x.as_str()).unwrap_or("");
-                let cur = obj.get("streamed_text").map(|v| v.as_str().to_string()).unwrap_or_default();
-                obj.set("streamed_text", auto_val::Value::str(&format!("{}{}", cur, chunk)));
+                let cur = obj
+                    .get("streamed_text")
+                    .map(|v| v.as_str().to_string())
+                    .unwrap_or_default();
+                obj.set(
+                    "streamed_text",
+                    auto_val::Value::str(&format!("{}{}", cur, chunk)),
+                );
             } else {
                 // command_result: set status / output / duration_ms / clear streamed_text.
                 let status_str = match payload.get("status") {
                     Some(serde_json::Value::String(s)) => s.clone(),
                     Some(obj @ serde_json::Value::Object(_)) => {
                         // {"Failed": msg} → 取 Failed 消息
-                        obj.get("Failed").and_then(|m| m.as_str()).unwrap_or("Failed").to_string()
+                        obj.get("Failed")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("Failed")
+                            .to_string()
                     }
                     _ => "Failed".to_string(),
                 };
@@ -10330,11 +11433,17 @@ fn update_block_in_state(
                 } else {
                     ("Failed".to_string(), status_str)
                 };
-                let dur = payload.get("duration_ms").and_then(|x| x.as_u64()).unwrap_or(0) as i32;
+                let dur = payload
+                    .get("duration_ms")
+                    .and_then(|x| x.as_u64())
+                    .unwrap_or(0) as i32;
                 // Plan 044 M1: output 按 payload 变体分发(Table/Text)。
                 let output_obj = if let Some(output) = payload.get("output") {
                     if output.is_null() {
-                        let text = obj.get("streamed_text").map(|v| v.as_str().to_string()).unwrap_or_default();
+                        let text = obj
+                            .get("streamed_text")
+                            .map(|v| v.as_str().to_string())
+                            .unwrap_or_default();
                         let mut o = auto_val::Obj::new();
                         o.set("Text", auto_val::Value::str(&text));
                         auto_val::Value::Obj(Box::new(o))
@@ -10342,7 +11451,10 @@ fn update_block_in_state(
                         json_to_auto_val(output)
                     }
                 } else {
-                    let text = obj.get("streamed_text").map(|v| v.as_str().to_string()).unwrap_or_default();
+                    let text = obj
+                        .get("streamed_text")
+                        .map(|v| v.as_str().to_string())
+                        .unwrap_or_default();
                     let mut o = auto_val::Obj::new();
                     o.set("Text", auto_val::Value::str(&text));
                     auto_val::Value::Obj(Box::new(o))
@@ -10358,17 +11470,28 @@ fn update_block_in_state(
                 // 整块(本文件 highlight_code 一次扫描),免去 .at 逐行逐
                 // span 拼接。此前 660 行代码一次 view 重建 >200ms,MCP 心跳
                 // (默认开启,200ms 一拍)令消息队列积压 → 事件饿死。
-                let code_plain = payload.get("output").and_then(|o| o.get("Code"))
+                let code_plain = payload
+                    .get("output")
+                    .and_then(|o| o.get("Code"))
                     .and_then(|c| c.get("lines"))
                     .and_then(|l| l.as_array())
                     .map(|lines| {
-                        lines.iter().map(|line| {
-                            line.as_array().map(|spans| {
-                                spans.iter()
-                                    .map(|s| s.get("text").and_then(|t| t.as_str()).unwrap_or(""))
-                                    .collect::<String>()
-                            }).unwrap_or_default()
-                        }).collect::<Vec<_>>().join("\n")
+                        lines
+                            .iter()
+                            .map(|line| {
+                                line.as_array()
+                                    .map(|spans| {
+                                        spans
+                                            .iter()
+                                            .map(|s| {
+                                                s.get("text").and_then(|t| t.as_str()).unwrap_or("")
+                                            })
+                                            .collect::<String>()
+                                    })
+                                    .unwrap_or_default()
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n")
                     });
                 match code_plain {
                     Some(s) => obj.set("streamed_text", auto_val::Value::str(&s)),
@@ -10392,9 +11515,10 @@ fn update_block_in_state(
     if found {
         // Write back the same type we read.
         let _ = match &raw {
-            auto_val::Value::Array(_) | auto_val::Value::Nil => {
-                component.write_state("blocks", auto_val::Value::Array(auto_val::Array { values: blocks_vec }))
-            }
+            auto_val::Value::Array(_) | auto_val::Value::Nil => component.write_state(
+                "blocks",
+                auto_val::Value::Array(auto_val::Array { values: blocks_vec }),
+            ),
             _ => component.write_state_vec("blocks", blocks_vec),
         };
     }
@@ -10409,7 +11533,9 @@ fn append_chat_events(component: &mut DynamicComponent, lines: Vec<auto_val::Val
     let mut cur: Vec<auto_val::Value> = match component.read_state("chat_events") {
         Ok(auto_val::Value::Array(arr)) => arr.values.clone(),
         Ok(auto_val::Value::Nil) | Err(_) => Vec::new(),
-        Ok(_) => component.read_state_as_vec("chat_events").unwrap_or_default(),
+        Ok(_) => component
+            .read_state_as_vec("chat_events")
+            .unwrap_or_default(),
     };
     cur.extend(lines);
     let _ = component.write_state(
@@ -10441,7 +11567,8 @@ fn set_block_turn(component: &mut DynamicComponent, block_id: i64, turn: i64) {
             let m = component.materialize_obj_value(b);
             match m {
                 auto_val::Value::Obj(obj) => {
-                    let id_matches = obj.get("id")
+                    let id_matches = obj
+                        .get("id")
                         .map(|v| v.as_int() as i64 == block_id)
                         .unwrap_or(false);
                     if !id_matches {
@@ -10453,7 +11580,8 @@ fn set_block_turn(component: &mut DynamicComponent, block_id: i64, turn: i64) {
             }
         }
         if let auto_val::Value::Obj(obj) = b {
-            let id_matches = obj.get("id")
+            let id_matches = obj
+                .get("id")
                 .map(|v| v.as_int() as i64 == block_id)
                 .unwrap_or(false);
             if !id_matches {
@@ -10466,9 +11594,10 @@ fn set_block_turn(component: &mut DynamicComponent, block_id: i64, turn: i64) {
     }
     if found {
         let _ = match &raw {
-            auto_val::Value::Array(_) | auto_val::Value::Nil => {
-                component.write_state("blocks", auto_val::Value::Array(auto_val::Array { values: blocks_vec }))
-            }
+            auto_val::Value::Array(_) | auto_val::Value::Nil => component.write_state(
+                "blocks",
+                auto_val::Value::Array(auto_val::Array { values: blocks_vec }),
+            ),
             _ => component.write_state_vec("blocks", blocks_vec),
         };
     }
@@ -10522,7 +11651,10 @@ fn shell_event_subscription(
 fn poll_http_msgs() -> Option<IcedMessage> {
     let done = crate::vm::ffi::stdlib::http_msg_poll_one()?;
     // PLAN-084 诊断打点（临时）：泵派发侧。
-    eprintln!("[msg-pump] dispatch widget={} event={}", done.widget, done.event);
+    eprintln!(
+        "[msg-pump] dispatch widget={} event={}",
+        done.widget, done.event
+    );
     Some(IcedMessage {
         widget: done.widget,
         event: format!("{}\u{1F}s\u{1F}{}", done.event, done.payload),
@@ -10578,7 +11710,11 @@ fn keyboard_subscription_ext(
     iced_futures::subscription::filter_map(
         ("autoui-keyboard", app, my_window, focused),
         move |event: iced_futures::subscription::Event| {
-            let iced_futures::subscription::Event::Interaction { window, event, status } = event
+            let iced_futures::subscription::Event::Interaction {
+                window,
+                event,
+                status,
+            } = event
             else {
                 return None;
             };
@@ -10661,9 +11797,7 @@ fn desktop_hotkey_subscription(
 /// PLAN-019 v1.7：picker 键 → 消息的纯函数（订阅闭包可测化内核，
 /// desktop_hotkey_message 同型）。←/→ = 导航，Esc = 逐级退回链；其余
 /// 键 None（穿透热键表）。
-fn picker_key_message(
-    key: &iced::keyboard::Key,
-) -> Option<crate::ui::session::DesktopMessage> {
+fn picker_key_message(key: &iced::keyboard::Key) -> Option<crate::ui::session::DesktopMessage> {
     use crate::ui::session::DesktopEvent as DE;
     use crate::ui::session::DesktopMessage as DM;
     use iced::keyboard::{key::Named, Key};
@@ -10690,7 +11824,9 @@ fn desktop_hotkey_message(
         return Some(DM::Wm(WmCommand::ExitDesktop));
     }
     if hotkeys.matches(HA::CycleSwitcher, modifiers, key) {
-        return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonSwitcher));
+        return Some(DM::Desktop(
+            crate::ui::session::DesktopEvent::SummonSwitcher,
+        ));
     }
     if hotkeys.matches(HA::CycleWindow, modifiers, key) {
         return Some(DM::Wm(WmCommand::CycleWindow));
@@ -10702,13 +11838,19 @@ fn desktop_hotkey_message(
         return Some(DM::Wm(WmCommand::SendFocusedTo(WorkspaceStep::Prev)));
     }
     if hotkeys.matches(HA::SetLayoutGrid, modifiers, key) {
-        return Some(DM::Wm(WmCommand::SetLayout(crate::ui::layout::LayoutMode::Grid)));
+        return Some(DM::Wm(WmCommand::SetLayout(
+            crate::ui::layout::LayoutMode::Grid,
+        )));
     }
     if hotkeys.matches(HA::SetLayoutStack, modifiers, key) {
-        return Some(DM::Wm(WmCommand::SetLayout(crate::ui::layout::LayoutMode::MasterStack)));
+        return Some(DM::Wm(WmCommand::SetLayout(
+            crate::ui::layout::LayoutMode::MasterStack,
+        )));
     }
     if hotkeys.matches(HA::SetLayoutFree, modifiers, key) {
-        return Some(DM::Wm(WmCommand::SetLayout(crate::ui::layout::LayoutMode::Free)));
+        return Some(DM::Wm(WmCommand::SetLayout(
+            crate::ui::layout::LayoutMode::Free,
+        )));
     }
     if hotkeys.matches(HA::WorkspaceNext, modifiers, key) {
         return Some(DM::Wm(WmCommand::NextWorkspace));
@@ -10717,7 +11859,9 @@ fn desktop_hotkey_message(
         return Some(DM::Wm(WmCommand::PrevWorkspace));
     }
     if hotkeys.matches(HA::SummonLauncher, modifiers, key) {
-        return Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher));
+        return Some(DM::Desktop(
+            crate::ui::session::DesktopEvent::SummonLauncher,
+        ));
     }
     // Plan 488 T7（490 收编）：Ctrl+V 粘贴路由（表驱动化——shell.keys.paste
     // 可覆盖；update 臂语义未动）。
@@ -10739,9 +11883,15 @@ mod hotkey_subscription_tests {
 
     fn mods(ctrl: bool, alt: bool, shift: bool) -> Modifiers {
         let mut m = Modifiers::default();
-        if ctrl { m |= Modifiers::CTRL; }
-        if alt { m |= Modifiers::ALT; }
-        if shift { m |= Modifiers::SHIFT; }
+        if ctrl {
+            m |= Modifiers::CTRL;
+        }
+        if alt {
+            m |= Modifiers::ALT;
+        }
+        if shift {
+            m |= Modifiers::SHIFT;
+        }
         m
     }
 
@@ -10753,7 +11903,9 @@ mod hotkey_subscription_tests {
         let t = HotkeyTable::builtin();
 
         // G1：Alt+Tab → None（退役；switcher 承担窗口循环）
-        assert!(desktop_hotkey_message(&t, &mods(false, true, false), &named(Named::Tab)).is_none());
+        assert!(
+            desktop_hotkey_message(&t, &mods(false, true, false), &named(Named::Tab)).is_none()
+        );
 
         // G2：Ctrl+Alt+] / [ → 分区环切
         assert!(matches!(
@@ -10765,14 +11917,21 @@ mod hotkey_subscription_tests {
             Some(DM::Wm(WmCommand::PrevWorkspace))
         ));
         // 旧默认方向键 → None（可覆盖恢复）
-        assert!(desktop_hotkey_message(&t, &mods(true, true, false), &named(Named::ArrowRight)).is_none());
+        assert!(
+            desktop_hotkey_message(&t, &mods(true, true, false), &named(Named::ArrowRight))
+                .is_none()
+        );
 
         // 既有臂不回归（PLAN-526 T13：Escape→ExitDesktop 已退役——
         // 裸 Esc 不再出任何 WM 命令）
-        assert!(desktop_hotkey_message(&t, &mods(false, false, false), &named(Named::Escape)).is_none());
+        assert!(
+            desktop_hotkey_message(&t, &mods(false, false, false), &named(Named::Escape)).is_none()
+        );
         assert!(matches!(
             desktop_hotkey_message(&t, &mods(true, false, false), &named(Named::Tab)),
-            Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonSwitcher))
+            Some(DM::Desktop(
+                crate::ui::session::DesktopEvent::SummonSwitcher
+            ))
         ));
         assert!(matches!(
             desktop_hotkey_message(&t, &mods(true, true, true), &named(Named::ArrowRight)),
@@ -10788,17 +11947,25 @@ mod hotkey_subscription_tests {
             desktop_hotkey_message(&t, &mods(true, false, false), &Key::Character("v".into())),
             Some(DM::Desktop(crate::ui::session::DesktopEvent::NativePaste))
         ));
-        assert!(desktop_hotkey_message(&t, &mods(true, false, true), &Key::Character("v".into())).is_none(), "Ctrl+Shift+V 留给 App 层");
+        assert!(
+            desktop_hotkey_message(&t, &mods(true, false, true), &Key::Character("v".into()))
+                .is_none(),
+            "Ctrl+Shift+V 留给 App 层"
+        );
 
         // launcher 双收（主键 + IME 兜底别名）
         let space = named(Named::Space);
         assert!(matches!(
             desktop_hotkey_message(&t, &mods(true, false, false), &space),
-            Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher))
+            Some(DM::Desktop(
+                crate::ui::session::DesktopEvent::SummonLauncher
+            ))
         ));
         assert!(matches!(
             desktop_hotkey_message(&t, &mods(true, true, false), &space),
-            Some(DM::Desktop(crate::ui::session::DesktopEvent::SummonLauncher))
+            Some(DM::Desktop(
+                crate::ui::session::DesktopEvent::SummonLauncher
+            ))
         ));
     }
 
@@ -10903,7 +12070,10 @@ fn keyboard_event_message(
     // when a text input is focused (Plan 371: F12 reliability fix).
     if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, .. }) = &event {
         if allow_devtools
-            && matches!(key, iced::keyboard::Key::Named(iced::keyboard::key::Named::F12))
+            && matches!(
+                key,
+                iced::keyboard::Key::Named(iced::keyboard::key::Named::F12)
+            )
         {
             return Some(IcedMessage {
                 widget: String::new(),
@@ -10919,10 +12089,7 @@ fn keyboard_event_message(
     }
 
     match event {
-        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
-            key, modifiers, ..
-        }) => {
-
+        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
             // Build key string for lookup
             let key_str = match &key {
                 // Named keys
@@ -10950,8 +12117,12 @@ fn keyboard_event_message(
                 iced::keyboard::Key::Character(c) => {
                     if modifiers.control() || modifiers.alt() {
                         let mut prefix = String::new();
-                        if modifiers.control() { prefix.push_str("Ctrl+"); }
-                        if modifiers.alt() { prefix.push_str("Alt+"); }
+                        if modifiers.control() {
+                            prefix.push_str("Ctrl+");
+                        }
+                        if modifiers.alt() {
+                            prefix.push_str("Alt+");
+                        }
                         format!("{}{}", prefix, c)
                     } else {
                         c.to_string()
@@ -10970,10 +12141,10 @@ fn keyboard_event_message(
                 .cloned()
                 .or_else(|| {
                     if modifiers.shift() && !modifiers.control() && !modifiers.alt() {
-                        let shifted_map: &[(&str, &str)] = &[
-                            ("=", "+"), ("8", "*"), ("-", "_"), ("/", "?"),
-                        ];
-                        shifted_map.iter()
+                        let shifted_map: &[(&str, &str)] =
+                            &[("=", "+"), ("8", "*"), ("-", "_"), ("/", "?")];
+                        shifted_map
+                            .iter()
                             .find(|(from, _)| *from == key_str.as_str())
                             .and_then(|(_, to)| key_bindings.get(*to))
                             .cloned()
@@ -11241,9 +12412,9 @@ fn service_snapshot_requests(
     }
     state.desktop.snapshot_pending_wids.replace(wids);
     Some(iced::window::screenshot(host_window).map(|ss| {
-        crate::ui::session::DesktopMessage::Desktop(
-            crate::ui::session::DesktopEvent::SnapshotShot(ss),
-        )
+        crate::ui::session::DesktopMessage::Desktop(crate::ui::session::DesktopEvent::SnapshotShot(
+            ss,
+        ))
     }))
 }
 
@@ -11324,11 +12495,14 @@ fn sync_dash_dark_bit(state: &mut crate::ui::session::DesktopSession) {
         return;
     }
     state.desktop.dash_dark_cache.set(dark);
-    let Some(panel) = state.desktop.dashboard_app else { return };
+    let Some(panel) = state.desktop.dashboard_app else {
+        return;
+    };
     if let Some(app) = state.apps.get_mut(&panel) {
-        let _ = app
-            .component
-            .write_state("__dash_dark", auto_val::Value::str(if dark { "1" } else { "0" }));
+        let _ = app.component.write_state(
+            "__dash_dark",
+            auto_val::Value::str(if dark { "1" } else { "0" }),
+        );
         *app.state.view_dirty.borrow_mut() = true;
     }
 }
@@ -11344,13 +12518,11 @@ fn sync_dash_dark_bit(state: &mut crate::ui::session::DesktopSession) {
 fn presentation_keepalive_tick() {
     static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
     let now = std::time::Instant::now();
-    let due = LAST
-        .lock()
-        .map_or(true, |g| {
-            g.map_or(true, |t| {
-                now.duration_since(t) >= std::time::Duration::from_secs(1)
-            })
-        });
+    let due = LAST.lock().map_or(true, |g| {
+        g.map_or(true, |t| {
+            now.duration_since(t) >= std::time::Duration::from_secs(1)
+        })
+    });
     if !due {
         return;
     }
@@ -11384,20 +12556,16 @@ fn syslog_inject_tick(state: &mut crate::ui::session::DesktopSession) {
     // 顶层优先（z_order 逆序首个非隐藏匹配）——多窗同 app 时泵跟随用户
     // 正在看的窗；全隐藏回退首个在册窗（focus 追随语义）。
     let win_app = state.host.as_ref().and_then(|h| {
-        h.wm
-            .wins
+        h.wm.wins
             .iter()
             .filter(|(_, v)| v.registry_id.as_deref() == Some(SYSLOG_APP_ID))
             .map(|(k, v)| (k, v.app, v.hidden.get()))
             .collect::<Vec<_>>()
             .into_iter()
-            .find(|(k, _, hidden)| {
-                !*hidden && h.wm.z_order.iter().rev().any(|z| z == *k)
-            })
+            .find(|(k, _, hidden)| !*hidden && h.wm.z_order.iter().rev().any(|z| z == *k))
             .map(|(_, app, _)| app)
             .or_else(|| {
-                h.wm
-                    .wins
+                h.wm.wins
                     .values()
                     .find(|v| v.registry_id.as_deref() == Some(SYSLOG_APP_ID))
                     .map(|v| v.app)
@@ -11420,7 +12588,11 @@ fn syslog_inject_tick(state: &mut crate::ui::session::DesktopSession) {
     for e in &entries {
         seqs.push(auto_val::Value::Str(e.seq.to_string().into()));
         let time_s = chrono::DateTime::from_timestamp_millis(e.ts_ms as i64)
-            .map(|dt| dt.with_timezone(&chrono::Local).format("%H:%M:%S").to_string())
+            .map(|dt| {
+                dt.with_timezone(&chrono::Local)
+                    .format("%H:%M:%S")
+                    .to_string()
+            })
             .unwrap_or_default();
         times.push(auto_val::Value::Str(time_s.into()));
         levels.push(auto_val::Value::Str(e.level.as_str().into()));
@@ -11440,7 +12612,8 @@ fn syslog_inject_tick(state: &mut crate::ui::session::DesktopSession) {
         let _ = app.component.write_state_vec("__syslog_msg", msgs);
         if let Err(err) = app.component.bridge_mut().call_handler("Rebuild", &[]) {
             crate::syslog!(
-                SyslogLevel::Error, "host",
+                SyslogLevel::Error,
+                "host",
                 "[session] syslog viewer Rebuild failed: {err}"
             );
         }
@@ -11451,7 +12624,8 @@ fn syslog_inject_tick(state: &mut crate::ui::session::DesktopSession) {
     }
 }
 
-fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str, msg: &str) {    // Plan 487 M4 + Plan 540 T2：通知持久化开关门控（479 消费链单点）——
+fn push_notification(state: &mut crate::ui::session::DesktopSession, kind: &str, msg: &str) {
+    // Plan 487 M4 + Plan 540 T2：通知持久化开关门控（479 消费链单点）——
     // 单源 `config.notes_enabled`（设置窗写经宿主臂收口落 config.at），
     // false = 关：notify 动词全链路（入史 + toast + 未读 + 落盘）短路。
     if !state.desktop.config.notes_enabled {
@@ -11535,8 +12709,7 @@ fn persist_notes(state: &crate::ui::session::DesktopSession) {
 pub(crate) fn restore_notifications(state: &mut crate::ui::session::DesktopSession) {
     let mut restored: Vec<crate::ui::session::NotificationEntry> = Vec::new();
     for slot in 0..10usize {
-        let Some(raw) =
-            crate::vm::ffi::stdlib::storage_host_read(&format!("shell.notes.{slot}"))
+        let Some(raw) = crate::vm::ffi::stdlib::storage_host_read(&format!("shell.notes.{slot}"))
         else {
             break;
         };
@@ -11627,7 +12800,11 @@ fn refresh_notification_panel(state: &mut crate::ui::session::DesktopSession) {
         .component
         .write_state("__panel_max_h", auto_val::Value::Int(max_h as i32));
     if let Err(err) = app.component.bridge_mut().call_handler("RebuildNotes", &[]) {
-        crate::syslog!(SyslogLevel::Error, "host", "[session] notification RebuildNotes failed: {err}");
+        crate::syslog!(
+            SyslogLevel::Error,
+            "host",
+            "[session] notification RebuildNotes failed: {err}"
+        );
     }
     *app.state.view_dirty.borrow_mut() = true;
 }
@@ -11686,14 +12863,21 @@ pub(crate) fn summon_launcher(
             );
         } else if !state.desktop.launcher_spawned {
             if let Err(err) = state.spawn_launcher_outproc() {
-                crate::syslog!(SyslogLevel::Error, "host", "[p036] launcher exe spawn 失败: {err}");
+                crate::syslog!(
+                    SyslogLevel::Error,
+                    "host",
+                    "[p036] launcher exe spawn 失败: {err}"
+                );
                 state.desktop.launcher_open = false;
             }
         }
         return iced::Task::none();
     }
     if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
-        eprintln!("[464-SUMMON] summon_launcher entered, mounted={}", state.desktop.launcher_app.is_some());
+        eprintln!(
+            "[464-SUMMON] summon_launcher entered, mounted={}",
+            state.desktop.launcher_app.is_some()
+        );
     }
     // 1. 懒挂载
     if state.desktop.launcher_app.is_none() {
@@ -11745,7 +12929,9 @@ pub(crate) fn summon_launcher(
         icons.push(auto_val::Value::Str(e.icon.clone().into()));
         cats.push(auto_val::Value::Str(e.category.clone().into()));
         lns.push(auto_val::Value::Str(e.id.to_lowercase().into()));
-        lts.push(auto_val::Value::Str(e.display_title().to_lowercase().into()));
+        lts.push(auto_val::Value::Str(
+            e.display_title().to_lowercase().into(),
+        ));
         colors.push(auto_val::Value::Str(launcher_brand_color(&e.id).into()));
     }
     if let Some(app) = state.apps.get_mut(&launcher) {
@@ -11756,15 +12942,25 @@ pub(crate) fn summon_launcher(
         let _ = app.component.write_state_vec("apps_lns", lns);
         let _ = app.component.write_state_vec("apps_lts", lts);
         let _ = app.component.write_state_vec("apps_colors", colors);
-        let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
-        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
-        let _ = app.component.write_state("__focus_input", auto_val::Value::str("1"));
+        let _ = app
+            .component
+            .write_state("hosted", auto_val::Value::str("1"));
+        let _ = app
+            .component
+            .write_state("visible", auto_val::Value::str("1"));
+        let _ = app
+            .component
+            .write_state("__focus_input", auto_val::Value::str("1"));
         let _ = app
             .component
             .write_state("__focus_input_tries", auto_val::Value::Int(0));
         // 宿主写状态不触发 handler——显式重算 ranked/网格行 + 刷 view
         if let Err(err) = app.component.bridge_mut().call_handler("ApplyFilter", &[]) {
-            crate::syslog!(SyslogLevel::Error, "host", "[session] launcher ApplyFilter failed: {err}");
+            crate::syslog!(
+                SyslogLevel::Error,
+                "host",
+                "[session] launcher ApplyFilter failed: {err}"
+            );
         }
         *app.state.view_dirty.borrow_mut() = true;
     }
@@ -11788,8 +12984,7 @@ pub(crate) fn summon_launcher(
         ids.first().cloned()
     }
     .unwrap_or_else(|| iced::widget::Id::new("prompt_input"));
-    iced::widget::operation::focus(summon_target)
-        .map(move |m| DM::App(launcher, m))
+    iced::widget::operation::focus(summon_target).map(move |m| DM::App(launcher, m))
 }
 
 /// Plan 503 M4：launcher 品牌色（stella 柔粉彩系，6 位 hex）。注册表条目
@@ -11837,7 +13032,10 @@ fn summon_switcher(
     /// 原路径零变化（I2）。开关镜像位 = switcher_open（层序/仲裁消费）。
     if state.desktop.shell_pipe.is_some() {
         state.desktop.switcher_open = true;
-        push_switcher_snapshot(state, &[crate::ui::shell_projection::ShellEvent::RebuildMru]);
+        push_switcher_snapshot(
+            state,
+            &[crate::ui::shell_projection::ShellEvent::RebuildMru],
+        );
         return iced::Task::none();
     }
     // 1. 懒挂载
@@ -11868,7 +13066,9 @@ fn summon_switcher(
     let mut thumbs: Vec<auto_val::Value> = Vec::new();
     let mut mru_objs: Vec<auto_val::Value> = Vec::new();
     for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
-        let Some(v) = host.wm.wins.get(&wid) else { continue };
+        let Some(v) = host.wm.wins.get(&wid) else {
+            continue;
+        };
         let focused = host.wm.focused == Some(wid);
         wids.push(auto_val::Value::Str(v.wid.0.to_string().into()));
         titles.push(auto_val::Value::Str(v.title.clone().into()));
@@ -11880,13 +13080,7 @@ fn summon_switcher(
         let icon = v
             .registry_id
             .as_ref()
-            .and_then(|id| {
-                state
-                    .desktop
-                    .registry_entries
-                    .iter()
-                    .find(|e| &e.id == id)
-            })
+            .and_then(|id| state.desktop.registry_entries.iter().find(|e| &e.id == id))
             .map(|e| e.icon.clone())
             .unwrap_or_else(|| "app-window".to_string());
         icons.push(auto_val::Value::Str(icon.into()));
@@ -11905,11 +13099,19 @@ fn summon_switcher(
         let _ = app.component.write_state_vec("mru_icons", icons);
         let _ = app.component.write_state_vec("mru_thumbs", thumbs);
         let _ = app.component.write_state_vec("__wm_mru", mru_objs);
-        let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
-        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        let _ = app
+            .component
+            .write_state("hosted", auto_val::Value::str("1"));
+        let _ = app
+            .component
+            .write_state("visible", auto_val::Value::str("1"));
         // 宿主写状态不触发 handler——显式重建 rows（sel 复位在 handler 内）+ 刷 view
         if let Err(err) = app.component.bridge_mut().call_handler("RebuildMru", &[]) {
-            crate::syslog!(SyslogLevel::Error, "host", "[session] switcher RebuildMru failed: {err}");
+            crate::syslog!(
+                SyslogLevel::Error,
+                "host",
+                "[session] switcher RebuildMru failed: {err}"
+            );
         }
         *app.state.view_dirty.borrow_mut() = true;
     }
@@ -11935,7 +13137,10 @@ fn toggle_notification_center(
         state.desktop.notes_open = open;
         if open {
             state.desktop.notes_unread.set(0);
-            push_notes_snapshot(state, &[crate::ui::shell_projection::ShellEvent::RebuildNotes]);
+            push_notes_snapshot(
+                state,
+                &[crate::ui::shell_projection::ShellEvent::RebuildNotes],
+            );
         } else {
             push_notes_snapshot(state, &[]);
         }
@@ -11958,7 +13163,9 @@ fn toggle_notification_center(
     if state.notification_visible() {
         let panel = state.desktop.notification_app.expect("panel checked");
         if let Some(app) = state.apps.get_mut(&panel) {
-            let _ = app.component.write_state("visible", auto_val::Value::str("0"));
+            let _ = app
+                .component
+                .write_state("visible", auto_val::Value::str("0"));
             *app.state.view_dirty.borrow_mut() = true;
         }
         return iced::Task::none();
@@ -11988,14 +13195,22 @@ fn toggle_notification_center(
         let _ = app.component.write_state_vec("note_msgs", msgs);
         let _ = app.component.write_state_vec("note_ats", ats);
         let _ = app.component.write_state_vec("note_apps", apps);
-        let _ = app.component.write_state("hosted", auto_val::Value::str("1"));
-        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        let _ = app
+            .component
+            .write_state("hosted", auto_val::Value::str("1"));
+        let _ = app
+            .component
+            .write_state("visible", auto_val::Value::str("1"));
         let _ = app
             .component
             .write_state("__panel_max_h", auto_val::Value::Int(max_h as i32));
         // 宿主写状态不触发 handler——显式重建 rows + 刷 view。
         if let Err(err) = app.component.bridge_mut().call_handler("RebuildNotes", &[]) {
-            crate::syslog!(SyslogLevel::Error, "host", "[session] notification RebuildNotes failed: {err}");
+            crate::syslog!(
+                SyslogLevel::Error,
+                "host",
+                "[session] notification RebuildNotes failed: {err}"
+            );
         }
         *app.state.view_dirty.borrow_mut() = true;
     }
@@ -12016,16 +13231,21 @@ pub(crate) fn build_switcher_snapshot(
     state: &crate::ui::session::DesktopSession,
 ) -> crate::ui::shell_projection::SwitcherSnapshot {
     use crate::ui::shell_projection::{ShellWin, SwitcherSnapshot};
-    let mut snap = SwitcherSnapshot { hosted: true, ..Default::default() };
-    let Some(host) = state.host.as_ref() else { return snap };
+    let mut snap = SwitcherSnapshot {
+        hosted: true,
+        ..Default::default()
+    };
+    let Some(host) = state.host.as_ref() else {
+        return snap;
+    };
     for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
         // PLAN-709 v1.11：槽位条目并入 switcher（Docked 门控；wid="N<id>"
         // ——缩略 widget 对 native wid 天然 lucide/native-icon 回退（497 注），
         // thumbs 恒空无快照抓取）。
-        if let Some(slot_id) =
-            crate::ui::session::WmState::native_slot_id_of_pseudo(wid)
-        {
-            let Some(slot) = host.wm.native_slots.get(&slot_id) else { continue };
+        if let Some(slot_id) = crate::ui::session::WmState::native_slot_id_of_pseudo(wid) {
+            let Some(slot) = host.wm.native_slots.get(&slot_id) else {
+                continue;
+            };
             if slot.state != crate::ui::native_dock::SlotState::Docked {
                 continue;
             }
@@ -12033,9 +13253,8 @@ pub(crate) fn build_switcher_snapshot(
             snap.mru_wids.push(format!("N{}", slot_id.0));
             snap.mru_titles.push(slot.title_cache.clone());
             snap.mru_thumbs.push(String::new());
-            snap.mru_icons.push(
-                crate::ui::iced::native_icon::icon_field(slot_id.0).to_string(),
-            );
+            snap.mru_icons
+                .push(crate::ui::iced::native_icon::icon_field(slot_id.0).to_string());
             snap.wm_mru.push(ShellWin {
                 wid: format!("N{}", slot_id.0),
                 title: slot.title_cache.clone(),
@@ -12050,7 +13269,9 @@ pub(crate) fn build_switcher_snapshot(
             });
             continue;
         }
-        let Some(v) = host.wm.wins.get(&wid) else { continue };
+        let Some(v) = host.wm.wins.get(&wid) else {
+            continue;
+        };
         // 壳伪窗不入切换列表（shell_pseudo_wids 过滤——build_shell_
         // projection 同册；overlay 伪窗加入后此过滤同样覆盖）。
         if state.desktop.shell_pseudo_wids.contains(&wid) {
@@ -12064,7 +13285,8 @@ pub(crate) fn build_switcher_snapshot(
         if !ready {
             crate::ui::iced::snapshot::request_capture(wid);
         }
-        snap.mru_thumbs.push(if ready { "1" } else { "" }.to_string());
+        snap.mru_thumbs
+            .push(if ready { "1" } else { "" }.to_string());
         snap.mru_icons.push(
             v.registry_id
                 .as_ref()
@@ -12118,7 +13340,10 @@ pub(crate) fn build_notes_snapshot(
     state: &crate::ui::session::DesktopSession,
 ) -> crate::ui::shell_projection::NotesSnapshot {
     use crate::ui::shell_projection::{NotesSnapshot, ShellNote};
-    let mut snap = NotesSnapshot { hosted: true, ..Default::default() };
+    let mut snap = NotesSnapshot {
+        hosted: true,
+        ..Default::default()
+    };
     {
         let notes = state.desktop.notifications.borrow();
         for n in notes.iter() {
@@ -12148,7 +13373,10 @@ pub(crate) fn build_launcher_snapshot(
     state: &crate::ui::session::DesktopSession,
 ) -> crate::ui::shell_projection::LauncherSnapshot {
     use crate::ui::shell_projection::LauncherSnapshot;
-    let mut snap = LauncherSnapshot { hosted: true, ..Default::default() };
+    let mut snap = LauncherSnapshot {
+        hosted: true,
+        ..Default::default()
+    };
     for e in state.desktop.registry_entries.iter() {
         if e.id == "launcher" || e.id.ends_with("-launcher") {
             continue;
@@ -12160,7 +13388,8 @@ pub(crate) fn build_launcher_snapshot(
         snap.app_cats.push(e.category.clone());
         snap.app_lns.push(e.id.to_lowercase());
         snap.app_lts.push(title.to_lowercase());
-        snap.app_colors.push(launcher_brand_color(&e.id).to_string());
+        snap.app_colors
+            .push(launcher_brand_color(&e.id).to_string());
     }
     snap
 }
@@ -12170,7 +13399,9 @@ pub(crate) fn push_launcher_snapshot(
     events: &[crate::ui::shell_projection::ShellEvent],
 ) {
     use crate::ui::desktop_protocol::message::{shell_face, ControlMsg, ProtocolMsg};
-    let Some(pipe) = state.desktop.launcher_pipe.clone() else { return };
+    let Some(pipe) = state.desktop.launcher_pipe.clone() else {
+        return;
+    };
     let mut snap = build_launcher_snapshot(state);
     snap.visible = state.desktop.launcher_open;
     snap.events = events.to_vec();
@@ -12198,7 +13429,10 @@ pub(crate) fn build_dashboard_snapshot(
 ) -> crate::ui::shell_projection::DashboardSnapshot {
     use crate::ui::shell_projection::{DashboardFace, DashboardSnapshot};
     let (faces, panel_w, panel_h, panel_top) = collect_dashboard_faces(state);
-    let mut snap = DashboardSnapshot { hosted: true, ..Default::default() };
+    let mut snap = DashboardSnapshot {
+        hosted: true,
+        ..Default::default()
+    };
     for f in faces {
         snap.faces.push(DashboardFace {
             id: f.id,
@@ -12252,13 +13486,13 @@ pub(crate) fn push_dashboard_snapshot(
             .unwrap_or(snap.panel_w as f32);
         if let Some(v) = host.wm.wins.get_mut(&dwid) {
             *v.rect.borrow_mut() = iced::Rectangle::new(
-                iced::Point::new((vw - snap.panel_w as f32 - 12.0).max(12.0), snap.panel_top as f32),
+                iced::Point::new(
+                    (vw - snap.panel_w as f32 - 12.0).max(12.0),
+                    snap.panel_top as f32,
+                ),
                 // 高度含下缘 tab 条预留带（与 .at 根块 h = 外框 + 28 同构，
                 // 条内 tab 点击落入面板伪窗命中带）。
-                iced::Size::new(
-                    snap.panel_w as f32,
-                    snap.panel_h as f32 + DASH_TAB_STRIP_H,
-                ),
+                iced::Size::new(snap.panel_w as f32, snap.panel_h as f32 + DASH_TAB_STRIP_H),
             );
         }
     }
@@ -12324,7 +13558,7 @@ const DASH_COLS: usize = 8; // 外框列数
 const DASH_ROWS: usize = 2; // 外框行数
 
 const DASH_FRAME_PAD: f32 = 12.0; // 外框四围 padding（PLAN-035 T-14：
-// 外框 = 8×2 网格块四周外扩 12px 做 chrome 留白——卡片不再贴框缘）
+                                  // 外框 = 8×2 网格块四周外扩 12px 做 chrome 留白——卡片不再贴框缘）
 
 /// 面板下缘 tab 条预留带（2026-09-22 用户裁定：分页 pill 从右上悬浮
 /// 改面板正下方 hover 显隐）。chrome wrapper 高度 = 面板外框 + 本带；
@@ -12341,7 +13575,7 @@ struct DashFace {
     icon: String,
     status: &'static str, // running | hatched | placeholder
     span: usize,
-    tab: &'static str,    // main | system
+    tab: &'static str, // main | system
 }
 
 /// PLAN-024：face 卡 spacer 链定位（viewport 绝对格位 → 全幅层）——
@@ -12351,19 +13585,17 @@ fn spare_position<M: Clone + std::fmt::Debug + 'static>(
     card: iced::Element<'_, M>,
     rect: iced::Rectangle,
 ) -> iced::Element<'_, M> {
-    let placed = iced::widget::container(
-        iced::widget::row![
+    let placed = iced::widget::container(iced::widget::row![
+        iced::widget::Space::new()
+            .width(iced::Length::Fixed(rect.x))
+            .height(iced::Length::Shrink),
+        iced::widget::column![
             iced::widget::Space::new()
-                .width(iced::Length::Fixed(rect.x))
-                .height(iced::Length::Shrink),
-            iced::widget::column![
-                iced::widget::Space::new()
-                    .width(iced::Length::Shrink)
-                    .height(iced::Length::Fixed(rect.y)),
-                card,
-            ],
+                .width(iced::Length::Shrink)
+                .height(iced::Length::Fixed(rect.y)),
+            card,
         ],
-    )
+    ])
     .width(iced::Length::Fill)
     .height(iced::Length::Fill);
     placed.into()
@@ -12400,8 +13632,14 @@ mod plan024_dashboard_layout_tests {
     fn empty_faces_fixed_frame() {
         let (panel, cells) = dashboard_layout(VP, &[]);
         assert!(cells.is_empty());
-        assert_eq!(panel.width, 8.0 * DASH_GRID_COL - 8.0 + 2.0 * DASH_FRAME_PAD);
-        assert_eq!(panel.height, 2.0 * DASH_GRID_ROW - 8.0 + 2.0 * DASH_FRAME_PAD);
+        assert_eq!(
+            panel.width,
+            8.0 * DASH_GRID_COL - 8.0 + 2.0 * DASH_FRAME_PAD
+        );
+        assert_eq!(
+            panel.height,
+            2.0 * DASH_GRID_ROW - 8.0 + 2.0 * DASH_FRAME_PAD
+        );
         assert_eq!(panel.x, VP.width - DASH_MARGIN - panel.width);
         assert_eq!(panel.y, DASH_MARGIN);
     }
@@ -12524,21 +13762,25 @@ fn dashboard_layout(
 /// `shell.dashboard.enabled`（csv）读回——None = 未配置（首次召唤自动
 /// 纳入全部候选，§5.6 默认策略）；Some = 用户显式清单（单一事实）。
 fn dashboard_enabled_list() -> Option<Vec<String>> {
-    crate::vm::ffi::stdlib::storage_host_read("shell.dashboard.enabled")
-        .map(|csv| csv.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+    crate::vm::ffi::stdlib::storage_host_read("shell.dashboard.enabled").map(|csv| {
+        csv.split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    })
 }
 
 /// `shell.dashboard.span.<id>` 读回（"1"|"2"，坏值/缺席 = 1）。
 /// 存储覆写面（PLAN-035 SD-02：合法域 {2,3}——"3"→3；"1"/"2"→2 旧值
 /// 迁移；坏值/缺席 = None，由消费臂回落声明与缺省）。
 fn dashboard_span_from_storage(id: &str) -> Option<usize> {
-    crate::vm::ffi::stdlib::storage_host_read(&format!("shell.dashboard.span.{id}")).and_then(
-        |v| match v.trim() {
+    crate::vm::ffi::stdlib::storage_host_read(&format!("shell.dashboard.span.{id}")).and_then(|v| {
+        match v.trim() {
             "3" => Some(3usize),
             "1" | "2" => Some(2usize),
             _ => None,
-        },
-    )
+        }
+    })
 }
 
 /// PLAN-035 SD-02：app 源 span 声明探测——源内唯一标记
@@ -12546,10 +13788,7 @@ fn dashboard_span_from_storage(id: &str) -> Option<usize> {
 /// 不锚定 `view mini` 位置：头注可能提前含该字样（012-clock 实测误锚，
 /// 首个命中落在头注导致窗口扫不到标记）。文本级契约与 has_mini grep
 /// 同族；存储覆写仍胜（refresh 臂消费序）。
-fn dashboard_declared_span(
-    state: &crate::ui::session::DesktopSession,
-    id: &str,
-) -> Option<usize> {
+fn dashboard_declared_span(state: &crate::ui::session::DesktopSession, id: &str) -> Option<usize> {
     let spec = state.desktop.app_resolver.as_ref().and_then(|r| r(id))?;
     let code = spec.code.as_str();
     const MARKER: &str = "dashboard span:";
@@ -12593,11 +13832,18 @@ fn dashboard_face_candidates(
 
 /// R5：注册表 category → tab（"system" → 系统页，其余 → 小组件页）。
 fn dashboard_tab_of_category(category: &str) -> &'static str {
-    if category == "system" { "system" } else { "main" }
+    if category == "system" {
+        "system"
+    } else {
+        "main"
+    }
 }
 
 /// 注册表 id → 活会话 AppId（有窗运行中：vwin.registry_id 反查）。
-fn dashboard_running_app(state: &crate::ui::session::DesktopSession, id: &str) -> Option<crate::ui::session::AppId> {
+fn dashboard_running_app(
+    state: &crate::ui::session::DesktopSession,
+    id: &str,
+) -> Option<crate::ui::session::AppId> {
     let host = state.host.as_ref()?;
     for v in host.wm.wins.values() {
         if v.registry_id.as_deref() == Some(id) {
@@ -12615,7 +13861,9 @@ fn dashboard_hatched_tick_allowed(
     state: &crate::ui::session::DesktopSession,
     app_id: crate::ui::session::AppId,
 ) -> bool {
-    let Some(host) = state.host.as_ref() else { return true };
+    let Some(host) = state.host.as_ref() else {
+        return true;
+    };
     if !host.face_fields.contains_key(&app_id.0) {
         return true; // 非孵化会话：正常 app，Tick 恒订。
     }
@@ -12624,7 +13872,9 @@ fn dashboard_hatched_tick_allowed(
         return false;
     }
     // 注册表 id 反查 → category → tab；面板活动 tab 匹配才订。
-    let Some(panel) = state.desktop.dashboard_app else { return false };
+    let Some(panel) = state.desktop.dashboard_app else {
+        return false;
+    };
     let reg_id = state
         .desktop
         .hatched_minis
@@ -12740,7 +13990,6 @@ fn dashboard_faces_for_view(state: &crate::ui::session::DesktopSession) -> Vec<D
         .collect()
 }
 
-
 /// PLAN-036 T-05：faces 收集 + 面板几何（两轨同源——配置门/静默孵化
 /// 副作用/存储跨度覆写/dashboard_layout 算式；返回 (faces, w, h, top)）。
 fn collect_dashboard_faces(
@@ -12769,7 +14018,11 @@ fn collect_dashboard_faces(
                 }
                 // PLAN-035：孵化失败不再静默——错误串落日志（可诊断性）。
                 Err(err) => {
-                    crate::syslog!(SyslogLevel::Error, "host", "[dashboard] hatch {id} failed: {err}");
+                    crate::syslog!(
+                        SyslogLevel::Error,
+                        "host",
+                        "[dashboard] hatch {id} failed: {err}"
+                    );
                     "placeholder"
                 }
                 _ => "placeholder",
@@ -12841,14 +14094,21 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
     eprintln!(
         "[dashboard] refresh: faces={} statuses={:?} panel={panel_w}x{panel_h}@{panel_top}",
         faces.len(),
-        faces.iter().map(|f| (f.id.as_str(), f.status)).collect::<Vec<_>>(),
+        faces
+            .iter()
+            .map(|f| (f.id.as_str(), f.status))
+            .collect::<Vec<_>>(),
     );
     if let Some(app) = state.apps.get_mut(&panel) {
         // PLAN-041 T-15：挂载兜底——懒挂载可能晚于 dark_cache 收敛，
         // refresh（召唤后必经）无条件回写当前暗色位（值同写亦幂等）。
         let _ = app.component.write_state(
             "__dash_dark",
-            auto_val::Value::str(if state.desktop.dash_dark_cache.get() { "1" } else { "0" }),
+            auto_val::Value::str(if state.desktop.dash_dark_cache.get() {
+                "1"
+            } else {
+                "0"
+            }),
         );
         let _ = app.component.write_state_vec("face_ids", ids);
         let _ = app.component.write_state_vec("face_titles", titles);
@@ -12856,7 +14116,10 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
         let _ = app.component.write_state_vec("face_statuses", statuses);
         let _ = app.component.write_state_vec("face_spans", spans);
         let _ = app.component.write_state_vec("face_tabs", tabs);
-        let _ = app.component.write_state("__dashboard_faces", auto_val::Value::Array(auto_val::Array::from(objs)));
+        let _ = app.component.write_state(
+            "__dashboard_faces",
+            auto_val::Value::Array(auto_val::Array::from(objs)),
+        );
         let _ = app
             .component
             .write_state("__panel_w", auto_val::Value::Int(panel_w as i32));
@@ -12867,7 +14130,11 @@ fn refresh_dashboard_panel(state: &mut crate::ui::session::DesktopSession) {
             .component
             .write_state("__panel_top", auto_val::Value::Int(panel_top as i32));
         if let Err(err) = app.component.bridge_mut().call_handler("RebuildFaces", &[]) {
-            crate::syslog!(SyslogLevel::Error, "host", "[session] dashboard RebuildFaces failed: {err}");
+            crate::syslog!(
+                SyslogLevel::Error,
+                "host",
+                "[session] dashboard RebuildFaces failed: {err}"
+            );
         }
         *app.state.view_dirty.borrow_mut() = true;
     }
@@ -12916,7 +14183,9 @@ fn toggle_dashboard(
     // 3. 打开：visible 置位 + faces 快照注入（孵化/几何/平行列表）。
     let panel = state.desktop.dashboard_app.expect("dashboard mounted");
     if let Some(app) = state.apps.get_mut(&panel) {
-        let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+        let _ = app
+            .component
+            .write_state("visible", auto_val::Value::str("1"));
         *app.state.view_dirty.borrow_mut() = true;
     }
     refresh_dashboard_panel(state);
@@ -12934,7 +14203,9 @@ fn close_dashboard(state: &mut crate::ui::session::DesktopSession) {
     }
     if let Some(panel) = state.desktop.dashboard_app {
         if let Some(app) = state.apps.get_mut(&panel) {
-            let _ = app.component.write_state("visible", auto_val::Value::str("0"));
+            let _ = app
+                .component
+                .write_state("visible", auto_val::Value::str("0"));
             *app.state.view_dirty.borrow_mut() = true;
         }
     }
@@ -13135,10 +14406,7 @@ fn apply_dock_edges_now(state: &mut crate::ui::session::DesktopSession) {
 /// 返回 (是否退出进程, 召唤产生的任务)；调用方负责 batch 回 iced。
 fn drain_and_execute_desktop_commands(
     state: &mut crate::ui::session::DesktopSession,
-) -> (
-    bool,
-    Vec<iced::Task<crate::ui::session::DesktopMessage>>,
-) {
+) -> (bool, Vec<iced::Task<crate::ui::session::DesktopMessage>>) {
     let mut cmds = state.drain_desktop_commands();
     if let Some(la) = state.desktop.launcher_app {
         cmds.extend(state.drain_app_desktop_commands(la));
@@ -13154,8 +14422,7 @@ fn drain_and_execute_desktop_commands(
     // Plan 540 T7：设置窗（registry App）上行联合排空——按 registry_id
     // 定位（普通窗可关可重开，不落 overlay 槽位）。
     let settings_window_app = state.host.as_ref().and_then(|h| {
-        h.wm
-            .wins
+        h.wm.wins
             .iter()
             .find(|(_, v)| v.registry_id.as_deref() == Some(OSCONFIG_APP_ID))
             .map(|(_, v)| v.app)
@@ -13170,15 +14437,13 @@ fn drain_and_execute_desktop_commands(
     // 携带发件方 registry_id，执行期置 `notify_source` 供 notify 落库来源
     // 归因。分段执行序与原扁平 concat 逐一相同（drain 序即执行序），
     // Shutdown 短路语义按段传递（特权段退出即跳过后续段）。
-    let mut segments: Vec<(Option<String>, Vec<crate::ui::session::DesktopCommand>)> =
-        Vec::new();
+    let mut segments: Vec<(Option<String>, Vec<crate::ui::session::DesktopCommand>)> = Vec::new();
     {
         let app_ids: Vec<_> = state
             .host
             .as_ref()
             .map(|h| {
-                h.wm
-                    .wins
+                h.wm.wins
                     .values()
                     .map(|v| (v.app, v.registry_id.clone()))
                     .collect()
@@ -13262,10 +14527,7 @@ fn execute_desktop_commands(
                 // 字段）——win_min 形态任务栏保留条目且 __wm_running 持续含
                 // os-config，W7 齿轮高亮语义断裂（AC-12）。
                 let is_osconfig = state.host.as_ref().is_some_and(|h| {
-                    h.wm
-                        .wins
-                        .get(&wid)
-                        .and_then(|v| v.registry_id.as_deref())
+                    h.wm.wins.get(&wid).and_then(|v| v.registry_id.as_deref())
                         == Some(OSCONFIG_APP_ID)
                 });
                 if is_osconfig {
@@ -13275,18 +14537,14 @@ fn execute_desktop_commands(
                         }
                         if host.wm.focused == Some(wid) {
                             // 焦点让渡：分区栈顶下一窗（同 hit 语义找非隐藏窗）。
-                            let next = host
-                                .wm
-                                .z_order
-                                .iter()
-                                .rev()
-                                .copied()
-                                .find(|w| {
-                                    *w != wid
-                                        && host.wm.wins.get(w).is_some_and(|v| {
-                                            !v.minimized.get() && !v.hidden.get()
-                                        })
-                                });
+                            let next = host.wm.z_order.iter().rev().copied().find(|w| {
+                                *w != wid
+                                    && host
+                                        .wm
+                                        .wins
+                                        .get(w)
+                                        .is_some_and(|v| !v.minimized.get() && !v.hidden.get())
+                            });
                             host.wm.focused = next;
                         }
                     }
@@ -13362,9 +14620,15 @@ fn execute_desktop_commands(
                         let _ = app
                             .component
                             .write_state("drag_icon", auto_val::Value::Str(icon.into()));
-                        let _ = app.component.write_state("drop_c", auto_val::Value::str(""));
-                        let _ = app.component.write_state("drop_r", auto_val::Value::str(""));
-                        let _ = app.component.write_state("drag_moved", auto_val::Value::str(""));
+                        let _ = app
+                            .component
+                            .write_state("drop_c", auto_val::Value::str(""));
+                        let _ = app
+                            .component
+                            .write_state("drop_r", auto_val::Value::str(""));
+                        let _ = app
+                            .component
+                            .write_state("drag_moved", auto_val::Value::str(""));
                         *app.state.view_dirty.borrow_mut() = true;
                     }
                 }
@@ -13519,9 +14783,7 @@ fn execute_desktop_commands(
             // Free = 即落定。
             DC::WinRect { wid, x, y, w, h } => {
                 if let Some(host) = state.host.as_mut() {
-                    if crate::ui::session::WmState::native_slot_id_of_pseudo(wid)
-                        .is_none()
-                    {
+                    if crate::ui::session::WmState::native_slot_id_of_pseudo(wid).is_none() {
                         if let Some(v) = host.wm.wins.get(&wid) {
                             let (old_w, old_h) = {
                                 let r = v.rect.borrow();
@@ -13536,8 +14798,7 @@ fn execute_desktop_commands(
                             let width = r.width;
                             drop(r);
                             if let Some(v) = host.wm.wins.get(&wid) {
-                                *v.window_size.borrow_mut() =
-                                    iced::Size::new(width, height);
+                                *v.window_size.borrow_mut() = iced::Size::new(width, height);
                             }
                             // PLAN-712 r3 T-18（方案 A）：尺寸真变才标视图脏
                             // ——VM builder 按 window_size 构建期烤定响应式
@@ -13686,10 +14947,7 @@ fn execute_set_wallpaper(state: &mut crate::ui::session::DesktopSession, path: &
         let old_key = current_wallpaper_layout_key(state);
         if let Some(old_key) = old_key {
             let snapshot = load_desktop_positions_for(Some(&old_key));
-            crate::vm::ffi::stdlib::storage_host_publish(
-                &old_key,
-                serialize_positions(&snapshot),
-            );
+            crate::vm::ffi::stdlib::storage_host_publish(&old_key, serialize_positions(&snapshot));
         }
     }
     state.desktop.config.wallpaper_path = path.to_string();
@@ -13750,8 +15008,7 @@ fn execute_wallpaper_pick(state: &mut crate::ui::session::DesktopSession) {
     inject_wallpaper_picker(state);
     // FU7：滑窗对齐当前壁纸（可见 5 枚窗口容纳当前项居中偏左）。
     let cur_ix = state.host.as_ref().and_then(|h| {
-        h.wm
-            .picker_paths
+        h.wm.picker_paths
             .iter()
             .position(|p| *p == state.desktop.desktop_wallpaper)
     });
@@ -13814,9 +15071,10 @@ fn execute_wallpaper_preview(state: &mut crate::ui::session::DesktopSession, pat
             host.wm.picker_preview = None;
         }
     } else {
-        let hit = state.host.as_ref().and_then(|h| {
-            h.wm.picker_paths.iter().position(|p| p == path)
-        });
+        let hit = state
+            .host
+            .as_ref()
+            .and_then(|h| h.wm.picker_paths.iter().position(|p| p == path));
         match hit {
             Some(ix) => {
                 if let Some(host) = state.host.as_mut() {
@@ -13846,7 +15104,8 @@ fn execute_wallpaper_browse_dir(state: &mut crate::ui::session::DesktopSession) 
 /// PLAN-019 v1.7：picker 导航臂（.at 无列表下标算术，导航数学宿主收口
 /// ——B12 族）。预览态 = 大图游标环绕移动；栅格态 = flip 对比轮换并
 /// 立即应用（cursor 同步走 [`execute_set_wallpaper`]）。
-fn execute_wallpaper_nav(state: &mut crate::ui::session::DesktopSession, dir: &str) {    let open = state.host.as_ref().is_some_and(|h| h.wm.picker_open);
+fn execute_wallpaper_nav(state: &mut crate::ui::session::DesktopSession, dir: &str) {
+    let open = state.host.as_ref().is_some_and(|h| h.wm.picker_open);
     let len = state
         .host
         .as_ref()
@@ -13860,8 +15119,7 @@ fn execute_wallpaper_nav(state: &mut crate::ui::session::DesktopSession, dir: &s
         let host = state.host.as_mut().unwrap();
         if let Some(ix) = host.wm.picker_preview {
             // 预览态：大图游标环绕移动。
-            host.wm.picker_preview =
-                Some((ix as isize + step).rem_euclid(len as isize) as usize);
+            host.wm.picker_preview = Some((ix as isize + step).rem_euclid(len as isize) as usize);
         } else {
             // FU7：栅格态 = carousel 滑窗（导航只滑窗不应用；点选才应用）。
             let max_win = len.saturating_sub(5) as isize;
@@ -13877,7 +15135,9 @@ fn execute_wallpaper_nav(state: &mut crate::ui::session::DesktopSession, dir: &s
 /// 供源复用 [`scan_wallpapers_dir`]（jpg/jpeg/png 文件名升序）；paths
 /// 缓存宿主侧（wallpaper_nav 数学区数据面，协议 §2.1）。
 fn inject_wallpaper_picker(state: &mut crate::ui::session::DesktopSession) {
-    let Some(surface) = state.desktop.desktop_app else { return };
+    let Some(surface) = state.desktop.desktop_app else {
+        return;
+    };
     let items = scan_wallpapers_dir(&state.desktop.config);
     let paths: Vec<String> = items
         .iter()
@@ -13915,23 +15175,23 @@ fn inject_wallpaper_picker(state: &mut crate::ui::session::DesktopSession) {
     // FU7：carousel 滑窗切片（可见 5 枚）+ 面板锚点（底部居中、贴
     // 任务栏留 8px；宿主算好坐标注入——.at 无算术）。
     let win = state.host.as_ref().map(|h| h.wm.picker_win).unwrap_or(0);
-    let visible: Vec<auto_val::Value> = items
-        .iter()
-        .skip(win)
-        .take(5)
-        .cloned()
-        .collect();
+    let visible: Vec<auto_val::Value> = items.iter().skip(win).take(5).cloned().collect();
     let viewport = state.host_viewport();
     let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
     let panel_w = 720.0_f32;
     let panel_h = 190.0_f32;
     let wp_x = usable.x + ((usable.width - panel_w).max(0.0)) / 2.0;
     let wp_y = usable.y + usable.height - panel_h - 8.0;
-    let Some(app) = state.apps.get_mut(&surface) else { return };
+    let Some(app) = state.apps.get_mut(&surface) else {
+        return;
+    };
+    let _ = app.component.write_state(
+        "__wp_picker",
+        auto_val::Value::str(if open { "1" } else { "" }),
+    );
     let _ = app
         .component
-        .write_state("__wp_picker", auto_val::Value::str(if open { "1" } else { "" }));
-    let _ = app.component.write_state("__wp_preview", auto_val::Value::str(&preview));
+        .write_state("__wp_preview", auto_val::Value::str(&preview));
     let _ = app
         .component
         .write_state("__wp_x", auto_val::Value::Float(wp_x as f64));
@@ -13939,14 +15199,17 @@ fn inject_wallpaper_picker(state: &mut crate::ui::session::DesktopSession) {
         .component
         .write_state("__wp_y", auto_val::Value::Float(wp_y as f64));
     let _ = app.component.write_state_vec("__wp_visible", visible);
-    let _ = app.component.write_state("__wp_dir", auto_val::Value::str(&dir));
+    let _ = app
+        .component
+        .write_state("__wp_dir", auto_val::Value::str(&dir));
     let _ = app
         .component
         .write_state("__wp_current", auto_val::Value::str(&current));
     let _ = app.component.write_state_vec("__wp_items", items);
-    let _ = app
-        .component
-        .write_state_vec("wp_paths", paths.iter().map(|p| auto_val::Value::str(p)).collect());
+    let _ = app.component.write_state_vec(
+        "wp_paths",
+        paths.iter().map(|p| auto_val::Value::str(p)).collect(),
+    );
     *app.state.view_dirty.borrow_mut() = true;
 }
 
@@ -14225,21 +15488,30 @@ fn execute_dock_native(
         slot_logical.height as i32,
     );
     // C3 clamp：min-size 首装未知记 0，几何写读回后缓存估计。
-    let (_, fitted_slot) =
-        match crate::ui::native_dock::clamp_to_slot(pre_bounds.size(), slot_rect, crate::ui::native_dock::Size::new(0, 0), slot_rect)
-        {
-            Ok(v) => v,
-            Err(reason) => {
-                push_desktop_toast(state, "error", reason.message());
-                return;
-            }
-        };
+    let (_, fitted_slot) = match crate::ui::native_dock::clamp_to_slot(
+        pre_bounds.size(),
+        slot_rect,
+        crate::ui::native_dock::Size::new(0, 0),
+        slot_rect,
+    ) {
+        Ok(v) => v,
+        Err(reason) => {
+            push_desktop_toast(state, "error", reason.message());
+            return;
+        }
+    };
     // ④ 登记 Candidate → 剥样式 → DockRequested → 几何排水（DPI 换算 +
     // 写入客户区 + z 序沉降）→ min-size 探测 → DockConfirmed。
     let id = {
         let host = state.host.as_mut().expect("desktop checked");
-        host.wm
-            .add_native_slot(hwnd.0, pid, title.clone(), pre_bounds, fitted_slot, slot_logical)
+        host.wm.add_native_slot(
+            hwnd.0,
+            pid,
+            title.clone(),
+            pre_bounds,
+            fitted_slot,
+            slot_logical,
+        )
     };
     let saved_style = match ndw::strip_chrome(hwnd) {
         Ok(s) => s,
@@ -14286,7 +15558,8 @@ fn dock_fail(
 ) {
     use crate::ui::native_dock::SlotEvent;
     if let Some(host) = state.host.as_mut() {
-        host.wm.advance_native_slot(id, SlotEvent::DockFailed(reason));
+        host.wm
+            .advance_native_slot(id, SlotEvent::DockFailed(reason));
     }
     push_desktop_toast(state, "error", reason.message());
 }
@@ -14382,11 +15655,7 @@ fn execute_focus_native(state: &mut crate::ui::session::DesktopSession, slot_id:
         }
     }
     state.wm_focus_native_slot(id);
-    let Some(slot) = state
-        .host
-        .as_ref()
-        .and_then(|h| h.wm.native_slots.get(&id))
-    else {
+    let Some(slot) = state.host.as_ref().and_then(|h| h.wm.native_slots.get(&id)) else {
         push_desktop_toast(state, "error", "未知原生槽位");
         return;
     };
@@ -14547,7 +15816,9 @@ fn restack_band(
     hole_mode: bool,
 ) {
     use crate::ui::native_dock::win32 as ndw;
-    let Some(host) = state.host.as_ref() else { return };
+    let Some(host) = state.host.as_ref() else {
+        return;
+    };
     let order: Vec<crate::ui::native_dock::NativeHwnd> = host
         .wm
         .native_slots_in_z_order()
@@ -14565,11 +15836,11 @@ fn restack_band(
 /// 稳态零调用）；band restack 序只含当前分区槽位（隐分区 HWND 已藏，
 /// 不入链）。返回可见集是否变化（调用方置 restack 旗标）。
 #[cfg(windows)]
-fn sync_native_workspace_visibility(
-    state: &mut crate::ui::session::DesktopSession,
-) -> bool {
+fn sync_native_workspace_visibility(state: &mut crate::ui::session::DesktopSession) -> bool {
     use crate::ui::native_dock::{win32 as ndw, SlotState};
-    let Some(host) = state.host.as_ref() else { return false };
+    let Some(host) = state.host.as_ref() else {
+        return false;
+    };
     let current = host.wm.current_workspace;
     let targets: Vec<(crate::ui::native_dock::NativeHwnd, bool)> = host
         .wm
@@ -14594,9 +15865,7 @@ fn sync_native_workspace_visibility(
 }
 
 #[cfg(not(windows))]
-fn sync_native_workspace_visibility(
-    _state: &mut crate::ui::session::DesktopSession,
-) -> bool {
+fn sync_native_workspace_visibility(_state: &mut crate::ui::session::DesktopSession) -> bool {
     false
 }
 
@@ -14636,15 +15905,18 @@ fn refresh_hole_regions_at(
         })
         .unwrap_or_default();
     if ndw::apply_hole_regions(desktop_hwnd, frame, &holes).is_err() {
-        crate::syslog!(SyslogLevel::Warn, "host", "[session] hole region apply failed (fallback to fake-hole, Plan 494)");
+        crate::syslog!(
+            SyslogLevel::Warn,
+            "host",
+            "[session] hole region apply failed (fallback to fake-hole, Plan 494)"
+        );
         state.desktop.hole_mode = false;
         // 假洞 z 序全量重申（原生盖桌面；PLAN-709 统一 z 序 restack 一次成型）。
         let slots: Vec<crate::ui::native_dock::NativeHwnd> = state
             .host
             .as_ref()
             .map(|h| {
-                h.wm
-                    .native_slots_in_z_order()
+                h.wm.native_slots_in_z_order()
                     .into_iter()
                     .filter_map(|id| h.wm.native_slots.get(&id).map(|s| s.hwnd))
                     .collect()
@@ -14719,11 +15991,7 @@ fn handle_native_slot_event(
             let threshold = (USER_DRAG_THRESHOLD_PX as f64 * ndw::dpi_scale_of(hwnd)) as i32;
             if crate::ui::native_dock::detect_user_drag(cur, slot_rect, threshold) {
                 if undock_native_slot(state, id) {
-                    let layout = state
-                        .host
-                        .as_ref()
-                        .map(|h| h.wm.layout)
-                        .unwrap_or_default();
+                    let layout = state.host.as_ref().map(|h| h.wm.layout).unwrap_or_default();
                     state.wm_set_layout(layout);
                     sync_native_geometry(state);
                     push_desktop_toast(state, "success", &format!("已恢复 {title}"));
@@ -14741,11 +16009,7 @@ fn handle_native_slot_event(
                 if let Some(host) = state.host.as_mut() {
                     host.wm.native_slot_local_rects.remove(&id);
                 }
-                let layout = state
-                    .host
-                    .as_ref()
-                    .map(|h| h.wm.layout)
-                    .unwrap_or_default();
+                let layout = state.host.as_ref().map(|h| h.wm.layout).unwrap_or_default();
                 state.wm_set_layout(layout);
                 sync_native_geometry(state);
                 push_desktop_toast(state, "success", "原生窗口已关闭，槽位已回收");
@@ -14771,7 +16035,10 @@ fn handle_native_slot_event(
 /// 桌面窗物理↔逻辑坐标映射 + 全帧物理矩形（指针入桌面判定域；无桌面窗/
 /// headless → None）。
 #[cfg(windows)]
-fn drag_mapper() -> Option<(crate::ui::native_dock::CoordMapper, crate::ui::native_dock::Rect)> {
+fn drag_mapper() -> Option<(
+    crate::ui::native_dock::CoordMapper,
+    crate::ui::native_dock::Rect,
+)> {
     use crate::ui::native_dock::{win32 as ndw, CoordMapper, Rect};
     let desktop = ndw::find_largest_own_window()?;
     let scale = ndw::dpi_scale_of(desktop);
@@ -14785,7 +16052,10 @@ fn drag_mapper() -> Option<(crate::ui::native_dock::CoordMapper, crate::ui::nati
 }
 
 #[cfg(not(windows))]
-fn drag_mapper() -> Option<(crate::ui::native_dock::CoordMapper, crate::ui::native_dock::Rect)> {
+fn drag_mapper() -> Option<(
+    crate::ui::native_dock::CoordMapper,
+    crate::ui::native_dock::Rect,
+)> {
     None
 }
 
@@ -14817,7 +16087,9 @@ fn maybe_anchor_dnd_initiator(
 
 /// Plan 505 D：on_dnd_finished 交付目标——发起时锚定（取走）> 完成时
 /// 焦点 > primary（v1 回退序保持）。
-fn dnd_finished_target(state: &mut crate::ui::session::DesktopSession) -> Option<crate::ui::session::AppId> {
+fn dnd_finished_target(
+    state: &mut crate::ui::session::DesktopSession,
+) -> Option<crate::ui::session::AppId> {
     state
         .desktop
         .dnd_initiator
@@ -14846,7 +16118,12 @@ fn native_drop_record_fields(
         // 宽高 Int 可达、path Str 产出错误码；扁平 Str 实证可达）。
         (
             "image_path".into(),
-            RecordValue::Str(data.image.as_ref().map(|(p, _, _)| p.clone()).unwrap_or_default()),
+            RecordValue::Str(
+                data.image
+                    .as_ref()
+                    .map(|(p, _, _)| p.clone())
+                    .unwrap_or_default(),
+            ),
         ),
         (
             "image_w".into(),
@@ -14904,14 +16181,16 @@ fn clipboard_paste_record_fields() -> Vec<(String, crate::ui::vm_bridge::RecordV
     let image: Option<(String, u32, u32)> = None;
 
     vec![
-        (
-            "text".into(),
-            RecordValue::Str(text.unwrap_or_default()),
-        ),
+        ("text".into(), RecordValue::Str(text.unwrap_or_default())),
         ("files".into(), RecordValue::StrList(files)),
         (
             "image_path".into(),
-            RecordValue::Str(image.as_ref().map(|(p, _, _)| p.clone()).unwrap_or_default()),
+            RecordValue::Str(
+                image
+                    .as_ref()
+                    .map(|(p, _, _)| p.clone())
+                    .unwrap_or_default(),
+            ),
         ),
         (
             "image_w".into(),
@@ -14944,7 +16223,10 @@ fn set_native_drag_over(
         } else {
             (r.x as f32, r.y as f32, r.w as f32, r.h as f32)
         };
-        iced::Rectangle::new(iced::Point::new(x, y), iced::Size::new(w.max(1.0), h.max(1.0)))
+        iced::Rectangle::new(
+            iced::Point::new(x, y),
+            iced::Size::new(w.max(1.0), h.max(1.0)),
+        )
     });
     state.native_drag_over = logical;
 }
@@ -15001,10 +16283,12 @@ fn drive_drag_watch(
             let cells = [cell];
             match kind {
                 NativeSlotEventKind::LocationChange => {
-                    match state
-                        .native_drag_watch
-                        .sample(pointer, desktop_rect, &cells, drag_now_ms())
-                    {
+                    match state.native_drag_watch.sample(
+                        pointer,
+                        desktop_rect,
+                        &cells,
+                        drag_now_ms(),
+                    ) {
                         DragSample::Overlay(rect) => set_native_drag_over(state, rect),
                         DragSample::NoChange => {}
                     }
@@ -15056,8 +16340,7 @@ fn restore_all_native_slots(state: &mut crate::ui::session::DesktopSession) {
         .host
         .as_ref()
         .map(|h| {
-            h.wm
-                .native_slots
+            h.wm.native_slots
                 .values()
                 .map(|s| (s.hwnd, s.pre_dock_bounds, s.pre_dock_style))
                 .collect()
@@ -15091,19 +16374,20 @@ fn restore_all_native_slots(_state: &mut crate::ui::session::DesktopSession) {}
 /// 已运行聚焦 + 同款写入；目标 App（041/031 接收臂）Tick 消费。写入后
 /// view_dirty 即标——目标下一帧可见。App 未声明 `auto_open_path` 时写入
 /// 静默无效（capability 自声明，无害）。
-fn execute_open_with(
-    state: &mut crate::ui::session::DesktopSession,
-    app_id: &str,
-    path: &str,
-) {
+fn execute_open_with(state: &mut crate::ui::session::DesktopSession, app_id: &str, path: &str) {
     // 注册表校验：app 存在 + opens 声明面（空 = 不参与校验，放行）。
     let ext = std::path::Path::new(path)
         .extension()
         .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
         .unwrap_or_default();
-    let opens_ok = state.desktop.app_resolver.as_ref()
+    let opens_ok = state
+        .desktop
+        .app_resolver
+        .as_ref()
         .and_then(|r| r(app_id))
-        .map(|spec| spec.opens.is_empty() || spec.opens.iter().any(|o| o.eq_ignore_ascii_case(&ext)));
+        .map(|spec| {
+            spec.opens.is_empty() || spec.opens.iter().any(|o| o.eq_ignore_ascii_case(&ext))
+        });
     match opens_ok {
         None => {
             push_notification(state, "error", &format!("未知应用: {app_id}"));
@@ -15121,8 +16405,7 @@ fn execute_open_with(
     }
     // 已运行窗（registry_id 命中）→ 聚焦 + 写入；未运行 → launch + 写入。
     let running = state.host.as_ref().and_then(|h| {
-        h.wm
-            .wins
+        h.wm.wins
             .iter()
             .find(|(_, v)| v.registry_id.as_deref() == Some(app_id))
             .map(|(wid, v)| (*wid, v.app))
@@ -15134,7 +16417,11 @@ fn execute_open_with(
         }
         None => match state.launch_app(app_id) {
             Ok(wid) => {
-                let app = state.host.as_ref().and_then(|h| h.wm.wins.get(&wid)).map(|v| v.app);
+                let app = state
+                    .host
+                    .as_ref()
+                    .and_then(|h| h.wm.wins.get(&wid))
+                    .map(|v| v.app);
                 match app {
                     Some(app) => deliver_open_arg(state, app, path),
                     None => false,
@@ -15200,9 +16487,7 @@ fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str
         push_notification(
             state,
             "error",
-            &format!(
-                "launch `{name}` 失败: VM front 初始化崩溃围栏中（P041-D1 根修后放行）"
-            ),
+            &format!("launch `{name}` 失败: VM front 初始化崩溃围栏中（P041-D1 根修后放行）"),
         );
         show_launch_unavailable(state, name);
         return;
@@ -15227,15 +16512,9 @@ fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str
 fn show_launch_unavailable(state: &mut crate::ui::session::DesktopSession, name: &str) {
     if let Ok(comp) = crate::ui::shell::build_launch_fallback(name) {
         let app_id = state.allocate_app(comp);
-        let usable = crate::ui::layout::usable_rect(
-            state.host_viewport(),
-            state.desktop.dock_edges,
-        );
-        let index = state
-            .host
-            .as_ref()
-            .map(|h| h.wm.wins.len())
-            .unwrap_or(0);
+        let usable =
+            crate::ui::layout::usable_rect(state.host_viewport(), state.desktop.dock_edges);
+        let index = state.host.as_ref().map(|h| h.wm.wins.len()).unwrap_or(0);
         let size = iced::Size::new(usable.width * 0.4, usable.height * 0.4);
         let rect = crate::ui::layout::cascade_rect(index, size, usable);
         let wid = state.wm_add_win(app_id, format!("{name}（不可用）"), rect);
@@ -15306,10 +16585,7 @@ fn fit_measure_task(win: iced::window::Id) -> iced::Task<crate::ui::session::Des
 /// 同型：排布窗格跟随新 viewport，fit 窗在新格内再居中；此前 resize 后
 /// 窗格停留旧尺寸，直到下一次 launch/切布局才被动重排）→ 快照随撤（裁剪
 /// 区域全部 stale）+ 原生槽位几何排水。
-pub(crate) fn sync_host_resized(
-    state: &mut crate::ui::session::DesktopSession,
-    size: iced::Size,
-) {
+pub(crate) fn sync_host_resized(state: &mut crate::ui::session::DesktopSession, size: iced::Size) {
     if let Some(host) = state.host.as_ref() {
         if let Some(entry) = state.windows.get(&host.window) {
             *entry.window_size.borrow_mut() = size;
@@ -15433,7 +16709,10 @@ fn apply_fit_measured(
                 .windows
                 .iter()
                 .find(|(_, e)| {
-                    e.app == app_id && e.fit_enabled.get() && !e.fit_pending.get() && e.fit_dirty.get()
+                    e.app == app_id
+                        && e.fit_enabled.get()
+                        && !e.fit_pending.get()
+                        && e.fit_dirty.get()
                 })
                 .map(|(id, _)| *id);
             if let Some(os_win) = os_re {
@@ -15481,7 +16760,8 @@ fn apply_fit_measured(
                         if let Some(content2) = content2 {
                             use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
                             let w = (content2.width + 2.0 * BORDER).min(usable.width);
-                            let h = (content2.height + TITLEBAR_H + 2.0 * BORDER).min(usable.height);
+                            let h =
+                                (content2.height + TITLEBAR_H + 2.0 * BORDER).min(usable.height);
                             {
                                 let v = host.wm.wins.get_mut(&wid).expect("fit re hit wid");
                                 *v.window_size.borrow_mut() = content2;
@@ -15529,7 +16809,8 @@ fn apply_fit_measured(
             return fit_measure_task(win);
         }
         crate::syslog!(
-            SyslogLevel::Warn, "host",
+            SyslogLevel::Warn,
+            "host",
             "[session] fit measure: anchor missing after {FIT_MEASURE_MAX_RETRIES} retries; \
              keeping fit_pending for the next trigger (plan-504)"
         );
@@ -15564,8 +16845,7 @@ fn load_native_hole_mode() -> bool {
 /// Plan 508 G4：远程 WS token 读入（storage `shell.remote.token`；空值/
 /// 缺席 = None 不监听——缺省拒绝，远程面零暴露）。
 fn load_remote_token() -> Option<String> {
-    crate::vm::ffi::stdlib::storage_host_read("shell.remote.token")
-        .filter(|t| !t.trim().is_empty())
+    crate::vm::ffi::stdlib::storage_host_read("shell.remote.token").filter(|t| !t.trim().is_empty())
 }
 
 /// Plan 540 T2：dock pinned 消费点唯一化——boot 期直接取
@@ -15629,24 +16909,32 @@ fn dock_pinned_objs(state: &crate::ui::session::DesktopSession) -> Vec<auto_val:
                 .host
                 .as_ref()
                 .map(|host| {
-                    host.wm.wins.values().any(|v| {
-                        !v.hidden.get() && v.registry_id.as_deref() == Some(id.as_str())
-                    })
+                    host.wm
+                        .wins
+                        .values()
+                        .any(|v| !v.hidden.get() && v.registry_id.as_deref() == Some(id.as_str()))
                 })
                 .unwrap_or(false);
             auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                 ("id", auto_val::Value::Str(id.clone().into())),
                 ("icon", auto_val::Value::Str(icon.into())),
-                ("running", auto_val::Value::Str(if running { "1" } else { "".into() }.into())),
+                (
+                    "running",
+                    auto_val::Value::Str(if running { "1" } else { "".into() }.into()),
+                ),
             ])))
         })
         .collect()
 }
 
 fn inject_dock_pinned(state: &mut crate::ui::session::DesktopSession) {
-    let Some(shell) = state.desktop.shell_app else { return };
+    let Some(shell) = state.desktop.shell_app else {
+        return;
+    };
     let pinned = dock_pinned_objs(state);
-    let Some(app) = state.apps.get_mut(&shell) else { return };
+    let Some(app) = state.apps.get_mut(&shell) else {
+        return;
+    };
     let _ = app.component.write_state_vec("__dock_pinned", pinned);
     *app.state.view_dirty.borrow_mut() = true;
 }
@@ -15723,7 +17011,9 @@ fn load_desktop_wallpaper(cfg: &crate::ui::desktop_config::DesktopConfig) -> Str
 /// → env `AUTO_DESKTOP_WALLPAPERS_DIR` → 探测 stella-os 素材目录（机器
 /// 便利默认，存在即用；目录不存在/未配置 = None，scan_wallpapers_dir
 /// 与缺省壁纸链共用）。
-fn wallpapers_dir_or_default(cfg: &crate::ui::desktop_config::DesktopConfig) -> Option<std::path::PathBuf> {
+fn wallpapers_dir_or_default(
+    cfg: &crate::ui::desktop_config::DesktopConfig,
+) -> Option<std::path::PathBuf> {
     let d = cfg.wallpapers_dir.trim().to_string();
     if !d.is_empty() {
         return Some(std::path::PathBuf::from(d));
@@ -15773,8 +17063,10 @@ fn desktop_icon_cells(
     Vec<auto_val::Value>,
 ) {
     const COLS: usize = 8;
-    let visible: Vec<&(String, &str)> =
-        order.iter().filter(|(id, _)| !hidden.contains(id)).collect();
+    let visible: Vec<&(String, &str)> = order
+        .iter()
+        .filter(|(id, _)| !hidden.contains(id))
+        .collect();
     // PLAN-019 T-06：布局键控读（当前壁纸键 → 缺席回退缺省底稿）。
     let positions = load_desktop_positions_for(layout_key);
     // ① 已定位：last-wins 解析的表中取 (c,r)。
@@ -15789,10 +17081,8 @@ fn desktop_icon_cells(
     // ② 未定位：**列主序**填首个空格（2026-09-15 用户裁定——纵向优先，
     // 左列自上而下占满后再排下一列；跳过已占位）。rows 下限保证容量。
     let rows = rows.max((visible.len() + COLS - 1) / COLS).max(1);
-    let mut taken: std::collections::BTreeSet<usize> = placed
-        .iter()
-        .map(|&(c, r, _)| r * COLS + c)
-        .collect();
+    let mut taken: std::collections::BTreeSet<usize> =
+        placed.iter().map(|&(c, r, _)| r * COLS + c).collect();
     for e in &free {
         let mut k = 0usize;
         loop {
@@ -15827,7 +17117,11 @@ fn desktop_icon_cells(
         let src = e.1.to_string();
         let color = crate::ui::app_registry::badge_color_for(&id);
         // PLAN-018-FU2：iconfile（真位图资产）= 满幅 tile 渲染旗标。
-        let full = if icon.starts_with("iconfile:") { "1" } else { "" };
+        let full = if icon.starts_with("iconfile:") {
+            "1"
+        } else {
+            ""
+        };
         while cursor < linear {
             cells.push(auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
                 ("spacer", auto_val::Value::str("1")),
@@ -15916,7 +17210,13 @@ fn wallpaper_layout_key(wallpaper: &str) -> String {
     let norm: String = wallpaper
         .trim()
         .chars()
-        .map(|c| if c == '\\' { '/' } else { c.to_ascii_lowercase() })
+        .map(|c| {
+            if c == '\\' {
+                '/'
+            } else {
+                c.to_ascii_lowercase()
+            }
+        })
         .collect();
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for b in norm.as_bytes() {
@@ -15966,13 +17266,15 @@ fn desktop_icon_apply_drop(
     const COLS: usize = 8;
     let hidden = load_desktop_id_list("shell.desktop.hidden");
     let customs = load_desktop_id_list("shell.desktop.icons");
-    let visible: Vec<String> = customs.into_iter().filter(|id| !hidden.contains(id)).collect();
+    let visible: Vec<String> = customs
+        .into_iter()
+        .filter(|id| !hidden.contains(id))
+        .collect();
     if !visible.iter().any(|id| id == dragged) {
         return false;
     }
     // PLAN-019 T-06：键控读（当前壁纸键 → 回退缺省底稿）。
-    let positions =
-        load_desktop_positions_for(current_wallpaper_layout_key(state).as_deref());
+    let positions = load_desktop_positions_for(current_wallpaper_layout_key(state).as_deref());
     let cell_of = |id: &str| -> Option<(usize, usize)> {
         positions
             .iter()
@@ -16153,10 +17455,18 @@ fn clear_desktop_drag_visual(state: &mut crate::ui::session::DesktopSession) {
                 .component
                 .write_state("drag_id", auto_val::Value::str(""));
             // 2026-09-15：落点高亮/幽灵数据面同步清零。
-            let _ = app.component.write_state("drop_c", auto_val::Value::str(""));
-            let _ = app.component.write_state("drop_r", auto_val::Value::str(""));
-            let _ = app.component.write_state("drag_icon", auto_val::Value::str(""));
-            let _ = app.component.write_state("drag_moved", auto_val::Value::str(""));
+            let _ = app
+                .component
+                .write_state("drop_c", auto_val::Value::str(""));
+            let _ = app
+                .component
+                .write_state("drop_r", auto_val::Value::str(""));
+            let _ = app
+                .component
+                .write_state("drag_icon", auto_val::Value::str(""));
+            let _ = app
+                .component
+                .write_state("drag_moved", auto_val::Value::str(""));
             *app.state.view_dirty.borrow_mut() = true;
         }
     }
@@ -16194,9 +17504,10 @@ fn desktop_wallpaper_dark(wallpaper: &str) -> bool {
         .map(|img| {
             let img = img.thumbnail(32, 32).to_rgb8();
             let n = img.pixels().len().max(1) as u32;
-            let sum: u32 = img.pixels().map(|p| {
-                (p[0] as u32 * 299 + p[1] as u32 * 587 + p[2] as u32 * 114) / 1000
-            }).sum();
+            let sum: u32 = img
+                .pixels()
+                .map(|p| (p[0] as u32 * 299 + p[1] as u32 * 587 + p[2] as u32 * 114) / 1000)
+                .sum();
             sum / n < 128
         })
         .unwrap_or(false);
@@ -16211,18 +17522,13 @@ fn desktop_wallpaper_dark(wallpaper: &str) -> bool {
 pub(crate) fn build_desktop_surface_snapshot(
     state: &crate::ui::session::DesktopSession,
 ) -> crate::ui::shell_projection::DesktopSurfaceSnapshot {
-    use crate::ui::shell_projection::{
-        DesktopCellEntry, DesktopIconEntry, DesktopSurfaceSnapshot,
-    };
+    use crate::ui::shell_projection::{DesktopCellEntry, DesktopIconEntry, DesktopSurfaceSnapshot};
     let hidden = load_desktop_id_list("shell.desktop.hidden");
     let customs = load_desktop_id_list("shell.desktop.icons");
     // PLAN-012 F2（用户裁定）：dock 固定与桌面快捷方式**分离**——桌面图标
     // = 仅自定义列表（shell.desktop.icons − hidden），pinned 不再并入
     // （固定到任务栏 ≠ 发送到桌面，两件事）。
-    let order: Vec<(String, &str)> = customs
-        .iter()
-        .map(|id| (id.clone(), "custom"))
-        .collect();
+    let order: Vec<(String, &str)> = customs.iter().map(|id| (id.clone(), "custom")).collect();
     let icons: Vec<DesktopIconEntry> = order
         .iter()
         .filter(|(id, _)| !hidden.contains(id))
@@ -16252,11 +17558,15 @@ pub(crate) fn build_desktop_surface_snapshot(
     let rows = {
         let viewport = state.host_viewport();
         let reserved = desktop_dock_edges(&state.desktop.config);
-        (((viewport.height - reserved.top - reserved.bottom) / 80.0).floor() as usize)
-            .clamp(4, 24)
+        (((viewport.height - reserved.top - reserved.bottom) / 80.0).floor() as usize).clamp(4, 24)
     };
-    let (cells, cell_ids, cell_cs, cell_rs) =
-        desktop_icon_cells(&order, &hidden, &state.desktop.registry_entries, layout_key.as_deref(), rows);
+    let (cells, cell_ids, cell_cs, cell_rs) = desktop_icon_cells(
+        &order,
+        &hidden,
+        &state.desktop.registry_entries,
+        layout_key.as_deref(),
+        rows,
+    );
     let cells: Vec<DesktopCellEntry> = cells
         .iter()
         .map(|v| match v {
@@ -16329,11 +17639,15 @@ fn shell_surface_element_pipe(
 }
 
 fn inject_desktop_surface(state: &mut crate::ui::session::DesktopSession) {
-    let Some(surface) = state.desktop.desktop_app else { return };
+    let Some(surface) = state.desktop.desktop_app else {
+        return;
+    };
     let snap = build_desktop_surface_snapshot(state);
     // PLAN-035 T-11：boot 注入 __wm_dashboard（右键菜单 checkbox 判据）。
     let dash = if state.dashboard_visible() { "1" } else { "" };
-    let Some(app) = state.apps.get_mut(&surface) else { return };
+    let Some(app) = state.apps.get_mut(&surface) else {
+        return;
+    };
     for w in snap.interpreted_writes() {
         match w {
             crate::ui::shell_projection::ShellWrite::Scalar(k, v) => {
@@ -16425,19 +17739,34 @@ fn projection_win_entry(
     auto_val::Value::Obj(Box::new(auto_val::Obj::from_pairs([
         ("wid", auto_val::Value::Str(v.wid.0.to_string().into())),
         ("title", auto_val::Value::Str(v.title.clone().into())),
-        ("focused", auto_val::Value::Str(if focused { "1" } else { "".into() }.into())),
-        ("workspace", auto_val::Value::Str(v.workspace.to_string().into())),
+        (
+            "focused",
+            auto_val::Value::Str(if focused { "1" } else { "".into() }.into()),
+        ),
+        (
+            "workspace",
+            auto_val::Value::Str(v.workspace.to_string().into()),
+        ),
         // Plan 486 v1.3：App 条目恒空串（native 分支判据统一）。
         ("native", auto_val::Value::Str(String::new().into())),
-        ("app", auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into())),
+        (
+            "app",
+            auto_val::Value::Str(v.registry_id.clone().unwrap_or_default().into()),
+        ),
         ("icon", auto_val::Value::Str(icon.into())),
         // Plan 505 B2 v1.5：pager 派生面——本窗是否属其分区缩略前 4
         //（"1"/""；mru/native 条目恒 ""，判据统一不缺字段）。
         ("pager", auto_val::Value::Str(pager.into())),
         // PLAN-012 O2：本窗 app 已固定 / 同 app 已有更前位窗（z_order 序
         // 首见之外）——dock 条目跳过判据（.at 等式消费）。
-        ("pinned", auto_val::Value::Str(if pinned { "1" } else { "".into() }.into())),
-        ("dup_app", auto_val::Value::Str(if dup_app { "1" } else { "".into() }.into())),
+        (
+            "pinned",
+            auto_val::Value::Str(if pinned { "1" } else { "".into() }.into()),
+        ),
+        (
+            "dup_app",
+            auto_val::Value::Str(if dup_app { "1" } else { "".into() }.into()),
+        ),
     ])))
 }
 
@@ -16480,8 +17809,12 @@ pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSessi
                     }
                     continue;
                 }
-                let Some(shell) = state.desktop.shell_app else { continue };
-                let Some(app) = state.apps.get_mut(&shell) else { continue };
+                let Some(shell) = state.desktop.shell_app else {
+                    continue;
+                };
+                let Some(app) = state.apps.get_mut(&shell) else {
+                    continue;
+                };
                 let cur = match app.component.read_state("__desktop_cmd") {
                     Ok(auto_val::Value::Str(s)) => s.to_string(),
                     _ => String::new(),
@@ -16495,7 +17828,12 @@ pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSessi
                     .component
                     .write_state("__desktop_cmd", auto_val::Value::str(&joined));
             }
-            DesktopInject::Handler { app: which, handler, arg, widget } => {
+            DesktopInject::Handler {
+                app: which,
+                handler,
+                arg,
+                widget,
+            } => {
                 let app_id = match which {
                     "shell" => state.desktop.shell_app,
                     "notification" => state.desktop.notification_app,
@@ -16508,28 +17846,26 @@ pub(crate) fn apply_desktop_injects(state: &mut crate::ui::session::DesktopSessi
                     // Plan 551：settings 槽 = os-config 窗（⚙️ 同靶——
                     // 540 的 045 专用槽随窗退役，验收通道按 registry_id
                     // 定位 launch-or-focus 后的 os-config 前端）。
-                "settings" => state.host.as_ref().and_then(|h| {
-                    h.wm
-                        .wins
-                        .iter()
-                        .find(|(_, v)| {
-                            v.registry_id.as_deref() == Some(OSCONFIG_APP_ID)
-                        })
-                        .map(|(_, v)| v.app)
-                }),
-                // PLAN-721 T-4/T-DOCS-1：验收通道任意内嵌 app 直呼——
-                // registry_id 反查（settings 臂同款机制泛化；launch 后窗
-                // 条目带注册名）。特权名先行匹配不受遮蔽（上方臂优先）。
-                which => state.host.as_ref().and_then(|h| {
-                    h.wm
-                        .wins
-                        .iter()
-                        .find(|(_, v)| v.registry_id.as_deref() == Some(which))
-                        .map(|(_, v)| v.app)
-                }),
-            };
+                    "settings" => state.host.as_ref().and_then(|h| {
+                        h.wm.wins
+                            .iter()
+                            .find(|(_, v)| v.registry_id.as_deref() == Some(OSCONFIG_APP_ID))
+                            .map(|(_, v)| v.app)
+                    }),
+                    // PLAN-721 T-4/T-DOCS-1：验收通道任意内嵌 app 直呼——
+                    // registry_id 反查（settings 臂同款机制泛化；launch 后窗
+                    // 条目带注册名）。特权名先行匹配不受遮蔽（上方臂优先）。
+                    which => state.host.as_ref().and_then(|h| {
+                        h.wm.wins
+                            .iter()
+                            .find(|(_, v)| v.registry_id.as_deref() == Some(which))
+                            .map(|(_, v)| v.app)
+                    }),
+                };
                 let Some(app_id) = app_id else { continue };
-                let Some(sess) = state.apps.get_mut(&app_id) else { continue };
+                let Some(sess) = state.apps.get_mut(&app_id) else {
+                    continue;
+                };
                 let args = arg
                     .map(|a| vec![auto_val::Value::str(&a)])
                     .unwrap_or_default();
@@ -16571,18 +17907,26 @@ fn arm_boot_fit_windows(session: &mut crate::ui::session::DesktopSession) {
         return;
     }
     let pairs: Vec<(Wid, AppId)> = {
-        let Some(host) = session.host.as_ref() else { return };
+        let Some(host) = session.host.as_ref() else {
+            return;
+        };
         host.wm.wins.values().map(|v| (v.wid, v.app)).collect()
     };
     for (wid, app_id) in pairs {
-        let Some(entry) = session.apps.get(&app_id) else { continue };
-        let Some(src) = entry.component.source_path() else { continue };
+        let Some(entry) = session.apps.get(&app_id) else {
+            continue;
+        };
+        let Some(src) = entry.component.source_path() else {
+            continue;
+        };
         let norm = src.to_string_lossy().replace('\\', "/");
-        let mut hits = entries.iter().filter(|e| {
-            boot_entry_matches(&norm, &e.entry.to_string_lossy().replace('\\', "/"))
-        });
+        let mut hits = entries
+            .iter()
+            .filter(|e| boot_entry_matches(&norm, &e.entry.to_string_lossy().replace('\\', "/")));
         // 唯一命中才 armed（歧义回退现状——待澄清⑦裁定默认）。
-        let (Some(first), None) = (hits.next(), hits.next()) else { continue };
+        let (Some(first), None) = (hits.next(), hits.next()) else {
+            continue;
+        };
         if let Some(host) = session.host.as_mut() {
             if let Some(v) = host.wm.wins.get_mut(&wid) {
                 v.registry_id = Some(first.id.clone());
@@ -16628,7 +17972,9 @@ fn sync_shell_windows(state: &mut crate::ui::session::DesktopSession) {
         publish_workspace_previews(state);
         return;
     }
-    let Some(shell) = state.desktop.shell_app else { return };
+    let Some(shell) = state.desktop.shell_app else {
+        return;
+    };
     {
         let vp = state.host_viewport();
         if let Some(host_mut) = state.host.as_mut() {
@@ -16751,7 +18097,9 @@ pub(crate) fn build_shell_projection(
         DockPin, ShellNote, ShellProjection, ShellWin, ShellWorkspace,
     };
     let mut proj = ShellProjection::default();
-    let Some(host) = state.host.as_ref() else { return proj };
+    let Some(host) = state.host.as_ref() else {
+        return proj;
+    };
     let mut fp = String::new();
     // Plan 505 B2（债 P497-1）v1.5：分区缩略 pager 派生面（宿主单一事实源，
     // 指纹不需扩段——逐窗 workspace 已入指纹）。
@@ -16762,7 +18110,9 @@ pub(crate) fn build_shell_projection(
     {
         let mut per_ws: std::collections::HashMap<usize, usize> = Default::default();
         for &wid in &host.wm.z_order {
-            let Some(v) = host.wm.wins.get(&wid) else { continue };
+            let Some(v) = host.wm.wins.get(&wid) else {
+                continue;
+            };
             let idx = *per_ws.entry(v.workspace).or_insert(0);
             per_ws.insert(v.workspace, idx + 1);
             if idx < 4 {
@@ -16774,7 +18124,9 @@ pub(crate) fn build_shell_projection(
     }
     // PLAN-012 W1：常驻隐藏窗投影全排除（__wm_wins/pager/指纹/运行集）。
     for &wid in &host.wm.z_order {
-        let Some(v) = host.wm.wins.get(&wid) else { continue };
+        let Some(v) = host.wm.wins.get(&wid) else {
+            continue;
+        };
         if v.hidden.get() {
             continue;
         }
@@ -16822,8 +18174,8 @@ pub(crate) fn build_shell_projection(
             continue;
         }
         crate::ui::iced::native_icon::ensure(id.0, slot.hwnd);
-        let focused = host.wm.focused
-            == Some(crate::ui::session::WmState::native_slot_pseudo_wid(*id));
+        let focused =
+            host.wm.focused == Some(crate::ui::session::WmState::native_slot_pseudo_wid(*id));
         proj.wins.push(ShellWin {
             wid: format!("N{}", id.0),
             title: slot.title_cache.clone(),
@@ -16910,10 +18262,10 @@ pub(crate) fn build_shell_projection(
     for wid in host.wm.mru_in_workspace(host.wm.current_workspace) {
         // PLAN-709 v1.11：槽位条目并入 __wm_mru（Docked 门控同 wins 段；
         // 指纹段 N 形态与窗段同型）。
-        if let Some(slot_id) =
-            crate::ui::session::WmState::native_slot_id_of_pseudo(wid)
-        {
-            let Some(slot) = host.wm.native_slots.get(&slot_id) else { continue };
+        if let Some(slot_id) = crate::ui::session::WmState::native_slot_id_of_pseudo(wid) {
+            let Some(slot) = host.wm.native_slots.get(&slot_id) else {
+                continue;
+            };
             if slot.state != crate::ui::native_dock::SlotState::Docked {
                 continue;
             }
@@ -16995,7 +18347,10 @@ pub(crate) fn build_shell_projection(
         pinned_csv.push(',');
     }
     if pinned_csv.len() > 1 {
-        fp.push_str(&format!("|pinned:{};", &pinned_csv[1..pinned_csv.len() - 1]));
+        fp.push_str(&format!(
+            "|pinned:{};",
+            &pinned_csv[1..pinned_csv.len() - 1]
+        ));
     } else {
         fp.push_str("|pinned:;");
     }
@@ -17094,11 +18449,16 @@ pub(crate) fn apply_shell_projection_interpreted(
             let _ = dapp
                 .component
                 .write_state("__wm_running", auto_val::Value::str(&proj.running_csv));
-            let _ = dapp
-                .component
-                .write_state("__wm_dashboard", auto_val::Value::str(if dash_visible { "1" } else { "" }));
+            let _ = dapp.component.write_state(
+                "__wm_dashboard",
+                auto_val::Value::str(if dash_visible { "1" } else { "" }),
+            );
             if let Err(err) = dapp.component.bridge_mut().call_handler("RunningSync", &[]) {
-                crate::syslog!(SyslogLevel::Error, "host", "[session] desktop RunningSync failed: {err}");
+                crate::syslog!(
+                    SyslogLevel::Error,
+                    "host",
+                    "[session] desktop RunningSync failed: {err}"
+                );
             }
             *dapp.state.view_dirty.borrow_mut() = true;
         }
@@ -17116,23 +18476,27 @@ pub(crate) fn apply_shell_projection_interpreted(
 /// 隐藏 ‖ 不在当前分区 ‖ 被更高 z 序可见窗矩形相交（部分遮挡即污染
 /// 裁剪）。冻结窗：不重抓、缩略不 TTL 过期（末帧保留，OS 惯例）。
 fn sync_snapshot_frozen(state: &mut crate::ui::session::DesktopSession) {
-    let Some(host) = state.host.as_ref() else { return };
+    let Some(host) = state.host.as_ref() else {
+        return;
+    };
     let current = host.wm.current_workspace;
     // z 序自顶向下的可见窗矩形集——后出现的窗可遮挡先出现的。被遮挡
     // 的可见窗仍遮挡其下方窗，故遮挡集收录一切"在屏"窗（冻结分级：
     // 被判遮挡的窗自身冻结，但其矩形照常参与下方窗的遮挡判定）。
     let mut above: Vec<(f32, f32, f32, f32)> = Vec::new();
     for wid in host.wm.z_order.iter().rev() {
-        let Some(v) = host.wm.wins.get(wid) else { continue };
+        let Some(v) = host.wm.wins.get(wid) else {
+            continue;
+        };
         let (rx, ry, rw, rh) = {
             let r = v.rect.borrow();
             (r.x, r.y, r.width, r.height)
         };
         let offscreen = v.minimized.get() || v.hidden.get() || v.workspace != current;
         let covered = !offscreen
-            && above.iter().any(|(x, y, w, h)| {
-                rx < x + *w && *x < rx + rw && ry < y + *h && *y < ry + rh
-            });
+            && above
+                .iter()
+                .any(|(x, y, w, h)| rx < x + *w && *x < rx + rw && ry < y + *h && *y < ry + rh);
         if !offscreen {
             crate::ui::iced::snapshot::set_frozen(*wid, covered);
             above.push((rx, ry, rw, rh));
@@ -17149,11 +18513,15 @@ fn publish_workspace_previews(state: &mut crate::ui::session::DesktopSession) {
     sync_snapshot_frozen(state);
     let viewport = state.host_viewport();
     let usable = crate::ui::layout::usable_rect(viewport, state.desktop.dock_edges);
-    let mut per_ws: std::collections::BTreeMap<String, Vec<crate::ui::iced::workspace_preview::PreviewTile>> =
-        Default::default();
+    let mut per_ws: std::collections::BTreeMap<
+        String,
+        Vec<crate::ui::iced::workspace_preview::PreviewTile>,
+    > = Default::default();
     if let Some(host) = state.host.as_ref() {
         for &wid in &host.wm.z_order {
-            let Some(v) = host.wm.wins.get(&wid) else { continue };
+            let Some(v) = host.wm.wins.get(&wid) else {
+                continue;
+            };
             if v.hidden.get() {
                 continue;
             }
@@ -17169,16 +18537,14 @@ fn publish_workspace_previews(state: &mut crate::ui::session::DesktopSession) {
             );
         }
     }
-    crate::ui::iced::workspace_preview::publish(
-        crate::ui::iced::workspace_preview::Published {
-            usable: (usable.width, usable.height),
-            wallpaper: crate::ui::iced::workspace_preview::wallpaper_rgb(
-                &state.desktop.config.wallpaper_path,
-            ),
-            workspaces: per_ws,
-            wallpaper_src: state.desktop.desktop_wallpaper.clone(),
-        },
-    );
+    crate::ui::iced::workspace_preview::publish(crate::ui::iced::workspace_preview::Published {
+        usable: (usable.width, usable.height),
+        wallpaper: crate::ui::iced::workspace_preview::wallpaper_rgb(
+            &state.desktop.config.wallpaper_path,
+        ),
+        workspaces: per_ws,
+        wallpaper_src: state.desktop.desktop_wallpaper.clone(),
+    });
 }
 
 /// Run a `DynamicComponent` in an iced window.
@@ -17274,7 +18640,10 @@ pub fn run_dynamic_iced_pixels(component: DynamicComponent) -> AppResult<String>
     run_session(
         vec![component],
         RunMode::Standalone,
-        DesktopOptions { pixels: true, ..Default::default() },
+        DesktopOptions {
+            pixels: true,
+            ..Default::default()
+        },
     )
 }
 
@@ -17309,18 +18678,15 @@ fn run_session(
     // 兜底=桌面外 `-q` 轨既有语义不变。生命周期注记：daemon 子进程按
     // 末窗自退语义存活（零窗常驻与 `-q` 轨一致）；宿主强杀不级联。
     if mode == RunMode::Desktop {
-        let endpoint = opts
-            .rqhost_endpoint
-            .clone()
-            .or_else(|| {
-                (std::env::var("AUTO_DESKTOP_RQHOST").as_deref() == Ok("1")).then(|| {
-                    format!(
-                        "{}-desktop-{}",
-                        crate::ui::desktop_protocol::rqhost::RQHOST_PIPE,
-                        std::process::id()
-                    )
-                })
-            });
+        let endpoint = opts.rqhost_endpoint.clone().or_else(|| {
+            (std::env::var("AUTO_DESKTOP_RQHOST").as_deref() == Ok("1")).then(|| {
+                format!(
+                    "{}-desktop-{}",
+                    crate::ui::desktop_protocol::rqhost::RQHOST_PIPE,
+                    std::process::id()
+                )
+            })
+        });
         if let Some(pipe) = endpoint {
             match crate::ui::desktop_protocol::rqhost::spawn_desktop_daemon(&pipe) {
                 Ok(()) => {
@@ -17392,116 +18758,132 @@ fn run_session(
         }
     }
 
-/// Save an iced Screenshot as a PNG file in the tmp/ directory (Plan 285).
-/// Plan 371 Task 20: process a captured screenshot according to the requested
-/// mode. Returns a human-readable result string.
-///
-/// - Default (no name): save a timestamped PNG to `tmp/`, return its path.
-/// - `baseline=true`: save to `tests/screenshots/<name>.png` (overwrite).
-/// - `diff=true`: compare against `tests/screenshots/<name>.png`; return a
-///   `matches`/`DIFFERS` verdict with the diff percentage, and save a
-///   highlighted diff image to `tmp/<name>-diff.png` when they differ.
-fn process_screenshot(
-    screenshot: &iced::window::Screenshot,
-    name: &str,
-    baseline: bool,
-    diff: bool,
-    threshold: f64,
-) -> Result<String, String> {
-    let width = screenshot.size.width;
-    let height = screenshot.size.height;
-    let img = image::RgbaImage::from_raw(width, height, screenshot.rgba.as_ref().to_vec())
-        .ok_or_else(|| "Failed to create RGBA image from screenshot bytes".to_string())?;
+    /// Save an iced Screenshot as a PNG file in the tmp/ directory (Plan 285).
+    /// Plan 371 Task 20: process a captured screenshot according to the requested
+    /// mode. Returns a human-readable result string.
+    ///
+    /// - Default (no name): save a timestamped PNG to `tmp/`, return its path.
+    /// - `baseline=true`: save to `tests/screenshots/<name>.png` (overwrite).
+    /// - `diff=true`: compare against `tests/screenshots/<name>.png`; return a
+    ///   `matches`/`DIFFERS` verdict with the diff percentage, and save a
+    ///   highlighted diff image to `tmp/<name>-diff.png` when they differ.
+    fn process_screenshot(
+        screenshot: &iced::window::Screenshot,
+        name: &str,
+        baseline: bool,
+        diff: bool,
+        threshold: f64,
+    ) -> Result<String, String> {
+        let width = screenshot.size.width;
+        let height = screenshot.size.height;
+        let img = image::RgbaImage::from_raw(width, height, screenshot.rgba.as_ref().to_vec())
+            .ok_or_else(|| "Failed to create RGBA image from screenshot bytes".to_string())?;
 
-    if baseline {
-        let dir = std::path::Path::new("tests/screenshots");
-        std::fs::create_dir_all(dir)
-            .map_err(|e| format!("Failed to create tests/screenshots: {}", e))?;
-        let path = dir.join(format!("{}.png", name));
-        img.save(&path)
-            .map_err(|e| format!("Failed to save baseline PNG: {}", e))?;
-        return Ok(format!("Baseline saved: {}", path.display()));
-    }
-
-    if diff {
-        let baseline_path = std::path::Path::new("tests/screenshots")
-            .join(format!("{}.png", name));
-        let baseline_img = image::open(&baseline_path)
-            .map_err(|e| format!("Failed to load baseline '{}': {}", baseline_path.display(), e))?
-            .to_rgba8();
-        return compare_pngs(&baseline_img, &img, name, threshold);
-    }
-
-    // Default: legacy timestamped capture.
-    let tmp_dir = std::path::Path::new("tmp");
-    std::fs::create_dir_all(tmp_dir)
-        .map_err(|e| format!("Failed to create tmp/ directory: {}", e))?;
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let path = tmp_dir.join(format!("autoui-screenshot-{}.png", timestamp));
-    img.save(&path)
-        .map_err(|e| format!("Failed to save PNG: {}", e))?;
-    let abs_path = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
-    Ok(format!("Screenshot saved to: {}", abs_path.to_string_lossy()))
-}
-
-/// Plan 371 Task 20: per-pixel comparison of two RGBA images. Returns a
-/// verdict string and, when they differ beyond `threshold`, writes a
-/// highlighted diff image (changed pixels → red) to `tmp/<name>-diff.png`.
-fn compare_pngs(
-    baseline: &image::RgbaImage,
-    current: &image::RgbaImage,
-    name: &str,
-    threshold: f64,
-) -> Result<String, String> {
-    let (bw, bh) = baseline.dimensions();
-    let (cw, ch) = current.dimensions();
-    if (bw, bh) != (cw, ch) {
-        let pct = 100.0;
-        return Ok(format!(
-            "Screenshot DIFFERS from baseline '{}': size mismatch ({}x{} vs {}x{}, {:.1}%) — threshold {:.1}%",
-            name, bw, bh, cw, ch, pct, threshold * 100.0
-        ));
-    }
-    let total = (bw as usize) * (bh as usize);
-    let mut differing: usize = 0;
-    let mut diff_img = image::RgbaImage::new(bw, bh);
-    for y in 0..bh {
-        for x in 0..bw {
-            let b = baseline.get_pixel(x, y);
-            let c = current.get_pixel(x, y);
-            if b.0 != c.0 {
-                differing += 1;
-                // Mark changed pixel red, keep alpha.
-                diff_img.put_pixel(x, y, image::Rgba([255, 0, 0, 255]));
-            } else {
-                diff_img.put_pixel(x, y, *b);
-            }
+        if baseline {
+            let dir = std::path::Path::new("tests/screenshots");
+            std::fs::create_dir_all(dir)
+                .map_err(|e| format!("Failed to create tests/screenshots: {}", e))?;
+            let path = dir.join(format!("{}.png", name));
+            img.save(&path)
+                .map_err(|e| format!("Failed to save baseline PNG: {}", e))?;
+            return Ok(format!("Baseline saved: {}", path.display()));
         }
-    }
-    let diff_frac = if total == 0 { 0.0 } else { differing as f64 / total as f64 };
-    let diff_pct = diff_frac * 100.0;
-    if diff_frac > threshold {
-        // Save the highlighted diff image.
+
+        if diff {
+            let baseline_path =
+                std::path::Path::new("tests/screenshots").join(format!("{}.png", name));
+            let baseline_img = image::open(&baseline_path)
+                .map_err(|e| {
+                    format!(
+                        "Failed to load baseline '{}': {}",
+                        baseline_path.display(),
+                        e
+                    )
+                })?
+                .to_rgba8();
+            return compare_pngs(&baseline_img, &img, name, threshold);
+        }
+
+        // Default: legacy timestamped capture.
         let tmp_dir = std::path::Path::new("tmp");
         std::fs::create_dir_all(tmp_dir)
             .map_err(|e| format!("Failed to create tmp/ directory: {}", e))?;
-        let diff_path = tmp_dir.join(format!("{}-diff.png", name));
-        diff_img.save(&diff_path)
-            .map_err(|e| format!("Failed to save diff PNG: {}", e))?;
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let path = tmp_dir.join(format!("autoui-screenshot-{}.png", timestamp));
+        img.save(&path)
+            .map_err(|e| format!("Failed to save PNG: {}", e))?;
+        let abs_path = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
         Ok(format!(
+            "Screenshot saved to: {}",
+            abs_path.to_string_lossy()
+        ))
+    }
+
+    /// Plan 371 Task 20: per-pixel comparison of two RGBA images. Returns a
+    /// verdict string and, when they differ beyond `threshold`, writes a
+    /// highlighted diff image (changed pixels → red) to `tmp/<name>-diff.png`.
+    fn compare_pngs(
+        baseline: &image::RgbaImage,
+        current: &image::RgbaImage,
+        name: &str,
+        threshold: f64,
+    ) -> Result<String, String> {
+        let (bw, bh) = baseline.dimensions();
+        let (cw, ch) = current.dimensions();
+        if (bw, bh) != (cw, ch) {
+            let pct = 100.0;
+            return Ok(format!(
+            "Screenshot DIFFERS from baseline '{}': size mismatch ({}x{} vs {}x{}, {:.1}%) — threshold {:.1}%",
+            name, bw, bh, cw, ch, pct, threshold * 100.0
+        ));
+        }
+        let total = (bw as usize) * (bh as usize);
+        let mut differing: usize = 0;
+        let mut diff_img = image::RgbaImage::new(bw, bh);
+        for y in 0..bh {
+            for x in 0..bw {
+                let b = baseline.get_pixel(x, y);
+                let c = current.get_pixel(x, y);
+                if b.0 != c.0 {
+                    differing += 1;
+                    // Mark changed pixel red, keep alpha.
+                    diff_img.put_pixel(x, y, image::Rgba([255, 0, 0, 255]));
+                } else {
+                    diff_img.put_pixel(x, y, *b);
+                }
+            }
+        }
+        let diff_frac = if total == 0 {
+            0.0
+        } else {
+            differing as f64 / total as f64
+        };
+        let diff_pct = diff_frac * 100.0;
+        if diff_frac > threshold {
+            // Save the highlighted diff image.
+            let tmp_dir = std::path::Path::new("tmp");
+            std::fs::create_dir_all(tmp_dir)
+                .map_err(|e| format!("Failed to create tmp/ directory: {}", e))?;
+            let diff_path = tmp_dir.join(format!("{}-diff.png", name));
+            diff_img
+                .save(&diff_path)
+                .map_err(|e| format!("Failed to save diff PNG: {}", e))?;
+            Ok(format!(
             "Screenshot DIFFERS from baseline '{}': {:.2}% pixels changed (threshold {:.2}%) | diff: {}",
             name, diff_pct, threshold * 100.0, diff_path.display()
         ))
-    } else {
-        Ok(format!(
-            "Screenshot matches baseline '{}' ({:.2}% pixels changed, threshold {:.2}%)",
-            name, diff_pct, threshold * 100.0
-        ))
+        } else {
+            Ok(format!(
+                "Screenshot matches baseline '{}' ({:.2}% pixels changed, threshold {:.2}%)",
+                name,
+                diff_pct,
+                threshold * 100.0
+            ))
+        }
     }
-}
 
     // Plan 459：MCP 以首个（primary）App 命名——MCP 寻址维持 single-app 语义
     // （453 T8 冻结），快照/操作永远指向 primary App。
@@ -18012,7 +19394,7 @@ fn compare_pngs(
     let update_inner = |state: &mut crate::ui::session::DesktopSession,
                         app_id: crate::ui::session::AppId,
                         msg: IcedMessage|
-         -> iced::Task<IcedMessage> {
+     -> iced::Task<IcedMessage> {
         // PLAN-716 组B（供②）: 帧开始时间戳=update 入口到达时刻。门控
         // AUTO_FRAME_BENCH——未设零开销（OnceLock 布尔读+分支），不染
         // 调度语义（712 r2 帧泵域边界）。
@@ -18046,7 +19428,10 @@ fn compare_pngs(
         };
         if !msg.event.starts_with("__") {
             if crate::is_vm_hot_trace() {
-                eprintln!("[UI_EVENT] widget={:?} event={:?} input_val={:?}", msg.widget, msg.event, msg.input_value);
+                eprintln!(
+                    "[UI_EVENT] widget={:?} event={:?} input_val={:?}",
+                    msg.widget, msg.event, msg.input_value
+                );
             }
         }
         // PLAN-623: test-only VM fixture channel. It is deliberately handled
@@ -18139,9 +19524,9 @@ fn compare_pngs(
                 if let (Some(k), Some(c), Some(w)) = (key, col, w) {
                     write_table_width_state(&mut state.component, &k, c, w);
                     *state.app.view_dirty.borrow_mut() = true;
-                    return iced::Task::done(IcedMessage::from_dynamic(
-                        &DynamicMessage::String("__noop".to_string()),
-                    ));
+                    return iced::Task::done(IcedMessage::from_dynamic(&DynamicMessage::String(
+                        "__noop".to_string(),
+                    )));
                 }
             }
         }
@@ -18249,12 +19634,9 @@ fn compare_pngs(
         // __noop 回发驱动重绘（Plan 482 通道，click 臂同款）。
         if msg.event == "__mcp_key" {
             let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
-            if let (Some(sk), Some(widget), Some(event), Some(keyspec)) = (
-                parts.next(),
-                parts.next(),
-                parts.next(),
-                parts.next(),
-            ) {
+            if let (Some(sk), Some(widget), Some(event), Some(keyspec)) =
+                (parts.next(), parts.next(), parts.next(), parts.next())
+            {
                 #[cfg(all(feature = "autodown", feature = "code-editor"))]
                 {
                     use crate::ui::autodown_editor as ade;
@@ -18267,7 +19649,8 @@ fn compare_pngs(
                                 DocInput::KeyPressed {
                                     key,
                                     text: None,
-                                    modifiers: crate::ui::code_editor::core::EditorModifiers::none(),
+                                    modifiers: crate::ui::code_editor::core::EditorModifiers::none(
+                                    ),
                                 },
                                 &mut crate::ui::code_editor::core::NullClipboard,
                             )
@@ -18293,7 +19676,7 @@ fn compare_pngs(
                                 input_value: Some(text),
                             }));
                         }
-                                                tasks.push(iced::Task::done(mcp_noop_with_ack(mcp_ack)));
+                        tasks.push(iced::Task::done(mcp_noop_with_ack(mcp_ack)));
                         return iced::Task::batch(tasks);
                     }
                 }
@@ -18313,12 +19696,9 @@ fn compare_pngs(
         // text_changed/focus_changed 处理同 __mcp_key；__noop 回发重绘。
         if msg.event == "__mcp_drag_ade" {
             let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
-            if let (Some(sk), Some(widget), Some(event), Some(pts)) = (
-                parts.next(),
-                parts.next(),
-                parts.next(),
-                parts.next(),
-            ) {
+            if let (Some(sk), Some(widget), Some(event), Some(pts)) =
+                (parts.next(), parts.next(), parts.next(), parts.next())
+            {
                 #[cfg(all(feature = "autodown", feature = "code-editor"))]
                 {
                     use crate::ui::autodown_editor as ade;
@@ -18402,9 +19782,9 @@ fn compare_pngs(
                                 input_value: Some(text),
                             }));
                         }
-                                                // PLAN-737：ack 随 noop 回执——link 激活消息等 Task
-                                                // 先于 noop 同队列派发，noop 消费即门级联全落。
-                                                tasks.push(iced::Task::done(mcp_noop_with_ack(mcp_ack)));
+                        // PLAN-737：ack 随 noop 回执——link 激活消息等 Task
+                        // 先于 noop 同队列派发，noop 消费即门级联全落。
+                        tasks.push(iced::Task::done(mcp_noop_with_ack(mcp_ack)));
                         return iced::Task::batch(tasks);
                     }
                 }
@@ -18435,8 +19815,14 @@ fn compare_pngs(
             let mut parts = msg.input_value.as_deref().unwrap_or("").split(PAYLOAD_SEP);
             // PLAN-656 F-4 末环：可选第三段 x（controller 双轴回环复用本消费者；
             // 既有 MCP 调用 "id␟y" 两段形态不变，x 缺省 0）。
-            if let (Some(id), Some(y)) = (parts.next(), parts.next().and_then(|s| s.parse::<f32>().ok())) {
-                let x = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+            if let (Some(id), Some(y)) = (
+                parts.next(),
+                parts.next().and_then(|s| s.parse::<f32>().ok()),
+            ) {
+                let x = parts
+                    .next()
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
                 if std::env::var("P656_DEBUG").is_ok() {
                     eprintln!("[P656-EXEC] mcp_scroll id={id} x={x} y={y}");
                 }
@@ -18477,7 +19863,10 @@ fn compare_pngs(
                         ) {
                             let ev = encode_payload(
                                 mv,
-                                &[auto_val::Value::Float(x + 0.001), auto_val::Value::Float(y + 0.001)],
+                                &[
+                                    auto_val::Value::Float(x + 0.001),
+                                    auto_val::Value::Float(y + 0.001),
+                                ],
                             );
                             state.component.on_with_input_for(w, &ev, None);
                         }
@@ -18498,7 +19887,8 @@ fn compare_pngs(
             if let Some(spec) = msg.input_value.as_deref() {
                 let parts: Vec<&str> = spec.split(PAYLOAD_SEP).collect();
                 if parts.len() == 5 {
-                    let (w, start, mv, end, pts) = (parts[0], parts[1], parts[2], parts[3], parts[4]);
+                    let (w, start, mv, end, pts) =
+                        (parts[0], parts[1], parts[2], parts[3], parts[4]);
                     let pairs: Vec<(f64, f64)> = pts
                         .split(';')
                         .filter(|s| !s.is_empty())
@@ -18512,21 +19902,30 @@ fn compare_pngs(
                     if let Some(&(x, y)) = pairs.first() {
                         let ev = encode_payload(
                             start,
-                            &[auto_val::Value::Float(x + 0.001), auto_val::Value::Float(y + 0.001)],
+                            &[
+                                auto_val::Value::Float(x + 0.001),
+                                auto_val::Value::Float(y + 0.001),
+                            ],
                         );
                         state.component.on_with_input_for(w, &ev, None);
                     }
                     for &(x, y) in pairs.iter().skip(1) {
                         let ev = encode_payload(
                             mv,
-                            &[auto_val::Value::Float(x + 0.001), auto_val::Value::Float(y + 0.001)],
+                            &[
+                                auto_val::Value::Float(x + 0.001),
+                                auto_val::Value::Float(y + 0.001),
+                            ],
                         );
                         state.component.on_with_input_for(w, &ev, None);
                     }
                     if let Some(&(x, y)) = pairs.last() {
                         let ev = encode_payload(
                             end,
-                            &[auto_val::Value::Float(x + 0.001), auto_val::Value::Float(y + 0.001)],
+                            &[
+                                auto_val::Value::Float(x + 0.001),
+                                auto_val::Value::Float(y + 0.001),
+                            ],
                         );
                         state.component.on_with_input_for(w, &ev, None);
                     }
@@ -18547,7 +19946,9 @@ fn compare_pngs(
         // \x1E 拆记录逐条入队(空记录跳过)。堆叠上限 8,超出丢弃最旧。
         if let Ok(auto_val::Value::Str(payload)) = state.component.read_state("__toast") {
             if !payload.is_empty() {
-                let _ = state.component.write_state("__toast", auto_val::Value::str(""));
+                let _ = state
+                    .component
+                    .write_state("__toast", auto_val::Value::str(""));
                 let mut pushed_any = false;
                 for rec in payload.split('\u{1e}') {
                     if rec.is_empty() {
@@ -18588,10 +19989,19 @@ fn compare_pngs(
         // if declared (lets each example specify its own initial window size via Auto).
         if !state.initial_resize_done.get() {
             state.initial_resize_done.set(true);
-            let w = state.component.read_state("window_width").map(|v| v.as_int()).unwrap_or(0);
-            let h = state.component.read_state("window_height").map(|v| v.as_int()).unwrap_or(0);
+            let w = state
+                .component
+                .read_state("window_width")
+                .map(|v| v.as_int())
+                .unwrap_or(0);
+            let h = state
+                .component
+                .read_state("window_height")
+                .map(|v| v.as_int())
+                .unwrap_or(0);
             if w > 0 && h > 0 {
-                *state.pending_window_resize.borrow_mut() = Some(iced::Size::new(w as f32, h as f32));
+                *state.pending_window_resize.borrow_mut() =
+                    Some(iced::Size::new(w as f32, h as f32));
             }
         }
 
@@ -18613,7 +20023,8 @@ fn compare_pngs(
                 }
                 return iced::Task::none();
             }
-            let path = msg.event
+            let path = msg
+                .event
                 .split(PAYLOAD_SEP)
                 .nth(2)
                 .unwrap_or("/")
@@ -18662,9 +20073,7 @@ fn compare_pngs(
             let now = std::time::Instant::now();
             let mut toasts = state.desktop.toasts.borrow_mut();
             let before = toasts.len();
-            toasts.retain(|t| {
-                now.duration_since(t.shown_at).as_millis() < t.duration_ms as u128
-            });
+            toasts.retain(|t| now.duration_since(t.shown_at).as_millis() < t.duration_ms as u128);
             let removed = toasts.len() != before;
             drop(toasts);
             if removed {
@@ -18775,7 +20184,11 @@ fn compare_pngs(
             match name.as_str() {
                 "__preview_toggle" => {
                     if let Some(auto_val::Value::Str(id)) = args.get(0) {
-                        let st = state.component.preview_states.entry(id.to_string()).or_default();
+                        let st = state
+                            .component
+                            .preview_states
+                            .entry(id.to_string())
+                            .or_default();
                         st.show = !st.show;
                         st.copied = false;
                         // PLAN-708 T-01：组件局部 UI 态不 bump VM seq——
@@ -18787,8 +20200,14 @@ fn compare_pngs(
                     return iced::Task::none();
                 }
                 "__preview_tab" => {
-                    if let (Some(auto_val::Value::Str(id)), Some(auto_val::Value::Str(tab))) = (args.get(0), args.get(1)) {
-                        let st = state.component.preview_states.entry(id.to_string()).or_default();
+                    if let (Some(auto_val::Value::Str(id)), Some(auto_val::Value::Str(tab))) =
+                        (args.get(0), args.get(1))
+                    {
+                        let st = state
+                            .component
+                            .preview_states
+                            .entry(id.to_string())
+                            .or_default();
                         st.tab = if tab.as_str() == "vue" {
                             crate::ui::dynamic::PreviewTab::Vue
                         } else {
@@ -18806,7 +20225,9 @@ fn compare_pngs(
                 // the copied flag so the icon swaps to a check until the next
                 // tab/toggle interaction (vue parity: instant copy feedback).
                 "__preview_copy" => {
-                    if let (Some(auto_val::Value::Str(id)), Some(auto_val::Value::Str(code))) = (args.get(0), args.get(1)) {
+                    if let (Some(auto_val::Value::Str(id)), Some(auto_val::Value::Str(code))) =
+                        (args.get(0), args.get(1))
+                    {
                         match arboard::Clipboard::new() {
                             Ok(mut cb) => {
                                 if let Err(e) = cb.set_text(code.as_str().to_string()) {
@@ -18815,7 +20236,11 @@ fn compare_pngs(
                             }
                             Err(e) => eprintln!("clipboard unavailable: {}", e),
                         }
-                        let st = state.component.preview_states.entry(id.to_string()).or_default();
+                        let st = state
+                            .component
+                            .preview_states
+                            .entry(id.to_string())
+                            .or_default();
                         st.copied = true;
                         // PLAN-708 T-01：组件局部 UI 态——epoch 通道废止 memo。
                         crate::ui::memo_deps::bump_ui_epoch();
@@ -18838,10 +20263,9 @@ fn compare_pngs(
             }
             if msg.event == "__mcp_heartbeat" {
                 let now = std::time::Instant::now();
-                let due = CONFIG_MTIME_POLL
-                    .lock()
-                    .unwrap()
-                    .map_or(true, |t| now.duration_since(t) >= std::time::Duration::from_millis(500));
+                let due = CONFIG_MTIME_POLL.lock().unwrap().map_or(true, |t| {
+                    now.duration_since(t) >= std::time::Duration::from_millis(500)
+                });
                 if due {
                     *CONFIG_MTIME_POLL.lock().unwrap() = Some(now);
                     if crate::ui::action_config::check_action_config_changed() {
@@ -18868,12 +20292,13 @@ fn compare_pngs(
             match name.as_str() {
                 "__menubar_toggle" => {
                     if let Some(auto_val::Value::Str(id)) = args.get(0) {
-                        let next =
-                            if crate::ui::action_config::menubar_open().as_deref() == Some(id.as_str()) {
-                                None
-                            } else {
-                                Some(id.to_string())
-                            };
+                        let next = if crate::ui::action_config::menubar_open().as_deref()
+                            == Some(id.as_str())
+                        {
+                            None
+                        } else {
+                            Some(id.to_string())
+                        };
                         crate::ui::action_config::set_menubar_open(next);
                         *state.app.view_dirty.borrow_mut() = true;
                     }
@@ -18895,12 +20320,13 @@ fn compare_pngs(
             match name.as_str() {
                 "__popover_toggle" => {
                     if let Some(auto_val::Value::Str(slot)) = args.get(0) {
-                        let next =
-                            if crate::ui::action_config::popover_open().as_deref() == Some(slot.as_str()) {
-                                None
-                            } else {
-                                Some(slot.to_string())
-                            };
+                        let next = if crate::ui::action_config::popover_open().as_deref()
+                            == Some(slot.as_str())
+                        {
+                            None
+                        } else {
+                            Some(slot.to_string())
+                        };
                         crate::ui::action_config::set_popover_open(next);
                         *state.app.view_dirty.borrow_mut() = true;
                     }
@@ -18937,14 +20363,15 @@ fn compare_pngs(
         // PLAN-656 review F-4: scroll 状态读回落库——ScrollStateReader 的
         // 六测量按 widget id 反查 handle 写入 controller 注册表（预热/校正）。
         if msg.event == "__scroll_state_read" {
-                if let Some(ref json) = msg.input_value {
-                if let Ok(map) = serde_json::from_str::<std::collections::HashMap<
-                    String,
-                    (f32, f32, f32, f32, f32, f32),
-                >>(json)
+            if let Some(ref json) = msg.input_value {
+                if let Ok(map) = serde_json::from_str::<
+                    std::collections::HashMap<String, (f32, f32, f32, f32, f32, f32)>,
+                >(json)
                 {
                     for (id, (ox, oy, vw, vh, cw, ch)) in map {
-                        if std::env::var("P656_DEBUG").is_ok() { eprintln!("[P656-READ] id={id} vals={:?}", (ox, oy, vw, vh, cw, ch)); }
+                        if std::env::var("P656_DEBUG").is_ok() {
+                            eprintln!("[P656-READ] id={id} vals={:?}", (ox, oy, vw, vh, cw, ch));
+                        }
                         // PLAN-701 供②b: editor 句柄（editor-scroll-*）放开
                         // offset 回写——读端点 `code_editor_scroll_offset_*`
                         // 的注册表投影由此收敛（用户滚动无 on_scroll 回声臂，
@@ -18977,7 +20404,10 @@ fn compare_pngs(
         // Layout bounds collection: store result from previous operation (Plan 282)
         if msg.event == "__bounds_collected" {
             if let Some(ref json) = msg.input_value {
-                if let Ok(bounds_map) = serde_json::from_str::<std::collections::HashMap<String, (f32,f32,f32,f32)>>(json) {
+                if let Ok(bounds_map) = serde_json::from_str::<
+                    std::collections::HashMap<String, (f32, f32, f32, f32)>,
+                >(json)
+                {
                     // Backfill layout bounds into the debug InspectorCache first
                     // (Plan 307, Task 13) — borrows `bounds_map` by ref.
                     // `live_cache` is `None` outside debug mode (Task 12 clears
@@ -19093,7 +20523,8 @@ fn compare_pngs(
                 let ws = state.window_size.borrow();
                 if ws.width <= 0.0 || ws.height <= 0.0 {
                     let _ = req.reply_tx.send(Err(
-                        "Screenshot skipped: window size is zero (minimized or not yet laid out)".to_string(),
+                        "Screenshot skipped: window size is zero (minimized or not yet laid out)"
+                            .to_string(),
                     ));
                     return iced::Task::none();
                 }
@@ -19200,7 +20631,10 @@ fn compare_pngs(
         {
             // Last-edited textarea → any rendered textarea (first launch,
             // before any edit) → single-line input fallback.
-            let id = state.app.devtools.last_textarea_key
+            let id = state
+                .app
+                .devtools
+                .last_textarea_key
                 .borrow()
                 .as_ref()
                 .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
@@ -19224,14 +20658,15 @@ fn compare_pngs(
         // 此处必非空 → focus_traverse 恒 Some。
         if msg.event == FOCUS_NEXT_INPUT_EVENT || msg.event == FOCUS_PREV_INPUT_EVENT {
             let forward = msg.event == FOCUS_NEXT_INPUT_EVENT;
-            let registry: Vec<iced::widget::Id> =
-                state.app.devtools.input_ids.borrow().clone();
+            let registry: Vec<iced::widget::Id> = state.app.devtools.input_ids.borrow().clone();
             return iced::advanced::widget::operate(FindFocusedInput::new()).then(
-                move |current: Option<iced::widget::Id>| {
-                    match focus_traverse(&registry, current.as_ref(), forward) {
-                        Some(id) => iced::widget::operation::focus(id),
-                        None => iced::Task::none(),
-                    }
+                move |current: Option<iced::widget::Id>| match focus_traverse(
+                    &registry,
+                    current.as_ref(),
+                    forward,
+                ) {
+                    Some(id) => iced::widget::operation::focus(id),
+                    None => iced::Task::none(),
                 },
             );
         }
@@ -19251,7 +20686,9 @@ fn compare_pngs(
                 // Plan 307 Task 17: derive selected_vnode from the aura_N string
                 // via the last frame's live_cache so the left-tree highlight and
                 // inspector panels (keyed on VNodeId) follow the click.
-                let derived_vnode = state.app.live_cache
+                let derived_vnode = state
+                    .app
+                    .live_cache
                     .borrow()
                     .as_ref()
                     .and_then(|c| c.iced_to_vnode(&id));
@@ -19269,7 +20706,9 @@ fn compare_pngs(
                 if let Some(elem_info) = styles.get(sel_id) {
                     if let Some((offset, _len)) = elem_info.span {
                         let line_offsets = state.app.source_line_offsets.borrow();
-                        let line_idx = line_offsets.partition_point(|&pos| pos <= offset).saturating_sub(1);
+                        let line_idx = line_offsets
+                            .partition_point(|&pos| pos <= offset)
+                            .saturating_sub(1);
                         *state.app.devtools.pending_scroll_to_center.borrow_mut() = Some(line_idx);
                     }
                 }
@@ -19294,7 +20733,9 @@ fn compare_pngs(
                     // tree selection. If no mapping exists yet (e.g. first frame),
                     // leave selected_widget as-is — the overlay simply won't draw
                     // until the next frame builds the map.
-                    let mirrored_widget = state.app.live_cache
+                    let mirrored_widget = state
+                        .app
+                        .live_cache
                         .borrow()
                         .as_ref()
                         .and_then(|c| c.vnode_to_iced(vnode_id))
@@ -19310,19 +20751,18 @@ fn compare_pngs(
                     // Plan 309 Phase 4.3: auto-scroll the Source tab to the
                     // selected node's line (the deferred-scroll path at the
                     // bottom of update() only covers selected_widget spans).
-                    let scroll_line = state.app.live_vtree
-                        .borrow()
-                        .as_ref()
-                        .and_then(|tree| {
-                            tree.get(vnode_id).and_then(|node| {
-                                node.source_span.map(|span| {
-                                    state.app.source_line_offsets
-                                        .borrow()
-                                        .partition_point(|&p| p <= span.offset)
-                                        .saturating_sub(1)
-                                })
+                    let scroll_line = state.app.live_vtree.borrow().as_ref().and_then(|tree| {
+                        tree.get(vnode_id).and_then(|node| {
+                            node.source_span.map(|span| {
+                                state
+                                    .app
+                                    .source_line_offsets
+                                    .borrow()
+                                    .partition_point(|&p| p <= span.offset)
+                                    .saturating_sub(1)
                             })
-                        });
+                        })
+                    });
                     if let Some(line) = scroll_line {
                         *state.app.devtools.pending_scroll_to_center.borrow_mut() = Some(line);
                     }
@@ -19370,12 +20810,18 @@ fn compare_pngs(
             // PLAN-646: Select 标签页三视图切换（`__select_view_<label>`）。
             e if e.starts_with(SELECT_VIEW_PREFIX) => {
                 match &e[SELECT_VIEW_PREFIX.len()..] {
-                    "Auto" => *state.app.devtools.select_view.borrow_mut() =
-                        crate::ui::selection::SelectionFormat::Auto,
-                    "Json" | "JSON" => *state.app.devtools.select_view.borrow_mut() =
-                        crate::ui::selection::SelectionFormat::Json,
-                    "Atom" => *state.app.devtools.select_view.borrow_mut() =
-                        crate::ui::selection::SelectionFormat::Atom,
+                    "Auto" => {
+                        *state.app.devtools.select_view.borrow_mut() =
+                            crate::ui::selection::SelectionFormat::Auto
+                    }
+                    "Json" | "JSON" => {
+                        *state.app.devtools.select_view.borrow_mut() =
+                            crate::ui::selection::SelectionFormat::Json
+                    }
+                    "Atom" => {
+                        *state.app.devtools.select_view.borrow_mut() =
+                            crate::ui::selection::SelectionFormat::Atom
+                    }
                     _ => {}
                 }
                 *state.app.view_dirty.borrow_mut() = true;
@@ -19460,26 +20906,33 @@ fn compare_pngs(
                             if let Some(debug_id) = cache.get(&aura_id).cloned() {
                                 drop(cache);
                                 drop(line_map);
-                                *state.app.devtools.selected_widget.borrow_mut() = Some(debug_id.clone());
+                                *state.app.devtools.selected_widget.borrow_mut() =
+                                    Some(debug_id.clone());
                                 // Plan 309 Phase 4.2: derive selected_vnode from
                                 // the aura_N id so the right panel (keyed on
                                 // VNodeId) shows the clicked line's full data —
                                 // without this the panel stayed empty after a
                                 // source-line click.
-                                let derived_vnode = state.app.live_cache
+                                let derived_vnode = state
+                                    .app
+                                    .live_cache
                                     .borrow()
                                     .as_ref()
                                     .and_then(|c| c.iced_to_vnode(&debug_id));
                                 *state.app.devtools.selected_vnode.borrow_mut() = derived_vnode;
                                 *state.app.devtools.devtools_open.borrow_mut() = true;
-                                *state.app.devtools.devtools_tab.borrow_mut() = DevToolsTab::Inspect;
+                                *state.app.devtools.devtools_tab.borrow_mut() =
+                                    DevToolsTab::Inspect;
                                 // Scroll source to the selected element's span
                                 let styles = state.app.devtools.debug_element_styles.borrow();
                                 if let Some(elem_info) = styles.get(&debug_id) {
                                     if let Some((offset, _len)) = elem_info.span {
                                         let line_offsets = state.app.source_line_offsets.borrow();
-                                        let line_idx = line_offsets.partition_point(|&pos| pos <= offset).saturating_sub(1);
-                                        *state.app.devtools.pending_scroll_to_center.borrow_mut() = Some(line_idx);
+                                        let line_idx = line_offsets
+                                            .partition_point(|&pos| pos <= offset)
+                                            .saturating_sub(1);
+                                        *state.app.devtools.pending_scroll_to_center.borrow_mut() =
+                                            Some(line_idx);
                                     }
                                 }
                             }
@@ -19499,7 +20952,10 @@ fn compare_pngs(
                         let h: f32 = h.parse().unwrap_or(900.0);
                         // PLAN-530 步骤2 表面追踪：resize 事件轨迹。
                         if std::env::var("P530_TRACE").as_deref() == Ok("1") {
-                            eprintln!("[P530-TRACE] __window_resized: {w}x{h} (widget={})", msg.widget);
+                            eprintln!(
+                                "[P530-TRACE] __window_resized: {w}x{h} (widget={})",
+                                msg.widget
+                            );
                         }
                         *state.window_size.borrow_mut() = iced::Size::new(w, h);
                         // PLAN-046-B: keep .at-visible viewport height fresh.
@@ -19591,8 +21047,10 @@ fn compare_pngs(
             // DesktopState.current_modifiers（唯一事实源，view 直读）；
             // 返回 Task::none() 仅强制重建，让 widget 翻转交互/非交互态。
             "__modifiers_changed" => {
-                if let Some(bits) =
-                    msg.input_value.as_deref().and_then(|s| s.parse::<u32>().ok())
+                if let Some(bits) = msg
+                    .input_value
+                    .as_deref()
+                    .and_then(|s| s.parse::<u32>().ok())
                 {
                     *state.desktop.current_modifiers.borrow_mut() =
                         iced::keyboard::Modifiers::from_bits_truncate(bits);
@@ -19640,7 +21098,12 @@ fn compare_pngs(
         if let Some(payload) = msg.event.strip_prefix(DEBUG_HOVER_MOVE) {
             if let Some((counter_str, id)) = payload.split_once(':') {
                 if let Ok(counter) = counter_str.parse::<usize>() {
-                    state.app.devtools.pending_hovers.borrow_mut().push((counter, id.to_string()));
+                    state
+                        .app
+                        .devtools
+                        .pending_hovers
+                        .borrow_mut()
+                        .push((counter, id.to_string()));
                 }
             }
             return iced::Task::none();
@@ -19683,7 +21146,8 @@ fn compare_pngs(
                         *state.app.source_code.borrow_mut() = Some(code.clone());
                         // Rebuild syntax highlight cache after hot-reload
                         if let Some(ref c) = *state.app.source_code.borrow() {
-                            *state.app.devtools.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
+                            *state.app.devtools.cached_highlighted.borrow_mut() =
+                                Some(build_highlight_cache(c));
                         }
 
                         let session = CompilerSession::ui();
@@ -19691,7 +21155,8 @@ fn compare_pngs(
                         if let Ok(ast) = parser.parse() {
                             for stmt in &ast.stmts {
                                 if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
-                                    if let Ok(widget) = crate::aura::extract_widget_from_decl(decl) {
+                                    if let Ok(widget) = crate::aura::extract_widget_from_decl(decl)
+                                    {
                                         let _ = state.component.reload(&widget);
                                         // Invalidate caches since view_template changed
                                         *state.app.cached_converted_view.borrow_mut() = None;
@@ -19700,7 +21165,8 @@ fn compare_pngs(
                                         {
                                             let span_map = state.component.span_map().clone();
                                             if let Some(ref src) = *state.app.source_code.borrow() {
-                                                *state.app.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, src);
+                                                *state.app.line_to_aura_ids.borrow_mut() =
+                                                    build_line_to_aura_ids(&span_map, src);
                                             }
                                         }
                                     }
@@ -19731,7 +21197,9 @@ fn compare_pngs(
             // Stopwatch compatibility: still do the running check + elapsed
             // formatting for widgets that DO have a `running` field.
             state.component.on_with_input("Tick", None);
-            let running = state.component.read_state("running")
+            let running = state
+                .component
+                .read_state("running")
                 .map(|v| v.as_str().to_string())
                 .unwrap_or_default();
             if running == "true" {
@@ -19743,8 +21211,12 @@ fn compare_pngs(
                     let mins = total_secs / 60;
                     let time_display = format!("{:02}:{:02}", mins, secs);
                     let ms_display = format!(".{:02}", cs);
-                    let _ = state.component.write_state("time_display", auto_val::Value::str(&time_display));
-                    let _ = state.component.write_state("ms_display", auto_val::Value::str(&ms_display));
+                    let _ = state
+                        .component
+                        .write_state("time_display", auto_val::Value::str(&time_display));
+                    let _ = state
+                        .component
+                        .write_state("ms_display", auto_val::Value::str(&ms_display));
                 }
             }
             *state.app.view_dirty.borrow_mut() = true;
@@ -19780,12 +21252,19 @@ fn compare_pngs(
                             // 受 handler 内字段读(GET_FIELD 编码)问题影响不可靠。
                             // vue 端仍走 .at handler(增量 push/remove)。
                             let job_id = v.get("job_id").and_then(|x| x.as_i64()).unwrap_or(0);
-                            let job_cmd = v.get("cmd").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                            let job_cmd = v
+                                .get("cmd")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("")
+                                .to_string();
                             let raw = state.component.read_state("job_list").ok();
                             let mut jobs_vec: Vec<auto_val::Value> = match &raw {
                                 Some(auto_val::Value::Array(arr)) => arr.values.clone(),
                                 Some(auto_val::Value::Nil) | None => Vec::new(),
-                                _ => state.component.read_state_as_vec("job_list").unwrap_or_default(),
+                                _ => state
+                                    .component
+                                    .read_state_as_vec("job_list")
+                                    .unwrap_or_default(),
                             };
                             if msg.event == "job_started" {
                                 let mut ji = auto_val::Obj::new();
@@ -19798,7 +21277,9 @@ fn compare_pngs(
                                 // job_done:按 id 移除(对齐 .at JobDone handler 语义)。
                                 jobs_vec.retain(|j| {
                                     if let auto_val::Value::Obj(obj) = j {
-                                        obj.get("id").map(|x| x.as_int() as i64 != job_id).unwrap_or(true)
+                                        obj.get("id")
+                                            .map(|x| x.as_int() as i64 != job_id)
+                                            .unwrap_or(true)
                                     } else {
                                         true
                                     }
@@ -19816,7 +21297,8 @@ fn compare_pngs(
                             );
                             *state.app.view_dirty.borrow_mut() = true;
                         }
-                        "ai_turn" | "ai_chunk" | "ai_tool_call" | "ai_tool_result" | "chat_cleared" => {
+                        "ai_turn" | "ai_chunk" | "ai_tool_call" | "ai_tool_result"
+                        | "chat_cleared" => {
                             // Plan 063 T4/T5:AI chat 抽屉事件族。chat_events 由
                             // renderer 直接用 Rust 维护(job_list 同款所有权模型:
                             // store 声明的 List 是 VM 堆 VmRef,write_state_vec
@@ -19835,11 +21317,18 @@ fn compare_pngs(
                             let turn = v.get("turn").and_then(|x| x.as_i64()).unwrap_or(0);
                             let (kind, text) = match msg.event.as_str() {
                                 "ai_turn" => {
-                                    let q = v.get("question").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    let q = v
+                                        .get("question")
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
                                     let mut lines: Vec<auto_val::Value> = Vec::new();
                                     let mut sep = auto_val::Obj::new();
                                     sep.set("kind", auto_val::Value::str("turn"));
-                                    sep.set("text", auto_val::Value::str(&format!("── 第 {turn} 轮 ──")));
+                                    sep.set(
+                                        "text",
+                                        auto_val::Value::str(&format!("── 第 {turn} 轮 ──")),
+                                    );
                                     lines.push(auto_val::Value::Obj(Box::new(sep)));
                                     let mut u = auto_val::Obj::new();
                                     u.set("kind", auto_val::Value::str("user"));
@@ -19851,18 +21340,38 @@ fn compare_pngs(
                                     return iced::Task::none();
                                 }
                                 "ai_chunk" => {
-                                    let t = v.get("text").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    let t = v
+                                        .get("text")
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
                                     ("text".to_string(), t)
                                 }
                                 "ai_tool_call" => {
-                                    let tool = v.get("tool").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                                    let args = v.get("args").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    let tool = v
+                                        .get("tool")
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let args = v
+                                        .get("args")
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
                                     ("tool".to_string(), format!("⚙ {tool} {args}"))
                                 }
                                 _ => {
                                     // ai_tool_result
-                                    let tool = v.get("tool").and_then(|x| x.as_str()).unwrap_or("").to_string();
-                                    let res = v.get("result").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                                    let tool = v
+                                        .get("tool")
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let res = v
+                                        .get("result")
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
                                     ("result".to_string(), format!("← {tool}: {res}"))
                                 }
                             };
@@ -19881,7 +21390,8 @@ fn compare_pngs(
                             // Value::Array(renderer↔vm state 类型不同步),故在此直接用 Rust 更新
                             // store.blocks 里匹配 block_id 的 block(streamed_text / status / output)。
                             let bid = v.get("block_id").and_then(|x| x.as_i64()).unwrap_or(-1);
-                            let updated = update_block_in_state(&mut *state.component, bid, &msg.event, &v);
+                            let updated =
+                                update_block_in_state(&mut *state.component, bid, &msg.event, &v);
                             if msg.event == "command_result" {
                                 // Plan 057:cwd 回写(cd 后标题栏/新块 cwd 立即反映)
                                 // + 触发 RefreshContext 刷 git 标签(HTTP 模式下
@@ -19890,10 +21400,16 @@ fn compare_pngs(
                                 if let Some(cwd) = v.get("cwd").and_then(|x| x.as_str()) {
                                     let cwd = cwd.trim_start_matches(r"\\?\");
                                     if !cwd.is_empty() {
-                                        let _ = state.component.write_state("cwd", auto_val::Value::str(cwd));
+                                        let _ = state
+                                            .component
+                                            .write_state("cwd", auto_val::Value::str(cwd));
                                     }
                                 }
-                                state.component.on_with_input_for("ShellStore", "RefreshContext", None);
+                                state.component.on_with_input_for(
+                                    "ShellStore",
+                                    "RefreshContext",
+                                    None,
+                                );
                             }
                             if updated {
                                 *state.app.view_dirty.borrow_mut() = true;
@@ -19907,11 +21423,18 @@ fn compare_pngs(
 
         let event_name = {
             let name = msg.event.trim_start_matches('.');
-            if let Some(pos) = name.rfind("::") { &name[pos + 2..] } else { name }
-        }.to_string();
+            if let Some(pos) = name.rfind("::") {
+                &name[pos + 2..]
+            } else {
+                name
+            }
+        }
+        .to_string();
 
         // Save input text BEFORE on_with_input runs .at handler (which clears it for AddTodo)
-        let saved_input = state.component.read_state("input")
+        let saved_input = state
+            .component
+            .read_state("input")
             .map(|v| v.as_str().to_string())
             .unwrap_or_default();
 
@@ -19947,7 +21470,8 @@ fn compare_pngs(
                         .map(|c| le_cursor_offset(c) as i64)
                         .unwrap_or(0);
                     if state.component.read_state("cursor_pos").is_ok() {
-                        let _ = state.component
+                        let _ = state
+                            .component
                             .write_state("cursor_pos", auto_val::Value::Int(cur_off as i32));
                     }
                 }
@@ -19958,9 +21482,17 @@ fn compare_pngs(
             // 显隐造成树位移丢焦点。这些消息无 input_value,按登记映射找到所属
             // 编辑器,同样触发重建后重聚焦(光标停在 input 末尾,由内容重建负责)。
             let ta_key = format!("{}_{}", msg.widget, msg.event);
-            if let Some(editor_key) = TEXTAREA_KEYDOWN_TO_EDITOR.lock().unwrap().get(&ta_key).cloned() {
+            if let Some(editor_key) = TEXTAREA_KEYDOWN_TO_EDITOR
+                .lock()
+                .unwrap()
+                .get(&ta_key)
+                .cloned()
+            {
                 if std::env::var("ASH_DEBUG_FOCUS").is_ok() {
-                    eprintln!("[FOCUS-DBG] keydown handler {}, refocus editor {}", ta_key, editor_key);
+                    eprintln!(
+                        "[FOCUS-DBG] keydown handler {}, refocus editor {}",
+                        ta_key, editor_key
+                    );
                 }
                 state.app.devtools.needs_prompt_refocus.set(true);
                 *state.app.devtools.last_textarea_key.borrow_mut() = Some(editor_key.clone());
@@ -19979,7 +21511,8 @@ fn compare_pngs(
         // state.input 预先抢救当前值,供下方 emit 模拟使用(等价 mcp_server.rs:1966)。
         let saved_input_value = msg.input_value.clone().or_else(|| {
             if widget_name == "PromptBar" && event_name == "Run" {
-                state.component
+                state
+                    .component
                     .read_state("input")
                     .ok()
                     .map(|v| v.as_str().to_string())
@@ -19988,12 +21521,14 @@ fn compare_pngs(
             }
         });
         // Plan 402: track difficulty before handler (for dynamic window resize)
-        let diff_before = state.component.read_state("difficulty")
-            .map(|v| v.as_str().to_string()).unwrap_or_default();
+        let diff_before = state
+            .component
+            .read_state("difficulty")
+            .map(|v| v.as_str().to_string())
+            .unwrap_or_default();
 
         let msg_input_snapshot = msg.input_value.clone();
-        if msg.input_value.is_some() {
-        }
+        if msg.input_value.is_some() {}
         // Plan 051 C7: timer 拍走 fire_timer（`when` 门控在派发前对根态
         // 求值，假丢弃本拍）；非 timer 事件走通用路径不变。
         // PLAN-725 T-00：S2 VM 段打点（通用派发→handler 解释）。
@@ -20001,7 +21536,9 @@ fn compare_pngs(
         if state.component.is_timer_entry(widget_name, &event_name) {
             state.component.fire_timer(widget_name, &event_name);
         } else {
-            state.component.on_with_input_for(widget_name, &event_name, msg.input_value);
+            state
+                .component
+                .on_with_input_for(widget_name, &event_name, msg.input_value);
         }
         crate::ui::frame_segments::note_s2_vm(p725_t_s2.elapsed());
 
@@ -20014,22 +21551,31 @@ fn compare_pngs(
         // "block_id:col" 编码串;Filter 的查询词在 msg.input_value。
         if widget_name == "BlockItem" && event_name.starts_with("Sort") {
             let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
-            let id = args.first()
-                .map(|v| v.as_int() as i64)
-                .unwrap_or_else(|| {
-                    args.first().map(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(-1)
-                });
+            let id = args.first().map(|v| v.as_int() as i64).unwrap_or_else(|| {
+                args.first()
+                    .map(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(-1)
+            });
             let col = args.get(1).map(|v| v.as_int() as i64).unwrap_or(-1);
             if true {
                 if id >= 0 {
                     if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
                         for b in blocks.iter_mut() {
                             if let auto_val::Value::Obj(obj) = b {
-                                if obj.get("id").map(|v| v.as_int() as i64 == id).unwrap_or(false) {
+                                if obj
+                                    .get("id")
+                                    .map(|v| v.as_int() as i64 == id)
+                                    .unwrap_or(false)
+                                {
                                     // 同列翻转 / 异列重置升序
-                                    let cur_col = obj.get("table_sort_col").map(|v| v.as_int()).unwrap_or(-1);
+                                    let cur_col =
+                                        obj.get("table_sort_col").map(|v| v.as_int()).unwrap_or(-1);
                                     let (nc, nd) = if cur_col == col as i32 {
-                                        let d = obj.get("table_sort_dir").map(|v| v.as_int()).unwrap_or(1);
+                                        let d = obj
+                                            .get("table_sort_dir")
+                                            .map(|v| v.as_int())
+                                            .unwrap_or(1);
                                         (cur_col, -d)
                                     } else {
                                         (col as i32, 1)
@@ -20051,19 +21597,28 @@ fn compare_pngs(
             let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
             // Plan 062 T9:对齐 Sort 的 id 解析(int 优先,str 回退)——此前只走
             // str parse,int 参数解析成 -1,过滤恒不生效(059 §4.3 疑点的真身)。
-            let id = args.first()
-                .map(|v| v.as_int() as i64)
-                .unwrap_or_else(|| {
-                    args.first().map(|v| v.as_str()).and_then(|s| s.parse().ok()).unwrap_or(-1)
-                });
-            let query = msg_input_snapshot.clone().unwrap_or_default().to_lowercase();
+            let id = args.first().map(|v| v.as_int() as i64).unwrap_or_else(|| {
+                args.first()
+                    .map(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(-1)
+            });
+            let query = msg_input_snapshot
+                .clone()
+                .unwrap_or_default()
+                .to_lowercase();
             if id >= 0 {
                 if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
                     for b in blocks.iter_mut() {
                         if let auto_val::Value::Obj(obj) = b {
-                            if obj.get("id").map(|v| v.as_int() as i64 == id).unwrap_or(false) {
+                            if obj
+                                .get("id")
+                                .map(|v| v.as_int() as i64 == id)
+                                .unwrap_or(false)
+                            {
                                 obj.set("table_filter_q", auto_val::Value::str(&query));
-                                let sc = obj.get("table_sort_col").map(|v| v.as_int()).unwrap_or(-1);
+                                let sc =
+                                    obj.get("table_sort_col").map(|v| v.as_int()).unwrap_or(-1);
                                 let sd = obj.get("table_sort_dir").map(|v| v.as_int()).unwrap_or(1);
                                 sort_table_rows(obj, sc, sd);
                                 break;
@@ -20093,7 +21648,11 @@ fn compare_pngs(
                     let mut text: Option<String> = None;
                     for b in blocks.iter() {
                         if let auto_val::Value::Obj(obj) = b {
-                            if !obj.get("id").map(|v| v.as_int() as i64 == cid).unwrap_or(false) {
+                            if !obj
+                                .get("id")
+                                .map(|v| v.as_int() as i64 == cid)
+                                .unwrap_or(false)
+                            {
                                 continue;
                             }
                             if event_name.starts_with("CopyCommand") {
@@ -20111,7 +21670,8 @@ fn compare_pngs(
                                     // 2026-08-22(show 底栏):Code → 复制全文
                                     // (streamed_text,update_block_in_state 在
                                     // apply Code 结果时写入;空串防御)。
-                                    if let Some(auto_val::Value::Str(s)) = obj.get("streamed_text") {
+                                    if let Some(auto_val::Value::Str(s)) = obj.get("streamed_text")
+                                    {
                                         if !s.as_str().is_empty() {
                                             text = Some(s.as_str().to_string());
                                         }
@@ -20138,7 +21698,9 @@ fn compare_pngs(
         if widget_name == "BlockItem" && event_name.starts_with("OpenPath") {
             let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
             if let Some(p) = args.first().map(|v| v.as_str()).filter(|p| !p.is_empty()) {
-                state.component.on_with_input_for("ShellStore", "OpenPath", Some(p.to_string()));
+                state
+                    .component
+                    .on_with_input_for("ShellStore", "OpenPath", Some(p.to_string()));
                 *state.app.view_dirty.borrow_mut() = true;
             }
         }
@@ -20150,11 +21712,13 @@ fn compare_pngs(
                     let mut flipped = false;
                     for b in blocks.iter_mut() {
                         if let auto_val::Value::Obj(obj) = b {
-                            let matches = obj.get("id")
+                            let matches = obj
+                                .get("id")
                                 .map(|v| v.as_int() as i64 == id)
                                 .unwrap_or(false);
                             if matches {
-                                let cur = obj.get("collapsed")
+                                let cur = obj
+                                    .get("collapsed")
                                     .map(|v| matches!(v, auto_val::Value::Bool(true)))
                                     .unwrap_or(false);
                                 obj.set("collapsed", auto_val::Value::Bool(!cur));
@@ -20181,15 +21745,22 @@ fn compare_pngs(
             // .at 侧 .Cancel 的 for 循环读 .blocks 为 nil(B 系列债)不会跑,
             // 这里 Rust 直改:Running → Cancelled(终态由 command_result 事件
             // 的 Cancelled 状态确认,worker 侧配套映射)。
-            let _ = state.component.on_with_input_for("ShellStore", "Cancel", None);
+            let _ = state
+                .component
+                .on_with_input_for("ShellStore", "Cancel", None);
             if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
                 let mut flipped = false;
                 for b in blocks.iter_mut() {
                     if let auto_val::Value::Obj(obj) = b {
-                        let running = obj.get("status")
-                            .and_then(|s| if let auto_val::Value::Obj(so) = &s {
-                                so.get("kind").map(|v| v.as_str() == "Running")
-                            } else { None })
+                        let running = obj
+                            .get("status")
+                            .and_then(|s| {
+                                if let auto_val::Value::Obj(so) = &s {
+                                    so.get("kind").map(|v| v.as_str() == "Running")
+                                } else {
+                                    None
+                                }
+                            })
                             .unwrap_or(false);
                         if running {
                             let mut status = auto_val::Obj::new();
@@ -20215,8 +21786,9 @@ fn compare_pngs(
                 if let Ok(mut blocks) = state.component.read_state_as_vec("blocks") {
                     let before = blocks.len();
                     blocks.retain(|b| match b {
-                        auto_val::Value::Obj(obj) =>
-                            obj.get("id").map(|v| v.as_int() as i64) != Some(id),
+                        auto_val::Value::Obj(obj) => {
+                            obj.get("id").map(|v| v.as_int() as i64) != Some(id)
+                        }
                         _ => true,
                     });
                     if blocks.len() != before {
@@ -20230,8 +21802,13 @@ fn compare_pngs(
             // Rerun(cmd) → 复用 store.RunCommand 主路径(与 PromptBar.Run 的
             // emit 模拟同构:dispatch 后读 __pending_command_* 置换/追加块)。
             let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
-            if let Some(cmd) = args.first().map(|v| v.as_str()).filter(|c| !c.trim().is_empty()) {
-                let blocks_before = state.component
+            if let Some(cmd) = args
+                .first()
+                .map(|v| v.as_str())
+                .filter(|c| !c.trim().is_empty())
+            {
+                let blocks_before = state
+                    .component
                     .read_state_as_vec("blocks")
                     .map(|v| v.len())
                     .unwrap_or(0);
@@ -20240,10 +21817,16 @@ fn compare_pngs(
                     "RunCommand",
                     Some(cmd.to_string()),
                 );
-                let bid = state.component.read_state("__pending_command_id")
-                    .map(|v| v.as_int() as i64).unwrap_or(0);
-                let cwd = state.component.read_state("cwd")
-                    .map(|v| v.as_str().to_string()).unwrap_or_default();
+                let bid = state
+                    .component
+                    .read_state("__pending_command_id")
+                    .map(|v| v.as_int() as i64)
+                    .unwrap_or(0);
+                let cwd = state
+                    .component
+                    .read_state("cwd")
+                    .map(|v| v.as_str().to_string())
+                    .unwrap_or_default();
                 if bid >= 0 {
                     let mut status = auto_val::Obj::new();
                     status.set("kind", auto_val::Value::str("Running"));
@@ -20282,8 +21865,12 @@ fn compare_pngs(
             // —— 与 autoui_type / Run 清空同机制,强制重建 textarea 实例。
             let (_, args) = crate::ui::dynamic::decode_payload(&msg.event);
             if let Some(name) = args.first().map(|v| v.as_str()).filter(|n| !n.is_empty()) {
-                let _ = state.component.write_state("injected_command", auto_val::Value::str(name));
-                let _ = state.component.write_state("input", auto_val::Value::str(name));
+                let _ = state
+                    .component
+                    .write_state("injected_command", auto_val::Value::str(name));
+                let _ = state
+                    .component
+                    .write_state("input", auto_val::Value::str(name));
                 *state.app.cached_rendered.borrow_mut() = None;
                 *state.app.cached_converted_view.borrow_mut() = None;
                 *state.app.view_dirty.borrow_mut() = true;
@@ -20292,11 +21879,22 @@ fn compare_pngs(
 
         // Plan 402: if difficulty changed (SetDifficulty/Init), resize window
         // to fit the board snugly.
-        let diff_after = state.component.read_state("difficulty")
-            .map(|v| v.as_str().to_string()).unwrap_or_default();
+        let diff_after = state
+            .component
+            .read_state("difficulty")
+            .map(|v| v.as_str().to_string())
+            .unwrap_or_default();
         if diff_before != diff_after {
-            let cols = state.component.read_state("cols").map(|v| v.as_int()).unwrap_or(9);
-            let rows = state.component.read_state("rows").map(|v| v.as_int()).unwrap_or(9);
+            let cols = state
+                .component
+                .read_state("cols")
+                .map(|v| v.as_int())
+                .unwrap_or(9);
+            let rows = state
+                .component
+                .read_state("rows")
+                .map(|v| v.as_int())
+                .unwrap_or(9);
             // Plan 402: snug window fit. cell=32px(w-8 h-8) + 2px border.
             // Width: grid + p-6 padding (48px) + a little slack.
             // Height: info-bar(~60) + difficulty row(~40) + grid + p-6(48) + mt-8(32) + spacing(~20).
@@ -20311,7 +21909,11 @@ fn compare_pngs(
         // CelsiusChanged handler writes fahrenheit — the fahrenheit input should
         // now show the computed value, not stale user-typed text.
         // Keep only the triggering event's entry (the user just typed it).
-        retain_input_values_after_handler(&mut state.app.input_values, &state.component, &event_name);
+        retain_input_values_after_handler(
+            &mut state.app.input_values,
+            &state.component,
+            &event_name,
+        );
 
         // ── Shell bridge:emit 模拟(ash-gui M1) ──────────────────────────
         // vm 模式 handler_codegen 剥离子组件的 callback prop 调用(handler_codegen.rs
@@ -20345,7 +21947,8 @@ fn compare_pngs(
                     // Running 块(元素是 VM 堆引用,update_block_in_state 按
                     // Value::Obj 匹配会失败)。下方 Rust 用完整块**替换**这个刚推入
                     // 的尾块 —— 既消灭双块,又保证结果回写能匹配。
-                    let blocks_before = state.component
+                    let blocks_before = state
+                        .component
                         .read_state_as_vec("blocks")
                         .map(|v| v.len())
                         .unwrap_or(0);
@@ -20355,10 +21958,16 @@ fn compare_pngs(
                         Some(cmd.to_string()),
                     );
                     // store.RunCommand 已写 __pending_command_{id,str}。
-                    let bid = state.component.read_state("__pending_command_id")
-                        .map(|v| v.as_int() as i64).unwrap_or(0);
-                    let cwd = state.component.read_state("cwd")
-                        .map(|v| v.as_str().to_string()).unwrap_or_default();
+                    let bid = state
+                        .component
+                        .read_state("__pending_command_id")
+                        .map(|v| v.as_int() as i64)
+                        .unwrap_or(0);
+                    let cwd = state
+                        .component
+                        .read_state("cwd")
+                        .map(|v| v.as_str().to_string())
+                        .unwrap_or_default();
                     if bid >= 0 {
                         let mut status = auto_val::Obj::new();
                         status.set("kind", auto_val::Value::str("Running"));
@@ -20425,7 +22034,9 @@ fn compare_pngs(
         // 强制下一帧完全重建 text_input widget(新实例 value="")。
         // Plan 053 M4:OnEnter 内部 Run 后同样需要强制重建(cmd_ran 已判)。
         if cmd_ran {
-            let _ = state.component.write_state("input", auto_val::Value::str(""));
+            let _ = state
+                .component
+                .write_state("input", auto_val::Value::str(""));
             *state.app.cached_rendered.borrow_mut() = None; // 强制重建(丢弃旧 widget)
             *state.app.cached_converted_view.borrow_mut() = None;
             *state.app.view_dirty.borrow_mut() = true;
@@ -20435,8 +22046,11 @@ fn compare_pngs(
         }
 
         // Plan 049:检测 blocks 数量增加 → 自动滚到底部。
-        let cur_block_count = state.component.read_state_as_vec("blocks")
-            .map(|v| v.len()).unwrap_or(0);
+        let cur_block_count = state
+            .component
+            .read_state_as_vec("blocks")
+            .map(|v| v.len())
+            .unwrap_or(0);
         if cur_block_count > state.app.devtools.last_block_count.get() {
             state.app.devtools.last_block_count.set(cur_block_count);
             state.app.devtools.needs_scroll_to_bottom.set(true);
@@ -20446,7 +22060,9 @@ fn compare_pngs(
         // 'clear' 给 App → App.ClearScreen → store.ClearScreen,但 vm 剥离 callback
         // emit(同 Run)。这里直接触发 store.ClearScreen(归档所有 blocks)。
         if widget_name == "PromptBar" && event_name == "OnCtrlL" {
-            let _ = state.component.on_with_input_for("ShellStore", "ClearScreen", None);
+            let _ = state
+                .component
+                .on_with_input_for("ShellStore", "ClearScreen", None);
             *state.app.view_dirty.borrow_mut() = true;
         }
 
@@ -20455,12 +22071,21 @@ fn compare_pngs(
         // 如 Rerun/侧栏),event_name=="RunCommand"。此路径下 store 也只记 pending,
         // block 构造 + 执行器提交同上。emit 模拟路径(PromptBar.Run)已在上方处理。
         if event_name == "RunCommand" {
-            let bid = state.component.read_state("__pending_command_id")
-                .map(|v| v.as_int() as i64).unwrap_or(0);
-            let cmd = state.component.read_state("__pending_command_str")
-                .map(|v| v.as_str().to_string()).unwrap_or_default();
-            let cwd = state.component.read_state("cwd")
-                .map(|v| v.as_str().to_string()).unwrap_or_default();
+            let bid = state
+                .component
+                .read_state("__pending_command_id")
+                .map(|v| v.as_int() as i64)
+                .unwrap_or(0);
+            let cmd = state
+                .component
+                .read_state("__pending_command_str")
+                .map(|v| v.as_str().to_string())
+                .unwrap_or_default();
+            let cwd = state
+                .component
+                .read_state("cwd")
+                .map(|v| v.as_str().to_string())
+                .unwrap_or_default();
             if !cmd.is_empty() && bid >= 0 {
                 let mut status = auto_val::Obj::new();
                 status.set("kind", auto_val::Value::str("Running"));
@@ -20497,19 +22122,28 @@ fn compare_pngs(
             let blocks_vec: Vec<auto_val::Value> = match &raw {
                 Some(auto_val::Value::Array(arr)) => arr.values.clone(),
                 Some(auto_val::Value::Nil) | None => Vec::new(),
-                _ => state.component.read_state_as_vec("blocks").unwrap_or_default(),
+                _ => state
+                    .component
+                    .read_state_as_vec("blocks")
+                    .unwrap_or_default(),
             };
             let mut first_running_id: Option<i64> = None;
             let mut blocks_vec = blocks_vec;
             for b in &blocks_vec {
                 if let auto_val::Value::Obj(obj) = b {
-                    let kind = obj.get("status")
-                        .and_then(|s| if let auto_val::Value::Obj(so) = s {
-                            so.get("kind").map(|k| k.as_str().to_string())
-                        } else { None })
+                    let kind = obj
+                        .get("status")
+                        .and_then(|s| {
+                            if let auto_val::Value::Obj(so) = s {
+                                so.get("kind").map(|k| k.as_str().to_string())
+                            } else {
+                                None
+                            }
+                        })
                         .unwrap_or_default();
                     if kind == "Running" {
-                        first_running_id = Some(obj.get("id").map(|v| v.as_int() as i64).unwrap_or(0));
+                        first_running_id =
+                            Some(obj.get("id").map(|v| v.as_int() as i64).unwrap_or(0));
                         break;
                     }
                 }
@@ -20529,7 +22163,10 @@ fn compare_pngs(
                 let mut changed = false;
                 for b in blocks_vec.iter_mut() {
                     if let auto_val::Value::Obj(obj) = b {
-                        let id_match = obj.get("id").map(|v| v.as_int() as i64 == bid).unwrap_or(false);
+                        let id_match = obj
+                            .get("id")
+                            .map(|v| v.as_int() as i64 == bid)
+                            .unwrap_or(false);
                         if id_match {
                             let mut status = auto_val::Obj::new();
                             status.set("kind", auto_val::Value::str("Cancelled"));
@@ -20554,7 +22191,9 @@ fn compare_pngs(
         // The bytecode handler already shifts lap3=lap2, lap2=lap1, lap1=time.
         // We just re-format lap1 to include the lap count prefix.
         if event_name == "Lap" {
-            let lap_count = state.component.read_state("lap_count")
+            let lap_count = state
+                .component
+                .read_state("lap_count")
                 .map(|v| {
                     // Handle both int (after numeric += fix) and string types
                     match v {
@@ -20563,12 +22202,16 @@ fn compare_pngs(
                     }
                 })
                 .unwrap_or_else(|_| "0".to_string());
-            let lap1 = state.component.read_state("lap1")
+            let lap1 = state
+                .component
+                .read_state("lap1")
                 .map(|v| v.as_str().to_string())
                 .unwrap_or_default();
             if !lap1.is_empty() {
-                let _ = state.component.write_state("lap1",
-                    auto_val::Value::str(&format!("Lap {}: {}", lap_count, lap1)));
+                let _ = state.component.write_state(
+                    "lap1",
+                    auto_val::Value::str(&format!("Lap {}: {}", lap_count, lap1)),
+                );
             }
         }
 
@@ -20587,107 +22230,157 @@ fn compare_pngs(
                 // the hardcoded fallback must not double-apply.
             } else {
                 match base {
-                "Toggle" | "ToggleTodo" => {
-                    if let Some(i) = idx {
-                        if i < state.app.todos.len() {
-                            state.app.todos[i].done = !state.app.todos[i].done;
-                            let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
-                            let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                            sync_todos_to_vm(&state.app.todos, &mut *state.component);
-                        }
-                    }
-                }
-                "Delete" | "DeleteTodo" => {
-                    if let Some(i) = idx {
-                        // Indexed Delete:N — todo item deletion
-                        if i < state.app.todos.len() {
-                            state.app.todos.remove(i);
-                            let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
-                            let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                            let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.app.todos.len() as i32));
-                            sync_todos_to_vm(&state.app.todos, &mut *state.component);
-                        }
-                    } else {
-                        // Bare Delete (no index) — notes deletion from EditorPanel
-                        if let (Ok(mut notes), Ok(active_val)) = (
-                            state.component.read_state_as_vec("notes"),
-                            state.component.read_state("active_id"),
-                        ) {
-                            let active = active_val.as_int() as usize;
-                            if !notes.is_empty() {
-                                let del_idx = if active < notes.len() { active } else { 0 };
-                                notes.remove(del_idx);
-                                let new_active = if notes.is_empty() { 0 } else { del_idx.min(notes.len() - 1) };
-                                let _ = state.component.write_state_vec("notes", notes);
-                                let _ = state.component.write_state("active_id", auto_val::Value::Int(new_active as i32));
+                    "Toggle" | "ToggleTodo" => {
+                        if let Some(i) = idx {
+                            if i < state.app.todos.len() {
+                                state.app.todos[i].done = !state.app.todos[i].done;
+                                let active =
+                                    state.app.todos.iter().filter(|t| !t.done).count() as i32;
+                                let _ = state
+                                    .component
+                                    .write_state("active_count", auto_val::Value::Int(active));
+                                sync_todos_to_vm(&state.app.todos, &mut *state.component);
                             }
                         }
-                        let _ = state.component.write_state("editing", auto_val::Value::Bool(false));
                     }
-                }
-                "AddTodo" => {
-                    let from_input_values = state.app.input_values.get("EditInputChanged").cloned();
-                    if !saved_input.is_empty() {
-                        state.app.todos.push(TodoItem { text: saved_input, done: false });
+                    "Delete" | "DeleteTodo" => {
+                        if let Some(i) = idx {
+                            // Indexed Delete:N — todo item deletion
+                            if i < state.app.todos.len() {
+                                state.app.todos.remove(i);
+                                let active =
+                                    state.app.todos.iter().filter(|t| !t.done).count() as i32;
+                                let _ = state
+                                    .component
+                                    .write_state("active_count", auto_val::Value::Int(active));
+                                let _ = state.component.write_state(
+                                    "todo_count",
+                                    auto_val::Value::Int(state.app.todos.len() as i32),
+                                );
+                                sync_todos_to_vm(&state.app.todos, &mut *state.component);
+                            }
+                        } else {
+                            // Bare Delete (no index) — notes deletion from EditorPanel
+                            if let (Ok(mut notes), Ok(active_val)) = (
+                                state.component.read_state_as_vec("notes"),
+                                state.component.read_state("active_id"),
+                            ) {
+                                let active = active_val.as_int() as usize;
+                                if !notes.is_empty() {
+                                    let del_idx = if active < notes.len() { active } else { 0 };
+                                    notes.remove(del_idx);
+                                    let new_active = if notes.is_empty() {
+                                        0
+                                    } else {
+                                        del_idx.min(notes.len() - 1)
+                                    };
+                                    let _ = state.component.write_state_vec("notes", notes);
+                                    let _ = state.component.write_state(
+                                        "active_id",
+                                        auto_val::Value::Int(new_active as i32),
+                                    );
+                                }
+                            }
+                            let _ = state
+                                .component
+                                .write_state("editing", auto_val::Value::Bool(false));
+                        }
+                    }
+                    "AddTodo" => {
+                        let from_input_values =
+                            state.app.input_values.get("EditInputChanged").cloned();
+                        if !saved_input.is_empty() {
+                            state.app.todos.push(TodoItem {
+                                text: saved_input,
+                                done: false,
+                            });
+                            let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
+                            let _ = state
+                                .component
+                                .write_state("active_count", auto_val::Value::Int(active));
+                            let _ = state.component.write_state(
+                                "todo_count",
+                                auto_val::Value::Int(state.app.todos.len() as i32),
+                            );
+                            let _ = state
+                                .component
+                                .write_state("input", auto_val::Value::str(""));
+                            sync_todos_to_vm(&state.app.todos, &mut *state.component);
+                            state.app.input_values.remove("EditInputChanged");
+                            state.app.input_values.remove("InputChanged");
+                        } else if let Some(text) = from_input_values {
+                            // Fallback: use the last tracked input value
+                            state.app.todos.push(TodoItem { text, done: false });
+                            let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
+                            let _ = state
+                                .component
+                                .write_state("active_count", auto_val::Value::Int(active));
+                            let _ = state.component.write_state(
+                                "todo_count",
+                                auto_val::Value::Int(state.app.todos.len() as i32),
+                            );
+                            let _ = state
+                                .component
+                                .write_state("input", auto_val::Value::str(""));
+                            sync_todos_to_vm(&state.app.todos, &mut *state.component);
+                            state.app.input_values.remove("EditInputChanged");
+                            state.app.input_values.remove("InputChanged");
+                        }
+                    }
+                    "ClearCompleted" => {
+                        state.app.todos.retain(|t| !t.done);
                         let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
-                        let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                        let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.app.todos.len() as i32));
-                        let _ = state.component.write_state("input", auto_val::Value::str(""));
+                        let _ = state
+                            .component
+                            .write_state("active_count", auto_val::Value::Int(active));
+                        let _ = state.component.write_state(
+                            "todo_count",
+                            auto_val::Value::Int(state.app.todos.len() as i32),
+                        );
                         sync_todos_to_vm(&state.app.todos, &mut *state.component);
-                        state.app.input_values.remove("EditInputChanged");
-                        state.app.input_values.remove("InputChanged");
-                    } else if let Some(text) = from_input_values {
-                        // Fallback: use the last tracked input value
-                        state.app.todos.push(TodoItem { text, done: false });
+                    }
+                    "ToggleAll" => {
+                        let any_active = state.app.todos.iter().any(|t| !t.done);
+                        for todo in &mut state.app.todos {
+                            todo.done = any_active; // if any active → mark all done; else → mark all undone
+                        }
                         let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
-                        let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                        let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.app.todos.len() as i32));
-                        let _ = state.component.write_state("input", auto_val::Value::str(""));
+                        let _ = state
+                            .component
+                            .write_state("active_count", auto_val::Value::Int(active));
                         sync_todos_to_vm(&state.app.todos, &mut *state.component);
-                        state.app.input_values.remove("EditInputChanged");
-                        state.app.input_values.remove("InputChanged");
                     }
-                }
-                "ClearCompleted" => {
-                    state.app.todos.retain(|t| !t.done);
-                    let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
-                    let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                    let _ = state.component.write_state("todo_count", auto_val::Value::Int(state.app.todos.len() as i32));
-                    sync_todos_to_vm(&state.app.todos, &mut *state.component);
-                }
-                "ToggleAll" => {
-                    let any_active = state.app.todos.iter().any(|t| !t.done);
-                    for todo in &mut state.app.todos {
-                        todo.done = any_active; // if any active → mark all done; else → mark all undone
+                    // Notes app: VM handlers now manage all state correctly.
+                    // The previous hardcoded state-sync (read notes as Value::Obj,
+                    // write edit_title/edit_body) is removed because notes elements
+                    // are raw Int(heap_id) in VM mode, not Value::Obj — the if-let
+                    // always failed. The VM handler_EditorPanel_Edit etc. handle
+                    // everything via GET_FIELD/SET_FIELD on the unified state.
+                    // We only clear stale input_values caches here so the next
+                    // render reflects handler-set state, not old typed text.
+                    "Edit" => {
+                        state.app.input_values.remove("EditTitle");
+                        state.app.input_values.remove("EditBody");
                     }
-                    let active = state.app.todos.iter().filter(|t| !t.done).count() as i32;
-                    let _ = state.component.write_state("active_count", auto_val::Value::Int(active));
-                    sync_todos_to_vm(&state.app.todos, &mut *state.component);
-                }
-                // Notes app: VM handlers now manage all state correctly.
-                // The previous hardcoded state-sync (read notes as Value::Obj,
-                // write edit_title/edit_body) is removed because notes elements
-                // are raw Int(heap_id) in VM mode, not Value::Obj — the if-let
-                // always failed. The VM handler_EditorPanel_Edit etc. handle
-                // everything via GET_FIELD/SET_FIELD on the unified state.
-                // We only clear stale input_values caches here so the next
-                // render reflects handler-set state, not old typed text.
-                "Edit" => {
-                    state.app.input_values.remove("EditTitle");
-                    state.app.input_values.remove("EditBody");
-                }
-                "Save" | "Cancel" => {
-                    state.app.input_values.remove("EditTitle");
-                    state.app.input_values.remove("EditBody");
-                }
-                _ => {}
+                    "Save" | "Cancel" => {
+                        state.app.input_values.remove("EditTitle");
+                        state.app.input_values.remove("EditBody");
+                    }
+                    _ => {}
                 }
             }
         }
 
         // Deferred scroll: if selected_widget is set but pending_scroll not yet computed,
         // try to compute from element styles (which are populated during rendering).
-        if state.app.devtools.selected_widget.borrow().is_some() && state.app.devtools.pending_scroll_to_center.borrow().is_none() {
+        if state.app.devtools.selected_widget.borrow().is_some()
+            && state
+                .app
+                .devtools
+                .pending_scroll_to_center
+                .borrow()
+                .is_none()
+        {
             if let Some(ref sel_id) = *state.app.devtools.selected_widget.borrow() {
                 let styles = state.app.devtools.debug_element_styles.borrow();
                 if let Some(elem_info) = styles.get(sel_id) {
@@ -20710,16 +22403,25 @@ fn compare_pngs(
         }
 
         // Emit scroll_to Task if pending scroll is set
-        let scroll_task: Option<iced::Task<IcedMessage>> = state.app.devtools.pending_scroll_to_center.borrow_mut().take().map(|line_idx| {
-            let line_height = 14.0; // font_size(10) + spacing(4)
-            let viewport_height = 500.0; // estimated panel content area height
-            let target_y = (line_idx as f32 * line_height) - (viewport_height / 3.0);
-            let y = target_y.max(0.0);
-            iced::widget::operation::scroll_to(
-                state.app.devtools.inspector_scroll_id.clone(),
-                iced::widget::scrollable::AbsoluteOffset { x: Some(0.0), y: Some(y) },
-            )
-        });
+        let scroll_task: Option<iced::Task<IcedMessage>> = state
+            .app
+            .devtools
+            .pending_scroll_to_center
+            .borrow_mut()
+            .take()
+            .map(|line_idx| {
+                let line_height = 14.0; // font_size(10) + spacing(4)
+                let viewport_height = 500.0; // estimated panel content area height
+                let target_y = (line_idx as f32 * line_height) - (viewport_height / 3.0);
+                let y = target_y.max(0.0);
+                iced::widget::operation::scroll_to(
+                    state.app.devtools.inspector_scroll_id.clone(),
+                    iced::widget::scrollable::AbsoluteOffset {
+                        x: Some(0.0),
+                        y: Some(y),
+                    },
+                )
+            });
 
         // ── Plan 057 续(尾部任务批处理)────────────────────────────────
         // 原实现是一串互斥的提前 return(refocus/初始聚焦/resize/bounds/滚底),
@@ -20733,7 +22435,10 @@ fn compare_pngs(
         // Plan 047/057: 恢复输入焦点(最后被编辑的 textarea,按稳定 Id)。
         if state.app.devtools.needs_prompt_refocus.get() {
             state.app.devtools.needs_prompt_refocus.set(false);
-            let id = state.app.devtools.last_textarea_key
+            let id = state
+                .app
+                .devtools
+                .last_textarea_key
                 .borrow()
                 .as_ref()
                 .map(|k| iced::widget::Id::from(format!("textarea_{}", k)))
@@ -20794,9 +22499,7 @@ fn compare_pngs(
                     .unwrap_or_else(|| state.app.devtools.prompt_input_id.clone())
             });
             if std::env::var("AUTO_DEBUG_FOCUS").is_ok() {
-                eprintln!(
-                    "[464-FOCUS] __focus_input consumed: derived target={focus_target:?}"
-                );
+                eprintln!("[464-FOCUS] __focus_input consumed: derived target={focus_target:?}");
             }
             tail_tasks.push(iced::widget::operation::focus(focus_target));
             // PLAN-013 W2：重试上限——focus 任务与 overlay 入树存在时序
@@ -20878,18 +22581,18 @@ fn compare_pngs(
         }
 
         // Plan 282: 布局 bounds 收集(截图/检视数据;截屏挂起时跳过)。
-        if *state.app.devtools.needs_bounds.borrow() && state.app.devtools.screenshot_request.borrow().is_none() {
+        if *state.app.devtools.needs_bounds.borrow()
+            && state.app.devtools.screenshot_request.borrow().is_none()
+        {
             *state.app.devtools.needs_bounds.borrow_mut() = false;
             use crate::ui::iced::LayoutCollector;
-            tail_tasks.push(
-                iced::advanced::widget::operate(LayoutCollector::new()).map(|bounds_map| {
-                    IcedMessage {
-                        widget: String::new(),
-                        event: "__bounds_collected".to_string(),
-                        input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
-                    }
-                }),
-            );
+            tail_tasks.push(iced::advanced::widget::operate(LayoutCollector::new()).map(
+                |bounds_map| IcedMessage {
+                    widget: String::new(),
+                    event: "__bounds_collected".to_string(),
+                    input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
+                },
+            ));
         }
 
         // Plan 049: blocks 增加后自动滚到底部(最新 block 可见)。
@@ -20967,9 +22670,13 @@ fn compare_pngs(
             // 锚块索引直写（.at 声明 sync_anchor_block，-1 = 未锚定；
             // ghost_id/ghost_height 同款固定名直写先例）——vm-smoke 组 4
             // AC-06 断言可观测面。y 未就绪（块未布局）时索引先行登记。
-            let _ = state.component.write_state("sync_anchor_block", auto_val::Value::Int(idx as i32));
+            let _ = state
+                .component
+                .write_state("sync_anchor_block", auto_val::Value::Int(idx as i32));
             if let (Some(field), Some(y)) = (field, y) {
-                let _ = state.component.write_state(&field, auto_val::Value::Float(y as f64));
+                let _ = state
+                    .component
+                    .write_state(&field, auto_val::Value::Float(y as f64));
             }
         }
         if !tail_tasks.is_empty() {
@@ -21081,27 +22788,22 @@ fn compare_pngs(
                         .unwrap_or(false);
                     let task = task.map(move |m| DM::App(app_id, m));
                     if needs_wake {
-                        task.chain(iced::Task::perform(
-                            std::future::ready(()),
-                            move |()| {
-                                DM::App(
-                                    app_id,
-                                    crate::ui::iced::IcedMessage {
-                                        widget: String::new(),
-                                        event: "__frame_pump".to_string(),
-                                        input_value: None,
-                                    },
-                                )
-                            },
-                        ))
+                        task.chain(iced::Task::perform(std::future::ready(()), move |()| {
+                            DM::App(
+                                app_id,
+                                crate::ui::iced::IcedMessage {
+                                    widget: String::new(),
+                                    event: "__frame_pump".to_string(),
+                                    input_value: None,
+                                },
+                            )
+                        }))
                     } else {
                         task
                     }
                 }
                 Err(payload) => {
-                    eprintln!(
-                        "[session] app update panicked (plan-453 T6 boundary): {payload:?}"
-                    );
+                    eprintln!("[session] app update panicked (plan-453 T6 boundary): {payload:?}");
                     iced::Task::<IcedMessage>::none().map(move |m| DM::App(app_id, m))
                 }
             }
@@ -21114,9 +22816,7 @@ fn compare_pngs(
                         // boot 期已按 `window::open` 同步登记；本臂作 Opened
                         // 兜底/幂等刷新。daemon 下窗口必有 boot 归属——
                         // 未知窗口（非本会话开窗）忽略。
-                        let app = state
-                            .app_of_window(&id)
-                            .or_else(|| state.primary_app());
+                        let app = state.app_of_window(&id).or_else(|| state.primary_app());
                         if let Some(app) = app {
                             state.register_window(id, app, size);
                         }
@@ -21243,7 +22943,7 @@ fn compare_pngs(
                                         let visible = host
                                             .wm
                                             .wins
-            .get(&wid)
+                                            .get(&wid)
                                             .map(|v| !v.hidden.get())
                                             .unwrap_or(false);
                                         if visible {
@@ -21267,10 +22967,9 @@ fn compare_pngs(
                                 state.desktop.switcher_until.set(None);
                                 if let Some(shell) = state.desktop.shell_app {
                                     if let Some(app) = state.apps.get_mut(&shell) {
-                                        let _ = app.component.write_state(
-                                            "switcher_open",
-                                            auto_val::Value::str(""),
-                                        );
+                                        let _ = app
+                                            .component
+                                            .write_state("switcher_open", auto_val::Value::str(""));
                                         *app.state.view_dirty.borrow_mut() = true;
                                     }
                                 }
@@ -21318,19 +23017,13 @@ fn compare_pngs(
                             // Plan 512：standalone 无宿主窗——测量目标取待测
                             // fit 窗自身（锚点在该窗树中；desktop 恒为宿主窗，
                             // vwin 锚点在宿主树）。
-                            let fit_target = state
-                                .host
-                                .as_ref()
-                                .map(|h| h.window)
-                                .or_else(|| {
-                                    state
-                                        .windows
-                                        .iter()
-                                        .find(|(_, e)| {
-                                            e.fit_pending.get() || e.fit_dirty.get()
-                                        })
-                                        .map(|(id, _)| *id)
-                                });
+                            let fit_target = state.host.as_ref().map(|h| h.window).or_else(|| {
+                                state
+                                    .windows
+                                    .iter()
+                                    .find(|(_, e)| e.fit_pending.get() || e.fit_dirty.get())
+                                    .map(|(id, _)| *id)
+                            });
                             if let Some(hw) = fit_target {
                                 state.desktop.fit_measure_in_flight.set(true);
                                 state.desktop.fit_measure_retries.set(0);
@@ -21367,22 +23060,15 @@ fn compare_pngs(
                         // 回退 in-proc 装载（shell_degraded 位置位防重入）；
                         // ③DesktopBus inbox 排空直调执行（D4——泵后同拍，
                         // 归因 notify_source 随段）。
-                        if state.desktop.shell_model
-                            == crate::ui::session::ShellModel::Outproc
-                        {
+                        if state.desktop.shell_model == crate::ui::session::ShellModel::Outproc {
                             state.shell_watchdog_step();
-                            if state.desktop.shell_degraded
-                                && state.desktop.shell_app.is_none()
-                            {
+                            if state.desktop.shell_degraded && state.desktop.shell_app.is_none() {
                                 state.desktop.shell_degraded = false;
                                 eprintln!(
                                     "[autodesk-shell] 降级回退 in-proc 装载（respawn 预算耗尽）"
                                 );
-                                if let Ok(shell_comp) =
-                                    crate::ui::shell::build_shell_component()
-                                {
-                                    state.desktop.shell_app =
-                                        Some(state.allocate_app(shell_comp));
+                                if let Ok(shell_comp) = crate::ui::shell::build_shell_component() {
+                                    state.desktop.shell_app = Some(state.allocate_app(shell_comp));
                                 }
                                 if let Ok(surface_comp) =
                                     crate::ui::shell::build_desktop_surface_component()
@@ -21443,9 +23129,8 @@ fn compare_pngs(
                         let mut tasks: Vec<iced::Task<crate::ui::session::DesktopMessage>> =
                             Vec::new();
                         if want_capture && bridge.request_capture() {
-                            if let Some(win) = state
-                                .primary_app()
-                                .and_then(|app| state.window_of_app(app))
+                            if let Some(win) =
+                                state.primary_app().and_then(|app| state.window_of_app(app))
                             {
                                 // PLAN-659 T-03：零维守卫（同 9652 host_ok
                                 // 形态）——pixels 桥截图此前无守卫，最小化/
@@ -21486,24 +23171,23 @@ fn compare_pngs(
                         let (lw, lh) = bridge.size();
                         let lw = lw.max(1.0).ceil() as u32;
                         let lh = lh.max(1.0).ceil() as u32;
-                        let rgba =
-                            crate::ui::desktop_protocol::pixels::downsample_to_logical(
-                                ss.rgba.as_ref(),
-                                ss.size.width,
-                                ss.size.height,
-                                lw,
-                                lh,
-                            );
-                        let frame =
-                            crate::ui::desktop_protocol::pixels::PixelsFrame {
-                                rgba,
-                                w: lw,
-                                h: lh,
-                                stride: lw * 4,
-                            };
+                        let rgba = crate::ui::desktop_protocol::pixels::downsample_to_logical(
+                            ss.rgba.as_ref(),
+                            ss.size.width,
+                            ss.size.height,
+                            lw,
+                            lh,
+                        );
+                        let frame = crate::ui::desktop_protocol::pixels::PixelsFrame {
+                            rgba,
+                            w: lw,
+                            h: lh,
+                            stride: lw * 4,
+                        };
                         if let Some(msg) = bridge.capture(frame) {
-                            if !bridge.send(&crate::ui::desktop_protocol::message::ProtocolMsg::Frame(msg))
-                            {
+                            if !bridge.send(
+                                &crate::ui::desktop_protocol::message::ProtocolMsg::Frame(msg),
+                            ) {
                                 return iced::exit();
                             }
                         }
@@ -21520,10 +23204,13 @@ fn compare_pngs(
                         // 之间窗可能刚最小化/被遮挡（400ms sync 未及），
                         // 用最新可见性裁决，杜绝污染帧入库。
                         sync_snapshot_frozen(state);
-                        let wids = std::mem::take(&mut *state.desktop.snapshot_pending_wids.borrow_mut());
+                        let wids =
+                            std::mem::take(&mut *state.desktop.snapshot_pending_wids.borrow_mut());
                         if let Some(host) = state.host.as_ref() {
                             for wid in wids {
-                                let Some(v) = host.wm.wins.get(&wid) else { continue };
+                                let Some(v) = host.wm.wins.get(&wid) else {
+                                    continue;
+                                };
                                 // PLAN-040 F3：入队到回调之间窗可能已最小化/
                                 // 被遮挡（冻结）——裁剪像素已非该窗内容，跳过
                                 // 不入缓存（末帧保留语义）。
@@ -21531,13 +23218,15 @@ fn compare_pngs(
                                     continue;
                                 }
                                 let rect = *v.rect.borrow();
-                                if let Some(snap) = crate::ui::iced::snapshot::thumbnail_from_screenshot(
-                                    ss.rgba.as_ref(),
-                                    ss.size.width,
-                                    ss.size.height,
-                                    rect,
-                                    ss.scale_factor,
-                                ) {
+                                if let Some(snap) =
+                                    crate::ui::iced::snapshot::thumbnail_from_screenshot(
+                                        ss.rgba.as_ref(),
+                                        ss.size.width,
+                                        ss.size.height,
+                                        rect,
+                                        ss.scale_factor,
+                                    )
+                                {
                                     crate::ui::iced::snapshot::cache_put(wid, snap);
                                 }
                             }
@@ -21615,17 +23304,23 @@ fn compare_pngs(
                         // PLAN-013 W1 诊断:每按记录 visible/sel 前值——区分
                         // 「重召唤复位」与「推进失败」两种病灶。
                         if std::env::var("AUTO_DEBUG_KEYS").is_ok() {
-                            let dbg = state.desktop.switcher_app
+                            let dbg = state
+                                .desktop
+                                .switcher_app
                                 .and_then(|sw| state.apps.get(&sw))
                                 .and_then(|a| {
-                                    a.component.read_state("sel").ok()
+                                    a.component
+                                        .read_state("sel")
+                                        .ok()
                                         .zip(a.component.read_state("visible").ok())
                                 })
                                 .map(|(sel, vis)| (sel.to_string(), vis.to_string()))
                                 .unwrap_or_else(|| ("?".into(), "?".into()));
                             eprintln!(
                                 "[P013-W1] SummonSwitcher: visible={} sel={} (app mounted={})",
-                                dbg.1, dbg.0, state.desktop.switcher_app.is_some()
+                                dbg.1,
+                                dbg.0,
+                                state.desktop.switcher_app.is_some()
                             );
                         }
                         if state.switcher_visible() {
@@ -21657,9 +23352,12 @@ fn compare_pngs(
                     // （v1 语义保持）。
                     DesktopEvent::DndFinished { effect } => {
                         if let Some(app) = dnd_finished_target(state) {
-                            inject_native_event(state, app, "on_dnd_finished", &[
-                                auto_val::Value::str(effect),
-                            ]);
+                            inject_native_event(
+                                state,
+                                app,
+                                "on_dnd_finished",
+                                &[auto_val::Value::str(effect)],
+                            );
                         }
                     }
                     // Plan 488 步骤 5/6：拖入落点——屏幕物理坐标 → 宿主逻辑域
@@ -21690,7 +23388,10 @@ fn compare_pngs(
                                 local.0,
                                 local.1,
                                 hit,
-                                hit.and_then(|a| state.apps.get(&a).map(|s| s.component.widget_name().to_string()))
+                                hit.and_then(|a| state
+                                    .apps
+                                    .get(&a)
+                                    .map(|s| s.component.widget_name().to_string()))
                             );
                         }
                         if let Some(app) = hit {
@@ -21708,8 +23409,7 @@ fn compare_pngs(
                     // Plan 488 T7：桌面级 Ctrl+V → 读 OS 剪贴板（418 文本 →
                     // 485 文件/图片）→ on_native_paste 注入焦点 App。
                     DesktopEvent::NativePaste => {
-                        if let Some(app) = state.wm_focused_app().or_else(|| state.primary_app())
-                        {
+                        if let Some(app) = state.wm_focused_app().or_else(|| state.primary_app()) {
                             if let Some(sess) = state.app_mut(app) {
                                 let _ = sess.component.bridge_mut().call_handler_with_record(
                                     "on_native_paste",
@@ -21727,8 +23427,10 @@ fn compare_pngs(
                 // App；写入面板 `__dashboard_cmd` 后走同周期 bus 排空统一
                 // 执行（面板 .at 零感知、无 handler 不产生派发噪音）。尾与
                 // 常规臂同形（exit/sync/batch）。
-                if let Some(launch_id) =
-                    m.event.strip_prefix("__dashboard_launch:").map(str::to_string)
+                if let Some(launch_id) = m
+                    .event
+                    .strip_prefix("__dashboard_launch:")
+                    .map(str::to_string)
                 {
                     // PLAN-036 T-06（B2）：outproc 卡叠层 = 宿主合成面，
                     // 目标 AppId(0)（面板 App 不在场）——命令直入
@@ -21753,9 +23455,7 @@ fn compare_pngs(
                             if let Some(app) = state.apps.get_mut(&panel) {
                                 let _ = app.component.write_state(
                                     "__dashboard_cmd",
-                                    auto_val::Value::str(&format!(
-                                        "dashboard_launch\t{launch_id}"
-                                    )),
+                                    auto_val::Value::str(&format!("dashboard_launch\t{launch_id}")),
                                 );
                                 *app.state.view_dirty.borrow_mut() = true;
                             }
@@ -21776,8 +23476,10 @@ fn compare_pngs(
                 // 出，带 face app 标签）。三态：孵化会话 → 升格开窗
                 // （face/窗同会话零分家）；已有窗 → activate 聚焦（跨分区
                 // 语义复用）；无会话 → launch。尾与常规臂同形。
-                if let Some(open_id) =
-                    m.event.strip_prefix("__dashboard_open:").map(str::to_string)
+                if let Some(open_id) = m
+                    .event
+                    .strip_prefix("__dashboard_open:")
+                    .map(str::to_string)
                 {
                     // 判定顺序 = 去重语义（R21）：已有窗 → 聚焦（多次打开
                     // 不重复开窗）；其次孵化会话 → 升格开窗；最后 → launch。
@@ -21790,15 +23492,15 @@ fn compare_pngs(
                                 crate::ui::session::DesktopCommand::ActivateApp(open_id.clone()),
                             ));
                         } else {
-                        if let Some(panel) = state.desktop.dashboard_app {
-                            if let Some(app) = state.apps.get_mut(&panel) {
-                                let _ = app.component.write_state(
-                                    "__dashboard_cmd",
-                                    auto_val::Value::str(&format!("activate	{open_id}")),
-                                );
-                                *app.state.view_dirty.borrow_mut() = true;
+                            if let Some(panel) = state.desktop.dashboard_app {
+                                if let Some(app) = state.apps.get_mut(&panel) {
+                                    let _ = app.component.write_state(
+                                        "__dashboard_cmd",
+                                        auto_val::Value::str(&format!("activate	{open_id}")),
+                                    );
+                                    *app.state.view_dirty.borrow_mut() = true;
+                                }
                             }
-                        }
                         }
                     } else if let Some(hatched) = state.hatched_mini_of(&open_id) {
                         if let Err(err) = state.open_window_for_session(&open_id, hatched) {
@@ -21833,12 +23535,7 @@ fn compare_pngs(
                 // 代际变化即本次 dispatch 发起并完成了一次拖出。
                 let dnd_gen_before = dnd_drag_generation();
                 let task = dispatch_app(state, app_id, m);
-                maybe_anchor_dnd_initiator(
-                    state,
-                    app_id,
-                    dnd_gen_before,
-                    dnd_drag_generation(),
-                );
+                maybe_anchor_dnd_initiator(state, app_id, dnd_gen_before, dnd_drag_generation());
                 // Plan 463 T4：DesktopBus 排空 #2 —— handler 本周期写入的
                 // 命令（按钮 onclick → __desktop_cmd）同周期尾即达，
                 // 按钮路径不受帧泵节拍限制（T1 报告 §2.3）。
@@ -21971,10 +23668,7 @@ fn compare_pngs(
                             // 命中窗属 broker 客户端（含壳伪窗）时投递
                             // PointerPressed（坐标平移窗局部系；软聚焦不动
                             // z——与 in-proc 按钮在途语义一致）。
-                            let is_broker = state
-                                .broker_clients
-                                .values()
-                                .any(|c| c.owns_wid(wid));
+                            let is_broker = state.broker_clients.values().any(|c| c.owns_wid(wid));
                             if is_broker {
                                 state.broker_pointer_down(
                                     cursor.x,
@@ -21992,19 +23686,21 @@ fn compare_pngs(
                         // 定面板左上角（窗缘不越界，y 不高于标题条底）。
                         if let Some(host) = state.host.as_mut() {
                             let cursor = host.wm.last_cursor.get();
-                            let rect = host
-                                .wm
-                                .wins
-                                .get(&wid)
-                                .map(|v| *v.rect.borrow())
-                                .unwrap_or(iced::Rectangle {
+                            let rect = host.wm.wins.get(&wid).map(|v| *v.rect.borrow()).unwrap_or(
+                                iced::Rectangle {
                                     x: 0.0,
                                     y: 0.0,
                                     width: 0.0,
                                     height: 0.0,
-                                });
+                                },
+                            );
                             let (x, y) = crate::ui::iced::virtual_window::title_menu_spot(
-                                cursor.x, cursor.y, rect.x, rect.y, rect.width, rect.height,
+                                cursor.x,
+                                cursor.y,
+                                rect.x,
+                                rect.y,
+                                rect.width,
+                                rect.height,
                             );
                             host.wm.title_menu =
                                 Some(crate::ui::session::TitleMenuSpot { wid, x, y });
@@ -22093,9 +23789,7 @@ fn compare_pngs(
                                 .native_slots
                                 .get(&slot_id)
                                 .and_then(|s| s.min_size_est)
-                                .map(|s| {
-                                    iced::Size::new(s.w as f32 / scale, s.h as f32 / scale)
-                                })
+                                .map(|s| iced::Size::new(s.w as f32 / scale, s.h as f32 / scale))
                                 .unwrap_or_default();
                             if let Some(start_rect) =
                                 host.wm.native_slot_local_rects.get(&slot_id).copied()
@@ -22121,10 +23815,8 @@ fn compare_pngs(
                         #[cfg(windows)]
                         {
                             use crate::ui::native_dock::win32 as ndw;
-                            if let Some(slot) = state
-                                .host
-                                .as_ref()
-                                .and_then(|h| h.wm.native_slots.get(&id))
+                            if let Some(slot) =
+                                state.host.as_ref().and_then(|h| h.wm.native_slots.get(&id))
                             {
                                 if ndw::is_minimized(slot.hwnd) {
                                     let _ = ndw::show_window(slot.hwnd, ndw::ShowMode::Restore);
@@ -22185,11 +23877,10 @@ fn compare_pngs(
                                 .get(&wid)
                                 .map(|v| v.rect.borrow().position())
                                 .unwrap_or_default();
-                            host.wm.interaction =
-                                Some(crate::ui::session::WmInteraction::Drag {
-                                    wid,
-                                    grab: iced::Point::new(grab.x - origin.x, grab.y - origin.y),
-                                });
+                            host.wm.interaction = Some(crate::ui::session::WmInteraction::Drag {
+                                wid,
+                                grab: iced::Point::new(grab.x - origin.x, grab.y - origin.y),
+                            });
                         }
                     }
                     // PLAN-526 T2：缩放启动即退出最大化（仅清标志，新 rect
@@ -22198,18 +23889,17 @@ fn compare_pngs(
                         state.wm_focus(wid);
                         if let Some(host) = state.host.as_mut() {
                             host.wm.unmaximize_for_interaction(wid, false);
-                            host.wm.interaction =
-                                Some(crate::ui::session::WmInteraction::Resize {
-                                    wid,
-                                    edge,
-                                    start_rect: host
-                                        .wm
-                                        .wins
-                                        .get(&wid)
-                                        .map(|v| *v.rect.borrow())
-                                        .unwrap_or_default(),
-                                    start_cursor: host.wm.last_cursor.get(),
-                                });
+                            host.wm.interaction = Some(crate::ui::session::WmInteraction::Resize {
+                                wid,
+                                edge,
+                                start_rect: host
+                                    .wm
+                                    .wins
+                                    .get(&wid)
+                                    .map(|v| *v.rect.borrow())
+                                    .unwrap_or_default(),
+                                start_cursor: host.wm.last_cursor.get(),
+                            });
                         }
                     }
                     // PLAN-526 T2：最小化到任务栏（标题栏 `–`/右键菜单/总线
@@ -22290,8 +23980,7 @@ fn compare_pngs(
                                     // 逐帧重建）。
                                     let mut drag_active = false;
                                     if let Some((_, (ox, oy))) = &state.desktop.icon_drag {
-                                        let dist =
-                                            ((x - ox).powi(2) + (y - oy).powi(2)).sqrt();
+                                        let dist = ((x - ox).powi(2) + (y - oy).powi(2)).sqrt();
                                         if dist >= 6.0 {
                                             state.desktop.icon_drag_moved = true;
                                             drag_active = true;
@@ -22333,11 +24022,9 @@ fn compare_pngs(
                                                 // 与 execute_desktop_icon_drop_at
                                                 // 同一套栅格换算（12px 面内边距 +
                                                 // 88/80px 栅距）。
-                                                let col = (((x - 12.0) / 88.0).floor()
-                                                    as i32)
+                                                let col = (((x - 12.0) / 88.0).floor() as i32)
                                                     .clamp(0, 7);
-                                                let row = (((y - 12.0) / 80.0).floor()
-                                                    as i32)
+                                                let row = (((y - 12.0) / 80.0).floor() as i32)
                                                     .clamp(0, 96);
                                                 let _ = app.component.write_state(
                                                     "drop_c",
@@ -22350,9 +24037,10 @@ fn compare_pngs(
                                                 // 2026-09-15：幽灵 popover 开门条件
                                                 // （drag_id 按下即置位，点击会闪副本
                                                 // ——改用 drag_moved 门，真拖起来才显示）。
-                                                let _ = app
-                                                    .component
-                                                    .write_state("drag_moved", auto_val::Value::str("1"));
+                                                let _ = app.component.write_state(
+                                                    "drag_moved",
+                                                    auto_val::Value::str("1"),
+                                                );
                                                 *app.state.view_dirty.borrow_mut() = true;
                                             }
                                         }
@@ -22361,13 +24049,12 @@ fn compare_pngs(
                                         use crate::ui::desktop_protocol::message::{
                                             shell_face, ControlMsg, ProtocolMsg,
                                         };
-                                        let msg = ProtocolMsg::Control(
-                                            ControlMsg::ShellCursorMove {
+                                        let msg =
+                                            ProtocolMsg::Control(ControlMsg::ShellCursorMove {
                                                 face: shell_face::DESKTOP_SURFACE,
                                                 x,
                                                 y,
-                                            },
-                                        );
+                                            });
                                         let _ = state.push_shell_control(&msg);
                                     }
                                     let host_size = state
@@ -22417,14 +24104,11 @@ fn compare_pngs(
                             // bind 自管）。修饰键事实源照旧回写。
                             if let Some(ref val) = m.input_value {
                                 if let Ok(bits) = val.parse::<u32>() {
-                                    let prev =
-                                        *state.desktop.current_modifiers.borrow();
+                                    let prev = *state.desktop.current_modifiers.borrow();
                                     let new_mods =
                                         iced::keyboard::Modifiers::from_bits_truncate(bits);
-                                    *state.desktop.current_modifiers.borrow_mut() =
-                                        new_mods;
-                                    let ctrl_released =
-                                        prev.control() && !new_mods.control();
+                                    *state.desktop.current_modifiers.borrow_mut() = new_mods;
+                                    let ctrl_released = prev.control() && !new_mods.control();
                                     if ctrl_released && state.switcher_visible() {
                                         // PLAN-036 T-04（D6）：outproc 轨——
                                         /// Pick 事件快照（child dispatch →
@@ -22471,11 +24155,7 @@ fn compare_pngs(
                                     .as_ref()
                                     .and_then(|h| h.wm.hit_test(cursor.x, cursor.y));
                                 if let Some(wid) = hit {
-                                    if state
-                                        .broker_clients
-                                        .values()
-                                        .any(|c| c.owns_wid(wid))
-                                    {
+                                    if state.broker_clients.values().any(|c| c.owns_wid(wid)) {
                                         state.broker_pointer_up(
                                             cursor.x,
                                             cursor.y,
@@ -22497,9 +24177,7 @@ fn compare_pngs(
                             // is_pressed，跨件 release 不可达）。光标 =
                             // last_cursor（全局 CursorMoved 持续回写，
                             // desktop 本地坐标）。
-                            if let Some((dragged, _origin)) =
-                                state.desktop.icon_drag.take()
-                            {
+                            if let Some((dragged, _origin)) = state.desktop.icon_drag.take() {
                                 // 2026-09-15：未超位移阈值 = 点击——原样落回
                                 // （只清视觉态），不再误落光标格。
                                 if state.desktop.icon_drag_moved {
@@ -22579,13 +24257,12 @@ fn compare_pngs(
                 // 未保存状态的编辑器先弹确认层，由 handler 决定后续；未
                 // 声明行为不变（向后兼容）。
                 if m.event == "__window_close_request" {
-                    let close_declared = state
-                        .app_of_window(&win)
-                        .and_then(|app_id| {
-                            state.apps.get(&app_id).map(|a| {
-                                (app_id, a.component.has_lifecycle_handler("CloseRequest"))
-                            })
-                        });
+                    let close_declared = state.app_of_window(&win).and_then(|app_id| {
+                        state
+                            .apps
+                            .get(&app_id)
+                            .map(|a| (app_id, a.component.has_lifecycle_handler("CloseRequest")))
+                    });
                     if let Some((app_id, true)) = close_declared {
                         if let Some(app) = state.apps.get_mut(&app_id) {
                             if let Err(e) = app.component.fire_close_request() {
@@ -22601,19 +24278,19 @@ fn compare_pngs(
                     return iced::window::close::<crate::ui::session::DesktopMessage>(win);
                 }
                 match state.app_of_window(&win) {
-                Some(app_id) => {
-                    let t = dispatch_app(state, app_id, m);
-                    match fit_task.take() {
-                        Some(f) => iced::Task::batch([t, f]),
-                        None => t,
+                    Some(app_id) => {
+                        let t = dispatch_app(state, app_id, m);
+                        match fit_task.take() {
+                            Some(f) => iced::Task::batch([t, f]),
+                            None => t,
+                        }
                     }
-                }
-                None => {
-                    eprintln!(
+                    None => {
+                        eprintln!(
                         "[session] window event for unregistered window {win:?} dropped (plan-459)"
                     );
-                    fit_task.take().unwrap_or_else(iced::Task::none)
-                }
+                        fit_task.take().unwrap_or_else(iced::Task::none)
+                    }
                 }
             }
         }
@@ -22634,7 +24311,9 @@ fn compare_pngs(
         // panic 边界 + DM::App 打标），仅外层组装按配置分叉（I3）。
         if state.is_desktop() {
             let Some(host) = state.host.as_ref() else {
-                return iced::widget::text("[AutoUI 会话] 桌面宿主未初始化").size(14).into();
+                return iced::widget::text("[AutoUI 会话] 桌面宿主未初始化")
+                    .size(14)
+                    .into();
             };
             if host.window != window {
                 return iced::widget::container(
@@ -22663,11 +24342,13 @@ fn compare_pngs(
             } else if state.desktop.desktop_app.is_some() {
                 let surface_app = state.desktop.desktop_app.expect("surface checked");
                 let build = || state.split_ref_desktop().map(|v| dynamic_view(v, false));
-                let surface_client: iced::Element<'_, IcedMessage> = match
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
-                {
+                let surface_client: iced::Element<'_, IcedMessage> = match std::panic::catch_unwind(
+                    std::panic::AssertUnwindSafe(build),
+                ) {
                     Ok(Some(el)) => el,
-                    Ok(None) => iced::widget::text("[AutoUI 会话] 桌面本体缺失").size(14).into(),
+                    Ok(None) => iced::widget::text("[AutoUI 会话] 桌面本体缺失")
+                        .size(14)
+                        .into(),
                     Err(payload) => {
                         eprintln!(
                             "[session] desktop surface view panicked (plan-453 T6 boundary): {payload:?}"
@@ -22712,79 +24393,68 @@ fn compare_pngs(
                     .desktop
                     .dashboard_app
                     .unwrap_or(crate::ui::session::AppId(0));
-                let chrome =
-                    if state.desktop.shell_pipe.is_some() {
-                        let d_wid = state.desktop.shell_pseudo_wids.get(4).copied();
-                        match d_wid.and_then(|w| shell_surface_element(state, w)) {
-                            Some(el) => {
-                                iced::widget::container(
-                                    iced::widget::row![
-                                        iced::widget::Space::new()
-                                            .width(iced::Length::Fixed(panel.x))
-                                            .height(iced::Length::Shrink),
-                                        iced::widget::column![
-                                            iced::widget::Space::new()
-                                                .width(iced::Length::Shrink)
-                                                .height(iced::Length::Fixed(panel.y)),
-                                            iced::widget::container(el)
-                                                .width(iced::Length::Fixed(panel.width))
-                                                .height(iced::Length::Fixed(
-                                                    panel.height + DASH_TAB_STRIP_H,
-                                                ))
-                                                .clip(true),
-                                        ],
-                                    ],
-                                )
-                                .width(iced::Length::Fill)
-                                .height(iced::Length::Fill)
-                                .into()
-                            }
-                            None => iced::widget::text("").size(1).into(),
-                        }
-                    } else {
-                        let dash_app = state.desktop.dashboard_app.expect("dashboard checked");
-                        // PLAN-041 T-15：面板底色宿主侧实铺（面板 .at 的 chrome
-                        // bg 类在 VM 视图链不落漆，根因另卡 P041-D3）——定位
-                        // 复用 face 卡同款 spare_position（已被证明正确落位，
-                        // 弃自研 spacer 链 Fill 容器被中央化错位面）：
-                        // dark = 任务栏同色系 #272e48 @95%（用户二轮裁定），
-                        // light = 白 10% 浅玻璃。
-                        let build =
-                            || state.split_ref_dashboard().map(|v| dynamic_view(v, false));
-                        let dash_client: iced::Element<'_, IcedMessage> = match
-                            std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
-                        {
-                            Ok(Some(el)) => el,
-                            Ok(None) => {
-                                iced::widget::text("[AutoUI 会话] dashboard 缺失").size(14).into()
-                            }
-                            Err(payload) => {
-                                eprintln!(
+                let chrome = if state.desktop.shell_pipe.is_some() {
+                    let d_wid = state.desktop.shell_pseudo_wids.get(4).copied();
+                    match d_wid.and_then(|w| shell_surface_element(state, w)) {
+                        Some(el) => iced::widget::container(iced::widget::row![
+                            iced::widget::Space::new()
+                                .width(iced::Length::Fixed(panel.x))
+                                .height(iced::Length::Shrink),
+                            iced::widget::column![
+                                iced::widget::Space::new()
+                                    .width(iced::Length::Shrink)
+                                    .height(iced::Length::Fixed(panel.y)),
+                                iced::widget::container(el)
+                                    .width(iced::Length::Fixed(panel.width))
+                                    .height(iced::Length::Fixed(panel.height + DASH_TAB_STRIP_H,))
+                                    .clip(true),
+                            ],
+                        ])
+                        .width(iced::Length::Fill)
+                        .height(iced::Length::Fill)
+                        .into(),
+                        None => iced::widget::text("").size(1).into(),
+                    }
+                } else {
+                    let dash_app = state.desktop.dashboard_app.expect("dashboard checked");
+                    // PLAN-041 T-15：面板底色宿主侧实铺（面板 .at 的 chrome
+                    // bg 类在 VM 视图链不落漆，根因另卡 P041-D3）——定位
+                    // 复用 face 卡同款 spare_position（已被证明正确落位，
+                    // 弃自研 spacer 链 Fill 容器被中央化错位面）：
+                    // dark = 任务栏同色系 #272e48 @95%（用户二轮裁定），
+                    // light = 白 10% 浅玻璃。
+                    let build = || state.split_ref_dashboard().map(|v| dynamic_view(v, false));
+                    let dash_client: iced::Element<'_, IcedMessage> = match std::panic::catch_unwind(
+                        std::panic::AssertUnwindSafe(build),
+                    ) {
+                        Ok(Some(el)) => el,
+                        Ok(None) => iced::widget::text("[AutoUI 会话] dashboard 缺失")
+                            .size(14)
+                            .into(),
+                        Err(payload) => {
+                            eprintln!(
                                     "[session] dashboard view panicked (plan-453 T6 boundary): {payload:?}"
                                 );
-                                desktop_crash_element()
-                            }
-                        };
-                        // PLAN-041 追随三轮（用户裁定）：外层大框退役——
-                        // 底色改铺 face 卡自身（card_fill 深色支），面板层
-                        // 只承担 .at chrome 定位（透明）。
-                        let chrome_card = iced::widget::container(
-                            dash_client.map(move |m| DM::App(dash_app, m)),
-                        )
-                        .width(iced::Length::Fixed(panel.width))
-                        .height(iced::Length::Fixed(
-                            panel.height + DASH_TAB_STRIP_H,
-                        ));
-                        spare_position(
-                            chrome_card.into(),
-                            iced::Rectangle {
-                                x: panel.x,
-                                y: panel.y,
-                                width: panel.width,
-                                height: panel.height + DASH_TAB_STRIP_H,
-                            },
-                        )
+                            desktop_crash_element()
+                        }
                     };
+                    // PLAN-041 追随三轮（用户裁定）：外层大框退役——
+                    // 底色改铺 face 卡自身（card_fill 深色支），面板层
+                    // 只承担 .at chrome 定位（透明）。
+                    let chrome_card =
+                        iced::widget::container(dash_client.map(move |m| DM::App(dash_app, m)))
+                            .width(iced::Length::Fixed(panel.width))
+                            .height(iced::Length::Fixed(panel.height + DASH_TAB_STRIP_H));
+                    spare_position(
+                        chrome_card.into(),
+                        iced::Rectangle {
+                            x: panel.x,
+                            y: panel.y,
+                            width: panel.width,
+                            height: panel.height + DASH_TAB_STRIP_H,
+                        },
+                    )
+                };
                 layers.push(chrome);
                 // face 卡叠合（viewport 绝对格位；占位卡 = 宿主合成面）。
                 for (f, rect) in faces_view.iter().zip(cells.iter()) {
@@ -22794,18 +24464,17 @@ fn compare_pngs(
                             event: format!("__dashboard_launch:{}", f.id),
                             input_value: None,
                         };
-                        let hint: iced::Element<'_, IcedMessage> =
-                            iced::widget::mouse_area(
-                                iced::widget::column![
-                                    iced::widget::text("▸").size(22),
-                                    iced::widget::text(f.title.clone()).size(12),
-                                    iced::widget::text("未运行 — 点击启动").size(11),
-                                ]
-                                .align_x(iced::alignment::Horizontal::Center)
-                                .spacing(4),
-                            )
-                            .on_press(launch_msg)
-                            .into();
+                        let hint: iced::Element<'_, IcedMessage> = iced::widget::mouse_area(
+                            iced::widget::column![
+                                iced::widget::text("▸").size(22),
+                                iced::widget::text(f.title.clone()).size(12),
+                                iced::widget::text("未运行 — 点击启动").size(11),
+                            ]
+                            .align_x(iced::alignment::Horizontal::Center)
+                            .spacing(4),
+                        )
+                        .on_press(launch_msg)
+                        .into();
                         let placeholder_client = hint.map(move |m| DM::App(msg_target, m));
                         let card = iced::widget::container(placeholder_client)
                             .width(iced::Length::Fixed(rect.width))
@@ -22831,27 +24500,29 @@ fn compare_pngs(
                     }) else {
                         continue;
                     };
-                    let build_face =
-                        || state.split_ref_face(app_id, "mini").map(|v| dynamic_view(v, false));
-                    let face_el: iced::Element<'_, IcedMessage> = match
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(build_face))
-                    {
-                        Ok(Some(el)) => el,
-                        Ok(None) => iced::widget::text("").size(1).into(),
-                        Err(payload) => {
-                            eprintln!(
+                    let build_face = || {
+                        state
+                            .split_ref_face(app_id, "mini")
+                            .map(|v| dynamic_view(v, false))
+                    };
+                    let face_el: iced::Element<'_, IcedMessage> =
+                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(build_face)) {
+                            Ok(Some(el)) => el,
+                            Ok(None) => iced::widget::text("").size(1).into(),
+                            Err(payload) => {
+                                eprintln!(
                                 "[session] face view panicked (plan-453 T6 boundary): {payload:?}"
                             );
-                            desktop_crash_element()
-                        }
-                    };
+                                desktop_crash_element()
+                            }
+                        };
                     let face_client = face_el.map(move |m| DM::App(app_id, m));
                     // R20：卡体点击 → 打开对应 app（内层按钮/交互优先命中，
                     // 空白区落到本 mouse_area——N6d 内外层同款机制）。
                     // R21：双击打开（桌面图标同款交互；单击留给卡片内部
                     // 交互/无动作）。
-                    let face_wrapped = iced::widget::mouse_area(face_client)
-                        .on_double_click(DM::App(
+                    let face_wrapped =
+                        iced::widget::mouse_area(face_client).on_double_click(DM::App(
                             app_id,
                             IcedMessage {
                                 widget: String::new(),
@@ -22884,10 +24555,10 @@ fn compare_pngs(
             // （与虚拟窗同一绘制序；假洞视觉边界注：虚拟窗层恒在原生窗
             // 之下，插序改变的是 chrome 框序，真洞模式语义自然正确）。
             for &wid in &host.wm.z_order {
-                if let Some(slot_id) =
-                    crate::ui::session::WmState::native_slot_id_of_pseudo(wid)
-                {
-                    let Some(slot) = host.wm.native_slots.get(&slot_id) else { continue };
+                if let Some(slot_id) = crate::ui::session::WmState::native_slot_id_of_pseudo(wid) {
+                    let Some(slot) = host.wm.native_slots.get(&slot_id) else {
+                        continue;
+                    };
                     let Some(local) = host.wm.native_slot_local_rects.get(&slot_id) else {
                         continue;
                     };
@@ -22913,7 +24584,9 @@ fn compare_pngs(
                     ));
                     continue;
                 }
-                let Some(vwin) = host.wm.wins.get(&wid) else { continue };
+                let Some(vwin) = host.wm.wins.get(&wid) else {
+                    continue;
+                };
                 // Plan 472 T2：只绘制当前分区（换分区=窗口随分区隐现）。
                 if vwin.workspace != host.wm.current_workspace {
                     // PLAN-041 T-04 诊断（AUTO_DEBUG_KEYS 门控）：实证跨分区
@@ -22978,18 +24651,19 @@ fn compare_pngs(
                     };
                     Some(dynamic_view_vwin(view, is_primary))
                 };
-                let client: iced::Element<'_, IcedMessage> = match
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
-                {
-                    Ok(Some(el)) => el,
-                    Ok(None) => iced::widget::text("[AutoUI 会话] 缺少 App 会话").size(14).into(),
-                    Err(payload) => {
-                        eprintln!(
+                let client: iced::Element<'_, IcedMessage> =
+                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(build)) {
+                        Ok(Some(el)) => el,
+                        Ok(None) => iced::widget::text("[AutoUI 会话] 缺少 App 会话")
+                            .size(14)
+                            .into(),
+                        Err(payload) => {
+                            eprintln!(
                             "[session] app view panicked (plan-453 T6 view boundary): {payload:?}"
                         );
-                        desktop_crash_element()
-                    }
-                };
+                            desktop_crash_element()
+                        }
+                    };
                 let client = client.map(move |m| DM::App(app_id, m));
                 let focused = host.wm.focused == Some(wid);
                 let title_menu_pos = host
@@ -23052,18 +24726,20 @@ fn compare_pngs(
                 // 记）——MCP 快照同步（autoui_state/autoui_vtree/bounds）随
                 // shell 层开启；旧序 primary=首个直挂窗，shell 面不可观测。
                 let shell_sync = state.primary_app() == Some(shell_app);
-                let build =
-                    || state.split_ref_shell().map(|v| dynamic_view(v, shell_sync));
-                let shell_client: iced::Element<'_, IcedMessage> = match
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
-                {
-                    Ok(Some(el)) => el,
-                    Ok(None) => iced::widget::text("[AutoUI 会话] shell 缺失").size(14).into(),
-                    Err(payload) => {
-                        eprintln!("[session] shell view panicked (plan-453 T6 boundary): {payload:?}");
-                        desktop_crash_element()
-                    }
-                };
+                let build = || state.split_ref_shell().map(|v| dynamic_view(v, shell_sync));
+                let shell_client: iced::Element<'_, IcedMessage> =
+                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(build)) {
+                        Ok(Some(el)) => el,
+                        Ok(None) => iced::widget::text("[AutoUI 会话] shell 缺失")
+                            .size(14)
+                            .into(),
+                        Err(payload) => {
+                            eprintln!(
+                                "[session] shell view panicked (plan-453 T6 boundary): {payload:?}"
+                            );
+                            desktop_crash_element()
+                        }
+                    };
                 layers.push(shell_client.map(move |m| DM::App(shell_app, m)));
             }
             // Plan 464 T4：launcher overlay 层（Stack 顶层；隐藏态渲染透明
@@ -23073,7 +24749,9 @@ fn compare_pngs(
             /// 渲透明空层）。
             if state.desktop.launcher_pipe.is_some() && state.launcher_visible() {
                 if let Some(lwid) = state.desktop.launcher_wid {
-                    if let Some(el) = shell_surface_element_pipe(state, state.desktop.launcher_pipe.clone(), lwid) {
+                    if let Some(el) =
+                        shell_surface_element_pipe(state, state.desktop.launcher_pipe.clone(), lwid)
+                    {
                         let full = iced::widget::container(el)
                             .width(iced::Length::Fill)
                             .height(iced::Length::Fill);
@@ -23083,13 +24761,17 @@ fn compare_pngs(
             } else if state.desktop.launcher_app.is_some() {
                 let launcher_app = state.desktop.launcher_app.expect("launcher checked");
                 let build = || state.split_ref_launcher().map(|v| dynamic_view(v, false));
-                let launcher_client: iced::Element<'_, IcedMessage> = match
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
-                {
+                let launcher_client: iced::Element<'_, IcedMessage> = match std::panic::catch_unwind(
+                    std::panic::AssertUnwindSafe(build),
+                ) {
                     Ok(Some(el)) => el,
-                    Ok(None) => iced::widget::text("[AutoUI 会话] launcher 缺失").size(14).into(),
+                    Ok(None) => iced::widget::text("[AutoUI 会话] launcher 缺失")
+                        .size(14)
+                        .into(),
                     Err(payload) => {
-                        eprintln!("[session] launcher view panicked (plan-453 T6 boundary): {payload:?}");
+                        eprintln!(
+                            "[session] launcher view panicked (plan-453 T6 boundary): {payload:?}"
+                        );
                         desktop_crash_element()
                     }
                 };
@@ -23111,19 +24793,20 @@ fn compare_pngs(
                     }
                     // in-proc 分支不落（overlay App 不在场）。
                 } else {
-                let switcher_app = state.desktop.switcher_app.expect("switcher checked");
-                let build = || state.split_ref_switcher().map(|v| dynamic_view(v, false));
-                let switcher_client: iced::Element<'_, IcedMessage> = match
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
-                {
-                    Ok(Some(el)) => el,
-                    Ok(None) => iced::widget::text("[AutoUI 会话] switcher 缺失").size(14).into(),
-                    Err(payload) => {
-                        eprintln!("[session] switcher view panicked (plan-453 T6 boundary): {payload:?}");
-                        desktop_crash_element()
-                    }
-                };
-                layers.push(switcher_client.map(move |m| DM::App(switcher_app, m)));
+                    let switcher_app = state.desktop.switcher_app.expect("switcher checked");
+                    let build = || state.split_ref_switcher().map(|v| dynamic_view(v, false));
+                    let switcher_client: iced::Element<'_, IcedMessage> =
+                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(build)) {
+                            Ok(Some(el)) => el,
+                            Ok(None) => iced::widget::text("[AutoUI 会话] switcher 缺失")
+                                .size(14)
+                                .into(),
+                            Err(payload) => {
+                                eprintln!("[session] switcher view panicked (plan-453 T6 boundary): {payload:?}");
+                                desktop_crash_element()
+                            }
+                        };
+                    layers.push(switcher_client.map(move |m| DM::App(switcher_app, m)));
                 }
             }
             // Plan 479 T3：通知中心 overlay 层（switcher 层邻位顶层；仅
@@ -23146,19 +24829,24 @@ fn compare_pngs(
                         layers.push(full.into());
                     }
                 } else {
-                let panel_app = state.desktop.notification_app.expect("panel checked");
-                let build = || state.split_ref_notification().map(|v| dynamic_view(v, false));
-                let panel_client: iced::Element<'_, IcedMessage> = match
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
-                {
-                    Ok(Some(el)) => el,
-                    Ok(None) => iced::widget::text("[AutoUI 会话] 通知面板缺失").size(14).into(),
-                    Err(payload) => {
-                        eprintln!("[session] notification view panicked (plan-453 T6 boundary): {payload:?}");
-                        desktop_crash_element()
-                    }
-                };
-                layers.push(panel_client.map(move |m| DM::App(panel_app, m)));
+                    let panel_app = state.desktop.notification_app.expect("panel checked");
+                    let build = || {
+                        state
+                            .split_ref_notification()
+                            .map(|v| dynamic_view(v, false))
+                    };
+                    let panel_client: iced::Element<'_, IcedMessage> =
+                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(build)) {
+                            Ok(Some(el)) => el,
+                            Ok(None) => iced::widget::text("[AutoUI 会话] 通知面板缺失")
+                                .size(14)
+                                .into(),
+                            Err(payload) => {
+                                eprintln!("[session] notification view panicked (plan-453 T6 boundary): {payload:?}");
+                                desktop_crash_element()
+                            }
+                        };
+                    layers.push(panel_client.map(move |m| DM::App(panel_app, m)));
                 }
             }
             return crate::ui::iced::virtual_window::desktop_root(layers);
@@ -23173,7 +24861,9 @@ fn compare_pngs(
             .into();
         };
         let Some(view) = state.split_ref_at(app_id, window) else {
-            return iced::widget::text("[AutoUI 会话] 缺少 App 会话").size(14).into();
+            return iced::widget::text("[AutoUI 会话] 缺少 App 会话")
+                .size(14)
+                .into();
         };
         // Plan 459 T5 view 探针：被注入 panic 的 App 其后每帧在 view 边界
         // panic → 持续显示崩溃页（另一窗口不受影响）。
@@ -23191,9 +24881,7 @@ fn compare_pngs(
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(build)) {
             Ok(el) => el.map(move |m| crate::ui::session::DesktopMessage::App(app_id, m)),
             Err(payload) => {
-                eprintln!(
-                    "[session] app view panicked (plan-453 T6 view boundary): {payload:?}"
-                );
+                eprintln!("[session] app view panicked (plan-453 T6 view boundary): {payload:?}");
                 iced::widget::container(
                     iced::widget::text("[AutoUI 会话] 视图构建异常（plan-453 边界兜底）").size(14),
                 )
@@ -23221,28 +24909,26 @@ fn compare_pngs(
         .into()
     }
 
-    let title_fn = move |state: &crate::ui::session::DesktopSession,
-                         window: iced::window::Id|
-           -> String {
-        // 459：per-window 标题 = 归属 App 的 widget 名；未登记窗口退回壳名。
-        let name = state
-            .app_of_window(&window)
-            .and_then(|id| state.apps.get(&id))
-            .map(|a| a.component.widget_name().to_string())
-            .unwrap_or_else(|| widget_name.clone());
-        window_title(format!("Auto - {}", name))
-    };
+    let title_fn =
+        move |state: &crate::ui::session::DesktopSession, window: iced::window::Id| -> String {
+            // 459：per-window 标题 = 归属 App 的 widget 名；未登记窗口退回壳名。
+            let name = state
+                .app_of_window(&window)
+                .and_then(|id| state.apps.get(&id))
+                .map(|a| a.component.widget_name().to_string())
+                .unwrap_or_else(|| widget_name.clone());
+            window_title(format!("Auto - {}", name))
+        };
 
     // Plan 047:深色主题(对齐 ash-gui vue dark mode)。
     // Plan 448 对齐批:内置 Theme::Dark 的窗口底色是 #2B2D31,与 vue 产物
     // shadcn --background(hsl 222.2 47.4% 7% = #090E1A)不一致 —— 换成
     // shadcn 令牌基的自定义调色板,明暗随 iced_adapter 的 dark_mode 走
     //(默认暗色,与既有 DARK_MODE 初值一致)。
-    let theme_fn = move |_state: &crate::ui::session::DesktopSession,
-                         _window: iced::window::Id|
-           -> iced::Theme {
-        shadcn_theme(crate::ui::style::iced_adapter::dark_mode())
-    };
+    let theme_fn =
+        move |_state: &crate::ui::session::DesktopSession,
+              _window: iced::window::Id|
+              -> iced::Theme { shadcn_theme(crate::ui::style::iced_adapter::dark_mode()) };
 
     iced::daemon(boot, update, view_desktop_fn)
         .title(title_fn)
@@ -23266,8 +24952,7 @@ fn compare_pngs(
                 // PLAN-650 E-3：hot_reload 降频/门控——AUTOUI_HOT_RELOAD=0 全关；
                 // =1 强制 500ms；缺省 debug 500ms / 非 debug 2000ms（静止泵 ÷4）。
                 if app.component.source_path().is_some() {
-                    if let Some(interval_ms) =
-                        hot_reload_interval_ms(app.state.devtools.debug_mode)
+                    if let Some(interval_ms) = hot_reload_interval_ms(app.state.devtools.debug_mode)
                     {
                         subs.push(app_tick(app_id, HOT_RELOAD_EVENT, interval_ms));
                     }
@@ -23417,9 +25102,7 @@ fn compare_pngs(
             // Plan 464 T4：launcher overlay 的键盘订阅（可见时独占；
             // 无 OS 窗——挂宿主窗，focused=true 门控在闭包内过滤）。
             if state.is_desktop() && state.launcher_visible() {
-                if let (Some(la), Some(host)) =
-                    (state.desktop.launcher_app, state.host.as_ref())
-                {
+                if let (Some(la), Some(host)) = (state.desktop.launcher_app, state.host.as_ref()) {
                     if let Some(app) = state.apps.get(&la) {
                         let bindings = app.component.key_bindings().clone();
                         subs.push(keyboard_subscription_ext(
@@ -23436,9 +25119,7 @@ fn compare_pngs(
             // Plan 478 T4：switcher overlay 的键盘订阅（launcher 块同型；
             // escape_forward 统一传——Esc 被 Captured 时宿主转发同一事件）。
             if state.is_desktop() && state.switcher_visible() {
-                if let (Some(sw), Some(host)) =
-                    (state.desktop.switcher_app, state.host.as_ref())
-                {
+                if let (Some(sw), Some(host)) = (state.desktop.switcher_app, state.host.as_ref()) {
                     if let Some(app) = state.apps.get(&sw) {
                         let bindings = app.component.key_bindings().clone();
                         subs.push(keyboard_subscription_ext(
@@ -23487,8 +25168,7 @@ fn compare_pngs(
                 // view 重建后打（dispatch_app），订阅在下轮 diff 即拉起；
                 // 测量回执消费脏标后订阅自动回落（稳态零成本）。MCP 开关
                 // 不管控此路（fit 是窗口语义而非验收通道）。
-                let fit_remeasure_tick =
-                    !state.is_desktop() && state.has_fit_remeasure_pending();
+                let fit_remeasure_tick = !state.is_desktop() && state.has_fit_remeasure_pending();
                 if fit_remeasure_tick
                     || (state.is_desktop()
                         && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1"))
@@ -23530,13 +25210,13 @@ fn compare_pngs(
                 // 周期性 view 重建在大 Code 块下会触发静默退出(实测 ~10s 内进程
                 // 消失;关掉心跳后 30s+ 存活),普通运行(无 agent 连接)不应
                 // 付出该代价。AUTOUI_MCP_DISABLE=1 可彻底关闭(诊断用)。
-                let mcp_recent = state.desktop.mcp_shared
+                let mcp_recent = state
+                    .desktop
+                    .mcp_shared
                     .as_ref()
                     .map(|s| s.lock().unwrap().mcp_active_recently(30))
                     .unwrap_or(false);
-                if mcp_recent
-                    && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1")
-                {
+                if mcp_recent && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1") {
                     subs.push(mcp_heartbeat_subscription(primary));
                 }
             }
@@ -23561,40 +25241,46 @@ fn compare_pngs(
                     // —— Windows 实测壳层先行代关（本臂未见触发），但其他
                     // 平台的 CloseRequested 会浮出到应用，此臂保证跨平台
                     // 关窗语义完整。
-                    Some(DM::Window(window_id, IcedMessage {
-                        widget: String::new(),
-                        event: "__window_close_request".to_string(),
-                        input_value: None,
-                    }))
+                    Some(DM::Window(
+                        window_id,
+                        IcedMessage {
+                            widget: String::new(),
+                            event: "__window_close_request".to_string(),
+                            input_value: None,
+                        },
+                    ))
                 }
-                iced::Event::Window(iced::window::Event::Resized(size)) => {
-                    Some(DM::Window(window_id, IcedMessage {
+                iced::Event::Window(iced::window::Event::Resized(size)) => Some(DM::Window(
+                    window_id,
+                    IcedMessage {
                         widget: String::new(),
                         event: "__window_resized".to_string(),
                         input_value: Some(format!("{}x{}", size.width, size.height)),
-                    }))
-                }
+                    },
+                )),
                 iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => {
-                    Some(DM::Window(window_id, IcedMessage {
-                        widget: String::new(),
-                        event: "__mouse_moved".to_string(),
-                        input_value: Some(format!("{},{}", position.x, position.y)),
-                    }))
+                    Some(DM::Window(
+                        window_id,
+                        IcedMessage {
+                            widget: String::new(),
+                            event: "__mouse_moved".to_string(),
+                            input_value: Some(format!("{},{}", position.x, position.y)),
+                        },
+                    ))
                 }
-                iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => {
-                    Some(DM::Window(window_id, IcedMessage {
+                iced::Event::Mouse(iced::mouse::Event::ButtonReleased(_)) => Some(DM::Window(
+                    window_id,
+                    IcedMessage {
                         widget: String::new(),
                         event: "__mouse_released".to_string(),
                         input_value: None,
-                    }))
-                }
+                    },
+                )),
                 // Plan 462：全局左键按下 → WM 命中测试/聚焦置顶（R12 桌面层
                 // 路由的事件半边；独立模式 update 臂配置位门控忽略）。
                 iced::Event::Mouse(iced::mouse::Event::ButtonPressed(
                     iced::mouse::Button::Left,
-                )) => {
-                    Some(DM::Wm(crate::ui::session::WmCommand::GlobalPress))
-                }
+                )) => Some(DM::Wm(crate::ui::session::WmCommand::GlobalPress)),
                 // Plan 309 续篇 II: track keyboard modifiers so the inspect
                 // picker can switch plain-click (inspect) ↔ Alt-click (native).
                 // The subscription callback can't touch session state (other
@@ -23609,14 +25295,19 @@ fn compare_pngs(
                 // menu), so the per-key-event fallback is what actually catches
                 // Alt-hold during an Alt+click.
                 iced::Event::Keyboard(iced::keyboard::Event::ModifiersChanged(m))
-                | iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { modifiers: m, .. })
-                | iced::Event::Keyboard(iced::keyboard::Event::KeyReleased { modifiers: m, .. }) => {
-                    Some(DM::Window(window_id, IcedMessage {
+                | iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    modifiers: m, ..
+                })
+                | iced::Event::Keyboard(iced::keyboard::Event::KeyReleased {
+                    modifiers: m, ..
+                }) => Some(DM::Window(
+                    window_id,
+                    IcedMessage {
                         widget: String::new(),
                         event: "__modifiers_changed".to_string(),
                         input_value: Some(m.bits().to_string()),
-                    }))
-                }
+                    },
+                )),
                 _ => None,
             }));
             iced::Subscription::batch(vec![
@@ -23659,9 +25350,7 @@ fn dynamic_view_vwin(
 /// 根节点自带不透明底色时其方角会探出圆角窗框。根 style 已含任何
 /// radius 类（全角/方向性）= 应用作者显式声明，不干预；根无 style
 /// （透明）不探出，不处理。非容器根（text/scrollable 等）同样跳过。
-fn round_bottom_root_default<M: Clone + std::fmt::Debug>(
-    view: &mut crate::ui::view::View<M>,
-) {
+fn round_bottom_root_default<M: Clone + std::fmt::Debug>(view: &mut crate::ui::view::View<M>) {
     use crate::ui::style::{RoundedSize, StyleClass};
     let style = match view {
         crate::ui::view::View::Column { style, .. }
@@ -23719,11 +25408,9 @@ fn dynamic_view_impl(
                 let converted = convert_view_messages(view);
                 render_dynamic_view(converted, None, &mut path)
             }
-            None => iced::widget::text(format!(
-                "[dashboard] face `{face_name}` missing"
-            ))
-            .size(14)
-            .into(),
+            None => iced::widget::text(format!("[dashboard] face `{face_name}` missing"))
+                .size(14)
+                .into(),
         };
     }
 
@@ -23732,7 +25419,8 @@ fn dynamic_view_impl(
     // inspect over all widgets; Alt held = native. T4c 裁定 M1：修饰键直读
     // desktop.current_modifiers（唯一源，update 臂经消息载荷写回）。
     let alt_held = state.desktop.current_modifiers.borrow().alt();
-    let capture = state.app.devtools.debug_mode && *state.app.devtools.inspect_mode.borrow() && !alt_held;
+    let capture =
+        state.app.devtools.debug_mode && *state.app.devtools.inspect_mode.borrow() && !alt_held;
     INSPECT_CAPTURE.with(|c| c.set(capture));
 
     // PLAN-530 步骤4 泄漏定位门控：P530_NOMCP=1 时整段跳过 per-frame MCP
@@ -23747,82 +25435,80 @@ fn dynamic_view_impl(
     // 活跃（Plan 314 心跳纪律）+ 自身视图真脏。
     if !sync_mcp && !p530_nomcp {
         if let Some(ref mcp_handle) = state.desktop.mcp_shared {
-                let mcp_active = mcp_handle.lock().unwrap().mcp_active_recently(5);
-                if mcp_active && *state.app.view_dirty.borrow() {
-                    // 键身份：源路径上溯（跳过 front/src/pages 段）取 app 目录
-                    // 名——根 widget 名全 app 撞名（"App"），app 目录名才是
-                    // 稳定唯一面（registry id 同源目录名）。
-                    let app_label = {
-                        let from_source = state.component.source_path().and_then(|p| {
-                            let mut cur: &std::path::Path = p.as_ref();
-                            loop {
-                                let parent = cur.parent()?;
-                                let name = parent
-                                    .file_name()
-                                    .map(|s| s.to_string_lossy().to_string())
-                                    .unwrap_or_default();
-                                if name.is_empty()
-                                    || name == "front"
-                                    || name == "src"
-                                    || name == "pages"
-                                {
-                                    cur = parent;
-                                } else {
-                                    return Some(name);
-                                }
+            let mcp_active = mcp_handle.lock().unwrap().mcp_active_recently(5);
+            if mcp_active && *state.app.view_dirty.borrow() {
+                // 键身份：源路径上溯（跳过 front/src/pages 段）取 app 目录
+                // 名——根 widget 名全 app 撞名（"App"），app 目录名才是
+                // 稳定唯一面（registry id 同源目录名）。
+                let app_label = {
+                    let from_source = state.component.source_path().and_then(|p| {
+                        let mut cur: &std::path::Path = p.as_ref();
+                        loop {
+                            let parent = cur.parent()?;
+                            let name = parent
+                                .file_name()
+                                .map(|s| s.to_string_lossy().to_string())
+                                .unwrap_or_default();
+                            if name.is_empty()
+                                || name == "front"
+                                || name == "src"
+                                || name == "pages"
+                            {
+                                cur = parent;
+                            } else {
+                                return Some(name);
                             }
-                        });
-                        from_source.unwrap_or_else(|| state.component.widget_name().to_string())
-                    };
-                    let state_vals = state.component.read_all_state_materialized();
-                    let mut pairs: Vec<(&String, &auto_val::Value)> = state_vals.iter().collect();
-                    pairs.sort_by(|a, b| a.0.cmp(b.0));
-                    let mut state_text = String::new();
-                    for (k, v) in pairs {
+                        }
+                    });
+                    from_source.unwrap_or_else(|| state.component.widget_name().to_string())
+                };
+                let state_vals = state.component.read_all_state_materialized();
+                let mut pairs: Vec<(&String, &auto_val::Value)> = state_vals.iter().collect();
+                pairs.sort_by(|a, b| a.0.cmp(b.0));
+                let mut state_text = String::new();
+                for (k, v) in pairs {
+                    state_text.push_str(&format!("  {} = {}\n", k, v));
+                }
+                // PLAN-721 T-4：子命名空间段——child_state_map 逐实例自有
+                // 字段面（T-19 作用域分裂定案：写入是否落错对象）。
+                for (cname, cfields) in state.component.bridge().read_all_child_states() {
+                    state_text.push_str(&format!("== child [{}] ==\n", cname));
+                    let mut cpairs: Vec<(&String, &auto_val::Value)> = cfields.iter().collect();
+                    cpairs.sort_by(|a, b| a.0.cmp(b.0));
+                    for (k, v) in cpairs {
                         state_text.push_str(&format!("  {} = {}\n", k, v));
                     }
-                    // PLAN-721 T-4：子命名空间段——child_state_map 逐实例自有
-                    // 字段面（T-19 作用域分裂定案：写入是否落错对象）。
-                    for (cname, cfields) in state.component.bridge().read_all_child_states() {
-                        state_text.push_str(&format!("== child [{}] ==\n", cname));
-                        let mut cpairs: Vec<(&String, &auto_val::Value)> =
-                            cfields.iter().collect();
-                        cpairs.sort_by(|a, b| a.0.cmp(b.0));
-                        for (k, v) in cpairs {
-                            state_text.push_str(&format!("  {} = {}\n", k, v));
-                        }
-                    }
-                    // PLAN-721 T-4：root 字段可达实例对象段（store Obj 全字段
-                    // ——VM 内方法调用 world vs root 扁平镜像分裂对质）。
-                    for (fname, fid, ffields) in state.component.bridge().read_root_field_objects()
-                    {
-                        state_text.push_str(&format!("== obj {}@{} ==\n", fname, fid));
-                        let mut fpairs: Vec<(&String, &auto_val::Value)> =
-                            ffields.iter().collect();
-                        fpairs.sort_by(|a, b| a.0.cmp(b.0));
-                        for (k, v) in fpairs {
-                            state_text.push_str(&format!("  {} = {}\n", k, v));
-                        }
-                    }
-                    let ws_now = *state.window_size.borrow();
-                    let mut builder =
-                        crate::ui::aura_snapshot_builder::AuraSnapshotBuilder::new(&state_vals)
-                            .with_status(false);
-                    if ws_now.width > 0.0 && ws_now.height > 0.0 {
-                        builder = builder.with_viewport(ws_now.width, ws_now.height);
-                    }
-                    let template_text = builder
-                        .build(state.component.widget_name(), state.component.view_template());
-                    let key = format!("{}:{}", state.app_id.0, app_label);
-                    let surface = crate::ui::mcp_server::AppSurface {
-                        widget_name: app_label,
-                        state_text,
-                        template_text,
-                        updated_ms: crate::ui::dynamic::sched_diag_t0().elapsed().as_millis()
-                            as u64,
-                    };
-                    mcp_handle.lock().unwrap().set_app_surface(key, surface);
                 }
+                // PLAN-721 T-4：root 字段可达实例对象段（store Obj 全字段
+                // ——VM 内方法调用 world vs root 扁平镜像分裂对质）。
+                for (fname, fid, ffields) in state.component.bridge().read_root_field_objects() {
+                    state_text.push_str(&format!("== obj {}@{} ==\n", fname, fid));
+                    let mut fpairs: Vec<(&String, &auto_val::Value)> = ffields.iter().collect();
+                    fpairs.sort_by(|a, b| a.0.cmp(b.0));
+                    for (k, v) in fpairs {
+                        state_text.push_str(&format!("  {} = {}\n", k, v));
+                    }
+                }
+                let ws_now = *state.window_size.borrow();
+                let mut builder =
+                    crate::ui::aura_snapshot_builder::AuraSnapshotBuilder::new(&state_vals)
+                        .with_status(false);
+                if ws_now.width > 0.0 && ws_now.height > 0.0 {
+                    builder = builder.with_viewport(ws_now.width, ws_now.height);
+                }
+                let template_text = builder.build(
+                    state.component.widget_name(),
+                    state.component.view_template(),
+                );
+                let key = format!("{}:{}", state.app_id.0, app_label);
+                let surface = crate::ui::mcp_server::AppSurface {
+                    widget_name: app_label,
+                    state_text,
+                    template_text,
+                    updated_ms: crate::ui::dynamic::sched_diag_t0().elapsed().as_millis() as u64,
+                };
+                mcp_handle.lock().unwrap().set_app_surface(key, surface);
+            }
         }
     }
 
@@ -23885,13 +25571,11 @@ fn dynamic_view_impl(
                 .map(|m| m.lock().unwrap().mcp_active_recently(30))
                 .unwrap_or(false));
     let capture_debug = state.app.devtools.debug_mode || mcp_wants_live;
-    let mut frame_build: Option<
-        (
-            crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
-            crate::ui::debug_id_map::DebugIdMap,
-            crate::ui::debug::BuildProbe,
-        ),
-    > = None;
+    let mut frame_build: Option<(
+        crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+        crate::ui::debug_id_map::DebugIdMap,
+        crate::ui::debug::BuildProbe,
+    )> = None;
     if dirty {
         let p725_t_build = std::time::Instant::now();
         // Plan 307 Task 18: gate the probe by debug_mode. When F12 is off the
@@ -23917,151 +25601,160 @@ fn dynamic_view_impl(
     // Must run in view() — not update() — because iced may not fire any events
     // initially, meaning update() might never run before an MCP client connects.
     if sync_mcp && !p530_nomcp {
-    if let Some(ref mcp_handle) = state.desktop.mcp_shared {
-        let mut mcp = mcp_handle.lock().unwrap();
-        // PLAN-062 Phase2 T11：MCP 同步块此前**每帧**全量模板重建
-        // （view_with_debug_gated + vtree 快照 + read_all_state）——三个
-        // 500ms 消息泵（__hot_reload/PollStream/__bounds_collected）每条
-        // 消息都过 view()，实机 ~6 重建/s 定罪（AUTO_DEBUG_KEYS 计数 ×
-        // 每重建 446-U7 WARN 3.4 条 = 实测 855/45s 吻合），叠加 retain
-        // 泄漏即空闲斜率主驱动。快照语义只需与视图同步：仅当视图真变
-        // （view_dirty——boot 首帧恒 true）、窗口尺寸变化、或尚未同步过
-        // 时才重建；静止视图零重建，快照仍然准确（视图未变）。update
-        // 间隙的异步脏写经 hot_reload 500ms 泵桥接（12095），MCP 快照
-        // 至多 500ms 陈旧——与既有异步语义一致。
-        let ws_now = *state.window_size.borrow();
-        let gate_dirty = *state.app.view_dirty.borrow();
-        let gate_ws = ws_now.width > 0.0
-            && *state.app.mcp_synced_ws.borrow() != (ws_now.width, ws_now.height);
-        if !gate_dirty && !gate_ws && mcp.has_view() {
-            drop(mcp);
-        } else {
-        // PLAN-725 T-00：S3a 打点起点（MCP 同步块第一遍全量建——块体）。
-        let p725_t_s3a = std::time::Instant::now();
-        if !mcp.has_view() {
-            eprintln!("AutoUI MCP: first state sync in view()");
+        if let Some(ref mcp_handle) = state.desktop.mcp_shared {
+            let mut mcp = mcp_handle.lock().unwrap();
+            // PLAN-062 Phase2 T11：MCP 同步块此前**每帧**全量模板重建
+            // （view_with_debug_gated + vtree 快照 + read_all_state）——三个
+            // 500ms 消息泵（__hot_reload/PollStream/__bounds_collected）每条
+            // 消息都过 view()，实机 ~6 重建/s 定罪（AUTO_DEBUG_KEYS 计数 ×
+            // 每重建 446-U7 WARN 3.4 条 = 实测 855/45s 吻合），叠加 retain
+            // 泄漏即空闲斜率主驱动。快照语义只需与视图同步：仅当视图真变
+            // （view_dirty——boot 首帧恒 true）、窗口尺寸变化、或尚未同步过
+            // 时才重建；静止视图零重建，快照仍然准确（视图未变）。update
+            // 间隙的异步脏写经 hot_reload 500ms 泵桥接（12095），MCP 快照
+            // 至多 500ms 陈旧——与既有异步语义一致。
+            let ws_now = *state.window_size.borrow();
+            let gate_dirty = *state.app.view_dirty.borrow();
+            let gate_ws = ws_now.width > 0.0
+                && *state.app.mcp_synced_ws.borrow() != (ws_now.width, ws_now.height);
+            if !gate_dirty && !gate_ws && mcp.has_view() {
+                drop(mcp);
+            } else {
+                // PLAN-725 T-00：S3a 打点起点（MCP 同步块第一遍全量建——块体）。
+                let p725_t_s3a = std::time::Instant::now();
+                if !mcp.has_view() {
+                    eprintln!("AutoUI MCP: first state sync in view()");
+                }
+                // Plan 370 D-GAP-4: materialize VmRef list fields (e.g. store.notes) to
+                // inline Value::Array so the MCP snapshot/inspect tools can expand
+                // `for` loops and evaluate `.len()` without VM heap access.
+                // PLAN-633: 状态采集移到本帧视图构建**之后**——挂载期子件 Init
+                // （画廊内嵌全栈 demo：Demo*.Init → store → #[api] → db 种子）在
+                // view 构建中派发并写根态，先采后建会把 Init 写入漏在本帧快照外，
+                // 且 view_dirty 门控使其后无再同步帧 → MCP 快照永久滞留挂载前空值
+                // （013 todos=[] 实证；白盒直读同刻为 4 条）。
+                // PLAN-682 F1a：同步块自带属性面。此前探针被丢弃（_probe）且
+                // computed 恒写空 map，styled_vtree 的属性面（style/onclick 行）
+                // 只能靠 __bounds_collected 回路的 from_live 覆盖——该回路仅脏帧
+                // 运行，纯 resize 等非脏帧冻结为空属性态 ⇒ 快照投影双态（jade
+                // D-18 / auto-edit F-RV6 家族，字节基线间歇漂移）。此处接住探针，
+                // 按与 live_cache 合并（Plan 309 Phase 2b / Plan 371 Task 8）同构
+                // 的 path→VNodeId 派生填充 raw_class/events；bounds 等测量字段仍
+                // 由 bounds 回路回填（ComputedNodeLite 全 Option，缺失即省略）。
+                // 代价：本块原本就在重建视图，门 false → true 只是把既有构建的
+                // 探针记录打开（record_* 为纯内存写入，无额外遍历）。
+                // PLAN-725 T-01：单帧单建——脏帧复用主重建产物（提升点已建，
+                // 此处零模板走查）；非脏同步帧（gate_ws/首同步）无提升产物，就地
+                // 自建维持原语义（probe=true）。复用形态：vtree 与 mcp.update 各
+                // 取一克隆，主重建段消费原件（AbstractView 克隆 O(widgets) ≪ 模板
+                // 重解释——T-00 实测 s3a 5.2ms vs 全建 3.3ms 的减量即此）。
+                let mut p725_sync_owned: Option<(
+                    crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+                    crate::ui::debug_id_map::DebugIdMap,
+                    crate::ui::debug::BuildProbe,
+                )> = None;
+                let (view, id_map, sync_probe): (
+                    &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+                    &crate::ui::debug_id_map::DebugIdMap,
+                    &crate::ui::debug::BuildProbe,
+                ) = match frame_build.as_ref() {
+                    Some((v, im, p)) => (v, im, p),
+                    None => {
+                        p725_sync_owned = Some(state.component.view_with_debug_gated(true));
+                        let (v, im, p) = p725_sync_owned.as_ref().expect("just set");
+                        (v, im, p)
+                    }
+                };
+                let mut computed: HashMap<
+                    crate::ui::vnode::VNodeId,
+                    crate::ui::mcp_server::ComputedNodeLite,
+                > = HashMap::new();
+                for (path_u16, entry) in sync_probe.snapshot() {
+                    let vid =
+                        crate::ui::vnode::VNodeId::new(crate::ui::vnode::id_from_path(path_u16));
+                    let node = computed.entry(vid).or_default();
+                    if entry.raw_class.is_some() {
+                        node.raw_class = entry.raw_class.clone();
+                    }
+                    if !entry.events.is_empty() {
+                        // ComputedNodeLite.events 是 (event, handler) 元组面——
+                        // 探针的 EventHandlerInfo 经 from_computed 同款映射转换。
+                        node.events = entry
+                            .events
+                            .iter()
+                            .map(|e| (e.event.clone(), e.handler.clone()))
+                            .collect();
+                    }
+                    // PLAN-088 T-02B: for 循环上下文随探针入快照（for_iter prop 的
+                    // 序列化臂 vtree_atom 既有；此前仅 raw_class/events 入站，实例
+                    // 标注到不了 MCP 消费面）。
+                    if let Some(f) = &entry.for_context {
+                        node.for_context = Some((f.var.clone(), f.index, f.value_repr.clone()));
+                    }
+                }
+                let state_vals = state.component.read_all_state_materialized();
+                let input_map = state.component.input_state_map().clone();
+                let view_template = Some(state.component.view_template().clone());
+                // Plan 446 批一(J1 诊断层根因修复): styled_vtree 此前仅在
+                // __bounds_collected 回路后设置,而 bounds 只在 view() 脏重建时请求
+                // ——boot 后无重建则 styled 永不落盘,快照首问必走源树回退(子 widget
+                // 裸引用/循环未展开 = os-config C1/J1 现场"空壳")。这里随每帧 MCP
+                // 同步直接推送 vtree 快照;bounds/计算样式注释仍由 6403 回路后补。
+                {
+                    let span_map = state.component.span_map().clone();
+                    let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
+                        view.clone(),
+                        |path: &[u16]| {
+                            let p: Vec<usize> = path.iter().map(|&x| x as usize).collect();
+                            id_map
+                                .get(&p)
+                                .and_then(|aura_id| span_map.get(&aura_id))
+                                .and_then(|info| info.span)
+                                .map(|(offset, len)| crate::ui::debug::SourceSpan { offset, len })
+                        },
+                    );
+                    mcp.set_styled_vtree(crate::ui::mcp_server::StyledNodeSnapshot {
+                        widget_name: state.component.widget_name().to_string(),
+                        vtree: vtree.clone(),
+                        computed,
+                    });
+                    // Plan 483 D4：缓存这份与 shared.view 同源的 vtree，供
+                    // `__bounds_collected` 回路覆盖 styled_vtree 时取用（见
+                    // AppState::mcp_sync_vtree 文档注释——禁止改用 live_vtree 源）。
+                    *state.app.mcp_sync_vtree.borrow_mut() = Some(vtree);
+                }
+                // PLAN-725 T-01：mcp.update 消费克隆（主重建段消费原件）。
+                mcp.update(
+                    view.clone(),
+                    id_map.clone(),
+                    state_vals,
+                    input_map,
+                    view_template,
+                    state.component.key_bindings().clone(),
+                );
+                // PLAN-646: 源码全文随帧发布——`autoui_select_rect` 信封切片用
+                //（ensure 幂等：装载过零开销；未装载过此处读盘一次）。
+                ensure_source_loaded(state);
+                if let Some(ref code) = *state.app.source_code.borrow() {
+                    mcp.set_source_code(code.clone());
+                }
+                // Sync window size for layout annotations (Plan 281)
+                let ws = state.window_size.borrow();
+                let iced::Size { width, height } = *ws;
+                if width > 0.0 && height > 0.0 {
+                    mcp.set_window_size(width, height);
+                    *state.app.mcp_synced_ws.borrow_mut() = (width, height);
+                }
+                // PLAN-725 T-00：S3a MCP 同步块计时发布（vtree 转换+read_all_state_
+                // materialized+mcp.update 整段；builds 仅在就地自建臂计——T-01 复用
+                // 臂的建已由 s3b 提升点计过）。
+                if p725_sync_owned.is_some() {
+                    crate::ui::frame_segments::note_s3a_mcp(p725_t_s3a.elapsed());
+                } else {
+                    crate::ui::frame_segments::note_s3a_mcp_nobuild(p725_t_s3a.elapsed());
+                }
+            } // PLAN-062 T11 gate_dirty/gate_ws 门控结束
         }
-        // Plan 370 D-GAP-4: materialize VmRef list fields (e.g. store.notes) to
-        // inline Value::Array so the MCP snapshot/inspect tools can expand
-        // `for` loops and evaluate `.len()` without VM heap access.
-        // PLAN-633: 状态采集移到本帧视图构建**之后**——挂载期子件 Init
-        // （画廊内嵌全栈 demo：Demo*.Init → store → #[api] → db 种子）在
-        // view 构建中派发并写根态，先采后建会把 Init 写入漏在本帧快照外，
-        // 且 view_dirty 门控使其后无再同步帧 → MCP 快照永久滞留挂载前空值
-        // （013 todos=[] 实证；白盒直读同刻为 4 条）。
-        // PLAN-682 F1a：同步块自带属性面。此前探针被丢弃（_probe）且
-        // computed 恒写空 map，styled_vtree 的属性面（style/onclick 行）
-        // 只能靠 __bounds_collected 回路的 from_live 覆盖——该回路仅脏帧
-        // 运行，纯 resize 等非脏帧冻结为空属性态 ⇒ 快照投影双态（jade
-        // D-18 / auto-edit F-RV6 家族，字节基线间歇漂移）。此处接住探针，
-        // 按与 live_cache 合并（Plan 309 Phase 2b / Plan 371 Task 8）同构
-        // 的 path→VNodeId 派生填充 raw_class/events；bounds 等测量字段仍
-        // 由 bounds 回路回填（ComputedNodeLite 全 Option，缺失即省略）。
-        // 代价：本块原本就在重建视图，门 false → true 只是把既有构建的
-        // 探针记录打开（record_* 为纯内存写入，无额外遍历）。
-        // PLAN-725 T-01：单帧单建——脏帧复用主重建产物（提升点已建，
-        // 此处零模板走查）；非脏同步帧（gate_ws/首同步）无提升产物，就地
-        // 自建维持原语义（probe=true）。复用形态：vtree 与 mcp.update 各
-        // 取一克隆，主重建段消费原件（AbstractView 克隆 O(widgets) ≪ 模板
-        // 重解释——T-00 实测 s3a 5.2ms vs 全建 3.3ms 的减量即此）。
-        let mut p725_sync_owned: Option<(
-            crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
-            crate::ui::debug_id_map::DebugIdMap,
-            crate::ui::debug::BuildProbe,
-        )> = None;
-        let (view, id_map, sync_probe): (
-            &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
-            &crate::ui::debug_id_map::DebugIdMap,
-            &crate::ui::debug::BuildProbe,
-        ) = match frame_build.as_ref() {
-            Some((v, im, p)) => (v, im, p),
-            None => {
-                p725_sync_owned = Some(state.component.view_with_debug_gated(true));
-                let (v, im, p) = p725_sync_owned.as_ref().expect("just set");
-                (v, im, p)
-            }
-        };
-        let mut computed: HashMap<crate::ui::vnode::VNodeId, crate::ui::mcp_server::ComputedNodeLite> =
-            HashMap::new();
-        for (path_u16, entry) in sync_probe.snapshot() {
-            let vid = crate::ui::vnode::VNodeId::new(crate::ui::vnode::id_from_path(path_u16));
-            let node = computed.entry(vid).or_default();
-            if entry.raw_class.is_some() {
-                node.raw_class = entry.raw_class.clone();
-            }
-            if !entry.events.is_empty() {
-                // ComputedNodeLite.events 是 (event, handler) 元组面——
-                // 探针的 EventHandlerInfo 经 from_computed 同款映射转换。
-                node.events = entry
-                    .events
-                    .iter()
-                    .map(|e| (e.event.clone(), e.handler.clone()))
-                    .collect();
-            }
-            // PLAN-088 T-02B: for 循环上下文随探针入快照（for_iter prop 的
-            // 序列化臂 vtree_atom 既有；此前仅 raw_class/events 入站，实例
-            // 标注到不了 MCP 消费面）。
-            if let Some(f) = &entry.for_context {
-                node.for_context =
-                    Some((f.var.clone(), f.index, f.value_repr.clone()));
-            }
-        }
-        let state_vals = state.component.read_all_state_materialized();
-        let input_map = state.component.input_state_map().clone();
-        let view_template = Some(state.component.view_template().clone());
-        // Plan 446 批一(J1 诊断层根因修复): styled_vtree 此前仅在
-        // __bounds_collected 回路后设置,而 bounds 只在 view() 脏重建时请求
-        // ——boot 后无重建则 styled 永不落盘,快照首问必走源树回退(子 widget
-        // 裸引用/循环未展开 = os-config C1/J1 现场"空壳")。这里随每帧 MCP
-        // 同步直接推送 vtree 快照;bounds/计算样式注释仍由 6403 回路后补。
-        {
-            let span_map = state.component.span_map().clone();
-            let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
-                view.clone(),
-                |path: &[u16]| {
-                    let p: Vec<usize> = path.iter().map(|&x| x as usize).collect();
-                    id_map
-                        .get(&p)
-                        .and_then(|aura_id| span_map.get(&aura_id))
-                        .and_then(|info| info.span)
-                        .map(|(offset, len)| crate::ui::debug::SourceSpan { offset, len })
-                },
-            );
-            mcp.set_styled_vtree(crate::ui::mcp_server::StyledNodeSnapshot {
-                widget_name: state.component.widget_name().to_string(),
-                vtree: vtree.clone(),
-                computed,
-            });
-            // Plan 483 D4：缓存这份与 shared.view 同源的 vtree，供
-            // `__bounds_collected` 回路覆盖 styled_vtree 时取用（见
-            // AppState::mcp_sync_vtree 文档注释——禁止改用 live_vtree 源）。
-            *state.app.mcp_sync_vtree.borrow_mut() = Some(vtree);
-        }
-        // PLAN-725 T-01：mcp.update 消费克隆（主重建段消费原件）。
-        mcp.update(view.clone(), id_map.clone(), state_vals, input_map, view_template, state.component.key_bindings().clone());
-        // PLAN-646: 源码全文随帧发布——`autoui_select_rect` 信封切片用
-        //（ensure 幂等：装载过零开销；未装载过此处读盘一次）。
-        ensure_source_loaded(state);
-        if let Some(ref code) = *state.app.source_code.borrow() {
-            mcp.set_source_code(code.clone());
-        }
-        // Sync window size for layout annotations (Plan 281)
-        let ws = state.window_size.borrow();
-        let iced::Size { width, height } = *ws;
-        if width > 0.0 && height > 0.0 {
-            mcp.set_window_size(width, height);
-            *state.app.mcp_synced_ws.borrow_mut() = (width, height);
-        }
-        // PLAN-725 T-00：S3a MCP 同步块计时发布（vtree 转换+read_all_state_
-        // materialized+mcp.update 整段；builds 仅在就地自建臂计——T-01 复用
-        // 臂的建已由 s3b 提升点计过）。
-        if p725_sync_owned.is_some() {
-            crate::ui::frame_segments::note_s3a_mcp(p725_t_s3a.elapsed());
-        } else {
-            crate::ui::frame_segments::note_s3a_mcp_nobuild(p725_t_s3a.elapsed());
-        }
-        } // PLAN-062 T11 gate_dirty/gate_ws 门控结束
-    }
     } // sync_mcp 门控（459：仅 primary App 视图执行 MCP 同步）
 
     // Plan 409 §10 续 11: 同步窗口宽度,供 VM builder 响应式布局(grid 列数)。
@@ -24075,11 +25768,16 @@ fn dynamic_view_impl(
     // (AUTO_VM_STORAGE_FILE 钉扎,runbook 惯例)。__window_resized 事件臂
     // 的 vm.window_inner_height 发布(Plan 046-B)语义保留。
     {
-        static PUBLISHED: std::sync::OnceLock<
-            std::sync::Mutex<Option<(f32, f32)>>,
-        > = std::sync::OnceLock::new();
-        let (sw, sh) = { let sz = state.window_size.borrow(); (sz.width, sz.height) };
-        let mut last = PUBLISHED.get_or_init(|| std::sync::Mutex::new(None)).lock().unwrap();
+        static PUBLISHED: std::sync::OnceLock<std::sync::Mutex<Option<(f32, f32)>>> =
+            std::sync::OnceLock::new();
+        let (sw, sh) = {
+            let sz = state.window_size.borrow();
+            (sz.width, sz.height)
+        };
+        let mut last = PUBLISHED
+            .get_or_init(|| std::sync::Mutex::new(None))
+            .lock()
+            .unwrap();
         let changed = match *last {
             Some((lw, lh)) => (lw - sw).abs() >= 0.5 || (lh - sh).abs() >= 0.5,
             None => true,
@@ -24101,7 +25799,10 @@ fn dynamic_view_impl(
         let sz = state.window_size.borrow();
         eprintln!(
             "[P530-TRACE] view rebuild: dirty={} window={:.0}x{:.0} app_id={}",
-            *state.app.view_dirty.borrow(), sz.width, sz.height, state.app_id.0
+            *state.app.view_dirty.borrow(),
+            sz.width,
+            sz.height,
+            state.app_id.0
         );
     }
 
@@ -24300,7 +26001,6 @@ fn dynamic_view_impl(
     // render processing don't get missed.
     *state.app.view_dirty.borrow_mut() = false;
 
-
     let debug_ctx = if let Some(id_map) = debug_id_map {
         let span_map = state.component.span_map().clone();
         Some(DebugRenderCtx {
@@ -24376,9 +26076,7 @@ fn dynamic_view_impl(
     // Plan 512：fit 窗常驻 Shrink + 测量锚点（fit_enabled）——动态重测
     // 才能量到内容自然尺寸（首测后回 Fill 会把重测钉回窗口尺寸）。
     let fit_pending = state.fit_pending.get() || state.fit_enabled.get();
-    let mut stack = iced::widget::Stack::new()
-        .push(rendered)
-        .push(toast_el);
+    let mut stack = iced::widget::Stack::new().push(rendered).push(toast_el);
     // PLAN-646: marquee 拖拽中注入全窗蒙层（canvas 纯绘制；非 opaque 层
     // 命中测试穿透——toast 层同款，不夺焦点不拦截交互）。零尺寸不注入。
     if let Some(m) = *state.app.devtools.marquee.borrow() {
@@ -24428,9 +26126,7 @@ fn dynamic_view_impl(
         // When hovered_widget is None the cursor left all widgets → clear it.
         // Done before moving `cache` into live_cache.
         let hovered_aura = state.app.devtools.hovered_widget.borrow().clone();
-        let new_hovered_vnode = hovered_aura
-            .as_deref()
-            .and_then(|s| cache.iced_to_vnode(s));
+        let new_hovered_vnode = hovered_aura.as_deref().and_then(|s| cache.iced_to_vnode(s));
         *state.app.devtools.hovered_vnode.borrow_mut() = new_hovered_vnode;
 
         // Plan 309 Phase 2b: merge `raw_class` from `live_probe` into the cache
@@ -24446,9 +26142,7 @@ fn dynamic_view_impl(
         // in the live snapshot).
         if let Some(probe) = state.app.live_probe.borrow().as_ref() {
             for (path_u16, entry) in probe.snapshot() {
-                let vid = crate::ui::vnode::VNodeId::new(
-                    crate::ui::vnode::id_from_path(path_u16),
-                );
+                let vid = crate::ui::vnode::VNodeId::new(crate::ui::vnode::id_from_path(path_u16));
                 let node = cache.get_mut_or_default(vid);
                 if entry.raw_class.is_some() {
                     node.raw_class = entry.raw_class.clone();
@@ -24493,7 +26187,7 @@ fn dynamic_view_impl(
                         ..Default::default()
                     })
                     .width(6)
-                    .height(iced::Length::Fill)
+                    .height(iced::Length::Fill),
             )
             .on_press(IcedMessage {
                 widget: String::new(),
@@ -24579,7 +26273,10 @@ fn fit_aware_root(
                 container(content)
                     .width(iced::Length::Shrink)
                     .height(iced::Length::Shrink)
-                    .id(iced::widget::Id::from(format!("aura_fit_root_{}", app_id.0))),
+                    .id(iced::widget::Id::from(format!(
+                        "aura_fit_root_{}",
+                        app_id.0
+                    ))),
             )
             .direction(scrollable::Direction::Both {
                 vertical: scrollable::Scrollbar::hidden(),
@@ -24645,62 +26342,61 @@ impl iced::widget::canvas::Program<IcedMessage> for MarqueePainter {
 /// Plan 309 续篇: 元素树 (VTree) 与检视 (面包屑 + 子标签) 合并为同屏分屏 ——
 /// 左树点任意 VNode 即设 `selected_vnode`，右侧检视随之更新；两者始终同屏，
 /// 不再有互斥 tab。控制台保留为独立整宽模式（点「控制台」按钮切换）。
-fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_devtools_panel(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     let current_tab = *state.app.devtools.devtools_tab.borrow();
 
     // Header: [🔍 检视] [控制台] ... [×]
     let inspect_active = *state.app.devtools.inspect_mode.borrow();
-    let tab_inspect = container(
-        mouse_area(text("🔍 检视").size(11))
-            .on_press(IcedMessage {
-                widget: String::new(),
-                event: "__toggle_inspect".to_string(),
-                input_value: None,
-            })
-    )
-        .style(tab_style_fn(inspect_active))
-        .padding(iced::Padding::new(4.0));
+    let tab_inspect = container(mouse_area(text("🔍 检视").size(11)).on_press(IcedMessage {
+        widget: String::new(),
+        event: "__toggle_inspect".to_string(),
+        input_value: None,
+    }))
+    .style(tab_style_fn(inspect_active))
+    .padding(iced::Padding::new(4.0));
 
-    let tab_console = container(
-        mouse_area(text("控制台").size(11))
-            .on_press(IcedMessage {
-                widget: String::new(),
-                event: "__tab_console".to_string(),
-                input_value: None,
-            })
-    )
-        .style(tab_style_fn(current_tab == DevToolsTab::Console))
-        .padding(iced::Padding::new(4.0));
+    let tab_console = container(mouse_area(text("控制台").size(11)).on_press(IcedMessage {
+        widget: String::new(),
+        event: "__tab_console".to_string(),
+        input_value: None,
+    }))
+    .style(tab_style_fn(current_tab == DevToolsTab::Console))
+    .padding(iced::Padding::new(4.0));
 
     // PLAN-646: Select（采集）标签页 chip。
-    let tab_select = container(
-        mouse_area(text("采集").size(11))
-            .on_press(IcedMessage {
-                widget: String::new(),
-                event: "__tab_select".to_string(),
-                input_value: None,
-            })
-    )
-        .style(tab_style_fn(current_tab == DevToolsTab::Select))
-        .padding(iced::Padding::new(4.0));
+    let tab_select = container(mouse_area(text("采集").size(11)).on_press(IcedMessage {
+        widget: String::new(),
+        event: "__tab_select".to_string(),
+        input_value: None,
+    }))
+    .style(tab_style_fn(current_tab == DevToolsTab::Select))
+    .padding(iced::Padding::new(4.0));
 
     let close_btn = container(
-        mouse_area(text("✕").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)))
-            .on_press(IcedMessage {
-                widget: String::new(),
-                event: "__close_devtools".to_string(),
-                input_value: None,
-            })
+        mouse_area(
+            text("✕")
+                .size(11)
+                .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+        )
+        .on_press(IcedMessage {
+            widget: String::new(),
+            event: "__close_devtools".to_string(),
+            input_value: None,
+        }),
     )
-        .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(iced::Color::from_rgb(0.95, 0.95, 0.95))),
-            border: iced::Border {
-                radius: 3.0.into(),
-                ..Default::default()
-            },
+    .style(|_: &iced::Theme| container::Style {
+        background: Some(iced::Background::Color(iced::Color::from_rgb(
+            0.95, 0.95, 0.95,
+        ))),
+        border: iced::Border {
+            radius: 3.0.into(),
             ..Default::default()
-        })
-        .padding(iced::Padding::new(4.0));
+        },
+        ..Default::default()
+    })
+    .padding(iced::Padding::new(4.0));
 
     let tab_bar = row![tab_inspect, tab_console, tab_select]
         .spacing(2)
@@ -24781,7 +26477,9 @@ fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Ele
 
     container(panel_col)
         .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(iced::Color::from_rgb(0.98, 0.98, 0.98))),
+            background: Some(iced::Background::Color(iced::Color::from_rgb(
+                0.98, 0.98, 0.98,
+            ))),
             border: iced::Border {
                 color: iced::Color::from_rgb(0.85, 0.85, 0.85),
                 width: 1.0,
@@ -24797,12 +26495,18 @@ fn render_devtools_panel(state: crate::ui::session::SessionViewRef) -> iced::Ele
 
 /// PLAN-646: Select（采集）标签页内容——信封头、三视图切换 chips、复制
 /// 按钮（带反馈），以及当前视图全文（Auto 切片 / JSON / Atom）。
-fn render_select_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_select_tab(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     let fmt = *state.app.devtools.select_view.borrow();
     let feedback = *state.app.devtools.select_copy_feedback.borrow();
     let feedback_el = match feedback {
-        Some(true) => text("已复制 ✓").size(11).color(iced::Color::from_rgb(0.16, 0.55, 0.30)),
-        Some(false) => text("复制失败 ✕").size(11).color(iced::Color::from_rgb(0.75, 0.25, 0.25)),
+        Some(true) => text("已复制 ✓")
+            .size(11)
+            .color(iced::Color::from_rgb(0.16, 0.55, 0.30)),
+        Some(false) => text("复制失败 ✕")
+            .size(11)
+            .color(iced::Color::from_rgb(0.75, 0.25, 0.25)),
         None => text("").size(11),
     };
 
@@ -24812,24 +26516,20 @@ fn render_select_tab(state: crate::ui::session::SessionViewRef) -> iced::Element
         crate::ui::selection::SelectionFormat::Json,
         crate::ui::selection::SelectionFormat::Atom,
     ] {
-        let chip = container(
-            mouse_area(text(f.label()).size(11)).on_press(IcedMessage {
-                widget: String::new(),
-                event: format!("{}{}", SELECT_VIEW_PREFIX, f.label()),
-                input_value: None,
-            })
-        )
+        let chip = container(mouse_area(text(f.label()).size(11)).on_press(IcedMessage {
+            widget: String::new(),
+            event: format!("{}{}", SELECT_VIEW_PREFIX, f.label()),
+            input_value: None,
+        }))
         .style(tab_style_fn(fmt == f))
         .padding(iced::Padding::new(3.0));
         chips = chips.push(chip);
     }
-    let copy_btn = container(
-        mouse_area(text("复制").size(11)).on_press(IcedMessage {
-            widget: String::new(),
-            event: "__select_copy".to_string(),
-            input_value: None,
-        })
-    )
+    let copy_btn = container(mouse_area(text("复制").size(11)).on_press(IcedMessage {
+        widget: String::new(),
+        event: "__select_copy".to_string(),
+        input_value: None,
+    }))
     .style(tab_style_fn(false))
     .padding(iced::Padding::new(3.0));
 
@@ -24838,25 +26538,34 @@ fn render_select_tab(state: crate::ui::session::SessionViewRef) -> iced::Element
             Some(r) => {
                 let header = format!(
                     "surface={} app={} rect=({:.0},{:.0},{:.0},{:.0}) nodes={}",
-                    r.surface, r.app, r.rect.0, r.rect.1, r.rect.2, r.rect.3,
+                    r.surface,
+                    r.app,
+                    r.rect.0,
+                    r.rect.1,
+                    r.rect.2,
+                    r.rect.3,
                     r.nodes.len()
                 );
                 let content = r.render(fmt);
                 // 正文显式深灰——面板浅色底为硬编码，text 缺省色随 app 主题
                 // （深色主题=白字）会白底白字隐身（复审实机截图定罪）。
                 column![
-                    text(header).size(11).color(iced::Color::from_rgb(0.35, 0.35, 0.4)),
-                    text(content).size(11).color(iced::Color::from_rgb(0.15, 0.15, 0.18)),
+                    text(header)
+                        .size(11)
+                        .color(iced::Color::from_rgb(0.35, 0.35, 0.4)),
+                    text(content)
+                        .size(11)
+                        .color(iced::Color::from_rgb(0.15, 0.15, 0.18)),
                 ]
                 .spacing(6)
                 .into()
             }
-            None => text(
-                "Alt+拖拽框选任意区域采集组件源码；或经 MCP autoui_select_rect 程序化采集。",
-            )
-            .size(11)
-            .color(iced::Color::from_rgb(0.45, 0.45, 0.5))
-            .into(),
+            None => {
+                text("Alt+拖拽框选任意区域采集组件源码；或经 MCP autoui_select_rect 程序化采集。")
+                    .size(11)
+                    .color(iced::Color::from_rgb(0.45, 0.45, 0.5))
+                    .into()
+            }
         };
 
     column![
@@ -24885,7 +26594,9 @@ fn tab_style_fn(active: bool) -> Box<dyn Fn(&iced::Theme) -> container::Style> {
             }
         } else {
             container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgb(0.93, 0.93, 0.93))),
+                background: Some(iced::Background::Color(iced::Color::from_rgb(
+                    0.93, 0.93, 0.93,
+                ))),
                 border: iced::Border {
                     color: iced::Color::from_rgb(0.85, 0.85, 0.85),
                     width: 1.0,
@@ -24900,7 +26611,9 @@ fn tab_style_fn(active: bool) -> Box<dyn Fn(&iced::Theme) -> container::Style> {
 
 /// Render the Properties tab: show selected element's style properties.
 /// Render the Elements tab: component tree visualization.
-fn render_elements_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_elements_tab(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     // Plan 307 Task 14: the left tree now reads from the live VTree (the runtime
     // DOM) instead of the legacy DebugTreeNode / component_tree. The old path is
     // kept (Task 19/20 removes it); render_tree_into simply isn't called here.
@@ -24924,11 +26637,15 @@ fn render_elements_tab(state: crate::ui::session::SessionViewRef) -> iced::Eleme
     } else {
         drop(vtree);
         column![
-            text("组件树不可用").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
-            text("开启 Debug 模式后显示").size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
+            text("组件树不可用")
+                .size(11)
+                .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+            text("开启 Debug 模式后显示")
+                .size(10)
+                .color(iced::Color::from_rgb(0.4, 0.4, 0.4)),
         ]
-            .spacing(4)
-            .into()
+        .spacing(4)
+        .into()
     }
 }
 
@@ -24961,7 +26678,13 @@ fn vnode_summary(node: &crate::ui::vnode::VNode) -> String {
         (VNodeKind::Radio, VNodeProps::Radio { label, is_selected }) => {
             format!("{}={}", label, if *is_selected { "✓" } else { "✗" })
         }
-        (VNodeKind::Select, VNodeProps::Select { options, selected_index }) => {
+        (
+            VNodeKind::Select,
+            VNodeProps::Select {
+                options,
+                selected_index,
+            },
+        ) => {
             format!("{} opts, sel {:?}", options.len(), selected_index)
         }
         (VNodeKind::Slider, VNodeProps::Slider { value, .. }) => {
@@ -25015,25 +26738,29 @@ fn render_vtree_into(
             .style(move |_: &iced::Theme| {
                 if is_selected {
                     container::Style {
-                        background: Some(iced::Background::Color(iced::Color::from_rgba(0.95, 0.85, 0.7, 0.6))),
+                        background: Some(iced::Background::Color(iced::Color::from_rgba(
+                            0.95, 0.85, 0.7, 0.6,
+                        ))),
                         ..Default::default()
                     }
                 } else if is_hovered {
                     container::Style {
-                        background: Some(iced::Background::Color(iced::Color::from_rgba(0.8, 0.9, 0.8, 0.4))),
+                        background: Some(iced::Background::Color(iced::Color::from_rgba(
+                            0.8, 0.9, 0.8, 0.4,
+                        ))),
                         ..Default::default()
                     }
                 } else {
                     container::Style::default()
                 }
             })
-            .padding(iced::Padding::new(2.0))
+            .padding(iced::Padding::new(2.0)),
     )
-        .on_press(IcedMessage {
-            widget: String::new(),
-            event: format!("{}{}", DEBUG_SELECT_VNODE_PREFIX, node.id.as_u64()),
-            input_value: None,
-        });
+    .on_press(IcedMessage {
+        widget: String::new(),
+        event: format!("{}{}", DEBUG_SELECT_VNODE_PREFIX, node.id.as_u64()),
+        input_value: None,
+    });
 
     rows.push(click_area.into());
 
@@ -25046,13 +26773,54 @@ fn render_vtree_into(
 
 /// AutoLang keywords for syntax highlighting.
 const AUTO_KEYWORDS: &[&str] = &[
-    "fn", "let", "var", "const", "if", "else", "for", "loop", "in", "break",
-    "return", "type", "enum", "use", "pub", "mut", "static", "true", "false",
-    "is", "Some", "None", "Ok", "Err", "match", "where",
+    "fn",
+    "let",
+    "var",
+    "const",
+    "if",
+    "else",
+    "for",
+    "loop",
+    "in",
+    "break",
+    "return",
+    "type",
+    "enum",
+    "use",
+    "pub",
+    "mut",
+    "static",
+    "true",
+    "false",
+    "is",
+    "Some",
+    "None",
+    "Ok",
+    "Err",
+    "match",
+    "where",
     // UI widget tags
-    "col", "row", "text", "button", "input", "container", "scroll",
-    "checkbox", "radio", "select", "slider", "image", "link", "list",
-    "tab", "tabs", "sidebar", "accordion", "nav", "textarea", "progress",
+    "col",
+    "row",
+    "text",
+    "button",
+    "input",
+    "container",
+    "scroll",
+    "checkbox",
+    "radio",
+    "select",
+    "slider",
+    "image",
+    "link",
+    "list",
+    "tab",
+    "tabs",
+    "sidebar",
+    "accordion",
+    "nav",
+    "textarea",
+    "progress",
     "code_editor",
 ];
 
@@ -25076,10 +26844,14 @@ fn tokenize_line(line: &str) -> Vec<(String, iced::Color)> {
             let start = i;
             i += 1;
             while i < len && chars[i] != '"' {
-                if chars[i] == '\\' { i += 1; } // skip escaped char
+                if chars[i] == '\\' {
+                    i += 1;
+                } // skip escaped char
                 i += 1;
             }
-            if i < len { i += 1; } // closing quote
+            if i < len {
+                i += 1;
+            } // closing quote
             let s: String = chars[start..i].iter().collect();
             spans.push((s, iced::Color::from_rgb(0.16, 0.6, 0.26)));
             continue;
@@ -25089,19 +26861,29 @@ fn tokenize_line(line: &str) -> Vec<(String, iced::Color)> {
             let start = i;
             i += 2;
             while i < len && chars[i] != '"' {
-                if chars[i] == '\\' { i += 1; }
+                if chars[i] == '\\' {
+                    i += 1;
+                }
                 i += 1;
             }
-            if i < len { i += 1; }
+            if i < len {
+                i += 1;
+            }
             let s: String = chars[start..i].iter().collect();
             spans.push((s, iced::Color::from_rgb(0.16, 0.55, 0.35)));
             continue;
         }
         // Number
-        if chars[i].is_ascii_digit() || (chars[i] == '-' && i + 1 < len && chars[i + 1].is_ascii_digit()) {
+        if chars[i].is_ascii_digit()
+            || (chars[i] == '-' && i + 1 < len && chars[i + 1].is_ascii_digit())
+        {
             let start = i;
-            if chars[i] == '-' { i += 1; }
-            while i < len && (chars[i].is_ascii_digit() || chars[i] == '.') { i += 1; }
+            if chars[i] == '-' {
+                i += 1;
+            }
+            while i < len && (chars[i].is_ascii_digit() || chars[i] == '.') {
+                i += 1;
+            }
             let s: String = chars[start..i].iter().collect();
             spans.push((s, iced::Color::from_rgb(0.8, 0.4, 0.1)));
             continue;
@@ -25109,7 +26891,9 @@ fn tokenize_line(line: &str) -> Vec<(String, iced::Color)> {
         // Identifier or keyword
         if chars[i].is_alphabetic() || chars[i] == '_' {
             let start = i;
-            while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') { i += 1; }
+            while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                i += 1;
+            }
             let word: String = chars[start..i].iter().collect();
             let color = if AUTO_KEYWORDS.contains(&word.as_str()) {
                 iced::Color::from_rgb(0.15, 0.3, 0.75) // keyword: blue
@@ -25145,7 +26929,9 @@ fn build_highlight_cache(source: &str) -> Vec<Vec<(String, iced::Color)>> {
 }
 
 /// Render the Inspector tab: source code + properties, stacked vertically.
-fn render_inspector_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_tab(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     // Plan 307 Task 15: the right panel is rebuilt around the VNodeId-based
     // selection. Structure: [breadcrumb] › [sub-tab row] › [active sub-tab body].
     //
@@ -25179,7 +26965,9 @@ fn render_inspector_tab(state: crate::ui::session::SessionViewRef) -> iced::Elem
 ///
 /// Reads `live_vtree` and walks the `parent` chain, cloning the tree out first
 /// so no RefCell borrow is held across the closure-driven widget construction.
-fn render_inspector_breadcrumb(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_breadcrumb(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     let vtree = state.app.live_vtree.borrow().clone();
     let selected = state.app.devtools.selected_vnode.borrow().clone();
 
@@ -25188,8 +26976,12 @@ fn render_inspector_breadcrumb(state: crate::ui::session::SessionViewRef) -> ice
         // No live tree or no selection: show the empty-state prompt.
         _ => {
             return column![
-                text("无选中元素").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
-                text("点击元素以查看").size(10).color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+                text("无选中元素")
+                    .size(11)
+                    .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+                text("点击元素以查看")
+                    .size(10)
+                    .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
             ]
             .spacing(2)
             .into();
@@ -25251,7 +27043,9 @@ fn render_inspector_breadcrumb(state: crate::ui::session::SessionViewRef) -> ice
             container(
                 mouse_area(
                     container(
-                        text(label_text).size(10).color(iced::Color::from_rgb(0.2, 0.4, 0.7)),
+                        text(label_text)
+                            .size(10)
+                            .color(iced::Color::from_rgb(0.2, 0.4, 0.7)),
                     )
                     .padding(iced::Padding::new(2.0)),
                 )
@@ -25276,7 +27070,9 @@ fn render_inspector_breadcrumb(state: crate::ui::session::SessionViewRef) -> ice
 /// parent `scrollable` at the panel level handles overflow) of three
 /// collapsible sections — Box Model, Computed, Properties — each reusing the
 /// existing per-section render fn as its body.
-fn render_inspector_inspect_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_inspect_tab(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     let secs = *state.app.devtools.inspector_sections.borrow();
     let mut col = column![].spacing(6);
 
@@ -25328,7 +27124,9 @@ fn render_collapsible_section(
         input_value: None,
     });
 
-    let mut col = column![].spacing(3).push(container(header).padding([2.0, 4.0]));
+    let mut col = column![]
+        .spacing(3)
+        .push(container(header).padding([2.0, 4.0]));
     if !collapsed {
         col = col.push(body);
     }
@@ -25337,7 +27135,9 @@ fn render_collapsible_section(
 
 /// Build the inner sub-tab chip row (Plan 307 Task 15). Clicking a chip sends
 /// `__inspector_subtab_<Variant>`, parsed in `update()`.
-fn render_inspector_subtab_row(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_subtab_row(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     let active = *state.app.devtools.inspector_subtab.borrow();
     let variants = [
         InspectorSubTab::Inspect,
@@ -25348,13 +27148,11 @@ fn render_inspector_subtab_row(state: crate::ui::session::SessionViewRef) -> ice
     let mut row = row![].spacing(2);
     for v in variants {
         let is_active = v == active;
-        let chip = container(
-            mouse_area(text(v.label()).size(10)).on_press(IcedMessage {
-                widget: String::new(),
-                event: format!("{}{}", DEBUG_INSPECTOR_SUBTAB_PREFIX, v.label()),
-                input_value: None,
-            }),
-        )
+        let chip = container(mouse_area(text(v.label()).size(10)).on_press(IcedMessage {
+            widget: String::new(),
+            event: format!("{}{}", DEBUG_INSPECTOR_SUBTAB_PREFIX, v.label()),
+            input_value: None,
+        }))
         .style(tab_style_fn(is_active))
         .padding(iced::Padding::new(3.0));
         row = row.push(chip);
@@ -25367,7 +27165,9 @@ fn render_inspector_subtab_row(state: crate::ui::session::SessionViewRef) -> ice
 ///
 /// Reads `live_cache` (bounds/box_model). Falls back to "(布局中…)" when the
 /// node isn't laid out yet or has no cache entry, per design §6.1.
-fn render_inspector_layout_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_layout_tab(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     let selected = state.app.devtools.selected_vnode.borrow().clone();
     let Some(sel_id) = selected else {
         return placeholder_panel("无选中元素");
@@ -25417,11 +27217,7 @@ fn render_inspector_layout_tab(state: crate::ui::session::SessionViewRef) -> ice
 
     // Padding (declared value; currently zero from Task 13 — label is
     // forward-looking per the design).
-    col = col.push(layout_inset_row(
-        "Padding",
-        &bm.padding,
-        Some("(声明值)"),
-    ));
+    col = col.push(layout_inset_row("Padding", &bm.padding, Some("(声明值)")));
     // Margin.
     col = col.push(layout_inset_row("Margin", &bm.margin, None));
 
@@ -25469,7 +27265,7 @@ fn layout_inset_row(
             ei.top, ei.right, ei.bottom, ei.left
         ))
         .size(10)
-            .color(iced::Color::from_rgb(0.2, 0.2, 0.2)),
+        .color(iced::Color::from_rgb(0.2, 0.2, 0.2)),
     ]
     .spacing(6);
     if let Some(note) = annotation {
@@ -25511,7 +27307,9 @@ fn render_box_model_diagram<M: Clone + 'static>(
     let content_layer = container(content_label)
         .padding(2.0)
         .style(|_t| container::Style {
-            background: Some(iced::Background::Color(iced::Color::from_rgba(0.91, 0.94, 0.99, 1.0))),
+            background: Some(iced::Background::Color(iced::Color::from_rgba(
+                0.91, 0.94, 0.99, 1.0,
+            ))),
             ..Default::default()
         });
 
@@ -25519,7 +27317,9 @@ fn render_box_model_diagram<M: Clone + 'static>(
     let padding_layer = container(content_layer)
         .padding(pad(&bm.padding))
         .style(|_t| container::Style {
-            background: Some(iced::Background::Color(iced::Color::from_rgba(1.0, 0.98, 0.85, 1.0))),
+            background: Some(iced::Background::Color(iced::Color::from_rgba(
+                1.0, 0.98, 0.85, 1.0,
+            ))),
             ..Default::default()
         });
 
@@ -25527,7 +27327,9 @@ fn render_box_model_diagram<M: Clone + 'static>(
     let border_layer = container(padding_layer)
         .padding(pad(&bm.border))
         .style(move |_t| container::Style {
-            background: Some(iced::Background::Color(iced::Color::from_rgba(0.95, 0.95, 0.95, 1.0))),
+            background: Some(iced::Background::Color(iced::Color::from_rgba(
+                0.95, 0.95, 0.95, 1.0,
+            ))),
             border: iced::Border {
                 color: iced::Color::from_rgb(0.3, 0.3, 0.3),
                 width: 1.0,
@@ -25540,19 +27342,29 @@ fn render_box_model_diagram<M: Clone + 'static>(
     let margin_layer = container(border_layer)
         .padding(pad(&bm.margin))
         .style(|_t| container::Style {
-            background: Some(iced::Background::Color(iced::Color::from_rgba(0.85, 0.85, 0.85, 0.25))),
+            background: Some(iced::Background::Color(iced::Color::from_rgba(
+                0.85, 0.85, 0.85, 0.25,
+            ))),
             ..Default::default()
         });
 
     // Legend strip above the nested diagram.
     let legend = row![
-        text("margin").size(8).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+        text("margin")
+            .size(8)
+            .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
         text("•").size(8),
-        text("border").size(8).color(iced::Color::from_rgb(0.3, 0.3, 0.3)),
+        text("border")
+            .size(8)
+            .color(iced::Color::from_rgb(0.3, 0.3, 0.3)),
         text("•").size(8),
-        text("padding").size(8).color(iced::Color::from_rgb(0.7, 0.6, 0.2)),
+        text("padding")
+            .size(8)
+            .color(iced::Color::from_rgb(0.7, 0.6, 0.2)),
         text("•").size(8),
-        text("content").size(8).color(iced::Color::from_rgb(0.1, 0.2, 0.5)),
+        text("content")
+            .size(8)
+            .color(iced::Color::from_rgb(0.1, 0.2, 0.5)),
     ]
     .spacing(4);
 
@@ -25602,7 +27414,11 @@ fn ensure_source_loaded(state: crate::ui::session::SessionViewRef) {
 
 /// Helper: clone the selected VNode out of `live_vtree`, or return a grey
 /// placeholder Element if there is no tree / no selection.
-fn with_selected_vnode<F>(state: crate::ui::session::SessionViewRef, on_missing: &str, f: F) -> iced::Element<'static, IcedMessage>
+fn with_selected_vnode<F>(
+    state: crate::ui::session::SessionViewRef,
+    on_missing: &str,
+    f: F,
+) -> iced::Element<'static, IcedMessage>
 where
     F: FnOnce(&crate::ui::vnode::VNode) -> iced::Element<'static, IcedMessage>,
 {
@@ -25641,7 +27457,9 @@ fn kv_row<M: Clone + 'static>(key: &str, value: String) -> iced::Element<'static
 ///
 /// Data source: `live_vtree` only (the VNode carries its own props). No probe /
 /// cache dependency, so it always works whenever a node is selected.
-fn render_inspector_props_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_props_tab(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
         let mut col = column![].spacing(3);
 
@@ -25688,10 +27506,7 @@ fn render_inspector_props_tab(state: crate::ui::session::SessionViewRef) -> iced
                 options,
                 selected_index,
             } => {
-                col = col.push(kv_row(
-                    "options",
-                    format!("[{}]", options.join(", ")),
-                ));
+                col = col.push(kv_row("options", format!("[{}]", options.join(", "))));
                 col = col.push(kv_row("selected_index", format!("{:?}", selected_index)));
             }
             VNodeProps::Layout { spacing, padding } => {
@@ -25747,7 +27562,9 @@ fn render_inspector_props_tab(state: crate::ui::session::SessionViewRef) -> iced
 /// non-loop nodes, so we look the probe up via `snapshot().get(&node.path)`.
 /// For loop-body nodes the schemes diverge and the lookup misses — we degrade
 /// gracefully to a grey hint rather than panicking (design §6.1).
-fn render_inspector_autoui_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_autoui_tab(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
         let probe = state.app.live_probe.borrow().clone();
         let Some(probe) = probe else {
@@ -25809,9 +27626,7 @@ fn render_inspector_autoui_tab(state: crate::ui::session::SessionViewRef) -> ice
             }
         }
 
-        if entry.state_bindings.is_empty()
-            && entry.for_context.is_none()
-            && entry.events.is_empty()
+        if entry.state_bindings.is_empty() && entry.for_context.is_none() && entry.events.is_empty()
         {
             // Entry exists but is empty.
             return placeholder_panel("(本节点无 AutoUI 元数据)");
@@ -25828,7 +27643,9 @@ fn render_inspector_autoui_tab(state: crate::ui::session::SessionViewRef) -> ice
 /// [`render_source_viewer`] for the syntax-highlighted listing. Clicking a
 /// line that has an associated AuraNodeId (handled by `SRC_CLICK_PREFIX`)
 /// selects the corresponding element — bidirectional navigation.
-fn render_inspector_source_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_source_tab(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
         // Resolve the span → a 0-based half-open (start, end) line range.
         let highlight_range = node.source_span.map(|span| {
@@ -25919,8 +27736,7 @@ fn render_source_viewer(
                 if let Some(ref cache) = *cached {
                     if let Some(cached_line) = cache.get(i) {
                         for (fragment, color) in cached_line {
-                            line_row =
-                                line_row.push(text(fragment.clone()).size(10).color(*color));
+                            line_row = line_row.push(text(fragment.clone()).size(10).color(*color));
                         }
                     } else if let Some(line) = all_lines.get(i) {
                         line_row = line_row.push(
@@ -25986,7 +27802,9 @@ fn render_source_viewer(
 /// builder, so a full CSS computed-style sheet is not possible. We render the
 /// layout-relevant props from `VNodeProps` plus the live_cache `bounds` /
 /// `box_model` summary, and note that class resolution is pending.
-fn render_inspector_computed_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_computed_tab(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     with_selected_vnode(state, "无选中元素", |node| {
         let mut col = column![].spacing(3);
 
@@ -26096,7 +27914,9 @@ fn select_vnode_message(id: crate::ui::vnode::VNodeId) -> IcedMessage {
 /// is intentionally not wired into the new right panel yet — keep it here as
 /// `#[allow(dead_code)]` until then.
 #[allow(dead_code)]
-fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_inspector_source_section(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     let selected_id = state.app.devtools.selected_widget.borrow().clone();
     let styles = state.app.devtools.debug_element_styles.borrow();
     let info = selected_id.as_ref().and_then(|id| styles.get(id));
@@ -26106,40 +27926,56 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
     // --- Properties section (top) ---
     match info {
         Some(elem_info) => {
-            let title = format!("{} #{}", elem_info.kind, selected_id.as_deref().unwrap_or("?"));
+            let title = format!(
+                "{} #{}",
+                elem_info.kind,
+                selected_id.as_deref().unwrap_or("?")
+            );
             col = col.push(
-                text(title).size(12).color(iced::Color::from_rgb(0.2, 0.4, 0.8))
+                text(title)
+                    .size(12)
+                    .color(iced::Color::from_rgb(0.2, 0.4, 0.8)),
             );
             if !elem_info.props.is_empty() {
                 col = col.push(
-                    text("样式属性").size(10).color(iced::Color::from_rgb(0.3, 0.6, 0.3))
+                    text("样式属性")
+                        .size(10)
+                        .color(iced::Color::from_rgb(0.3, 0.6, 0.3)),
                 );
                 for (k, v) in &elem_info.props {
                     col = col.push(
                         row![
-                            text(format!("{}:", k)).size(11)
+                            text(format!("{}:", k))
+                                .size(11)
                                 .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
-                            text(v.clone()).size(11)
+                            text(v.clone())
+                                .size(11)
                                 .color(iced::Color::from_rgb(0.2, 0.2, 0.2)),
                         ]
-                            .spacing(4)
+                        .spacing(4),
                     );
                 }
             }
         }
         None => {
             col = col.push(
-                text("无选中元素").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5))
+                text("无选中元素")
+                    .size(11)
+                    .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
             );
             col = col.push(
-                text("点击元素以查看属性和源码").size(10).color(iced::Color::from_rgb(0.6, 0.6, 0.6))
+                text("点击元素以查看属性和源码")
+                    .size(10)
+                    .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
             );
         }
     }
 
     // --- Divider + Source section (bottom) ---
     let source = state.app.source_code.borrow().clone();
-    let path_display = state.component.source_path()
+    let path_display = state
+        .component
+        .source_path()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "unknown".to_string());
 
@@ -26148,7 +27984,9 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
         elem_info.span.and_then(|(offset, len)| {
             let line_offsets = state.app.source_line_offsets.borrow();
             // Find start line (first line_offset <= offset)
-            let start_line = line_offsets.partition_point(|&pos| pos <= offset).saturating_sub(1);
+            let start_line = line_offsets
+                .partition_point(|&pos| pos <= offset)
+                .saturating_sub(1);
             // Find end line (first line_offset >= offset + len)
             let end_offset = offset + len;
             let end_line = line_offsets.partition_point(|&pos| pos < end_offset);
@@ -26159,20 +27997,22 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
     // Divider line with "源码" label
     col = col.push(
         container(
-            row![
-                text("───── 源码 ─────").size(10).color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
-            ]
-                .width(iced::Length::Fill)
-                .align_y(iced::Alignment::Center)
-        )
+            row![text("───── 源码 ─────")
+                .size(10)
+                .color(iced::Color::from_rgb(0.7, 0.7, 0.7)),]
             .width(iced::Length::Fill)
-            .padding(iced::Padding::new(4.0))
+            .align_y(iced::Alignment::Center),
+        )
+        .width(iced::Length::Fill)
+        .padding(iced::Padding::new(4.0)),
     );
 
     match source {
         Some(code) => {
             col = col.push(
-                text(path_display).size(9).color(iced::Color::from_rgb(0.4, 0.6, 0.8))
+                text(path_display)
+                    .size(9)
+                    .color(iced::Color::from_rgb(0.4, 0.6, 0.8)),
             );
 
             // Use cached syntax highlighting for all lines
@@ -26192,9 +28032,17 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
                 // Build line content from cached highlight spans
                 let mut line_row = row![].spacing(0);
                 if is_highlighted {
-                    line_row = line_row.push(text(line_num).size(10).color(iced::Color::from_rgb(0.8, 0.4, 0.1)));
+                    line_row = line_row.push(
+                        text(line_num)
+                            .size(10)
+                            .color(iced::Color::from_rgb(0.8, 0.4, 0.1)),
+                    );
                 } else {
-                    line_row = line_row.push(text(line_num).size(10).color(iced::Color::from_rgb(0.7, 0.7, 0.7)));
+                    line_row = line_row.push(
+                        text(line_num)
+                            .size(10)
+                            .color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
+                    );
                 }
 
                 if let Some(ref cache) = *cached {
@@ -26205,13 +28053,21 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
                     } else {
                         // Fallback: plain text for empty/missing cache entry
                         if let Some(line) = all_lines.get(i) {
-                            line_row = line_row.push(text(line.to_string()).size(10).color(iced::Color::from_rgb(0.3, 0.3, 0.3)));
+                            line_row = line_row.push(
+                                text(line.to_string())
+                                    .size(10)
+                                    .color(iced::Color::from_rgb(0.3, 0.3, 0.3)),
+                            );
                         }
                     }
                 } else {
                     // No cache: plain text fallback
                     if let Some(line) = all_lines.get(i) {
-                        line_row = line_row.push(text(line.to_string()).size(10).color(iced::Color::from_rgb(0.3, 0.3, 0.3)));
+                        line_row = line_row.push(
+                            text(line.to_string())
+                                .size(10)
+                                .color(iced::Color::from_rgb(0.3, 0.3, 0.3)),
+                        );
                     }
                 }
 
@@ -26235,12 +28091,11 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
                 // Wrap clickable lines in mouse_area for source-click → component-highlight
                 if has_aura {
                     let line_idx = i;
-                    let ma = mouse_area(line_container)
-                        .on_press(IcedMessage {
-                            widget: String::new(),
-                            event: format!("{}{}", SRC_CLICK_PREFIX, line_idx),
-                            input_value: None,
-                        });
+                    let ma = mouse_area(line_container).on_press(IcedMessage {
+                        widget: String::new(),
+                        event: format!("{}{}", SRC_CLICK_PREFIX, line_idx),
+                        input_value: None,
+                    });
                     col = col.push(ma);
                 } else {
                     col = col.push(line_container);
@@ -26254,15 +28109,17 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
                 col = col.push(
                     container(
                         mouse_area(
-                            text("[编辑]").size(9).color(iced::Color::from_rgb(0.2, 0.5, 0.8))
+                            text("[编辑]")
+                                .size(9)
+                                .color(iced::Color::from_rgb(0.2, 0.5, 0.8)),
                         )
                         .on_press(IcedMessage {
                             widget: String::new(),
                             event: format!("{}{}", DEBUG_EDIT_PREFIX, edit_id),
                             input_value: None,
-                        })
+                        }),
                     )
-                    .padding(iced::Padding::new(2.0))
+                    .padding(iced::Padding::new(2.0)),
                 );
             }
         }
@@ -26277,28 +28134,32 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
 
         col = col.push(
             container(
-                text("✏ 编辑源码").size(11).color(iced::Color::from_rgb(0.8, 0.3, 0.1)),
+                text("✏ 编辑源码")
+                    .size(11)
+                    .color(iced::Color::from_rgb(0.8, 0.3, 0.1)),
             )
-                .width(iced::Length::Fill)
-                .padding(iced::Padding::new(4.0))
+            .width(iced::Length::Fill)
+            .padding(iced::Padding::new(4.0)),
         );
 
         // Multi-line text editor using text_editor widget
         if let Some(ref key) = textarea_key {
             let content = get_textarea_content(key, "");
-            let editor = text_editor(content)
-                .size(10);
+            let editor = text_editor(content).size(10);
             col = col.push(
                 container(editor)
                     .style(|_: &iced::Theme| container::Style {
-                        background: Some(iced::Background::Color(iced::Color::from_rgb(1.0, 0.98, 0.92))),
-                        border: iced::Border::default().rounded(3.0)
+                        background: Some(iced::Background::Color(iced::Color::from_rgb(
+                            1.0, 0.98, 0.92,
+                        ))),
+                        border: iced::Border::default()
+                            .rounded(3.0)
                             .color(iced::Color::from_rgb(0.3, 0.6, 0.9))
                             .width(1.0),
                         ..Default::default()
                     })
                     .padding(iced::Padding::new(4.0))
-                    .width(iced::Length::Fill)
+                    .width(iced::Length::Fill),
             );
         }
 
@@ -26307,13 +28168,19 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
             row![
                 container(
                     mouse_area(
-                        container(text("保存").size(10).color(iced::Color::from_rgb(1.0, 1.0, 1.0)))
-                            .style(|_: &iced::Theme| container::Style {
-                                background: Some(iced::Background::Color(iced::Color::from_rgb(0.2, 0.6, 0.3))),
-                                border: iced::Border::default().rounded(3.0),
-                                ..Default::default()
-                            })
-                            .padding(iced::Padding::new(4.0))
+                        container(
+                            text("保存")
+                                .size(10)
+                                .color(iced::Color::from_rgb(1.0, 1.0, 1.0))
+                        )
+                        .style(|_: &iced::Theme| container::Style {
+                            background: Some(iced::Background::Color(iced::Color::from_rgb(
+                                0.2, 0.6, 0.3
+                            ))),
+                            border: iced::Border::default().rounded(3.0),
+                            ..Default::default()
+                        })
+                        .padding(iced::Padding::new(4.0))
                     )
                     .on_press(IcedMessage {
                         widget: String::new(),
@@ -26323,13 +28190,19 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
                 ),
                 container(
                     mouse_area(
-                        container(text("取消").size(10).color(iced::Color::from_rgb(0.4, 0.4, 0.4)))
-                            .style(|_: &iced::Theme| container::Style {
-                                background: Some(iced::Background::Color(iced::Color::from_rgb(0.9, 0.9, 0.9))),
-                                border: iced::Border::default().rounded(3.0),
-                                ..Default::default()
-                            })
-                            .padding(iced::Padding::new(4.0))
+                        container(
+                            text("取消")
+                                .size(10)
+                                .color(iced::Color::from_rgb(0.4, 0.4, 0.4))
+                        )
+                        .style(|_: &iced::Theme| container::Style {
+                            background: Some(iced::Background::Color(iced::Color::from_rgb(
+                                0.9, 0.9, 0.9
+                            ))),
+                            border: iced::Border::default().rounded(3.0),
+                            ..Default::default()
+                        })
+                        .padding(iced::Padding::new(4.0))
                     )
                     .on_press(IcedMessage {
                         widget: String::new(),
@@ -26338,13 +28211,15 @@ fn render_inspector_source_section(state: crate::ui::session::SessionViewRef) ->
                     })
                 ),
             ]
-                .spacing(8)
+            .spacing(8),
         );
 
         // Show error if any
         if let Some(err) = edit_err {
             col = col.push(
-                text(format!("❌ {}", err)).size(9).color(iced::Color::from_rgb(0.8, 0.1, 0.1))
+                text(format!("❌ {}", err))
+                    .size(9)
+                    .color(iced::Color::from_rgb(0.8, 0.1, 0.1)),
             );
         }
     }
@@ -26361,7 +28236,10 @@ fn apply_edit(mut state: crate::ui::session::SessionViewMut) {
     if let (Some(_id), Some((offset, len)), Some(key)) = (edit_elem, edit_span, textarea_key) {
         // Read edited text from textarea content
         let map = TEXTAREA_CONTENTS.lock().unwrap();
-        let new_text = map.get(&key).map(|c| c.text().to_string()).unwrap_or_default();
+        let new_text = map
+            .get(&key)
+            .map(|c| c.text().to_string())
+            .unwrap_or_default();
         drop(map);
 
         let source = state.app.source_code.borrow().clone();
@@ -26372,7 +28250,9 @@ fn apply_edit(mut state: crate::ui::session::SessionViewMut) {
                         // Update cached source code and line offsets
                         let mut offsets = vec![0usize];
                         for (i, ch) in new_code.char_indices() {
-                            if ch == '\n' { offsets.push(i + 1); }
+                            if ch == '\n' {
+                                offsets.push(i + 1);
+                            }
                         }
                         *state.app.source_line_offsets.borrow_mut() = offsets;
                         *state.app.source_code.borrow_mut() = Some(new_code);
@@ -26381,13 +28261,15 @@ fn apply_edit(mut state: crate::ui::session::SessionViewMut) {
                         *state.app.devtools.cached_debug_id_map.borrow_mut() = None;
                         // Rebuild syntax highlight cache after edit
                         if let Some(ref c) = *state.app.source_code.borrow() {
-                            *state.app.devtools.cached_highlighted.borrow_mut() = Some(build_highlight_cache(c));
+                            *state.app.devtools.cached_highlighted.borrow_mut() =
+                                Some(build_highlight_cache(c));
                         }
                         // Rebuild line → AuraNodeId index after edit
                         {
                             let span_map = state.component.span_map().clone();
                             if let Some(ref src) = *state.app.source_code.borrow() {
-                                *state.app.line_to_aura_ids.borrow_mut() = build_line_to_aura_ids(&span_map, src);
+                                *state.app.line_to_aura_ids.borrow_mut() =
+                                    build_line_to_aura_ids(&span_map, src);
                             }
                         }
                         // Clear edit state on success
@@ -26401,7 +28283,8 @@ fn apply_edit(mut state: crate::ui::session::SessionViewMut) {
                     }
                 }
             } else {
-                *state.app.devtools.edit_error.borrow_mut() = Some("源码已变更，span 失效".to_string());
+                *state.app.devtools.edit_error.borrow_mut() =
+                    Some("源码已变更，span 失效".to_string());
             }
         }
     }
@@ -26446,20 +28329,24 @@ fn build_line_to_aura_ids(
 }
 
 /// Render the Console tab: show captured print() output.
-fn render_console_tab(state: crate::ui::session::SessionViewRef) -> iced::Element<'static, IcedMessage> {
+fn render_console_tab(
+    state: crate::ui::session::SessionViewRef,
+) -> iced::Element<'static, IcedMessage> {
     let output = state.app.devtools.console_output.borrow();
 
     if output.is_empty() {
-        return column![
-            text("暂无输出").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
-        ]
-            .into();
+        return column![text("暂无输出")
+            .size(11)
+            .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),]
+        .into();
     }
 
     let mut col = column![].spacing(1);
     for line in output.iter().rev().take(100) {
         col = col.push(
-            text(line.clone()).size(10).color(iced::Color::from_rgb(0.2, 0.2, 0.2))
+            text(line.clone())
+                .size(10)
+                .color(iced::Color::from_rgb(0.2, 0.2, 0.2)),
         );
     }
     col.into()
@@ -26551,8 +28438,12 @@ impl DebugRenderCtx {
 
     /// Wrap any element with mouse_area for hover/click detection + store style metadata.
     fn wrap_debug(
-        &self, view_path: &[usize], kind: &str, el: iced::Element<'static, IcedMessage>,
-        props: Vec<(String, String)>, style: Option<&Style>,
+        &self,
+        view_path: &[usize],
+        kind: &str,
+        el: iced::Element<'static, IcedMessage>,
+        props: Vec<(String, String)>,
+        style: Option<&Style>,
     ) -> iced::Element<'static, IcedMessage> {
         // Try to get AuraNodeId from debug_id_map
         let aura_id = self.debug_id_map.get(view_path);
@@ -26592,9 +28483,8 @@ impl DebugRenderCtx {
             // is active (the ctx only exists then, but gate defensively).
             if self.capture_data {
                 let path_u16: Vec<u16> = view_path.iter().map(|&x| x as u16).collect();
-                let vnode_id = crate::ui::vnode::VNodeId::new(
-                    crate::ui::vnode::id_from_path(&path_u16),
-                );
+                let vnode_id =
+                    crate::ui::vnode::VNodeId::new(crate::ui::vnode::id_from_path(&path_u16));
                 self.inspector_cache
                     .borrow_mut()
                     .set_iced_map(vnode_id, id_str.clone());
@@ -26616,9 +28506,8 @@ impl DebugRenderCtx {
             let id_str = format!("wrap_{}", counter_val);
             if self.capture_data {
                 let path_u16: Vec<u16> = view_path.iter().map(|&x| x as u16).collect();
-                let vnode_id = crate::ui::vnode::VNodeId::new(
-                    crate::ui::vnode::id_from_path(&path_u16),
-                );
+                let vnode_id =
+                    crate::ui::vnode::VNodeId::new(crate::ui::vnode::id_from_path(&path_u16));
                 self.inspector_cache
                     .borrow_mut()
                     .set_iced_map(vnode_id, id_str.clone());
@@ -26636,9 +28525,8 @@ impl DebugRenderCtx {
         // inspector selects by.
         if self.capture_data {
             let path_u16: Vec<u16> = view_path.iter().map(|&x| x as u16).collect();
-            let vnode_id = crate::ui::vnode::VNodeId::new(
-                crate::ui::vnode::id_from_path(&path_u16),
-            );
+            let vnode_id =
+                crate::ui::vnode::VNodeId::new(crate::ui::vnode::id_from_path(&path_u16));
             let (pad, border, margin) = debug_style_insets(style);
             let mut cache_ref = self.inspector_cache.borrow_mut();
             let node = cache_ref.get_mut_or_default(vnode_id);
@@ -26655,11 +28543,14 @@ impl DebugRenderCtx {
         self.tree_enter(id.clone(), kind.to_string());
 
         // Always store metadata (even with empty props) for component tree lookup
-        self.element_styles.borrow_mut().insert(id.clone(), DebugElementInfo {
-            kind: kind.to_string(),
-            props,
-            span,
-        });
+        self.element_styles.borrow_mut().insert(
+            id.clone(),
+            DebugElementInfo {
+                kind: kind.to_string(),
+                props,
+                span,
+            },
+        );
 
         // --- Bounds probe container ---
         // For non-container elements (button, text, divider, checkbox, etc.),
@@ -26677,9 +28568,12 @@ impl DebugRenderCtx {
         // Plan 413 follow-up: code_editor joins input/textarea in the exclusion —
         // the wrapper breaks the custom widget's fill_raw body text (verified:
         // F12 → editor body text vanishes while gutter/caret still render).
-        let el: iced::Element<'static, IcedMessage> = if self.debug_mode && aura_id.is_some()
-            && !matches!(kind, "col" | "row" | "container" | "scroll" | "input" | "textarea" | "code_editor")
-        {
+        let el: iced::Element<'static, IcedMessage> = if self.debug_mode
+            && aura_id.is_some()
+            && !matches!(
+                kind,
+                "col" | "row" | "container" | "scroll" | "input" | "textarea" | "code_editor"
+            ) {
             // Use the unique id (with counter suffix) instead of raw aura_id
             // to avoid duplicate iced widget IDs from ForLoop iterations.
             container(el)
@@ -26755,22 +28649,33 @@ impl DebugRenderCtx {
             // Selected element: orange border + tooltip
             let info = self.element_styles.borrow().get(&id).cloned();
             let header_text = format!("{} #{}", kind, id);
-            let mut tip_col = column![text(header_text).size(10).color(iced::Color::from_rgb(1.0, 0.7, 0.3))].spacing(1);
+            let mut tip_col = column![text(header_text)
+                .size(10)
+                .color(iced::Color::from_rgb(1.0, 0.7, 0.3))]
+            .spacing(1);
             if let Some(ref elem_info) = info {
                 if !elem_info.props.is_empty() {
                     let mut line = String::new();
                     for (k, v) in &elem_info.props {
-                        if !line.is_empty() { line.push(' '); }
+                        if !line.is_empty() {
+                            line.push(' ');
+                        }
                         line.push_str(k);
                         line.push(':');
                         line.push_str(v);
                     }
-                    tip_col = tip_col.push(text(line).size(9).color(iced::Color::from_rgb(0.7, 0.7, 0.7)));
+                    tip_col = tip_col.push(
+                        text(line)
+                            .size(9)
+                            .color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
+                    );
                 }
             }
             let tip_content = container(tip_col)
                 .style(|_: &iced::Theme| container::Style {
-                    background: Some(iced::Background::Color(iced::Color::from_rgba(0.15, 0.15, 0.18, 0.95))),
+                    background: Some(iced::Background::Color(iced::Color::from_rgba(
+                        0.15, 0.15, 0.18, 0.95,
+                    ))),
                     border: iced::Border {
                         color: iced::Color::from_rgb(0.8, 0.5, 0.2),
                         width: 1.0,
@@ -26780,15 +28685,14 @@ impl DebugRenderCtx {
                 })
                 .padding(iced::Padding::new(6.0));
 
-            let bordered = container(ma)
-                .style(|_: &iced::Theme| container::Style {
-                    border: iced::Border {
-                        color: iced::Color::from_rgb(1.0, 0.6, 0.2),
-                        width: 2.0,
-                        radius: 0.0.into(),
-                    },
-                    ..Default::default()
-                });
+            let bordered = container(ma).style(|_: &iced::Theme| container::Style {
+                border: iced::Border {
+                    color: iced::Color::from_rgb(1.0, 0.6, 0.2),
+                    width: 2.0,
+                    radius: 0.0.into(),
+                },
+                ..Default::default()
+            });
 
             tooltip(bordered, tip_content, tooltip::Position::Top)
                 .gap(4.0)
@@ -26797,22 +28701,33 @@ impl DebugRenderCtx {
             // Build tooltip content from stored metadata
             let info = self.element_styles.borrow().get(&id).cloned();
             let header_text = format!("{} #{}", kind, id);
-            let mut tip_col = column![text(header_text).size(10).color(iced::Color::from_rgb(0.4, 0.7, 1.0))].spacing(1);
+            let mut tip_col = column![text(header_text)
+                .size(10)
+                .color(iced::Color::from_rgb(0.4, 0.7, 1.0))]
+            .spacing(1);
             if let Some(ref elem_info) = info {
                 if !elem_info.props.is_empty() {
                     let mut line = String::new();
                     for (k, v) in &elem_info.props {
-                        if !line.is_empty() { line.push(' '); }
+                        if !line.is_empty() {
+                            line.push(' ');
+                        }
                         line.push_str(k);
                         line.push(':');
                         line.push_str(v);
                     }
-                    tip_col = tip_col.push(text(line).size(9).color(iced::Color::from_rgb(0.7, 0.7, 0.7)));
+                    tip_col = tip_col.push(
+                        text(line)
+                            .size(9)
+                            .color(iced::Color::from_rgb(0.7, 0.7, 0.7)),
+                    );
                 }
             }
             let tip_content = container(tip_col)
                 .style(|_: &iced::Theme| container::Style {
-                    background: Some(iced::Background::Color(iced::Color::from_rgba(0.15, 0.15, 0.18, 0.95))),
+                    background: Some(iced::Background::Color(iced::Color::from_rgba(
+                        0.15, 0.15, 0.18, 0.95,
+                    ))),
                     border: iced::Border {
                         color: iced::Color::from_rgb(0.3, 0.5, 0.8),
                         width: 1.0,
@@ -26822,15 +28737,14 @@ impl DebugRenderCtx {
                 })
                 .padding(iced::Padding::new(6.0));
 
-            let bordered = container(ma)
-                .style(|_: &iced::Theme| container::Style {
-                    border: iced::Border {
-                        color: iced::Color::from_rgb(0.2, 0.5, 1.0),
-                        width: 1.5,
-                        radius: 0.0.into(),
-                    },
-                    ..Default::default()
-                });
+            let bordered = container(ma).style(|_: &iced::Theme| container::Style {
+                border: iced::Border {
+                    color: iced::Color::from_rgb(0.2, 0.5, 1.0),
+                    width: 1.5,
+                    radius: 0.0.into(),
+                },
+                ..Default::default()
+            });
 
             tooltip(bordered, tip_content, tooltip::Position::Top)
                 .gap(4.0)
@@ -26898,26 +28812,72 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
     let is = IcedStyle::from_style(s);
     let mut props = Vec::new();
     if let Some(ref w) = is.width {
-        props.push(("w".into(), match w { IcedSize::Full | IcedSize::Screen => "fill".into(), IcedSize::FillPortion(n) => format!("portion-{}", n), IcedSize::Fixed(f) => format!("{}px", *f as u16), IcedSize::Shrink => "auto".into(), IcedSize::Percent(v) => format!("{}%", v) }));
+        props.push((
+            "w".into(),
+            match w {
+                IcedSize::Full | IcedSize::Screen => "fill".into(),
+                IcedSize::FillPortion(n) => format!("portion-{}", n),
+                IcedSize::Fixed(f) => format!("{}px", *f as u16),
+                IcedSize::Shrink => "auto".into(),
+                IcedSize::Percent(v) => format!("{}%", v),
+            },
+        ));
     }
     if let Some(ref h) = is.height {
-        props.push(("h".into(), match h { IcedSize::Full | IcedSize::Screen => "fill".into(), IcedSize::FillPortion(n) => format!("portion-{}", n), IcedSize::Fixed(f) => format!("{}px", *f as u16), IcedSize::Shrink => "auto".into(), IcedSize::Percent(v) => format!("{}%", v) }));
+        props.push((
+            "h".into(),
+            match h {
+                IcedSize::Full | IcedSize::Screen => "fill".into(),
+                IcedSize::FillPortion(n) => format!("portion-{}", n),
+                IcedSize::Fixed(f) => format!("{}px", *f as u16),
+                IcedSize::Shrink => "auto".into(),
+                IcedSize::Percent(v) => format!("{}%", v),
+            },
+        ));
     }
-    if let Some(p) = is.padding { props.push(("pad".into(), format!("{}", p as u16))); }
-    if let Some(g) = is.gap { props.push(("gap".into(), format!("{}", g as u16))); }
+    if let Some(p) = is.padding {
+        props.push(("pad".into(), format!("{}", p as u16)));
+    }
+    if let Some(g) = is.gap {
+        props.push(("gap".into(), format!("{}", g as u16)));
+    }
     if let Some(c) = is.background_color {
-        props.push(("bg".into(), format!("#{:02x}{:02x}{:02x}", (c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8)));
+        props.push((
+            "bg".into(),
+            format!(
+                "#{:02x}{:02x}{:02x}",
+                (c.r * 255.0) as u8,
+                (c.g * 255.0) as u8,
+                (c.b * 255.0) as u8
+            ),
+        ));
     }
     if let Some(c) = is.text_color {
-        props.push(("fg".into(), format!("#{:02x}{:02x}{:02x}", (c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8)));
+        props.push((
+            "fg".into(),
+            format!(
+                "#{:02x}{:02x}{:02x}",
+                (c.r * 255.0) as u8,
+                (c.g * 255.0) as u8,
+                (c.b * 255.0) as u8
+            ),
+        ));
     }
     if let Some(ref fs) = is.font_size {
         let px = match fs {
-            IcedFontSize::Xs => 12, IcedFontSize::Sm => 14, IcedFontSize::Base => 16,
-            IcedFontSize::Lg => 18, IcedFontSize::Xl => 20, IcedFontSize::Xxl => 24,
-            IcedFontSize::X3xl => 30, IcedFontSize::X4xl => 36,
-            IcedFontSize::X5xl => 48, IcedFontSize::X6xl => 60, IcedFontSize::X7xl => 72,
-            IcedFontSize::X8xl => 96, IcedFontSize::X9xl => 128,
+            IcedFontSize::Xs => 12,
+            IcedFontSize::Sm => 14,
+            IcedFontSize::Base => 16,
+            IcedFontSize::Lg => 18,
+            IcedFontSize::Xl => 20,
+            IcedFontSize::Xxl => 24,
+            IcedFontSize::X3xl => 30,
+            IcedFontSize::X4xl => 36,
+            IcedFontSize::X5xl => 48,
+            IcedFontSize::X6xl => 60,
+            IcedFontSize::X7xl => 72,
+            IcedFontSize::X8xl => 96,
+            IcedFontSize::X9xl => 128,
         };
         props.push(("font".into(), format!("{}px", px)));
     }
@@ -26926,25 +28886,47 @@ fn debug_style_props(style: Option<&Style>) -> Vec<(String, String)> {
     if let Some(px) = is.font_size_arbitrary {
         props.push(("font".into(), format!("{}px", px as u16)));
     }
-    if let Some(r) = is.border_radius { props.push(("radius".into(), format!("{}", r as u16))); }
-    if let Some(w) = is.border_width { props.push(("border".into(), format!("{}", w as u16))); }
+    if let Some(r) = is.border_radius {
+        props.push(("radius".into(), format!("{}", r as u16)));
+    }
+    if let Some(w) = is.border_width {
+        props.push(("border".into(), format!("{}", w as u16)));
+    }
     if let Some(ref a) = is.align_items {
-        props.push(("align".into(), match a { IcedAlign::Start => "start", IcedAlign::Center => "center", IcedAlign::End => "end" }.into()));
+        props.push((
+            "align".into(),
+            match a {
+                IcedAlign::Start => "start",
+                IcedAlign::Center => "center",
+                IcedAlign::End => "end",
+            }
+            .into(),
+        ));
     }
     if let Some(ref j) = is.justify_content {
-        props.push(("justify".into(), match j { IcedJustify::Start => "start", IcedJustify::Center => "center", IcedJustify::End => "end", IcedJustify::Between => "between", IcedJustify::Around => "around", IcedJustify::Evenly => "evenly" }.into()));
+        props.push((
+            "justify".into(),
+            match j {
+                IcedJustify::Start => "start",
+                IcedJustify::Center => "center",
+                IcedJustify::End => "end",
+                IcedJustify::Between => "between",
+                IcedJustify::Around => "around",
+                IcedJustify::Evenly => "evenly",
+            }
+            .into(),
+        ));
     }
     props
 }
-
 
 /// Plan 413 follow-up: diff the search pattern into the editor core.
 /// Search-as-you-type: a changed non-empty pattern also jumps to the first
 /// match (cosmic-edit behavior), uniformly for the VM and rust paths.
 fn apply_search(storage_key: &str, search: &str) {
     use crate::ui::code_editor as ce;
-    let changed = ce::code_editor_with(storage_key, |core| core.set_search(search))
-        .unwrap_or(false);
+    let changed =
+        ce::code_editor_with(storage_key, |core| core.set_search(search)).unwrap_or(false);
     if changed && !search.is_empty() {
         ce::with_font_system(|fs| {
             ce::code_editor_with(storage_key, |core| core.find_next(fs));
@@ -26972,7 +28954,11 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
         let sk = ade::storage_key(key);
         // 单向数据流：外部差分回写（与 code editor 同 §5.4 口径）。
         ade::autodown_editor_sync(&sk, value, is_final);
-        let fg = if crate::ui::style::iced_adapter::dark_mode() { ade_fg_dark() } else { ade_fg_light() };
+        let fg = if crate::ui::style::iced_adapter::dark_mode() {
+            ade_fg_dark()
+        } else {
+            ade_fg_light()
+        };
         let mut widget = ade::widget::DocEditor::<M>::new(&sk, fg);
         // PLAN-048 T7（W4）：空态文案 lowering（content 空且非聚焦时
         // 编辑壳浅灰渲染）。
@@ -26996,7 +28982,12 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
     #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
     {
         let _ = (key, is_final, on_focus, on_link);
-        AbstractView::<M>::Text { content: value.to_owned(), style: None, selectable: false }.into_iced()
+        AbstractView::<M>::Text {
+            content: value.to_owned(),
+            style: None,
+            selectable: false,
+        }
+        .into_iced()
     }
 }
 
@@ -27061,9 +29052,9 @@ fn build_code_editor_generic<M: Clone + Debug + 'static>(
         crate::ui::scroll::bind_controller(&scroll_id, &scroll_id);
         let scroller = iced::widget::scrollable(widget)
             .id(iced::widget::Id::from(scroll_id))
-            .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
-                scrollbar_style()
-            })
+            .style(
+                |_theme: &iced::Theme, _status: iced::widget::scrollable::Status| scrollbar_style(),
+            )
             .width(iced::Length::Fill)
             .height(iced::Length::Fill);
         return scroller.into();
@@ -27163,7 +29154,9 @@ fn is_empty_stack_layer<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> b
     use AbstractView as AV;
     fn has_declared_background(style: Option<&crate::ui::style::Style>) -> bool {
         style.is_some_and(|s| {
-            s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::BackgroundColor(_)))
+            s.classes
+                .iter()
+                .any(|c| matches!(c, crate::ui::style::StyleClass::BackgroundColor(_)))
         })
     }
     match view {
@@ -27175,7 +29168,12 @@ fn is_empty_stack_layer<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> b
             }
             is_empty_stack_layer(child)
         }
-        AV::Column { children, style, .. } | AV::Row { children, style, .. } => {
+        AV::Column {
+            children, style, ..
+        }
+        | AV::Row {
+            children, style, ..
+        } => {
             if has_declared_background(style.as_ref()) {
                 return false;
             }
@@ -27221,12 +29219,13 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::Accordion { .. } => "accordion",
         AbstractView::Sidebar { .. } => "sidebar",
         AbstractView::NavigationRail { .. } => "navrail",
-        AbstractView::Column { .. } | AbstractView::Row { .. }
-        | AbstractView::Container { .. } | AbstractView::Scrollable { .. } => "el",
+        AbstractView::Column { .. }
+        | AbstractView::Row { .. }
+        | AbstractView::Container { .. }
+        | AbstractView::Scrollable { .. } => "el",
         AbstractView::Grid { .. } => "grid",
     }
 }
-
 
 /// Plan 483: 依 render_dynamic_view 的 DFS 序收集 Input 的派生 Id,登记进
 /// `AppState::devtools::input_ids`(dynamic_view 每次脏重建清填)。聚焦
@@ -27234,7 +29233,14 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
 /// 此寻址「当前视图的首个 input」——取代共享字面量 prompt_input 的盲聚焦。
 fn collect_input_ids(view: &AbstractView<IcedMessage>, out: &mut Vec<iced::widget::Id>) {
     match view {
-        AbstractView::Input { placeholder, on_change, on_submit, width, password, .. } => {
+        AbstractView::Input {
+            placeholder,
+            on_change,
+            on_submit,
+            width,
+            password,
+            ..
+        } => {
             // PLAN-013 W2 修正：派生式必须与 render_dynamic_view Input 渲染
             // 臂（18859 .id(derive_input_id(input_primary...))）严格同式——
             // (widget,event) 主键优先、None 三元组兜底。此前误改 None 三元
@@ -27242,10 +29248,18 @@ fn collect_input_ids(view: &AbstractView<IcedMessage>, out: &mut Vec<iced::widge
             let primary = on_change
                 .as_ref()
                 .map(|m| (m.widget.as_str(), m.event.as_str()))
-                .or_else(|| on_submit.as_ref().map(|m| (m.widget.as_str(), m.event.as_str())));
+                .or_else(|| {
+                    on_submit
+                        .as_ref()
+                        .map(|m| (m.widget.as_str(), m.event.as_str()))
+                });
             out.push(derive_input_id(primary, placeholder, *width, *password));
         }
-        AbstractView::Column { children, .. } | AbstractView::Row { children, .. } | AbstractView::List { items: children, .. } => {
+        AbstractView::Column { children, .. }
+        | AbstractView::Row { children, .. }
+        | AbstractView::List {
+            items: children, ..
+        } => {
             for child in children {
                 collect_input_ids(child, out);
             }
@@ -27256,7 +29270,9 @@ fn collect_input_ids(view: &AbstractView<IcedMessage>, out: &mut Vec<iced::widge
         AbstractView::MouseArea { content, .. } => {
             collect_input_ids(content, out);
         }
-        AbstractView::Popover { anchor, content, .. } => {
+        AbstractView::Popover {
+            anchor, content, ..
+        } => {
             if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
                 collect_input_ids(w, out);
             }
@@ -27274,7 +29290,9 @@ fn collect_input_ids(view: &AbstractView<IcedMessage>, out: &mut Vec<iced::widge
             collect_input_ids(base, out);
             collect_input_ids(content, out);
         }
-        AbstractView::Popover { anchor, content, .. } => {
+        AbstractView::Popover {
+            anchor, content, ..
+        } => {
             if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
                 collect_input_ids(w, out);
             }
@@ -27300,9 +29318,15 @@ impl MediaSurfaceRef {
     /// 自然产生新键（旧键被 prune → 重挂回旧 src = 新订阅）。
     fn key(&self) -> String {
         let identity = |m: Option<&IcedMessage>| {
-            m.map(|m| format!("{}\u{1}{}", m.widget, m.event)).unwrap_or_default()
+            m.map(|m| format!("{}\u{1}{}", m.widget, m.event))
+                .unwrap_or_default()
         };
-        format!("{}\u{1}{}\u{1}{}", identity(self.on_loaded.as_ref()), identity(self.on_error.as_ref()), self.src)
+        format!(
+            "{}\u{1}{}\u{1}{}",
+            identity(self.on_loaded.as_ref()),
+            identity(self.on_error.as_ref()),
+            self.src
+        )
     }
 }
 
@@ -27311,7 +29335,12 @@ impl MediaSurfaceRef {
 /// Scrollable/Grid/Overlay；更外层容器中的 surface 与 focus 登记同边界）。
 fn collect_media_surfaces(view: &AbstractView<IcedMessage>, out: &mut Vec<MediaSurfaceRef>) {
     match view {
-        AbstractView::ImageSurface { src, on_loaded, on_error, .. } => {
+        AbstractView::ImageSurface {
+            src,
+            on_loaded,
+            on_error,
+            ..
+        } => {
             out.push(MediaSurfaceRef {
                 src: src.clone(),
                 on_loaded: on_loaded.clone(),
@@ -27320,13 +29349,17 @@ fn collect_media_surfaces(view: &AbstractView<IcedMessage>, out: &mut Vec<MediaS
         }
         AbstractView::Column { children, .. }
         | AbstractView::Row { children, .. }
-        | AbstractView::List { items: children, .. } => {
+        | AbstractView::List {
+            items: children, ..
+        } => {
             for child in children {
                 collect_media_surfaces(child, out);
             }
         }
         AbstractView::MouseArea { content, .. } => collect_media_surfaces(content, out),
-        AbstractView::Popover { anchor, content, .. } => {
+        AbstractView::Popover {
+            anchor, content, ..
+        } => {
             if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
                 collect_media_surfaces(w, out);
             }
@@ -27382,8 +29415,16 @@ fn media_notify_sweep(
     collect_media_surfaces(&converted, &mut surfaces);
 
     enum Fire {
-        Loaded { msg: IcedMessage, width: u32, height: u32, revision: u64 },
-        Error { msg: IcedMessage, reason: String },
+        Loaded {
+            msg: IcedMessage,
+            width: u32,
+            height: u32,
+            revision: u64,
+        },
+        Error {
+            msg: IcedMessage,
+            reason: String,
+        },
     }
     let mut fire: Vec<Fire> = Vec::new();
 
@@ -27427,7 +29468,12 @@ fn media_notify_sweep(
                                 .next()
                                 .and_then(|r| r.parse::<u64>().ok())
                                 .unwrap_or(0);
-                            fire.push(Fire::Loaded { msg, width: w, height: h, revision });
+                            fire.push(Fire::Loaded {
+                                msg,
+                                width: w,
+                                height: h,
+                                revision,
+                            });
                         }
                     }
                 }
@@ -27449,7 +29495,12 @@ fn media_notify_sweep(
 
     for action in fire {
         match action {
-            Fire::Loaded { msg, width, height, revision } => {
+            Fire::Loaded {
+                msg,
+                width,
+                height,
+                revision,
+            } => {
                 media_dispatch_loaded(component, &msg, width, height, revision);
             }
             Fire::Error { msg, reason } => {
@@ -27583,7 +29634,11 @@ impl iced::advanced::widget::Operation<Option<iced::widget::Id>> for FindFocused
     }
 }
 
-fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&DebugRenderCtx>, path: &mut Vec<usize>) -> iced::Element<'static, IcedMessage> {
+fn render_dynamic_view(
+    view: AbstractView<IcedMessage>,
+    debug_ctx: Option<&DebugRenderCtx>,
+    path: &mut Vec<usize>,
+) -> iced::Element<'static, IcedMessage> {
     // PLAN-663 C1c: 根调用点整树重写视口单位（h-screen 族在定高(px)嵌入边
     // 界内重锚定；递归子调用 path 非空，天然跳过）。重写幂等，缓存帧复用
     // 亦安全。
@@ -27598,7 +29653,11 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // Overlay children can contain VM-specific columns, rows and inputs;
         // recurse through this renderer so nested content keeps the same
         // layout and message behavior as the rest of the live preview.
-        AbstractView::Overlay { base, content, position } => {
+        AbstractView::Overlay {
+            base,
+            content,
+            position,
+        } => {
             path.push(0);
             let base_el = render_dynamic_view(*base, debug_ctx, path);
             path.pop();
@@ -27614,7 +29673,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 !overlay_passthrough,
                 overlay_units,
             );
-            let el: iced::Element<'static, IcedMessage> = iced::widget::stack![base_el, floating].into();
+            let el: iced::Element<'static, IcedMessage> =
+                iced::widget::stack![base_el, floating].into();
             if let Some(ctx) = debug_ctx {
                 ctx.wrap_debug(path, "overlay", el, vec![], None)
             } else {
@@ -27624,34 +29684,58 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // Input needs IcedMessage-specific text capture — on_input constructs a new
         // IcedMessage with the typed text included, which the generic IntoIcedElement
         // trait cannot do since it's generic over M.
-        AbstractView::Input { placeholder, value, on_change, on_submit, width, password, style } => {
+        AbstractView::Input {
+            placeholder,
+            value,
+            on_change,
+            on_submit,
+            width,
+            password,
+            style,
+        } => {
             let dbg_props = debug_style_props(style.as_ref());
             // Plan 483: Id 主键在 on_change/on_submit 被 move 进闭包前取好
             // (持所有权,避免后续 move 冲突)。
             let input_primary = on_change
                 .as_ref()
                 .map(|m| (m.widget.clone(), m.event.clone()))
-                .or_else(|| on_submit.as_ref().map(|m| (m.widget.clone(), m.event.clone())));
-            let mut input_widget = build_input_shape::<IcedMessage>(&placeholder, &value, width, password, style.as_ref());
+                .or_else(|| {
+                    on_submit
+                        .as_ref()
+                        .map(|m| (m.widget.clone(), m.event.clone()))
+                });
+            let mut input_widget = build_input_shape::<IcedMessage>(
+                &placeholder,
+                &value,
+                width,
+                password,
+                style.as_ref(),
+            );
 
             // Wire on_change → on_input (captures typed text).
             // In inspect-capture mode, omit the handler so the widget is
             // non-interactive and wrap_debug's mouse_area can capture hover/click.
-            let on_change = if inspect_capture_active() { None } else { on_change };
+            let on_change = if inspect_capture_active() {
+                None
+            } else {
+                on_change
+            };
             if let Some(msg) = on_change {
                 let msg_clone = msg.clone();
-                input_widget = input_widget.on_input(move |text| {
-                    IcedMessage {
-                        widget: msg_clone.widget.clone(),
-                        event: msg_clone.event.clone(),
-                        input_value: Some(text),
-                    }
+                input_widget = input_widget.on_input(move |text| IcedMessage {
+                    widget: msg_clone.widget.clone(),
+                    event: msg_clone.event.clone(),
+                    input_value: Some(text),
                 });
             }
 
             // Wire on_submit → on_submit (fires on Enter key press)
             // Note: iced's on_submit takes a plain Message, not a closure
-            let on_submit = if inspect_capture_active() { None } else { on_submit };
+            let on_submit = if inspect_capture_active() {
+                None
+            } else {
+                on_submit
+            };
             if let Some(msg) = on_submit {
                 input_widget = input_widget.on_submit(msg);
             }
@@ -27662,7 +29746,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             // 键盘双投递);Id 本身跨重建稳定,焦点状态由 iced Tree 槽位
             // diff 保持(Plan 047 的 on_submit 语义不受影响)。
             input_widget = input_widget.id(derive_input_id(
-                input_primary.as_ref().map(|(w, e)| (w.as_str(), e.as_str())),
+                input_primary
+                    .as_ref()
+                    .map(|(w, e)| (w.as_str(), e.as_str())),
                 &placeholder,
                 width,
                 password,
@@ -27675,16 +29761,37 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 el
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "input", el, dbg_props, style.as_ref()) } else { el }
+            if let Some(ctx) = debug_ctx {
+                ctx.wrap_debug(path, "input", el, dbg_props, style.as_ref())
+            } else {
+                el
+            }
         }
 
-        AbstractView::Textarea { placeholder, value, on_change, on_submit, height, style, highlight, ghost, keydown, keymap } => {
+        AbstractView::Textarea {
+            placeholder,
+            value,
+            on_change,
+            on_submit,
+            height,
+            style,
+            highlight,
+            ghost,
+            keydown,
+            keymap,
+        } => {
             // PLAN-725 T-00：臂累积探针（勘定钻取）。
             let p725_arm_t = std::time::Instant::now();
-            let p725_arm_r = || crate::ui::frame_segments::arm_acc("textarea", p725_arm_t.elapsed());
-            let key = on_change.as_ref()
+            let p725_arm_r =
+                || crate::ui::frame_segments::arm_acc("textarea", p725_arm_t.elapsed());
+            let key = on_change
+                .as_ref()
                 .map(|m| format!("{}_{}", m.widget, m.event))
-                .or_else(|| on_submit.as_ref().map(|m| format!("{}_{}", m.widget, m.event)))
+                .or_else(|| {
+                    on_submit
+                        .as_ref()
+                        .map(|m| format!("{}_{}", m.widget, m.event))
+                })
                 .unwrap_or_else(|| format!("__textarea_{}", placeholder.len()));
 
             // Plan 057 续(富文本输入):带 highlight/ghost props 时走原生着色
@@ -27727,8 +29834,10 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     }
                 }
                 let settings = build_span_lines(&highlight, &value, &ghost);
-                let rich_editor = rich_editor.highlight_with::<SpanHighlighter>(settings, span_kind_to_format);
-                let rich_editor = with_textarea_keydown(rich_editor, keydown, &key, &keymap, on_change.clone());
+                let rich_editor =
+                    rich_editor.highlight_with::<SpanHighlighter>(settings, span_kind_to_format);
+                let rich_editor =
+                    with_textarea_keydown(rich_editor, keydown, &key, &keymap, on_change.clone());
                 wire_textarea_actions(rich_editor, on_change, on_submit)
             } else {
                 let content = get_textarea_content(&key, &value);
@@ -27764,10 +29873,7 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                         // 文字经 PlainText highlighter 染透明,style.value 让给
                         // 可见光标色(theme foreground)。
                         if value_color.a <= 0.001 {
-                            editor = editor.highlight_with(
-                                (),
-                                text_editor_text_transparent,
-                            );
+                            editor = editor.highlight_with((), text_editor_text_transparent);
                             let caret_color = crate::ui::style::iced_adapter::resolve_semantic_rgb(
                                 &crate::ui::style::Color::OnBackground,
                             )
@@ -27796,7 +29902,8 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     }
                 }
 
-                let editor = with_textarea_keydown(editor, keydown, &key, &keymap, on_change.clone());
+                let editor =
+                    with_textarea_keydown(editor, keydown, &key, &keymap, on_change.clone());
                 wire_textarea_actions(editor, on_change, on_submit)
             };
             let el = if let Some(ref s) = style {
@@ -27805,14 +29912,25 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             } else {
                 el
             };
-            let el_out = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "textarea", el, vec![], None) } else { el };
+            let el_out = if let Some(ctx) = debug_ctx {
+                ctx.wrap_debug(path, "textarea", el, vec![], None)
+            } else {
+                el
+            };
             p725_arm_r();
             el_out
         }
 
         // Layout containers: recursively render children through render_dynamic_view
         // so Input/Textarea get proper IcedMessage text capture.
-        AbstractView::Column { children, spacing, padding, style, onclick, on_right_click } => {
+        AbstractView::Column {
+            children,
+            spacing,
+            padding,
+            style,
+            onclick,
+            on_right_click,
+        } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if spacing > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
                 dbg_props.insert(0, ("gap".into(), spacing.to_string()));
@@ -27841,29 +29959,61 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let (flow_idx, abs_idx) = column_layer_partition(&children);
 
             let el = if abs_idx.is_empty() {
-                let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(children.len());
+                let mut els: Vec<iced::Element<'static, IcedMessage>> =
+                    Vec::with_capacity(children.len());
                 for (i, child) in children.into_iter().enumerate() {
                     path.push(i);
                     els.push(render_dynamic_view(fix_col_child(child), debug_ctx, path));
                     path.pop();
                 }
-                let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
-                build_column(els, spacing, padding, style.as_ref(), widget_id, hover.clone())
+                let widget_id = Some(format!(
+                    "vnode_{}",
+                    crate::ui::vnode::id_from_path(
+                        &path.iter().map(|&s| s as u16).collect::<Vec<u16>>()
+                    )
+                ));
+                build_column(
+                    els,
+                    spacing,
+                    padding,
+                    style.as_ref(),
+                    widget_id,
+                    hover.clone(),
+                )
             } else {
-                let mut base_els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(flow_idx.len());
+                let mut base_els: Vec<iced::Element<'static, IcedMessage>> =
+                    Vec::with_capacity(flow_idx.len());
                 for &i in &flow_idx {
                     path.push(i);
-                    base_els.push(render_dynamic_view(fix_col_child(children[i].clone()), debug_ctx, path));
+                    base_els.push(render_dynamic_view(
+                        fix_col_child(children[i].clone()),
+                        debug_ctx,
+                        path,
+                    ));
                     path.pop();
                 }
-                let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
-                let base = build_column(base_els, spacing, padding, style.as_ref(), widget_id, hover.clone());
+                let widget_id = Some(format!(
+                    "vnode_{}",
+                    crate::ui::vnode::id_from_path(
+                        &path.iter().map(|&s| s as u16).collect::<Vec<u16>>()
+                    )
+                ));
+                let base = build_column(
+                    base_els,
+                    spacing,
+                    padding,
+                    style.as_ref(),
+                    widget_id,
+                    hover.clone(),
+                );
 
                 let mut stk = iced::widget::Stack::new().push(base);
 
                 for &i in &abs_idx {
                     // PLAN-051 P2: 空层不渲染不入栈(挡死下层交互件聚焦/点击)。
-                    if is_empty_stack_layer(&children[i]) { continue; }
+                    if is_empty_stack_layer(&children[i]) {
+                        continue;
+                    }
                     path.push(i);
                     // PLAN-095 T-03: 被动框穿透 + 百分比几何入参。
                     let passthrough_c = abs_layer_passthrough(&children[i]);
@@ -27873,7 +30023,9 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     // PLAN-536 T10: 非零偏移浮层消费 offset(× 落左上根修);
                     // 零偏移(inset-0 ghost 族)保持落原点。
                     let abs_el = match dynamic_abs_layer_position(&children[i]) {
-                        Some(pos) => build_floating_layer_full(abs_el, pos, !passthrough_c, units_c),
+                        Some(pos) => {
+                            build_floating_layer_full(abs_el, pos, !passthrough_c, units_c)
+                        }
                         // PLAN-023 T-02: opaque 下沉 content 级(同 builder 臂)。
                         None if !passthrough_c => iced::widget::opaque(abs_el),
                         None => abs_el,
@@ -27881,12 +30033,21 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     stk = stk.push(abs_el);
                 }
 
-                let clip = style.as_ref()
-                    .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
+                let clip = style
+                    .as_ref()
+                    .map(|s| {
+                        s.classes
+                            .iter()
+                            .any(|c| matches!(c, StyleClass::OverflowHidden))
+                    })
                     .unwrap_or(false);
                 stk.clip(clip).into()
             };
-            let el = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref()) } else { el };
+            let el = if let Some(ctx) = debug_ctx {
+                ctx.wrap_debug(path, "col", el, dbg_props, style.as_ref())
+            } else {
+                el
+            };
             // Plan 490 G4：同 Row（inspect 模式自守卫不包）。
             // PLAN-002 B：右键 + hover 同包装点。
             wrap_layout_events(el, onclick, on_right_click, hover)
@@ -27896,7 +30057,13 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // find_view_by_path 的 extract_children 同序):widget 锚 anchor=0、
         // content=1;坐标锚无 anchor 子,content=0。convert_menubar 的面板项
         // 路径按 [base, popover_idx, 1, item_idx] 记录。
-        AbstractView::Popover { anchor, content, placement, open, on_dismiss } => {
+        AbstractView::Popover {
+            anchor,
+            content,
+            placement,
+            open,
+            on_dismiss,
+        } => {
             use crate::ui::iced::popover::Popover as PopoverWidget;
             use crate::ui::view::PopoverAnchor;
             let (anchor_point, anchor_is_empty, content_slot, anchor_el): (
@@ -27930,15 +30097,30 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             if let Some((x, y)) = anchor_point {
                 p = p.at_point(x, y);
             }
-            let handler = if inspect_capture_active() { None } else { on_dismiss };
+            let handler = if inspect_capture_active() {
+                None
+            } else {
+                on_dismiss
+            };
             if let Some(msg) = handler {
                 p = p.on_dismiss(msg);
             }
             let el: iced::Element<'static, IcedMessage> = p.into();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "popover", el, vec![], None) } else { el }
+            if let Some(ctx) = debug_ctx {
+                ctx.wrap_debug(path, "popover", el, vec![], None)
+            } else {
+                el
+            }
         }
 
-        AbstractView::Row { children, spacing, padding, style, onclick, on_right_click } => {
+        AbstractView::Row {
+            children,
+            spacing,
+            padding,
+            style,
+            onclick,
+            on_right_click,
+        } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if spacing > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
                 dbg_props.insert(0, ("gap".into(), spacing.to_string()));
@@ -27955,7 +30137,11 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             // normal 子元素走 build_row 作 base;absolute 子元素叠在 base 之上
             // (stack 尺寸由 base 决定,overlay 落原点,接近 CSS absolute 语义)。
             let mut normal: Vec<(usize, AbstractView<IcedMessage>)> = Vec::new();
-            let mut absolute: Vec<(usize, Option<crate::ui::view::OverlayPosition>, AbstractView<IcedMessage>)> = Vec::new();
+            let mut absolute: Vec<(
+                usize,
+                Option<crate::ui::view::OverlayPosition>,
+                AbstractView<IcedMessage>,
+            )> = Vec::new();
             for (i, child) in children.into_iter().enumerate() {
                 let is_abs = extract_view_style(&child)
                     .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)))
@@ -27968,21 +30154,40 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     normal.push((i, child));
                 }
             }
-            let mut els: Vec<iced::Element<'static, IcedMessage>> = Vec::with_capacity(normal.len());
+            let mut els: Vec<iced::Element<'static, IcedMessage>> =
+                Vec::with_capacity(normal.len());
             for (i, child) in normal.into_iter() {
                 path.push(i);
-                els.push(render_dynamic_view(axis_fix_row_child(child), debug_ctx, path));
+                els.push(render_dynamic_view(
+                    axis_fix_row_child(child),
+                    debug_ctx,
+                    path,
+                ));
                 path.pop();
             }
-            let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
-            let base = build_row(els, spacing, padding, style.as_ref(), widget_id, hover.clone());
+            let widget_id = Some(format!(
+                "vnode_{}",
+                crate::ui::vnode::id_from_path(
+                    &path.iter().map(|&s| s as u16).collect::<Vec<u16>>()
+                )
+            ));
+            let base = build_row(
+                els,
+                spacing,
+                padding,
+                style.as_ref(),
+                widget_id,
+                hover.clone(),
+            );
             let el = if absolute.is_empty() {
                 base
             } else {
                 let mut stk = iced::widget::Stack::new().push(base);
                 for (i, pos, child) in absolute.into_iter() {
                     // PLAN-051 P2: 空层不渲染不入栈(同 Column 站点)。
-                    if is_empty_stack_layer(&child) { continue; }
+                    if is_empty_stack_layer(&child) {
+                        continue;
+                    }
                     path.push(i);
                     // PLAN-095 T-03: 被动框穿透 + 百分比几何入参。
                     let passthrough_d = abs_layer_passthrough(&child);
@@ -27992,40 +30197,88 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                     // PLAN-536 T10: 同 Column 站点——非零偏移消费 offset,
                     // 零偏移(inset-0 ghost 族)保持落原点。
                     let abs_el = match pos {
-                        Some(pos) => build_floating_layer_full(abs_el, pos, !passthrough_d, units_d),
+                        Some(pos) => {
+                            build_floating_layer_full(abs_el, pos, !passthrough_d, units_d)
+                        }
                         None if !passthrough_d => iced::widget::opaque(abs_el),
                         None => abs_el,
                     };
                     stk = stk.push(abs_el);
                 }
-                let clip = style.as_ref()
-                    .map(|s| s.classes.iter().any(|c| matches!(c, StyleClass::OverflowHidden)))
+                let clip = style
+                    .as_ref()
+                    .map(|s| {
+                        s.classes
+                            .iter()
+                            .any(|c| matches!(c, StyleClass::OverflowHidden))
+                    })
                     .unwrap_or(false);
                 stk.clip(clip).into()
             };
-            let el = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "row", el, dbg_props, style.as_ref()) } else { el };
+            let el = if let Some(ctx) = debug_ctx {
+                ctx.wrap_debug(path, "row", el, dbg_props, style.as_ref())
+            } else {
+                el
+            };
             // Plan 490 G4：布局件点击（inspect 模式 wrap_layout_events 自守卫不包）。
             // PLAN-002 B：右键 + hover 同包装点。
             wrap_layout_events(el, onclick, on_right_click, hover)
         }
 
-        AbstractView::Container { child, padding, width, height, center_x, center_y, style, onclick, on_right_click } => {
+        AbstractView::Container {
+            child,
+            padding,
+            width,
+            height,
+            center_x,
+            center_y,
+            style,
+            onclick,
+            on_right_click,
+        } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if padding > 0 && !dbg_props.iter().any(|(k, _)| k == "pad") {
                 dbg_props.insert(0, ("pad".into(), padding.to_string()));
             }
             // PLAN-002 B：布局件 hover 标志（同 Column 臂）。
             let hover = layout_hover_flag(style.as_ref());
-            if let Some(w) = width { dbg_props.push(("w".into(), format!("{}px", w))); }
-            if let Some(h) = height { dbg_props.push(("h".into(), format!("{}px", h))); }
-            if center_x { dbg_props.push(("center_x".into(), "true".into())); }
-            if center_y { dbg_props.push(("center_y".into(), "true".into())); }
+            if let Some(w) = width {
+                dbg_props.push(("w".into(), format!("{}px", w)));
+            }
+            if let Some(h) = height {
+                dbg_props.push(("h".into(), format!("{}px", h)));
+            }
+            if center_x {
+                dbg_props.push(("center_x".into(), "true".into()));
+            }
+            if center_y {
+                dbg_props.push(("center_y".into(), "true".into()));
+            }
             path.push(0);
             let child_el = render_dynamic_view(*child, debug_ctx, path);
             path.pop();
-            let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
-            let el = build_container(child_el, padding, width, height, center_x, center_y, style.as_ref(), widget_id, hover.clone());
-            let el = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "container", el, dbg_props, style.as_ref()) } else { el };
+            let widget_id = Some(format!(
+                "vnode_{}",
+                crate::ui::vnode::id_from_path(
+                    &path.iter().map(|&s| s as u16).collect::<Vec<u16>>()
+                )
+            ));
+            let el = build_container(
+                child_el,
+                padding,
+                width,
+                height,
+                center_x,
+                center_y,
+                style.as_ref(),
+                widget_id,
+                hover.clone(),
+            );
+            let el = if let Some(ctx) = debug_ctx {
+                ctx.wrap_debug(path, "container", el, dbg_props, style.as_ref())
+            } else {
+                el
+            };
             // Plan 490 G4：div/Container 点击（inspect 模式自守卫不包）。
             // PLAN-002 B：右键 + hover 同包装点。
             wrap_layout_events(el, onclick, on_right_click, hover)
@@ -28033,21 +30286,54 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
         // PLAN-656 T-06: managed content——dynamic 臂同 widget（debug 包裹
         // 保 bounds 可见性；真渲染在 widget draw）。
-        AbstractView::ManagedScrollContent { key, logical_w, logical_h, .. } => {
-            let el = crate::ui::iced::managed_content::ManagedScrollContentWidget::new(key.clone(), logical_w, logical_h)
-                .into_element();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "managed_content", el, vec![], None) } else { el }
+        AbstractView::ManagedScrollContent {
+            key,
+            logical_w,
+            logical_h,
+            ..
+        } => {
+            let el = crate::ui::iced::managed_content::ManagedScrollContentWidget::new(
+                key.clone(),
+                logical_w,
+                logical_h,
+            )
+            .into_element();
+            if let Some(ctx) = debug_ctx {
+                ctx.wrap_debug(path, "managed_content", el, vec![], None)
+            } else {
+                el
+            }
         }
 
-        AbstractView::Scrollable { child, width, height, style, auto_scroll, offset, on_scroll, axes, scrollbar_policy, controller } => {
+        AbstractView::Scrollable {
+            child,
+            width,
+            height,
+            style,
+            auto_scroll,
+            offset,
+            on_scroll,
+            axes,
+            scrollbar_policy,
+            controller,
+        } => {
             let mut dbg_props = debug_style_props(style.as_ref());
-            if let Some(w) = width { dbg_props.push(("w".into(), format!("{}px", w))); }
-            if let Some(h) = height { dbg_props.push(("h".into(), format!("{}px", h))); }
+            if let Some(w) = width {
+                dbg_props.push(("w".into(), format!("{}px", w)));
+            }
+            if let Some(h) = height {
+                dbg_props.push(("h".into(), format!("{}px", h)));
+            }
             path.push(0);
             let child_el = render_dynamic_view(*child, debug_ctx, path);
             path.pop();
             // iced widget ID for layout bounds collection (Plan 282)
-            let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
+            let widget_id = Some(format!(
+                "vnode_{}",
+                crate::ui::vnode::id_from_path(
+                    &path.iter().map(|&s| s as u16).collect::<Vec<u16>>()
+                )
+            ));
             // Plan 057 续(自动滚动):auto_scroll 标记的主列表必须用固定 Id
             // (snap_to_end 目标)。debug 路径原本只挂 aura_N,导致
             // snap_to_end("blocklist_scroll") 找不到 widget 静默失效。
@@ -28086,15 +30372,35 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 }
                 None => on_scroll,
             };
-            let el = build_scrollable(child_el, width, height, style.as_ref(), widget_id, offset, on_scroll, axes, scrollbar_policy, controller.as_ref());
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "scroll", el, dbg_props, style.as_ref()) } else { el }
+            let el = build_scrollable(
+                child_el,
+                width,
+                height,
+                style.as_ref(),
+                widget_id,
+                offset,
+                on_scroll,
+                axes,
+                scrollbar_policy,
+                controller.as_ref(),
+            );
+            if let Some(ctx) = debug_ctx {
+                ctx.wrap_debug(path, "scroll", el, dbg_props, style.as_ref())
+            } else {
+                el
+            }
         }
 
         // Grid: render each cell through render_dynamic_view (so nested
         // inputs get VM text capture + each cell gets wrap_debug), then hand
         // the built cells to the shared build_grid. MUST be explicit — the
         // `_ =>` catch-all below would bypass cell instrumentation.
-        AbstractView::Grid { cols, gap, cells, style } => {
+        AbstractView::Grid {
+            cols,
+            gap,
+            cells,
+            style,
+        } => {
             let mut dbg_props = debug_style_props(style.as_ref());
             if gap > 0 && !dbg_props.iter().any(|(k, _)| k == "gap") {
                 dbg_props.insert(0, ("gap".into(), gap.to_string()));
@@ -28108,17 +30414,43 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 els.push((render_dynamic_view(cell, debug_ctx, path), spec));
                 path.pop();
             }
-            let widget_id = Some(format!("vnode_{}", crate::ui::vnode::id_from_path(&path.iter().map(|&s| s as u16).collect::<Vec<u16>>())));
+            let widget_id = Some(format!(
+                "vnode_{}",
+                crate::ui::vnode::id_from_path(
+                    &path.iter().map(|&s| s as u16).collect::<Vec<u16>>()
+                )
+            ));
             let el = build_grid(cols, gap, els, style.as_ref(), widget_id);
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "grid", el, dbg_props, style.as_ref()) } else { el }
+            if let Some(ctx) = debug_ctx {
+                ctx.wrap_debug(path, "grid", el, dbg_props, style.as_ref())
+            } else {
+                el
+            }
         }
 
         // Plan 413: code editor (VM path) — on_change 发布携带全文的新消息
         // （input_value: Some，PLAN-057 textarea 先例同款）。
-        AbstractView::CodeEditor { key, value, lang, line_numbers, wrap, vi, highlight_current_line, readonly, tab_width, font_size, on_change, on_cursor, on_context_menu, search, style } => {
+        AbstractView::CodeEditor {
+            key,
+            value,
+            lang,
+            line_numbers,
+            wrap,
+            vi,
+            highlight_current_line,
+            readonly,
+            tab_width,
+            font_size,
+            on_change,
+            on_cursor,
+            on_context_menu,
+            search,
+            style,
+        } => {
             // PLAN-725 T-00：臂累积探针（勘定钻取——整臂含 scrollable 包装）。
             let p725_arm_t = std::time::Instant::now();
-            let p725_arm_r = || crate::ui::frame_segments::arm_acc("code_editor", p725_arm_t.elapsed());
+            let p725_arm_r =
+                || crate::ui::frame_segments::arm_acc("code_editor", p725_arm_t.elapsed());
             let dbg_props = debug_style_props(style.as_ref());
             use crate::ui::code_editor as ce;
 
@@ -28211,21 +30543,31 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
                 let p725_t_sc = std::time::Instant::now();
                 let scroller = iced::widget::scrollable(widget)
                     .id(iced::widget::Id::from(format!("editor-scroll-{key}")))
-                    .style(|_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
-                        scrollbar_style()
-                    })
+                    .style(
+                        |_theme: &iced::Theme, _status: iced::widget::scrollable::Status| {
+                            scrollbar_style()
+                        },
+                    )
                     .width(iced::Length::Fill)
                     .height(iced::Length::Fill);
                 crate::ui::frame_segments::arm_probe("ce_scrollable", p725_t_sc.elapsed());
                 let p725_t_wd = std::time::Instant::now();
                 let el: iced::Element<'static, IcedMessage> = scroller.into();
-                let el_out = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el };
+                let el_out = if let Some(ctx) = debug_ctx {
+                    ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref())
+                } else {
+                    el
+                };
                 crate::ui::frame_segments::arm_probe("ce_wrap_debug", p725_t_wd.elapsed());
                 p725_arm_r();
                 el_out
             } else {
                 let el: iced::Element<'static, IcedMessage> = widget.into();
-                let el_out = if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref()) } else { el };
+                let el_out = if let Some(ctx) = debug_ctx {
+                    ctx.wrap_debug(path, "code_editor", el, dbg_props, style.as_ref())
+                } else {
+                    el
+                };
                 p725_arm_r();
                 el_out
             }
@@ -28233,7 +30575,16 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
 
         // Plan 019 Phase 3: autodown doc editor (VM path) — on_change 发布携带
         // 全文的新消息（input_value: Some，PLAN-057 textarea 先例同款）。
-        AbstractView::AutodownEditor { key, value, is_final, on_change, on_focus, on_link, placeholder, style: _ } => {
+        AbstractView::AutodownEditor {
+            key,
+            value,
+            is_final,
+            on_change,
+            on_focus,
+            on_link,
+            placeholder,
+            style: _,
+        } => {
             let use_ade = cfg!(all(feature = "autodown", feature = "code-editor"));
             #[cfg(all(feature = "autodown", feature = "code-editor"))]
             {
@@ -28299,8 +30650,12 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             {
                 // 双 feature 缺一时退化只读文本（markdown 只读轨的兜底路径）。
                 let _ = (use_ade, on_focus, on_link);
-                let el: iced::Element<'static, IcedMessage> =
-                    AbstractView::Text { content: value, style: None, selectable: false }.into_iced();
+                let el: iced::Element<'static, IcedMessage> = AbstractView::Text {
+                    content: value,
+                    style: None,
+                    selectable: false,
+                }
+                .into_iced();
                 el
             }
         }
@@ -28318,16 +30673,38 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
         // mouse-area 内**的 input 永远拿不到文本（.SetQ(t) 实参恒空，用户
         // 实测"聚焦了但打不出字"）。IcedMessage 专用递归渲染保住
         // on_input → on_with_input_for 的文本载荷。
-        AbstractView::MouseArea { content, on_enter, on_exit, on_double_click, on_click, on_context_menu, on_release, on_move, logical_extent, style } => {
+        AbstractView::MouseArea {
+            content,
+            on_enter,
+            on_exit,
+            on_double_click,
+            on_click,
+            on_context_menu,
+            on_release,
+            on_move,
+            logical_extent,
+            style,
+        } => {
             // PLAN-021 T-05 取证(AUTO_MA_DBG=1 门控):构建面接线状态。
-            if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
-                let (sw, sh) = style.as_ref().map(|s| {
-                    let is = IcedStyle::from_style(s);
-                    (format!("{:?}", is.width), format!("{:?}", is.height))
-                }).unwrap_or_else(|| ("None".into(), "None".into()));
-                eprintln!("[MA_BUILD] press={} release={} dbl={} rclick={} move={} w={sw} h={sh}",
-                    on_click.is_some(), on_release.is_some(), on_double_click.is_some(),
-                    on_context_menu.is_some(), on_move.is_some());
+            if std::env::var("AUTO_MA_DBG")
+                .map(|v| v == "1")
+                .unwrap_or(false)
+            {
+                let (sw, sh) = style
+                    .as_ref()
+                    .map(|s| {
+                        let is = IcedStyle::from_style(s);
+                        (format!("{:?}", is.width), format!("{:?}", is.height))
+                    })
+                    .unwrap_or_else(|| ("None".into(), "None".into()));
+                eprintln!(
+                    "[MA_BUILD] press={} release={} dbl={} rclick={} move={} w={sw} h={sh}",
+                    on_click.is_some(),
+                    on_release.is_some(),
+                    on_double_click.is_some(),
+                    on_context_menu.is_some(),
+                    on_move.is_some()
+                );
             }
             // PLAN-021 线 B 根修:iced 0.14 mouse_area layout 直通子件,
             // 事件面 `!cursor.is_over(自身 bounds)` 即早退——尺寸类原挂
@@ -28339,9 +30716,14 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let sized_content: iced::Element<'static, IcedMessage> = match style.as_ref() {
                 Some(s) => {
                     let is = IcedStyle::from_style(s);
-                    let mut c = iced::widget::container(render_dynamic_view(*content, debug_ctx, path));
-                    if let Some(ref ws) = is.width { c = c.width(iced_length(ws)); }
-                    if let Some(ref hs) = is.height { c = c.height(iced_length(hs)); }
+                    let mut c =
+                        iced::widget::container(render_dynamic_view(*content, debug_ctx, path));
+                    if let Some(ref ws) = is.width {
+                        c = c.width(iced_length(ws));
+                    }
+                    if let Some(ref hs) = is.height {
+                        c = c.height(iced_length(hs));
+                    }
                     c.into()
                 }
                 None => render_dynamic_view(*content, debug_ctx, path),
@@ -28383,12 +30765,26 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             // PLAN-631 F-5：mouse-area hover 样式对（镜像 into_iced 臂与
             // 布局件臂——HoverArea + 共享标志，零 VM 消息零重建）。
             let hover = layout_hover_flag(style.as_ref());
-            let built = build_container(wrapped, 0, None, None, false, false, style.as_ref(), None, hover.clone());
+            let built = build_container(
+                wrapped,
+                0,
+                None,
+                None,
+                false,
+                false,
+                style.as_ref(),
+                None,
+                hover.clone(),
+            );
             let el = match hover {
                 Some(flag) => crate::ui::iced::hover_area::HoverArea::new(built, flag).into(),
                 None => built,
             };
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, "mouse_area", el, dbg_props, style.as_ref()) } else { el }
+            if let Some(ctx) = debug_ctx {
+                ctx.wrap_debug(path, "mouse_area", el, dbg_props, style.as_ref())
+            } else {
+                el
+            }
         }
 
         // Everything else delegates to the unified IntoIcedElement renderer
@@ -28399,7 +30795,11 @@ fn render_dynamic_view(view: AbstractView<IcedMessage>, debug_ctx: Option<&Debug
             let view_style = extract_view_style(&view).cloned();
             let dbg_props = debug_style_props(view_style.as_ref());
             let el: iced::Element<'static, IcedMessage> = view.into_iced();
-            if let Some(ctx) = debug_ctx { ctx.wrap_debug(path, kind, el, dbg_props, view_style.as_ref()) } else { el }
+            if let Some(ctx) = debug_ctx {
+                ctx.wrap_debug(path, kind, el, dbg_props, view_style.as_ref())
+            } else {
+                el
+            }
         }
     }
 }
@@ -28424,10 +30824,7 @@ pub(crate) fn retain_input_values_after_handler(
     event_name: &str,
 ) {
     let input_map = component.input_state_map().clone();
-    input_values.retain(|ev_name, _| {
-        ev_name == event_name
-            || !input_map.contains_key(ev_name)
-    });
+    input_values.retain(|ev_name, _| ev_name == event_name || !input_map.contains_key(ev_name));
 }
 
 /// Recursively patch input View values with tracked user-typed text.
@@ -28442,11 +30839,20 @@ pub(crate) fn retain_input_values_after_handler(
 /// → 每帧重建把模板求值的新页内容覆写回旧页键入全文，编辑器视面被钉死
 /// （jade 键入后换页粘滞冻结实证）。ADE 事件条目对视面零作用由
 /// `plan739_patch_input_values_leaves_autodown_editor` 锚定。
-pub(crate) fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_values: &std::collections::HashMap<String, String>) {
+pub(crate) fn patch_input_values(
+    view: &mut AbstractView<DynamicMessage>,
+    input_values: &std::collections::HashMap<String, String>,
+) {
     match view {
-        AbstractView::Input { value, on_change, .. }
-        | AbstractView::Textarea { value, on_change, .. }
-        | AbstractView::CodeEditor { value, on_change, .. } => {
+        AbstractView::Input {
+            value, on_change, ..
+        }
+        | AbstractView::Textarea {
+            value, on_change, ..
+        }
+        | AbstractView::CodeEditor {
+            value, on_change, ..
+        } => {
             if let Some(msg) = on_change {
                 let event_name = match msg {
                     DynamicMessage::Typed { event_name, .. } => event_name.clone(),
@@ -28454,7 +30860,11 @@ pub(crate) fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_
                 };
                 let clean_name = {
                     let n = event_name.trim_start_matches('.');
-                    if let Some(pos) = n.rfind("::") { n[pos + 2..].to_string() } else { n.to_string() }
+                    if let Some(pos) = n.rfind("::") {
+                        n[pos + 2..].to_string()
+                    } else {
+                        n.to_string()
+                    }
                 };
                 if let Some(text) = input_values.get(&clean_name) {
                     *value = text.clone();
@@ -28480,9 +30890,13 @@ pub(crate) fn patch_input_values(view: &mut AbstractView<DynamicMessage>, input_
             }
         }
         AbstractView::Table { headers, rows, .. } => {
-            for h in headers.iter_mut() { patch_input_values(h, input_values); }
+            for h in headers.iter_mut() {
+                patch_input_values(h, input_values);
+            }
             for row in rows.iter_mut() {
-                for cell in row.iter_mut() { patch_input_values(cell, input_values); }
+                for cell in row.iter_mut() {
+                    patch_input_values(cell, input_values);
+                }
             }
         }
         _ => {}
@@ -28535,7 +30949,6 @@ fn textarea_editor_height(height_prop: Option<u16>, style: Option<&Style>) -> ic
     }
     iced::Length::Fixed(30.0)
 }
-
 
 /// Convert IcedAlign to iced::alignment::Horizontal (for Column's align_x)
 fn iced_alignment_horizontal(align: IcedAlign) -> iced::alignment::Horizontal {
@@ -28618,39 +31031,42 @@ where
 {
     if let Some(t) = title {
         let t: String = t.to_string();
-    // PLAN-022 T-03:窗口尺寸面启动种子——thread_local 先落 startup 值,
-    // 开窗后由 WindowResized 漏斗保活(无 resize 事件也有正确初值)。
-    let seed = startup_window_size();
-    crate::ui::style::theme::set_window_width(seed.width);
-    crate::ui::style::theme::set_window_height(seed.height);
-    return iced::application(
-        TickWrap::<C>::default,
-        TickWrap::<C>::update,
-        view_wrapped::<C>,
-    )
-    .subscription(|c: &TickWrap<C>| {
-        // Plan 407: tick 订阅(修复后形态,见上注)。
-        let tick = if let Some(ms) = c.inner.tick_interval_ms() {
-            iced::time::every(std::time::Duration::from_millis(ms as u64))
-                .map(|_| TickWrapMsg::<C::Msg>::Tick)
-        } else {
-            iced::Subscription::none()
-        };
-        // PLAN-022 T-03:窗口尺寸面(Resized → thread_local,见枚举注)。
-        let win = iced::event::listen_with(|event, _status, _window_id| match event {
-            iced::Event::Window(iced::window::Event::Resized(size)) => {
-                Some(TickWrapMsg::<C::Msg>::WindowResized(size.width, size.height))
-            }
-            _ => None,
-        });
-        iced::Subscription::batch(vec![tick, win])
-    })
-    .window(iced::window::Settings {
-        size: seed,
-        level: startup_window_level(),
-        position: startup_window_position().unwrap_or_default(),
-        ..Default::default()
-    })
+        // PLAN-022 T-03:窗口尺寸面启动种子——thread_local 先落 startup 值,
+        // 开窗后由 WindowResized 漏斗保活(无 resize 事件也有正确初值)。
+        let seed = startup_window_size();
+        crate::ui::style::theme::set_window_width(seed.width);
+        crate::ui::style::theme::set_window_height(seed.height);
+        return iced::application(
+            TickWrap::<C>::default,
+            TickWrap::<C>::update,
+            view_wrapped::<C>,
+        )
+        .subscription(|c: &TickWrap<C>| {
+            // Plan 407: tick 订阅(修复后形态,见上注)。
+            let tick = if let Some(ms) = c.inner.tick_interval_ms() {
+                iced::time::every(std::time::Duration::from_millis(ms as u64))
+                    .map(|_| TickWrapMsg::<C::Msg>::Tick)
+            } else {
+                iced::Subscription::none()
+            };
+            // PLAN-022 T-03:窗口尺寸面(Resized → thread_local,见枚举注)。
+            let win = iced::event::listen_with(|event, _status, _window_id| match event {
+                iced::Event::Window(iced::window::Event::Resized(size)) => {
+                    Some(TickWrapMsg::<C::Msg>::WindowResized(
+                        size.width,
+                        size.height,
+                    ))
+                }
+                _ => None,
+            });
+            iced::Subscription::batch(vec![tick, win])
+        })
+        .window(iced::window::Settings {
+            size: seed,
+            level: startup_window_level(),
+            position: startup_window_position().unwrap_or_default(),
+            ..Default::default()
+        })
         // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
         .font(INTER_FONT_REGULAR)
         .font(INTER_FONT_MEDIUM)
@@ -28677,9 +31093,9 @@ where
         };
         // PLAN-022 T-03:窗口尺寸面(Resized → thread_local,见枚举注)。
         let win = iced::event::listen_with(|event, _status, _window_id| match event {
-            iced::Event::Window(iced::window::Event::Resized(size)) => {
-                Some(TickWrapMsg::<C::Msg>::WindowResized(size.width, size.height))
-            }
+            iced::Event::Window(iced::window::Event::Resized(size)) => Some(
+                TickWrapMsg::<C::Msg>::WindowResized(size.width, size.height),
+            ),
             _ => None,
         });
         iced::Subscription::batch(vec![tick, win])
@@ -28760,7 +31176,9 @@ where
 
 impl<C: Component + Default> Default for TickWrap<C> {
     fn default() -> Self {
-        Self { inner: C::default() }
+        Self {
+            inner: C::default(),
+        }
     }
 }
 
@@ -28799,26 +31217,20 @@ where
 ///
 /// Unlike `run_app`, this does NOT require `C: Default` — the boot closure
 /// creates the state, which enables async initialization patterns.
-pub fn run_app_with_task<C>(
-    boot: impl Fn() -> (C, iced::Task<C::Msg>) + 'static,
-) -> AppResult<()>
+pub fn run_app_with_task<C>(boot: impl Fn() -> (C, iced::Task<C::Msg>) + 'static) -> AppResult<()>
 where
     C: Component + Default + 'static,
     C::Msg: Clone + Debug + Send + 'static,
 {
-    iced::application(
-        boot,
-        C::update,
-        view,
-    )
-    .window_size(iced::Size::new(1600.0, 900.0))
-    // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
-    .font(INTER_FONT_REGULAR)
-    .font(INTER_FONT_MEDIUM)
-    .font(INTER_FONT_SEMIBOLD)
-    .default_font(INTER_FONT)
-    .run()
-    .map_err(|e| e.into())
+    iced::application(boot, C::update, view)
+        .window_size(iced::Size::new(1600.0, 900.0))
+        // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
+        .font(INTER_FONT_REGULAR)
+        .font(INTER_FONT_MEDIUM)
+        .font(INTER_FONT_SEMIBOLD)
+        .default_font(INTER_FONT)
+        .run()
+        .map_err(|e| e.into())
 }
 
 fn view<C>(component: &C) -> iced::Element<'_, C::Msg>
@@ -29143,9 +31555,7 @@ fn fill_cache_rec<M: Clone + Debug>(
 /// the SAME canonical order (so `VNodeId = id_from_path(path)` matches the live
 /// VTree). Used by [`apply_highlight_mut`] to inject the canvas highlight without
 /// touching `into_iced`.
-fn view_children_mut<M: Clone + Debug>(
-    view: &mut AbstractView<M>,
-) -> Vec<&mut AbstractView<M>> {
+fn view_children_mut<M: Clone + Debug>(view: &mut AbstractView<M>) -> Vec<&mut AbstractView<M>> {
     match view {
         AbstractView::Column { children, .. } | AbstractView::Row { children, .. } => {
             children.iter_mut().collect()
@@ -29210,7 +31620,8 @@ fn apply_highlight_mut_rec<M: Clone + Debug>(
             center_x: false,
             center_y: false,
             style: Some(rust_highlight_style()),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         *view = wrapped;
         return true;
@@ -29284,10 +31695,8 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
     /// frame.
     fn view_element(&self) -> iced::Element<'static, WrapperMsg<C>> {
         // Build the live VTree from the inner view (rust mode: no source spans).
-        let tree = view_to_vtree_with_paths(
-            self.inner.view().map_msg(WrapperMsg::<C>::Inner),
-            |_| None,
-        );
+        let tree =
+            view_to_vtree_with_paths(self.inner.view().map_msg(WrapperMsg::<C>::Inner), |_| None);
 
         // Plan 371 Task 11/21: sync VTree + scalar state to MCP SharedState so
         // MCP tools (snapshot/vtree/find/exists/state) work in rust mode. The
@@ -29330,7 +31739,9 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
                         .height(iced::Length::Shrink)
                         .id(iced::widget::Id::from("aura_fit_root_rust")),
                 )
-                .direction(scrollable::Direction::Vertical(scrollable::Scrollbar::hidden()))
+                .direction(scrollable::Direction::Vertical(
+                    scrollable::Scrollbar::hidden(),
+                ))
                 .width(iced::Length::Shrink)
                 .height(iced::Length::Shrink),
             )
@@ -29356,7 +31767,9 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
 }
 
 /// iced `view` callback for `run_app_devtools`.
-fn devtools_view<C: Component + 'static>(w: &DevToolsWrapper<C>) -> iced::Element<'_, WrapperMsg<C>> {
+fn devtools_view<C: Component + 'static>(
+    w: &DevToolsWrapper<C>,
+) -> iced::Element<'_, WrapperMsg<C>> {
     // 014 内存哨兵冻结态:整窗告警(消息循环已停,内存不再增长;
     // 按 F12 退出进程)。
     if crate::ui::mem_guard::is_frozen() {
@@ -29365,7 +31778,10 @@ fn devtools_view<C: Component + 'static>(w: &DevToolsWrapper<C>) -> iced::Elemen
         return container(
             column![
                 text("⚠ 内存超限,已暂停").size(30),
-                text(format!("提交内存峰值 {mb} MB / 阈值 {limit} MB(AUTO_MEM_LIMIT_MB 可调)")).size(16),
+                text(format!(
+                    "提交内存峰值 {mb} MB / 阈值 {limit} MB(AUTO_MEM_LIMIT_MB 可调)"
+                ))
+                .size(16),
                 text("消息循环已冻结,现场保留;按 F12 退出进程。").size(14),
             ]
             .spacing(14),
@@ -29418,7 +31834,12 @@ where
             }
             if w.dt.fit_pending.get() {
                 return iced::advanced::widget::operate(crate::ui::iced::LayoutCollector::new())
-                    .map(|bounds| WrapperMsg::Debug(format!("__fit_measured|{}", serde_json::to_string(&bounds).unwrap_or_default())));
+                    .map(|bounds| {
+                        WrapperMsg::Debug(format!(
+                            "__fit_measured|{}",
+                            serde_json::to_string(&bounds).unwrap_or_default()
+                        ))
+                    });
             }
         }
         WrapperMsg::Debug(s) => {
@@ -29456,7 +31877,10 @@ where
                 let path: Vec<u16> = if path_str.is_empty() {
                     Vec::new()
                 } else {
-                    path_str.split(',').filter_map(|n| n.parse::<u16>().ok()).collect()
+                    path_str
+                        .split(',')
+                        .filter_map(|n| n.parse::<u16>().ok())
+                        .collect()
                 };
                 let view = w.inner.view();
                 if let Some(target) = find_view_by_path_generic(&view, &path) {
@@ -29544,9 +31968,10 @@ fn extract_handler_from_view<M: Clone + Debug>(
         (AbstractView::Button { onclick, .. }, "press") => Some(onclick.clone()),
         (AbstractView::Input { on_change, .. }, "type_text" | "clear") => on_change.clone(),
         // Plan 053 M4: textarea Enter/submit (mirrors Input.on_submit).
-        (AbstractView::Input { on_submit, .. } | AbstractView::Textarea { on_submit, .. }, "submit") => {
-            on_submit.clone()
-        }
+        (
+            AbstractView::Input { on_submit, .. } | AbstractView::Textarea { on_submit, .. },
+            "submit",
+        ) => on_submit.clone(),
         (AbstractView::Textarea { on_change, .. }, "type_text" | "clear") => on_change.clone(),
         (AbstractView::CodeEditor { on_change, .. }, "type_text" | "clear") => on_change.clone(),
         (AbstractView::CodeEditor { on_cursor, .. }, "cursor") => on_cursor.clone(),
@@ -29555,9 +31980,12 @@ fn extract_handler_from_view<M: Clone + Debug>(
         (AbstractView::AutodownEditor { on_change, .. }, "edit" | "type_text" | "clear") => {
             on_change.clone()
         }
-        (AbstractView::CodeEditor { on_context_menu, .. }, "context_menu") => {
-            on_context_menu.clone()
-        }
+        (
+            AbstractView::CodeEditor {
+                on_context_menu, ..
+            },
+            "context_menu",
+        ) => on_context_menu.clone(),
         (AbstractView::Checkbox { on_toggle, .. }, "toggle") => on_toggle.clone(),
         (AbstractView::Radio { on_select, .. }, "press" | "select") => on_select.clone(),
         _ => None,
@@ -29623,8 +32051,15 @@ where
                             format!("__mcp_action|{}.{}|{}", widget, event, value_str)
                         }
                         crate::ui::mcp_server::ActionTarget::Path { path } => {
-                            let path_str = path.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",");
-                            format!("__mcp_action_path|{}|{}|{}", path_str, action.action, value_str)
+                            let path_str = path
+                                .iter()
+                                .map(|n| n.to_string())
+                                .collect::<Vec<_>>()
+                                .join(",");
+                            format!(
+                                "__mcp_action_path|{}|{}|{}",
+                                path_str, action.action, value_str
+                            )
                         }
                         crate::ui::mcp_server::ActionTarget::Fixture { .. } => {
                             // VM-only test fixtures are rejected by the MCP
@@ -29656,9 +32091,9 @@ where
         None
     });
     let win = iced::event::listen_with(|event, _status, _window_id| match event {
-        iced::Event::Window(iced::window::Event::Resized(size)) => Some(
-            WrapperMsg::<C>::Debug(format!("__window_resized|{}x{}", size.width, size.height)),
-        ),
+        iced::Event::Window(iced::window::Event::Resized(size)) => Some(WrapperMsg::<C>::Debug(
+            format!("__window_resized|{}x{}", size.width, size.height),
+        )),
         iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }) => Some(
             WrapperMsg::<C>::Debug(format!("__mouse_moved|{},{}", position.x, position.y)),
         ),
@@ -29679,7 +32114,9 @@ where
 }
 
 /// Plan 407: tick subscription using run_with (avoids generic map const check).
-fn tick_subscription<C: Component + 'static>(interval: std::time::Duration) -> iced::Subscription<WrapperMsg<C>> {
+fn tick_subscription<C: Component + 'static>(
+    interval: std::time::Duration,
+) -> iced::Subscription<WrapperMsg<C>> {
     iced::Subscription::run_with(interval, |interval| {
         let interval = *interval;
         futures::stream::unfold((), move |_| async move {
@@ -29715,8 +32152,16 @@ where
     let seed = startup_window_size();
     crate::ui::style::theme::set_window_width(seed.width);
     crate::ui::style::theme::set_window_height(seed.height);
-    if std::env::var("AUTO_MA_DBG").map(|v| v == "1").unwrap_or(false) {
-        eprintln!("[P22-SEED] {}x{} thread_now={:?}", seed.width, seed.height, std::thread::current().name());
+    if std::env::var("AUTO_MA_DBG")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
+        eprintln!(
+            "[P22-SEED] {}x{} thread_now={:?}",
+            seed.width,
+            seed.height,
+            std::thread::current().name()
+        );
     }
 
     iced::application(
@@ -29732,7 +32177,9 @@ where
         if let Some(ms) = w.inner.tick_interval_ms() {
             // Use a custom subscription that doesn't go through .map().
             // Recipe: a struct implementing Hash + recipe pattern.
-            subs.push(tick_subscription::<C>(std::time::Duration::from_millis(ms as u64)));
+            subs.push(tick_subscription::<C>(std::time::Duration::from_millis(
+                ms as u64,
+            )));
         }
         iced::Subscription::batch(subs)
     })
@@ -29816,9 +32263,7 @@ where
     })
 }
 
-fn native_pixels_capture<C>(
-    state: &mut NativePixelsHost<C>,
-) -> iced::Task<NativePixelsMsg<C>>
+fn native_pixels_capture<C>(state: &mut NativePixelsHost<C>) -> iced::Task<NativePixelsMsg<C>>
 where
     C: Component + 'static,
     C::Msg: Clone + Debug + Send + 'static,
@@ -29916,9 +32361,7 @@ where
 
 /// view：native 组件 View → iced（`IntoIcedElement`），消息面映射到
 /// `NativePixelsMsg::App`。
-fn native_pixels_view<C>(
-    state: &NativePixelsHost<C>,
-) -> iced::Element<'_, NativePixelsMsg<C>>
+fn native_pixels_view<C>(state: &NativePixelsHost<C>) -> iced::Element<'_, NativePixelsMsg<C>>
 where
     C: Component + 'static,
     C::Msg: Clone + Debug + Send + 'static,
@@ -29959,7 +32402,7 @@ where
             self: Box<Self>,
             _input: iced_futures::subscription::EventStream,
         ) -> iced_futures::BoxStream<Self::Output> {
-            use iced_futures::futures::stream::{StreamExt, unfold};
+            use iced_futures::futures::stream::{unfold, StreamExt};
             unfold((), |()| async move {
                 loop {
                     match crate::ui::desktop_protocol::pixels::poll_transport() {
@@ -29977,9 +32420,7 @@ where
         }
     }
 
-    iced_futures::subscription::from_recipe(NativePixelsProtoRecipe(
-        std::marker::PhantomData,
-    ))
+    iced_futures::subscription::from_recipe(NativePixelsProtoRecipe(std::marker::PhantomData))
 }
 
 /// tick 订阅（run_app_devtools 的 tick_subscription 同型——.map() 在泛型
@@ -30018,7 +32459,7 @@ where
             self: Box<Self>,
             _input: iced_futures::subscription::EventStream,
         ) -> iced_futures::BoxStream<Self::Output> {
-            use iced_futures::futures::stream::{StreamExt, unfold};
+            use iced_futures::futures::stream::{unfold, StreamExt};
             let interval = self.interval;
             unfold((), move |()| {
                 let interval = interval;
@@ -30070,10 +32511,7 @@ where
     let cell = std::cell::RefCell::new(Some(component));
     iced::application(
         move || {
-            let component = cell
-                .borrow_mut()
-                .take()
-                .expect("pixels host init once");
+            let component = cell.borrow_mut().take().expect("pixels host init once");
             NativePixelsHost::from_launch(component)
         },
         native_pixels_update::<C>,
@@ -30113,7 +32551,10 @@ where
     iced::application(
         move || {
             let (inner, task) = boot();
-            (DevToolsWrapper::from_inner(inner), task.map(WrapperMsg::<C>::Inner))
+            (
+                DevToolsWrapper::from_inner(inner),
+                task.map(WrapperMsg::<C>::Inner),
+            )
         },
         devtools_update,
         devtools_view,
@@ -30212,7 +32653,9 @@ fn rdt_render_vtree<C: Component + 'static>(
 }
 
 /// Left pane: the live element tree.
-fn rdt_elements_tab<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+fn rdt_elements_tab<C: Component + 'static>(
+    dt: &DevToolsState,
+) -> iced::Element<'static, WrapperMsg<C>> {
     let vtree = dt.live_vtree.borrow().clone();
     let selected = dt.selected_vnode.borrow().clone();
     match vtree {
@@ -30255,7 +32698,9 @@ where
 }
 
 /// Title row for the right pane: the selected node's kind + a hint.
-fn rdt_selected_title<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+fn rdt_selected_title<C: Component + 'static>(
+    dt: &DevToolsState,
+) -> iced::Element<'static, WrapperMsg<C>> {
     let selected = dt.selected_vnode.borrow().clone();
     let vtree = dt.live_vtree.borrow().clone();
     let label = match (vtree.as_ref(), selected) {
@@ -30278,7 +32723,9 @@ fn rdt_selected_title<C: Component + 'static>(dt: &DevToolsState) -> iced::Eleme
 }
 
 /// 盒模型 section body (rust mode): declared inset diagram, or pending.
-fn rdt_layout_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+fn rdt_layout_section<C: Component + 'static>(
+    dt: &DevToolsState,
+) -> iced::Element<'static, WrapperMsg<C>> {
     rdt_with_selected::<C, _>(dt, "无选中元素", |node| {
         let cache = dt.live_cache.borrow().clone();
         let Some(cache) = cache else {
@@ -30309,20 +32756,16 @@ fn rdt_layout_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Eleme
             "padding",
             format_insets(&bm.padding),
         ));
-        col = col.push(kv_row::<WrapperMsg<C>>(
-            "border",
-            format_insets(&bm.border),
-        ));
-        col = col.push(kv_row::<WrapperMsg<C>>(
-            "margin",
-            format_insets(&bm.margin),
-        ));
+        col = col.push(kv_row::<WrapperMsg<C>>("border", format_insets(&bm.border)));
+        col = col.push(kv_row::<WrapperMsg<C>>("margin", format_insets(&bm.margin)));
         col.into()
     })
 }
 
 /// Computed section body (rust mode): layout props + computed style k/v.
-fn rdt_computed_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+fn rdt_computed_section<C: Component + 'static>(
+    dt: &DevToolsState,
+) -> iced::Element<'static, WrapperMsg<C>> {
     rdt_with_selected::<C, _>(dt, "无选中元素", |node| {
         let mut col = column![].spacing(3);
         use crate::ui::vnode::VNodeProps;
@@ -30367,7 +32810,9 @@ fn rdt_computed_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Ele
 }
 
 /// Properties section body (rust mode): the selected VNode's props fields.
-fn rdt_props_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+fn rdt_props_section<C: Component + 'static>(
+    dt: &DevToolsState,
+) -> iced::Element<'static, WrapperMsg<C>> {
     rdt_with_selected::<C, _>(dt, "无选中元素", |node| {
         let mut col = column![].spacing(3);
         col = col.push(kv_row::<WrapperMsg<C>>("kind", format!("{:?}", node.kind)));
@@ -30406,11 +32851,17 @@ fn rdt_props_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Elemen
             }
             VNodeProps::Checkbox { label, is_checked } => {
                 col = col.push(kv_row::<WrapperMsg<C>>("label", label.clone()));
-                col = col.push(kv_row::<WrapperMsg<C>>("is_checked", is_checked.to_string()));
+                col = col.push(kv_row::<WrapperMsg<C>>(
+                    "is_checked",
+                    is_checked.to_string(),
+                ));
             }
             VNodeProps::Radio { label, is_selected } => {
                 col = col.push(kv_row::<WrapperMsg<C>>("label", label.clone()));
-                col = col.push(kv_row::<WrapperMsg<C>>("is_selected", is_selected.to_string()));
+                col = col.push(kv_row::<WrapperMsg<C>>(
+                    "is_selected",
+                    is_selected.to_string(),
+                ));
             }
             VNodeProps::Select {
                 options,
@@ -30462,7 +32913,10 @@ fn rdt_props_section<C: Component + 'static>(dt: &DevToolsState) -> iced::Elemen
                 ..
             } => {
                 col = col.push(kv_row::<WrapperMsg<C>>("spacing", spacing.to_string()));
-                col = col.push(kv_row::<WrapperMsg<C>>("col_spacing", col_spacing.to_string()));
+                col = col.push(kv_row::<WrapperMsg<C>>(
+                    "col_spacing",
+                    col_spacing.to_string(),
+                ));
             }
         }
         col.into()
@@ -30493,7 +32947,9 @@ fn rdt_collapsible_section<C: Component + 'static>(
         DEBUG_INSPECTOR_SECTION_PREFIX, tail
     )));
 
-    let mut col = column![].spacing(3).push(container(header).padding([2.0, 4.0]));
+    let mut col = column![]
+        .spacing(3)
+        .push(container(header).padding([2.0, 4.0]));
     if !collapsed {
         col = col.push(body);
     }
@@ -30501,7 +32957,9 @@ fn rdt_collapsible_section<C: Component + 'static>(
 }
 
 /// Right pane: selected-node title + three collapsible sections.
-fn rdt_inspector<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+fn rdt_inspector<C: Component + 'static>(
+    dt: &DevToolsState,
+) -> iced::Element<'static, WrapperMsg<C>> {
     let secs = *dt.inspector_sections.borrow();
     let mut col = column![].spacing(6);
     col = col.push(rdt_selected_title::<C>(dt));
@@ -30527,13 +32985,21 @@ fn rdt_inspector<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'s
 }
 
 /// Full DevTools panel: header + [element tree | divider | inspector].
-fn rdt_devtools_panel<C: Component + 'static>(dt: &DevToolsState) -> iced::Element<'static, WrapperMsg<C>> {
+fn rdt_devtools_panel<C: Component + 'static>(
+    dt: &DevToolsState,
+) -> iced::Element<'static, WrapperMsg<C>> {
     let close_btn = container(
-        mouse_area(text("✕").size(11).color(iced::Color::from_rgb(0.5, 0.5, 0.5)))
-            .on_press(WrapperMsg::<C>::Debug("__close_devtools".to_string())),
+        mouse_area(
+            text("✕")
+                .size(11)
+                .color(iced::Color::from_rgb(0.5, 0.5, 0.5)),
+        )
+        .on_press(WrapperMsg::<C>::Debug("__close_devtools".to_string())),
     )
     .style(|_: &iced::Theme| container::Style {
-        background: Some(iced::Background::Color(iced::Color::from_rgb(0.95, 0.95, 0.95))),
+        background: Some(iced::Background::Color(iced::Color::from_rgb(
+            0.95, 0.95, 0.95,
+        ))),
         border: iced::Border {
             radius: 3.0.into(),
             ..Default::default()
@@ -30543,7 +33009,9 @@ fn rdt_devtools_panel<C: Component + 'static>(dt: &DevToolsState) -> iced::Eleme
     .padding(iced::Padding::new(4.0));
     let header = row![
         text("DevTools · rust").size(11),
-        text("(F12 关闭)").size(9).color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
+        text("(F12 关闭)")
+            .size(9)
+            .color(iced::Color::from_rgb(0.6, 0.6, 0.6)),
         close_btn,
     ]
     .spacing(8)
@@ -30560,7 +33028,9 @@ fn rdt_devtools_panel<C: Component + 'static>(dt: &DevToolsState) -> iced::Eleme
     let divider = mouse_area(
         container(iced::widget::Space::new().width(6))
             .style(|_: &iced::Theme| container::Style {
-                background: Some(iced::Background::Color(iced::Color::from_rgb(0.82, 0.82, 0.82))),
+                background: Some(iced::Background::Color(iced::Color::from_rgb(
+                    0.82, 0.82, 0.82,
+                ))),
                 ..Default::default()
             })
             .width(6)
@@ -30580,7 +33050,9 @@ fn rdt_devtools_panel<C: Component + 'static>(dt: &DevToolsState) -> iced::Eleme
 
     container(panel_col)
         .style(|_: &iced::Theme| container::Style {
-            background: Some(iced::Background::Color(iced::Color::from_rgb(0.98, 0.98, 0.98))),
+            background: Some(iced::Background::Color(iced::Color::from_rgb(
+                0.98, 0.98, 0.98,
+            ))),
             border: iced::Border {
                 color: iced::Color::from_rgb(0.85, 0.85, 0.85),
                 width: 1.0,
@@ -30621,82 +33093,113 @@ mod tests {
 
     fn classes_of(v: &AbstractView<IcedMessage>) -> &Vec<StyleClass> {
         match v {
-            AbstractView::Column { style: Some(s), .. } | AbstractView::Container { style: Some(s), .. }
+            AbstractView::Column { style: Some(s), .. }
+            | AbstractView::Container { style: Some(s), .. }
             | AbstractView::Scrollable { style: Some(s), .. } => &s.classes,
             other => panic!("unexpected variant: {other:?}"),
         }
     }
 
     fn height_of(v: &AbstractView<IcedMessage>) -> SizeValue {
-        classes_of(v).iter().find_map(|c| match c {
-            StyleClass::Height(sv) => Some(*sv),
-            _ => None,
-        }).expect("no Height class")
+        classes_of(v)
+            .iter()
+            .find_map(|c| match c {
+                StyleClass::Height(sv) => Some(*sv),
+                _ => None,
+            })
+            .expect("no Height class")
     }
 
     #[test]
     fn p663_boundary_rewrites_screen_child() {
-        let mut root = col("w-full h-[720px] overflow-hidden", vec![
-            col("w-full h-screen bg-background", vec![]),
-        ]);
+        let mut root = col(
+            "w-full h-[720px] overflow-hidden",
+            vec![col("w-full h-screen bg-background", vec![])],
+        );
         rewrite_viewport_units(&mut root);
-        let AbstractView::Column { children, .. } = &root else { panic!() };
+        let AbstractView::Column { children, .. } = &root else {
+            panic!()
+        };
         assert_eq!(height_of(&children[0]), SizeValue::Pixels(720.0));
     }
 
     #[test]
     fn p663_no_boundary_keeps_screen() {
-        let mut root = col("w-full", vec![
-            col("h-screen", vec![]),
-        ]);
+        let mut root = col("w-full", vec![col("h-screen", vec![])]);
         rewrite_viewport_units(&mut root);
-        let AbstractView::Column { children, .. } = &root else { panic!() };
+        let AbstractView::Column { children, .. } = &root else {
+            panic!()
+        };
         assert_eq!(height_of(&children[0]), SizeValue::Screen);
     }
 
     #[test]
     fn p663_min_height_screen_rewritten() {
-        let mut root = col("h-[720px]", vec![
-            col("min-h-screen", vec![]),
-        ]);
+        let mut root = col("h-[720px]", vec![col("min-h-screen", vec![])]);
         rewrite_viewport_units(&mut root);
-        let AbstractView::Column { children, .. } = &root else { panic!() };
+        let AbstractView::Column { children, .. } = &root else {
+            panic!()
+        };
         let classes = classes_of(&children[0]);
-        let mh = classes.iter().find_map(|c| match c {
-            StyleClass::MinHeight(m) => Some(*m),
-            _ => None,
-        }).expect("no MinHeight");
+        let mh = classes
+            .iter()
+            .find_map(|c| match c {
+                StyleClass::MinHeight(m) => Some(*m),
+                _ => None,
+            })
+            .expect("no MinHeight");
         assert_eq!(mh, 720.0);
     }
 
     #[test]
     fn p663_width_axis_independent() {
         // 只有定宽边界：w-screen 重写、h-screen 不动
-        let mut root = col("w-[1024px]", vec![
-            col("w-screen h-screen", vec![]),
-        ]);
+        let mut root = col("w-[1024px]", vec![col("w-screen h-screen", vec![])]);
         rewrite_viewport_units(&mut root);
-        let AbstractView::Column { children, .. } = &root else { panic!() };
+        let AbstractView::Column { children, .. } = &root else {
+            panic!()
+        };
         let classes = classes_of(&children[0]);
-        let w = classes.iter().find_map(|c| match c {
-            StyleClass::Width(sv) => Some(*sv),
-            _ => None,
-        }).expect("no Width");
+        let w = classes
+            .iter()
+            .find_map(|c| match c {
+                StyleClass::Width(sv) => Some(*sv),
+                _ => None,
+            })
+            .expect("no Width");
         assert_eq!(w, SizeValue::Pixels(1024.0));
         assert_eq!(height_of(&children[0]), SizeValue::Screen);
     }
 
     #[test]
     fn p663_nested_boundary_overrides() {
-        let mut root = col("h-[720px]", vec![
-            col("h-[400px]", vec![col("h-screen", vec![])]),
-            col("h-screen", vec![]),
-        ]);
+        let mut root = col(
+            "h-[720px]",
+            vec![
+                col("h-[400px]", vec![col("h-screen", vec![])]),
+                col("h-screen", vec![]),
+            ],
+        );
         rewrite_viewport_units(&mut root);
-        let AbstractView::Column { children, .. } = &root else { panic!() };
-        let AbstractView::Column { children: inner, .. } = &children[0] else { panic!() };
-        assert_eq!(height_of(&inner[0]), SizeValue::Pixels(400.0), "嵌套边界换锚");
-        assert_eq!(height_of(&children[1]), SizeValue::Pixels(720.0), "外层边界直达子");
+        let AbstractView::Column { children, .. } = &root else {
+            panic!()
+        };
+        let AbstractView::Column {
+            children: inner, ..
+        } = &children[0]
+        else {
+            panic!()
+        };
+        assert_eq!(
+            height_of(&inner[0]),
+            SizeValue::Pixels(400.0),
+            "嵌套边界换锚"
+        );
+        assert_eq!(
+            height_of(&children[1]),
+            SizeValue::Pixels(720.0),
+            "外层边界直达子"
+        );
     }
 
     #[test]
@@ -30704,30 +33207,46 @@ mod tests {
         // spacing 定高（h-44=176px）不建立边界（PLAN-663 px-only 裁定）
         let mut root = col("h-44", vec![col("h-screen", vec![])]);
         rewrite_viewport_units(&mut root);
-        let AbstractView::Column { children, .. } = &root else { panic!() };
+        let AbstractView::Column { children, .. } = &root else {
+            panic!()
+        };
         assert_eq!(height_of(&children[0]), SizeValue::Screen);
     }
 
     #[test]
     fn p663_margin_y_auto_expands_in_definite_column() {
-        let mut root = col("w-full h-[600px] bg-background", vec![
-            col("h-10", vec![]),
-            col("my-auto w-40", vec![]),
-        ]);
+        let mut root = col(
+            "w-full h-[600px] bg-background",
+            vec![col("h-10", vec![]), col("my-auto w-40", vec![])],
+        );
         rewrite_viewport_units(&mut root);
-        let AbstractView::Column { children, .. } = &root else { panic!() };
-        assert!(matches!(classes_of(&children[0])[0], StyleClass::Height(_)), "非 auto 子不动");
+        let AbstractView::Column { children, .. } = &root else {
+            panic!()
+        };
+        assert!(
+            matches!(classes_of(&children[0])[0], StyleClass::Height(_)),
+            "非 auto 子不动"
+        );
         // my-auto 子被包进 h-full justify-center 包裹列
-        let AbstractView::Column { children: wrap, style: Some(ws), .. } = &children[1] else {
+        let AbstractView::Column {
+            children: wrap,
+            style: Some(ws),
+            ..
+        } = &children[1]
+        else {
             panic!("my-auto 子应被包裹");
         };
         assert_eq!(wrap.len(), 1, "包裹列恰含原子");
         assert!(
-            ws.classes.iter().any(|c| matches!(c, StyleClass::JustifyCenter)),
+            ws.classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::JustifyCenter)),
             "包裹列须 justify-center"
         );
         assert!(
-            ws.classes.iter().any(|c| matches!(c, StyleClass::Height(SizeValue::Full))),
+            ws.classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::Height(SizeValue::Full))),
             "包裹列须 h-full"
         );
     }
@@ -30737,48 +33256,77 @@ mod tests {
         // 无定高：不展开
         let mut root = col("w-full", vec![col("my-auto", vec![])]);
         rewrite_viewport_units(&mut root);
-        let AbstractView::Column { children, .. } = &root else { panic!() };
-        assert!(matches!(classes_of(&children[0])[0], StyleClass::MarginYAuto));
+        let AbstractView::Column { children, .. } = &root else {
+            panic!()
+        };
+        assert!(matches!(
+            classes_of(&children[0])[0],
+            StyleClass::MarginYAuto
+        ));
 
         // overflow-y-auto 定高列：不展开（滚动语义归 T-12 机制）
         let mut root2 = col("h-[720px] overflow-y-auto", vec![col("my-auto", vec![])]);
         rewrite_viewport_units(&mut root2);
-        let AbstractView::Column { children: c2, .. } = &root2 else { panic!() };
+        let AbstractView::Column { children: c2, .. } = &root2 else {
+            panic!()
+        };
         assert!(matches!(classes_of(&c2[0])[0], StyleClass::MarginYAuto));
     }
 
     #[test]
     fn p663_chain_through_scrollable_and_container() {
-        let mut root = col("h-[720px]", vec![
-            AbstractView::Scrollable {
+        let mut root = col(
+            "h-[720px]",
+            vec![AbstractView::Scrollable {
                 child: Box::new(AbstractView::Container {
                     child: Box::new(col("h-screen", vec![])),
-                    padding: 0, width: None, height: None,
-                    center_x: false, center_y: false,
-                    style: None, onclick: None, on_right_click: None,
+                    padding: 0,
+                    width: None,
+                    height: None,
+                    center_x: false,
+                    center_y: false,
+                    style: None,
+                    onclick: None,
+                    on_right_click: None,
                 }),
-                width: None, height: None, style: None,
-                auto_scroll: false, offset: None, on_scroll: None,
+                width: None,
+                height: None,
+                style: None,
+                auto_scroll: false,
+                offset: None,
+                on_scroll: None,
                 axes: crate::ui::scroll::ScrollAxes::Y,
                 scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
                 controller: None,
-            },
-        ]);
+            }],
+        );
         rewrite_viewport_units(&mut root);
-        let AbstractView::Column { children, .. } = &root else { panic!() };
-        let AbstractView::Scrollable { child, .. } = &children[0] else { panic!() };
-        let AbstractView::Container { child, .. } = child.as_ref() else { panic!() };
+        let AbstractView::Column { children, .. } = &root else {
+            panic!()
+        };
+        let AbstractView::Scrollable { child, .. } = &children[0] else {
+            panic!()
+        };
+        let AbstractView::Container { child, .. } = child.as_ref() else {
+            panic!()
+        };
         assert_eq!(height_of(child), SizeValue::Pixels(720.0));
     }
 
     /// PLAN-057：editor_drag 坐标序列解析——正常序列、坏段防御跳过、空串。
     #[test]
     fn plan057_parse_drag_points() {
-        assert_eq!(parse_drag_points("10,20;30,20;50,20"), vec![(10.0, 20.0), (30.0, 20.0), (50.0, 20.0)]);
+        assert_eq!(
+            parse_drag_points("10,20;30,20;50,20"),
+            vec![(10.0, 20.0), (30.0, 20.0), (50.0, 20.0)]
+        );
         // 单点序列（仅 MousePressed + Release，无 Dragged 段）。
         assert_eq!(parse_drag_points("5,7"), vec![(5.0, 7.0)]);
         // 坏段（缺 y / 非数字）防御跳过；空串 → 空。
-        assert_eq!(parse_drag_points("10,20;bad;30,40"), vec![(10.0, 20.0), (30.0, 40.0)]);
+        assert_eq!(
+            parse_drag_points("10,20;bad;30,40"),
+            vec![(10.0, 20.0), (30.0, 40.0)]
+        );
         assert_eq!(parse_drag_points("1,2;oops"), vec![(1.0, 2.0)]);
         assert!(parse_drag_points("").is_empty());
     }
@@ -30827,13 +33375,40 @@ mod tests {
             crate::ui::image_pipeline::MediaMetadata::default(),
         );
         let uri = format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision);
-        assert!(load_image_bytes(&uri).is_none(), "pending ticket should not fall back to a file");
-        registry.transition(ticket.id, crate::ui::image_pipeline::MediaAssetState::Reading).unwrap();
-        registry.transition(ticket.id, crate::ui::image_pipeline::MediaAssetState::Decoding).unwrap();
-        registry.transition(ticket.id, crate::ui::image_pipeline::MediaAssetState::Transforming).unwrap();
-        registry.publish_ready(ticket.id, ticket.revision, std::sync::Arc::<[u8]>::from([0, 255, 2])).unwrap();
+        assert!(
+            load_image_bytes(&uri).is_none(),
+            "pending ticket should not fall back to a file"
+        );
+        registry
+            .transition(
+                ticket.id,
+                crate::ui::image_pipeline::MediaAssetState::Reading,
+            )
+            .unwrap();
+        registry
+            .transition(
+                ticket.id,
+                crate::ui::image_pipeline::MediaAssetState::Decoding,
+            )
+            .unwrap();
+        registry
+            .transition(
+                ticket.id,
+                crate::ui::image_pipeline::MediaAssetState::Transforming,
+            )
+            .unwrap();
+        registry
+            .publish_ready(
+                ticket.id,
+                ticket.revision,
+                std::sync::Arc::<[u8]>::from([0, 255, 2]),
+            )
+            .unwrap();
         assert_eq!(load_image_bytes(&uri), Some(vec![0, 255, 2]));
-        assert!(load_image_bytes("relative/path.png").is_none(), "ordinary file fallback remains available");
+        assert!(
+            load_image_bytes("relative/path.png").is_none(),
+            "ordinary file fallback remains available"
+        );
     }
 
     #[test]
@@ -30861,7 +33436,10 @@ mod tests {
     fn p530_lucide_svg_same_name_returns_same_static() {
         let a = lucide_svg("bell").expect("bell 已登记");
         let b = lucide_svg("bell").expect("bell 已登记");
-        assert!(std::ptr::eq(a, b), "同名 icon 返回了不同的 'static 串——缓存未命中，正在泄漏");
+        assert!(
+            std::ptr::eq(a, b),
+            "同名 icon 返回了不同的 'static 串——缓存未命中，正在泄漏"
+        );
         let c = lucide_svg("copy").expect("copy 已登记");
         assert!(!std::ptr::eq(a, c), "不同 icon 不应串缓存");
     }
@@ -30872,7 +33450,10 @@ mod tests {
     fn p530_leaked_placeholder_dedupes_same_text() {
         let a = leaked_placeholder("Search widgets...");
         let b = leaked_placeholder("Search widgets...");
-        assert!(std::ptr::eq(a, b), "同文本 placeholder 返回了不同的 'static 串——正在泄漏");
+        assert!(
+            std::ptr::eq(a, b),
+            "同文本 placeholder 返回了不同的 'static 串——正在泄漏"
+        );
         assert_eq!(a, "Search widgets...");
     }
 
@@ -30892,7 +33473,8 @@ mod tests {
             center_x: false,
             center_y: false,
             style: Style::parse(classes).ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         // widgets-gallery app.at 骨架同构：header(sticky z-40) / 正文 /
         // 移动底栏(fixed z-40) / 帮助浮层(absolute z-50)。
@@ -30904,7 +33486,11 @@ mod tests {
         ];
         let (flow, floating) = super::column_layer_partition(&children);
         assert_eq!(floating, vec![3], "仅 absolute 子脱流入叠层");
-        assert_eq!(flow, vec![0, 1, 2], "z-index-only 子保持流内（每子恰渲染一次）");
+        assert_eq!(
+            flow,
+            vec![0, 1, 2],
+            "z-index-only 子保持流内（每子恰渲染一次）"
+        );
     }
 
     /// PLAN-022 T-03 空层判定加固:声明背景色的空容器(分隔条 = bg div
@@ -30918,7 +33504,8 @@ mod tests {
             spacing: 0,
             padding: 0,
             style: Style::parse(classes).ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         // 分隔条内层形态:bg 薄条 + Fill 空子(空 col)。
         let divider_inner = AbstractView::<IcedMessage>::Column {
@@ -30926,7 +33513,8 @@ mod tests {
             spacing: 0,
             padding: 0,
             style: Style::parse("absolute z-20 w-[8px] h-[410px] bg-[#8899aa]").ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         assert!(
             !super::is_empty_stack_layer(&divider_inner),
@@ -30967,12 +33555,24 @@ mod tests {
         .unwrap();
         let base = build_button_style(&crate::ui::style::IcedStyle::from_style(&s));
         // hover:变体色覆盖 base(既有先例)
-        let hover = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(&s, Variant::Hover));
+        let hover = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(
+            &s,
+            Variant::Hover,
+        ));
         assert!(hover.background.is_some());
         // focus/active/disabled:同构合并,各自底色生效
-        let focus = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(&s, Variant::Focus));
-        let active = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(&s, Variant::Active));
-        let disabled = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(&s, Variant::Disabled));
+        let focus = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(
+            &s,
+            Variant::Focus,
+        ));
+        let active = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(
+            &s,
+            Variant::Active,
+        ));
+        let disabled = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(
+            &s,
+            Variant::Disabled,
+        ));
         let bg_of = |st: &iced::widget::button::Style| {
             st.background.map(|b| match b {
                 iced::Background::Color(c) => (c.r, c.g, c.b),
@@ -30980,7 +33580,10 @@ mod tests {
             })
         };
         let (fb, ab, db) = (bg_of(&focus), bg_of(&active), bg_of(&disabled));
-        assert!(fb.is_some() && fb != bg_of(&base), "focus:bg-blue-500 生效(合并面)");
+        assert!(
+            fb.is_some() && fb != bg_of(&base),
+            "focus:bg-blue-500 生效(合并面)"
+        );
         assert!(ab.is_some() && ab != bg_of(&base), "active:bg-muted 生效");
         // disabled:opacity-50 不改底色但改透明度——锁定 opacity 生效
         if let Some(iced::Background::Color(c)) = disabled.background {
@@ -31006,28 +33609,84 @@ mod tests {
             reg.remove(&id);
         }
         let child: iced::Element<'static, IcedMessage> = iced::widget::text("body").into();
-        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 100.0)), None, crate::ui::scroll::ScrollAxes::Y, crate::ui::scroll::ScrollbarPolicy::Auto, None);
+        let _el = build_scrollable(
+            child,
+            None,
+            None,
+            None,
+            Some(id.clone()),
+            Some((0.0, 100.0)),
+            None,
+            crate::ui::scroll::ScrollAxes::Y,
+            crate::ui::scroll::ScrollbarPolicy::Auto,
+            None,
+        );
         let drained = drain_pending_scroll_offsets();
         assert!(
-            drained.iter().any(|(i, (x, y))| i == &id && *x == 0.0 && *y == 100.0),
+            drained
+                .iter()
+                .any(|(i, (x, y))| i == &id && *x == 0.0 && *y == 100.0),
             "first build must enqueue: got {:?}",
             drained
         );
         // 同值重建 → 不再入队
         let child: iced::Element<'static, IcedMessage> = iced::widget::text("body").into();
-        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 100.0)), None, crate::ui::scroll::ScrollAxes::Y, crate::ui::scroll::ScrollbarPolicy::Auto, None);
+        let _el = build_scrollable(
+            child,
+            None,
+            None,
+            None,
+            Some(id.clone()),
+            Some((0.0, 100.0)),
+            None,
+            crate::ui::scroll::ScrollAxes::Y,
+            crate::ui::scroll::ScrollbarPolicy::Auto,
+            None,
+        );
         let drained = drain_pending_scroll_offsets();
-        assert!(!drained.iter().any(|(i, _)| i == &id), "same-offset rebuild must not re-enqueue: got {:?}", drained);
+        assert!(
+            !drained.iter().any(|(i, _)| i == &id),
+            "same-offset rebuild must not re-enqueue: got {:?}",
+            drained
+        );
         // 值变化（>0.5px）→ 再入队
         let child: iced::Element<'static, IcedMessage> = iced::widget::text("body").into();
-        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 250.0)), None, crate::ui::scroll::ScrollAxes::Y, crate::ui::scroll::ScrollbarPolicy::Auto, None);
+        let _el = build_scrollable(
+            child,
+            None,
+            None,
+            None,
+            Some(id.clone()),
+            Some((0.0, 250.0)),
+            None,
+            crate::ui::scroll::ScrollAxes::Y,
+            crate::ui::scroll::ScrollbarPolicy::Auto,
+            None,
+        );
         let drained = drain_pending_scroll_offsets();
-        assert!(drained.iter().any(|(i, (_, y))| i == &id && *y == 250.0), "changed offset must re-enqueue");
+        assert!(
+            drained.iter().any(|(i, (_, y))| i == &id && *y == 250.0),
+            "changed offset must re-enqueue"
+        );
         // 微抖（≤0.5px）→ 不入队
         let child: iced::Element<'static, IcedMessage> = iced::widget::text("body").into();
-        let _el = build_scrollable(child, None, None, None, Some(id.clone()), Some((0.0, 250.3)), None, crate::ui::scroll::ScrollAxes::Y, crate::ui::scroll::ScrollbarPolicy::Auto, None);
+        let _el = build_scrollable(
+            child,
+            None,
+            None,
+            None,
+            Some(id.clone()),
+            Some((0.0, 250.3)),
+            None,
+            crate::ui::scroll::ScrollAxes::Y,
+            crate::ui::scroll::ScrollbarPolicy::Auto,
+            None,
+        );
         let drained = drain_pending_scroll_offsets();
-        assert!(!drained.iter().any(|(i, _)| i == &id), "sub-epsilon jitter must not re-enqueue");
+        assert!(
+            !drained.iter().any(|(i, _)| i == &id),
+            "sub-epsilon jitter must not re-enqueue"
+        );
     }
 
     /// PLAN-057 T8：musk 图标桥全量锁定——icons.web.at 的 use.web component
@@ -31129,7 +33788,10 @@ mod tests {
         assert_eq!(v.rect.borrow().width, 384.0 + 2.0 * BORDER);
         assert_eq!(v.rect.borrow().height, 392.0 + TITLEBAR_H + 2.0 * BORDER);
         assert_eq!(*v.window_size.borrow(), iced::Size::new(384.0, 392.0));
-        assert!(!ds.desktop.fit_measure_in_flight.get(), "回执到达即在飞复位");
+        assert!(
+            !ds.desktop.fit_measure_in_flight.get(),
+            "回执到达即在飞复位"
+        );
     }
 
     /// Plan 504：锚点缺席（界面未建好）——保留 fit_pending、计数 +1、
@@ -31138,7 +33800,9 @@ mod tests {
     fn apply_fit_measured_missing_anchor_retries() {
         let mut ds = t3_session_with_shell();
         let wid = t3_add_win(&mut ds, "FitProbe");
-        ds.host.as_ref().unwrap().wm.wins[&wid].fit_pending.set(true);
+        ds.host.as_ref().unwrap().wm.wins[&wid]
+            .fit_pending
+            .set(true);
         let hw = ds.host.as_ref().unwrap().window;
         let _ = apply_fit_measured(&mut ds, hw, Some("{}"));
         assert!(ds.has_fit_pending(), "锚点缺席保留 fit_pending");
@@ -31191,7 +33855,11 @@ mod tests {
         let host = ds.host.as_ref().unwrap();
         let v = &host.wm.wins[&wid];
         use crate::ui::iced::virtual_window::{BORDER, TITLEBAR_H};
-        assert_eq!(v.rect.borrow().height, 600.0 + TITLEBAR_H + 2.0 * BORDER, "矩形跟随内容增高");
+        assert_eq!(
+            v.rect.borrow().height,
+            600.0 + TITLEBAR_H + 2.0 * BORDER,
+            "矩形跟随内容增高"
+        );
         assert_eq!(*v.window_size.borrow(), iced::Size::new(384.0, 600.0));
         assert!(!v.fit_dirty.get(), "回执消费 fit_dirty");
     }
@@ -31278,7 +33946,10 @@ mod tests {
             textarea_editor_height(Some(20), None),
             iced::Length::Fixed(20.0)
         );
-        assert_eq!(textarea_editor_height(None, None), iced::Length::Fixed(30.0));
+        assert_eq!(
+            textarea_editor_height(None, None),
+            iced::Length::Fixed(30.0)
+        );
         let hfull = Style::parse("h-full").unwrap();
         assert_eq!(
             textarea_editor_height(None, Some(&hfull)),
@@ -31298,8 +33969,13 @@ mod tests {
     #[test]
     fn nav_family_lucide_icons_present() {
         for name in [
-            "message-square", "list-todo", "scroll", "book-open",
-            "chevron-down", "chevron-right", "search",
+            "message-square",
+            "list-todo",
+            "scroll",
+            "book-open",
+            "chevron-down",
+            "chevron-right",
+            "search",
         ] {
             assert!(
                 lucide_svg(name).is_some(),
@@ -31312,7 +33988,11 @@ mod tests {
 
     // ---- PLAN-050 C1: content-subtree 按钮的内容对齐决策（类串→解析→映射） ----
     fn p050_style(classes: Vec<StyleClass>) -> IcedStyle {
-        IcedStyle::from_style(&Style { classes, hover_classes: Vec::new(), variant_classes: Vec::new() })
+        IcedStyle::from_style(&Style {
+            classes,
+            hover_classes: Vec::new(),
+            variant_classes: Vec::new(),
+        })
     }
 
     #[test]
@@ -31370,10 +34050,7 @@ mod tests {
         // 高度臂不再无条件 center_x——否则内层 Fill 容器恒居中,外层 050
         // 包装无法抵消,VM 轨 rail 内容居中而 web 左对齐。
         use iced::alignment::{Horizontal, Vertical};
-        let (ax, ay) = plan414_content_alignment(
-            Some(Horizontal::Left),
-            Some(Vertical::Center),
-        );
+        let (ax, ay) = plan414_content_alignment(Some(Horizontal::Left), Some(Vertical::Center));
         assert_eq!(ax, Horizontal::Left);
         assert_eq!(ay, Vertical::Center);
         // 垂直轴同理:items-start 压过 409 的默认纵向居中。
@@ -31419,13 +34096,13 @@ mod tests {
 }
 "#;
 
-    const T3_WIN_AT: &str = "widget T3Win {\n    model { var n int = 0 }\n    view { text \"${.n}\" }\n}\n";
+    const T3_WIN_AT: &str =
+        "widget T3Win {\n    model { var n int = 0 }\n    view { text \"${.n}\" }\n}\n";
 
     /// Plan 551：os-config 合成桩——最小可编译 .at（真实前端居兄弟仓，
     /// CI 不依赖）。仅承载 ⚙️ launch-or-focus 窗语义；配置读写单源走
     /// daemon，页面契约由 os-config 仓自测。
-    const T551_OSCONFIG_STUB_AT: &str =
-        "widget App {
+    const T551_OSCONFIG_STUB_AT: &str = "widget App {
     model { var ready int = 0 }
     view { text \"os-config stub\" }
 }
@@ -31472,9 +34149,10 @@ mod tests {
                         fit: false,
                         daemon: Some("autoos".to_string()),
                         back_root: None,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    });
+                        exe: None,
+                        opens: Vec::new(),
+                        render_decl: None,
+                    });
                 }
                 let e = apps.iter().find(|a| a.id == name)?;
                 Some(crate::ui::session::LaunchSpec {
@@ -31489,30 +34167,27 @@ mod tests {
                     fit: e.fit,
                     daemon: None,
                     back_root: None,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
+                    exe: None,
+                    opens: Vec::new(),
+                    render_decl: None,
+                })
             })
         });
         ds
     }
 
     /// 已开设置窗的 AppId（按 registry_id 定位——T7 后无 overlay 槽）。
-    fn t540_settings_app(
-        ds: &crate::ui::session::DesktopSession,
-    ) -> crate::ui::session::AppId {
+    fn t540_settings_app(ds: &crate::ui::session::DesktopSession) -> crate::ui::session::AppId {
         ds.host
             .as_ref()
             .and_then(|h| {
-                h.wm
-                    .wins
+                h.wm.wins
                     .iter()
                     .find(|(_, v)| v.registry_id.as_deref() == Some(OSCONFIG_APP_ID))
                     .map(|(_, v)| v.app)
             })
             .expect("设置窗已开")
     }
-
 
     /// Plan 486 T1/T4：拖入高亮落位/清除（set_native_drag_over 经映射或
     /// headless 恒等——断言映射无关的存在性）+ 高亮元素构建冒烟。
@@ -31533,7 +34208,10 @@ mod tests {
         assert!(ds.native_drag_over.is_none(), "清除后不应残留高亮");
     }
 
-    fn t3_add_win(ds: &mut crate::ui::session::DesktopSession, title: &str) -> crate::ui::session::Wid {
+    fn t3_add_win(
+        ds: &mut crate::ui::session::DesktopSession,
+        title: &str,
+    ) -> crate::ui::session::Wid {
         let comp = crate::build_dynamic_component(T3_WIN_AT, None).unwrap();
         let app = ds.allocate_app(comp);
         ds.wm_add_win(
@@ -31565,9 +34243,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("{field} 读回失败: {e}"));
         match val {
             auto_val::Value::Array(a) => a.values,
-            auto_val::Value::VmRef(r) => {
-                t3_deref_list(app, r.id as u64, field)
-            }
+            auto_val::Value::VmRef(r) => t3_deref_list(app, r.id as u64, field),
             auto_val::Value::Int(id) => t3_deref_list(app, id as u64, field),
             other => panic!("{field} 既非数组也非列表引用: {other:?}"),
         }
@@ -31685,7 +34361,11 @@ mod tests {
         }
         sync_shell_windows(&mut ds);
         let wins = t3_read_array(&ds, "__wm_wins");
-        assert_eq!(wins.len(), 2, "App 窗 + 1 个 Docked 槽位（Candidate 不投影）");
+        assert_eq!(
+            wins.len(),
+            2,
+            "App 窗 + 1 个 Docked 槽位（Candidate 不投影）"
+        );
         let auto_val::Value::Obj(native) = &wins[1] else {
             panic!("native 条目应为 Obj")
         };
@@ -31731,7 +34411,12 @@ mod tests {
             .component
             .write_state("__wm_meta", auto_val::Value::str("sentinel"))
             .unwrap();
-        ds.host.as_mut().unwrap().wm.native_slots.remove(&NativeSlotId(3));
+        ds.host
+            .as_mut()
+            .unwrap()
+            .wm
+            .native_slots
+            .remove(&NativeSlotId(3));
         sync_shell_windows(&mut ds);
         match t3_read(&ds, "__wm_meta") {
             auto_val::Value::Str(s) => assert_ne!(s.to_string(), "sentinel", "槽位变化应触发重写"),
@@ -31769,7 +34454,11 @@ mod tests {
         }
         match t3_read(&ds, "__dock_pinned_csv") {
             auto_val::Value::Str(s) => {
-                assert_eq!(s.to_string(), ",011-calculator,013-todo,", "csv 前后逗号封边")
+                assert_eq!(
+                    s.to_string(),
+                    ",011-calculator,013-todo,",
+                    "csv 前后逗号封边"
+                )
             }
             other => panic!("__dock_pinned_csv 读回异常: {other:?}"),
         }
@@ -31828,7 +34517,9 @@ mod tests {
             .borrow_mut() = false;
         sync_shell_windows(&mut ds);
         match t3_read(&ds, "__wm_meta") {
-            auto_val::Value::Str(ref s) => assert_eq!(s.to_string(), "sentinel", "指纹未变跳过重写"),
+            auto_val::Value::Str(ref s) => {
+                assert_eq!(s.to_string(), "sentinel", "指纹未变跳过重写")
+            }
             other => panic!("__wm_meta 读回异常: {other:?}"),
         }
         assert!(
@@ -31860,18 +34551,26 @@ mod tests {
 
         let wins = t3_read_array(&ds, "__wm_wins");
         assert_eq!(wins.len(), 2, "全集投影（跨分区）");
-        let auto_val::Value::Obj(first) = &wins[0] else { panic!("Obj") };
+        let auto_val::Value::Obj(first) = &wins[0] else {
+            panic!("Obj")
+        };
         assert_eq!(t3_obj_str(first, "workspace"), "0", "Alpha 仍在分区 0");
-        let auto_val::Value::Obj(second) = &wins[1] else { panic!("Obj") };
+        let auto_val::Value::Obj(second) = &wins[1] else {
+            panic!("Obj")
+        };
         assert_eq!(t3_obj_str(second, "wid"), b.0.to_string());
         assert_eq!(t3_obj_str(second, "workspace"), "1");
         assert_eq!(t3_obj_str(second, "focused"), "1", "分区 1 焦点 = Beta");
 
         let wss = t3_read_array(&ds, "__wm_workspaces");
         assert_eq!(wss.len(), 2, "pack 默认 2 分区");
-        let auto_val::Value::Obj(ws0) = &wss[0] else { panic!("Obj") };
+        let auto_val::Value::Obj(ws0) = &wss[0] else {
+            panic!("Obj")
+        };
         assert_eq!(t3_obj_str(ws0, "current"), "", "分区 0 非当前");
-        let auto_val::Value::Obj(ws1o) = &wss[1] else { panic!("Obj") };
+        let auto_val::Value::Obj(ws1o) = &wss[1] else {
+            panic!("Obj")
+        };
         assert_eq!(t3_obj_str(ws1o, "current"), "1", "分区 1 当前");
         let _ = a;
     }
@@ -31898,34 +34597,40 @@ mod tests {
             back_root: None,
             fit: false,
             desktop_visible: true,
-        desktop_exe: None,
-        desktop_render: None,
-        opens: Vec::new(),
-    }];
-        ds.desktop.app_resolver =
-            Some(std::sync::Arc::new(|name: &str| {
-                (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
-                    media_root: None,
-                    photo_root: None,
-                    back_entry: None,
-
-                    code: T3_WIN_AT.to_string(),
-                    source_path: None,
-                    title: Some("calculator".to_string()),
-                    name: None,
-                    daemon: None,
-                    back_root: None,
-                    fit: false,
-        exe: None,
+            desktop_exe: None,
+            desktop_render: None,
             opens: Vec::new(),
-        render_decl: None,    })
-            }));
+        }];
+        ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
+            (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
+                media_root: None,
+                photo_root: None,
+                back_entry: None,
+
+                code: T3_WIN_AT.to_string(),
+                source_path: None,
+                title: Some("calculator".to_string()),
+                name: None,
+                daemon: None,
+                back_root: None,
+                fit: false,
+                exe: None,
+                opens: Vec::new(),
+                render_decl: None,
+            })
+        }));
         ds.launch_app("011-calculator").expect("launch");
         sync_shell_windows(&mut ds);
         let wins = t3_read_array(&ds, "__wm_wins");
         assert_eq!(wins.len(), 1);
-        let auto_val::Value::Obj(o) = &wins[0] else { panic!("Obj") };
-        assert_eq!(t3_obj_str(o, "app"), "011-calculator", "launch 回填 registry_id");
+        let auto_val::Value::Obj(o) = &wins[0] else {
+            panic!("Obj")
+        };
+        assert_eq!(
+            t3_obj_str(o, "app"),
+            "011-calculator",
+            "launch 回填 registry_id"
+        );
         assert_eq!(t3_obj_str(o, "icon"), "calculator", "icon 自注册表解析");
     }
 
@@ -31946,8 +34651,16 @@ mod tests {
         let auto_val::Value::Obj(first) = &mru[0] else {
             panic!("mru 条目应为 Obj")
         };
-        assert_eq!(t3_obj_str(first, "wid"), c.0.to_string(), "MRU front=最近聚焦");
-        assert_eq!(t3_obj_str(first, "title"), "Gamma", "条目同 __wm_wins 六字段");
+        assert_eq!(
+            t3_obj_str(first, "wid"),
+            c.0.to_string(),
+            "MRU front=最近聚焦"
+        );
+        assert_eq!(
+            t3_obj_str(first, "title"),
+            "Gamma",
+            "条目同 __wm_wins 六字段"
+        );
         // 聚焦 a → MRU 前插，投影序随之。
         ds.wm_focus(a);
         sync_shell_windows(&mut ds);
@@ -32098,25 +34811,46 @@ mod tests {
         // 行消费面：rows[0].wid = b（缩略行挂 window_thumbnail 的 wid 源）。
         drop(app);
         let app = ds.apps.get_mut(&sw).unwrap();
-        app.component.bridge_mut().call_handler("RebuildMru", &[]).expect("RebuildMru");
-        let rows = match ds.apps.get(&sw).unwrap().component.read_state("rows").unwrap() {
-            auto_val::Value::VmRef(r) => t3_deref_list(ds.apps.get(&sw).unwrap(), r.id as u64, "rows"),
+        app.component
+            .bridge_mut()
+            .call_handler("RebuildMru", &[])
+            .expect("RebuildMru");
+        let rows = match ds
+            .apps
+            .get(&sw)
+            .unwrap()
+            .component
+            .read_state("rows")
+            .unwrap()
+        {
+            auto_val::Value::VmRef(r) => {
+                t3_deref_list(ds.apps.get(&sw).unwrap(), r.id as u64, "rows")
+            }
             auto_val::Value::Int(id) => t3_deref_list(ds.apps.get(&sw).unwrap(), id as u64, "rows"),
             other => panic!("rows 应为 VmRef: {other:?}"),
         };
         let vm = ds.apps.get(&sw).unwrap().component.bridge().vm();
         let wid_of = |i: usize| -> String {
-            let auto_val::Value::VmRef(r) = &rows[i] else { panic!("rows[{i}] VmRef") };
+            let auto_val::Value::VmRef(r) = &rows[i] else {
+                panic!("rows[{i}] VmRef")
+            };
             let obj = vm.get_heap_object(r.id as u64).expect("heap");
             let g = obj.read().unwrap();
-            let od = g.as_any().downcast_ref::<crate::vm::types::ObjectData>().expect("OD");
+            let od = g
+                .as_any()
+                .downcast_ref::<crate::vm::types::ObjectData>()
+                .expect("OD");
             match od.get(&auto_val::ValueKey::from("wid".to_string())) {
                 Some(auto_val::Value::Str(s)) => s.to_string(),
                 other => panic!("wid: {other:?}"),
             }
         };
         assert_eq!(wid_of(0), b.0.to_string(), "rows[0].wid=b（就绪行）");
-        assert_eq!(wid_of(1), a.0.to_string(), "rows[1].wid=a（miss 行 fallback）");
+        assert_eq!(
+            wid_of(1),
+            a.0.to_string(),
+            "rows[1].wid=a（miss 行 fallback）"
+        );
         crate::ui::iced::snapshot::invalidate_all();
     }
 
@@ -32160,8 +34894,15 @@ mod tests {
                 let _ = kind;
             }
             let extra: Vec<&V<_>> = match v {
-                V::Popover { anchor, content, open, .. } => {
-                    if *open { *pops += 1; }
+                V::Popover {
+                    anchor,
+                    content,
+                    open,
+                    ..
+                } => {
+                    if *open {
+                        *pops += 1;
+                    }
                     let mut v = vec![content.as_ref()];
                     if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
                         v.push(w.as_ref());
@@ -32183,9 +34924,7 @@ mod tests {
                 scan(c, pops, thumbs);
             }
         }
-        fn counts(
-            ds: &crate::ui::session::DesktopSession,
-        ) -> (usize, usize) {
+        fn counts(ds: &crate::ui::session::DesktopSession) -> (usize, usize) {
             let shell = ds.desktop.shell_app.unwrap();
             let (view, _, _) = ds
                 .apps
@@ -32208,7 +34947,11 @@ mod tests {
         // 的预览选实例语义）——夹具两窗 app 串均空（同 app 全匹配），每
         // 条目预构建 2 枚缩略 → 缩略叶 2→4，预览叶 2 不变，基线 4→6。
         let (p0, t0) = counts(&ds);
-        assert_eq!((p0, t0), (0, 6), "无 hover 基线零 open、四缩略（2 条目×全实例）+两预览叶");
+        assert_eq!(
+            (p0, t0),
+            (0, 6),
+            "无 hover 基线零 open、四缩略（2 条目×全实例）+两预览叶"
+        );
 
         // dock hover b：b 条目 popover open ×1（缩略叶已在预构建集内）。
         {
@@ -32224,7 +34967,10 @@ mod tests {
         // PLAN-010 N6c：hover 离开只清预览态（HoverLeave，原 HoverEnd 退役）。
         {
             let app = ds.apps.get_mut(&shell).unwrap();
-            app.component.bridge_mut().call_handler("HoverLeave", &[]).expect("HoverLeave");
+            app.component
+                .bridge_mut()
+                .call_handler("HoverLeave", &[])
+                .expect("HoverLeave");
         }
         assert_eq!(counts(&ds).0, 0, "HoverLeave 收起 hover 预览");
 
@@ -32242,12 +34988,18 @@ mod tests {
         assert_eq!(counts(&ds).0, 1, "win_menu 开菜单（无 hover）");
         {
             let app = ds.apps.get_mut(&shell).unwrap();
-            app.component.bridge_mut().call_handler("HoverLeave", &[]).expect("leave during menu");
+            app.component
+                .bridge_mut()
+                .call_handler("HoverLeave", &[])
+                .expect("leave during menu");
         }
         assert_eq!(counts(&ds).0, 1, "菜单开启期 hover 离开不收菜单（N6c）");
         {
             let app = ds.apps.get_mut(&shell).unwrap();
-            app.component.bridge_mut().call_handler("WinMenuClose", &[]).expect("WinMenuClose");
+            app.component
+                .bridge_mut()
+                .call_handler("WinMenuClose", &[])
+                .expect("WinMenuClose");
         }
         assert_eq!(counts(&ds).0, 0, "WinMenuClose 收菜单");
 
@@ -32282,9 +35034,14 @@ mod tests {
             })
             .count();
         assert_eq!(flagged, 4, "同分区 6 窗仅前 4 带 pager 旗标");
-        let wss = comp.read_state_as_vec("__wm_workspaces").expect("__wm_workspaces");
+        let wss = comp
+            .read_state_as_vec("__wm_workspaces")
+            .expect("__wm_workspaces");
         let more_of = |v: &auto_val::Value| match v {
-            auto_val::Value::Obj(o) => o.get("more").map(|s| s.as_str().to_string()).unwrap_or_default(),
+            auto_val::Value::Obj(o) => o
+                .get("more")
+                .map(|s| s.as_str().to_string())
+                .unwrap_or_default(),
             _ => String::new(),
         };
         assert_eq!(more_of(&wss[0]), "+2", "分区 0 溢出标签 +2");
@@ -32307,7 +35064,13 @@ mod tests {
         // Bus 注入 → shell __desktop_cmd → drain_desktop_commands 同臂。
         desktop_inject_push(DesktopInject::Bus("open_settings".to_string()));
         apply_desktop_injects(&mut ds);
-        let bus = match ds.apps.get(&shell).unwrap().component.read_state("__desktop_cmd") {
+        let bus = match ds
+            .apps
+            .get(&shell)
+            .unwrap()
+            .component
+            .read_state("__desktop_cmd")
+        {
             Ok(auto_val::Value::Str(s)) => s.to_string(),
             _ => String::new(),
         };
@@ -32345,11 +35108,19 @@ mod tests {
         ds.open_desktop(iced::window::Id::unique());
         let samples: Vec<(&str, DesktopCommand)> = vec![
             ("shell", DesktopCommand::SetLayout(LayoutMode::Grid)),
-            ("shell", DesktopCommand::Notify("toast".into(), "bus 全链".into())),
-            ("desktop-face", DesktopCommand::SetWallpaper("#101014".into())),
+            (
+                "shell",
+                DesktopCommand::Notify("toast".into(), "bus 全链".into()),
+            ),
+            (
+                "desktop-face",
+                DesktopCommand::SetWallpaper("#101014".into()),
+            ),
         ];
         for (src, cmd) in &samples {
-            ds.desktop.desktop_bus_inbox.push((src.to_string(), cmd.clone()));
+            ds.desktop
+                .desktop_bus_inbox
+                .push((src.to_string(), cmd.clone()));
         }
         let _ = drain_desktop_bus_inbox(&mut ds);
         // 布局族：SetLayout 落 wm.layout。
@@ -32384,10 +35155,7 @@ mod tests {
             ds.host.as_mut().unwrap().wm.add_win(
                 AppId(1),
                 title.into(),
-                iced::Rectangle::new(
-                    iced::Point::ORIGIN,
-                    iced::Size::new(800.0, 600.0),
-                ),
+                iced::Rectangle::new(iced::Point::ORIGIN, iced::Size::new(800.0, 600.0)),
             )
         };
         let normal = add(&mut ds, "N");
@@ -32425,7 +35193,14 @@ mod tests {
             ((rf.x - (pane.x + (pane_w - outer_w) / 2.0)).abs() < 0.51)
                 && ((rf.y - (pane.y + (usable.height - outer_h) / 2.0)).abs() < 0.51),
             "fit rect {{x:{}, y:{}, w:{}, h:{}}} not centered in pane {{x:{}, y:{}, w:{}, h:{}}}",
-            rf.x, rf.y, rf.width, rf.height, pane.x, pane.y, pane.width, pane.height
+            rf.x,
+            rf.y,
+            rf.width,
+            rf.height,
+            pane.x,
+            pane.y,
+            pane.width,
+            pane.height
         );
         // 常规窗：window_size 随新窗格（else 分支语义保持）。
         assert_eq!(
@@ -32454,11 +35229,17 @@ mod tests {
                 self.0.lock().unwrap().push_back(msg.encode());
                 Ok(())
             }
-            fn try_recv(&mut self) -> Option<Result<crate::ui::desktop_protocol::message::ProtocolMsg, crate::ui::desktop_protocol::CodecError>> {
+            fn try_recv(
+                &mut self,
+            ) -> Option<
+                Result<
+                    crate::ui::desktop_protocol::message::ProtocolMsg,
+                    crate::ui::desktop_protocol::CodecError,
+                >,
+            > {
                 let mut q = self.0.lock().unwrap();
-                q.pop_front().map(|bytes| {
-                    crate::ui::desktop_protocol::message::ProtocolMsg::decode(&bytes)
-                })
+                q.pop_front()
+                    .map(|bytes| crate::ui::desktop_protocol::message::ProtocolMsg::decode(&bytes))
             }
             fn pending(&self) -> usize {
                 self.0.lock().unwrap().len()
@@ -32521,7 +35302,10 @@ mod tests {
             // PLAN-012 W3/W4：切换器钮入 popover、窗口条目钮入
             // popover+mouse-area——计数器须随结构钻入，否则漏计。
             let mut kids = view_children(v);
-            if let V::Popover { anchor, content, .. } = v {
+            if let V::Popover {
+                anchor, content, ..
+            } = v
+            {
                 if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
                     kids.push(w.as_ref());
                 }
@@ -32542,18 +35326,37 @@ mod tests {
         ds.desktop.shell_app = Some(id);
 
         // bottom（pack 缺省）→ 根 col 含 FlexColReverse（B1 翻转承载）。
-        let (view, _, _) = ds.apps.get(&id).unwrap().component.view_with_debug_gated(false);
-        let V::Column { style, children, .. } = &view else {
-            panic!("shell 根节点应为 Column，实际 {:?}", std::mem::discriminant(&view));
+        let (view, _, _) = ds
+            .apps
+            .get(&id)
+            .unwrap()
+            .component
+            .view_with_debug_gated(false);
+        let V::Column {
+            style, children, ..
+        } = &view
+        else {
+            panic!(
+                "shell 根节点应为 Column，实际 {:?}",
+                std::mem::discriminant(&view)
+            );
         };
         let has_reverse = style.as_ref().map_or(false, |s| {
-            s.classes.iter().any(|c| matches!(c, StyleClass::FlexColReverse))
+            s.classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::FlexColReverse))
         });
-        assert!(has_reverse, "bottom 缺省根 col 应含 flex-col-reverse（翻转承载）");
+        assert!(
+            has_reverse,
+            "bottom 缺省根 col 应含 flex-col-reverse（翻转承载）"
+        );
         let buttons = count_buttons(&view);
         // PLAN-012 W4：缺省 pinned 置空——任务栏常驻钮 = ⊞/切换器/布局×2/
         // 铃铛/齿轮/电源 = 7（pinned×3 退役 + 无注入窗口条目）。
-        assert!(buttons >= 7, "任务栏常驻按钮群应在位（缺省无 pinned 后 ≥7），实得 {buttons}");
+        assert!(
+            buttons >= 7,
+            "任务栏常驻按钮群应在位（缺省无 pinned 后 ≥7），实得 {buttons}"
+        );
         assert!(
             !children.is_empty(),
             "根 col 应有子（taskbar 块 + 让位 spacer）"
@@ -32591,12 +35394,23 @@ mod tests {
         // top → 无翻转类（border-b 分支）。
         {
             let app = ds.apps.get_mut(&id).unwrap();
-            let _ = app.component.write_state("__dock_position", auto_val::Value::str("top"));
+            let _ = app
+                .component
+                .write_state("__dock_position", auto_val::Value::str("top"));
         }
-        let (view, _, _) = ds.apps.get(&id).unwrap().component.view_with_debug_gated(false);
-        let V::Column { style, .. } = &view else { panic!("root Column") };
+        let (view, _, _) = ds
+            .apps
+            .get(&id)
+            .unwrap()
+            .component
+            .view_with_debug_gated(false);
+        let V::Column { style, .. } = &view else {
+            panic!("root Column")
+        };
         let has_reverse = style.as_ref().map_or(false, |s| {
-            s.classes.iter().any(|c| matches!(c, StyleClass::FlexColReverse))
+            s.classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::FlexColReverse))
         });
         assert!(!has_reverse, "top 时根 col 不应含 flex-col-reverse");
     }
@@ -32611,8 +35425,7 @@ mod tests {
         let a = t3_add_win(&mut ds, "Alpha");
         let b = t3_add_win(&mut ds, "Beta");
         ds.wm_focus(b);
-        let app_of = |ds: &crate::ui::session::DesktopSession,
-                      wid: crate::ui::session::Wid| {
+        let app_of = |ds: &crate::ui::session::DesktopSession, wid: crate::ui::session::Wid| {
             ds.host
                 .as_ref()
                 .unwrap()
@@ -32724,10 +35537,7 @@ mod tests {
     /// 落盘修复后 raw 读点会 load 盘键，并行测试线程经共享 STORAGE_MAP
     /// 互串的窗口被放大（notif/dock/stdlib-storage 实测三红）。锁本体在
     /// stdlib（crate::vm::ffi::stdlib::lock_storage_for_test），双方同锁。
-    struct StorageTestIsolation(
-        std::sync::MutexGuard<'static, ()>,
-        std::path::PathBuf,
-    );
+    struct StorageTestIsolation(std::sync::MutexGuard<'static, ()>, std::path::PathBuf);
     impl std::ops::Deref for StorageTestIsolation {
         type Target = std::path::PathBuf;
         fn deref(&self) -> &Self::Target {
@@ -32751,11 +35561,8 @@ mod tests {
         // Plan 540 T2：桌面单源 config 文件同场隔离——DesktopState::new 的
         // DesktopConfig::load 读 env 指向的空文件（缺席 = 内置默认，且迁移
         // 写不落真实家目录）。
-        let cfg_path = std::env::temp_dir().join(format!(
-            "auto-540-config-{}-{}.at",
-            tag,
-            std::process::id()
-        ));
+        let cfg_path =
+            std::env::temp_dir().join(format!("auto-540-config-{}-{}.at", tag, std::process::id()));
         let _ = std::fs::remove_file(&cfg_path);
         std::env::set_var("AUTOOS_DESKTOP_CONFIG", &cfg_path);
         StorageTestIsolation(serial, path)
@@ -32803,15 +35610,13 @@ mod tests {
         push_notification(&mut ds, "success", "two");
         assert_eq!(ds.desktop.notes_unread.get(), 2, "挂载但 visible=0 仍 +1");
         if let Some(app) = ds.apps.get_mut(&probe) {
-            let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+            let _ = app
+                .component
+                .write_state("visible", auto_val::Value::str("1"));
         }
         assert!(ds.notification_visible(), "探针 visible 判定可达");
         push_notification(&mut ds, "success", "three");
-        assert_eq!(
-            ds.desktop.notes_unread.get(),
-            2,
-            "面板可见时不加未读"
-        );
+        assert_eq!(ds.desktop.notes_unread.get(), 2, "面板可见时不加未读");
         // 模拟开面板清零（真执行体 T3 落码）。
         ds.desktop.notes_unread.set(0);
         assert_eq!(ds.desktop.notes_unread.get(), 0);
@@ -32833,10 +35638,7 @@ mod tests {
         ];
         let _guard = t2_isolate_storage("w5-cells");
         let raw = "b=3:0,d=1:1,";
-        crate::vm::ffi::stdlib::storage_host_publish(
-            "shell.desktop.positions",
-            raw.to_string(),
-        );
+        crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.positions", raw.to_string());
         let pos = load_desktop_positions();
         // 2026-09-15：未定位图标改**列主序**填充（rows=8；纵向优先——左列
         // 自上而下占满再排下一列）。
@@ -32872,9 +35674,7 @@ mod tests {
         let spacer_at_1 = match &cells[1] {
             auto_val::Value::Obj(o) => o
                 .get("spacer")
-                .map(|v| {
-                    matches!(v, auto_val::Value::Str(x) if x.to_string() == "1")
-                })
+                .map(|v| matches!(v, auto_val::Value::Str(x) if x.to_string() == "1"))
                 .unwrap_or(false),
             _ => false,
         };
@@ -32930,7 +35730,11 @@ mod tests {
             vec![crate::ui::session::DesktopCommand::CloseWindow(wid)],
         );
         let host = ds.host.as_ref().unwrap();
-        let v = host.wm.wins.get(&wid).expect("os-config 窗应存续（hide 非 close）");
+        let v = host
+            .wm
+            .wins
+            .get(&wid)
+            .expect("os-config 窗应存续（hide 非 close）");
         assert!(v.hidden.get(), "close 应改写为 hidden");
         assert!(ds.apps.values().any(|_| true), "apps 会话应保留");
         drop(host);
@@ -32955,7 +35759,11 @@ mod tests {
         let v = host.wm.wins.get(&wid).expect("重开不新开窗（存续）");
         assert!(!v.hidden.get(), "focus 臂应取消隐藏");
         assert_eq!(host.wm.focused, Some(wid), "重开应聚焦设置窗");
-        assert_eq!(ds.desktop.config.dock_pinned.len(), 0, "sanity：会话未被污染");
+        assert_eq!(
+            ds.desktop.config.dock_pinned.len(),
+            0,
+            "sanity：会话未被污染"
+        );
 
         let _ = std::fs::remove_file(&path);
     }
@@ -33024,18 +35832,28 @@ mod tests {
             ],
         );
         let (view, _, _) = comp.view_with_debug_gated(false);
-        fn count(v: &AbstractView<crate::ui::interpreter::DynamicMessage>, wp: &mut usize, cards: &mut usize) {
+        fn count(
+            v: &AbstractView<crate::ui::interpreter::DynamicMessage>,
+            wp: &mut usize,
+            cards: &mut usize,
+        ) {
             match v {
                 AbstractView::WorkspacePreview { .. } => *wp += 1,
                 AbstractView::Text { content, .. }
-                    if content == "MARKER" || content == "ANCHOR" || content == "1" || content == "2" =>
+                    if content == "MARKER"
+                        || content == "ANCHOR"
+                        || content == "1"
+                        || content == "2" =>
                 {
                     *cards += 1
                 }
                 _ => {}
             }
             let mut kids = view_children(v);
-            if let AbstractView::Popover { anchor, content, .. } = v {
+            if let AbstractView::Popover {
+                anchor, content, ..
+            } = v
+            {
                 if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
                     kids.push(w.as_ref());
                 }
@@ -33080,7 +35898,9 @@ mod tests {
         }
         // visible 置位 → 指纹变化触发重写 → 投影翻转（铃铛高亮数据面）。
         if let Some(app) = ds.apps.get_mut(&probe) {
-            let _ = app.component.write_state("visible", auto_val::Value::str("1"));
+            let _ = app
+                .component
+                .write_state("visible", auto_val::Value::str("1"));
         }
         sync_shell_windows(&mut ds);
         match t3_read(&ds, "__wm_notes_visible") {
@@ -33107,16 +35927,22 @@ mod tests {
             push_notification(&mut ds, "success", &format!("m{i}"));
         }
         // 槽位形态：slot0 = 最新，仅 10 槽落盘。
-        let slot0 = crate::vm::ffi::stdlib::storage_host_read("shell.notes.0")
-            .expect("slot0 已写");
-        assert!(slot0.contains("\"msg\":\"m11\""), "slot0=MRU front: {slot0}");
+        let slot0 = crate::vm::ffi::stdlib::storage_host_read("shell.notes.0").expect("slot0 已写");
+        assert!(
+            slot0.contains("\"msg\":\"m11\""),
+            "slot0=MRU front: {slot0}"
+        );
         assert!(slot0.contains("\"kind\":\"success\""));
         let slot11 = crate::vm::ffi::stdlib::storage_host_read("shell.notes.11");
-        assert!(slot11.is_none() || slot11.as_deref() == Some(""),
-            "仅 10 槽，无 slot11");
-        let slot9 = crate::vm::ffi::stdlib::storage_host_read("shell.notes.9")
-            .expect("slot9 已写");
-        assert!(slot9.contains("\"msg\":\"m2\""), "最旧落盘到 slot9: {slot9}");
+        assert!(
+            slot11.is_none() || slot11.as_deref() == Some(""),
+            "仅 10 槽，无 slot11"
+        );
+        let slot9 = crate::vm::ffi::stdlib::storage_host_read("shell.notes.9").expect("slot9 已写");
+        assert!(
+            slot9.contains("\"msg\":\"m2\""),
+            "最旧落盘到 slot9: {slot9}"
+        );
         // 新会话 boot 恢复（读侧）。
         let mut ds2 = t3_session_with_shell();
         restore_notifications(&mut ds2);
@@ -33365,7 +36191,10 @@ mod tests {
             .expect("Dismiss handler");
         let cmds = ds.drain_app_desktop_commands(panel);
         let (_, _tasks) = execute_desktop_commands(&mut ds, cmds);
-        assert!(ds.desktop.notifications.borrow().is_empty(), "dismiss 后历史空");
+        assert!(
+            ds.desktop.notifications.borrow().is_empty(),
+            "dismiss 后历史空"
+        );
         // ⑤ 落盘断言：slot0 = 空串（全量重写语义）。
         assert_eq!(
             crate::vm::ffi::stdlib::storage_host_read("shell.notes.0").as_deref(),
@@ -33387,7 +36216,7 @@ mod tests {
         use crate::ui::session::DesktopCommand as DC;
         let mut ds = t3_session_with_shell();
         let a = t3_add_win(&mut ds, "Alpha"); // ws0，焦点窗
-        // `+`：增分区并即入新分区（验收②）。
+                                              // `+`：增分区并即入新分区（验收②）。
         let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceAdd]);
         assert!(!exit);
         {
@@ -33403,12 +36232,20 @@ mod tests {
         ds.wm_focus(a);
         let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::SendTo(a, 2)]);
         assert!(!exit);
-        assert_eq!(ds.host.as_ref().unwrap().wm.focused, Some(a), "当前分区发送焦点保持");
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.focused,
+            Some(a),
+            "当前分区发送焦点保持"
+        );
         // `×`：分区 2 含窗 → toast 提示不删（T1 定案：toast 门最少意外）。
         let toasts_before = ds.desktop.toasts.borrow().len();
         let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(2)]);
         assert!(!exit);
-        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 3, "非空分区不删");
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.workspaces.len(),
+            3,
+            "非空分区不删"
+        );
         assert!(
             ds.desktop.toasts.borrow().len() > toasts_before,
             "非空 × 出 toast 提示"
@@ -33435,7 +36272,11 @@ mod tests {
         let toasts_mid = ds.desktop.toasts.borrow().len();
         let (exit, _) = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(0)]);
         assert!(!exit);
-        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 1, "末分区保底");
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.workspaces.len(),
+            1,
+            "末分区保底"
+        );
         assert!(
             ds.desktop.toasts.borrow().len() > toasts_mid,
             "末分区 × 出 toast 提示"
@@ -33510,7 +36351,13 @@ mod tests {
         // 常规摆位：立即生效（移动+缩放一体）。
         let _ = execute_desktop_commands(
             &mut ds,
-            vec![DC::WinRect { wid: a, x: 40.0, y: 30.0, w: 500.0, h: 400.0 }],
+            vec![DC::WinRect {
+                wid: a,
+                x: 40.0,
+                y: 30.0,
+                w: 500.0,
+                h: 400.0,
+            }],
         );
         {
             let host = ds.host.as_ref().unwrap();
@@ -33522,7 +36369,13 @@ mod tests {
         // min 钳制（160/120 地板）；不夺焦点。
         let _ = execute_desktop_commands(
             &mut ds,
-            vec![DC::WinRect { wid: a, x: 0.0, y: 0.0, w: 10.0, h: 5.0 }],
+            vec![DC::WinRect {
+                wid: a,
+                x: 0.0,
+                y: 0.0,
+                w: 10.0,
+                h: 5.0,
+            }],
         );
         {
             let host = ds.host.as_ref().unwrap();
@@ -33568,15 +36421,27 @@ mod tests {
 
         // 环切跳过负一屏：2 → next 越过 2 落 0；0 → prev 越过 2 落 1。
         ds.wm_next_workspace();
-        assert_eq!(ds.host.as_ref().unwrap().wm.current_workspace, 0, "next 跳过负一屏");
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.current_workspace,
+            0,
+            "next 跳过负一屏"
+        );
         ds.wm_prev_workspace();
-        assert_eq!(ds.host.as_ref().unwrap().wm.current_workspace, 1, "prev 跳过负一屏");
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.current_workspace,
+            1,
+            "prev 跳过负一屏"
+        );
 
         // 删除拒绝：负一屏 no-op（无 toast——守卫先于保底门）；簿记压实
         // 跟随：删分区 0 → 负一屏下标 2→1、origin 0→0（并入 target 0）。
         let toasts_before = ds.desktop.toasts.borrow().len();
         let _ = execute_desktop_commands(&mut ds, vec![DC::WorkspaceClose(2)]);
-        assert_eq!(ds.host.as_ref().unwrap().wm.workspaces.len(), 3, "负一屏不可删");
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.workspaces.len(),
+            3,
+            "负一屏不可删"
+        );
         assert_eq!(
             ds.desktop.toasts.borrow().len(),
             toasts_before,
@@ -33589,7 +36454,11 @@ mod tests {
             let host = ds.host.as_ref().unwrap();
             assert_eq!(host.wm.workspaces.len(), 2);
             assert_eq!(host.wm.showdesk_ws, Some(1), "簿记下标压实跟随");
-            assert_eq!(host.wm.showdesk_origin, Some(0), "origin 不受低下标外删除影响");
+            assert_eq!(
+                host.wm.showdesk_origin,
+                Some(0),
+                "origin 不受低下标外删除影响"
+            );
         }
 
         // 发送拒绝：窗口不可发往负一屏（现下标 1）。
@@ -33602,38 +36471,37 @@ mod tests {
         );
 
         // 负一屏上 activate = 先回 origin 再启动（新窗落 origin 分区）。
-        ds.desktop.app_resolver =
-            Some(std::sync::Arc::new(|name: &str| {
-                (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
-                    media_root: None,
-                    photo_root: None,
-                    back_entry: None,
+        ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
+            (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
+                media_root: None,
+                photo_root: None,
+                back_entry: None,
 
-                    code: T3_WIN_AT.to_string(),
-                    source_path: None,
-                    title: Some("calculator".to_string()),
-                    name: None,
-                    daemon: None,
-                    back_root: None,
-                    fit: false,
-                    ..Default::default()
-                })
-            }));
+                code: T3_WIN_AT.to_string(),
+                source_path: None,
+                title: Some("calculator".to_string()),
+                name: None,
+                daemon: None,
+                back_root: None,
+                fit: false,
+                ..Default::default()
+            })
+        }));
         let _ = execute_desktop_commands(&mut ds, vec![DC::ShowDesktop]);
         assert!(ds.host.as_ref().unwrap().wm.on_showdesk());
-        let (exit, _) = execute_desktop_commands(
-            &mut ds,
-            vec![DC::ActivateApp("011-calculator".to_string())],
-        );
+        let (exit, _) =
+            execute_desktop_commands(&mut ds, vec![DC::ActivateApp("011-calculator".to_string())]);
         assert!(!exit);
         {
             let host = ds.host.as_ref().unwrap();
             assert!(!host.wm.on_showdesk(), "activate 先回 origin");
             let wid = host.wm.focused.expect("activate 后有焦点窗");
-            assert_eq!(host.wm.wins[&wid].registry_id.as_deref(), Some("011-calculator"));
             assert_eq!(
-                host.wm.wins[&wid].workspace,
-                host.wm.current_workspace,
+                host.wm.wins[&wid].registry_id.as_deref(),
+                Some("011-calculator")
+            );
+            assert_eq!(
+                host.wm.wins[&wid].workspace, host.wm.current_workspace,
                 "新窗落返回后的分区"
             );
         }
@@ -33687,7 +36555,10 @@ mod tests {
         {
             let host = ds.host.as_ref().unwrap();
             assert!(!host.wm.picker_open, "close 关 picker");
-            assert_eq!(host.wm.current_workspace, 0, "return_on_close → 自动回 origin");
+            assert_eq!(
+                host.wm.current_workspace, 0,
+                "return_on_close → 自动回 origin"
+            );
             assert!(!host.wm.on_showdesk());
         }
 
@@ -33757,7 +36628,10 @@ mod tests {
         let tmp = std::env::temp_dir().join(format!(
             "plan019-nav-{}-{}",
             std::process::id(),
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
         ));
         std::env::set_var("AUTOOS_DESKTOP_CONFIG", tmp.join("config.at"));
         let mut ds = t3_session_with_shell();
@@ -33766,8 +36640,13 @@ mod tests {
             host.wm.picker_open = true;
             // 7 枚候选 > 5 枚窗口：FU7 滑窗语义可测。
             host.wm.picker_paths = vec![
-                "a.jpg".into(), "b.jpg".into(), "c.jpg".into(),
-                "d.jpg".into(), "e.jpg".into(), "f.jpg".into(), "g.jpg".into(),
+                "a.jpg".into(),
+                "b.jpg".into(),
+                "c.jpg".into(),
+                "d.jpg".into(),
+                "e.jpg".into(),
+                "f.jpg".into(),
+                "g.jpg".into(),
             ];
             host.wm.picker_win = 0;
         }
@@ -33797,12 +36676,20 @@ mod tests {
         // 环绕：尾 → next → 0。
         ds.host.as_mut().unwrap().wm.picker_preview = Some(6);
         let _ = execute_desktop_commands(&mut ds, vec![DC::WallpaperNav("next".into())]);
-        assert_eq!(ds.host.as_ref().unwrap().wm.picker_preview, Some(0), "预览尾环绕回首");
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.picker_preview,
+            Some(0),
+            "预览尾环绕回首"
+        );
 
         // picker 关 = no-op。
         ds.host.as_mut().unwrap().wm.picker_open = false;
         let _ = execute_desktop_commands(&mut ds, vec![DC::WallpaperNav("next".into())]);
-        assert_eq!(ds.host.as_ref().unwrap().wm.picker_preview, Some(0), "关态导航 no-op");
+        assert_eq!(
+            ds.host.as_ref().unwrap().wm.picker_preview,
+            Some(0),
+            "关态导航 no-op"
+        );
     }
 
     /// Esc 链 update 臂（AC-05）：预览态 → 回栅格；栅格态 → 关闭（归属
@@ -33815,15 +36702,21 @@ mod tests {
         // 键面映射：←/→/Esc 命中，其他键穿透。
         assert!(matches!(
             picker_key_message(&Key::Named(Named::ArrowLeft)),
-            Some(crate::ui::session::DesktopMessage::Desktop(DE::WallpaperKeyNav("prev")))
+            Some(crate::ui::session::DesktopMessage::Desktop(
+                DE::WallpaperKeyNav("prev")
+            ))
         ));
         assert!(matches!(
             picker_key_message(&Key::Named(Named::ArrowRight)),
-            Some(crate::ui::session::DesktopMessage::Desktop(DE::WallpaperKeyNav("next")))
+            Some(crate::ui::session::DesktopMessage::Desktop(
+                DE::WallpaperKeyNav("next")
+            ))
         ));
         assert!(matches!(
             picker_key_message(&Key::Named(Named::Escape)),
-            Some(crate::ui::session::DesktopMessage::Desktop(DE::WallpaperKeyEscape))
+            Some(crate::ui::session::DesktopMessage::Desktop(
+                DE::WallpaperKeyEscape
+            ))
         ));
         assert!(picker_key_message(&Key::Named(Named::Enter)).is_none());
 
@@ -33888,14 +36781,8 @@ mod tests {
         let key_a = wallpaper_layout_key("D:/wp/a.jpg");
         let key_b = wallpaper_layout_key("D:/wp/b.jpg");
         // A：calc 摆 (0,0)；B：calc 摆 (3,3)。
-        crate::vm::ffi::stdlib::storage_host_publish(
-            &key_a,
-            "011-calculator=0:0,".to_string(),
-        );
-        crate::vm::ffi::stdlib::storage_host_publish(
-            &key_b,
-            "011-calculator=3:3,".to_string(),
-        );
+        crate::vm::ffi::stdlib::storage_host_publish(&key_a, "011-calculator=0:0,".to_string());
+        crate::vm::ffi::stdlib::storage_host_publish(&key_b, "011-calculator=3:3,".to_string());
         // 键控读各自命中。
         let la = load_desktop_positions_for(Some(&key_a));
         let lb = load_desktop_positions_for(Some(&key_b));
@@ -33915,15 +36802,8 @@ mod tests {
         );
         // 迁移快照语义：effective 布局写回键（即使缺席键也固化当前摆布）。
         let snapshot = load_desktop_positions_for(Some(&key_c));
-        crate::vm::ffi::stdlib::storage_host_publish(
-            &key_c,
-            serialize_positions(&snapshot),
-        );
-        assert_eq!(
-            load_desktop_positions_for(Some(&key_c)),
-            lc,
-            "快照幂等固化"
-        );
+        crate::vm::ffi::stdlib::storage_host_publish(&key_c, serialize_positions(&snapshot));
+        assert_eq!(load_desktop_positions_for(Some(&key_c)), lc, "快照幂等固化");
     }
 
     // ---- Plan 472 T4：dock 升级（activate 执行体 + 配置边距 + 资产装载）----
@@ -33932,24 +36812,24 @@ mod tests {
     #[test]
     fn activate_app_focuses_running_or_launches_new() {
         let mut ds = t3_session_with_shell();
-        ds.desktop.app_resolver =
-            Some(std::sync::Arc::new(|name: &str| {
-                (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
-                    media_root: None,
-                    photo_root: None,
-                    back_entry: None,
+        ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
+            (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
+                media_root: None,
+                photo_root: None,
+                back_entry: None,
 
-                    code: T3_WIN_AT.to_string(),
-                    source_path: None,
-                    title: Some("calculator".to_string()),
-                    name: None,
-                    daemon: None,
-                    back_root: None,
-                    fit: false,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
-            }));
+                code: T3_WIN_AT.to_string(),
+                source_path: None,
+                title: Some("calculator".to_string()),
+                name: None,
+                daemon: None,
+                back_root: None,
+                fit: false,
+                exe: None,
+                opens: Vec::new(),
+                render_decl: None,
+            })
+        }));
         let (_, _tasks) = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::ActivateApp(
@@ -33982,24 +36862,24 @@ mod tests {
     #[test]
     fn activate_app_switches_to_hidden_workspace() {
         let mut ds = t3_session_with_shell();
-        ds.desktop.app_resolver =
-            Some(std::sync::Arc::new(|name: &str| {
-                (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
-                    media_root: None,
-                    photo_root: None,
-                    back_entry: None,
+        ds.desktop.app_resolver = Some(std::sync::Arc::new(|name: &str| {
+            (name == "011-calculator").then(|| crate::ui::session::LaunchSpec {
+                media_root: None,
+                photo_root: None,
+                back_entry: None,
 
-                    code: T3_WIN_AT.to_string(),
-                    source_path: None,
-                    title: Some("calculator".to_string()),
-                    name: None,
-                    daemon: None,
-                    back_root: None,
-                    fit: false,
-        exe: None,
-            opens: Vec::new(),
-        render_decl: None,    })
-            }));
+                code: T3_WIN_AT.to_string(),
+                source_path: None,
+                title: Some("calculator".to_string()),
+                name: None,
+                daemon: None,
+                back_root: None,
+                fit: false,
+                exe: None,
+                opens: Vec::new(),
+                render_decl: None,
+            })
+        }));
         let (_, _tasks) = execute_desktop_commands(
             &mut ds,
             vec![crate::ui::session::DesktopCommand::ActivateApp(
@@ -34091,7 +36971,10 @@ mod tests {
         drop(scratch);
         let frame = crate::ui::native_dock::Rect::new(0, 0, 800, 600);
         refresh_hole_regions_at(&mut ds, dead, frame);
-        assert!(!ds.desktop.hole_mode, "Region 失败应自动回退 off（假洞语义）");
+        assert!(
+            !ds.desktop.hole_mode,
+            "Region 失败应自动回退 off（假洞语义）"
+        );
     }
 
     /// Plan 487 M4：set_dock_position/enabled 执行臂——storage 键写回 +
@@ -34139,7 +37022,11 @@ mod tests {
         {
             let host = ds.host.as_ref().unwrap();
             let rect = *host.wm.wins.get(&wid).unwrap().rect.borrow();
-            assert_eq!(rect.y, crate::ui::layout::TASKBAR_HEIGHT, "Grid 窗 y=top 预留");
+            assert_eq!(
+                rect.y,
+                crate::ui::layout::TASKBAR_HEIGHT,
+                "Grid 窗 y=top 预留"
+            );
         }
 
         // ② set_dock_enabled(false)：零预留 + config false + 投影关 + 窗回满铺。
@@ -34207,10 +37094,10 @@ mod tests {
             back_root: None,
             fit: false,
             desktop_visible: true,
-        desktop_exe: None,
-        desktop_render: None,
-        opens: Vec::new(),
-    }];
+            desktop_exe: None,
+            desktop_render: None,
+            opens: Vec::new(),
+        }];
         inject_dock_pinned(&mut ds);
         {
             let app = ds.apps.get(&id).unwrap();
@@ -34226,7 +37113,10 @@ mod tests {
         // PLAN-012 W4：缺省 pinned 置空（缺省三枚退役——缺键 = 显式空 =
         // 空表；用户经右键固定后此处按序出现）。
         let pinned = t3_read_array(&ds, "__dock_pinned");
-        assert!(pinned.is_empty(), "pack 默认 pinned 应为空（W4 置空），实得 {pinned:?}");
+        assert!(
+            pinned.is_empty(),
+            "pack 默认 pinned 应为空（W4 置空），实得 {pinned:?}"
+        );
 
         // Plan 478 T5：pager 升格——v1.1 投影形状（含 label/current）注入 +
         // 新消息臂写总线记录。PLAN-014 W-01：workspace_close 臂随死组退役
@@ -34255,7 +37145,11 @@ mod tests {
             .expect("WorkspaceAdd handler");
         match app.component.read_state("__desktop_cmd") {
             Ok(auto_val::Value::Str(ref s)) => {
-                assert_eq!(s.to_string(), "workspace_add", "pager + 写 workspace_add 记录")
+                assert_eq!(
+                    s.to_string(),
+                    "workspace_add",
+                    "pager + 写 workspace_add 记录"
+                )
             }
             other => panic!("__desktop_cmd 读回异常: {other:?}"),
         }
@@ -34280,11 +37174,19 @@ mod tests {
             get("text"),
             Some(&crate::ui::vm_bridge::RecordValue::Str("hi".into()))
         );
-        assert_eq!(get("screen_x"), Some(&crate::ui::vm_bridge::RecordValue::Int(12)));
-        assert_eq!(get("screen_y"), Some(&crate::ui::vm_bridge::RecordValue::Int(34)));
+        assert_eq!(
+            get("screen_x"),
+            Some(&crate::ui::vm_bridge::RecordValue::Int(12))
+        );
+        assert_eq!(
+            get("screen_y"),
+            Some(&crate::ui::vm_bridge::RecordValue::Int(34))
+        );
         assert_eq!(
             get("files"),
-            Some(&crate::ui::vm_bridge::RecordValue::StrList(vec!["C:/a.txt".into()]))
+            Some(&crate::ui::vm_bridge::RecordValue::StrList(vec![
+                "C:/a.txt".into()
+            ]))
         );
         // image 缺省空串（空串哨兵——VM 侧 record 字段判 nil 比较不稳）。
         assert_eq!(
@@ -34308,10 +37210,16 @@ mod tests {
             Some(&crate::ui::vm_bridge::RecordValue::Str("paste-me".into()))
         );
         assert!(
-            matches!(get("files"), Some(crate::ui::vm_bridge::RecordValue::StrList(_))),
+            matches!(
+                get("files"),
+                Some(crate::ui::vm_bridge::RecordValue::StrList(_))
+            ),
             "files 域恒为列表"
         );
-        assert!(get("image_path").is_some(), "image_path 域恒存在（空串或有值）");
+        assert!(
+            get("image_path").is_some(),
+            "image_path 域恒存在（空串或有值）"
+        );
     }
 
     /// Plan 486 T3：真 assets/shell.at native 条目——v1.3 投影形状注入
@@ -34388,8 +37296,7 @@ mod tests {
         }));
         // 换装真 shell 资产（t3_session_with_shell 挂的是裁剪探针）。
         let probe = ds.desktop.shell_app.expect("probe shell");
-        let real =
-            crate::ui::shell::build_shell_component().expect("真 shell.at 编译（齿轮语法）");
+        let real = crate::ui::shell::build_shell_component().expect("真 shell.at 编译（齿轮语法）");
         ds.apps.remove(&probe);
         ds.desktop.shell_app = Some(ds.allocate_app(real));
         let shell = ds.desktop.shell_app.expect("real shell");
@@ -34439,7 +37346,10 @@ mod tests {
                 "muted".to_string(),
             )],
         );
-        assert!(ds.desktop.notifications.borrow().is_empty(), "关 → notify 短路");
+        assert!(
+            ds.desktop.notifications.borrow().is_empty(),
+            "关 → notify 短路"
+        );
         assert_eq!(ds.desktop.notes_unread.get(), 0);
         // ③ 恢复：SetNotesEnabled(true) → notify 入史 + 未读。
         let _ = execute_desktop_commands(
@@ -34454,7 +37364,11 @@ mod tests {
                 "audible".to_string(),
             )],
         );
-        assert_eq!(ds.desktop.notifications.borrow().len(), 1, "开 → notify 入史");
+        assert_eq!(
+            ds.desktop.notifications.borrow().len(),
+            1,
+            "开 → notify 入史"
+        );
         assert_eq!(ds.desktop.notes_unread.get(), 1);
 
         let _ = std::fs::remove_file(&path);
@@ -34503,14 +37417,15 @@ mod tests {
             "set_dock_pinned 单源 config 落盘"
         );
         assert_eq!(
-            ds.desktop.dock_pinned,
-            ds.desktop.config.dock_pinned,
+            ds.desktop.dock_pinned, ds.desktop.config.dock_pinned,
             "会话域 pinned 同步"
         );
         // ④ PLAN-012 W4：空值 = 空表（缺省三枚回退语义退役——显式空即空）。
         let _ = execute_desktop_commands(
             &mut ds,
-            vec![crate::ui::session::DesktopCommand::SetDockPinned(String::new())],
+            vec![crate::ui::session::DesktopCommand::SetDockPinned(
+                String::new(),
+            )],
         );
         assert!(ds.desktop.config.dock_pinned.is_empty(), "空 csv → 空表");
 
@@ -34555,7 +37470,6 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
-
     /// Plan 487 M4 步骤4 + Plan 540 T7 → Plan 551 换向：⚙️ 打开 =
     /// launch-or-focus os-config（已开聚焦不开新窗）+ pac `daemon: autoos`
     /// launch 期 ensure（probe 注入无头化，501 注入位）。cfg_*/徽标播种
@@ -34595,8 +37509,7 @@ mod tests {
             .host
             .as_ref()
             .map(|h| {
-                h.wm
-                    .wins
+                h.wm.wins
                     .iter()
                     .filter(|(_, v)| v.registry_id.as_deref() == Some(OSCONFIG_APP_ID))
                     .count()
@@ -34753,8 +37666,8 @@ mod tests {
             let doc = lucide_svg_doc_with("search", 2.0)
                 .expect("doc")
                 .replace("currentColor", "#ffffff");
-            let tree = resvg::usvg::Tree::from_str(&doc, &resvg::usvg::Options::default())
-                .expect("parse");
+            let tree =
+                resvg::usvg::Tree::from_str(&doc, &resvg::usvg::Options::default()).expect("parse");
             let mut pm = tiny_skia::Pixmap::new(px, px).expect("pixmap");
             let ts = tree.size();
             resvg::render(
@@ -34788,7 +37701,10 @@ mod tests {
             ("shell.at", crate::ui::shell::SHELL_AT),
             ("desktop.at", crate::ui::shell::DESKTOP_AT),
             ("switcher.at", crate::ui::shell::SWITCHER_AT),
-            ("notification_center.at", crate::ui::shell::NOTIFICATION_CENTER_AT),
+            (
+                "notification_center.at",
+                crate::ui::shell::NOTIFICATION_CENTER_AT,
+            ),
         ];
         let mut names: Vec<(String, String)> = Vec::new();
         for (file, src) in assets {
@@ -34810,13 +37726,20 @@ mod tests {
                 }
             }
         }
-        assert!(!names.is_empty(), "资产扫描应至少命中 bell/settings 等字面名");
+        assert!(
+            !names.is_empty(),
+            "资产扫描应至少命中 bell/settings 等字面名"
+        );
         // ② 核心清单:pac 注册表 icon 值 + registry 缺省回退（扫描 examples
         // 目录可用时动态并入,缺席时清单兜底——命中表不因布局漂移空转）。
         let mut manifest: Vec<String> = [
             "app-window", // registry 缺省回退
-            "calculator", "bomb", "list-checks", "notebook", // dock 默认 pinned
-            "folder", "search", // 027-file-manager / 028-launcher pac
+            "calculator",
+            "bomb",
+            "list-checks",
+            "notebook", // dock 默认 pinned
+            "folder",
+            "search", // 027-file-manager / 028-launcher pac
         ]
         .iter()
         .map(|s| s.to_string())
@@ -34866,13 +37789,26 @@ mod tests {
         // ⑤ G4③ 徽标色:哈希稳定 + 8 色板内 + 白字可读（WCAG 相对亮度
         // 线性化,≥4.5:1 AA 界）。
         let c1 = crate::ui::app_registry::badge_color_for("011-calculator");
-        assert_eq!(c1, crate::ui::app_registry::badge_color_for("011-calculator"));
+        assert_eq!(
+            c1,
+            crate::ui::app_registry::badge_color_for("011-calculator")
+        );
         assert!(c1.starts_with('#') && c1.len() == 7);
         let lin = |v: u8| {
             let c = v as f64 / 255.0;
-            if c <= 0.039_28 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+            if c <= 0.039_28 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
         };
-        for id in ["011-calculator", "013-todo", "015-notes", "019-video-app", "x"] {
+        for id in [
+            "011-calculator",
+            "013-todo",
+            "015-notes",
+            "019-video-app",
+            "x",
+        ] {
             let hex = crate::ui::app_registry::badge_color_for(id);
             let r = u8::from_str_radix(&hex[1..3], 16).unwrap();
             let g = u8::from_str_radix(&hex[3..5], 16).unwrap();
@@ -34966,7 +37902,10 @@ mod tests {
         let bytes = load_image_bytes("builtin:ricepaper").expect("内嵌壁纸字节");
         assert_eq!(&bytes[0..2], &[0xFF, 0xD8], "JPEG 魔数");
         assert!(bytes.len() > 100_000, "整图非截断");
-        assert!(load_image_bytes("builtin:no-such").is_none(), "未知 builtin 项");
+        assert!(
+            load_image_bytes("builtin:no-such").is_none(),
+            "未知 builtin 项"
+        );
         // 图标/排除键逗号解析（空段剔除）。
         crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.icons", " a , b,,c ".into());
         crate::vm::ffi::stdlib::storage_host_publish("shell.desktop.hidden", " b ".into());
@@ -35003,14 +37942,14 @@ mod tests {
                 category: "app".into(),
                 entry: std::path::PathBuf::from("x/a.at"),
                 render: "vm".into(),
-    daemon: None,
-    back_root: None,
-    fit: false,
-    desktop_visible: true,
-        desktop_exe: None,
-        desktop_render: None,
-        opens: Vec::new(),
-    },
+                daemon: None,
+                back_root: None,
+                fit: false,
+                desktop_visible: true,
+                desktop_exe: None,
+                desktop_render: None,
+                opens: Vec::new(),
+            },
             crate::ui::app_registry::AppRegistryEntry {
                 media_root: None,
                 photo_root: None,
@@ -35024,14 +37963,14 @@ mod tests {
                 category: "app".into(),
                 entry: std::path::PathBuf::from("x/b.at"),
                 render: "vm".into(),
-    daemon: None,
-    back_root: None,
-    fit: false,
-    desktop_visible: true,
-        desktop_exe: None,
-        desktop_render: None,
-        opens: Vec::new(),
-    },
+                daemon: None,
+                back_root: None,
+                fit: false,
+                desktop_visible: true,
+                desktop_exe: None,
+                desktop_render: None,
+                opens: Vec::new(),
+            },
         ];
         // PLAN-012 W4：dock_pinned 缺省空（t3_session_with_shell 不动）。
         // storage：custom 014-weather + 重叠 011-calculator；hidden 013-todo。
@@ -35054,7 +37993,11 @@ mod tests {
             "custom 按 storage 序注入 + 011 重叠去重（缺省 pinned 空后无先列组）"
         );
         let first = t496_val_obj(&entries[0]);
-        assert_eq!(t3_obj_str(first, "icon"), "app-window", "未登记回退占位图标");
+        assert_eq!(
+            t3_obj_str(first, "icon"),
+            "app-window",
+            "未登记回退占位图标"
+        );
         assert_eq!(t3_obj_str(first, "label"), "014-weather", "label 回退 id");
         assert_eq!(t3_obj_str(first, "src"), "custom");
         let second = t496_val_obj(&entries[1]);
@@ -35093,7 +38036,12 @@ mod tests {
     ) {
         use crate::ui::view::View;
         match v {
-            View::MouseArea { content, on_double_click, on_click, .. } => {
+            View::MouseArea {
+                content,
+                on_double_click,
+                on_click,
+                ..
+            } => {
                 if on_double_click.is_some() {
                     *dbl += 1;
                 }
@@ -35125,7 +38073,9 @@ mod tests {
             }
             // PLAN-526 T36：popover 下钻（blank 菜单 popover 化后桌面根即
             // popover 祖先——walk 不下钻则全部交互臂计数为 0）。
-            View::Popover { anchor, content, .. } => {
+            View::Popover {
+                anchor, content, ..
+            } => {
                 if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
                     t496_walk(w, dbl, clk, texts);
                 }
@@ -35150,8 +38100,18 @@ mod tests {
                 .map_or(false, |s| s.has_variant(crate::ui::style::Variant::Hover))
         };
         match v {
-            View::Column { children, style, on_right_click, .. }
-            | View::Row { children, style, on_right_click, .. } => {
+            View::Column {
+                children,
+                style,
+                on_right_click,
+                ..
+            }
+            | View::Row {
+                children,
+                style,
+                on_right_click,
+                ..
+            } => {
                 if on_right_click.is_some() {
                     *rc += 1;
                 }
@@ -35162,7 +38122,12 @@ mod tests {
                     t002_walk_layout_events(c, rc, hv);
                 }
             }
-            View::Container { child, style, on_right_click, .. } => {
+            View::Container {
+                child,
+                style,
+                on_right_click,
+                ..
+            } => {
                 if on_right_click.is_some() {
                     *rc += 1;
                 }
@@ -35174,7 +38139,9 @@ mod tests {
             View::MouseArea { content, .. } | View::Scrollable { child: content, .. } => {
                 t002_walk_layout_events(content, rc, hv)
             }
-            View::Popover { anchor, content, .. } => {
+            View::Popover {
+                anchor, content, ..
+            } => {
                 if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
                     t002_walk_layout_events(w, rc, hv);
                 }
@@ -35220,7 +38187,10 @@ mod tests {
             t496_walk(&view, &mut dbl, &mut clk, &mut texts);
         }
 
-        assert_eq!(dbl, 2, "每个图标格一枚 mouse-area 双击臂（缺省 pinned 置空后）");
+        assert_eq!(
+            dbl, 2,
+            "每个图标格一枚 mouse-area 双击臂（缺省 pinned 置空后）"
+        );
         // PLAN-526 T10：空白点击自布局件 onclick 迁至根 mouse-area on_press。
         // PLAN-012 W5：图标格 mouse-area onclick（IconPress 拖拽拾起臂）
         // ×2 格 + 根 ×1 = 3。
@@ -35233,7 +38203,10 @@ mod tests {
             let (view, _, _) = app.component.view_with_debug_gated(false);
             t002_walk_layout_events(&view, &mut rc, &mut hv);
         }
-        assert_eq!(rc, 2, "每格一枚布局件右键臂（oncontextmenu → View::Column::on_right_click）");
+        assert_eq!(
+            rc, 2,
+            "每格一枚布局件右键臂（oncontextmenu → View::Column::on_right_click）"
+        );
         assert_eq!(hv, 2, "每格一枚 hover: 变体类（布局件 hover 消费面）");
         assert_eq!(
             texts.iter().filter(|t| t.as_str() == "014-weather").count(),
@@ -35296,7 +38269,11 @@ mod tests {
         }
         match t496_read(&ds, "__desktop_cmd") {
             auto_val::Value::Str(ref s) => {
-                assert_eq!(s.to_string(), "activate\t011-calculator", "双击/打开 → activate 动词（472 两臂复用）")
+                assert_eq!(
+                    s.to_string(),
+                    "activate\t011-calculator",
+                    "双击/打开 → activate 动词（472 两臂复用）"
+                )
             }
             other => panic!("__desktop_cmd 异常: {other:?}"),
         }
@@ -35329,7 +38306,11 @@ mod tests {
             auto_val::Value::Str(ref s) => {
                 // PLAN-019 v1.7：更换壁纸入口改发组合动词（借负一屏 + 开
                 // picker + 归属簿记宿主收口；open_settings 仅存「显示设置」臂）。
-                assert_eq!(s.to_string(), "wallpaper_pick", "更换壁纸入口 → wallpaper_pick")
+                assert_eq!(
+                    s.to_string(),
+                    "wallpaper_pick",
+                    "更换壁纸入口 → wallpaper_pick"
+                )
             }
             other => panic!("__desktop_cmd（wallpaper）异常: {other:?}"),
         }
@@ -35376,15 +38357,21 @@ mod tests {
         // mode="" → 两层条件全 false → 最深 else（hover 串）。
         let mut hover_cols = 0usize;
         let mut total_cols = 0usize;
-        fn walk(v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
-                hover_cols: &mut usize, total_cols: &mut usize) {
+        fn walk(
+            v: &crate::ui::view::View<crate::ui::interpreter::DynamicMessage>,
+            hover_cols: &mut usize,
+            total_cols: &mut usize,
+        ) {
             use crate::ui::view::View;
             match v {
-                View::Column { children, style, .. } => {
+                View::Column {
+                    children, style, ..
+                } => {
                     *total_cols += 1;
-                    if style.as_ref().map_or(false, |s| {
-                        s.has_variant(crate::ui::style::Variant::Hover)
-                    }) {
+                    if style
+                        .as_ref()
+                        .map_or(false, |s| s.has_variant(crate::ui::style::Variant::Hover))
+                    {
                         *hover_cols += 1;
                     }
                     for c in children {
@@ -35439,26 +38426,31 @@ mod tests {
         ) {
             use crate::ui::view::View;
             match v {
-                View::Popover { anchor, content, on_dismiss, .. } => {
-                    dismiss.push(on_dismiss.as_ref().map(
-                        |m| match m {
-                            crate::ui::interpreter::DynamicMessage::Typed { event_name, .. } =>
-                                event_name.clone(),
-                            other => format!("{other:?}"),
-                        },
-                    ));
+                View::Popover {
+                    anchor,
+                    content,
+                    on_dismiss,
+                    ..
+                } => {
+                    dismiss.push(on_dismiss.as_ref().map(|m| match m {
+                        crate::ui::interpreter::DynamicMessage::Typed { event_name, .. } => {
+                            event_name.clone()
+                        }
+                        other => format!("{other:?}"),
+                    }));
                     if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
                         walk_vm(w, dismiss);
                     }
                     walk_vm(content, dismiss);
                 }
-                View::Column { children, .. }
-                | View::Row { children, .. } => {
+                View::Column { children, .. } | View::Row { children, .. } => {
                     for c in children {
                         walk_vm(c, dismiss);
                     }
                 }
-                View::Container { child, .. } | View::Scrollable { child, .. } => walk_vm(child, dismiss),
+                View::Container { child, .. } | View::Scrollable { child, .. } => {
+                    walk_vm(child, dismiss)
+                }
                 View::MouseArea { content, .. } => walk_vm(content, dismiss),
                 View::Grid { cells, .. } => {
                     for c in cells {
@@ -35473,26 +38465,29 @@ mod tests {
                 _ => {}
             }
         }
-        fn walk_iced(
-            v: &crate::ui::view::View<IcedMessage>,
-            dismiss: &mut Vec<Option<String>>,
-        ) {
+        fn walk_iced(v: &crate::ui::view::View<IcedMessage>, dismiss: &mut Vec<Option<String>>) {
             use crate::ui::view::View;
             match v {
-                View::Popover { anchor, content, on_dismiss, .. } => {
+                View::Popover {
+                    anchor,
+                    content,
+                    on_dismiss,
+                    ..
+                } => {
                     dismiss.push(on_dismiss.as_ref().map(|m| m.event.clone()));
                     if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
                         walk_iced(w, dismiss);
                     }
                     walk_iced(content, dismiss);
                 }
-                View::Column { children, .. }
-                | View::Row { children, .. } => {
+                View::Column { children, .. } | View::Row { children, .. } => {
                     for c in children {
                         walk_iced(c, dismiss);
                     }
                 }
-                View::Container { child, .. } | View::Scrollable { child, .. } => walk_iced(child, dismiss),
+                View::Container { child, .. } | View::Scrollable { child, .. } => {
+                    walk_iced(child, dismiss)
+                }
                 View::MouseArea { content, .. } => walk_iced(content, dismiss),
                 View::Grid { cells, .. } => {
                     for c in cells {
@@ -35512,24 +38507,35 @@ mod tests {
         let mut vm_names = Vec::new();
         walk_vm(&view, &mut vm_names);
         assert_eq!(
-            vm_names.iter().filter(|n| n.as_deref() == Some("MenuClose")).count(),
+            vm_names
+                .iter()
+                .filter(|n| n.as_deref() == Some("MenuClose"))
+                .count(),
             2,
             "icon 菜单 popover 的 ondismiss 应提取为 MenuClose（夹具发布 2 枚图标；\
              历史期望 4 与夹具不符——本机基线实证预存红，PLAN-019 T-07 顺带修正）: {vm_names:?}"
         );
         assert_eq!(
-            vm_names.iter().filter(|n| n.as_deref() == Some("BlankClose")).count(),
+            vm_names
+                .iter()
+                .filter(|n| n.as_deref() == Some("BlankClose"))
+                .count(),
             1,
             "blank 菜单 popover 的 ondismiss 应提取为 BlankClose: {vm_names:?}"
         );
         // PLAN-019 v1.7：壁纸 picker popover 的 ondismiss（第三个浮层）。
         assert_eq!(
-            vm_names.iter().filter(|n| n.as_deref() == Some("PickerDismiss")).count(),
+            vm_names
+                .iter()
+                .filter(|n| n.as_deref() == Some("PickerDismiss"))
+                .count(),
             1,
             "picker popover 的 ondismiss 应提取为 PickerDismiss: {vm_names:?}"
         );
         assert!(
-            vm_names.iter().all(|n| n.as_deref() != Some("__popover_close")),
+            vm_names
+                .iter()
+                .all(|n| n.as_deref() != Some("__popover_close")),
             "不允许再落 __popover_close 回退（VM 态 popover 无此处理语义）: {vm_names:?}"
         );
         // 转换后存活（发布侧真实携带——popover Panel shell.publish 的消息）。
@@ -35537,12 +38543,18 @@ mod tests {
         let mut iced_names = Vec::new();
         walk_iced(&converted, &mut iced_names);
         assert_eq!(
-            iced_names.iter().filter(|n| n.as_deref() == Some("MenuClose")).count(),
+            iced_names
+                .iter()
+                .filter(|n| n.as_deref() == Some("MenuClose"))
+                .count(),
             2,
             "convert_view_messages 后 MenuClose ondismiss 存活（夹具 2 枚图标）"
         );
         assert_eq!(
-            iced_names.iter().filter(|n| n.as_deref() == Some("PickerDismiss")).count(),
+            iced_names
+                .iter()
+                .filter(|n| n.as_deref() == Some("PickerDismiss"))
+                .count(),
             1,
             "convert_view_messages 后 PickerDismiss ondismiss 存活（PLAN-019 picker 浮层）"
         );
@@ -35555,7 +38567,9 @@ mod tests {
                 .expect("MenuClose handler");
         }
         match t496_read(&ds, "menu_id") {
-            auto_val::Value::Str(ref s) => assert_eq!(s.to_string(), "", "MenuClose → menu_id 清位"),
+            auto_val::Value::Str(ref s) => {
+                assert_eq!(s.to_string(), "", "MenuClose → menu_id 清位")
+            }
             other => panic!("menu_id 异常: {other:?}"),
         }
     }
@@ -35570,7 +38584,12 @@ mod tests {
     ) {
         use crate::ui::view::View;
         match v {
-            View::MouseArea { content, on_double_click, on_click, .. } => {
+            View::MouseArea {
+                content,
+                on_double_click,
+                on_click,
+                ..
+            } => {
                 if on_double_click.is_some() {
                     *dbl += 1;
                 }
@@ -35594,7 +38613,9 @@ mod tests {
                 }
             }
             // PLAN-526 T36：popover 下钻（同 t496_walk 注）。
-            View::Popover { anchor, content, .. } => {
+            View::Popover {
+                anchor, content, ..
+            } => {
                 if let crate::ui::view::PopoverAnchor::Widget(w) = anchor {
                     t496_walk_iced(w, dbl, clk, texts);
                 }
@@ -35663,16 +38684,18 @@ mod tests {
             back_root: None,
             fit: false,
             desktop_visible: true,
-        desktop_exe: None,
-        desktop_render: None,
-        opens: Vec::new(),
-    };
+            desktop_exe: None,
+            desktop_render: None,
+            opens: Vec::new(),
+        };
 
         let mut ds = crate::ui::session::DesktopSession::__test_session();
         ds.open_desktop(iced::window::Id::unique());
         ds.desktop.launcher_entry = Some(src);
-        ds.desktop.registry_entries =
-            vec![entry("011-calculator", "Calculator"), entry("028-launcher", "launcher")];
+        ds.desktop.registry_entries = vec![
+            entry("011-calculator", "Calculator"),
+            entry("028-launcher", "launcher"),
+        ];
 
         let _focus_task = summon_launcher(&mut ds);
         let _ = &entry;
@@ -35697,17 +38720,14 @@ mod tests {
         // PLAN-012 W6 fence：注册表含 028-launcher 条目（:11609 发现链
         // 同源 mock）→ 注入清单必须排除 launcher 自身，召唤链不受影响。
         match app.component.read_state("nres") {
-            Ok(auto_val::Value::Int(n)) => assert_eq!(
-                n, 1,
-                "ApplyFilter 应按注入清单重算（launcher 自身已过滤）"
-            ),
+            Ok(auto_val::Value::Int(n)) => {
+                assert_eq!(n, 1, "ApplyFilter 应按注入清单重算（launcher 自身已过滤）")
+            }
             other => panic!("nres 读回异常: {other:?}"),
         }
         let names = match app.component.read_state("apps_names") {
             Ok(auto_val::Value::Array(a)) => a.values,
-            Ok(auto_val::Value::VmRef(r)) => {
-                t3_deref_list(app, r.id as u64, "apps_names")
-            }
+            Ok(auto_val::Value::VmRef(r)) => t3_deref_list(app, r.id as u64, "apps_names"),
             other => panic!("apps_names 读回异常: {other:?}"),
         };
         assert_eq!(names.len(), 1, "注入清单应仅剩非 launcher 条目");
@@ -35799,7 +38819,10 @@ mod tests {
         *ds.desktop.notify_source.borrow_mut() = Some("039-syslog".into());
         let _ = execute_desktop_commands(
             &mut ds,
-            vec![DC::Syslog(SyslogLevel::Error, "p042-attributed-line".into())],
+            vec![DC::Syslog(
+                SyslogLevel::Error,
+                "p042-attributed-line".into(),
+            )],
         );
         *ds.desktop.notify_source.borrow_mut() = None;
         let snap = crate::ui::syslog::snapshot();
@@ -35955,7 +38978,10 @@ mod tests {
         assert_eq!(lang.as_deref(), Some("rust"));
         // 未知/畸形 lang token 不解析为 class(不产生样式)。
         let bad = crate::ui::style::Style::parse("font-mono lang- bad").unwrap();
-        assert!(bad.classes.iter().all(|c| !matches!(c, StyleClass::CodeLang(_))));
+        assert!(bad
+            .classes
+            .iter()
+            .all(|c| !matches!(c, StyleClass::CodeLang(_))));
     }
 
     #[test]
@@ -35971,21 +38997,40 @@ mod tests {
         // Plan 442 A6: lang-less mono text keeps the hand-rolled tokenizer.
         let spans = highlight_code("fn install() // done\nlet ok = \"hi\" && true", None);
         let color_of = |t: &str| -> Option<iced::Color> {
-            spans.iter()
+            spans
+                .iter()
                 .find(|s| s.text.as_ref() == t)
                 .unwrap_or_else(|| panic!("span {:?} not found", t))
                 .color
         };
         // keyword #cc99cd(紫)
-        assert_eq!(color_of("fn"), Some(iced::Color::from_rgb8(0xcc, 0x99, 0xcd)));
+        assert_eq!(
+            color_of("fn"),
+            Some(iced::Color::from_rgb8(0xcc, 0x99, 0xcd))
+        );
         // function(ident 后随 `(`)与 boolean/number 同为 #f08d49(橙)
-        assert_eq!(color_of("install"), Some(iced::Color::from_rgb8(0xf0, 0x8d, 0x49)));
-        assert_eq!(color_of("true"), Some(iced::Color::from_rgb8(0xf0, 0x8d, 0x49)));
+        assert_eq!(
+            color_of("install"),
+            Some(iced::Color::from_rgb8(0xf0, 0x8d, 0x49))
+        );
+        assert_eq!(
+            color_of("true"),
+            Some(iced::Color::from_rgb8(0xf0, 0x8d, 0x49))
+        );
         // 字符串 #7ec699(绿)
-        assert_eq!(color_of("\"hi\""), Some(iced::Color::from_rgb8(0x7e, 0xc6, 0x99)));
+        assert_eq!(
+            color_of("\"hi\""),
+            Some(iced::Color::from_rgb8(0x7e, 0xc6, 0x99))
+        );
         // 括号 punctuation #ccc、运算符 #67cdcc(青)
-        assert_eq!(color_of("("), Some(iced::Color::from_rgb8(0xcc, 0xcc, 0xcc)));
-        assert_eq!(color_of("&&"), Some(iced::Color::from_rgb8(0x67, 0xcd, 0xcc)));
+        assert_eq!(
+            color_of("("),
+            Some(iced::Color::from_rgb8(0xcc, 0xcc, 0xcc))
+        );
+        assert_eq!(
+            color_of("&&"),
+            Some(iced::Color::from_rgb8(0x67, 0xcd, 0xcc))
+        );
         // 普通标识符不着色(基色)
         assert_eq!(color_of("ok"), None);
     }
@@ -35998,9 +39043,15 @@ mod tests {
             spans.iter().find(|s| s.text.as_ref() == t).unwrap().color
         };
         // prism-bash 的 function 橙近似
-        assert_eq!(color_of("npx"), Some(iced::Color::from_rgb8(0xf0, 0x8d, 0x49)));
+        assert_eq!(
+            color_of("npx"),
+            Some(iced::Color::from_rgb8(0xf0, 0x8d, 0x49))
+        );
         // 注释灰 #999
-        assert_eq!(color_of("# vite"), Some(iced::Color::from_rgb8(0x99, 0x99, 0x99)));
+        assert_eq!(
+            color_of("# vite"),
+            Some(iced::Color::from_rgb8(0x99, 0x99, 0x99))
+        );
     }
 
     // ========== Plan 411 P2-A④ — 表头样式注入 ==========
@@ -36021,17 +39072,26 @@ mod tests {
     fn test_table_header_style_recursive() {
         let mut v: AbstractView<TestMessage> = AbstractView::Row {
             children: vec![
-                AbstractView::Text { content: "Prop".to_string(), style: None, selectable: false },
+                AbstractView::Text {
+                    content: "Prop".to_string(),
+                    style: None,
+                    selectable: false,
+                },
                 AbstractView::Text {
                     content: "Type".to_string(),
-                    style: Some(Style { classes: vec![], hover_classes: vec![], variant_classes: vec![] }),
+                    style: Some(Style {
+                        classes: vec![],
+                        hover_classes: vec![],
+                        variant_classes: vec![],
+                    }),
                     selectable: false,
                 },
             ],
             spacing: 0,
             padding: 0,
             style: None,
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         apply_table_header_style(&mut v);
         match v {
@@ -36039,9 +39099,14 @@ mod tests {
                 for c in &children {
                     if let AbstractView::Text { style, .. } = c {
                         let s = style.as_ref().expect("style created");
-                        assert!(s.classes.iter().any(|c| matches!(c, StyleClass::FontMedium)));
-                        assert!(s.classes.iter().any(|c|
-                            matches!(c, StyleClass::TextColor(Color::OnSurface))));
+                        assert!(s
+                            .classes
+                            .iter()
+                            .any(|c| matches!(c, StyleClass::FontMedium)));
+                        assert!(s
+                            .classes
+                            .iter()
+                            .any(|c| matches!(c, StyleClass::TextColor(Color::OnSurface))));
                     } else {
                         panic!("expected text");
                     }
@@ -36057,14 +39122,23 @@ mod tests {
     fn test_plan412_grid_placements_plain_and_tail_row() {
         // 5 cells, cols=3 → rows [0,1,2], [3,4](尾行不满,由 Space 槽补齐)
         let p = grid_row_placements(&[1, 1, 1, 1, 1], 3);
-        assert_eq!(p, vec![vec![(0, 0, 1), (1, 1, 1), (2, 2, 1)], vec![(3, 0, 1), (4, 1, 1)]]);
+        assert_eq!(
+            p,
+            vec![
+                vec![(0, 0, 1), (1, 1, 1), (2, 2, 1)],
+                vec![(3, 0, 1), (4, 1, 1)]
+            ]
+        );
     }
 
     #[test]
     fn test_plan412_grid_placements_col_span_wraps() {
         // cols=3, [1,1,2,1] → 第 3 个 cell span-2 放不下(2+2>3)换行占 0..2
         let p = grid_row_placements(&[1, 1, 2, 1], 3);
-        assert_eq!(p, vec![vec![(0, 0, 1), (1, 1, 1)], vec![(2, 0, 2), (3, 2, 1)]]);
+        assert_eq!(
+            p,
+            vec![vec![(0, 0, 1), (1, 1, 1)], vec![(2, 0, 2), (3, 2, 1)]]
+        );
         // span-2 恰好填满尾位(1+2=3)不换行
         let p = grid_row_placements(&[1, 2], 3);
         assert_eq!(p, vec![vec![(0, 0, 1), (1, 1, 2)]]);
@@ -36084,21 +39158,26 @@ mod tests {
         let p = grid_row_placements(&[2, 1, 1, 3], 3);
         assert_eq!(
             p,
-            vec![
-                vec![(0, 0, 2), (1, 2, 1)],
-                vec![(2, 0, 1)],
-                vec![(3, 0, 3)],
-            ]
+            vec![vec![(0, 0, 2), (1, 2, 1)], vec![(2, 0, 1)], vec![(3, 0, 3)],]
         );
     }
 
     #[test]
     fn test_plan412_justify_spacer_math() {
         // around: lead/trail 权重 1、between 权重 2(总 2n → 端=半格)
-        assert_eq!(row_justify_spacers(Some(IcedJustify::Around)), (Some(1), Some(2), Some(1)));
+        assert_eq!(
+            row_justify_spacers(Some(IcedJustify::Around)),
+            (Some(1), Some(2), Some(1))
+        );
         // evenly: n+1 个等权(含两端)
-        assert_eq!(row_justify_spacers(Some(IcedJustify::Evenly)), (Some(1), Some(1), Some(1)));
-        assert_eq!(row_justify_spacers(Some(IcedJustify::Between)), (None, Some(1), None));
+        assert_eq!(
+            row_justify_spacers(Some(IcedJustify::Evenly)),
+            (Some(1), Some(1), Some(1))
+        );
+        assert_eq!(
+            row_justify_spacers(Some(IcedJustify::Between)),
+            (None, Some(1), None)
+        );
         assert_eq!(row_justify_spacers(None), (None, None, None));
     }
 
@@ -36114,7 +39193,10 @@ mod tests {
             .spacing(10)
             .padding(20)
             .child(AbstractView::text("Item 1"))
-            .child(AbstractView::button(("Click".to_string(), TestMessage::Click)))
+            .child(AbstractView::button((
+                "Click".to_string(),
+                TestMessage::Click,
+            )))
             .build();
 
         let _element = view.into_iced();
@@ -36165,14 +39247,14 @@ mod tests {
 
     #[test]
     fn test_checkbox_conversion() {
-        let view = AbstractView::checkbox(true, "Check me")
-            .on_toggle(TestMessage::Toggle(true));
+        let view = AbstractView::checkbox(true, "Check me").on_toggle(TestMessage::Toggle(true));
         let _element = view.into_iced();
     }
 
     #[test]
     fn test_styled_text() {
-        let view: AbstractView<TestMessage> = AbstractView::text_styled("Styled", "text-lg font-bold text-red-500");
+        let view: AbstractView<TestMessage> =
+            AbstractView::text_styled("Styled", "text-lg font-bold text-red-500");
         let _element = view.into_iced();
     }
 
@@ -36197,12 +39279,11 @@ mod tests {
 
     #[test]
     fn test_container_with_style() {
-        let view: AbstractView<TestMessage> = AbstractView::container(
-            AbstractView::text("Content")
-        )
-            .style("p-8 bg-white w-full")
-            .center()
-            .build();
+        let view: AbstractView<TestMessage> =
+            AbstractView::container(AbstractView::text("Content"))
+                .style("p-8 bg-white w-full")
+                .center()
+                .build();
         let _element = view.into_iced();
     }
 
@@ -36216,11 +39297,10 @@ mod tests {
 
     #[test]
     fn test_scrollable_with_style() {
-        let view: AbstractView<TestMessage> = AbstractView::scrollable(
-            AbstractView::text("Content")
-        )
-            .style("w-full h-64")
-            .build();
+        let view: AbstractView<TestMessage> =
+            AbstractView::scrollable(AbstractView::text("Content"))
+                .style("w-full h-64")
+                .build();
         let _element = view.into_iced();
     }
 
@@ -36370,8 +39450,15 @@ mod tests {
         let converted = convert_view_messages(view);
 
         match converted {
-            AbstractView::Column { on_right_click, style, .. } => {
-                assert!(on_right_click.is_some(), "on_right_click must survive the bridge");
+            AbstractView::Column {
+                on_right_click,
+                style,
+                ..
+            } => {
+                assert!(
+                    on_right_click.is_some(),
+                    "on_right_click must survive the bridge"
+                );
                 assert!(style.is_some(), "style must survive the bridge");
             }
             _ => panic!("convert_view_messages dropped the Column (hit the _ => Empty wildcard)"),
@@ -36383,10 +39470,16 @@ mod tests {
     #[test]
     fn test_layout_hover_flag_only_with_hover_variant() {
         let plain = crate::ui::style::Style::parse("w-full p-2 bg-card").ok();
-        assert!(layout_hover_flag(plain.as_ref()).is_none(), "无 hover: 类不应构造标志");
+        assert!(
+            layout_hover_flag(plain.as_ref()).is_none(),
+            "无 hover: 类不应构造标志"
+        );
 
         let hovered = crate::ui::style::Style::parse("w-full p-2 bg-card hover:bg-primary/10").ok();
-        assert!(layout_hover_flag(hovered.as_ref()).is_some(), "hover: 类应构造标志");
+        assert!(
+            layout_hover_flag(hovered.as_ref()).is_some(),
+            "hover: 类应构造标志"
+        );
         assert!(layout_hover_flag(None).is_none());
     }
 
@@ -36403,7 +39496,10 @@ mod tests {
         );
         let base_cs = build_container_style(&base_is);
         let hover_cs = build_container_style(&hover_is);
-        assert_ne!(base_cs.background, hover_cs.background, "hover 类应改变背景");
+        assert_ne!(
+            base_cs.background, hover_cs.background,
+            "hover 类应改变背景"
+        );
 
         let flag = crate::ui::iced::hover_area::HoverFlag::default();
         let style_fn = layout_style_fn(base_cs, Some(hover_cs), Some(flag.clone()));
@@ -36421,8 +39517,8 @@ mod tests {
     // PLAN-002 N5：vwin 客户区根节点默认底角圆角（round_bottom_root_default）。
     #[test]
     fn test_round_bottom_root_default_pushes_only_when_radius_absent() {
-        use crate::ui::style::{RoundedSize, StyleClass};
         use crate::ui::style::Style;
+        use crate::ui::style::{RoundedSize, StyleClass};
         use crate::ui::view::View;
         // 无 radius 类的 col 根 → 推 rounded-b-2xl(底角 16px 与窗框
         // 对齐;顶部保持方角——2026-09-20 复测裁定,用户明确不要顶角)。
@@ -36439,11 +39535,13 @@ mod tests {
             panic!("col root must keep its style");
         };
         assert!(
-            s.classes.contains(&StyleClass::RoundedB(Some(RoundedSize::Xxl))),
+            s.classes
+                .contains(&StyleClass::RoundedB(Some(RoundedSize::Xxl))),
             "无 radius 声明的根应获得默认底角"
         );
         assert!(
-            !s.classes.contains(&StyleClass::RoundedT(Some(RoundedSize::Xxl))),
+            !s.classes
+                .contains(&StyleClass::RoundedT(Some(RoundedSize::Xxl))),
             "顶部保持方角(PLAN-024 复测裁定)"
         );
         // 应用作者已声明 radius（任意角）→ 不干预。
@@ -36460,7 +39558,8 @@ mod tests {
             panic!("col root must keep its style");
         };
         assert!(
-            !s.classes.contains(&StyleClass::RoundedB(Some(RoundedSize::Xxl))),
+            !s.classes
+                .contains(&StyleClass::RoundedB(Some(RoundedSize::Xxl))),
             "显式 radius 声明优先，不追加默认"
         );
         // 根无 style（透明）与 非 style 化根（text）都不动。
@@ -36582,11 +39681,19 @@ mod line_edit_tests {
             key.to_string(),
             Box::leak(Box::new(text_editor::Content::with_text(text))),
         );
-        TEXTAREA_GHOSTS.lock().unwrap().insert(key.to_string(), String::new());
+        TEXTAREA_GHOSTS
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), String::new());
     }
 
     fn content_text(key: &str) -> String {
-        TEXTAREA_CONTENTS.lock().unwrap().get(key).map(|c| c.text()).unwrap_or_default()
+        TEXTAREA_CONTENTS
+            .lock()
+            .unwrap()
+            .get(key)
+            .map(|c| c.text())
+            .unwrap_or_default()
     }
 
     fn set_cursor(key: &str, text: &str, off: usize) {
@@ -36597,7 +39704,11 @@ mod line_edit_tests {
     }
 
     fn dummy_on_change() -> IcedMessage {
-        IcedMessage { widget: "W".into(), event: "E".into(), input_value: None }
+        IcedMessage {
+            widget: "W".into(),
+            event: "E".into(),
+            input_value: None,
+        }
     }
 
     #[test]
@@ -36696,7 +39807,11 @@ mod line_edit_tests {
         let key = "ut_yk";
         setup(key, "hello world");
         set_cursor(key, "hello world", 5); // hello| world
-        le_execute(key, LineEditOp::Kill(text_editor::Motion::End), &dummy_on_change());
+        le_execute(
+            key,
+            LineEditOp::Kill(text_editor::Motion::End),
+            &dummy_on_change(),
+        );
         assert_eq!(content_text(key), "hello");
         le_execute(key, LineEditOp::Yank, &dummy_on_change());
         assert_eq!(content_text(key), "hello world");
@@ -36754,8 +39869,10 @@ mod line_edit_tests {
     #[test]
     fn test_keymap_tables_sanity() {
         let em = line_edit_keymap("emacs");
-        for k in ["ctrl.a", "ctrl.b", "ctrl.e", "ctrl.f", "ctrl.k", "ctrl.u",
-                  "ctrl.y", "ctrl.t", "alt.b", "alt.f", "alt.d", "ctrl.w"] {
+        for k in [
+            "ctrl.a", "ctrl.b", "ctrl.e", "ctrl.f", "ctrl.k", "ctrl.u", "ctrl.y", "ctrl.t",
+            "alt.b", "alt.f", "alt.d", "ctrl.w",
+        ] {
             assert!(em.contains_key(k), "emacs 缺 {}", k);
         }
         let vi = line_edit_keymap("vi-normal");
@@ -36807,7 +39924,8 @@ mod line_edit_tests {
             spacing: 8,
             padding: 8,
             style: None,
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
 
@@ -36815,11 +39933,30 @@ mod line_edit_tests {
     #[test]
     #[cfg(feature = "iced-layout-tests")]
     fn p483_derive_input_id_unique_and_stable() {
-        let a = derive_input_id(Some(("LoginChild", "UserChanged")), "Enter username", None, false);
-        let b = derive_input_id(Some(("LoginChild", "PassChanged")), "Enter password", None, true);
-        assert_ne!(format!("{a:?}"), format!("{b:?}"), "widget+event 主键必须互异");
+        let a = derive_input_id(
+            Some(("LoginChild", "UserChanged")),
+            "Enter username",
+            None,
+            false,
+        );
+        let b = derive_input_id(
+            Some(("LoginChild", "PassChanged")),
+            "Enter password",
+            None,
+            true,
+        );
+        assert_ne!(
+            format!("{a:?}"),
+            format!("{b:?}"),
+            "widget+event 主键必须互异"
+        );
         // 同参数重复派生稳定(跨重建不变)。
-        let a2 = derive_input_id(Some(("LoginChild", "UserChanged")), "Enter username", None, false);
+        let a2 = derive_input_id(
+            Some(("LoginChild", "UserChanged")),
+            "Enter username",
+            None,
+            false,
+        );
         assert_eq!(format!("{a:?}"), format!("{a2:?}"));
         // 主键互异优先于同参:两框同 placeholder/width/password 也不撞。
         let c = derive_input_id(Some(("X", "A")), "same", None, false);
@@ -36846,9 +39983,7 @@ mod line_edit_tests {
 
         let first: (String, Rectangle) = ui
             .find(|c: Candidate<'_>| match c {
-                Candidate::Focusable { id, bounds, .. } => {
-                    Some((format!("{:?}", id), bounds))
-                }
+                Candidate::Focusable { id, bounds, .. } => Some((format!("{:?}", id), bounds)),
                 _ => None,
             })
             .expect("at least one focusable (username input)");
@@ -36991,8 +40126,14 @@ widget LoginChild {
         let el = render_dynamic_view(view, None, &mut Vec::new());
         let mut ui = iced_test::simulator(el);
 
-        let bu = ui.find("Enter username").expect("username placeholder").bounds();
-        let bp = ui.find("Enter password").expect("password placeholder").bounds();
+        let bu = ui
+            .find("Enter username")
+            .expect("username placeholder")
+            .bounds();
+        let bp = ui
+            .find("Enter password")
+            .expect("password placeholder")
+            .bounds();
         assert!(bu.height > 0.0, "username input must have height: {bu:?}");
         assert!(bp.height > 0.0, "password input must have height: {bp:?}");
         assert!(
@@ -37030,21 +40171,28 @@ widget LoginChild {
         let el_probe = render_dynamic_view(p483_two_input_view(), None, &mut Vec::new());
         let mut probe = iced_test::simulator(el_probe);
         use iced_test::selector::Bounded;
-        let bp = probe.find("Enter password").expect("password bounds").bounds();
+        let bp = probe
+            .find("Enter password")
+            .expect("password bounds")
+            .bounds();
         let center = iced::Point::new(bp.x + bp.width / 2.0, bp.y + bp.height / 2.0);
 
-        let mut renderer = iced_test::futures::futures::executor::block_on(
-            iced::Renderer::new(iced::Font::DEFAULT, 12.0_f32.into(), None),
-        )
+        let mut renderer = iced_test::futures::futures::executor::block_on(iced::Renderer::new(
+            iced::Font::DEFAULT,
+            12.0_f32.into(),
+            None,
+        ))
         .expect("headless renderer");
         let size = Size::new(1024.0, 768.0);
 
         let mut msgs: Vec<IcedMessage> = Vec::new();
-        fn feed(ui: &mut user_interface::UserInterface<'_, IcedMessage, iced::Theme, iced::Renderer>,
-                events: &[Event],
-                center: iced::Point,
-                renderer: &mut iced::Renderer,
-                msgs: &mut Vec<IcedMessage>) {
+        fn feed(
+            ui: &mut user_interface::UserInterface<'_, IcedMessage, iced::Theme, iced::Renderer>,
+            events: &[Event],
+            center: iced::Point,
+            renderer: &mut iced::Renderer,
+            msgs: &mut Vec<IcedMessage>,
+        ) {
             let _ = ui.update(
                 events,
                 iced::mouse::Cursor::Available(center),
@@ -37057,9 +40205,16 @@ widget LoginChild {
         // 帧 1:双空框;点击 password + 键入 "a"。
         let view_a = p483_two_input_view();
         let el_a = render_dynamic_view(view_a, None, &mut Vec::new());
-        let mut ui = user_interface::UserInterface::build(el_a, size, user_interface::Cache::default(), &mut renderer);
+        let mut ui = user_interface::UserInterface::build(
+            el_a,
+            size,
+            user_interface::Cache::default(),
+            &mut renderer,
+        );
         let mut click_events: Vec<Event> = Vec::new();
-        click_events.push(Event::Mouse(iced::mouse::Event::CursorMoved { position: center }));
+        click_events.push(Event::Mouse(iced::mouse::Event::CursorMoved {
+            position: center,
+        }));
         click_events.extend(iced_test::simulator::click());
         feed(&mut ui, &click_events, center, &mut renderer, &mut msgs);
         let ev_a: Vec<Event> = iced_test::simulator::typewrite("a").collect();
@@ -37108,19 +40263,27 @@ widget LoginChild {
 
         let el_probe = render_dynamic_view(p483_two_input_view(), None, &mut Vec::new());
         let mut probe = iced_test::simulator(el_probe);
-        let bu = probe.find("Enter username").expect("username bounds").bounds();
+        let bu = probe
+            .find("Enter username")
+            .expect("username bounds")
+            .bounds();
         let center = iced::Point::new(bu.x + bu.width / 2.0, bu.y + bu.height / 2.0);
 
-        let mut renderer = iced_test::futures::futures::executor::block_on(
-            iced::Renderer::new(iced::Font::DEFAULT, 12.0_f32.into(), None),
-        )
+        let mut renderer = iced_test::futures::futures::executor::block_on(iced::Renderer::new(
+            iced::Font::DEFAULT,
+            12.0_f32.into(),
+            None,
+        ))
         .expect("headless renderer");
         let size = Size::new(1024.0, 768.0);
         let mut msgs: Vec<IcedMessage> = Vec::new();
 
         let el = render_dynamic_view(p483_two_input_view(), None, &mut Vec::new());
         let mut ui = user_interface::UserInterface::build(
-            el, size, user_interface::Cache::default(), &mut renderer,
+            el,
+            size,
+            user_interface::Cache::default(),
+            &mut renderer,
         );
 
         // 产线等价:聚焦路径(未捕获 Tab/__focus_input/召唤,Plan 483 改址
@@ -37158,7 +40321,8 @@ widget LoginChild {
         let el = render_dynamic_view(p483_two_input_view(), None, &mut Vec::new());
         let mut ui = iced_test::simulator(el);
 
-        ui.click("Enter password").expect("password input found by placeholder");
+        ui.click("Enter password")
+            .expect("password input found by placeholder");
         let _ = ui.typewrite("admin");
 
         let msgs: Vec<IcedMessage> = ui.into_messages().collect();
@@ -37277,7 +40441,12 @@ widget LoginChild {
         placeholder: &str,
         msgs: &mut Vec<IcedMessage>,
     ) -> (
-        iced_test::runtime::user_interface::UserInterface<'static, IcedMessage, iced::Theme, iced::Renderer>,
+        iced_test::runtime::user_interface::UserInterface<
+            'static,
+            IcedMessage,
+            iced::Theme,
+            iced::Renderer,
+        >,
         iced::Renderer,
     ) {
         use iced_test::runtime::core::clipboard;
@@ -37289,21 +40458,31 @@ widget LoginChild {
         // 借一次性 Simulator 定位目标框中心(同 p483 惯例)。
         let el_probe = render_dynamic_view(view(), None, &mut Vec::new());
         let mut probe = iced_test::simulator(el_probe);
-        let b = probe.find(placeholder).expect("input by placeholder").bounds();
+        let b = probe
+            .find(placeholder)
+            .expect("input by placeholder")
+            .bounds();
         let center = iced::Point::new(b.x + b.width / 2.0, b.y + b.height / 2.0);
         drop(probe);
 
-        let mut renderer = iced_test::futures::futures::executor::block_on(
-            iced::Renderer::new(iced::Font::DEFAULT, 12.0_f32.into(), None),
-        )
+        let mut renderer = iced_test::futures::futures::executor::block_on(iced::Renderer::new(
+            iced::Font::DEFAULT,
+            12.0_f32.into(),
+            None,
+        ))
         .expect("headless renderer");
         let size = Size::new(1024.0, 768.0);
         let el = render_dynamic_view(view(), None, &mut Vec::new());
-        let mut ui =
-            user_interface::UserInterface::build(el, size, user_interface::Cache::default(), &mut renderer);
+        let mut ui = user_interface::UserInterface::build(
+            el,
+            size,
+            user_interface::Cache::default(),
+            &mut renderer,
+        );
 
-        let mut click_events: Vec<Event> =
-            vec![Event::Mouse(iced::mouse::Event::CursorMoved { position: center })];
+        let mut click_events: Vec<Event> = vec![Event::Mouse(iced::mouse::Event::CursorMoved {
+            position: center,
+        })];
         click_events.extend(iced_test::simulator::click());
         let _ = ui.update(
             &click_events,
@@ -37362,7 +40541,8 @@ widget LoginChild {
 
         // (c) 端到端:点击 user → 遍历 → pass 持焦,键入只进 pass
         let mut msgs: Vec<IcedMessage> = Vec::new();
-        let (mut ui, mut renderer) = p491_ui_and_click(p483_two_input_view, "Enter username", &mut msgs);
+        let (mut ui, mut renderer) =
+            p491_ui_and_click(p483_two_input_view, "Enter username", &mut msgs);
         assert_eq!(
             p491_probe_focus(&mut ui, &mut renderer),
             Some(user),
@@ -37387,7 +40567,10 @@ widget LoginChild {
             &mut clipboard::Null,
             &mut msgs,
         );
-        assert!(!msgs.is_empty(), "typing after traversal must produce messages");
+        assert!(
+            !msgs.is_empty(),
+            "typing after traversal must produce messages"
+        );
         for m in &msgs {
             assert_eq!(
                 m.event, "PassChanged",
@@ -37438,7 +40621,8 @@ widget LoginChild {
         );
 
         let mut msgs: Vec<IcedMessage> = Vec::new();
-        let (mut ui, mut renderer) = p491_ui_and_click(p483_two_input_view, "Enter password", &mut msgs);
+        let (mut ui, mut renderer) =
+            p491_ui_and_click(p483_two_input_view, "Enter password", &mut msgs);
         assert_eq!(
             p491_apply_traversal(&mut ui, &mut renderer, &ids, false),
             Some(user.clone()),
@@ -37458,7 +40642,10 @@ widget LoginChild {
             &mut clipboard::Null,
             &mut msgs,
         );
-        assert!(!msgs.is_empty(), "typing after traversal must produce messages");
+        assert!(
+            !msgs.is_empty(),
+            "typing after traversal must produce messages"
+        );
         for m in &msgs {
             assert_eq!(
                 m.event, "UserChanged",
@@ -37500,7 +40687,8 @@ widget LoginChild {
 
         // 端到端:点击 pass(尾)→ 前进 → 回环 user
         let mut msgs: Vec<IcedMessage> = Vec::new();
-        let (mut ui, mut renderer) = p491_ui_and_click(p483_two_input_view, "Enter password", &mut msgs);
+        let (mut ui, mut renderer) =
+            p491_ui_and_click(p483_two_input_view, "Enter password", &mut msgs);
         assert_eq!(
             p491_apply_traversal(&mut ui, &mut renderer, &ids, true),
             Some(user.clone()),
@@ -37536,7 +40724,8 @@ widget LoginChild {
             false,
         );
         let mut msgs: Vec<IcedMessage> = Vec::new();
-        let (mut ui, mut renderer) = p491_ui_and_click(p483_two_input_view, "Enter username", &mut msgs);
+        let (mut ui, mut renderer) =
+            p491_ui_and_click(p483_two_input_view, "Enter username", &mut msgs);
         assert_eq!(
             p491_probe_focus(&mut ui, &mut renderer),
             Some(user),
@@ -37594,9 +40783,11 @@ widget LoginChild {
         );
 
         // 端到端:无聚焦 → 遍历 → 首框持焦,键入只进 UserChanged
-        let mut renderer = iced_test::futures::futures::executor::block_on(
-            iced::Renderer::new(iced::Font::DEFAULT, 12.0_f32.into(), None),
-        )
+        let mut renderer = iced_test::futures::futures::executor::block_on(iced::Renderer::new(
+            iced::Font::DEFAULT,
+            12.0_f32.into(),
+            None,
+        ))
         .expect("headless renderer");
         let el = render_dynamic_view(p483_two_input_view(), None, &mut Vec::new());
         let mut ui = user_interface::UserInterface::build(
@@ -37836,7 +41027,8 @@ widget ClickApp {
     fn p490_row_onclick_fires() {
         let msgs = p490_click_collect("alpha");
         assert!(
-            msgs.iter().any(|m| m.event.contains("Pick") && m.event.contains("alpha")),
+            msgs.iter()
+                .any(|m| m.event.contains("Pick") && m.event.contains("alpha")),
             "row onclick must fire .Pick(\"alpha\") on click; got {msgs:?}"
         );
     }
@@ -37847,7 +41039,8 @@ widget ClickApp {
     fn p490_col_onclick_fires() {
         let msgs = p490_click_collect("colbox");
         assert!(
-            msgs.iter().any(|m| m.event.contains("Pick") && m.event.contains("col")),
+            msgs.iter()
+                .any(|m| m.event.contains("Pick") && m.event.contains("col")),
             "col onclick must fire on click; got {msgs:?}"
         );
     }
@@ -37859,7 +41052,8 @@ widget ClickApp {
     fn p490_container_div_onclick_fires() {
         let msgs = p490_click_collect("divbox");
         assert!(
-            msgs.iter().any(|m| m.event.contains("Pick") && m.event.contains("div")),
+            msgs.iter()
+                .any(|m| m.event.contains("Pick") && m.event.contains("div")),
             "div/container onclick must fire on click; got {msgs:?}"
         );
     }
@@ -37883,25 +41077,36 @@ widget ClickApp {
     fn p490_launcher_row_launches() {
         let msgs = p490_click_collect("Notes");
         assert!(
-            msgs.iter().any(|m| m.event.contains("Launch") && m.event.contains("notes")),
+            msgs.iter()
+                .any(|m| m.event.contains("Launch") && m.event.contains("notes")),
             "launcher-shaped row must fire .Launch(\"notes\") on click; got {msgs:?}"
         );
         // 第二行参数独立性：Music → notes 之外的参数
         let msgs = p490_click_collect("Music");
         assert!(
-            msgs.iter().any(|m| m.event.contains("Launch") && m.event.contains("music")),
+            msgs.iter()
+                .any(|m| m.event.contains("Launch") && m.event.contains("music")),
             "second launcher row must fire .Launch(\"music\"); got {msgs:?}"
         );
     }
 }
 
-
 /// autodown doc editor 本文字色（暗/亮两档基础灰阶；主题变量接线登记余量）。
 fn ade_fg_dark() -> crate::ui::code_editor::theme::Rgba {
-    crate::ui::code_editor::theme::Rgba { r: 0.92, g: 0.93, b: 0.95, a: 1.0 }
+    crate::ui::code_editor::theme::Rgba {
+        r: 0.92,
+        g: 0.93,
+        b: 0.95,
+        a: 1.0,
+    }
 }
 fn ade_fg_light() -> crate::ui::code_editor::theme::Rgba {
-    crate::ui::code_editor::theme::Rgba { r: 0.12, g: 0.13, b: 0.15, a: 1.0 }
+    crate::ui::code_editor::theme::Rgba {
+        r: 0.12,
+        g: 0.13,
+        b: 0.15,
+        a: 1.0,
+    }
 }
 
 // ── PLAN-080 UAT F-UAT-1：CJK 用户气泡 pct-hug 布局 ─────────────────────
@@ -37947,7 +41152,13 @@ mod plan080_uat_cjk_bubble_tests {
     #[cfg(feature = "iced-layout-tests")]
     fn plan080_uat_fuat2_rich_layout_bounds() {
         for (label, spans) in [
-            ("latin-rich", vec![("This is a bold paragraph with code.", false), (" tail", false)]),
+            (
+                "latin-rich",
+                vec![
+                    ("This is a bold paragraph with code.", false),
+                    (" tail", false),
+                ],
+            ),
             ("cjk-rich", vec![("这是中文段落加粗测试。", false)]),
         ] {
             let rich_spans: Vec<crate::ui::view::RichSpanView> = spans
@@ -37981,8 +41192,13 @@ mod plan080_uat_cjk_bubble_tests {
                         seen.lock().unwrap().push(format!("container@{bounds:?}"));
                         None
                     }
-                    Text { bounds, content, .. } => {
-                        seen.lock().unwrap().push(format!("text@{bounds:?}={}", content.chars().take(16).collect::<String>()));
+                    Text {
+                        bounds, content, ..
+                    } => {
+                        seen.lock().unwrap().push(format!(
+                            "text@{bounds:?}={}",
+                            content.chars().take(16).collect::<String>()
+                        ));
                         None
                     }
                     _ => None,
@@ -38051,8 +41267,13 @@ This is a **bold** and *italic* paragraph with `code` and [link](https://x).
         let dump = |c: iced_test::selector::Candidate<'_>| -> Option<()> {
             use iced_test::selector::Candidate::*;
             match c {
-                Text { bounds, content, .. } => {
-                    seen.lock().unwrap().push(format!("text@{bounds:?}={}", content.chars().take(24).collect::<String>()));
+                Text {
+                    bounds, content, ..
+                } => {
+                    seen.lock().unwrap().push(format!(
+                        "text@{bounds:?}={}",
+                        content.chars().take(24).collect::<String>()
+                    ));
                 }
                 Container { bounds, .. } => {
                     seen.lock().unwrap().push(format!("container@{bounds:?}"));
@@ -38176,7 +41397,11 @@ This is a **bold** and *italic* paragraph with `code` and [link](https://x).
         let view = AbstractView::Table {
             headers: vec![cell("类型"), cell("名称"), cell("说明")],
             rows: vec![
-                vec![cell("DIR"), cell("crates/"), cell("Rust workspace 子 crate")],
+                vec![
+                    cell("DIR"),
+                    cell("crates/"),
+                    cell("Rust workspace 子 crate"),
+                ],
                 vec![cell("FILE"), cell("README.md"), cell("项目说明")],
             ],
             spacing: 0,
@@ -38192,7 +41417,9 @@ This is a **bold** and *italic* paragraph with `code` and [link](https://x).
         let dump = |c: iced_test::selector::Candidate<'_>| -> Option<()> {
             use iced_test::selector::Candidate::*;
             match c {
-                Text { bounds, content, .. } => {
+                Text {
+                    bounds, content, ..
+                } => {
                     seen.lock()
                         .unwrap()
                         .push(format!("{}@{},{}", content, bounds.x, bounds.y));
@@ -38230,10 +41457,7 @@ This is a **bold** and *italic* paragraph with `code` and [link](https://x).
     #[test]
     #[cfg(feature = "iced-layout-tests")]
     fn plan080_uat_max_width_pct_operation_visibility_bisect() {
-        for (outer, expect_text) in [
-            ("flex flex-col", true),
-            ("max-w-[70%]", false),
-        ] {
+        for (outer, expect_text) in [("flex flex-col", true), ("max-w-[70%]", false)] {
             let el = render_dynamic_view(
                 AbstractView::Column {
                     children: vec![AbstractView::Text {

@@ -1480,8 +1480,9 @@ fn popover_modal_centers_within_clipped_host() {
     // 400×300 clipped host at the window origin. Modal panel must sit in
     // that box's center (200, 150), not the 1024×768 window center (512, 384).
     let content: iced::Element<'static, PopMsg> = iced::widget::text("CLIPMODAL").into();
-    let anchor: iced::Element<'static, PopMsg> =
-        iced::widget::button("CLIPTRIG").on_press(PopMsg::Trig).into();
+    let anchor: iced::Element<'static, PopMsg> = iced::widget::button("CLIPTRIG")
+        .on_press(PopMsg::Trig)
+        .into();
     let pop = PopoverWidget::new(anchor, content)
         .placement(PopoverPlacement::Modal)
         .open(true)
@@ -1494,7 +1495,10 @@ fn popover_modal_centers_within_clipped_host() {
         .clip(true);
     let mut ui = simulator(iced::Element::from(host));
     let (px, py, pw, ph) = bounds_of(&mut ui, "CLIPMODAL");
-    assert!(pw > 0.0 && ph > 0.0, "clipped-host modal panel must be visible: {pw}x{ph}");
+    assert!(
+        pw > 0.0 && ph > 0.0,
+        "clipped-host modal panel must be visible: {pw}x{ph}"
+    );
     // 文本贴面板左上：文本中心 ≈ 面板中心 ≈ (200, 150)。
     let cx = px + pw / 2.0;
     let cy = py + ph / 2.0;
@@ -3986,7 +3990,10 @@ impl iced_test::selector::Selector for P748ScrollSink {
     type Output = ();
     fn select(&mut self, candidate: iced_test::selector::Candidate<'_>) -> Option<()> {
         if let iced_test::selector::Candidate::Scrollable { bounds, .. } = candidate {
-            self.0.lock().unwrap().push((bounds.x, bounds.y, bounds.width, bounds.height));
+            self.0
+                .lock()
+                .unwrap()
+                .push((bounds.x, bounds.y, bounds.width, bounds.height));
         }
         None
     }
@@ -4001,7 +4008,10 @@ impl iced_test::selector::Selector for P748BoxSink {
     type Output = ();
     fn select(&mut self, candidate: iced_test::selector::Candidate<'_>) -> Option<()> {
         if let iced_test::selector::Candidate::Container { bounds, .. } = candidate {
-            self.0.lock().unwrap().push((bounds.x, bounds.y, bounds.width, bounds.height));
+            self.0
+                .lock()
+                .unwrap()
+                .push((bounds.x, bounds.y, bounds.width, bounds.height));
         }
         None
     }
@@ -4041,7 +4051,10 @@ fn p748_j1_stretch_line_stretches_shrink_height_scrollable_child() {
     p748_sink_dump("J1-box", &boxes.lock().unwrap().clone());
     let (_rx, _ry, rw, rh) = bounds_of(&mut ui, "J1R14");
     eprintln!("[P748-J1] 右列末行 J1R14 = ({rw:.1},{rh:.1})（内容高代理）");
-    assert!(!sb.is_empty(), "复现形必须有一个 Scrollable（overflow-y-auto 转写）");
+    assert!(
+        !sb.is_empty(),
+        "复现形必须有一个 Scrollable（overflow-y-auto 转写）"
+    );
     let (x, y, w, h) = sb[0];
     assert!(
         (w - 224.0).abs() < 3.0,
@@ -4066,7 +4079,10 @@ fn p748_j2_explicit_height_scrollable_class_order_invariant() {
         let mut ui = simulator(p748_view(&src).into_iced());
         let scrolls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let _ = ui.find(P748ScrollSink(scrolls.clone()));
-        p748_sink_dump(&format!("J2[{left_style}]-scroll"), &scrolls.lock().unwrap().clone());
+        p748_sink_dump(
+            &format!("J2[{left_style}]-scroll"),
+            &scrolls.lock().unwrap().clone(),
+        );
         bounds_of(&mut ui, "J2L1")
     };
     let a = variant("h-full w-56 bg-card overflow-y-auto"); // h-full 首位（live=全局降级）
@@ -4080,7 +4096,10 @@ fn p748_j2_explicit_height_scrollable_class_order_invariant() {
         );
     }
     assert!(
-        (a.0 - b.0).abs() < 1.5 && (a.1 - b.1).abs() < 1.5 && (a.2 - b.2).abs() < 1.5 && (a.3 - b.3).abs() < 1.5,
+        (a.0 - b.0).abs() < 1.5
+            && (a.1 - b.1).abs() < 1.5
+            && (a.2 - b.2).abs() < 1.5
+            && (a.3 - b.3).abs() < 1.5,
         "h-full 首位/末位两变体哨兵几何必须全等（类序无关不变式），实测 首位={a:?} 末位={b:?}"
     );
 }
@@ -4124,26 +4143,49 @@ fn p748_j1_scroll_visual_classes_move_to_viewport() {
     let src_with_visual = "widget P748J1V {\n    view {\n        col (style: \"h-full w-full\") {\n            row (style: \"flex-1 items-stretch w-full\") {\n                col (style: \"w-56 bg-card border-r overflow-y-auto flex-col\") {\n                    text \"J1VL\"\n                }\n                col (style: \"flex-1\") {\n                    text \"J1VR\"\n                }\n            }\n        }\n    }\n}\n";
     let view = p748_view(src_with_visual);
     // 根 col → row → 第一子：必须是 Container（视觉）> Scrollable > col。
-    let View::Column { children: root_kids, .. } = view else {
+    let View::Column {
+        children: root_kids,
+        ..
+    } = view
+    else {
         panic!("期望根 Column");
     };
-    let View::Row { children: row_kids, .. } = &root_kids[0] else {
+    let View::Row {
+        children: row_kids, ..
+    } = &root_kids[0]
+    else {
         panic!("期望 Row");
     };
-    let View::Container { style: vp_style, child, .. } = &row_kids[0] else {
-        panic!("期望视口 Container 包装（有 bg-card/border-r 视觉类），实际 {:?}",
-            std::mem::discriminant(&row_kids[0]))
+    let View::Container {
+        style: vp_style,
+        child,
+        ..
+    } = &row_kids[0]
+    else {
+        panic!(
+            "期望视口 Container 包装（有 bg-card/border-r 视觉类），实际 {:?}",
+            std::mem::discriminant(&row_kids[0])
+        )
     };
     let vp_classes = vp_style.as_ref().map(|s| &s.classes).unwrap();
     assert!(
-        vp_classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))),
+        vp_classes
+            .iter()
+            .any(|c| matches!(c, StyleClass::BackgroundColor(_))),
         "视口容器必须承载 bg-card"
     );
     assert!(
-        vp_classes.iter().any(|c| matches!(c, StyleClass::BorderRight)),
+        vp_classes
+            .iter()
+            .any(|c| matches!(c, StyleClass::BorderRight)),
         "视口容器必须承载 border-r"
     );
-    let View::Scrollable { child: content, style: sc_style, .. } = child.as_ref() else {
+    let View::Scrollable {
+        child: content,
+        style: sc_style,
+        ..
+    } = child.as_ref()
+    else {
         panic!("期望 Container 内为 Scrollable");
     };
     let _ = sc_style;
@@ -4153,10 +4195,13 @@ fn p748_j1_scroll_visual_classes_move_to_viewport() {
     let content_classes = c_style.as_ref().map(|s| &s.classes).unwrap();
     assert!(
         content_classes.iter().all(|c| !c.is_visual_paint()),
-        "内容 col 必须剥离全部视觉类，实际 {:?}", content_classes
+        "内容 col 必须剥离全部视觉类，实际 {:?}",
+        content_classes
     );
     assert!(
-        content_classes.iter().any(|c| matches!(c, StyleClass::FlexCol)),
+        content_classes
+            .iter()
+            .any(|c| matches!(c, StyleClass::FlexCol)),
         "布局类（flex-col）保留在内容 col"
     );
 
@@ -4166,8 +4211,15 @@ fn p748_j1_scroll_visual_classes_move_to_viewport() {
         "w-56 overflow-y-auto flex-col",
     );
     let view2 = p748_view(&src_plain);
-    let View::Column { children: root2, .. } = view2 else { panic!("期望根 Column") };
-    let View::Row { children: row2, .. } = &root2[0] else { panic!("期望 Row") };
+    let View::Column {
+        children: root2, ..
+    } = view2
+    else {
+        panic!("期望根 Column")
+    };
+    let View::Row { children: row2, .. } = &root2[0] else {
+        panic!("期望 Row")
+    };
     assert!(
         matches!(row2[0], View::Scrollable { .. }),
         "无视觉类的滚动 col 不得新增包装层（现行为不变），实际 {:?}",
@@ -4195,20 +4247,32 @@ fn p748_t10_editor_wrapper_padding_in_layout() {
             .unwrap();
         with(&mut guard);
     });
-    const WHITE: Rgba = Rgba { r: 1., g: 1., b: 1., a: 1. };
+    const WHITE: Rgba = Rgba {
+        r: 1.,
+        g: 1.,
+        b: 1.,
+        a: 1.,
+    };
     let sk = storage_key("p748_t10_layout");
     let core = autodown_editor(&sk);
     core.sync_external("甲段落文本。\n\n乙段落文本。\n", true);
     let frame = crate::ui::code_editor::core::with_font_system(|fs| {
         core.render_frame(fs, 600.0 - 40.0, WHITE, None)
     });
-    assert!(frame.height > 40.0, "内容必须可测，实测 {:.1}", frame.height);
+    assert!(
+        frame.height > 40.0,
+        "内容必须可测，实测 {:.1}",
+        frame.height
+    );
 
-    let editor: iced::Element<'static, ()> =
-        DocEditor::<()>::new(&sk, WHITE).width(iced::Length::Fixed(600.0)).into();
+    let editor: iced::Element<'static, ()> = DocEditor::<()>::new(&sk, WHITE)
+        .width(iced::Length::Fixed(600.0))
+        .into();
     let sentinel: iced::Element<'static, ()> = styled_view("T10SENT").into_iced();
     let col: iced::Element<'static, ()> =
-        iced::widget::Column::with_children(vec![editor, sentinel]).spacing(0).into();
+        iced::widget::Column::with_children(vec![editor, sentinel])
+            .spacing(0)
+            .into();
     let mut ui = simulator(col);
     let (_sx, sy, _sw, _sh) = bounds_of(&mut ui, "T10SENT");
     eprintln!(
@@ -4218,6 +4282,7 @@ fn p748_t10_editor_wrapper_padding_in_layout() {
     assert!(
         (sy - (frame.height + 32.0)).abs() < 2.0,
         "编辑器节点高必须 = 内容高({:.1}) + 2×16 padding，哨兵 y={:.1}",
-        frame.height, sy
+        frame.height,
+        sy
     );
 }

@@ -10,8 +10,8 @@ static MEM_PROFILE_ALLOC: mem_profile::CountingAlloc = mem_profile::CountingAllo
 
 // Global tokio runtime for VM execution
 // Using OnceLock to ensure thread-safe lazy initialization
-use std::sync::OnceLock;
 use std::sync::Arc;
+use std::sync::OnceLock;
 static GLOBAL_RT: OnceLock<Arc<tokio::runtime::Runtime>> = OnceLock::new();
 
 // Plan 351: thread-local for passing store composable files out-of-band
@@ -60,15 +60,17 @@ fn is_non_fs_module_use(u: &crate::use_scanner::UseStatement) -> bool {
 }
 
 pub fn get_global_runtime() -> Arc<tokio::runtime::Runtime> {
-    GLOBAL_RT.get_or_init(|| {
-        Arc::new(
-            tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(1)
-                .enable_all()
-                .build()
-                .expect("Failed to create tokio runtime")
-        )
-    }).clone()
+    GLOBAL_RT
+        .get_or_init(|| {
+            Arc::new(
+                tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(1)
+                    .enable_all()
+                    .build()
+                    .expect("Failed to create tokio runtime"),
+            )
+        })
+        .clone()
 }
 
 /// Drive AutoVM work inside a thread-local executor on the calling thread.
@@ -99,24 +101,24 @@ pub mod use_scanner;
 pub mod dep_scanner;
 // Plan 085 Phase 5: Module cache for incremental compilation
 pub mod atom_error;
-pub mod module_cache;
-pub mod host; // Plan 011 (MS3-B): ShellHost bridge for system()/exit()/export()
-pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
-pub mod stdlib_assembly; // PLAN-738: stdlib 装配契约（inventory/manifest/provider 目录纯模型层）
-pub mod mcp; // Plan 265: MCP server for AI agent interaction
-pub mod autovm_daemon; // Plan 269: AutoVM daemon (serve/req)
 pub mod autovm_client; // Plan 269: AutoVM client for req command
-pub mod back_proxy; // PLAN-658: 单进程多后端宿主（画廊内嵌 demo 后端 session）
+pub mod autovm_daemon; // Plan 269: AutoVM daemon (serve/req)
+pub mod autovm_persistent; // Plan 068 Phase 9.6: Persistent AutoVM REPL
 pub mod back_prefix; // PLAN-037: launch 期作用域化模块源前缀化 overlay（桌面后端供给——un-gated，模块读点在本文核心装载链）
-pub mod http_file_service; // PLAN-729: 服务端文件响应宿主执行（VM/生成 Rust 共用；无 ui 依赖）
-pub mod http_upload_service; // PLAN-730: 服务端上传宿主 executor（VM/生成 Rust 共用；无 axum 类型）
-pub mod http_service_config; // PLAN-736: 服务部署配置与纯策略（版本中立；两轨共用）
-pub mod http_service_observability; // PLAN-736: 服务观测（计数器 + 有界 JSONL sink）
+pub mod back_proxy; // PLAN-658: 单进程多后端宿主（画廊内嵌 demo 后端 session）
 pub mod compile;
 pub mod config;
 pub mod database;
 pub mod dep;
 pub mod error;
+pub mod host; // Plan 011 (MS3-B): ShellHost bridge for system()/exit()/export()
+pub mod http_file_service; // PLAN-729: 服务端文件响应宿主执行（VM/生成 Rust 共用；无 ui 依赖）
+pub mod http_service_config; // PLAN-736: 服务部署配置与纯策略（版本中立；两轨共用）
+pub mod http_service_observability; // PLAN-736: 服务观测（计数器 + 有界 JSONL sink）
+pub mod http_upload_service; // PLAN-730: 服务端上传宿主 executor（VM/生成 Rust 共用；无 axum 类型）
+pub mod mcp; // Plan 265: MCP server for AI agent interaction
+pub mod module_cache;
+pub mod stdlib_assembly; // PLAN-738: stdlib 装配契约（inventory/manifest/provider 目录纯模型层）
 // Plan 096 Phase 0: Scenario-based compilation
 pub mod session;
 // Plan 096 Phase 0: AURA (Auto UI Representation Abstract)
@@ -167,7 +169,7 @@ pub mod parser;
 pub mod query;
 pub use parser::Parser;
 pub mod dialect; // 方言扩展体系（PR-1 基建）
-// Plan 088 Phase 6: Type checking module for parameter passing modes
+                 // Plan 088 Phase 6: Type checking module for parameter passing modes
 pub mod autovm_repl;
 pub mod patch;
 pub mod typeck;
@@ -193,7 +195,6 @@ pub mod comptime;
 // Plan 260: Test framework
 pub mod test_runner;
 
-
 pub use atom::{Atom, AtomReader};
 
 // 过程宏 - 支持 AutoLang 语法的内嵌 DSL
@@ -204,10 +205,10 @@ pub use auto_macros::{atom, node, value};
 pub use interpreter::AutoInterpreter;
 
 use crate::compile::CompileSession;
-use crate::trans::c::CTrans;
 pub use crate::symbols::SymbolLocation;
+use crate::trans::c::CTrans;
 use crate::{trans::Sink, trans::Trans};
-use auto_val::{AutoPath, Obj, Value, Node, Array};
+use auto_val::{Array, AutoPath, Node, Obj, Value};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -273,7 +274,9 @@ pub fn is_vm_debug() -> bool {
     static ENV_DEBUG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     VM_DEBUG.load(Ordering::SeqCst)
         || *ENV_DEBUG.get_or_init(|| {
-            std::env::var("AUTO_VM_DEBUG").map(|v| v != "0" && !v.is_empty()).unwrap_or(false)
+            std::env::var("AUTO_VM_DEBUG")
+                .map(|v| v != "0" && !v.is_empty())
+                .unwrap_or(false)
         })
 }
 
@@ -283,7 +286,9 @@ pub fn is_vm_debug() -> bool {
 pub fn is_vm_trace_ops() -> bool {
     static ENV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENV.get_or_init(|| {
-        std::env::var("AUTO_VM_TRACE_OPS").map(|v| v != "0" && !v.is_empty()).unwrap_or(false)
+        std::env::var("AUTO_VM_TRACE_OPS")
+            .map(|v| v != "0" && !v.is_empty())
+            .unwrap_or(false)
     })
 }
 
@@ -296,7 +301,9 @@ pub fn is_vm_trace_ops() -> bool {
 pub fn is_vm_hot_trace() -> bool {
     static ENV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENV.get_or_init(|| {
-        std::env::var("AUTO_VM_TRACE").map(|v| v != "0" && !v.is_empty()).unwrap_or(false)
+        std::env::var("AUTO_VM_TRACE")
+            .map(|v| v != "0" && !v.is_empty())
+            .unwrap_or(false)
     })
 }
 
@@ -306,7 +313,9 @@ pub fn is_vm_hot_trace() -> bool {
 pub fn pool_trace_idx() -> Option<usize> {
     static ENV: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
     *ENV.get_or_init(|| {
-        std::env::var("P419_TRACE_POOL").ok().and_then(|v| v.parse::<usize>().ok())
+        std::env::var("P419_TRACE_POOL")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
     })
 }
 
@@ -315,7 +324,9 @@ pub fn pool_trace_idx() -> Option<usize> {
 pub fn pool_log_all() -> bool {
     static ENV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENV.get_or_init(|| {
-        std::env::var("P419_POOL_LOG").map(|v| v != "0" && !v.is_empty()).unwrap_or(false)
+        std::env::var("P419_POOL_LOG")
+            .map(|v| v != "0" && !v.is_empty())
+            .unwrap_or(false)
     })
 }
 
@@ -329,7 +340,9 @@ pub fn pool_log_seq() -> u64 {
 pub fn p510_audit() -> bool {
     static ENV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENV.get_or_init(|| {
-        std::env::var("P510_AUDIT").map(|v| v != "0" && !v.is_empty()).unwrap_or(false)
+        std::env::var("P510_AUDIT")
+            .map(|v| v != "0" && !v.is_empty())
+            .unwrap_or(false)
     })
 }
 
@@ -366,12 +379,21 @@ fn format_value_for_display(vm: &crate::vm::engine::AutoVM, val: &Value) -> Stri
             if let Some(obj_arc) = vm.get_heap_object(id) {
                 let obj = obj_arc.read().unwrap();
                 if let Some(obj) = obj.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
-                    let fields: Vec<String> = obj.fields.iter().map(|(k, v)| {
-                        format!("{}: {}", k, format_value_for_display(vm, v))
-                    }).collect();
+                    let fields: Vec<String> = obj
+                        .fields
+                        .iter()
+                        .map(|(k, v)| format!("{}: {}", k, format_value_for_display(vm, v)))
+                        .collect();
                     format!("{{{}}}", fields.join(", "))
-                } else if let Some(arr) = obj.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
-                    let items: Vec<String> = arr.elems.iter().map(|v| format_value_for_display(vm, v)).collect();
+                } else if let Some(arr) = obj
+                    .as_any()
+                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                {
+                    let items: Vec<String> = arr
+                        .elems
+                        .iter()
+                        .map(|v| format_value_for_display(vm, v))
+                        .collect();
                     format!("[{}]", items.join(", "))
                 } else {
                     format!("<ref:{}>", id)
@@ -381,13 +403,18 @@ fn format_value_for_display(vm: &crate::vm::engine::AutoVM, val: &Value) -> Stri
             }
         }
         Value::Array(arr) => {
-            let items: Vec<String> = arr.values.iter().map(|v| format_value_for_display(vm, v)).collect();
+            let items: Vec<String> = arr
+                .values
+                .iter()
+                .map(|v| format_value_for_display(vm, v))
+                .collect();
             format!("[{}]", items.join(", "))
         }
         Value::Obj(obj) => {
-            let fields: Vec<String> = obj.iter().map(|(k, v)| {
-                format!("{}: {}", k, format_value_for_display(vm, v))
-            }).collect();
+            let fields: Vec<String> = obj
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, format_value_for_display(vm, v)))
+                .collect();
             format!("{{{}}}", fields.join(", "))
         }
         _ => val.repr().to_string(),
@@ -441,14 +468,20 @@ pub fn run_with_capture_and_path(code: &str, path: &str) -> AutoResult<(String, 
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            block_on_autovm_local(async { execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _, _)| (r, stdout)) })
+            block_on_autovm_local(async {
+                execute_autovm_with_path(&code, true, Some(&path))
+                    .await
+                    .map(|(r, stdout, _, _)| (r, stdout))
+            })
         })
         .expect("Failed to spawn execution thread");
     join_execution(handle)
 }
 
 /// Run AutoLang code with stdout capture and return the disassembled bytecode.
-pub fn run_with_capture_and_bytecode(code: &str) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>)> {
+pub fn run_with_capture_and_bytecode(
+    code: &str,
+) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>)> {
     run_with_capture_and_bytecode_with_meta(code).map(|(r, out, bc, _)| (r, out, bc))
 }
 
@@ -481,7 +514,9 @@ pub fn run_with_capture_and_bytecode_with_deadline(
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            block_on_autovm_local(async { execute_autovm_with_deadline(&code, true, None, deadline).await })
+            block_on_autovm_local(async {
+                execute_autovm_with_deadline(&code, true, None, deadline).await
+            })
         })
         .expect("Failed to spawn execution thread");
     join_execution(handle)
@@ -525,7 +560,9 @@ pub fn run_with_capture_and_path_and_bytecode_with_deadline(
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            block_on_autovm_local(async { execute_autovm_with_deadline(&code, true, Some(&path), deadline).await })
+            block_on_autovm_local(async {
+                execute_autovm_with_deadline(&code, true, Some(&path), deadline).await
+            })
         })
         .expect("Failed to spawn execution thread");
     join_execution(handle)
@@ -565,7 +602,9 @@ pub fn run_autovm(code: &str) -> AutoResult<String> {
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            block_on_autovm_local(async { execute_autovm(&code, false).await.map(|(r, _, _, _)| r) })
+            block_on_autovm_local(async {
+                execute_autovm(&code, false).await.map(|(r, _, _, _)| r)
+            })
         })
         .expect("Failed to spawn execution thread");
     join_execution(handle)
@@ -577,7 +616,11 @@ pub fn run_autovm_capture(code: &str) -> AutoResult<(String, String)> {
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
-            block_on_autovm_local(async { execute_autovm(&code, true).await.map(|(r, stdout, _, _)| (r, stdout)) })
+            block_on_autovm_local(async {
+                execute_autovm(&code, true)
+                    .await
+                    .map(|(r, stdout, _, _)| (r, stdout))
+            })
         })
         .expect("Failed to spawn execution thread");
     join_execution(handle)
@@ -659,10 +702,18 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                         let lib = std::sync::Arc::new(lib);
                         match crate::vm::ffi::dep_methods::read_shim_manifest(&lib) {
                             Ok(manifest) => {
-                                crate::vm::ffi::dep_methods::register_pack(&crate_name, lib, &manifest);
+                                crate::vm::ffi::dep_methods::register_pack(
+                                    &crate_name,
+                                    lib,
+                                    &manifest,
+                                );
                             }
                             Err(e) => {
-                                log::warn!("plan430: shim manifest read failed for {}: {:?}", crate_name, e);
+                                log::warn!(
+                                    "plan430: shim manifest read failed for {}: {:?}",
+                                    crate_name,
+                                    e
+                                );
                             }
                         }
                     }
@@ -721,8 +772,12 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                 };
                 let mjson = (|| -> Option<String> {
                     unsafe {
-                        let sym: Result<libloading::Symbol<unsafe extern "C" fn() -> *const std::os::raw::c_char>, _> =
-                            probe.get(b"auto__sig_manifest");
+                        let sym: Result<
+                            libloading::Symbol<
+                                unsafe extern "C" fn() -> *const std::os::raw::c_char,
+                            >,
+                            _,
+                        > = probe.get(b"auto__sig_manifest");
                         let f = sym.ok()?;
                         let p = f();
                         if p.is_null() {
@@ -735,7 +790,9 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                 drop(probe);
                 let Some(mjson) = mjson else { continue };
                 let sig_map: std::collections::HashMap<String, String> =
-                    crate::ffi::parse_manifest_json(&mjson).into_iter().collect();
+                    crate::ffi::parse_manifest_json(&mjson)
+                        .into_iter()
+                        .collect();
                 let covered = free_fns.iter().all(|f| {
                     sig_map.contains_key(f.as_str())
                         || sig_map.keys().any(|k| k.starts_with(&format!("{}__", f)))
@@ -772,7 +829,12 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
             // 胜者(或 fallback 精确键)交 bridge 一次性装载——旁路探针不进
             // bridge,此处无论 manifest 是否已取到都必须装载。
             if let Err(e) = bridge.load_rust_library(&crate_name, &lib_path) {
-                log::warn!("Failed to load Rust library {} from {}: {:?}", crate_name, lib_path.display(), e);
+                log::warn!(
+                    "Failed to load Rust library {} from {}: {:?}",
+                    crate_name,
+                    lib_path.display(),
+                    e
+                );
                 continue;
             }
             if cache_gen >= 3 && manifest.is_none() {
@@ -783,7 +845,8 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
             if let Some(ref manifest_json) = manifest {
                 // Parse manifest: {"func_name":"sig_code",...}
                 let parsed = crate::ffi::parse_manifest_json(manifest_json);
-                let sig_map: std::collections::HashMap<String, String> = parsed.into_iter().collect();
+                let sig_map: std::collections::HashMap<String, String> =
+                    parsed.into_iter().collect();
 
                 for func_name in free_fns.iter() {
                     // PLAN-596 T4:mono 实例注册——裸名无条目时枚举
@@ -797,9 +860,10 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                             .collect();
                         if !inst_names.is_empty() {
                             for inst in inst_names {
-                                let Some(sig_code) = sig_map.get(&inst) else { continue };
-                                let exported =
-                                    crate::ffi::build_exported_name(&inst, sig_code);
+                                let Some(sig_code) = sig_map.get(&inst) else {
+                                    continue;
+                                };
+                                let exported = crate::ffi::build_exported_name(&inst, sig_code);
                                 let sig = crate::ffi::sig_code_to_signature(sig_code);
                                 match bridge.register_function_with_export(
                                     crate_name,
@@ -822,7 +886,9 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                                     Err(e) => {
                                         log::warn!(
                                             "Failed to register mono instance {}::{}: {:?}",
-                                            crate_name, inst, e
+                                            crate_name,
+                                            inst,
+                                            e
                                         );
                                     }
                                 }
@@ -830,32 +896,51 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
                             continue;
                         }
                     }
-                    let (exported_name, signature) = if let Some(sig_code) = sig_map.get(func_name.as_str()) {
-                        let exported = crate::ffi::build_exported_name(func_name, sig_code);
-                        let sig = crate::ffi::sig_code_to_signature(sig_code);
-                        (exported, sig)
-                    } else {
-                        // Fallback to known_signature or default String→String
-                        let sig = crate::ffi::resolve_signature(crate_name, func_name)
-                            .unwrap_or_else(|| {
-                                crate::ffi::RustSignature::new()
-                                    .param(crate::ffi::RustType::String)
-                                    .returns(crate::ffi::RustType::String)
-                            });
-                        (format!("auto_{}", func_name), sig)
-                    };
+                    let (exported_name, signature) =
+                        if let Some(sig_code) = sig_map.get(func_name.as_str()) {
+                            let exported = crate::ffi::build_exported_name(func_name, sig_code);
+                            let sig = crate::ffi::sig_code_to_signature(sig_code);
+                            (exported, sig)
+                        } else {
+                            // Fallback to known_signature or default String→String
+                            let sig = crate::ffi::resolve_signature(crate_name, func_name)
+                                .unwrap_or_else(|| {
+                                    crate::ffi::RustSignature::new()
+                                        .param(crate::ffi::RustType::String)
+                                        .returns(crate::ffi::RustType::String)
+                                });
+                            (format!("auto_{}", func_name), sig)
+                        };
 
-                    match bridge.register_function_with_export(crate_name, func_name, &exported_name, signature.clone()) {
+                    match bridge.register_function_with_export(
+                        crate_name,
+                        func_name,
+                        &exported_name,
+                        signature.clone(),
+                    ) {
                         Ok(native_id) => {
-                            log::info!("Registered Rust FFI: {}::{} (native_id={}, sig={:?})", crate_name, func_name, native_id, signature);
+                            log::info!(
+                                "Registered Rust FFI: {}::{} (native_id={}, sig={:?})",
+                                crate_name,
+                                func_name,
+                                native_id,
+                                signature
+                            );
 
                             let qualified = format!("rust.{}", func_name);
-                            if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
+                            if let Ok(mut registry) =
+                                crate::vm::native_registry::BIGVM_NATIVES.lock()
+                            {
                                 registry.register_with_id(&qualified, native_id);
                             }
                         }
                         Err(e) => {
-                            log::warn!("Failed to register Rust function {}::{}: {:?}", crate_name, func_name, e);
+                            log::warn!(
+                                "Failed to register Rust function {}::{}: {:?}",
+                                crate_name,
+                                func_name,
+                                e
+                            );
                         }
                     }
                 }
@@ -871,15 +956,28 @@ fn init_rust_ffi(session: &compile::CompileSession) -> Option<crate::vm::native:
 
                     match bridge.register_function(crate_name, func_name, signature.clone()) {
                         Ok(native_id) => {
-                            log::info!("Registered Rust FFI: {}::{} (native_id={}, sig={:?})", crate_name, func_name, native_id, signature);
+                            log::info!(
+                                "Registered Rust FFI: {}::{} (native_id={}, sig={:?})",
+                                crate_name,
+                                func_name,
+                                native_id,
+                                signature
+                            );
 
                             let qualified = format!("rust.{}", func_name);
-                            if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
+                            if let Ok(mut registry) =
+                                crate::vm::native_registry::BIGVM_NATIVES.lock()
+                            {
                                 registry.register_with_id(&qualified, native_id);
                             }
                         }
                         Err(e) => {
-                            log::warn!("Failed to register Rust function {}::{}: {:?}", crate_name, func_name, e);
+                            log::warn!(
+                                "Failed to register Rust function {}::{}: {:?}",
+                                crate_name,
+                                func_name,
+                                e
+                            );
                         }
                     }
                 }
@@ -962,14 +1060,24 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
                 }
                 match bridge.register_constant(module_name, &func_name) {
                     Ok(native_id) => {
-                        log::info!("Registered Python const: {}.{} (native_id={})", module_name, func_name, native_id);
+                        log::info!(
+                            "Registered Python const: {}.{} (native_id={})",
+                            module_name,
+                            func_name,
+                            native_id
+                        );
                         let qualified = format!("py.{}", func_name);
                         if let Ok(mut registry) = crate::vm::native_registry::BIGVM_NATIVES.lock() {
                             registry.register_with_id(&qualified, native_id);
                         }
                     }
                     Err(e) => {
-                        log::warn!("Failed to register Python const {}.{}: {:?}", module_name, func_name, e);
+                        log::warn!(
+                            "Failed to register Python const {}.{}: {:?}",
+                            module_name,
+                            func_name,
+                            e
+                        );
                     }
                 }
                 continue;
@@ -990,12 +1098,20 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
                 crate::py_ffi_types::record_return_annotation(&func_name, t.clone());
                 log::info!(
                     "PyOracle: {}.{} -> {:?} (annotated)",
-                    module_name, func_name, t
+                    module_name,
+                    func_name,
+                    t
                 );
             }
             match bridge.register_function(module_name, func_name, sig) {
                 Ok(native_id) => {
-                    log::info!("Registered Python FFI: {}.{} (native_id={}, params={})", module_name, func_name, native_id, param_count);
+                    log::info!(
+                        "Registered Python FFI: {}.{} (native_id={}, params={})",
+                        module_name,
+                        func_name,
+                        native_id,
+                        param_count
+                    );
 
                     // Also register in BIGVM_NATIVES so codegen can find it
                     let qualified = format!("py.{}", func_name);
@@ -1004,7 +1120,12 @@ fn init_py_ffi(session: &compile::CompileSession) -> Option<crate::vm::native::N
                     }
                 }
                 Err(e) => {
-                    log::warn!("Failed to register Python function {}.{}: {:?}", module_name, func_name, e);
+                    log::warn!(
+                        "Failed to register Python function {}.{}: {:?}",
+                        module_name,
+                        func_name,
+                        e
+                    );
                 }
             }
         }
@@ -1077,7 +1198,15 @@ fn init_py_ffi(_session: &compile::CompileSession) -> Option<crate::vm::native::
 
 /// Internal AutoVM execution function (async)
 /// Plan 177: capture parameter enables stdout capture for testing
-async fn execute_autovm(code: &str, capture: bool) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>, crate::vm::disasm::BytecodeMeta)> {
+async fn execute_autovm(
+    code: &str,
+    capture: bool,
+) -> AutoResult<(
+    String,
+    String,
+    Vec<crate::vm::disasm::DisasmLine>,
+    crate::vm::disasm::BytecodeMeta,
+)> {
     execute_autovm_with_path(code, capture, None).await
 }
 
@@ -1115,11 +1244,14 @@ pub(crate) fn operand_span_with_pool_indices(
     let none: Vec<(usize, IdxSpace)> = Vec::new();
     match op {
         // 单枚 u32 字符串池索引
-        OpCode::LOAD_STR | OpCode::LOAD_GLOBAL | OpCode::STORE_GLOBAL
-        | OpCode::GET_FIELD | OpCode::CAPTURE_VAR
-        | OpCode::LOAD_CAPTURED | OpCode::STORE_CAPTURED | OpCode::ACCUM_PAIR => {
-            (4, vec![(0, IdxSpace::Str)])
-        }
+        OpCode::LOAD_STR
+        | OpCode::LOAD_GLOBAL
+        | OpCode::STORE_GLOBAL
+        | OpCode::GET_FIELD
+        | OpCode::CAPTURE_VAR
+        | OpCode::LOAD_CAPTURED
+        | OpCode::STORE_CAPTURED
+        | OpCode::ACCUM_PAIR => (4, vec![(0, IdxSpace::Str)]),
         // 两枚 u32 字符串池索引(name, id;id 可为 0xFFFF 哨兵)
         OpCode::PUSH_ACCUM => (8, vec![(0, IdxSpace::Str), (4, IdxSpace::Str)]),
         // u32 method_name + u8 argc
@@ -1131,18 +1263,33 @@ pub(crate) fn operand_span_with_pool_indices(
         // CALL_NAT: u16 native id —— 池合并后 native id 不变,只跳过
         OpCode::CALL_NAT => (2, none),
         // 1 字节定长
-        OpCode::CONST_U8 | OpCode::PUSH_BOOL | OpCode::POP_N
-        | OpCode::RESERVE_STACK | OpCode::RET | OpCode::ERROR_PROPAGATE
-        | OpCode::LOAD_LOCAL | OpCode::STORE_LOCAL
-        | OpCode::LOAD_STATE_FIELD | OpCode::STORE_STATE_FIELD
-        | OpCode::CREATE_ARRAY | OpCode::CREATE_TUPLE | OpCode::CREATE_OK
-        | OpCode::GET_GENERIC_FIELD | OpCode::SET_GENERIC_FIELD
+        OpCode::CONST_U8
+        | OpCode::PUSH_BOOL
+        | OpCode::POP_N
+        | OpCode::RESERVE_STACK
+        | OpCode::RET
+        | OpCode::ERROR_PROPAGATE
+        | OpCode::LOAD_LOCAL
+        | OpCode::STORE_LOCAL
+        | OpCode::LOAD_STATE_FIELD
+        | OpCode::STORE_STATE_FIELD
+        | OpCode::CREATE_ARRAY
+        | OpCode::CREATE_TUPLE
+        | OpCode::CREATE_OK
+        | OpCode::GET_GENERIC_FIELD
+        | OpCode::SET_GENERIC_FIELD
         | OpCode::GET_TUPLE_FIELD => (1, none),
         OpCode::FN_PROLOG => (2, none),
         // 4 字节定长
-        OpCode::CONST_I32 | OpCode::CONST_F32 | OpCode::JMP_FAR | OpCode::JMP_L
-        | OpCode::CALL | OpCode::LOAD_REF | OpCode::STORE_REF
-        | OpCode::LOAD_MUT_REF | OpCode::STORE_MUT_REF => (4, none),
+        OpCode::CONST_I32
+        | OpCode::CONST_F32
+        | OpCode::JMP_FAR
+        | OpCode::JMP_L
+        | OpCode::CALL
+        | OpCode::LOAD_REF
+        | OpCode::STORE_REF
+        | OpCode::LOAD_MUT_REF
+        | OpCode::STORE_MUT_REF => (4, none),
         OpCode::CONST_I64 | OpCode::CONST_U64 | OpCode::CONST_F64 => (8, none),
         OpCode::SPAWN | OpCode::CREATE_GENERATOR => (5, none),
         OpCode::SLEEP | OpCode::JOIN | OpCode::SEND => (4, none),
@@ -1177,7 +1324,11 @@ pub(crate) fn operand_span_with_pool_indices(
         }
         // 变长:count 字节 + count 个 tag
         OpCode::BUILD_FSTR => {
-            let parts = if pos < code.len() { code[pos] as usize } else { 0 };
+            let parts = if pos < code.len() {
+                code[pos] as usize
+            } else {
+                0
+            };
             (1 + parts, none)
         }
         // u16 len + len 字节
@@ -1213,8 +1364,10 @@ pub(crate) fn remap_string_indices(code: &mut Vec<u8>, remap: &[u32]) {
         if let OpCode::CONST_I32 = op {
             if operand_pos + 4 <= code.len() {
                 last_const_i32 = i32::from_le_bytes([
-                    code[operand_pos], code[operand_pos + 1],
-                    code[operand_pos + 2], code[operand_pos + 3],
+                    code[operand_pos],
+                    code[operand_pos + 1],
+                    code[operand_pos + 2],
+                    code[operand_pos + 3],
                 ]);
             }
         }
@@ -1225,7 +1378,10 @@ pub(crate) fn remap_string_indices(code: &mut Vec<u8>, remap: &[u32]) {
                 let pos = operand_pos + off;
                 if pos + 4 <= code.len() {
                     let raw = u32::from_le_bytes([
-                        code[pos], code[pos + 1], code[pos + 2], code[pos + 3],
+                        code[pos],
+                        code[pos + 1],
+                        code[pos + 2],
+                        code[pos + 3],
                     ]);
                     // 0xFFFF "无 id" 哨兵不重映射(PUSH_ACCUM/CREATE_NODE
                     // 的可选 id 位;吸收自 417-followup 的 apply_u32_opt)。
@@ -1275,8 +1431,10 @@ pub(crate) fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u32]) {
         if let OpCode::CONST_I32 = op {
             if operand_pos + 4 <= code.len() {
                 last_const_i32 = i32::from_le_bytes([
-                    code[operand_pos], code[operand_pos + 1],
-                    code[operand_pos + 2], code[operand_pos + 3],
+                    code[operand_pos],
+                    code[operand_pos + 1],
+                    code[operand_pos + 2],
+                    code[operand_pos + 3],
                 ]);
             }
         }
@@ -1287,7 +1445,10 @@ pub(crate) fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u32]) {
                 let pos = operand_pos + off;
                 if pos + 4 <= code.len() {
                     let old = u32::from_le_bytes([
-                        code[pos], code[pos + 1], code[pos + 2], code[pos + 3],
+                        code[pos],
+                        code[pos + 1],
+                        code[pos + 2],
+                        code[pos + 3],
                     ]) as usize;
                     if old < obj_remap.len() {
                         let bytes = obj_remap[old].to_le_bytes();
@@ -1311,7 +1472,12 @@ async fn execute_autovm_with_path(
     code: &str,
     capture: bool,
     path: Option<&str>,
-) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>, crate::vm::disasm::BytecodeMeta)> {
+) -> AutoResult<(
+    String,
+    String,
+    Vec<crate::vm::disasm::DisasmLine>,
+    crate::vm::disasm::BytecodeMeta,
+)> {
     execute_autovm_with_deadline(code, capture, path, None).await
 }
 
@@ -1324,7 +1490,12 @@ async fn execute_autovm_with_deadline(
     capture: bool,
     path: Option<&str>,
     deadline: Option<std::time::Instant>,
-) -> AutoResult<(String, String, Vec<crate::vm::disasm::DisasmLine>, crate::vm::disasm::BytecodeMeta)> {
+) -> AutoResult<(
+    String,
+    String,
+    Vec<crate::vm::disasm::DisasmLine>,
+    crate::vm::disasm::BytecodeMeta,
+)> {
     // Plan 560 T03: 脚本模式管线激活——`.as` 源经 s2s lowering（糖→桥，
     // W2 规则表自 T05 起逐条入住）后走正常编译管线；`#[rust]` 行首
     // pragma 预检保留原源（显式压回，555 八格矩阵的压回通道）。
@@ -1341,8 +1512,8 @@ async fn execute_autovm_with_deadline(
     };
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
-    use crate::vm::opcode::OpCode;
     use crate::vm::loader::Linker;
+    use crate::vm::opcode::OpCode;
     use crate::vm::virt_memory::VirtualFlash;
 
     // Plan 442 C2: axum serve adapter — fresh process-global state for this
@@ -1430,8 +1601,12 @@ async fn execute_autovm_with_deadline(
         let null_signal = parser.saw_bare_null;
         if py_signal || null_signal {
             let mut signals = Vec::new();
-            if py_signal { signals.push("use.py"); }
-            if null_signal { signals.push("null/nil 字面量"); }
+            if py_signal {
+                signals.push("use.py");
+            }
+            if null_signal {
+                signals.push("null/nil 字面量");
+            }
             return Err(format!(
                 "auto_gate_E5501: 正常模式 .at 含脚本内容信号（{}）——                 改名为 .as 或标注 #[script]（#[rust] 可压回）；                 参见脚本模式设计 script-mode-interop.md §2",
                 signals.join(" + ")
@@ -1479,14 +1654,17 @@ async fn execute_autovm_with_deadline(
     // 链接失败。Ext 归入 other_stmts 按源序编码（use 在文件头自然先行）；
     // TypeDecl 仍最前（ext 方法依赖类型已注册）。
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
-        matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::EnumDecl(_))
+        matches!(
+            stmt,
+            crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::EnumDecl(_)
+        )
     });
     // PLAN-093 (G-7) 修正：Use 先于 TypeDecl 编码——解析器把 ext 合并进
     // `type X`，合并方法随 TypeDecl pass 编码；use 在 other_stmts 里会更晚
     // 处理，方法体 import_scope 恒空 → 裸名 reloc 链接失败（fixture 实证）。
-    let (uses, other_stmts): (Vec<_>, Vec<_>) = other_stmts.into_iter().partition(|stmt| {
-        matches!(stmt, crate::ast::Stmt::Use(_))
-    });
+    let (uses, other_stmts): (Vec<_>, Vec<_>) = other_stmts
+        .into_iter()
+        .partition(|stmt| matches!(stmt, crate::ast::Stmt::Use(_)));
     for stmt in &uses {
         codegen.compile_stmt(stmt)?;
     }
@@ -1520,9 +1698,9 @@ async fn execute_autovm_with_deadline(
         // wrapper's locals, so module-level vars must be globals. In normal
         // scripts (no #[api]), top-level vars stay as script-wrapper locals
         // (the existing behavior, which many tests rely on).
-        let has_api_routes = other_stmts.iter().any(|s| {
-            matches!(s, crate::ast::Stmt::Fn(fd) if fd.api_attrs.is_some())
-        });
+        let has_api_routes = other_stmts
+            .iter()
+            .any(|s| matches!(s, crate::ast::Stmt::Fn(fd) if fd.api_attrs.is_some()));
         if has_api_routes {
             for stmt in other_stmts.iter() {
                 if let crate::ast::Stmt::Store(store) = stmt {
@@ -1537,7 +1715,12 @@ async fn execute_autovm_with_deadline(
         // Run-mode bytecode carries source line info for linking, matching
         // the debug path (create_vm_from_source).
         for (i, stmt) in ast.stmts.iter().enumerate() {
-            if matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_)) {
+            if matches!(
+                stmt,
+                crate::ast::Stmt::TypeDecl(_)
+                    | crate::ast::Stmt::Ext(_)
+                    | crate::ast::Stmt::EnumDecl(_)
+            ) {
                 continue;
             }
             if i < ast.source_lines.len() {
@@ -1566,10 +1749,7 @@ async fn execute_autovm_with_deadline(
     let mut linker = Linker::new();
     let mut dep_modules = session.take_compiled_modules();
     // Plan 345: capture dependency module names (for __module_init lookup).
-    let dep_module_names: Vec<String> = dep_modules.iter()
-        .map(|m| m.name.clone())
-        .collect();
-
+    let dep_module_names: Vec<String> = dep_modules.iter().map(|m| m.name.clone()).collect();
 
     // and remap string indices in their bytecode. Without this, LOAD_STR /
     // STORE_GLOBAL / LOAD_GLOBAL instructions in dep modules reference wrong
@@ -1661,10 +1841,15 @@ async fn execute_autovm_with_deadline(
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
-    session.assembly_references.extend(codegen.assembly_references.iter().cloned());
+    session
+        .assembly_references
+        .extend(codegen.assembly_references.iter().cloned());
     session.freeze_assembly_manifest("vm-batch", std::path::Path::new("<main>"), code.as_ref())?;
     let main_module = codegen.finish("<main>".to_string());
-    vm_debug!("DEBUG: Main module exports: {:?}", main_module.exports.keys().collect::<Vec<_>>());
+    vm_debug!(
+        "DEBUG: Main module exports: {:?}",
+        main_module.exports.keys().collect::<Vec<_>>()
+    );
     linker.add_entry_module(main_module);
 
     let (linked_code, global_symbols) = linker.link().map_err(|e| {
@@ -1674,9 +1859,13 @@ async fn execute_autovm_with_deadline(
             find_use_symbol_span(code, &e.message)
         };
         let help = if e.source_pos.is_some() {
-            Some(format!("Use a `use` statement to import '{}' from a module, or check for typos", e.symbol))
+            Some(format!(
+                "Use a `use` statement to import '{}' from a module, or check for typos",
+                e.symbol
+            ))
         } else {
-            extract_undefined_symbol(&e.message).map(|s| format!("Check if '{}' is defined and exported in the module", s))
+            extract_undefined_symbol(&e.message)
+                .map(|s| format!("Check if '{}' is defined and exported in the module", s))
         };
         crate::error::AutoError::MsgWithSource(crate::error::MsgWithSource {
             source: miette::NamedSource::new("<script>", code.to_string()),
@@ -1688,12 +1877,18 @@ async fn execute_autovm_with_deadline(
 
     // Use global_symbols to find main's absolute address in linked code
     // (main module is laid out after all dependency modules, so its offset is adjusted)
-    let main_entry = if let Some(&addr) = global_symbols.get("main").or_else(|| global_symbols.get("test")) {
+    let main_entry = if let Some(&addr) = global_symbols
+        .get("main")
+        .or_else(|| global_symbols.get("test"))
+    {
         addr as usize
     } else {
         // No main/test function — start from beginning of main module's code
         // (which is after all dependency modules)
-        let dep_size: usize = linker.modules.iter().take(linker.modules.len() - 1)
+        let dep_size: usize = linker
+            .modules
+            .iter()
+            .take(linker.modules.len() - 1)
             .map(|m| m.code.len())
             .sum();
         dep_size
@@ -1716,10 +1911,13 @@ async fn execute_autovm_with_deadline(
         offsets
     };
     // dep modules are all except the last (main) module.
-    let module_init_addrs: Vec<(String, usize)> = dep_module_names.iter()
+    let module_init_addrs: Vec<(String, usize)> = dep_module_names
+        .iter()
         .enumerate()
         .filter_map(|(i, name)| {
-            module_offsets.get(i).map(|&offset| (name.clone(), offset as usize))
+            module_offsets
+                .get(i)
+                .map(|&offset| (name.clone(), offset as usize))
         })
         .collect();
 
@@ -1744,7 +1942,7 @@ async fn execute_autovm_with_deadline(
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
     vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
-    // Plan 312: Register #[api] routes for HTTP server dispatch
+                                                          // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     // Capture disassembly before execution mutates runtime state.
@@ -1753,13 +1951,12 @@ async fn execute_autovm_with_deadline(
         disasm.disassemble_range(0, vm.flash.memory.len())
     };
 
-    // Register standard native shims (fs, str, process, etc.)
-    {
-        let mut ni = crate::vm::native::NativeInterface::new();
-        ni.register_std_shims();
-        crate::vm::ffi::stdlib::register_stdlib_ffi(&mut ni);
-        vm.merge_native_interface(&ni);
-    }
+    // PLAN-738 生产合同：标准 shims/stdlib FFI/inventory override 已由
+    // `AutoVM::new` 内的 `NativeInterface::production()` + CFFI merge 完成
+    // （R2 收口）。此处不再重注册——`register_stdlib_ffi` 的无契约重注册
+    // 会按 merge 撤销语义覆盖 production() 声明的核心契约（cb_web_mime
+    // 实证：http.get #2230 契约被本块撤销 → SIGNATURE_UNVERIFIED 假红）。
+    // rebase 组合恢复的 master 旧块于 merge 修复轮移除。
 
     // Plan 212b Task 4: Merge Rust FFI native interface into VM
     if let Some(rust_ni) = rust_ffi_native_interface {
@@ -1845,11 +2042,11 @@ async fn execute_autovm_with_deadline(
                 routes.len(), addr, svc.profile.as_str(), svc.effective_config_hash()
             );
             crate::http_service_config::set_service_policy_active();
-            let runtime = std::sync::Arc::new(
-                crate::http_service_config::ServiceRuntime::new(svc),
-            );
-            let transport = crate::vm::ffi::http_transport::TransportConfig::from_service_runtime(runtime);
-            crate::vm::ffi::http_server::serve_async_with(std::rc::Rc::new(vm), &addr, transport).await;
+            let runtime = std::sync::Arc::new(crate::http_service_config::ServiceRuntime::new(svc));
+            let transport =
+                crate::vm::ffi::http_transport::TransportConfig::from_service_runtime(runtime);
+            crate::vm::ffi::http_server::serve_async_with(std::rc::Rc::new(vm), &addr, transport)
+                .await;
             if let Some(fatal) = crate::vm::ffi::http_server::serve_fatal_snapshot() {
                 // peek 不消费：外层 serve 入口 join 后 take 收割同一条诊断。
                 crate::http_service_observability::emit_event(serde_json::json!({
@@ -1864,7 +2061,11 @@ async fn execute_autovm_with_deadline(
         }
         let port = std::env::var("AUTO_HTTP_PORT").unwrap_or_else(|_| "8080".to_string());
         let addr = format!("0.0.0.0:{}", port);
-        eprintln!("[HTTP] Auto-starting server with {} route(s) on {}", routes.len(), addr);
+        eprintln!(
+            "[HTTP] Auto-starting server with {} route(s) on {}",
+            routes.len(),
+            addr
+        );
 
         crate::vm::ffi::http_server::serve_async(std::rc::Rc::new(vm), &addr).await;
     }
@@ -1877,8 +2078,8 @@ async fn execute_autovm_with_deadline(
 pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
-    use crate::vm::opcode::OpCode;
     use crate::vm::loader::Linker;
+    use crate::vm::opcode::OpCode;
     use crate::vm::virt_memory::VirtualFlash;
     use std::time::Instant;
 
@@ -1918,7 +2119,12 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
         codegen.vm_fn_names.insert(name.clone());
     }
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
-        matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
+        matches!(
+            stmt,
+            crate::ast::Stmt::TypeDecl(_)
+                | crate::ast::Stmt::Ext(_)
+                | crate::ast::Stmt::EnumDecl(_)
+        )
     });
 
     for stmt in &type_decls {
@@ -1952,14 +2158,16 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
-    session.assembly_references.extend(codegen.assembly_references.iter().cloned());
+    session
+        .assembly_references
+        .extend(codegen.assembly_references.iter().cloned());
     session.freeze_assembly_manifest("vm-batch", std::path::Path::new("<main>"), code.as_ref())?;
     let main_module = codegen.finish("<main>".to_string());
     linker.add_entry_module(main_module);
 
-    let (linked_code, global_symbols) = linker.link().map_err(|e| {
-        crate::error::AutoError::Msg(e.message.clone())
-    })?;
+    let (linked_code, global_symbols) = linker
+        .link()
+        .map_err(|e| crate::error::AutoError::Msg(e.message.clone()))?;
 
     // Create VM with capture
     let flash = VirtualFlash::from_vec_with_metadata(
@@ -1972,7 +2180,7 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
     vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
-    // Plan 312: Register #[api] routes for HTTP server dispatch
+                                                          // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     if let Some(rust_ni) = rust_ffi_native_interface {
@@ -2107,7 +2315,9 @@ pub fn run_vm_file_test(case: &test_runner::FileTestCase) -> test_runner::FileTe
             None => {
                 return test_runner::FileTestReport {
                     name: case_name,
-                    outcome: test_runner::TestOutcome::Failed("cannot find project root for bootstrap test".into()),
+                    outcome: test_runner::TestOutcome::Failed(
+                        "cannot find project root for bootstrap test".into(),
+                    ),
                     duration_ms: start.elapsed().as_millis(),
                     stdout: String::new(),
                 };
@@ -2118,7 +2328,10 @@ pub fn run_vm_file_test(case: &test_runner::FileTestCase) -> test_runner::FileTe
             Err(e) => {
                 return test_runner::FileTestReport {
                     name: case_name,
-                    outcome: test_runner::TestOutcome::Failed(format!("failed to read auto lib: {}", e)),
+                    outcome: test_runner::TestOutcome::Failed(format!(
+                        "failed to read auto lib: {}",
+                        e
+                    )),
                     duration_ms: start.elapsed().as_millis(),
                     stdout: String::new(),
                 };
@@ -2141,7 +2354,10 @@ pub fn run_vm_file_test(case: &test_runner::FileTestCase) -> test_runner::FileTe
             },
             Ok(v) => test_runner::FileTestReport {
                 name: case_name,
-                outcome: test_runner::TestOutcome::Failed(format!("expected error but got: {:?}", v)),
+                outcome: test_runner::TestOutcome::Failed(format!(
+                    "expected error but got: {:?}",
+                    v
+                )),
                 duration_ms,
                 stdout: String::new(),
             },
@@ -2173,7 +2389,10 @@ pub fn run_vm_file_test(case: &test_runner::FileTestCase) -> test_runner::FileTe
             Err(e) => {
                 return test_runner::FileTestReport {
                     name: case_name,
-                    outcome: test_runner::TestOutcome::Failed(format!("failed to read expected.out: {}", e)),
+                    outcome: test_runner::TestOutcome::Failed(format!(
+                        "failed to read expected.out: {}",
+                        e
+                    )),
                     duration_ms,
                     stdout: stdout.clone(),
                 };
@@ -2198,7 +2417,10 @@ pub fn run_vm_file_test(case: &test_runner::FileTestCase) -> test_runner::FileTe
             Err(e) => {
                 return test_runner::FileTestReport {
                     name: case_name,
-                    outcome: test_runner::TestOutcome::Failed(format!("failed to read expected.result: {}", e)),
+                    outcome: test_runner::TestOutcome::Failed(format!(
+                        "failed to read expected.result: {}",
+                        e
+                    )),
                     duration_ms,
                     stdout: stdout.clone(),
                 };
@@ -2233,7 +2455,8 @@ pub fn run_a2r_file_test(case: &test_runner::A2rTestCase) -> test_runner::FileTe
     let case_name = case.name.clone();
 
     // Extract stem from source file name for transpile_rust
-    let stem = case.source_file
+    let stem = case
+        .source_file
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("test");
@@ -2254,7 +2477,9 @@ pub fn run_a2r_file_test(case: &test_runner::A2rTestCase) -> test_runner::FileTe
     // Transpile
     // Plan 610 ⑥: relative use.c JSON manifests resolve against the case dir.
     let actual = match crate::trans::rust::transpile_rust_with_source_dir(
-        case.source_file.parent().unwrap_or(std::path::Path::new(".")),
+        case.source_file
+            .parent()
+            .unwrap_or(std::path::Path::new(".")),
         stem,
         &src,
     ) {
@@ -2263,7 +2488,10 @@ pub fn run_a2r_file_test(case: &test_runner::A2rTestCase) -> test_runner::FileTe
             Err(e) => {
                 return test_runner::FileTestReport {
                     name: case_name,
-                    outcome: test_runner::TestOutcome::Failed(format!("transpiler finalize error: {}", e)),
+                    outcome: test_runner::TestOutcome::Failed(format!(
+                        "transpiler finalize error: {}",
+                        e
+                    )),
                     duration_ms: start.elapsed().as_millis(),
                     stdout: String::new(),
                 };
@@ -2285,7 +2513,10 @@ pub fn run_a2r_file_test(case: &test_runner::A2rTestCase) -> test_runner::FileTe
         Err(e) => {
             return test_runner::FileTestReport {
                 name: case_name,
-                outcome: test_runner::TestOutcome::Failed(format!("failed to read expected.rs: {}", e)),
+                outcome: test_runner::TestOutcome::Failed(format!(
+                    "failed to read expected.rs: {}",
+                    e
+                )),
                 duration_ms: start.elapsed().as_millis(),
                 stdout: String::new(),
             };
@@ -2321,7 +2552,8 @@ pub fn run_a2c_file_test(case: &test_runner::A2cTestCase) -> test_runner::FileTe
     let start = Instant::now();
     let case_name = case.name.clone();
 
-    let stem = case.source_file
+    let stem = case
+        .source_file
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("test");
@@ -2352,7 +2584,9 @@ pub fn run_a2c_file_test(case: &test_runner::A2cTestCase) -> test_runner::FileTe
             },
             Ok(_) => test_runner::FileTestReport {
                 name: case_name,
-                outcome: test_runner::TestOutcome::Failed("expected error but transpilation succeeded".into()),
+                outcome: test_runner::TestOutcome::Failed(
+                    "expected error but transpilation succeeded".into(),
+                ),
                 duration_ms,
                 stdout: String::new(),
             },
@@ -2377,7 +2611,10 @@ pub fn run_a2c_file_test(case: &test_runner::A2cTestCase) -> test_runner::FileTe
         Err(e) => {
             return test_runner::FileTestReport {
                 name: case_name,
-                outcome: test_runner::TestOutcome::Failed(format!("transpiler finalize error: {}", e)),
+                outcome: test_runner::TestOutcome::Failed(format!(
+                    "transpiler finalize error: {}",
+                    e
+                )),
                 duration_ms: start.elapsed().as_millis(),
                 stdout: String::new(),
             };
@@ -2429,7 +2666,8 @@ pub fn run_a2ts_file_test(case: &test_runner::A2tsTestCase) -> test_runner::File
     let start = Instant::now();
     let case_name = case.name.clone();
 
-    let stem = case.source_file
+    let stem = case
+        .source_file
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("test");
@@ -2470,7 +2708,10 @@ pub fn run_a2ts_file_test(case: &test_runner::A2tsTestCase) -> test_runner::File
             Err(e) => {
                 return test_runner::FileTestReport {
                     name: case_name,
-                    outcome: test_runner::TestOutcome::Failed(format!("sink finalize error: {}", e)),
+                    outcome: test_runner::TestOutcome::Failed(format!(
+                        "sink finalize error: {}",
+                        e
+                    )),
                     duration_ms: start.elapsed().as_millis(),
                     stdout: String::new(),
                 };
@@ -2492,7 +2733,10 @@ pub fn run_a2ts_file_test(case: &test_runner::A2tsTestCase) -> test_runner::File
         Err(e) => {
             return test_runner::FileTestReport {
                 name: case_name,
-                outcome: test_runner::TestOutcome::Failed(format!("failed to read expected.ts: {}", e)),
+                outcome: test_runner::TestOutcome::Failed(format!(
+                    "failed to read expected.ts: {}",
+                    e
+                )),
                 duration_ms: start.elapsed().as_millis(),
                 stdout: String::new(),
             };
@@ -2522,13 +2766,21 @@ pub fn run_a2ts_file_test(case: &test_runner::A2tsTestCase) -> test_runner::File
 
 /// Extract and format the result value from a VM task after execution.
 /// Plan 225: Shared between execute_autovm and debug sessions.
-pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64, result_type: Option<crate::vm::codegen::ObjectType>) -> AutoResult<String> {
+pub async fn extract_autovm_result(
+    vm: &crate::vm::engine::AutoVM,
+    task_id: u64,
+    result_type: Option<crate::vm::codegen::ObjectType>,
+) -> AutoResult<String> {
     use crate::vm::codegen::ObjectType;
     use crate::vm::task::ResultType;
 
-    let task_arc = vm.tasks.get(&task_id)
+    let task_arc = vm
+        .tasks
+        .get(&task_id)
         .map(|r| r.value().clone())
-        .ok_or_else(|| crate::error::AutoError::Msg("Task not found after execution".to_string()))?;
+        .ok_or_else(|| {
+            crate::error::AutoError::Msg("Task not found after execution".to_string())
+        })?;
     let mut task = task_arc.lock().await;
 
     // Check if task had an error
@@ -2553,18 +2805,18 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
     let result = match task.last_result_type {
         ResultType::Float if top_is_f32 || top2_is_f64 => {
             {
-            // f64 may be on stack (2 slots) even when last_result_type is Float.
-            // This happens when FFI returns f64 but codegen marked the expression as Float.
-            // Format as f32 to match expected behavior (which truncates via pop_f32).
-            if top2_is_f64 {
-                let nv = task.ram.raw_nv[task.ram.sp - 2];
-                task.ram.sp -= 2;
-                let result = f64::from_bits(nv) as f32;
-                format!("{}", result)
-            } else {
-                let result = task.ram.pop_f32();
-                format!("{}", result)
-            }
+                // f64 may be on stack (2 slots) even when last_result_type is Float.
+                // This happens when FFI returns f64 but codegen marked the expression as Float.
+                // Format as f32 to match expected behavior (which truncates via pop_f32).
+                if top2_is_f64 {
+                    let nv = task.ram.raw_nv[task.ram.sp - 2];
+                    task.ram.sp -= 2;
+                    let result = f64::from_bits(nv) as f32;
+                    format!("{}", result)
+                } else {
+                    let result = task.ram.pop_f32();
+                    format!("{}", result)
+                }
             }
         }
         _ => {
@@ -2572,28 +2824,28 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
             match result_type {
                 Some(ObjectType::Float) | Some(ObjectType::Double) => {
                     {
-                    // f64 occupies 2 slots (value at sp-2, marker at sp-1).
-                    // Check sp-2 for f64 bits first, then sp-1 for f32.
-                    if task.ram.sp >= 2 {
-                        let nv = task.ram.raw_nv[task.ram.sp - 2];
-                        if auto_val::is_f64(nv) {
-                            task.ram.sp -= 2; // consume both slots
-                            let result = f64::from_bits(nv);
-                            format!("{}", result)
+                        // f64 occupies 2 slots (value at sp-2, marker at sp-1).
+                        // Check sp-2 for f64 bits first, then sp-1 for f32.
+                        if task.ram.sp >= 2 {
+                            let nv = task.ram.raw_nv[task.ram.sp - 2];
+                            if auto_val::is_f64(nv) {
+                                task.ram.sp -= 2; // consume both slots
+                                let result = f64::from_bits(nv);
+                                format!("{}", result)
+                            } else {
+                                let result = task.ram.pop_i32();
+                                format!("{}", result)
+                            }
                         } else {
-                            let result = task.ram.pop_i32();
-                            format!("{}", result)
+                            let nv = task.ram.raw_nv[task.ram.sp - 1];
+                            if auto_val::is_f32(nv) {
+                                let result = task.ram.pop_f32();
+                                format!("{}", result)
+                            } else {
+                                let result = task.ram.pop_i32();
+                                format!("{}", result)
+                            }
                         }
-                    } else {
-                        let nv = task.ram.raw_nv[task.ram.sp - 1];
-                        if auto_val::is_f32(nv) {
-                            let result = task.ram.pop_f32();
-                            format!("{}", result)
-                        } else {
-                            let result = task.ram.pop_i32();
-                            format!("{}", result)
-                        }
-                    }
                     }
                 }
                 Some(ObjectType::Byte) => {
@@ -2614,7 +2866,11 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
                 }
                 Some(ObjectType::Bool) => {
                     let result = task.ram.pop_i32();
-                    if result != 0 { "true".to_string() } else { "false".to_string() }
+                    if result != 0 {
+                        "true".to_string()
+                    } else {
+                        "false".to_string()
+                    }
                 }
                 Some(ObjectType::Void) => {
                     let _ = task.ram.pop_i32();
@@ -2629,42 +2885,73 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
                     // Plan 390 §15 H3b)
                     if let Some(obj_arc) = vm.heap_objects.get(&result_u64) {
                         let obj = obj_arc.read().unwrap();
-                        if let Some(list) = obj.as_any().downcast_ref::<crate::vm::types::ListData<i32>>() {
-                            let formatted: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
+                        if let Some(list) = obj
+                            .as_any()
+                            .downcast_ref::<crate::vm::types::ListData<i32>>()
+                        {
+                            let formatted: Vec<String> =
+                                list.elems.iter().map(|e| e.to_string()).collect();
                             format!("[{}]", formatted.join(", "))
-                        } else if let Some(list) = obj.as_any().downcast_ref::<crate::vm::types::ListData<auto_val::Value>>() {
+                        } else if let Some(list) = obj
+                            .as_any()
+                            .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                        {
                             let strings = vm.strings.read().unwrap();
-                            let formatted: Vec<String> = list.elems.iter().map(|v| {
-                                if let auto_val::Value::Int(bits) = v {
-                                    if *bits < 0 && *bits > -1000000 && *bits != -2147483648 && *bits != -2147483647 {
-                                        let str_idx = (-bits - 1) as usize;
-                                        if let Some(bytes) = strings.get(str_idx) {
-                                            return format!("\"{}\"", String::from_utf8_lossy(bytes));
+                            let formatted: Vec<String> = list
+                                .elems
+                                .iter()
+                                .map(|v| {
+                                    if let auto_val::Value::Int(bits) = v {
+                                        if *bits < 0
+                                            && *bits > -1000000
+                                            && *bits != -2147483648
+                                            && *bits != -2147483647
+                                        {
+                                            let str_idx = (-bits - 1) as usize;
+                                            if let Some(bytes) = strings.get(str_idx) {
+                                                return format!(
+                                                    "\"{}\"",
+                                                    String::from_utf8_lossy(bytes)
+                                                );
+                                            }
                                         }
                                     }
-                                }
-                                v.repr().to_string()
-                            }).collect();
+                                    v.repr().to_string()
+                                })
+                                .collect();
                             format!("[{}]", formatted.join(", "))
-                        } else if let Some(sb) = obj.as_any().downcast_ref::<crate::vm::collections::SpecializedStringBuilder>() {
+                        } else if let Some(sb) =
+                            obj.as_any()
+                                .downcast_ref::<crate::vm::collections::SpecializedStringBuilder>()
+                        {
                             sb.buffer.clone()
-                        } else if let Some(od) = obj.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                        } else if let Some(od) =
+                            obj.as_any().downcast_ref::<crate::vm::types::ObjectData>()
+                        {
                             // Plan 390 §15 H3b: obj literals are ObjectData in
                             // heap_objects.
-                            let mut fields: Vec<(&auto_val::ValueKey, &Value)> = od.fields.iter().collect();
+                            let mut fields: Vec<(&auto_val::ValueKey, &Value)> =
+                                od.fields.iter().collect();
                             fields.sort_by(|(k1, _), (k2, _)| k1.to_string().cmp(&k2.to_string()));
-                            let formatted: Vec<String> = fields.iter().map(|(k, v)| {
-                                let key_str = k.to_string();
-                                let val_str = format_value_for_display(vm, v);
-                                format!("{}: {}", key_str, val_str)
-                            }).collect();
+                            let formatted: Vec<String> = fields
+                                .iter()
+                                .map(|(k, v)| {
+                                    let key_str = k.to_string();
+                                    let val_str = format_value_for_display(vm, v);
+                                    format!("{}: {}", key_str, val_str)
+                                })
+                                .collect();
                             format!("{{{}}}", formatted.join(", "))
                         } else {
                             format!("{}", result)
                         }
                     }
                     // Check strings pool
-                    else if result < 0 && result > -1000000 && result != -2147483648 && result != -2147483647 {
+                    else if result < 0
+                        && result > -1000000
+                        && result != -2147483648
+                        && result != -2147483647
+                    {
                         let str_idx = (-result - 1) as usize;
                         let strings = vm.strings.read().unwrap();
                         if let Some(bytes) = strings.get(str_idx) {
@@ -2692,8 +2979,7 @@ pub async fn extract_autovm_result(vm: &crate::vm::engine::AutoVM, task_id: u64,
                         } else {
                             format!("{}", result)
                         }
-                    }
-                    else {
+                    } else {
                         format!("{}", result)
                     }
                 }
@@ -2778,7 +3064,6 @@ pub fn run_with_session(session: &mut CompileSession, code: &str) -> AutoResult<
 pub fn run_with_session_and_scope(
     session: &mut CompileSession,
     // _scope: Shared<Universe>,  // Plan 091: removed
-
     code: &str,
 ) -> AutoResult<String> {
     // Plan 091: Use AutoVM instead of deprecated Interpreter
@@ -2914,7 +3199,9 @@ fn pac_workspace_member_dir(content: &str, dep_name: &str) -> Option<String> {
 fn pac_dep_version_violation(content: &str, dep_name: &str) -> Option<String> {
     const VERSION_KEYS: [&str; 6] = ["version", "pin", "rev", "tag", "branch", "commit"];
     for form in [format!("dep \"{dep_name}\""), format!("dep {dep_name}")] {
-        let Some(pos) = content.find(&form) else { continue };
+        let Some(pos) = content.find(&form) else {
+            continue;
+        };
         // Same name-boundary discipline as pac_declares_dep: the matched name
         // must end at a non-identifier char (`bpsx` must not hit `dep bps`).
         let after = content[pos + form.len()..].chars().next();
@@ -2922,13 +3209,19 @@ fn pac_dep_version_violation(content: &str, dep_name: &str) -> Option<String> {
             continue;
         }
         // Scan only this declaration's `{ ... }` block.
-        let Some(brace) = content[pos..].find('{') else { continue };
+        let Some(brace) = content[pos..].find('{') else {
+            continue;
+        };
         let brace = pos + brace;
-        let Some(block_len) = content[brace..].find('}') else { continue };
+        let Some(block_len) = content[brace..].find('}') else {
+            continue;
+        };
         let block = &content[brace..brace + block_len];
         for key in VERSION_KEYS {
             for prefix in [format!("{key}:"), format!("{key} =")] {
-                let Some(kpos) = block.find(&prefix) else { continue };
+                let Some(kpos) = block.find(&prefix) else {
+                    continue;
+                };
                 // Word-start check so `rev:` doesn't hit `prev:`.
                 let before = block[..kpos].chars().last();
                 if !before.is_some_and(|c| c.is_alphanumeric() || c == '_') {
@@ -2979,10 +3272,7 @@ fn module_path_candidates(rel: &str) -> Vec<String> {
     out
 }
 
-fn resolve_module_path(
-    base_dir: &std::path::Path,
-    module: &str,
-) -> Option<std::path::PathBuf> {
+fn resolve_module_path(base_dir: &std::path::Path, module: &str) -> Option<std::path::PathBuf> {
     // Plan 061:外部后端链接 —— `back.X` 优先映射到后端项目根
     // (`back.api` → `<root>/api.at`,`back.shell` → `<root>/shell.at`;
     // mod.at 形态同样支持)。未配置或不命中则回落常规解析(本地 back/)。
@@ -3072,9 +3362,19 @@ fn resolve_module_path(
             // src/flat) is preserved within each candidate form.
             for cand in module_path_candidates(&sub_rel) {
                 let candidates = [
-                    pkg_root.join("src").join("front").join(format!("{}.at", cand)),
-                    pkg_root.join("src").join("front").join(&cand).join("mod.at"),
-                    pkg_root.join("src").join("back").join(format!("{}.at", cand)),
+                    pkg_root
+                        .join("src")
+                        .join("front")
+                        .join(format!("{}.at", cand)),
+                    pkg_root
+                        .join("src")
+                        .join("front")
+                        .join(&cand)
+                        .join("mod.at"),
+                    pkg_root
+                        .join("src")
+                        .join("back")
+                        .join(format!("{}.at", cand)),
                     pkg_root.join("src").join("back").join(&cand).join("mod.at"),
                     pkg_root.join("src").join(format!("{}.at", cand)),
                     pkg_root.join("src").join(&cand).join("mod.at"),
@@ -3146,11 +3446,19 @@ fn resolve_module_path(
         // pac.at 中的本地 path 依赖（dep "<name>" { path: ... } 声明形态，
         // 天然过门控）。
         if let Some(content) = &pac_content {
-            if let Some(pos) = content.find(&format!("dep \"{}\"", dep_name)).or_else(|| content.find(&format!("dep {}", dep_name))) {
+            if let Some(pos) = content
+                .find(&format!("dep \"{}\"", dep_name))
+                .or_else(|| content.find(&format!("dep {}", dep_name)))
+            {
                 let slice = &content[pos..];
                 if let Some(path_pos) = slice.find("path:") {
                     let path_slice = &slice[path_pos + 5..];
-                    let path_line = path_slice.lines().next().unwrap_or("").trim().trim_matches(|c| c == '"' || c == '\'');
+                    let path_line = path_slice
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .trim_matches(|c| c == '"' || c == '\'');
                     if !path_line.is_empty() {
                         let local_dep_dir = d.join(path_line);
                         if local_dep_dir.is_dir() {
@@ -3258,7 +3566,9 @@ pub(crate) fn load_ext_imports_for_vm(
     ext_imports.extend(crate::ui::ext_stubs::collect_widget_ext_imports(
         std::slice::from_ref(root_decl),
     ));
-    ext_imports.extend(crate::ui::ext_stubs::collect_widget_ext_imports(all_child_decls));
+    ext_imports.extend(crate::ui::ext_stubs::collect_widget_ext_imports(
+        all_child_decls,
+    ));
     // Plan 442 B-support: child modules' own top-level `use.web` (e.g.
     // specs_view.at's `use.web spec_next_id from ".../specs_helpers.at"`) —
     // the root-AST walk above misses them; sweep every loaded module file.
@@ -3275,18 +3585,15 @@ pub(crate) fn load_ext_imports_for_vm(
             let session = crate::session::CompilerSession::ui();
             let mut parser = crate::Parser::from(code.as_str()).with_session(session);
             if let Ok(mod_ast) = parser.parse() {
-                ext_imports
-                    .extend(crate::ui::ext_stubs::collect_useweb_imports(&mod_ast.stmts));
+                ext_imports.extend(crate::ui::ext_stubs::collect_useweb_imports(&mod_ast.stmts));
             }
         }
     }
     if ext_imports.is_empty() {
         return Ok(());
     }
-    let (loaded_adapters, nested) = crate::ui::ext_stubs::load_at_ext_imports(
-        base_dir,
-        &ext_imports,
-        &mut |adapter_path| {
+    let (loaded_adapters, nested) =
+        crate::ui::ext_stubs::load_at_ext_imports(base_dir, &ext_imports, &mut |adapter_path| {
             collect_module_imports(
                 adapter_path,
                 visited,
@@ -3295,8 +3602,7 @@ pub(crate) fn load_ext_imports_for_vm(
                 import_session,
                 override_scenario,
             );
-        },
-    );
+        });
     // PLAN-633: 适配器路径上交调用方（传递子 widget 注册用）。
     for (adapter, _) in &loaded_adapters {
         ext_adapter_paths.push(adapter.clone());
@@ -3324,11 +3630,15 @@ pub(crate) fn load_ext_imports_for_vm(
     // 沿"可能是函数/对象/常量"的含糊语义）。
     let mut adapter_fn_names: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (adapter, symbols) in &loaded_adapters {
-        let Ok(code) = std::fs::read_to_string(adapter) else { continue };
+        let Ok(code) = std::fs::read_to_string(adapter) else {
+            continue;
+        };
         let code = crate::back_prefix::apply(adapter, code);
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(code.as_str()).with_session(session);
-        let Ok(adapter_ast) = parser.parse() else { continue };
+        let Ok(adapter_ast) = parser.parse() else {
+            continue;
+        };
         for stmt in &adapter_ast.stmts {
             match stmt {
                 crate::ast::Stmt::WidgetDecl(wd) => {
@@ -3379,11 +3689,15 @@ pub(crate) fn load_ext_imports_for_vm(
             if path.extension().and_then(|e| e.to_str()) != Some("at") {
                 continue;
             }
-            let Ok(code) = std::fs::read_to_string(path) else { continue };
+            let Ok(code) = std::fs::read_to_string(path) else {
+                continue;
+            };
             let code = crate::back_prefix::apply(path, code);
             let session = crate::session::CompilerSession::ui();
             let mut parser = crate::Parser::from(code.as_str()).with_session(session);
-            let Ok(mod_ast) = parser.parse() else { continue };
+            let Ok(mod_ast) = parser.parse() else {
+                continue;
+            };
             let mod_dir = path
                 .parent()
                 .unwrap_or(std::path::Path::new("."))
@@ -3408,19 +3722,27 @@ pub(crate) fn load_ext_imports_for_vm(
                 // `calendar_util.month_name`）→ 求值失败回退 raw `${}`。
                 // or_insert：根环别名（先填）优先。
                 {
-                    let qualifier = use_stmt.module.split('.').last().unwrap_or(&use_stmt.module);
+                    let qualifier = use_stmt
+                        .module
+                        .split('.')
+                        .last()
+                        .unwrap_or(&use_stmt.module);
                     for item in &use_stmt.items {
                         import_aliases
                             .entry(item.clone())
                             .or_insert_with(|| format!("{}.{}", qualifier, item));
                     }
                 }
-                let Ok(module_code) = std::fs::read_to_string(&module_path) else { continue };
+                let Ok(module_code) = std::fs::read_to_string(&module_path) else {
+                    continue;
+                };
                 let module_code = crate::back_prefix::apply(&module_path, module_code);
                 let mod_session = crate::session::CompilerSession::ui();
                 let mut mod_parser =
                     crate::Parser::from(module_code.as_str()).with_session(mod_session);
-                let Ok(target_ast) = mod_parser.parse() else { continue };
+                let Ok(target_ast) = mod_parser.parse() else {
+                    continue;
+                };
                 for stmt in &target_ast.stmts {
                     if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                         if swept.contains(decl.name.as_str()) {
@@ -3467,11 +3789,15 @@ pub(crate) fn load_ext_imports_for_vm(
             if path.extension().and_then(|e| e.to_str()) != Some("at") {
                 continue;
             }
-            let Ok(code) = std::fs::read_to_string(path) else { continue };
+            let Ok(code) = std::fs::read_to_string(path) else {
+                continue;
+            };
             let code = crate::back_prefix::apply(path, code);
             let session = crate::session::CompilerSession::ui();
             let mut parser = crate::Parser::from(code.as_str()).with_session(session);
-            let Ok(mod_ast) = parser.parse() else { continue };
+            let Ok(mod_ast) = parser.parse() else {
+                continue;
+            };
             let mod_dir = path
                 .parent()
                 .unwrap_or(std::path::Path::new("."))
@@ -3488,10 +3814,7 @@ pub(crate) fn load_ext_imports_for_vm(
                     if !seen_pkg_dirs.insert(dir.clone()) {
                         continue;
                     }
-                    let candidates = [
-                        mod_dir.join(&dir),
-                        mod_dir.join("pages").join(&dir),
-                    ];
+                    let candidates = [mod_dir.join(&dir), mod_dir.join("pages").join(&dir)];
                     let mut pkg_reg = crate::ui_gen::widget::ComponentRegistry::new();
                     let first = pkg_reg.load_package(&candidates[0], &mod_dir);
                     let (loaded, loaded_dir, load_err) = match first {
@@ -3538,11 +3861,9 @@ pub(crate) fn load_ext_imports_for_vm(
                                         let qualifier =
                                             us.module.split('.').last().unwrap_or(&us.module);
                                         for item in &us.items {
-                                            import_aliases
-                                                .entry(item.clone())
-                                                .or_insert_with(|| {
-                                                    format!("{}.{}", qualifier, item)
-                                                });
+                                            import_aliases.entry(item.clone()).or_insert_with(
+                                                || format!("{}.{}", qualifier, item),
+                                            );
                                         }
                                     }
                                 }
@@ -3622,9 +3943,7 @@ fn store_name_snake(name: &str) -> String {
 /// StoreDecl → view-less child WidgetDecl（store-as-child：store 与子件
 /// 同构、仅缺视图——统一根态模型并入 + handler 编译进单 VM 都走 child
 /// 通道）。PLAN-632 F1 抽出公共转换体，供 ext 装载后的补转换位使用。
-fn store_decl_as_widget_decl(
-    store_decl: &crate::ast::ui::StoreDecl,
-) -> crate::ast::ui::WidgetDecl {
+fn store_decl_as_widget_decl(store_decl: &crate::ast::ui::StoreDecl) -> crate::ast::ui::WidgetDecl {
     crate::ast::ui::WidgetDecl {
         name: store_decl.name.clone(),
         messages: store_decl.messages.clone(),
@@ -3667,7 +3986,10 @@ pub(crate) fn find_store_decl_files(
     for name in names {
         let snake = store_name_snake(name);
         let mut hit = None;
-        for cand in [format!("{}.at", snake), format!("{}_store.at", snake.trim_end_matches("_store"))] {
+        for cand in [
+            format!("{}.at", snake),
+            format!("{}_store.at", snake.trim_end_matches("_store")),
+        ] {
             let p = base_dir.join(&cand);
             if p.exists() {
                 hit = Some(p);
@@ -3695,7 +4017,9 @@ pub(crate) fn find_store_decl_files(
                     missing: &[&String]| {
         let mut stack = vec![root.to_path_buf()];
         while let Some(dir) = stack.pop() {
-            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
             let mut entries: Vec<_> = entries.flatten().collect();
             entries.sort_by_key(|e| e.file_name());
             for entry in entries {
@@ -3712,7 +4036,9 @@ pub(crate) fn find_store_decl_files(
                     stack.push(path);
                 } else if fname.ends_with(".at") && budget > 0 {
                     budget -= 1;
-                    let Ok(code) = std::fs::read_to_string(&path) else { continue };
+                    let Ok(code) = std::fs::read_to_string(&path) else {
+                        continue;
+                    };
                     let code = crate::back_prefix::apply(&path, code);
                     let session = crate::session::CompilerSession::ui();
                     let mut parser = Parser::from(code.as_str()).with_session(session);
@@ -3776,12 +4102,7 @@ pub fn ui_module_parse_failures() -> &'static std::sync::Mutex<Vec<String>> {
 /// 给出字节偏移。MultipleErrors 递归展开(上限 20 条,与 parser 恢复上限一致)。
 fn positioned_parse_errors(e: &crate::error::AutoError, source: &str) -> String {
     use miette::Diagnostic;
-    fn walk(
-        e: &crate::error::AutoError,
-        source: &str,
-        out: &mut Vec<String>,
-        depth: usize,
-    ) {
+    fn walk(e: &crate::error::AutoError, source: &str, out: &mut Vec<String>, depth: usize) {
         if out.len() >= 20 || depth > 4 {
             return;
         }
@@ -3804,7 +4125,12 @@ fn positioned_parse_errors(e: &crate::error::AutoError, source: &str) -> String 
             if offset <= source.len() {
                 let until = &source[..offset];
                 let line = until.matches('\n').count() + 1;
-                let col = until.rsplit('\n').next().map(|l| l.chars().count()).unwrap_or(0) + 1;
+                let col = until
+                    .rsplit('\n')
+                    .next()
+                    .map(|l| l.chars().count())
+                    .unwrap_or(0)
+                    + 1;
                 line_col = Some((line, col));
             }
         }
@@ -3870,16 +4196,13 @@ fn collect_module_imports(
     } else if module_path.extension().map_or(false, |e| e == "au") {
         // PR-6: .au files default to UI scenario (weak hint, overridable by --scene).
         crate::session::CompilerSession::ui()
-    } else if module_path
-        .components()
-        .any(|c| c.as_os_str() == "back")
-    {
+    } else if module_path.components().any(|c| c.as_os_str() == "back") {
         crate::session::CompilerSession::core()
     } else {
         crate::session::CompilerSession::ui()
     };
-    let mut parser =
-        Parser::new_with_type_store(code.as_str(), session.type_store()).with_session(parser_session);
+    let mut parser = Parser::new_with_type_store(code.as_str(), session.type_store())
+        .with_session(parser_session);
     let ast = match parser.parse() {
         Ok(a) => a,
         Err(e) => {
@@ -3900,7 +4223,11 @@ fn collect_module_imports(
                 module_path.display(),
                 detail
             );
-            log::warn!("collect_module_imports: parse failed for {}: {}", module_path.display(), e);
+            log::warn!(
+                "collect_module_imports: parse failed for {}: {}",
+                module_path.display(),
+                e
+            );
             ui_module_parse_failures().lock().unwrap().push(format!(
                 "{}: {}",
                 module_path.display(),
@@ -3984,9 +4311,7 @@ fn collect_module_imports(
     // 2. Recurse into this module's own `use` dependencies, each resolved
     //    relative to THIS module's directory (so back/api.at's `use db` finds
     //    back/db.at).
-    let module_dir = module_path
-        .parent()
-        .unwrap_or(std::path::Path::new("."));
+    let module_dir = module_path.parent().unwrap_or(std::path::Path::new("."));
     for dep in crate::use_scanner::scan_use_statements(&code) {
         if dep.is_c_import || dep.is_rust_import {
             continue;
@@ -4057,7 +4382,12 @@ fn register_transitive_widgets(
     child_decls: &mut Vec<crate::ast::WidgetDecl>,
 ) {
     // 独立的 visited(不与 collect_module_imports 共享,避免互相跳过模块)。
-    register_transitive_widgets_inner(module_path, registry, child_decls, &mut std::collections::HashSet::new())
+    register_transitive_widgets_inner(
+        module_path,
+        registry,
+        child_decls,
+        &mut std::collections::HashSet::new(),
+    )
 }
 
 #[cfg(feature = "ui-iced")]
@@ -4107,7 +4437,6 @@ fn register_transitive_widgets_inner(
         let mod_session = crate::session::CompilerSession::ui();
         let mut mod_parser = crate::Parser::from(sub_code.as_str()).with_session(mod_session);
         if let Ok(sub_ast) = mod_parser.parse() {
-
             for stmt in &sub_ast.stmts {
                 if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
                     if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
@@ -4125,8 +4454,7 @@ fn register_transitive_widgets_inner(
                         // 被 skip → 组件臂 miss → 画布列空渲染）。registry
                         // 已有者仍跳过（先到优先，显式 use 同名覆写沿 095
                         // 口径由后装载覆盖）。
-                        if registry.get(&child_widget.name).is_none()
-                        {
+                        if registry.get(&child_widget.name).is_none() {
                             // Plan 049:孙组件 handler 也要编译进 VM 模块,
                             // 否则点击其按钮(如 BlockItem.ToggleCollapse)会
                             // HandlerNotFound 静默失败。
@@ -4206,10 +4534,8 @@ fn build_dynamic_component_inner(
         if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
             if root_decl.is_none() {
                 root_decl = Some(decl.clone());
-                widget = Some(
-                    crate::aura::extract_widget_from_decl(decl)
-                        .map_err(|e| e.to_string())?
-                );
+                widget =
+                    Some(crate::aura::extract_widget_from_decl(decl).map_err(|e| e.to_string())?);
             } else {
                 sibling_decls.push(decl.clone());
             }
@@ -4248,8 +4574,7 @@ fn build_dynamic_component_inner(
     // PLAN-095 T-07 (G-11): 同文件兄弟 widget 注册进 registry + child_decls
     //（handler 编入单 VM，与 use 导入子件同面）。
     for decl in &sibling_decls {
-        let aura = crate::aura::extract_widget_from_decl(decl)
-            .map_err(|e| e.to_string())?;
+        let aura = crate::aura::extract_widget_from_decl(decl).map_err(|e| e.to_string())?;
         registry.register(aura);
         child_decls.push(decl.clone());
     }
@@ -4262,7 +4587,8 @@ fn build_dynamic_component_inner(
     // recursive import walk so imported types resolve before each module parse.
     let mut import_session = crate::compile::CompileSession::new();
     // Plan 339 Phase 4: collect use alias mappings (bare name → module-qualified name)
-    let mut import_aliases: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut import_aliases: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     if let Some(file_path) = path {
         let use_stmts = crate::use_scanner::scan_use_statements(code);
         let base_dir = std::path::Path::new(file_path)
@@ -4313,29 +4639,28 @@ fn build_dynamic_component_inner(
             // 其 items 是外域符号，撞名检查无意义且会误报。
             if !is_non_fs_module_use(use_stmt) {
                 for item in &use_stmt.items {
-                let mut owner: Option<String> = None;
-                if let Some(model) = &root_decl.model {
-                    if model.fields.iter().any(|f| f.name.as_str() == item) {
-                        owner = Some(root_decl.name.to_string());
-                    }
-                }
-                if owner.is_none() {
-                    for d in &child_decls {
-                        if d
-                            .model
-                            .as_ref()
-                            .map_or(false, |m| m.fields.iter().any(|f| f.name.as_str() == item))
-                        {
-                            owner = Some(d.name.to_string());
-                            break;
+                    let mut owner: Option<String> = None;
+                    if let Some(model) = &root_decl.model {
+                        if model.fields.iter().any(|f| f.name.as_str() == item) {
+                            owner = Some(root_decl.name.to_string());
                         }
                     }
-                }
-                if let Some(w) = owner {
-                    crate::use_diag(format!(
+                    if owner.is_none() {
+                        for d in &child_decls {
+                            if d.model
+                                .as_ref()
+                                .map_or(false, |m| m.fields.iter().any(|f| f.name.as_str() == item))
+                            {
+                                owner = Some(d.name.to_string());
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(w) = owner {
+                        crate::use_diag(format!(
                         "[AUTO-USE-DIAG] P-16 use 导入符号 `{item}` 与 widget `{w}` 的 model 字段撞名——VM 轨该名字被状态通道占用，fn 导入将在 link 期落 `Undefined symbol` 类死面（PLAN-664）。fn 与字段改名错开其一。"
                     ));
-                }
+                    }
                 }
             }
             // Locate the module source file. A dotted module path maps to a
@@ -4459,7 +4784,12 @@ fn build_dynamic_component_inner(
                                 // miss → 画布列空渲染）。显式 use 同名覆写
                                 // 优先沿 095 根文件修复口径（后到覆盖）。
                                 if std::env::var_os("AUTO_DEBUG_G16").is_some() {
-                                    eprintln!("[G16] load-site register: {} from {:?} (matched={})", child_widget.name, module_path.display(), use_stmt.items.iter().any(|s| s == &child_widget.name));
+                                    eprintln!(
+                                        "[G16] load-site register: {} from {:?} (matched={})",
+                                        child_widget.name,
+                                        module_path.display(),
+                                        use_stmt.items.iter().any(|s| s == &child_widget.name)
+                                    );
                                 }
                                 child_decls.push(decl.clone());
                                 registry.register(child_widget);
@@ -4498,9 +4828,9 @@ fn build_dynamic_component_inner(
                                     ext_imports: Vec::new(),
                                     watch: Vec::new(),
                                     expose: Vec::new(),
- setup: None,
-                    actions: None,
-            timer: store_decl.timer.clone(),
+                                    setup: None,
+                                    actions: None,
+                                    timer: store_decl.timer.clone(),
                                 });
                             }
                         }
@@ -4516,11 +4846,7 @@ fn build_dynamic_component_inner(
             // 让孙组件的 handler(model var 读写)也编译进单一 VM 模块。
             // Plan 049:没有后者,BlockItem 的 .ToggleCollapse handler 不存在,
             // 点击折叠静默失败(HandlerNotFound)。
-            register_transitive_widgets(
-                &module_path,
-                &mut registry,
-                &mut child_decls,
-            );
+            register_transitive_widgets(&module_path, &mut registry, &mut child_decls);
 
             // Recursively collect ALL declarations from this module + its
             // transitive `use` deps (full module load so an imported fn's
@@ -4538,7 +4864,10 @@ fn build_dynamic_component_inner(
             // Plan 339 Phase 4: populate import_scope aliases directly from the
             // use_scanner data. This is more reliable than parsing use statements.
             // use back.api: create_note → import_aliases["create_note"] = "api.create_note"
-            let module_qualifier = use_stmt.module.split('.').last()
+            let module_qualifier = use_stmt
+                .module
+                .split('.')
+                .last()
                 .unwrap_or(&use_stmt.module);
             for item in &use_stmt.items {
                 let qualified = format!("{}.{}", module_qualifier, item);
@@ -4565,7 +4894,9 @@ fn build_dynamic_component_inner(
                 // (mirrors vue's @/pages/{module}.vue — see ast/route.rs:45-46).
                 let page_module = format!("pages/{}", route.module);
                 let module_path = resolve_module_path(base_dir, &page_module);
-                let Some(module_path) = module_path else { continue };
+                let Some(module_path) = module_path else {
+                    continue;
+                };
                 if let Ok(module_code) = std::fs::read_to_string(&module_path) {
                     // PLAN-037: 路由页读点同过前缀化 overlay——PLAN-712 T-17：
                     // 此前此处**裸读**（全部模块读点中唯一未包 apply 的），
@@ -4576,7 +4907,8 @@ fn build_dynamic_component_inner(
                     // 零 REQ + 86ms 秒拒）。
                     let module_code = crate::back_prefix::apply(&module_path, module_code);
                     let mod_session = CompilerSession::ui();
-                    let mut mod_parser = Parser::from(module_code.as_str()).with_session(mod_session);
+                    let mut mod_parser =
+                        Parser::from(module_code.as_str()).with_session(mod_session);
                     if let Ok(mod_ast) = mod_parser.parse() {
                         // Register view-fn fragments from the page module too.
                         for stmt in &mod_ast.stmts {
@@ -4586,14 +4918,17 @@ fn build_dynamic_component_inner(
                         }
                         for stmt in &mod_ast.stmts {
                             if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
-                                if let Ok(child_widget) = crate::aura::extract_widget_from_decl(decl) {
+                                if let Ok(child_widget) =
+                                    crate::aura::extract_widget_from_decl(decl)
+                                {
                                     child_decls.push(decl.clone());
                                     // Plan 408: record route.module → widget.name
                                     // mapping so render_outlet can find the page.
                                     // Using a separate alias map (not a registry
                                     // entry) avoids shadowing built-in UI elements
                                     // like <button>, <input>, etc.
-                                    registry.register_route_alias(&route.module, &child_widget.name);
+                                    registry
+                                        .register_route_alias(&route.module, &child_widget.name);
                                     registry.register(child_widget);
                                 }
                             }
@@ -4622,9 +4957,9 @@ fn build_dynamic_component_inner(
                                     ext_imports: Vec::new(),
                                     watch: Vec::new(),
                                     expose: Vec::new(),
- setup: None,
-                    actions: None,
-            timer: store_decl.timer.clone(),
+                                    setup: None,
+                                    actions: None,
+                                    timer: store_decl.timer.clone(),
                                 });
                             }
                         }
@@ -4644,7 +4979,6 @@ fn build_dynamic_component_inner(
             }
         }
     }
-
 
     // 3. Create DynamicComponent with registry + imported symbols
     // Plan 451 P3: 顶层 actions 回退链（widget 块未安装时）：本文件顶层
@@ -4681,7 +5015,7 @@ fn build_dynamic_component_inner(
                 messages: store_decl.messages.clone(),
                 model: store_decl.model.clone(),
                 computed: store_decl.computed.clone(),
-                view: None,  // stores have no view
+                view: None, // stores have no view
                 named_views: Vec::new(),
                 on: store_decl.on.clone(),
                 bind: None,
@@ -4692,9 +5026,9 @@ fn build_dynamic_component_inner(
                 ext_imports: Vec::new(),
                 watch: Vec::new(),
                 expose: Vec::new(),
- setup: None,
-                    actions: None,
-            timer: store_decl.timer.clone(),
+                setup: None,
+                actions: None,
+                timer: store_decl.timer.clone(),
             };
             store_as_child_decls.push(fake_widget);
         }
@@ -4727,9 +5061,9 @@ fn build_dynamic_component_inner(
                     ext_imports: Vec::new(),
                     watch: Vec::new(),
                     expose: Vec::new(),
- setup: None,
+                    setup: None,
                     actions: None,
-            timer: store_decl.timer.clone(),
+                    timer: store_decl.timer.clone(),
                 });
             }
         }
@@ -4763,10 +5097,7 @@ fn build_dynamic_component_inner(
                 // 相对声明(`from "../components"`)在 pages/ 下解析;app 相对
                 // 仍先行(根 widget 的声明形态)。两个候选逐一试,首个存在者
                 // 生效,全部不存在才告警。
-                let candidates = [
-                    base_dir.join(&dir),
-                    base_dir.join("pages").join(&dir),
-                ];
+                let candidates = [base_dir.join(&dir), base_dir.join("pages").join(&dir)];
                 let first = pkg_reg.load_package(&candidates[0], base_dir);
                 let (loaded, loaded_dir) = match first {
                     Ok(p) => (Ok(p), Some(candidates[0].clone())),
@@ -4803,7 +5134,8 @@ fn build_dynamic_component_inner(
                                     );
                                     if let Ok(code) = std::fs::read_to_string(&p) {
                                         for us in crate::use_scanner::scan_use_statements(&code) {
-                                            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+                                            let qualifier =
+                                                us.module.split('.').last().unwrap_or(&us.module);
                                             for item in &us.items {
                                                 import_aliases.insert(
                                                     item.clone(),
@@ -4834,10 +5166,8 @@ fn build_dynamic_component_inner(
     // child_decls directly (unified-form module branch above) AND via
     // import_stmts (legacy store-facade fallback); compiling the same
     // StoreDecl twice would collide in the single VM module.
-    let child_decl_names: std::collections::HashSet<String> = all_child_decls
-        .iter()
-        .map(|d| d.name.to_string())
-        .collect();
+    let child_decl_names: std::collections::HashSet<String> =
+        all_child_decls.iter().map(|d| d.name.to_string()).collect();
     store_as_child_decls.retain(|d| !child_decl_names.contains(&d.name.to_string()));
     all_child_decls.extend(store_as_child_decls);
 
@@ -4847,7 +5177,9 @@ fn build_dynamic_component_inner(
     // 011-calculator) fails with "Undefined symbol".
     for stmt in &ast.stmts {
         match stmt {
-            crate::ast::Stmt::Fn(_) | crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::EnumDecl(_) => {
+            crate::ast::Stmt::Fn(_)
+            | crate::ast::Stmt::TypeDecl(_)
+            | crate::ast::Stmt::EnumDecl(_) => {
                 import_stmts.push(stmt.clone());
             }
             _ => {}
@@ -4898,7 +5230,9 @@ fn build_dynamic_component_inner(
                         .map(|tb| tb.entries.iter().any(|e| e.event.as_str() == "Tick"))
                         .unwrap_or(false);
                     if !has_tick_timer {
-                        let mut tb = crate::ast::ui::TimerBlock { entries: Vec::new() };
+                        let mut tb = crate::ast::ui::TimerBlock {
+                            entries: Vec::new(),
+                        };
                         tb.entries.push(crate::ast::ui::TimerEntry {
                             event: crate::ast::Name::from("Tick"),
                             every_ms: ms.max(16) as u64,
@@ -4954,12 +5288,10 @@ fn build_dynamic_component_inner(
                         }
                     }
                     candidates.push(base_dir.join(&dir));
-                    let mut loaded: Option<
-                        (
-                            Vec<(crate::ast::ui::WidgetDecl, crate::aura::AuraWidget)>,
-                            std::path::PathBuf,
-                        ),
-                    > = None;
+                    let mut loaded: Option<(
+                        Vec<(crate::ast::ui::WidgetDecl, crate::aura::AuraWidget)>,
+                        std::path::PathBuf,
+                    )> = None;
                     for cand in &candidates {
                         if cand.is_dir() {
                             if let Ok(pkg) = pkg_reg.load_package(cand, base_dir) {
@@ -4992,11 +5324,8 @@ fn build_dynamic_component_inner(
                                     );
                                     if let Ok(code) = std::fs::read_to_string(&p) {
                                         for us in crate::use_scanner::scan_use_statements(&code) {
-                                            let qualifier = us
-                                                .module
-                                                .split('.')
-                                                .last()
-                                                .unwrap_or(&us.module);
+                                            let qualifier =
+                                                us.module.split('.').last().unwrap_or(&us.module);
                                             for item in &us.items {
                                                 import_aliases.insert(
                                                     item.clone(),
@@ -5025,10 +5354,8 @@ fn build_dynamic_component_inner(
         // 不编译（synthesize 的 all_decls 只含 decl+child_decls）→
         // `.store.*` 全落空 + `store.X()` 派发失联。此处按名去重补转换。
         {
-            let known: std::collections::HashSet<String> = all_child_decls
-                .iter()
-                .map(|d| d.name.to_string())
-                .collect();
+            let known: std::collections::HashSet<String> =
+                all_child_decls.iter().map(|d| d.name.to_string()).collect();
             for stmt in &import_stmts {
                 if let crate::ast::Stmt::StoreDecl(store_decl) = stmt {
                     let sname = store_decl.name.to_string();
@@ -5083,11 +5410,15 @@ fn build_dynamic_component_inner(
             if path.extension().and_then(|e| e.to_str()) != Some("at") {
                 continue;
             }
-            let Ok(code) = std::fs::read_to_string(path) else { continue };
+            let Ok(code) = std::fs::read_to_string(path) else {
+                continue;
+            };
             let code = crate::back_prefix::apply(path, code);
             let session = crate::session::CompilerSession::ui();
             let mut parser = crate::Parser::from(code.as_str()).with_session(session);
-            let Ok(mod_ast) = parser.parse() else { continue };
+            let Ok(mod_ast) = parser.parse() else {
+                continue;
+            };
             for stmt in &mod_ast.stmts {
                 if let crate::ast::Stmt::UseWeb(entries) = stmt {
                     for e in entries {
@@ -5100,8 +5431,16 @@ fn build_dynamic_component_inner(
         }
         crate::ui::aura_view_builder::register_imported_components(names);
     }
-    let mut comp = DynamicComponent::with_registry_and_imports_from_decls(&root_decl, &all_child_decls, &widget, registry, import_stmts, &import_aliases, api_over_http)
-        .map_err(|e| format!("DynamicComponent init failed: {}", e))?;
+    let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
+        &root_decl,
+        &all_child_decls,
+        &widget,
+        registry,
+        import_stmts,
+        &import_aliases,
+        api_over_http,
+    )
+    .map_err(|e| format!("DynamicComponent init failed: {}", e))?;
 
     // 3b. Set source path for hot-reload tracking
     if let Some(p) = path {
@@ -5144,8 +5483,7 @@ fn run_file_dynamic_ui_inner(
             .map_err(crate::error::AutoError::Msg);
     }
     // 4. Run iced (blocks until all windows close; plan-459 daemon semantics)
-    run_dynamic_iced(comp)
-        .map_err(|e| crate::error::AutoError::Msg(format!("{}", e)))
+    run_dynamic_iced(comp).map_err(|e| crate::error::AutoError::Msg(format!("{}", e)))
 }
 
 pub fn run_file(path: &str) -> AutoResult<String> {
@@ -5156,8 +5494,7 @@ pub fn run_file(path: &str) -> AutoResult<String> {
 /// （W1 规则表空置=identity passthrough；W2 糖批逐条落
 /// trans::auto_s2s::builtin_rules）。
 pub fn trans_auto_s2s(path: &str) -> AutoResult<String> {
-    let src = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let src = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
     crate::trans::auto_s2s::lower_source(&src)
 }
 
@@ -5208,10 +5545,14 @@ fn run_with_path(code: &str, path: &str) -> AutoResult<String> {
         .stack_size(32 * 1024 * 1024)
         .spawn(move || {
             block_on_autovm_local(async {
-                execute_autovm_with_path(&code, true, Some(&path)).await.map(|(r, stdout, _, _)| {
-                    if !stdout.is_empty() { println!("{}", stdout); }
-                    r
-                })
+                execute_autovm_with_path(&code, true, Some(&path))
+                    .await
+                    .map(|(r, stdout, _, _)| {
+                        if !stdout.is_empty() {
+                            println!("{}", stdout);
+                        }
+                        r
+                    })
             })
         })
         .expect("Failed to spawn execution thread");
@@ -5228,11 +5569,11 @@ pub fn debug_file(path: &str) -> AutoResult<String> {
 /// Plan 199 Phase 5: Compile and debug AutoLang code with GDB-style interactive debugger
 async fn debug_autovm(code: &str) -> AutoResult<String> {
     use crate::vm::codegen::Codegen;
-    use crate::vm::engine::AutoVM;
-    use crate::vm::opcode::OpCode;
-    use crate::vm::loader::Linker;
-    use crate::vm::virt_memory::VirtualFlash;
     use crate::vm::debugger::GdbController;
+    use crate::vm::engine::AutoVM;
+    use crate::vm::loader::Linker;
+    use crate::vm::opcode::OpCode;
+    use crate::vm::virt_memory::VirtualFlash;
 
     // Plan 442 C2: axum serve adapter state reset (see execute_autovm_with_path).
     crate::vm::ffi::axum_adapter::reset();
@@ -5263,7 +5604,12 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
         codegen.vm_fn_names.insert(name.clone());
     }
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
-        matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
+        matches!(
+            stmt,
+            crate::ast::Stmt::TypeDecl(_)
+                | crate::ast::Stmt::Ext(_)
+                | crate::ast::Stmt::EnumDecl(_)
+        )
     });
 
     for stmt in &type_decls {
@@ -5278,7 +5624,12 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
         codegen.emit_op(OpCode::RESERVE_STACK);
         codegen.emit_byte(n_locals as u8);
         for (i, stmt) in ast.stmts.iter().enumerate() {
-            if matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_)) {
+            if matches!(
+                stmt,
+                crate::ast::Stmt::TypeDecl(_)
+                    | crate::ast::Stmt::Ext(_)
+                    | crate::ast::Stmt::EnumDecl(_)
+            ) {
                 continue;
             }
             if i < ast.source_lines.len() {
@@ -5306,7 +5657,9 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
-    session.assembly_references.extend(codegen.assembly_references.iter().cloned());
+    session
+        .assembly_references
+        .extend(codegen.assembly_references.iter().cloned());
     session.freeze_assembly_manifest("vm-batch", std::path::Path::new("<main>"), code.as_ref())?;
     let main_module = codegen.finish("<main>".to_string());
     linker.add_entry_module(main_module);
@@ -5325,10 +5678,16 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
         })
     })?;
 
-    let main_entry = if let Some(&addr) = global_symbols.get("main").or_else(|| global_symbols.get("test")) {
+    let main_entry = if let Some(&addr) = global_symbols
+        .get("main")
+        .or_else(|| global_symbols.get("test"))
+    {
         addr as usize
     } else {
-        let dep_size: usize = linker.modules.iter().take(linker.modules.len() - 1)
+        let dep_size: usize = linker
+            .modules
+            .iter()
+            .take(linker.modules.len() - 1)
             .map(|m| m.code.len())
             .sum();
         dep_size
@@ -5349,7 +5708,7 @@ async fn debug_autovm(code: &str) -> AutoResult<String> {
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
     vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
-    // Plan 312: Register #[api] routes for HTTP server dispatch
+                                                          // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     if let Some(rust_ni) = rust_ffi_native_interface {
@@ -5387,23 +5746,28 @@ async fn debug_autovm_agent(code: &str) -> AutoResult<String> {
 
     let source = code.to_string();
     std::thread::spawn(move || {
-        let (mut vm, _output_buffer, entry_point, _result_type) = match create_vm_from_source(&source) {
-            Ok(v) => v,
-            Err(e) => {
-                let _ = state_tx.send(AgentDebugState {
-                    status: "compile_error".to_string(),
-                    line: 0,
-                    ip: 0,
-                    op: format!("{:?}", e),
-                    stack: vec![],
-                    call_stack: vec![],
-                    locals: vec![],
-                    registers: AgentRegisters { ip: 0, bp: 0, sp: 0 },
-                    stdout: String::new(),
-                });
-                return;
-            }
-        };
+        let (mut vm, _output_buffer, entry_point, _result_type) =
+            match create_vm_from_source(&source) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = state_tx.send(AgentDebugState {
+                        status: "compile_error".to_string(),
+                        line: 0,
+                        ip: 0,
+                        op: format!("{:?}", e),
+                        stack: vec![],
+                        call_stack: vec![],
+                        locals: vec![],
+                        registers: AgentRegisters {
+                            ip: 0,
+                            bp: 0,
+                            sp: 0,
+                        },
+                        stdout: String::new(),
+                    });
+                    return;
+                }
+            };
 
         let controller = JsonAgentController::new(cmd_rx, state_tx);
         vm.set_debugger(Box::new(controller));
@@ -5455,7 +5819,9 @@ async fn debug_autovm_agent(code: &str) -> AutoResult<String> {
 /// Plan 225: Compile source and create a VM with stdout capture ready for debugging.
 /// The caller is responsible for setting the debugger controller, spawning, and running tasks.
 /// Returns (vm, stdout_capture_buffer, entry_point, result_type)
-pub fn create_vm_from_source(code: &str) -> AutoResult<(
+pub fn create_vm_from_source(
+    code: &str,
+) -> AutoResult<(
     crate::vm::engine::AutoVM,
     std::sync::Arc<std::sync::RwLock<String>>,
     usize,
@@ -5463,8 +5829,8 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
 )> {
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
-    use crate::vm::opcode::OpCode;
     use crate::vm::loader::Linker;
+    use crate::vm::opcode::OpCode;
     use crate::vm::virt_memory::VirtualFlash;
 
     // Plan 442 C2: axum serve adapter state reset (see execute_autovm_with_path).
@@ -5495,7 +5861,12 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
         codegen.vm_fn_names.insert(name.clone());
     }
     let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
-        matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_))
+        matches!(
+            stmt,
+            crate::ast::Stmt::TypeDecl(_)
+                | crate::ast::Stmt::Ext(_)
+                | crate::ast::Stmt::EnumDecl(_)
+        )
     });
 
     for stmt in &type_decls {
@@ -5510,7 +5881,12 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
         codegen.emit_op(OpCode::RESERVE_STACK);
         codegen.emit_byte(n_locals as u8);
         for (i, stmt) in ast.stmts.iter().enumerate() {
-            if matches!(stmt, crate::ast::Stmt::TypeDecl(_) | crate::ast::Stmt::Ext(_) | crate::ast::Stmt::EnumDecl(_)) {
+            if matches!(
+                stmt,
+                crate::ast::Stmt::TypeDecl(_)
+                    | crate::ast::Stmt::Ext(_)
+                    | crate::ast::Stmt::EnumDecl(_)
+            ) {
                 continue;
             }
             if i < ast.source_lines.len() {
@@ -5538,7 +5914,9 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
     // Plan 312: Extract API routes before finish() consumes codegen
     let api_routes = codegen.api_routes.clone();
-    session.assembly_references.extend(codegen.assembly_references.iter().cloned());
+    session
+        .assembly_references
+        .extend(codegen.assembly_references.iter().cloned());
     session.freeze_assembly_manifest("vm-batch", std::path::Path::new("<main>"), code.as_ref())?;
     let main_module = codegen.finish("<main>".to_string());
     linker.add_entry_module(main_module);
@@ -5550,9 +5928,13 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
             find_use_symbol_span(code, &e.message)
         };
         let help = if e.source_pos.is_some() {
-            Some(format!("Use a `use` statement to import '{}' from a module, or check for typos", e.symbol))
+            Some(format!(
+                "Use a `use` statement to import '{}' from a module, or check for typos",
+                e.symbol
+            ))
         } else {
-            extract_undefined_symbol(&e.message).map(|s| format!("Check if '{}' is defined and exported in the module", s))
+            extract_undefined_symbol(&e.message)
+                .map(|s| format!("Check if '{}' is defined and exported in the module", s))
         };
         crate::error::AutoError::MsgWithSource(crate::error::MsgWithSource {
             source: miette::NamedSource::new("<script>", code.to_string()),
@@ -5562,10 +5944,16 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
         })
     })?;
 
-    let main_entry = if let Some(&addr) = global_symbols.get("main").or_else(|| global_symbols.get("test")) {
+    let main_entry = if let Some(&addr) = global_symbols
+        .get("main")
+        .or_else(|| global_symbols.get("test"))
+    {
         addr as usize
     } else {
-        let dep_size: usize = linker.modules.iter().take(linker.modules.len() - 1)
+        let dep_size: usize = linker
+            .modules
+            .iter()
+            .take(linker.modules.len() - 1)
             .map(|m| m.code.len())
             .sum();
         dep_size
@@ -5582,7 +5970,7 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
     vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
-    // Plan 312: Register #[api] routes for HTTP server dispatch
+                                                          // Plan 312: Register #[api] routes for HTTP server dispatch
     crate::vm::ffi::stdlib::register_http_routes(api_routes);
 
     if let Some(rust_ni) = rust_ffi_native_interface {
@@ -5601,12 +5989,14 @@ pub fn create_vm_from_source(code: &str) -> AutoResult<(
 /// standard native shims (print, assert, etc.) loaded.
 ///
 /// Returns `(vm, stdout_capture, main_entry_point)`.
-pub fn create_vm_from_abt(abt_text: &str) -> AutoResult<(
+pub fn create_vm_from_abt(
+    abt_text: &str,
+) -> AutoResult<(
     crate::vm::engine::AutoVM,
     std::sync::Arc<std::sync::RwLock<String>>,
     usize,
 )> {
-    use crate::vm::abt::{parser, asm};
+    use crate::vm::abt::{asm, parser};
     use crate::vm::engine::AutoVM;
     use crate::vm::native::NativeInterface;
     use crate::vm::virt_memory::VirtualFlash;
@@ -5643,7 +6033,9 @@ pub fn create_vm_from_abt(abt_text: &str) -> AutoResult<(
     vm.merge_native_interface(&ni);
 
     // 8. Determine entry point (main export, or start of bytecode)
-    let main_entry = pkg.exports.get("main")
+    let main_entry = pkg
+        .exports
+        .get("main")
         .or_else(|| pkg.exports.get("test"))
         .copied()
         .unwrap_or(0) as usize;
@@ -5686,7 +6078,11 @@ pub async fn run_abt(abt_text: &str) -> AutoResult<String> {
 /// name: "myapp"
 /// version: "0.1.0"
 /// "#;
-fn extract_value_from_vm(vm: &crate::vm::engine::AutoVM, bits: i32, visited: &mut std::collections::HashSet<u64>) -> Value {
+fn extract_value_from_vm(
+    vm: &crate::vm::engine::AutoVM,
+    bits: i32,
+    visited: &mut std::collections::HashSet<u64>,
+) -> Value {
     if bits < 0 {
         // Tagged string index: indices are stored as -(index+1)
         let str_idx = (-bits - 1) as usize;
@@ -5708,7 +6104,10 @@ fn extract_value_from_vm(vm: &crate::vm::engine::AutoVM, bits: i32, visited: &mu
     // heap_objects).
     if let Some(obj_ref) = vm.get_heap_object(id) {
         let obj_guard = obj_ref.read().unwrap();
-        if let Some(obj_data) = obj_guard.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+        if let Some(obj_data) = obj_guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ObjectData>()
+        {
             let mut result_obj = Obj::new();
             for (key, val) in &obj_data.fields {
                 let extracted = extract_auto_val_value(vm, val, visited);
@@ -5735,7 +6134,10 @@ fn extract_value_from_vm(vm: &crate::vm::engine::AutoVM, bits: i32, visited: &mu
     // heap_objects — same storage as CREATE_ARRAY).
     if let Some(list_ref) = vm.get_heap_object(id) {
         let array_data = list_ref.read().unwrap();
-        if let Some(list) = array_data.as_any().downcast_ref::<crate::vm::types::ListData<Value>>() {
+        if let Some(list) = array_data
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<Value>>()
+        {
             let mut items = Vec::new();
             for val in list.elems.iter() {
                 items.push(extract_auto_val_value(vm, val, visited));
@@ -5750,7 +6152,11 @@ fn extract_value_from_vm(vm: &crate::vm::engine::AutoVM, bits: i32, visited: &mu
     Value::Int(bits)
 }
 
-fn extract_auto_val_value(vm: &crate::vm::engine::AutoVM, val: &Value, visited: &mut std::collections::HashSet<u64>) -> Value {
+fn extract_auto_val_value(
+    vm: &crate::vm::engine::AutoVM,
+    val: &Value,
+    visited: &mut std::collections::HashSet<u64>,
+) -> Value {
     match val {
         Value::VmRef(vm_ref) => extract_value_from_vm(vm, vm_ref.id as i32, visited),
         Value::Int(bits) => {
@@ -5783,7 +6189,11 @@ fn extract_auto_val_value(vm: &crate::vm::engine::AutoVM, val: &Value, visited: 
     }
 }
 
-fn extract_node_deep(vm: &crate::vm::engine::AutoVM, node: &Node, visited: &mut std::collections::HashSet<u64>) -> Node {
+fn extract_node_deep(
+    vm: &crate::vm::engine::AutoVM,
+    node: &Node,
+    visited: &mut std::collections::HashSet<u64>,
+) -> Node {
     let mut result = node.clone();
     // Resolve props
     let props = node.props_clone();
@@ -5797,10 +6207,10 @@ fn extract_node_deep(vm: &crate::vm::engine::AutoVM, node: &Node, visited: &mut 
 /// let result = eval_config_with_vm(config, &Obj::new()).unwrap();
 /// ```
 pub fn eval_config_with_vm(code: &str, args: &Obj) -> AutoResult<Value> {
+    use crate::parser::CompileDest;
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
     use crate::vm::virt_memory::VirtualFlash;
-    use crate::parser::CompileDest;
 
     // Note: Plan 091 - Universe parameter removed, AutoVM uses its own state
     // Note: Do NOT preprocess macros here — pac.at is config code, not UI code.
@@ -6026,18 +6436,45 @@ pub fn trans_c_with_session(session: &mut CompileSession, path: &str) -> AutoRes
     // Compile source with incremental support
     let frag_ids = session.compile_source(&code, path)?;
 
-    let artifacts = crate::stdlib_assembly::emission::emit_c_assembly(session, &code, std::path::Path::new(path))?;
-    let manifest = session.freeze_assembly_manifest("c-emission", std::path::Path::new(path), &code)?;
-    let output = std::path::Path::new(path).parent().unwrap_or(std::path::Path::new("."));
+    let artifacts = crate::stdlib_assembly::emission::emit_c_assembly(
+        session,
+        &code,
+        std::path::Path::new(path),
+    )?;
+    let manifest =
+        session.freeze_assembly_manifest("c-emission", std::path::Path::new(path), &code)?;
+    let output = std::path::Path::new(path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
     // All emission/strict checks finish before any generated artifact is written.
     for artifact in &artifacts {
-        std::fs::write(output.join(format!("{}.c", artifact.stem)), &artifact.source)?;
-        std::fs::write(output.join(format!("{}.h", artifact.stem)), &artifact.header)?;
+        std::fs::write(
+            output.join(format!("{}.c", artifact.stem)),
+            &artifact.source,
+        )?;
+        std::fs::write(
+            output.join(format!("{}.h", artifact.stem)),
+            &artifact.header,
+        )?;
     }
-    std::fs::write(output.join(format!("{}.assembly.json", std::path::Path::new(path).file_stem().unwrap().to_string_lossy())), serde_json::to_vec(&manifest).map_err(|error| crate::error::AutoError::Msg(error.to_string()))?)?;
-    Ok(format!("[trans] {} -> {} ({} fragments, {} C artifacts)",
-        path, path.replace(".at", ".c"), frag_ids.len(), artifacts.len()))
-
+    std::fs::write(
+        output.join(format!(
+            "{}.assembly.json",
+            std::path::Path::new(path)
+                .file_stem()
+                .unwrap()
+                .to_string_lossy()
+        )),
+        serde_json::to_vec(&manifest)
+            .map_err(|error| crate::error::AutoError::Msg(error.to_string()))?,
+    )?;
+    Ok(format!(
+        "[trans] {} -> {} ({} fragments, {} C artifacts)",
+        path,
+        path.replace(".at", ".c"),
+        frag_ids.len(),
+        artifacts.len()
+    ))
 }
 
 /// Transpile to Rust with incremental compilation support
@@ -6078,13 +6515,29 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
 
     // Plan 204 Phase 6A: Use .a2r.rs suffix to avoid overwriting .rs files
     let rsname = path.replace(".at", ".a2r.rs");
-    if session.layer_selections.iter().any(|selection| selection.context_file.as_ref().is_some_and(|file| file.ends_with(".rs.at"))) {
-        let (output, references) = crate::stdlib_assembly::emission::emit_rust_assembly(session, &code, std::path::Path::new(path))?;
+    if session.layer_selections.iter().any(|selection| {
+        selection
+            .context_file
+            .as_ref()
+            .is_some_and(|file| file.ends_with(".rs.at"))
+    }) {
+        let (output, references) = crate::stdlib_assembly::emission::emit_rust_assembly(
+            session,
+            &code,
+            std::path::Path::new(path),
+        )?;
         session.assembly_references.extend(references);
-        let manifest = session.freeze_assembly_manifest("rust-emission", std::path::Path::new(path), &code)?;
+        let manifest =
+            session.freeze_assembly_manifest("rust-emission", std::path::Path::new(path), &code)?;
         std::fs::write(&rsname, output)?;
-        std::fs::write(format!("{rsname}.assembly.json"), serde_json::to_vec(&manifest).map_err(|error| crate::error::AutoError::Msg(error.to_string()))?)?;
-        return Ok(format!("[trans] {path} -> {rsname} (selected Rust Auto layers)"));
+        std::fs::write(
+            format!("{rsname}.assembly.json"),
+            serde_json::to_vec(&manifest)
+                .map_err(|error| crate::error::AutoError::Msg(error.to_string()))?,
+        )?;
+        return Ok(format!(
+            "[trans] {path} -> {rsname} (selected Rust Auto layers)"
+        ));
     }
 
     let fname = AutoPath::new(path).filename();
@@ -6104,14 +6557,15 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     let mut trans = crate::trans::rust::RustTrans::new(fname);
     // Plan 610 ⑥: relative `use.c "<file>.json"` manifests resolve against the
     // transpiled file's directory.
-    trans.source_dir = std::path::Path::new(path)
-        .parent()
-        .map(|p| p.to_path_buf());
+    trans.source_dir = std::path::Path::new(path).parent().map(|p| p.to_path_buf());
     // Plan 376U: A2R_CRATE_ROOT=1 marks this file as a crate root (lib.at /
     // */mod.at). Such files emit top-level `use` as `pub use` (re-exports) and
     // the `#![allow(...)]` crate pragma, so they can serve as an auto-generated
     // lib.rs / aggregator without hand-editing.
-    if std::env::var("A2R_CRATE_ROOT").map(|v| v == "1").unwrap_or(false) {
+    if std::env::var("A2R_CRATE_ROOT")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
         trans.is_crate_root = true;
         trans.emit_allow_pragma = true;
     }
@@ -6141,8 +6595,18 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
         // file count, and skip build/VC litter.
         const SCAN_MAX_DEPTH: usize = 6;
         const SCAN_MAX_FILES: usize = 400;
-        const SCAN_SKIP_DIRS: &[&str] = &[".git", "target", "node_modules", ".wt",
-            ".worktrees", ".cargo", "dist", "build", ".venv", "__pycache__"];
+        const SCAN_SKIP_DIRS: &[&str] = &[
+            ".git",
+            "target",
+            "node_modules",
+            ".wt",
+            ".worktrees",
+            ".cargo",
+            "dist",
+            "build",
+            ".venv",
+            "__pycache__",
+        ];
         fn scan_at_files(
             dir: &std::path::Path,
             store: &mut crate::types::TypeStore,
@@ -6158,7 +6622,8 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                         return;
                     }
                     let entry_path = entry.path();
-                    let skipped_dir = entry_path.file_name()
+                    let skipped_dir = entry_path
+                        .file_name()
                         .and_then(|n| n.to_str())
                         .map(|n| SCAN_SKIP_DIRS.contains(&n))
                         .unwrap_or(false);
@@ -6172,8 +6637,10 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                         // .c.at are foreign layers here. .rs.at is the Rust
                         // target's selected (mirror-signature) layer — kept,
                         // alongside the public .at files.
-                        let scan_fname =
-                            entry_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                        let scan_fname = entry_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("");
                         if scan_fname.ends_with(".vm.at") || scan_fname.ends_with(".c.at") {
                             continue;
                         }
@@ -6186,11 +6653,21 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                                 for stmt in &ast.stmts {
                                     use crate::ast::Stmt;
                                     match stmt {
-                                        Stmt::Fn(fd) => { store.register_fn_decl(fd); }
-                                        Stmt::TypeDecl(td) => { store.register_type_decl(td); }
-                                        Stmt::SpecDecl(sd) => { store.register_spec_decl(sd); }
-                                        Stmt::EnumDecl(ed) => { store.register_enum_decl(ed.clone()); }
-                                        Stmt::Ext(ext) => { store.register_ext_methods(ext); }
+                                        Stmt::Fn(fd) => {
+                                            store.register_fn_decl(fd);
+                                        }
+                                        Stmt::TypeDecl(td) => {
+                                            store.register_type_decl(td);
+                                        }
+                                        Stmt::SpecDecl(sd) => {
+                                            store.register_spec_decl(sd);
+                                        }
+                                        Stmt::EnumDecl(ed) => {
+                                            store.register_enum_decl(ed.clone());
+                                        }
+                                        Stmt::Ext(ext) => {
+                                            store.register_ext_methods(ext);
+                                        }
                                         _ => {}
                                     }
                                 }
@@ -6201,7 +6678,9 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
             }
         }
         scan_at_files(&src_root, &mut type_store, 0, &mut SCAN_MAX_FILES);
-        trans.set_shared_type_store(Some(std::sync::Arc::new(std::sync::RwLock::new(type_store))));
+        trans.set_shared_type_store(Some(std::sync::Arc::new(std::sync::RwLock::new(
+            type_store,
+        ))));
     }
 
     // Pre-populate struct_fields from sibling .at files in the same directory.
@@ -6219,8 +6698,18 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
         // unbounded recursion over arbitrary CLI paths is the trans hang.
         const SIB_SCAN_MAX_DEPTH: usize = 6;
         const SIB_SCAN_MAX_FILES: usize = 400;
-        const SIB_SCAN_SKIP_DIRS: &[&str] = &[".git", "target", "node_modules", ".wt",
-            ".worktrees", ".cargo", "dist", "build", ".venv", "__pycache__"];
+        const SIB_SCAN_SKIP_DIRS: &[&str] = &[
+            ".git",
+            "target",
+            "node_modules",
+            ".wt",
+            ".worktrees",
+            ".cargo",
+            "dist",
+            "build",
+            ".venv",
+            "__pycache__",
+        ];
         while let Some((dir, depth)) = stack.pop() {
             if depth > SIB_SCAN_MAX_DEPTH || at_files.len() >= SIB_SCAN_MAX_FILES {
                 continue;
@@ -6228,7 +6717,8 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
             if let Ok(entries) = std::fs::read_dir(&dir) {
                 for entry in entries.flatten() {
                     let ep = entry.path();
-                    let skipped_dir = ep.file_name()
+                    let skipped_dir = ep
+                        .file_name()
                         .and_then(|n| n.to_str())
                         .map(|n| SIB_SCAN_SKIP_DIRS.contains(&n))
                         .unwrap_or(false);
@@ -6252,12 +6742,18 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
         const SIB_PARSE_MAX_BYTES: u64 = 1_000_000;
         let mut sib_parsed = 0usize;
         for entry_path in at_files {
-            if sib_parsed >= SIB_PARSE_MAX { break; }
-            if entry_path == std::path::Path::new(path) { continue; }
+            if sib_parsed >= SIB_PARSE_MAX {
+                break;
+            }
+            if entry_path == std::path::Path::new(path) {
+                continue;
+            }
             let too_big = std::fs::metadata(&entry_path)
                 .map(|m| m.len() > SIB_PARSE_MAX_BYTES)
                 .unwrap_or(true);
-            if too_big { continue; }
+            if too_big {
+                continue;
+            }
             if let Ok(sibling_code) = std::fs::read_to_string(&entry_path) {
                 sib_parsed += 1;
                 let mut sib_parser = Parser::from(sibling_code.as_str());
@@ -6267,55 +6763,57 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                     for stmt in &sib_ast.stmts {
                         match stmt {
                             crate::ast::Stmt::TypeDecl(td) => {
-                                let field_names: Vec<auto_val::AutoStr> = td.members.iter()
-                                    .map(|m| m.name.clone()).collect();
+                                let field_names: Vec<auto_val::AutoStr> =
+                                    td.members.iter().map(|m| m.name.clone()).collect();
                                 if !field_names.is_empty()
                                     && !trans.struct_fields().contains_key(&td.name)
-                                        {
-                                            trans.struct_fields_mut().insert(td.name.clone(), field_names);
-                                        }
-                                    }
-                                    // Plan 380: pre-populate fn_ret_types from
-                                    // sibling fns (unqualified + Type.method) so
-                                    // the spec-bound-ident / .await heuristics
-                                    // work on the single-file CLI path.
-                                    crate::ast::Stmt::Fn(fd) => {
-                                        let fname: auto_val::AutoStr = fd.name.clone();
-                                        if !trans.fn_ret_types_mut().contains_key(&fname) {
-                                            trans.fn_ret_types_mut().insert(fname, fd.ret.clone());
-                                        }
-                                        if let Some(p) = &fd.parent {
-                                            let qualified: auto_val::AutoStr =
-                                                format!("{}.{}", p, fd.name).into();
-                                            if !trans.fn_ret_types_mut().contains_key(&qualified) {
-                                                trans.fn_ret_types_mut().insert(qualified, fd.ret.clone());
-                                            }
-                                        }
-                                    }
-                                    // Plan 371 (defect A): pre-populate spec names from
-                                    // sibling .at files so cross-module specs (e.g.
-                                    // `use role_def: Role` then `role Role`) resolve to
-                                    // Type::Spec (-> Box<dyn X>) on the single-file path.
-                                    crate::ast::Stmt::SpecDecl(sd) => {
-                                        let name = sd.name.clone();
-                                        if !trans.spec_decls_mut().contains_key(&name) {
-                                            trans.spec_decls_mut().insert(name, sd.methods.clone());
-                                        }
-                                    }
-                                    // Plan 372 follow-up: pre-populate enum names from
-                                    // sibling .at files so cross-module enum errors like
-                                    // `Err(AgentError::Config(...))` don't get wrongly
-                                    // Box::new'd (AgentError lives in error.at, not the
-                                    // file being transpiled).
-                                    crate::ast::Stmt::EnumDecl(ed) => {
-                                        trans.known_enum_names_mut().insert(ed.name.clone());
-                                    }
-                                    _ => {}
+                                {
+                                    trans
+                                        .struct_fields_mut()
+                                        .insert(td.name.clone(), field_names);
+                                }
                             }
+                            // Plan 380: pre-populate fn_ret_types from
+                            // sibling fns (unqualified + Type.method) so
+                            // the spec-bound-ident / .await heuristics
+                            // work on the single-file CLI path.
+                            crate::ast::Stmt::Fn(fd) => {
+                                let fname: auto_val::AutoStr = fd.name.clone();
+                                if !trans.fn_ret_types_mut().contains_key(&fname) {
+                                    trans.fn_ret_types_mut().insert(fname, fd.ret.clone());
+                                }
+                                if let Some(p) = &fd.parent {
+                                    let qualified: auto_val::AutoStr =
+                                        format!("{}.{}", p, fd.name).into();
+                                    if !trans.fn_ret_types_mut().contains_key(&qualified) {
+                                        trans.fn_ret_types_mut().insert(qualified, fd.ret.clone());
+                                    }
+                                }
+                            }
+                            // Plan 371 (defect A): pre-populate spec names from
+                            // sibling .at files so cross-module specs (e.g.
+                            // `use role_def: Role` then `role Role`) resolve to
+                            // Type::Spec (-> Box<dyn X>) on the single-file path.
+                            crate::ast::Stmt::SpecDecl(sd) => {
+                                let name = sd.name.clone();
+                                if !trans.spec_decls_mut().contains_key(&name) {
+                                    trans.spec_decls_mut().insert(name, sd.methods.clone());
+                                }
+                            }
+                            // Plan 372 follow-up: pre-populate enum names from
+                            // sibling .at files so cross-module enum errors like
+                            // `Err(AgentError::Config(...))` don't get wrongly
+                            // Box::new'd (AgentError lives in error.at, not the
+                            // file being transpiled).
+                            crate::ast::Stmt::EnumDecl(ed) => {
+                                trans.known_enum_names_mut().insert(ed.name.clone());
+                            }
+                            _ => {}
                         }
                     }
                 }
             }
+        }
         // Plan 372 follow-up: also scan the grandparent directory (one level up)
         // to catch enums/specs defined in sibling directories (e.g. error.at in
         // src/ when transpiling orchestration/driver.at in src/orchestration/).
@@ -6326,14 +6824,20 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
             let mut gp_parsed = 0usize;
             if let Ok(entries) = std::fs::read_dir(grandparent) {
                 for entry in entries.flatten() {
-                    if gp_parsed >= GP_PARSE_MAX { break; }
+                    if gp_parsed >= GP_PARSE_MAX {
+                        break;
+                    }
                     let entry_path = entry.path();
                     if entry_path.extension().map(|e| e == "at").unwrap_or(false) {
-                        if entry_path == std::path::Path::new(path) { continue; }
+                        if entry_path == std::path::Path::new(path) {
+                            continue;
+                        }
                         let too_big = std::fs::metadata(&entry_path)
                             .map(|m| m.len() > GP_PARSE_MAX_BYTES)
                             .unwrap_or(true);
-                        if too_big { continue; }
+                        if too_big {
+                            continue;
+                        }
                         if let Ok(sibling_code) = std::fs::read_to_string(&entry_path) {
                             gp_parsed += 1;
                             let mut sib_parser = Parser::from(sibling_code.as_str());
@@ -6348,10 +6852,13 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                                         crate::ast::Stmt::SpecDecl(sd) => {
                                             let name = sd.name.clone();
                                             if !trans.spec_decls_mut().contains_key(&name) {
-                                                trans.spec_decls_mut().insert(name, sd.methods.clone());
+                                                trans
+                                                    .spec_decls_mut()
+                                                    .insert(name, sd.methods.clone());
                                             }
                                         }
                                         _ => {}
+                                    }
                                 }
                             }
                         }
@@ -6359,7 +6866,6 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
                 }
             }
         }
-    }
     }
 
     trans.trans(ast, &mut sink)?;
@@ -6375,12 +6881,19 @@ pub fn trans_rust_with_session(session: &mut CompileSession, path: &str) -> Auto
     crate::trans::rust::RustTrans::post_process_with(&mut sink.body, &trans.ord_restricted_names());
 
     // Write output file
-    session.assembly_references.extend(trans.assembly_references.iter().cloned());
-    let manifest = session.freeze_assembly_manifest("rust-emission", std::path::Path::new(path), &code)?;
+    session
+        .assembly_references
+        .extend(trans.assembly_references.iter().cloned());
+    let manifest =
+        session.freeze_assembly_manifest("rust-emission", std::path::Path::new(path), &code)?;
     let source_bytes = sink.done()?;
     if !source_bytes.is_empty() {
         std::fs::write(&rsname, source_bytes)?;
-        std::fs::write(format!("{rsname}.assembly.json"), serde_json::to_vec(&manifest).map_err(|error| crate::error::AutoError::Msg(error.to_string()))?)?;
+        std::fs::write(
+            format!("{rsname}.assembly.json"),
+            serde_json::to_vec(&manifest)
+                .map_err(|error| crate::error::AutoError::Msg(error.to_string()))?,
+        )?;
 
         // Plan 204 Phase 6B: Basic output validation
         let source_str = String::from_utf8_lossy(source_bytes);
@@ -6549,8 +7062,7 @@ pub fn trans_gdscript(path: &str) -> AutoResult<String> {
 /// Reads `path` (an `.at` file containing a `scene` declaration), parses it,
 /// finds the `SceneDecl`, and writes a `.tscn` file next to the source.
 pub fn trans_tscn(path: &str) -> AutoResult<String> {
-    let code = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     let tscn_name = path.replace(".at", ".tscn");
 
@@ -6572,8 +7084,7 @@ pub fn trans_tscn(path: &str) -> AutoResult<String> {
 /// The scene's `script = "name.gd"` reference ties the generated script to
 /// the scene root.
 pub fn trans_godot(path: &str) -> AutoResult<String> {
-    let code = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     let _scope = Rc::new(RefCell::new(crate::scope_manager::ScopeManager::new()));
     let mut parser = Parser::from(code.as_str());
@@ -6602,8 +7113,7 @@ pub fn trans_godot(path: &str) -> AutoResult<String> {
 
 /// Transpile AutoLang file to TypeScript (Plan 100: a2js → a2ts)
 pub fn trans_typescript(path: &str) -> AutoResult<String> {
-    let code = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     let tsname = path.replace(".at", ".ts");
     let fname = AutoPath::new(path).filename();
@@ -6620,10 +7130,14 @@ pub fn trans_typescript(path: &str) -> AutoResult<String> {
 
     // Write runtime file if any runtime symbols were used
     if trans.needs_range || trans.needs_print {
-        let runtime_dir = std::path::Path::new(path).parent()
+        let runtime_dir = std::path::Path::new(path)
+            .parent()
             .unwrap_or(std::path::Path::new("."));
         let runtime_path = runtime_dir.join("runtime.ts");
-        std::fs::write(&runtime_path, crate::trans::typescript::ts_runtime::runtime_file_content())?;
+        std::fs::write(
+            &runtime_path,
+            crate::trans::typescript::ts_runtime::runtime_file_content(),
+        )?;
     }
 
     Ok(format!("[trans] {} -> {}", path, tsname))
@@ -6631,8 +7145,7 @@ pub fn trans_typescript(path: &str) -> AutoResult<String> {
 
 /// Transpile AutoLang file to TypeScript with custom output path
 pub fn trans_typescript_to(path: &str, output: &str) -> AutoResult<String> {
-    let code = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     let fname = AutoPath::new(path).filename();
 
@@ -6648,10 +7161,14 @@ pub fn trans_typescript_to(path: &str, output: &str) -> AutoResult<String> {
 
     // Write runtime file if any runtime symbols were used
     if trans.needs_range || trans.needs_print {
-        let runtime_dir = std::path::Path::new(output).parent()
+        let runtime_dir = std::path::Path::new(output)
+            .parent()
             .unwrap_or(std::path::Path::new("."));
         let runtime_path = runtime_dir.join("runtime.ts");
-        std::fs::write(&runtime_path, crate::trans::typescript::ts_runtime::runtime_file_content())?;
+        std::fs::write(
+            &runtime_path,
+            crate::trans::typescript::ts_runtime::runtime_file_content(),
+        )?;
     }
 
     Ok(format!("[trans] {} -> {}", path, output))
@@ -6659,8 +7176,8 @@ pub fn trans_typescript_to(path: &str, output: &str) -> AutoResult<String> {
 
 /// Transpile Rust file to AutoLang (Plan 173: r2a)
 pub fn transpile_r2a_file(path: &str) -> AutoResult<String> {
-    let rust_code = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let rust_code =
+        std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
     let name = std::path::Path::new(path)
         .file_stem()
         .and_then(|s| s.to_str())
@@ -6688,7 +7205,7 @@ pub fn ui_build(
     output: Option<&str>,
 ) -> AutoResult<String> {
     use crate::session::CompilerSession;
-    use crate::ui_gen::{BackendGenerator, VueGenerator, RustGenerator, JetGenerator};
+    use crate::ui_gen::{BackendGenerator, JetGenerator, RustGenerator, VueGenerator};
 
     // Parse scenario
     let session = match scenario {
@@ -6699,8 +7216,7 @@ pub fn ui_build(
     };
 
     // Read input file
-    let code = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     // PLAN-635: pre-register use-imported recipes before the parse (parser
     // symbol-checker hook), then replay after the parse.
@@ -6708,15 +7224,16 @@ pub fn ui_build(
         .parent()
         .unwrap_or(std::path::Path::new("."))
         .to_path_buf();
-    let recipe_imports = crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
-        .map_err(|e| e.to_string())?;
+    let recipe_imports =
+        crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+            .map_err(|e| e.to_string())?;
 
     // Parse with scenario
     let mut parser = Parser::from(code.as_str());
     parser = parser.with_session(session.clone());
-    let ast = parser.parse().map_err(|e| {
-        format!("Parse error: {:?}", e)
-    })?;
+    let ast = parser
+        .parse()
+        .map_err(|e| format!("Parse error: {:?}", e))?;
 
     // Extract AURA widgets from AST
     crate::aura::extract::clear_view_fragments();
@@ -6736,8 +7253,8 @@ pub fn ui_build(
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
             // Convert WidgetDecl to AuraWidget
-            let aura_widget = crate::aura::extract_widget_from_decl(widget_decl)
-                .map_err(|e| e.to_string())?;
+            let aura_widget =
+                crate::aura::extract_widget_from_decl(widget_decl).map_err(|e| e.to_string())?;
             widgets.push(aura_widget);
         }
     }
@@ -6790,8 +7307,7 @@ pub fn ui_build(
         };
         std::fs::create_dir_all(out_dir).ok();
         for widget in &widgets {
-            let out_path = std::path::Path::new(out_dir)
-                .join(format!("{}.{}", widget.name, ext));
+            let out_path = std::path::Path::new(out_dir).join(format!("{}.{}", widget.name, ext));
             // Generate individual widget code
             let widget_code = match backend {
                 "vue" => {
@@ -6820,16 +7336,12 @@ pub fn ui_build(
 ///
 /// This is a convenience function for generating Vue components
 /// with shadcn-vue support enabled.
-pub fn ui_build_shadcn(
-    path: &str,
-    output: Option<&str>,
-) -> AutoResult<String> {
+pub fn ui_build_shadcn(path: &str, output: Option<&str>) -> AutoResult<String> {
     use crate::session::CompilerSession;
     use crate::ui_gen::{BackendGenerator, VueGenerator, VueMode};
 
     // Read input file
-    let code = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     // PLAN-635: pre-register use-imported recipes before the parse (parser
     // symbol-checker hook), then replay after the parse.
@@ -6837,16 +7349,17 @@ pub fn ui_build_shadcn(
         .parent()
         .unwrap_or(std::path::Path::new("."))
         .to_path_buf();
-    let recipe_imports = crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
-        .map_err(|e| e.to_string())?;
+    let recipe_imports =
+        crate::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+            .map_err(|e| e.to_string())?;
 
     // Parse with UI scenario
     let session = CompilerSession::ui().with_backend("vue");
     let mut parser = Parser::from(code.as_str());
     parser = parser.with_session(session);
-    let ast = parser.parse().map_err(|e| {
-        format!("Parse error: {:?}", e)
-    })?;
+    let ast = parser
+        .parse()
+        .map_err(|e| format!("Parse error: {:?}", e))?;
 
     // Extract AURA widgets from AST
     crate::aura::extract::clear_view_fragments();
@@ -6865,8 +7378,8 @@ pub fn ui_build_shadcn(
     let mut widgets = Vec::new();
     for stmt in &ast.stmts {
         if let crate::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let aura_widget = crate::aura::extract_widget_from_decl(widget_decl)
-                .map_err(|e| e.to_string())?;
+            let aura_widget =
+                crate::aura::extract_widget_from_decl(widget_decl).map_err(|e| e.to_string())?;
             widgets.push(aura_widget);
         }
     }
@@ -6889,8 +7402,7 @@ pub fn ui_build_shadcn(
     if let Some(out_dir) = output {
         std::fs::create_dir_all(out_dir).ok();
         for widget in &widgets {
-            let out_path = std::path::Path::new(out_dir)
-                .join(format!("{}.vue", widget.name));
+            let out_path = std::path::Path::new(out_dir).join(format!("{}.vue", widget.name));
             let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
             let widget_code = gen.generate(widget).map_err(|e| e.to_string())?;
             std::fs::write(&out_path, &widget_code)
@@ -6961,8 +7473,7 @@ fn is_api_use_stmt(use_stmt: &crate::ast::Use) -> bool {
 /// populated the same way as components built via auto-man's generator.
 fn is_store_use_stmt(use_stmt: &crate::ast::Use) -> bool {
     let path_match = use_stmt.paths.len() == 1
-        && (use_stmt.paths[0].as_str() == "store"
-            || use_stmt.paths[0].as_str().contains("store"));
+        && (use_stmt.paths[0].as_str() == "store" || use_stmt.paths[0].as_str().contains("store"));
     let mp_match = use_stmt.module_path.as_ref().map_or(false, |mp| {
         let d = mp.display();
         d == "store" || d.contains("store")
@@ -7015,7 +7526,11 @@ pub fn extract_store_deps_from_file(path: &str) -> Vec<String> {
             cur.push(ch);
         } else {
             // 首字母大写且以 Store 结尾的标识符(生态命名约定:XxxStore)。
-            let starts_uc = cur.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+            let starts_uc = cur
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false);
             if starts_uc && cur.len() > 5 && cur.ends_with("Store") && !deps.contains(&cur) {
                 hits.push(cur.clone());
             }
@@ -7110,7 +7625,9 @@ widget App {
             "real use-decl must hit: {deps:?}"
         );
         assert!(
-            !deps.iter().any(|d| d == "BooksStore" || d == "AnotherStore"),
+            !deps
+                .iter()
+                .any(|d| d == "BooksStore" || d == "AnotherStore"),
             "comment examples must not leak into deps: {deps:?}"
         );
     }
@@ -7123,7 +7640,8 @@ pub fn ui_build_shadcn_with_widgets(
     path: &str,
     output: Option<&str>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
-    let (vue_code, widgets, _stores) = ui_build_shadcn_with_widgets_and_stores(path, output, None, None, None)?;
+    let (vue_code, widgets, _stores) =
+        ui_build_shadcn_with_widgets_and_stores(path, output, None, None, None)?;
     Ok((vue_code, widgets))
 }
 
@@ -7152,16 +7670,14 @@ pub fn ui_build_shadcn_with_widgets_and_stores(
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions, VueGenerator, VueMode};
 
     let at_path = std::path::Path::new(path);
-    let stream_endpoints = root_dir
-        .map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
+    let stream_endpoints = root_dir.map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
     let opts = ComponentGenOptions {
         stream_endpoints,
         shadcn,
         default_classes,
         ..Default::default()
     };
-    let result = generate_component_from_file(at_path, opts)
-        .map_err(|e| format!("{}", e))?;
+    let result = generate_component_from_file(at_path, opts).map_err(|e| format!("{}", e))?;
     let store_composables = result.store_composables.clone();
 
     // Plan 012 Batch A: surface codegen validation warnings on the build path
@@ -7172,8 +7688,7 @@ pub fn ui_build_shadcn_with_widgets_and_stores(
     if let Some(out_dir) = output {
         std::fs::create_dir_all(out_dir).ok();
         for (name, code) in &result.all_widget_codes {
-            let out_path = std::path::Path::new(out_dir)
-                .join(format!("{}.vue", name));
+            let out_path = std::path::Path::new(out_dir).join(format!("{}.vue", name));
             std::fs::write(&out_path, code)
                 .map_err(|e| format!("Failed to write output file: {}", e))?;
         }
@@ -7201,9 +7716,7 @@ pub fn ui_build_shadcn_all_widget_codes(
     shadcn: Option<bool>,
     default_classes: Option<bool>,
 ) -> AutoResult<crate::ui_gen::GeneratedComponent> {
-    ui_build_shadcn_all_widget_codes_with_bound(
-        path, root_dir, shadcn, default_classes, None,
-    )
+    ui_build_shadcn_all_widget_codes_with_bound(path, root_dir, shadcn, default_classes, None)
 }
 
 /// Plan 443: `ui_build_shadcn_all_widget_codes` + the workspace-aggregated
@@ -7217,8 +7730,7 @@ pub fn ui_build_shadcn_all_widget_codes_with_bound(
 ) -> AutoResult<crate::ui_gen::GeneratedComponent> {
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
     let at_path = std::path::Path::new(path);
-    let stream_endpoints = root_dir
-        .map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
+    let stream_endpoints = root_dir.map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
     let opts = ComponentGenOptions {
         stream_endpoints,
         shadcn,
@@ -7226,8 +7738,7 @@ pub fn ui_build_shadcn_all_widget_codes_with_bound(
         bound_model_channels,
         ..Default::default()
     };
-    let result = generate_component_from_file(at_path, opts)
-        .map_err(|e| format!("{}", e))?;
+    let result = generate_component_from_file(at_path, opts).map_err(|e| format!("{}", e))?;
     crate::ui_gen::validators::print_warnings_once(path, &result.validation_warnings);
     Ok(result)
 }
@@ -7241,7 +7752,12 @@ pub fn ui_build_shadcn_with_sub_widgets(
     sub_widget_names: Vec<String>,
 ) -> AutoResult<(String, Vec<crate::aura::AuraWidget>)> {
     let (vue_code, widgets, _stores) = ui_build_shadcn_with_sub_widgets_and_stores(
-        path, output, sub_widget_names, None, None, None,
+        path,
+        output,
+        sub_widget_names,
+        None,
+        None,
+        None,
     )?;
     Ok((vue_code, widgets))
 }
@@ -7286,8 +7802,7 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let at_path = std::path::Path::new(path);
-    let stream_endpoints = root_dir
-        .map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
+    let stream_endpoints = root_dir.map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
     let opts = ComponentGenOptions {
         sub_widgets: Some(sub_widget_names),
         sub_widget_models,
@@ -7298,8 +7813,7 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
         sub_widget_msgs,
         ..Default::default()
     };
-    let result = generate_component_from_file(at_path, opts)
-        .map_err(|e| format!("{}", e))?;
+    let result = generate_component_from_file(at_path, opts).map_err(|e| format!("{}", e))?;
     let store_composables = result.store_composables.clone();
 
     crate::ui_gen::validators::print_warnings_once(path, &result.validation_warnings);
@@ -7307,8 +7821,7 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores_full(
     if let Some(out_dir) = output {
         std::fs::create_dir_all(out_dir).ok();
         for (name, code) in &result.all_widget_codes {
-            let out_path = std::path::Path::new(out_dir)
-                .join(format!("{}.vue", name));
+            let out_path = std::path::Path::new(out_dir).join(format!("{}.vue", name));
             std::fs::write(&out_path, code)
                 .map_err(|e| format!("Failed to write output file: {}", e))?;
         }
@@ -7341,8 +7854,7 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores(
     use crate::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let at_path = std::path::Path::new(path);
-    let stream_endpoints = root_dir
-        .map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
+    let stream_endpoints = root_dir.map(crate::ui_gen::api::resolve_stream_endpoints_for_project);
     let opts = ComponentGenOptions {
         sub_widgets: Some(sub_widget_names),
         stream_endpoints,
@@ -7350,8 +7862,7 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores(
         default_classes,
         ..Default::default()
     };
-    let result = generate_component_from_file(at_path, opts)
-        .map_err(|e| format!("{}", e))?;
+    let result = generate_component_from_file(at_path, opts).map_err(|e| format!("{}", e))?;
     let store_composables = result.store_composables.clone();
 
     // Plan 012 Batch A: surface codegen validation warnings (deduplicated).
@@ -7361,8 +7872,7 @@ pub fn ui_build_shadcn_with_sub_widgets_and_stores(
     if let Some(out_dir) = output {
         std::fs::create_dir_all(out_dir).ok();
         for (name, code) in &result.all_widget_codes {
-            let out_path = std::path::Path::new(out_dir)
-                .join(format!("{}.vue", name));
+            let out_path = std::path::Path::new(out_dir).join(format!("{}.vue", name));
             std::fs::write(&out_path, code)
                 .map_err(|e| format!("Failed to write output file: {}", e))?;
         }
@@ -7539,34 +8049,8 @@ pub fn run_file_with_auto_mode(path: &Path) -> AutoResult<String> {
     run_with_mode(&source, mode)
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 #[cfg(test)]
 pub(crate) mod tests; // PLAN-726 T-02: heavy_gate 机器闸门跨档共用(crate::vm churn 族引用)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // Plan 370 shared test support: builds the real 015-notes DynamicComponent.
 // Must precede the plan370_* test modules that depend on it.
@@ -7574,40 +8058,6 @@ pub(crate) mod tests; // PLAN-726 T-02: heavy_gate 机器闸门跨档共用(crat
 // to avoid breaking lib-test compilation without that feature.
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan370_test_support;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // =============================================================================
 // Plan 015: AutoUI Core (feature-gated)
@@ -7619,22 +8069,19 @@ pub mod ui;
 // Re-export UI types when feature is enabled
 #[cfg(feature = "ui")]
 pub use ui::{
-    Component, View, ViewBuilder,
-    VNodeId, VNodeKind, VNode, VNodeProps, VTree,
-    view_to_vtree,
-    App, AppResult,
-    Style,
+    view_to_vtree, App, AppResult, Component, Style, VNode, VNodeId, VNodeKind, VNodeProps, VTree,
+    View, ViewBuilder,
 };
 
 #[cfg(feature = "ui-interpreter")]
 pub use ui::{
-    interpreter::{InterpreterBridge, DynamicMessage},
-    event_router::{EventRouter, EventType, EventContext},
+    event_router::{EventContext, EventRouter, EventType},
     hot_reload::{HotReloadComponent, UIWatcher},
+    interpreter::{DynamicMessage, InterpreterBridge},
 };
 
 #[cfg(feature = "ui-iced")]
-pub use ui::iced::{IntoIcedElement, ComponentIced};
+pub use ui::iced::{ComponentIced, IntoIcedElement};
 // =============================================================================
 // Plan 446 批一 (C1-2): parse 错误定位换算回归
 // =============================================================================
@@ -7674,16 +8121,6 @@ mod plan446_batch1_tests {
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
 
 // Plan 510 / P499-7: native ID 撞号(Log×Shell 1800-1803)回归钉 +
 // 字符串池 over-release 记账回归。
@@ -7728,11 +8165,6 @@ mod p614_tree_vm_probe;
 #[path = "tests/p618_filter_tree_probe.rs"]
 mod p618_filter_tree_probe;
 
-
-
-
-
-
 // PLAN-632: 画廊内嵌 demo 的模块组件桥接（store 装配顺序 + dep item
 // 文件解析 + 适配器链 widget 注册）回归。
 #[cfg(all(test, feature = "ui-iced"))]
@@ -7744,14 +8176,6 @@ mod plan632_demo_bridge_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 #[path = "tests/plan664_use_diag_tests.rs"]
 mod plan664_use_diag_tests;
-
-
-
-
-
-
-
-
 
 // PLAN-633: 内嵌全栈 demo 数据面（store → #[api] → db 模块种子/写路径）
 // 回归。

@@ -869,7 +869,10 @@ mod tests {
             outer_w,
             outer_h,
         );
-        assert_eq!(*wm.wins[&Wid(2)].window_size.borrow(), iced::Size::new(460.0, 540.0));
+        assert_eq!(
+            *wm.wins[&Wid(2)].window_size.borrow(),
+            iced::Size::new(460.0, 540.0)
+        );
     }
 
     #[test]
@@ -905,6 +908,9 @@ mod tests {
         // 最大化豁免：不居中、铺满窗格；window_size 随窗格（常规语义）。
         let ra = *wm.wins[&Wid(1)].rect.borrow();
         assert_rect(ra, 0.0, 0.0, 1280.0, 744.0);
-        assert_eq!(*wm.wins[&Wid(1)].window_size.borrow(), iced::Size::new(1280.0, 744.0));
+        assert_eq!(
+            *wm.wins[&Wid(1)].window_size.borrow(),
+            iced::Size::new(1280.0, 744.0)
+        );
     }
 }

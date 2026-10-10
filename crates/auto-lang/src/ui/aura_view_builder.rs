@@ -44,19 +44,19 @@ use std::collections::HashSet;
 use auto_val::{Op, Value};
 
 use crate::ast::Expr;
-use crate::aura::{AuraNode, AuraPropValue, AuraTextContent, AuraEvent, aura_events_get_base};
+use crate::aura::{aura_events_get_base, AuraEvent, AuraNode, AuraPropValue, AuraTextContent};
 
 /// Loop variable bindings: variable name → current Value.
 /// Passed through the conversion call chain to resolve `FieldAccess`
 /// expressions like `note.title` where `note` is a loop variable.
 type Bindings = HashMap<String, Value>;
-use crate::ui::interpreter::DynamicMessage;
-use crate::ui::vm_bridge::VmBridge;
-use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::debug::{BuildProbe, ForIter};
-use crate::ui::view::{View, ViewBuilder, PopoverAnchor, PopoverPlacement};
+use crate::ui::debug_id_map::DebugIdMap;
+use crate::ui::interpreter::DynamicMessage;
+use crate::ui::style::{SizeValue, Style, StyleClass};
+use crate::ui::view::{PopoverAnchor, PopoverPlacement, View, ViewBuilder};
+use crate::ui::vm_bridge::VmBridge;
 use crate::ui_gen::vue::VueGenerator;
-use crate::ui::style::{Style, StyleClass, SizeValue};
 
 // Plan 409 §10 续 10: 当前 category-section 的 color,供 component-card 继承。
 // VM builder 递归 convert 无父子参数传递,用 thread-local 模拟:category-section
@@ -163,7 +163,8 @@ pub struct AuraViewBuilder<'a> {
     /// 回退 state。None = 根 widget 在 build_with_debug_gated 时由调用方传入。
     computed: Option<&'a [crate::aura::AuraComputed]>,
     /// Plan 409 §10 续 19: preview-card 的 UI 局部 state(show/tab)。
-    preview_states: Option<&'a std::collections::HashMap<String, crate::ui::dynamic::PreviewCardUiState>>,
+    preview_states:
+        Option<&'a std::collections::HashMap<String, crate::ui::dynamic::PreviewCardUiState>>,
     /// Plan 482: nav-group 内置开合态（未绑定 `open` 的可折叠组）。
     /// 由 DynamicComponent 维护，`__nav_toggle` 内部消息翻转。
     nav_group_states: Option<&'a std::collections::HashMap<String, bool>>,
@@ -210,9 +211,12 @@ struct SlotFills<'a> {
 /// Plan 476: 节点是否为 slot outlet 元素；是则返回其 (props, children)。
 fn slot_outlet_parts(node: &AuraNode) -> Option<(&HashMap<String, AuraPropValue>, &[AuraNode])> {
     match node {
-        AuraNode::Element { tag, props, children, .. } if tag == "slot" || tag == "Slot" => {
-            Some((props, children))
-        }
+        AuraNode::Element {
+            tag,
+            props,
+            children,
+            ..
+        } if tag == "slot" || tag == "Slot" => Some((props, children)),
         _ => None,
     }
 }
@@ -235,7 +239,6 @@ fn extract_slot_fills(children: &[AuraNode]) -> HashMap<String, Vec<&AuraNode>> 
     fills
 }
 
-
 /// PLAN-041 T8：autodown 只读 widget 的流式增量缓存注册表（按节点 path
 /// 身份键）。帧间结构键 diff，未变块复用上帧 View；尾块重同步。
 /// PLAN-043 T5：容量上限 32（对齐 DOC_EDITORS/413 §5.4 口径，DEBTS #041
@@ -246,12 +249,18 @@ const AUTODOWN_STREAM_REGISTRY_CAP: usize = 32;
 
 #[cfg(feature = "autodown")]
 fn autodown_stream_registry() -> &'static std::sync::Mutex<(
-    std::collections::HashMap<String, crate::ui::autodown_render::StreamCache<crate::ui::interpreter::DynamicMessage>>,
+    std::collections::HashMap<
+        String,
+        crate::ui::autodown_render::StreamCache<crate::ui::interpreter::DynamicMessage>,
+    >,
     std::collections::VecDeque<String>,
 )> {
     static REG: std::sync::OnceLock<
         std::sync::Mutex<(
-            std::collections::HashMap<String, crate::ui::autodown_render::StreamCache<crate::ui::interpreter::DynamicMessage>>,
+            std::collections::HashMap<
+                String,
+                crate::ui::autodown_render::StreamCache<crate::ui::interpreter::DynamicMessage>,
+            >,
             std::collections::VecDeque<String>,
         )>,
     > = std::sync::OnceLock::new();
@@ -268,7 +277,10 @@ fn autodown_stream_registry() -> &'static std::sync::Mutex<(
 #[cfg(feature = "autodown")]
 fn stream_registry_entry(
     reg: &mut (
-        std::collections::HashMap<String, crate::ui::autodown_render::StreamCache<crate::ui::interpreter::DynamicMessage>>,
+        std::collections::HashMap<
+            String,
+            crate::ui::autodown_render::StreamCache<crate::ui::interpreter::DynamicMessage>,
+        >,
         std::collections::VecDeque<String>,
     ),
     key: String,
@@ -377,19 +389,13 @@ impl<'a> AuraViewBuilder<'a> {
     }
 
     /// PLAN-652: 挂载登记 sink（DynamicComponent.mounted_types 共享 RefCell）。
-    pub fn with_mounted_sink(
-        mut self,
-        sink: &'a RefCell<HashSet<String>>,
-    ) -> Self {
+    pub fn with_mounted_sink(mut self, sink: &'a RefCell<HashSet<String>>) -> Self {
         self.mounted_sink = Some(sink);
         self
     }
 
     /// PLAN-654: path 级挂载登记 sink（DynamicComponent.mounted_paths + seq）。
-    pub fn with_mount_path_sink(
-        mut self,
-        sink: crate::ui::dynamic::MountPathSinkRef<'a>,
-    ) -> Self {
+    pub fn with_mount_path_sink(mut self, sink: crate::ui::dynamic::MountPathSinkRef<'a>) -> Self {
         self.mount_path_sink = Some(sink);
         self
     }
@@ -420,14 +426,20 @@ impl<'a> AuraViewBuilder<'a> {
 
     /// Plan 409 §10 续 19: 传入 preview-card 的 UI 局部 state(show/tab),
     /// 供 preview-card 渲染时决定是否展开代码 + 哪个 tab。
-    pub fn with_preview_states(mut self, states: &'a std::collections::HashMap<String, crate::ui::dynamic::PreviewCardUiState>) -> Self {
+    pub fn with_preview_states(
+        mut self,
+        states: &'a std::collections::HashMap<String, crate::ui::dynamic::PreviewCardUiState>,
+    ) -> Self {
         self.preview_states = Some(states);
         self
     }
 
     /// Plan 482: 传入 nav-group 内置开合态（未绑定 `open` 的可折叠组），
     /// `__nav_toggle` 内部消息在 update 循环翻转、view 重建时读取。
-    pub fn with_nav_group_states(mut self, states: &'a std::collections::HashMap<String, bool>) -> Self {
+    pub fn with_nav_group_states(
+        mut self,
+        states: &'a std::collections::HashMap<String, bool>,
+    ) -> Self {
         self.nav_group_states = Some(states);
         self
     }
@@ -444,12 +456,20 @@ impl<'a> AuraViewBuilder<'a> {
     /// Plan 476: 组装 widget 调用位的 slot 填充集（children 无任何填充时
     /// 返回 None，走既有零变化路径）。parent 捕获 self（父作用域 builder），
     /// bindings 捕获调用位循环变量——fill 求值时切回二者即得父作用域。
-    fn slot_fills_for<'s>(&'s self, children: &'s [AuraNode], bindings: &'s Bindings) -> Option<SlotFills<'s>> {
+    fn slot_fills_for<'s>(
+        &'s self,
+        children: &'s [AuraNode],
+        bindings: &'s Bindings,
+    ) -> Option<SlotFills<'s>> {
         let fills = extract_slot_fills(children);
         if fills.is_empty() {
             None
         } else {
-            Some(SlotFills { parent: self, fills, bindings })
+            Some(SlotFills {
+                parent: self,
+                fills,
+                bindings,
+            })
         }
     }
 
@@ -478,7 +498,14 @@ impl<'a> AuraViewBuilder<'a> {
             } else if views.len() == 1 {
                 views.into_iter().next().unwrap()
             } else {
-                View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
+                View::Column {
+                    children: views,
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                    onclick: None,
+                    on_right_click: None,
+                }
             };
         }
         // Fallback 内容（子作用域求值）
@@ -495,7 +522,14 @@ impl<'a> AuraViewBuilder<'a> {
             } else if views.len() == 1 {
                 views.into_iter().next().unwrap()
             } else {
-                View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
+                View::Column {
+                    children: views,
+                    spacing: 0,
+                    padding: 0,
+                    style: None,
+                    onclick: None,
+                    on_right_click: None,
+                }
             }
         }
     }
@@ -519,7 +553,9 @@ impl<'a> AuraViewBuilder<'a> {
             let sf = self.slot_fills.unwrap();
             for n in fills {
                 path.push(slot_idx);
-                let v = sf.parent.convert_node_tracked_ctx(n, path, id_map, probe, sf.bindings);
+                let v = sf
+                    .parent
+                    .convert_node_tracked_ctx(n, path, id_map, probe, sf.bindings);
                 path.pop();
                 if is_visually_empty(&v) {
                     continue;
@@ -544,7 +580,14 @@ impl<'a> AuraViewBuilder<'a> {
         } else if views.len() == 1 {
             views.into_iter().next().unwrap()
         } else {
-            View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
+            View::Column {
+                children: views,
+                spacing: 0,
+                padding: 0,
+                style: None,
+                onclick: None,
+                on_right_click: None,
+            }
         }
     }
 
@@ -568,7 +611,11 @@ impl<'a> AuraViewBuilder<'a> {
     /// Plan 476: 单个 child 节点的拼接展开（untracked）：outlet 命中 fill →
     /// 父作用域转换产出 0..N 视图；未命中 → fallback children（子作用域）；
     /// 普通节点 → 1 视图。返回未过滤的产出。
-    fn expand_one_child_untracked(&self, n: &AuraNode, bindings: &Bindings) -> Vec<View<DynamicMessage>> {
+    fn expand_one_child_untracked(
+        &self,
+        n: &AuraNode,
+        bindings: &Bindings,
+    ) -> Vec<View<DynamicMessage>> {
         if let Some((props, outlet_children)) = slot_outlet_parts(n) {
             let name = crate::aura::slot_element_name(props);
             let mut produced: Vec<View<DynamicMessage>> = Vec::new();
@@ -605,7 +652,8 @@ impl<'a> AuraViewBuilder<'a> {
         let mut views: Vec<View<DynamicMessage>> = Vec::new();
         let mut slot_idx = 0usize;
         for n in children {
-            let produced = self.expand_one_child_spliced(n, path, id_map, probe, bindings, slot_idx);
+            let produced =
+                self.expand_one_child_spliced(n, path, id_map, probe, bindings, slot_idx);
             for v in produced {
                 if is_visually_empty(&v) {
                     continue;
@@ -659,7 +707,13 @@ impl<'a> AuraViewBuilder<'a> {
                     let sf = self.slot_fills.unwrap();
                     for node in fills {
                         path.push(base_idx);
-                        let v = sf.parent.convert_node_tracked_ctx(node, path, id_map, probe, sf.bindings);
+                        let v = sf.parent.convert_node_tracked_ctx(
+                            node,
+                            path,
+                            id_map,
+                            probe,
+                            sf.bindings,
+                        );
                         path.pop();
                         produced.push(v);
                     }
@@ -697,8 +751,7 @@ impl<'a> AuraViewBuilder<'a> {
                 Err(_) => self.bridge.read_state(name).map_err(|e| e.to_string()),
             }
         } else {
-            self.bridge.read_state(name)
-                .map_err(|e| e.to_string())
+            self.bridge.read_state(name).map_err(|e| e.to_string())
         }
     }
 
@@ -711,10 +764,14 @@ impl<'a> AuraViewBuilder<'a> {
             // Try child state first, fall back to root state for store fields
             match self.bridge.read_child_state_as_vec(child_id, name) {
                 Ok(v) => Ok(v),
-                Err(_) => self.bridge.read_state_as_vec(name).map_err(|e| e.to_string()),
+                Err(_) => self
+                    .bridge
+                    .read_state_as_vec(name)
+                    .map_err(|e| e.to_string()),
             }
         } else {
-            self.bridge.read_state_as_vec(name)
+            self.bridge
+                .read_state_as_vec(name)
                 .map_err(|e| e.to_string())
         }
     }
@@ -743,7 +800,11 @@ impl<'a> AuraViewBuilder<'a> {
         }
         None
     }
-    fn resolve_iterable(&self, iterable: &str, bindings: &Bindings) -> Option<Vec<auto_val::Value>> {
+    fn resolve_iterable(
+        &self,
+        iterable: &str,
+        bindings: &Bindings,
+    ) -> Option<Vec<auto_val::Value>> {
         // Simple state field (no interior dot after stripping the leading '.')
         let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
         let store_field = self.store_source_field(stripped);
@@ -821,7 +882,10 @@ impl<'a> AuraViewBuilder<'a> {
     /// historical behaviour relied on by Task 9-11 tests. For F12-off / MCP
     /// zero-overhead capture bypass (Plan 307 Task 18), use
     /// [`build_with_debug_gated`] with `capture_probe = false`.
-    pub fn build_with_debug(&self, node: &AuraNode) -> (View<DynamicMessage>, DebugIdMap, BuildProbe) {
+    pub fn build_with_debug(
+        &self,
+        node: &AuraNode,
+    ) -> (View<DynamicMessage>, DebugIdMap, BuildProbe) {
         self.build_with_debug_gated(node, true)
     }
 
@@ -845,7 +909,13 @@ impl<'a> AuraViewBuilder<'a> {
             BuildProbe::new_disabled()
         };
         let mut path = Vec::new();
-        let view = self.convert_node_tracked_ctx(node, &mut path, &mut id_map, &mut probe, &Bindings::new());
+        let view = self.convert_node_tracked_ctx(
+            node,
+            &mut path,
+            &mut id_map,
+            &mut probe,
+            &Bindings::new(),
+        );
         (view, id_map, probe)
     }
 
@@ -856,21 +926,40 @@ impl<'a> AuraViewBuilder<'a> {
     /// Dispatch an AuraNode to the appropriate converter with loop variable bindings.
     fn convert_node_with(&self, node: &AuraNode, bindings: &Bindings) -> View<DynamicMessage> {
         match node {
-            AuraNode::Element { tag, props, events, children, .. } => {
-                self.convert_element(tag, props, events, children, bindings)
-            }
-            AuraNode::Text(text_content) => {
-                self.convert_text_with(text_content, bindings)
-            }
-            AuraNode::MemoBlock { deps, exact, body, .. } => {
+            AuraNode::Element {
+                tag,
+                props,
+                events,
+                children,
+                ..
+            } => self.convert_element(tag, props, events, children, bindings),
+            AuraNode::Text(text_content) => self.convert_text_with(text_content, bindings),
+            AuraNode::MemoBlock {
+                deps, exact, body, ..
+            } => {
                 // PLAN-046 T-06 执行期修正：untracked 帧同走共享块门（伪造
                 // 空簿记通道；probe 禁用 → probe_on=false 键面）。
                 let mut path0 = Vec::new();
                 let mut id_map0 = DebugIdMap::default();
                 let mut probe0 = BuildProbe::new_disabled();
-                self.convert_memo_block(deps, *exact, body, &mut path0, &mut id_map0, &mut probe0, bindings)
+                self.convert_memo_block(
+                    deps,
+                    *exact,
+                    body,
+                    &mut path0,
+                    &mut id_map0,
+                    &mut probe0,
+                    bindings,
+                )
             }
-            AuraNode::ForLoop { var, index, iterable, key_expr, body, .. } => {
+            AuraNode::ForLoop {
+                var,
+                index,
+                iterable,
+                key_expr,
+                body,
+                ..
+            } => {
                 // PLAN-046 T-06 执行期修正：桌面窗口渲染帧走本 untracked 轨
                 //（DynamicComponent::view()=build()），keyed 门必须双轨可达
                 // ——伪造空簿记通道复用同一 convert_for_keyed（机制单源）；
@@ -880,8 +969,15 @@ impl<'a> AuraViewBuilder<'a> {
                     let mut id_map0 = DebugIdMap::default();
                     let mut probe0 = BuildProbe::new_disabled();
                     return self.convert_for_keyed(
-                        var, index, iterable, key_expr, body,
-                        &mut path0, &mut id_map0, &mut probe0, bindings,
+                        var,
+                        index,
+                        iterable,
+                        key_expr,
+                        body,
+                        &mut path0,
+                        &mut id_map0,
+                        &mut probe0,
+                        bindings,
                     );
                 }
                 // Strip leading dot from iterable name (e.g., ".notes" → "notes")
@@ -898,24 +994,48 @@ impl<'a> AuraViewBuilder<'a> {
                 // 与下方 Ok(Value::Array) 主路径一致:matches_search 过滤 +
                 // 循环变量/index 绑定 + 空/单/多子聚合)。
                 let render_for_children = |elems: Vec<Value>| -> View<DynamicMessage> {
-                    let children: Vec<View<DynamicMessage>> = elems.iter().enumerate()
+                    let children: Vec<View<DynamicMessage>> = elems
+                        .iter()
+                        .enumerate()
                         .filter_map(|(i, item)| {
                             // Apply search filter if 'search' state exists and is non-empty
-                            if !self.matches_search(item) { return None; }
+                            if !self.matches_search(item) {
+                                return None;
+                            }
                             let mut loop_bindings = bindings.clone();
-                            loop_bindings.insert(var.clone(), self.bridge.materialize_obj_ref(item));
+                            loop_bindings
+                                .insert(var.clone(), self.bridge.materialize_obj_ref(item));
                             if let Some(idx_var) = index {
                                 loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
                             }
-                            let views: Vec<View<DynamicMessage>> = body.iter()
+                            let views: Vec<View<DynamicMessage>> = body
+                                .iter()
                                 .map(|n| self.convert_node_with(n, &loop_bindings))
                                 .collect();
-                            if views.is_empty() { None }
-                            else if views.len() == 1 { Some(views.into_iter().next().unwrap()) }
-                            else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }) }
+                            if views.is_empty() {
+                                None
+                            } else if views.len() == 1 {
+                                Some(views.into_iter().next().unwrap())
+                            } else {
+                                Some(View::Column {
+                                    children: views,
+                                    spacing: 0,
+                                    padding: 0,
+                                    style: None,
+                                    onclick: None,
+                                    on_right_click: None,
+                                })
+                            }
                         })
                         .collect();
-                    View::Column { children, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
+                    View::Column {
+                        children,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                        on_right_click: None,
+                    }
                 };
                 let array: auto_val::Array = if has_inner_dot {
                     match self.resolve_iterable(iterable, bindings) {
@@ -923,53 +1043,57 @@ impl<'a> AuraViewBuilder<'a> {
                         None => return View::Empty,
                     }
                 } else {
-                // Plan 046:裸标识符 iterable 可能是外层循环绑定的变量 ——
-                // 先查 bindings(同 tracked 路径修复)。命中则解包成 Array。
-                if let Some(val) = bindings.get(state_name).cloned() {
-                    match val {
-                        Value::Array(arr) => arr,
-                        Value::Int(id) if id >= 4_000_000 => {
-                            auto_val::Array::from(self.bridge.index_list_all(id as usize))
-                        }
-                        Value::VmRef(r) => {
-                            auto_val::Array::from(self.bridge.index_list_all(r.id))
-                        }
-                        _ => return View::Empty,
-                    }
-                } else {
-                // Read the iterable array from VmBridge state
-                match self.read_state(state_name) {
-                    Ok(Value::Array(arr)) => arr,
-                    Ok(_other) => {
-                        // Try read_state_as_vec for Value::Int(array_id) refs
-                        match self.read_state_as_vec(state_name) {
-                            Ok(vec) => {
-                                return render_for_children(vec);
+                    // Plan 046:裸标识符 iterable 可能是外层循环绑定的变量 ——
+                    // 先查 bindings(同 tracked 路径修复)。命中则解包成 Array。
+                    if let Some(val) = bindings.get(state_name).cloned() {
+                        match val {
+                            Value::Array(arr) => arr,
+                            Value::Int(id) if id >= 4_000_000 => {
+                                auto_val::Array::from(self.bridge.index_list_all(id as usize))
                             }
-                            Err(_) => return View::Empty,
+                            Value::VmRef(r) => {
+                                auto_val::Array::from(self.bridge.index_list_all(r.id))
+                            }
+                            _ => return View::Empty,
+                        }
+                    } else {
+                        // Read the iterable array from VmBridge state
+                        match self.read_state(state_name) {
+                            Ok(Value::Array(arr)) => arr,
+                            Ok(_other) => {
+                                // Try read_state_as_vec for Value::Int(array_id) refs
+                                match self.read_state_as_vec(state_name) {
+                                    Ok(vec) => {
+                                        return render_for_children(vec);
+                                    }
+                                    Err(_) => return View::Empty,
+                                }
+                            }
+                            Err(_) => {
+                                // PLAN-051 C3 对齐(本臂此前漏齐):state 读 miss →
+                                // computed 求值回退。tracked for 路径(下方 ~963)早有
+                                // 该回退,本 convert 路径没有 —— `for cell in .days`
+                                // 以 computed 为 for 源(Plan 522 016 迁移)在此渲染整空。
+                                match self
+                                    .eval_computed(state_name, bindings)
+                                    .and_then(|v| self.value_to_iter_vec(&v))
+                                {
+                                    Some(vec) => return render_for_children(vec),
+                                    None => return View::Empty,
+                                }
+                            }
                         }
                     }
-                    Err(_) => {
-                        // PLAN-051 C3 对齐(本臂此前漏齐):state 读 miss →
-                        // computed 求值回退。tracked for 路径(下方 ~963)早有
-                        // 该回退,本 convert 路径没有 —— `for cell in .days`
-                        // 以 computed 为 for 源(Plan 522 016 迁移)在此渲染整空。
-                        match self
-                            .eval_computed(state_name, bindings)
-                            .and_then(|v| self.value_to_iter_vec(&v))
-                        {
-                            Some(vec) => return render_for_children(vec),
-                            None => return View::Empty,
-                        }
-                    }
-                }
-                }
                 };
 
-                let children: Vec<View<DynamicMessage>> = array.iter().enumerate()
+                let children: Vec<View<DynamicMessage>> = array
+                    .iter()
+                    .enumerate()
                     .filter_map(|(i, item)| {
                         // Apply search filter if 'search' state exists and is non-empty
-                        if !self.matches_search(item) { return None; }
+                        if !self.matches_search(item) {
+                            return None;
+                        }
                         let mut loop_bindings = bindings.clone();
                         // Bind loop variable (e.g., "note" → Value::Obj{title, body, time})
                         loop_bindings.insert(var.clone(), self.bridge.materialize_obj_ref(item));
@@ -978,7 +1102,8 @@ impl<'a> AuraViewBuilder<'a> {
                             loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
                         }
                         // Convert body nodes with the loop bindings active
-                        let views: Vec<View<DynamicMessage>> = body.iter()
+                        let views: Vec<View<DynamicMessage>> = body
+                            .iter()
                             .map(|n| self.convert_node_with(n, &loop_bindings))
                             .collect();
                         if views.is_empty() {
@@ -988,15 +1113,20 @@ impl<'a> AuraViewBuilder<'a> {
                             // Empty (e.g. a false `if` inside the loop), skip
                             // it so the loop doesn't emit a text("") spacer.
                             let v = views.into_iter().next().unwrap();
-                            if matches!(v, View::Empty) { None } else { Some(v) }
+                            if matches!(v, View::Empty) {
+                                None
+                            } else {
+                                Some(v)
+                            }
                         } else {
                             Some(View::Column {
                                 children: views,
                                 spacing: 0,
                                 padding: 0,
                                 style: None,
-            onclick: None, on_right_click: None,
-        })
+                                onclick: None,
+                                on_right_click: None,
+                            })
                         }
                     })
                     .collect();
@@ -1006,10 +1136,16 @@ impl<'a> AuraViewBuilder<'a> {
                     spacing: 0,
                     padding: 0,
                     style: None,
-            onclick: None, on_right_click: None,
-        }
+                    onclick: None,
+                    on_right_click: None,
+                }
             }
-            AuraNode::Conditional { condition, then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
                 let is_true = self.eval_condition_with(condition, bindings);
                 let empty = Vec::new();
                 let body = if is_true {
@@ -1031,35 +1167,54 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 0,
                         padding: 0,
                         style: None,
-            onclick: None, on_right_click: None,
-        }
+                        onclick: None,
+                        on_right_click: None,
+                    }
                 }
             }
-            AuraNode::Component { name, props, events, children, .. } => {
+            AuraNode::Component {
+                name,
+                props,
+                events,
+                children,
+                ..
+            } => {
                 // Plan 408: nav-link renders as a navigable button (like link).
                 if name == "nav-link" || name == "nav_link" {
-                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                    let prop_map: HashMap<String, AuraPropValue> = props
+                        .iter()
                         .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
                         .collect();
-                    let to = self.extract_string(&prop_map, "to")
+                    let to = self
+                        .extract_string(&prop_map, "to")
                         .or_else(|| self.extract_string(&prop_map, "href"))
                         .unwrap_or_default();
-                    let label = self.extract_string(&prop_map, "label")
+                    let label = self
+                        .extract_string(&prop_map, "label")
                         .or_else(|| self.extract_string(&prop_map, "text"))
                         .unwrap_or_default();
                     let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
+                    return self.render_link_button_with_icon(
+                        &label,
+                        &[],
+                        &to,
+                        &icon,
+                        bindings,
+                        false,
+                    );
                 }
                 // Plan 482: nav-item / nav-group 组件形态分发（Element 形态为主，
                 // 此处镜像 nav-link 的防御性覆盖）。
                 if name == "nav-item" || name == "nav_item" {
-                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                    let prop_map: HashMap<String, AuraPropValue> = props
+                        .iter()
                         .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
                         .collect();
                     return self.convert_nav_item(&prop_map, events, children, bindings);
                 }
                 if name == "nav-group" || name == "nav_group" {
-                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                    let prop_map: HashMap<String, AuraPropValue> = props
+                        .iter()
                         .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
                         .collect();
                     return self.convert_nav_group(&prop_map, events, children, bindings);
@@ -1072,32 +1227,62 @@ impl<'a> AuraViewBuilder<'a> {
                         .iter()
                         .filter_map(|n| {
                             let v = self.convert_node_with(n, bindings);
-                            if matches!(v, View::Empty) { None } else { Some(v) }
+                            if matches!(v, View::Empty) {
+                                None
+                            } else {
+                                Some(v)
+                            }
                         })
                         .collect();
-                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None };
+                    return View::Column {
+                        children: child_views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 // Plan 410: component-card → navigable link button (to + name + desc).
                 if name == "component-card" || name == "component_card" || name == "componentcard" {
-                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                    let prop_map: HashMap<String, AuraPropValue> = props
+                        .iter()
                         .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
                         .collect();
                     let to = self.extract_string(&prop_map, "to").unwrap_or_default();
                     let card_name = self.extract_string(&prop_map, "name").unwrap_or_default();
                     let desc = self.extract_string(&prop_map, "desc").unwrap_or_default();
-                    let label = if desc.is_empty() { card_name } else { format!("{} — {}", card_name, desc) };
+                    let label = if desc.is_empty() {
+                        card_name
+                    } else {
+                        format!("{} — {}", card_name, desc)
+                    };
                     let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
+                    return self.render_link_button_with_icon(
+                        &label,
+                        &[],
+                        &to,
+                        &icon,
+                        bindings,
+                        false,
+                    );
                 }
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(name) {
-                        let prop_values: HashMap<String, AuraPropValue> = props.iter()
+                        let prop_values: HashMap<String, AuraPropValue> = props
+                            .iter()
                             .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
                             .collect();
                         // Plan 476: 调用位 children 里的 slot 填充传给子构建器。
                         let fills = self.slot_fills_for(children, bindings);
-                        return self.render_child_widget(child_widget, &prop_values, events, bindings, fills.as_ref());
+                        return self.render_child_widget(
+                            child_widget,
+                            &prop_values,
+                            events,
+                            bindings,
+                            fills.as_ref(),
+                        );
                     }
                 }
                 // PLAN-095 T-07 (G-11): 未解析子件引用给可定位诊断——此前
@@ -1118,7 +1303,9 @@ impl<'a> AuraViewBuilder<'a> {
                 // current route (the iced equivalent of vue's <router-view>).
                 self.render_outlet_impl(bindings, None, *memo)
             }
-            AuraNode::Link { text, children, to, .. } => {
+            AuraNode::Link {
+                text, children, to, ..
+            } => {
                 // Plan 401/VM-routing: render a link as a clickable button whose
                 // onclick carries the target path as a __navigate message. The
                 // update loop intercepts __navigate and sets __current_route.
@@ -1149,16 +1336,31 @@ impl<'a> AuraViewBuilder<'a> {
             Some(v) => v,
             None => return View::Empty,
         };
-        let child_views: Vec<View<DynamicMessage>> = array.iter().enumerate()
+        let child_views: Vec<View<DynamicMessage>> = array
+            .iter()
+            .enumerate()
             .filter_map(|(i, item)| {
                 // Apply search filter if 'search' state exists and is non-empty
-                if !self.matches_search(item) { return None; }
+                if !self.matches_search(item) {
+                    return None;
+                }
                 let mut loop_bindings = bindings.clone();
                 loop_bindings.insert(var.to_string(), self.bridge.materialize_obj_ref(item));
                 if let Some(idx_var) = index {
                     loop_bindings.insert(idx_var.clone(), Value::Int(i as i32));
                 }
-                self.render_for_item_view(i, item, var, index, iterable, body, path, id_map, probe, &loop_bindings)
+                self.render_for_item_view(
+                    i,
+                    item,
+                    var,
+                    index,
+                    iterable,
+                    body,
+                    path,
+                    id_map,
+                    probe,
+                    &loop_bindings,
+                )
             })
             .collect();
         View::Column {
@@ -1200,7 +1402,11 @@ impl<'a> AuraViewBuilder<'a> {
                 }
                 auto_val::Value::VmRef(r) => Some(self.bridge.index_list_all(r.id)),
                 _ => {
-                    log::warn!("view_builder: bindings['{}'] is not iterable: {:?}", state_name, val);
+                    log::warn!(
+                        "view_builder: bindings['{}'] is not iterable: {:?}",
+                        state_name,
+                        val
+                    );
                     None
                 }
             };
@@ -1219,12 +1425,20 @@ impl<'a> AuraViewBuilder<'a> {
                     .eval_computed(state_name, bindings)
                     .and_then(|v| self.value_to_iter_vec(&v));
                 if std::env::var("AUTO_DEBUG_EMIT").is_ok() {
-                    eprintln!("[VM-FOR] {} computed fallback rows={:?}", state_name, dbg_vec.as_ref().map(|v| v.len()));
+                    eprintln!(
+                        "[VM-FOR] {} computed fallback rows={:?}",
+                        state_name,
+                        dbg_vec.as_ref().map(|v| v.len())
+                    );
                 }
                 match dbg_vec {
                     Some(v) => Some(v),
                     None => {
-                        log::warn!("view_builder: read_state_as_vec('{}') failed: {}", state_name, e);
+                        log::warn!(
+                            "view_builder: read_state_as_vec('{}') failed: {}",
+                            state_name,
+                            e
+                        );
                         None
                     }
                 }
@@ -1265,37 +1479,57 @@ impl<'a> AuraViewBuilder<'a> {
         // extra VTree level. `record_for` is computed after the
         // push, so it auto-reflects the corrected depth.
         let body_len = body.len();
-        let views: Vec<View<DynamicMessage>> = body.iter()
+        let views: Vec<View<DynamicMessage>> = body
+            .iter()
             .enumerate()
             .filter_map(|(bi, n)| {
-                path.push(i);   // iteration index
-                if body_len > 1 { path.push(bi); }  // body node index (multi-node only)
-                // Record this iteration's context against the
-                // body node's path (Plan 307 Task 10). `index`
-                // is the 0-based iteration counter `i`, NOT the
-                // loop's optional index-variable name. Keep
-                // `iterable_repr` in its original ".notes" form.
-                let for_path: Vec<u16> =
-                    path.iter().map(|&x| x as u16).collect();
-                probe.record_for(&for_path, ForIter {
-                    var: var.to_string(),
-                    index: Some(i),
-                    value_repr: value_to_display_string(item),
-                    iterable_repr: iterable.to_string(),
-                });
+                path.push(i); // iteration index
+                if body_len > 1 {
+                    path.push(bi);
+                } // body node index (multi-node only)
+                  // Record this iteration's context against the
+                  // body node's path (Plan 307 Task 10). `index`
+                  // is the 0-based iteration counter `i`, NOT the
+                  // loop's optional index-variable name. Keep
+                  // `iterable_repr` in its original ".notes" form.
+                let for_path: Vec<u16> = path.iter().map(|&x| x as u16).collect();
+                probe.record_for(
+                    &for_path,
+                    ForIter {
+                        var: var.to_string(),
+                        index: Some(i),
+                        value_repr: value_to_display_string(item),
+                        iterable_repr: iterable.to_string(),
+                    },
+                );
                 let v = self.convert_node_tracked_ctx(n, path, id_map, probe, loop_bindings);
-                if body_len > 1 { path.pop(); }
+                if body_len > 1 {
+                    path.pop();
+                }
                 path.pop();
                 Some(v)
             })
             .collect();
-        if views.is_empty() { None }
-        else if views.len() == 1 {
+        if views.is_empty() {
+            None
+        } else if views.len() == 1 {
             // Plan 370 (Issue 1): skip Empty body views (see convert_node_with ForLoop).
             let v = views.into_iter().next().unwrap();
-            if matches!(v, View::Empty) { None } else { Some(v) }
+            if matches!(v, View::Empty) {
+                None
+            } else {
+                Some(v)
+            }
+        } else {
+            Some(View::Column {
+                children: views,
+                spacing: 0,
+                padding: 0,
+                style: None,
+                onclick: None,
+                on_right_click: None,
+            })
         }
-        else { Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }) }
     }
 
     fn convert_node_tracked_ctx(
@@ -1321,37 +1555,49 @@ impl<'a> AuraViewBuilder<'a> {
         }
 
         match node {
-            AuraNode::Element { tag, props, events, children, .. } => {
-                self.convert_element_tracked_ctx(tag, props, events, children, path, id_map, probe, bindings)
-            }
+            AuraNode::Element {
+                tag,
+                props,
+                events,
+                children,
+                ..
+            } => self.convert_element_tracked_ctx(
+                tag, props, events, children, path, id_map, probe, bindings,
+            ),
             AuraNode::Text(text_content) => {
                 self.convert_text_tracked_ctx(text_content, path, probe, bindings)
             }
-            AuraNode::ForLoop { var, index, iterable, key_expr, body, .. } => {
+            AuraNode::ForLoop {
+                var,
+                index,
+                iterable,
+                key_expr,
+                body,
+                ..
+            } => {
                 // PLAN-046 T-03：keyed-for（`key:` 子句）走项级缓存门；
                 // keyless 循环 = 原始体直落（convert_for_unkeyed 逐字节
                 // 搬移自本臂，缺省路径零行为差——AC-01 前提）。
                 if let Some(key_expr) = key_expr {
                     return self.convert_for_keyed(
-                        var,
-                        index,
-                        iterable,
-                        key_expr,
-                        body,
-                        path,
-                        id_map,
-                        probe,
-                        bindings,
+                        var, index, iterable, key_expr, body, path, id_map, probe, bindings,
                     );
                 }
                 self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings)
             }
-            AuraNode::MemoBlock { deps, exact, body, .. } => {
+            AuraNode::MemoBlock {
+                deps, exact, body, ..
+            } => {
                 // PLAN-046 T-04：显式 memo 块门（deps 值指纹 ∪ 自动可证读槽；
                 // exact = 纯 deps 信任模式）。
                 self.convert_memo_block(deps, *exact, body, path, id_map, probe, bindings)
             }
-            AuraNode::Conditional { condition, then_body, else_body, .. } => {
+            AuraNode::Conditional {
+                condition,
+                then_body,
+                else_body,
+                ..
+            } => {
                 let is_true = self.eval_condition_with(condition, bindings);
                 let empty = Vec::new();
                 let body = if is_true {
@@ -1371,9 +1617,13 @@ impl<'a> AuraViewBuilder<'a> {
                     .iter()
                     .enumerate()
                     .map(|(i, n)| {
-                        if body_len > 1 { path.push(i); }
+                        if body_len > 1 {
+                            path.push(i);
+                        }
                         let v = self.convert_node_tracked_ctx(n, path, id_map, probe, bindings);
-                        if body_len > 1 { path.pop(); }
+                        if body_len > 1 {
+                            path.pop();
+                        }
                         v
                     })
                     .collect();
@@ -1387,35 +1637,54 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 0,
                         padding: 0,
                         style: None,
-            onclick: None, on_right_click: None,
-        }
+                        onclick: None,
+                        on_right_click: None,
+                    }
                 }
             }
-            AuraNode::Component { name, props, events, children, .. } => {
+            AuraNode::Component {
+                name,
+                props,
+                events,
+                children,
+                ..
+            } => {
                 // Plan 408: nav-link renders as a navigable button (like link).
                 if name == "nav-link" || name == "nav_link" {
-                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                    let prop_map: HashMap<String, AuraPropValue> = props
+                        .iter()
                         .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
                         .collect();
-                    let to = self.extract_string(&prop_map, "to")
+                    let to = self
+                        .extract_string(&prop_map, "to")
                         .or_else(|| self.extract_string(&prop_map, "href"))
                         .unwrap_or_default();
-                    let label = self.extract_string(&prop_map, "label")
+                    let label = self
+                        .extract_string(&prop_map, "label")
                         .or_else(|| self.extract_string(&prop_map, "text"))
                         .unwrap_or_default();
                     let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
+                    return self.render_link_button_with_icon(
+                        &label,
+                        &[],
+                        &to,
+                        &icon,
+                        bindings,
+                        false,
+                    );
                 }
                 // Plan 482: nav-item / nav-group 组件形态分发（Element 形态为主，
                 // 此处镜像 nav-link 的防御性覆盖）。
                 if name == "nav-item" || name == "nav_item" {
-                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                    let prop_map: HashMap<String, AuraPropValue> = props
+                        .iter()
                         .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
                         .collect();
                     return self.convert_nav_item(&prop_map, events, children, bindings);
                 }
                 if name == "nav-group" || name == "nav_group" {
-                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                    let prop_map: HashMap<String, AuraPropValue> = props
+                        .iter()
                         .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
                         .collect();
                     return self.convert_nav_group(&prop_map, events, children, bindings);
@@ -1428,27 +1697,51 @@ impl<'a> AuraViewBuilder<'a> {
                         .iter()
                         .filter_map(|n| {
                             let v = self.convert_node_with(n, bindings);
-                            if matches!(v, View::Empty) { None } else { Some(v) }
+                            if matches!(v, View::Empty) {
+                                None
+                            } else {
+                                Some(v)
+                            }
                         })
                         .collect();
-                    return View::Column { children: child_views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None };
+                    return View::Column {
+                        children: child_views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 // Plan 410: component-card → navigable link button (to + name + desc).
                 if name == "component-card" || name == "component_card" || name == "componentcard" {
-                    let prop_map: HashMap<String, AuraPropValue> = props.iter()
+                    let prop_map: HashMap<String, AuraPropValue> = props
+                        .iter()
                         .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
                         .collect();
                     let to = self.extract_string(&prop_map, "to").unwrap_or_default();
                     let card_name = self.extract_string(&prop_map, "name").unwrap_or_default();
                     let desc = self.extract_string(&prop_map, "desc").unwrap_or_default();
-                    let label = if desc.is_empty() { card_name } else { format!("{} — {}", card_name, desc) };
+                    let label = if desc.is_empty() {
+                        card_name
+                    } else {
+                        format!("{} — {}", card_name, desc)
+                    };
                     let icon = self.extract_string(&prop_map, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
+                    return self.render_link_button_with_icon(
+                        &label,
+                        &[],
+                        &to,
+                        &icon,
+                        bindings,
+                        false,
+                    );
                 }
                 // Look up child widget in registry
                 if let Some(registry) = self.widget_registry {
                     if let Some(child_widget) = registry.get(name) {
-                        let prop_values: HashMap<String, AuraPropValue> = props.iter()
+                        let prop_values: HashMap<String, AuraPropValue> = props
+                            .iter()
                             .map(|(k, v)| (k.clone(), AuraPropValue::Expr(v.clone())))
                             .collect();
                         // D-GAP-4: tracked variant so the child subtree's
@@ -1456,8 +1749,14 @@ impl<'a> AuraViewBuilder<'a> {
                         // Plan 476: slot 填充透传(tracked 双胎)。
                         let fills = self.slot_fills_for(children, bindings);
                         return self.render_child_widget_tracked(
-                            child_widget, &prop_values, events, bindings,
-                            path, id_map, probe, fills.as_ref(),
+                            child_widget,
+                            &prop_values,
+                            events,
+                            bindings,
+                            path,
+                            id_map,
+                            probe,
+                            fills.as_ref(),
                         );
                     }
                 }
@@ -1479,7 +1778,9 @@ impl<'a> AuraViewBuilder<'a> {
                 // current route (the iced equivalent of vue's <router-view>).
                 self.render_outlet_impl(bindings, Some((path, id_map, probe)), *memo)
             }
-            AuraNode::Link { text, children, to, .. } => {
+            AuraNode::Link {
+                text, children, to, ..
+            } => {
                 // Plan 401/VM-routing: render link as a clickable button (same
                 // as the untracked path); tracked children are flattened into
                 // the button label.
@@ -1516,9 +1817,21 @@ impl<'a> AuraViewBuilder<'a> {
             return;
         }
         match v {
-            View::Row { onclick: oc, on_right_click: rc, .. }
-            | View::Column { onclick: oc, on_right_click: rc, .. }
-            | View::Container { onclick: oc, on_right_click: rc, .. } => {
+            View::Row {
+                onclick: oc,
+                on_right_click: rc,
+                ..
+            }
+            | View::Column {
+                onclick: oc,
+                on_right_click: rc,
+                ..
+            }
+            | View::Container {
+                onclick: oc,
+                on_right_click: rc,
+                ..
+            } => {
                 if let Some(msg) = onclick {
                     *oc = Some(msg);
                 }
@@ -1718,7 +2031,12 @@ impl<'a> AuraViewBuilder<'a> {
             }
         } else {
             for (i, t) in trigger_nodes.iter().enumerate() {
-                if let AuraNode::Element { props: tp, children: tch, .. } = t {
+                if let AuraNode::Element {
+                    props: tp,
+                    children: tch,
+                    ..
+                } = t
+                {
                     labels.push(
                         self.extract_string_with(tp, "text", bindings)
                             .or_else(|| self.extract_string_with(tp, "label", bindings))
@@ -1730,15 +2048,11 @@ impl<'a> AuraViewBuilder<'a> {
                                 // 静默回退 "Tab N"）。同
                                 // convert_text_element 的子件折叠链。
                                 tch.iter().find_map(|c| match c {
-                                    AuraNode::Text(AuraTextContent::Literal(s)) => {
-                                        Some(s.clone())
-                                    }
-                                    AuraNode::Text(
-                                        AuraTextContent::Interpolated {
-                                            template,
-                                            bindings: tpl_bindings,
-                                        },
-                                    ) => Some(self.resolve_interpolation_with(
+                                    AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
+                                    AuraNode::Text(AuraTextContent::Interpolated {
+                                        template,
+                                        bindings: tpl_bindings,
+                                    }) => Some(self.resolve_interpolation_with(
                                         template,
                                         tpl_bindings,
                                         bindings,
@@ -1748,21 +2062,18 @@ impl<'a> AuraViewBuilder<'a> {
                                         props: cprops,
                                         children: cch,
                                         ..
-                                    }
-                                        if Self::TEXT_LIKE_TAGS.contains(&tag.as_str()) =>
-                                    {
+                                    } if Self::TEXT_LIKE_TAGS.contains(&tag.as_str()) => {
                                         // child_element_text 只扫 props；
                                         // `text "Alpha"` 的字面量在元素自身
                                         // 子件里，须再落一层。
-                                        self.child_element_text(cprops, bindings)
-                                            .or_else(|| {
-                                                cch.iter().find_map(|d| match d {
-                                                    AuraNode::Text(
-                                                        AuraTextContent::Literal(s),
-                                                    ) => Some(s.clone()),
-                                                    _ => None,
-                                                })
+                                        self.child_element_text(cprops, bindings).or_else(|| {
+                                            cch.iter().find_map(|d| match d {
+                                                AuraNode::Text(AuraTextContent::Literal(s)) => {
+                                                    Some(s.clone())
+                                                }
+                                                _ => None,
                                             })
+                                        })
                                     }
                                     _ => None,
                                 })
@@ -1860,24 +2171,19 @@ impl<'a> AuraViewBuilder<'a> {
         // value 字符串（values 已含索引串兜底，点击时按索引现取），
         // `.at` 侧 `on { .Select(t) -> { .state = t } }` 直绑，免索引→值换算。
         let values_for_cb = values.clone();
-        let on_select = root_onselect
-            .or(trigger_onclick)
-            .map(|ev| {
-                let handler = extract_handler_name(&ev.handler).to_string();
-                let widget = self.widget_name.clone();
-                let values = values_for_cb;
-                crate::ui::view::TabsSelectCallback::new(move |idx| {
-                    let payload = values
-                        .get(idx)
-                        .cloned()
-                        .unwrap_or_else(|| idx.to_string());
-                    DynamicMessage::Typed {
-                        widget_name: widget.clone(),
-                        event_name: handler.clone(),
-                        args: vec![Value::Str(payload.into())],
-                    }
-                })
-            });
+        let on_select = root_onselect.or(trigger_onclick).map(|ev| {
+            let handler = extract_handler_name(&ev.handler).to_string();
+            let widget = self.widget_name.clone();
+            let values = values_for_cb;
+            crate::ui::view::TabsSelectCallback::new(move |idx| {
+                let payload = values.get(idx).cloned().unwrap_or_else(|| idx.to_string());
+                DynamicMessage::Typed {
+                    widget_name: widget.clone(),
+                    event_name: handler.clone(),
+                    args: vec![Value::Str(payload.into())],
+                }
+            })
+        });
 
         let variant = prop_str("variant")
             .map(|v| crate::ui::view::TabsVariant::parse(&v))
@@ -1954,22 +2260,27 @@ impl<'a> AuraViewBuilder<'a> {
             // Plan 476: slot outlet——按调用位填充渲染（父作用域求值），
             // 未命中渲染 fallback children。五大容器的 children 走拼接
             // 展开（expand_children_spliced*），此臂覆盖其余位形。
-            "slot" | "Slot" => self.render_slot_outlet_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "slot" | "Slot" => {
+                self.render_slot_outlet_tracked_ctx(props, children, path, id_map, probe, bindings)
+            }
             // Core layout widgets — recurse children with path tracking.
             "col" | "column" => {
-                let mut v = self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings);
+                let mut v =
+                    self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings);
                 self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                 v
             }
             "row" => {
-                let mut v = self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings);
+                let mut v =
+                    self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings);
                 self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                 v
             }
             // Plan 463 T5: taskbar —— 桌面 shell 底栏（I4 登记）；row 语义
             // 水平排布,贴底锚定由宿主 shell 层装配做。镜像 untracked 同名臂。
             "taskbar" => {
-                let mut v = self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings);
+                let mut v =
+                    self.convert_row_tracked_ctx(props, children, path, id_map, probe, bindings);
                 self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                 v
             }
@@ -1980,7 +2291,8 @@ impl<'a> AuraViewBuilder<'a> {
             // 组（tracked 镜像臂,D-GAP 规则）。见 toggle_group_rewrite_children。
             "togglegroup" | "toggle-group" | "toggle_group" => {
                 let rewritten = self.toggle_group_rewrite_children(props, children, bindings);
-                let mut v = self.convert_row_tracked_ctx(props, &rewritten, path, id_map, probe, bindings);
+                let mut v =
+                    self.convert_row_tracked_ctx(props, &rewritten, path, id_map, probe, bindings);
                 self.set_layout_events(&mut v, events, bindings);
                 v
             }
@@ -1991,24 +2303,48 @@ impl<'a> AuraViewBuilder<'a> {
             // PLAN-530 步骤8（W13）：alert-dialog 全族 → 模态 Popover 原语
             // （tracked 镜像臂,D-GAP 规则）。见 convert_alert_dialog_tracked_ctx。
             // PLAN-533 T5: dialog 家族（可关闭模态）同走模态 Popover 臂。
-            "dialog" | "Dialog" => {
-                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, ModalDialogFamily::Dialog)
-            }
-            "dropdown-menu" | "dropdown_menu" | "dropdownmenu" | "DropdownMenu" => {
-                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, ModalDialogFamily::DropdownMenu)
-            }
-            "alert-dialog" | "alert_dialog" | "alertdialog" => {
-                self.convert_alert_dialog_tracked_ctx(props, children, path, id_map, probe, bindings, ModalDialogFamily::Alert)
-            }
+            "dialog" | "Dialog" => self.convert_alert_dialog_tracked_ctx(
+                props,
+                children,
+                path,
+                id_map,
+                probe,
+                bindings,
+                ModalDialogFamily::Dialog,
+            ),
+            "dropdown-menu" | "dropdown_menu" | "dropdownmenu" | "DropdownMenu" => self
+                .convert_alert_dialog_tracked_ctx(
+                    props,
+                    children,
+                    path,
+                    id_map,
+                    probe,
+                    bindings,
+                    ModalDialogFamily::DropdownMenu,
+                ),
+            "alert-dialog" | "alert_dialog" | "alertdialog" => self
+                .convert_alert_dialog_tracked_ctx(
+                    props,
+                    children,
+                    path,
+                    id_map,
+                    probe,
+                    bindings,
+                    ModalDialogFamily::Alert,
+                ),
             // PLAN-534: sheet/drawer → 贴边 Popover（Edge 族:scrim+外点/Esc
             // 关,shadcn Sheet 语义）。side/direction prop 四向,缺省 right。
             "sheet" | "Sheet" => {
                 let placement = self.side_panel_placement(props, "side", bindings);
-                self.convert_side_panel_tracked_ctx(props, children, path, id_map, probe, bindings, placement, false)
+                self.convert_side_panel_tracked_ctx(
+                    props, children, path, id_map, probe, bindings, placement, false,
+                )
             }
             "drawer" | "Drawer" => {
                 let placement = self.side_panel_placement(props, "direction", bindings);
-                self.convert_side_panel_tracked_ctx(props, children, path, id_map, probe, bindings, placement, true)
+                self.convert_side_panel_tracked_ctx(
+                    props, children, path, id_map, probe, bindings, placement, true,
+                )
             }
             // PLAN-534: hovercard → 非模态 Popover（Bottom 锚定 + MouseArea
             // hover 触发;on_dismiss=None,关闭只靠 leave）。
@@ -2017,12 +2353,12 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // PLAN-534: sheet/drawer/hover-card trigger/content 组外兜底
             // 透传（root 臂已分区;组外裸渲染,镜像 dialog 先例）。
-            "sheet-trigger" | "sheet_trigger" | "sheettrigger"
-            | "drawer-trigger" | "drawer_trigger" | "drawertrigger"
-            | "hover-card-trigger" | "hover_card_trigger" | "hovercard-trigger" | "hovercardtrigger"
-            | "sheet-content" | "sheet_content" | "sheetcontent"
-            | "drawer-content" | "drawer_content" | "drawercontent"
-            | "hover-card-content" | "hover_card_content" | "hovercard-content" | "hovercardcontent" => {
+            "sheet-trigger" | "sheet_trigger" | "sheettrigger" | "drawer-trigger"
+            | "drawer_trigger" | "drawertrigger" | "hover-card-trigger" | "hover_card_trigger"
+            | "hovercard-trigger" | "hovercardtrigger" | "sheet-content" | "sheet_content"
+            | "sheetcontent" | "drawer-content" | "drawer_content" | "drawercontent"
+            | "hover-card-content" | "hover_card_content" | "hovercard-content"
+            | "hovercardcontent" => {
                 let mut views: Vec<View<DynamicMessage>> = Vec::new();
                 for (i, c) in children.iter().enumerate() {
                     path.push(i);
@@ -2032,12 +2368,19 @@ impl<'a> AuraViewBuilder<'a> {
                 match views.len() {
                     0 => View::Empty,
                     1 => views.into_iter().next().unwrap(),
-                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None },
+                    _ => View::Row {
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                        on_right_click: None,
+                    },
                 }
             }
             // PLAN-534: sheet/drawer styled 子臂（镜像 dialog 同名臂）。
-            "sheet-title" | "sheet_title" | "sheettitle"
-            | "drawer-title" | "drawer_title" | "drawertitle" => {
+            "sheet-title" | "sheet_title" | "sheettitle" | "drawer-title" | "drawer_title"
+            | "drawertitle" => {
                 let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
@@ -2046,20 +2389,21 @@ impl<'a> AuraViewBuilder<'a> {
                 let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "sheet-header" | "sheet_header" | "sheetheader"
-            | "drawer-header" | "drawer_header" | "drawerheader" => {
+            "sheet-header" | "sheet_header" | "sheetheader" | "drawer-header" | "drawer_header"
+            | "drawerheader" => {
                 let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
                 self.convert_column_tracked_ctx(&p, children, path, id_map, probe, bindings)
             }
-            "sheet-footer" | "sheet_footer" | "sheetfooter"
-            | "drawer-footer" | "drawer_footer" | "drawerfooter" => {
+            "sheet-footer" | "sheet_footer" | "sheetfooter" | "drawer-footer" | "drawer_footer"
+            | "drawerfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
-                let mut v = self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings);
+                let mut v =
+                    self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings);
                 self.set_layout_events(&mut v, events, bindings);
                 v
             }
-            "sheet-close" | "sheet_close" | "sheetclose"
-            | "drawer-close" | "drawer_close" | "drawerclose" => {
+            "sheet-close" | "sheet_close" | "sheetclose" | "drawer-close" | "drawer_close"
+            | "drawerclose" => {
                 // 镜像 dialog-close:outline 按钮,onclick 取铸造 close。
                 let mut p = props.clone();
                 p.insert(
@@ -2068,10 +2412,18 @@ impl<'a> AuraViewBuilder<'a> {
                 );
                 self.convert_button(&p, events, children, bindings)
             }
-            "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
-            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
-            | "dialog-trigger" | "dialog_trigger" | "dialogtrigger"
-            | "dialog-content" | "dialog_content" | "dialogcontent" => {
+            "alert-dialog-trigger"
+            | "alert_dialog_trigger"
+            | "alertdialog-trigger"
+            | "alert-dialog-content"
+            | "alert_dialog_content"
+            | "alertdialog-content"
+            | "dialog-trigger"
+            | "dialog_trigger"
+            | "dialogtrigger"
+            | "dialog-content"
+            | "dialog_content"
+            | "dialogcontent" => {
                 // 透传:子件原位渲染（dialog 臂已分区;组外兜底裸渲染）。
                 let mut views: Vec<View<DynamicMessage>> = Vec::new();
                 for (i, c) in children.iter().enumerate() {
@@ -2082,28 +2434,48 @@ impl<'a> AuraViewBuilder<'a> {
                 match views.len() {
                     0 => View::Empty,
                     1 => views.into_iter().next().unwrap(),
-                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None },
+                    _ => View::Row {
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                        on_right_click: None,
+                    },
                 }
             }
-            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title"
-            | "dialog-title" | "dialog_title" | "dialogtitle" => {
+            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title" | "dialog-title"
+            | "dialog_title" | "dialogtitle" => {
                 let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description"
-            | "dialog-description" | "dialog_description" | "dialogdescription" => {
+            "alert-dialog-description"
+            | "alert_dialog_description"
+            | "alertdialog-description"
+            | "dialog-description"
+            | "dialog_description"
+            | "dialogdescription" => {
                 let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header"
-            | "dialog-header" | "dialog_header" | "dialogheader" => {
+            "alert-dialog-header"
+            | "alert_dialog_header"
+            | "alertdialog-header"
+            | "dialog-header"
+            | "dialog_header"
+            | "dialogheader" => {
                 let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
                 self.convert_column_tracked_ctx(&p, children, path, id_map, probe, bindings)
             }
-            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer"
-            | "dialog-footer" | "dialog_footer" | "dialogfooter" => {
+            "alert-dialog-footer"
+            | "alert_dialog_footer"
+            | "alertdialog-footer"
+            | "dialog-footer"
+            | "dialog_footer"
+            | "dialogfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
-                let mut v = self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings);
+                let mut v =
+                    self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings);
                 self.set_layout_events(&mut v, events, bindings);
                 v
             }
@@ -2119,8 +2491,12 @@ impl<'a> AuraViewBuilder<'a> {
             // PLAN-533 T7: dropdown-menu 子件——item（有 onclick 走按钮,
             // 纯文本项 text 预设）/label/separator。
             "dropdown-menu-item" | "dropdown_menu_item" | "dropdownmenuitem" => {
-                let preset = "w-full px-2 py-1.5 text-sm cursor-pointer hover:bg-secondary text-start";
-                if events.iter().any(|(e, _)| matches!(e.as_str(), "onclick" | "onClick" | "on_click")) {
+                let preset =
+                    "w-full px-2 py-1.5 text-sm cursor-pointer hover:bg-secondary text-start";
+                if events
+                    .iter()
+                    .any(|(e, _)| matches!(e.as_str(), "onclick" | "onClick" | "on_click"))
+                {
                     let mut b = props.clone();
                     b.insert(
                         "variant".to_string(),
@@ -2130,12 +2506,24 @@ impl<'a> AuraViewBuilder<'a> {
                     self.convert_button(&b2, events, children, bindings)
                 } else {
                     let p = self.with_class_prop(props, bindings, preset);
-                    self.convert_text_element(tag, &p, &std::collections::HashMap::new(), children, bindings)
+                    self.convert_text_element(
+                        tag,
+                        &p,
+                        &std::collections::HashMap::new(),
+                        children,
+                        bindings,
+                    )
                 }
             }
             "dropdown-menu-label" | "dropdown_menu_label" | "dropdownmenulabel" => {
                 let p = self.with_class_prop(props, bindings, "px-2 py-1.5 text-sm font-semibold");
-                self.convert_text_element(tag, &p, &std::collections::HashMap::new(), children, bindings)
+                self.convert_text_element(
+                    tag,
+                    &p,
+                    &std::collections::HashMap::new(),
+                    children,
+                    bindings,
+                )
             }
             "dropdown-menu-separator" | "dropdown_menu_separator" | "dropdownmenuseparator" => {
                 View::Container {
@@ -2145,7 +2533,8 @@ impl<'a> AuraViewBuilder<'a> {
                     height: None,
                     center_x: false,
                     center_y: false,
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                     style: Style::parse("w-full h-px bg-border my-1").ok(),
                 }
             }
@@ -2163,7 +2552,9 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_button(props, events, children, bindings)
             }
             "grid" => self.convert_grid_tracked_ctx(props, children, path, id_map, probe, bindings),
-            "center" => self.convert_center_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "center" => {
+                self.convert_center_tracked_ctx(props, children, path, id_map, probe, bindings)
+            }
             // PLAN-055 ④/T12: pre/code 进容器转换臂（带样式）——此前落
             // unknown fallback 成 style:None 的 Column，类串整体丢弃
             // （musk think 展开区/specs fixture-code 的 padding/border-t/
@@ -2183,7 +2574,8 @@ impl<'a> AuraViewBuilder<'a> {
                     self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                     return v;
                 }
-                let mut v = self.convert_container_tracked_ctx(props, children, path, id_map, probe, bindings);
+                let mut v = self
+                    .convert_container_tracked_ctx(props, children, path, id_map, probe, bindings);
                 self.set_layout_events(&mut v, events, bindings); // Plan 490 G4
                 v
             }
@@ -2202,17 +2594,14 @@ impl<'a> AuraViewBuilder<'a> {
             "canvas" => self.convert_canvas(props, events, bindings),
             // Plan 497: 每窗口真缩略 leaf（与 tracked 层同名臂镜像，D-GAP；
             // 字面形式与 render_support/schema.rs 三表同款 window_thumbnail）。
-            "window_thumbnail" => {
-                self.convert_window_thumbnail(props, bindings)
-            }
+            "window_thumbnail" => self.convert_window_thumbnail(props, bindings),
             // PLAN-012 W3: 整桌面等比预览 leaf（tracked/untracked 双臂镜像，
             // window_thumbnail 同款 D-GAP 纪律；SD-02 DSL 合同面）。
-            "workspace_preview" => {
-                self.convert_workspace_preview(props, bindings)
-            }
+            "workspace_preview" => self.convert_workspace_preview(props, bindings),
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style。scroll → 可滚动 column;其余 → container。
-            "scroll" | "scrollable" => self.convert_scroll_tracked_ctx(props, events, children, path, id_map, probe, bindings),
+            "scroll" | "scrollable" => self
+                .convert_scroll_tracked_ctx(props, events, children, path, id_map, probe, bindings),
             // PLAN-656 T-06: synthetic managed content（capability-test 专用）。
             "scroll_test_content" => self.managed_scroll_content_view(props, bindings),
             // Plan 482: nav 容器支持 search:true 集成搜索行（子节点随 untracked
@@ -2226,17 +2615,26 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_sidebar_provider(props, events, children, bindings)
             }
             "sidebar_header" | "sidebar-header" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::HEADER_BASE,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::HEADER_BASE,
             ),
             "sidebar_footer" | "sidebar-footer" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::FOOTER_BASE,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::FOOTER_BASE,
             ),
             "sidebar_content" | "sidebar-content" => {
                 self.convert_sidebar_content(props, children, bindings)
             }
             "sidebar_separator" | "sidebar-separator" => self.convert_sidebar_separator(),
             "sidebar_inset" | "sidebar-inset" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::INSET_BASE,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::INSET_BASE,
             ),
             "sidebar_group" | "sidebar-group" => {
                 self.convert_sidebar_group(props, children, bindings)
@@ -2245,16 +2643,25 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_sidebar_group_label(tag, props, events, children, bindings)
             }
             "sidebar_group_content" | "sidebar-group-content" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::GROUP_CONTENT,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::GROUP_CONTENT,
             ),
             "sidebar_group_action" | "sidebar-group-action" => {
                 self.convert_sidebar_group_action(props, events, children, bindings)
             }
             "sidebar_menu" | "sidebar-menu" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::MENU_BASE,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::MENU_BASE,
             ),
             "sidebar_menu_item" | "sidebar-menu-item" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::MENU_ITEM,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::MENU_ITEM,
             ),
             "sidebar_menu_action" | "sidebar-menu-action" => {
                 self.convert_sidebar_menu_action(props, events, children, bindings)
@@ -2266,7 +2673,10 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_sidebar_menu_button(props, events, children, bindings, false)
             }
             "sidebar_menu_sub" | "sidebar-menu-sub" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::MENU_SUB,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::MENU_SUB,
             ),
             "sidebar_menu_sub_item" | "sidebar-menu-sub-item" => {
                 self.convert_children_passthrough(children, bindings)
@@ -2281,14 +2691,18 @@ impl<'a> AuraViewBuilder<'a> {
             // Text-bearing elements. The text/interpolation state bindings are
             // captured at this node's current path (the text element's path),
             // which is what the inspector wants.
-            "text" | "label" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "a" | "link" | "small" | "strong" | "em" | "b" | "i" => {
-                self.convert_text_element_tracked_ctx(tag, props, events, children, path, probe, bindings)
-            }
+            "text" | "label" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "a"
+            | "link" | "small" | "strong" | "em" | "b" | "i" => self
+                .convert_text_element_tracked_ctx(
+                    tag, props, events, children, path, probe, bindings,
+                ),
 
             // Leaf/atom widgets with no AuraNode children — fall back to the
             // untracked converter. They have no nested text to probe (Task 9
             // scope is text interpolation only).
-            "button" | "btn" | "native_button" => self.convert_button(props, events, children, bindings),
+            "button" | "btn" | "native_button" => {
+                self.convert_button(props, events, children, bindings)
+            }
             // native_button：vue 侧显式原生逃生名（避开 button→shadcn
             // Button 映射，schema.rs 2514 注）；VM 侧与 button 同臂
             //（PLAN-051 T6：demo settings 弹层按钮两轨原生）。
@@ -2330,9 +2744,9 @@ impl<'a> AuraViewBuilder<'a> {
                     let is_final = props
                         .get("final")
                         .map(|v| match v {
-                            AuraPropValue::Expr(expr) => {
-                                self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
-                            }
+                            AuraPropValue::Expr(expr) => self
+                                .resolve_expr_to_value(expr, bindings)
+                                .map(|val| val.as_bool()),
                             _ => None,
                         })
                         .flatten()
@@ -2381,7 +2795,8 @@ impl<'a> AuraViewBuilder<'a> {
                                 center_x: false,
                                 center_y: false,
                                 style: Some(st),
-                                onclick: None, on_right_click: None,
+                                onclick: None,
+                                on_right_click: None,
                             };
                         }
                     }
@@ -2425,13 +2840,9 @@ impl<'a> AuraViewBuilder<'a> {
             // avatar-fallback 走文本臂（居中由容器注入）。
             "avatar" => self.convert_avatar(props, children, bindings),
             "avatar-image" => self.convert_image_or_icon(props, bindings),
-            "avatar-fallback" => self.convert_text_element(
-                "avatar-fallback",
-                props,
-                events,
-                children,
-                bindings,
-            ),
+            "avatar-fallback" => {
+                self.convert_text_element("avatar-fallback", props, events, children, bindings)
+            }
             // Plan 418 P2-3: config-driven menubar/toolbar (auto-edit.at).
             // path/probe pass through so synthesized buttons land in the
             // snapshot's event index (MCP clickability). §8.4①: probe off
@@ -2484,7 +2895,10 @@ impl<'a> AuraViewBuilder<'a> {
                 {
                     group_children.push(View::Text {
                         content: heading,
-                        style: Style::parse("px-2 py-1.5 text-xs font-medium text-muted-foreground").ok(),
+                        style: Style::parse(
+                            "px-2 py-1.5 text-xs font-medium text-muted-foreground",
+                        )
+                        .ok(),
                         selectable: false,
                     });
                 }
@@ -2547,7 +2961,9 @@ impl<'a> AuraViewBuilder<'a> {
             }
 
             // Static VM layout: preserve each slide in a compact horizontal row.
-            "carousel" => self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings),
+            "carousel" => {
+                self.convert_column_tracked_ctx(props, children, path, id_map, probe, bindings)
+            }
             "carousel_content" | "carousel-content" => {
                 let p = self.with_class_prop(props, bindings, "w-full gap-2");
                 self.convert_row_tracked_ctx(&p, children, path, id_map, probe, bindings)
@@ -2562,28 +2978,24 @@ impl<'a> AuraViewBuilder<'a> {
             }
             "carousel_previous" | "carousel-previous" => {
                 let mut p = props.clone();
-                p.entry("text".to_string()).or_insert_with(|| {
-                    AuraPropValue::Expr(crate::ast::Expr::Str("‹".into()))
-                });
+                p.entry("text".to_string())
+                    .or_insert_with(|| AuraPropValue::Expr(crate::ast::Expr::Str("‹".into())));
                 p.entry("variant".to_string()).or_insert_with(|| {
                     AuraPropValue::Expr(crate::ast::Expr::Str("outline".into()))
                 });
-                p.entry("size".to_string()).or_insert_with(|| {
-                    AuraPropValue::Expr(crate::ast::Expr::Str("icon".into()))
-                });
+                p.entry("size".to_string())
+                    .or_insert_with(|| AuraPropValue::Expr(crate::ast::Expr::Str("icon".into())));
                 self.convert_button(&p, events, children, bindings)
             }
             "carousel_next" | "carousel-next" => {
                 let mut p = props.clone();
-                p.entry("text".to_string()).or_insert_with(|| {
-                    AuraPropValue::Expr(crate::ast::Expr::Str("›".into()))
-                });
+                p.entry("text".to_string())
+                    .or_insert_with(|| AuraPropValue::Expr(crate::ast::Expr::Str("›".into())));
                 p.entry("variant".to_string()).or_insert_with(|| {
                     AuraPropValue::Expr(crate::ast::Expr::Str("outline".into()))
                 });
-                p.entry("size".to_string()).or_insert_with(|| {
-                    AuraPropValue::Expr(crate::ast::Expr::Str("icon".into()))
-                });
+                p.entry("size".to_string())
+                    .or_insert_with(|| AuraPropValue::Expr(crate::ast::Expr::Str("icon".into())));
                 self.convert_button(&p, events, children, bindings)
             }
 
@@ -2594,10 +3006,7 @@ impl<'a> AuraViewBuilder<'a> {
             // 回落——原臂无条件吞掉,注册组件被画成 lucide glyph(View::Image),
             // 消息正文整体成图标占位。
             tag if self.is_imported_component(tag)
-                && self
-                    .widget_registry
-                    .and_then(|r| r.get(tag))
-                    .is_none() =>
+                && self.widget_registry.and_then(|r| r.get(tag)).is_none() =>
             {
                 // PLAN-625 T-09(b): 非 icon 的 web-ecosystem 组件不再画 lucide
                 // glyph 占位（组件 ≠ 图标;ui-gallery AppViewport 实证=空盒无
@@ -2615,14 +3024,23 @@ impl<'a> AuraViewBuilder<'a> {
             _ => {
                 // Plan 408: nav-link renders as a navigable button (like link).
                 if tag == "nav-link" || tag == "nav_link" {
-                    let to = self.extract_string(props, "to")
+                    let to = self
+                        .extract_string(props, "to")
                         .or_else(|| self.extract_string(props, "href"))
                         .unwrap_or_default();
-                    let label = self.extract_string(props, "label")
+                    let label = self
+                        .extract_string(props, "label")
                         .or_else(|| self.extract_string(props, "text"))
                         .unwrap_or_default();
                     let icon = self.extract_string(props, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
+                    return self.render_link_button_with_icon(
+                        &label,
+                        &[],
+                        &to,
+                        &icon,
+                        bindings,
+                        false,
+                    );
                 }
                 // Plan 412 续(toast VM 化):toast-provider 是 vue 端 <Toaster/>
                 // 挂载点;VM 端的悬浮层由 renderer 在 dynamic_view 顶层注入
@@ -2637,15 +3055,20 @@ impl<'a> AuraViewBuilder<'a> {
                     return nv;
                 }
                 if let Some(registry) = self.widget_registry {
-
                     if let Some(child_widget) = registry.get(tag) {
                         // D-GAP-4: tracked variant so the child subtree's
                         // style/event bindings reach the BuildProbe (snapshot).
                         // Plan 476: slot 填充透传(tracked 双胎)。
                         let fills = self.slot_fills_for(children, bindings);
                         return self.render_child_widget_tracked(
-                            child_widget, props, events, bindings,
-                            path, id_map, probe, fills.as_ref(),
+                            child_widget,
+                            props,
+                            events,
+                            bindings,
+                            path,
+                            id_map,
+                            probe,
+                            fills.as_ref(),
                         );
                     }
                 }
@@ -2669,7 +3092,8 @@ impl<'a> AuraViewBuilder<'a> {
         probe: &mut BuildProbe,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let spacing = self.extract_u16(props, "spacing")
+        let spacing = self
+            .extract_u16(props, "spacing")
             .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
@@ -2681,7 +3105,8 @@ impl<'a> AuraViewBuilder<'a> {
         // identical by construction (mirrors convert_row_tracked_ctx).
         // Plan 476: 拼接感知收集——slot outlet 的 fill 子节点作兄弟展开
         // (父作用域 tracked 转换,编号同幸存槽位约定)。
-        let child_views = self.expand_children_spliced_resulting(children, path, id_map, probe, bindings);
+        let child_views =
+            self.expand_children_spliced_resulting(children, path, id_map, probe, bindings);
 
         // PLAN-536 T6(题5 ①②): absolute 悬浮 hoist 激活到 tracked 主渲染
         // 路径——此前 hoist 臂只挂在未追踪 convert_column(409 §10 续 5),
@@ -2693,7 +3118,10 @@ impl<'a> AuraViewBuilder<'a> {
         let child_views: Vec<View<DynamicMessage>> = child_views
             .into_iter()
             .filter_map(|v| match extract_absolute_position(&v) {
-                Some(pos) => { floats.push((v, pos)); None }
+                Some(pos) => {
+                    floats.push((v, pos));
+                    None
+                }
                 None => Some(v),
             })
             .collect();
@@ -2701,7 +3129,12 @@ impl<'a> AuraViewBuilder<'a> {
         // Plan 412 F1: 交叉类仲裁 — col 元素带 `grid grid-cols-N`/`flex` 类时
         // 布局语义被类覆盖(元素语义为默认,显式类优先)。hoist 在前,浮层不占格。
         if let Some(RederivedLayout::Grid { cols, gap }) = rederive_layout(style.as_ref()) {
-            let base = View::Grid { cols, gap, cells: child_views, style };
+            let base = View::Grid {
+                cols,
+                gap,
+                cells: child_views,
+                style,
+            };
             return fold_floats(base, floats);
         }
         let use_row = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Row));
@@ -2716,7 +3149,13 @@ impl<'a> AuraViewBuilder<'a> {
         // Plan 048:提取 overflow 标志 + style clone(builder.with_style 会 move style)。
         // style_clone 传给 Scrollable,让 build_scrollable 读到 flex-1 → height(Fill)。
         let needs_scroll = style.as_ref().map_or(false, |s| {
-            s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::OverflowYAuto | crate::ui::style::StyleClass::OverflowAuto))
+            s.classes.iter().any(|c| {
+                matches!(
+                    c,
+                    crate::ui::style::StyleClass::OverflowYAuto
+                        | crate::ui::style::StyleClass::OverflowAuto
+                )
+            })
         });
         let scroll_style = if needs_scroll { style.clone() } else { None };
         // PLAN-748 T-07：滚动内容 col 拿视觉类剥离后的余集（bg/border 上移
@@ -2742,14 +3181,16 @@ impl<'a> AuraViewBuilder<'a> {
             let (viewport_visual, _) = split_scroll_visual_classes(&sc);
             let scroll_view = View::Scrollable {
                 child: Box::new(col_view),
-                width: None, height: None,
+                width: None,
+                height: None,
                 style: if viewport_visual.is_some() {
                     Some(ensure_full_scroll_dims(&sc))
                 } else {
                     Some(sc)
                 },
                 auto_scroll: false,
-                offset: None, on_scroll: None,
+                offset: None,
+                on_scroll: None,
                 axes: crate::ui::scroll::ScrollAxes::Y,
                 scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
                 controller: None,
@@ -2789,7 +3230,8 @@ impl<'a> AuraViewBuilder<'a> {
             .extract_string_with(props, "key", bindings)
             .unwrap_or_else(|| "cap".to_string());
         let num = |name: &str, default: f64| {
-            props.get(name)
+            props
+                .get(name)
                 .and_then(|v| match v {
                     AuraPropValue::Expr(expr) => self.resolve_expr_to_value(expr, bindings),
                     _ => None,
@@ -2814,7 +3256,12 @@ impl<'a> AuraViewBuilder<'a> {
         );
         // axes prop 仅供信息面（host 创建恒 BOTH；实际滚动轴由外层
         // scroll-pane 的 axis 决定）。
-        View::ManagedScrollContent { key, logical_w, logical_h, axes: crate::ui::scroll::ScrollAxes::BOTH }
+        View::ManagedScrollContent {
+            key,
+            logical_w,
+            logical_h,
+            axes: crate::ui::scroll::ScrollAxes::BOTH,
+        }
     }
 
     /// PLAN-656 复审修复（review F-1）：schema 别名拼写在派发面归一——
@@ -2870,31 +3317,30 @@ impl<'a> AuraViewBuilder<'a> {
         let on_scroll = aura_events_get_base(events, "onscroll").map(|ev| {
             let handler = extract_handler_name(&ev.handler).to_string();
             let widget = self.widget_name.clone();
-            crate::ui::view::ScrollCallback::new(
-                move |m: crate::ui::view::ScrollMetrics| {
-                    let make_axis = |offset: f32, viewport: f32, content: f32| crate::ui::scroll::ScrollAxisState {
+            crate::ui::view::ScrollCallback::new(move |m: crate::ui::view::ScrollMetrics| {
+                let make_axis =
+                    |offset: f32, viewport: f32, content: f32| crate::ui::scroll::ScrollAxisState {
                         offset: offset as f64,
                         viewport_extent: viewport as f64,
                         content_extent: content as f64,
                     };
-                    let x = make_axis(m.offset_x, m.viewport_w, m.content_w);
-                    let y = make_axis(m.offset_y, m.viewport_h, m.content_h);
-                    DynamicMessage::Typed {
-                        widget_name: widget.clone(),
-                        event_name: handler.clone(),
-                        args: vec![
-                            auto_val::Value::Float(x.offset),
-                            auto_val::Value::Float(y.offset),
-                            auto_val::Value::Float(x.viewport_extent),
-                            auto_val::Value::Float(y.viewport_extent),
-                            auto_val::Value::Float(x.content_extent),
-                            auto_val::Value::Float(y.content_extent),
-                            auto_val::Value::Float(crate::ui::scroll::geometry::progress(&x)),
-                            auto_val::Value::Float(crate::ui::scroll::geometry::progress(&y)),
-                        ],
-                    }
-                },
-            )
+                let x = make_axis(m.offset_x, m.viewport_w, m.content_w);
+                let y = make_axis(m.offset_y, m.viewport_h, m.content_h);
+                DynamicMessage::Typed {
+                    widget_name: widget.clone(),
+                    event_name: handler.clone(),
+                    args: vec![
+                        auto_val::Value::Float(x.offset),
+                        auto_val::Value::Float(y.offset),
+                        auto_val::Value::Float(x.viewport_extent),
+                        auto_val::Value::Float(y.viewport_extent),
+                        auto_val::Value::Float(x.content_extent),
+                        auto_val::Value::Float(y.content_extent),
+                        auto_val::Value::Float(crate::ui::scroll::geometry::progress(&x)),
+                        auto_val::Value::Float(crate::ui::scroll::geometry::progress(&y)),
+                    ],
+                }
+            })
         });
         (axes, policy, controller, on_scroll)
     }
@@ -2911,7 +3357,8 @@ impl<'a> AuraViewBuilder<'a> {
         probe: &mut BuildProbe,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let spacing = self.extract_u16(props, "spacing")
+        let spacing = self
+            .extract_u16(props, "spacing")
             .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
@@ -3017,27 +3464,35 @@ impl<'a> AuraViewBuilder<'a> {
         let mut cell_idx: usize = 0;
         for n in children.iter() {
             match n {
-                AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                AuraNode::ForLoop {
+                    var,
+                    index,
+                    iterable,
+                    body,
+                    ..
+                } => {
                     let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
                     // Plan 046:裸标识符 iterable 可能是外层循环变量(嵌套 for),
                     // 先查 bindings(同主 ForLoop 修复)。未命中再 fallback 到 state。
                     let array: Vec<Value> = if let Some(val) = bindings.get(state_name).cloned() {
                         match val {
                             Value::Array(arr) => arr.iter().cloned().collect(),
-                            Value::Int(id) if id >= 4_000_000 => self.bridge.index_list_all(id as usize),
+                            Value::Int(id) if id >= 4_000_000 => {
+                                self.bridge.index_list_all(id as usize)
+                            }
                             Value::VmRef(r) => self.bridge.index_list_all(r.id),
                             _ => continue,
                         }
                     } else {
-                    // Use resolve_iterable so heap-array refs (Value::Int(array_id),
-                    // the form `var x = []; x.push(...)` produces — e.g. .days) are
-                    // iterated AND state misses fall back to computed evaluation
-                    // (PLAN-051 C3; Plan 522 016 迁移的 `for cell in .days` 以
-                    // computed 为源)。Otherwise the grid's for renders empty.
-                    match self.resolve_iterable(iterable, bindings) {
-                        Some(v) => v,
-                        None => continue,
-                    }
+                        // Use resolve_iterable so heap-array refs (Value::Int(array_id),
+                        // the form `var x = []; x.push(...)` produces — e.g. .days) are
+                        // iterated AND state misses fall back to computed evaluation
+                        // (PLAN-051 C3; Plan 522 016 迁移的 `for cell in .days` 以
+                        // computed 为源)。Otherwise the grid's for renders empty.
+                        match self.resolve_iterable(iterable, bindings) {
+                            Some(v) => v,
+                            None => continue,
+                        }
                     };
                     let body_len = body.len();
                     for (i, item) in array.iter().enumerate() {
@@ -3057,16 +3512,22 @@ impl<'a> AuraViewBuilder<'a> {
                                 if body_len > 1 {
                                     path.push(bi);
                                 }
-                                let for_path: Vec<u16> =
-                                    path.iter().map(|&x| x as u16).collect();
-                                probe.record_for(&for_path, ForIter {
-                                    var: var.clone(),
-                                    index: Some(i),
-                                    value_repr: value_to_display_string(item),
-                                    iterable_repr: iterable.clone(),
-                                });
+                                let for_path: Vec<u16> = path.iter().map(|&x| x as u16).collect();
+                                probe.record_for(
+                                    &for_path,
+                                    ForIter {
+                                        var: var.clone(),
+                                        index: Some(i),
+                                        value_repr: value_to_display_string(item),
+                                        iterable_repr: iterable.clone(),
+                                    },
+                                );
                                 let v = self.convert_node_tracked_ctx(
-                                    bn, path, id_map, probe, &loop_bindings,
+                                    bn,
+                                    path,
+                                    id_map,
+                                    probe,
+                                    &loop_bindings,
                                 );
                                 if body_len > 1 {
                                     path.pop();
@@ -3080,7 +3541,14 @@ impl<'a> AuraViewBuilder<'a> {
                         } else if views.len() == 1 {
                             views.into_iter().next().unwrap()
                         } else {
-                            View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
+                            View::Column {
+                                children: views,
+                                spacing: 0,
+                                padding: 0,
+                                style: None,
+                                onclick: None,
+                                on_right_click: None,
+                            }
                         };
                         if matches!(cell, View::Empty) {
                             continue;
@@ -3092,7 +3560,9 @@ impl<'a> AuraViewBuilder<'a> {
                 other => {
                     // Plan 476: 拼接感知——slot outlet 的 fill 子节点作兄弟 cell
                     // 展开(父作用域 tracked 转换;空 cell 不占格)。
-                    for v in self.expand_one_child_spliced(other, path, id_map, probe, bindings, cell_idx) {
+                    for v in self
+                        .expand_one_child_spliced(other, path, id_map, probe, bindings, cell_idx)
+                    {
                         if matches!(v, View::Empty) {
                             continue;
                         }
@@ -3113,7 +3583,12 @@ impl<'a> AuraViewBuilder<'a> {
         // Bonus: build-time path [..i] now matches the render-time path that
         // `render_dynamic_view`'s Grid arm visits — previously the col-of-rows
         // split caused a build/render path mismatch for grid descendants.
-        View::Grid { cols, gap, cells, style }
+        View::Grid {
+            cols,
+            gap,
+            cells,
+            style,
+        }
     }
 
     /// Tracked convert_row — mirrors `convert_row`'s Conditional-flattening but
@@ -3128,7 +3603,8 @@ impl<'a> AuraViewBuilder<'a> {
         probe: &mut BuildProbe,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let spacing = self.extract_u16(props, "spacing")
+        let spacing = self
+            .extract_u16(props, "spacing")
             .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
@@ -3147,7 +3623,12 @@ impl<'a> AuraViewBuilder<'a> {
         let mut slot: usize = 0;
         for n in children {
             match n {
-                AuraNode::Conditional { condition, then_body, else_body, .. } => {
+                AuraNode::Conditional {
+                    condition,
+                    then_body,
+                    else_body,
+                    ..
+                } => {
                     // Flatten Conditional children: in a row, multiple condition
                     // children spread horizontally, not wrapped in a Column
                     // (mirrors untracked convert_row). Each spliced child converts
@@ -3157,10 +3638,15 @@ impl<'a> AuraViewBuilder<'a> {
                     // events and the wrong class).
                     let is_true = self.eval_condition_with(condition, bindings);
                     let empty = Vec::new();
-                    let body = if is_true { then_body } else { else_body.as_ref().unwrap_or(&empty) };
+                    let body = if is_true {
+                        then_body
+                    } else {
+                        else_body.as_ref().unwrap_or(&empty)
+                    };
                     for child_node in body {
                         path.push(slot);
-                        let v = self.convert_node_tracked_ctx(child_node, path, id_map, probe, bindings);
+                        let v = self
+                            .convert_node_tracked_ctx(child_node, path, id_map, probe, bindings);
                         path.pop();
                         if is_visually_empty(&v) {
                             continue;
@@ -3169,7 +3655,13 @@ impl<'a> AuraViewBuilder<'a> {
                         slot += 1;
                     }
                 }
-                AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                AuraNode::ForLoop {
+                    var,
+                    index,
+                    iterable,
+                    body,
+                    ..
+                } => {
                     // Plan 047:flatten ForLoop into row(同 untracked convert_row)。
                     // 用 for_loop_iterations(放弃 row 内 ForLoop 的 probe 追踪,
                     // inspector 调试信息不影响渲染正确性)。Count survivors so
@@ -3202,7 +3694,10 @@ impl<'a> AuraViewBuilder<'a> {
         let child_views: Vec<View<DynamicMessage>> = child_views
             .into_iter()
             .filter_map(|v| match extract_absolute_position(&v) {
-                Some(pos) => { floats.push((v, pos)); None }
+                Some(pos) => {
+                    floats.push((v, pos));
+                    None
+                }
                 None => Some(v),
             })
             .collect();
@@ -3210,12 +3705,22 @@ impl<'a> AuraViewBuilder<'a> {
         // Plan 412 F1: 交叉类仲裁 — row 元素带 `grid grid-cols-N`/`flex-col` 类时
         // 布局语义被类覆盖。hoist 在前,浮层不占格。
         if let Some(RederivedLayout::Grid { cols, gap }) = rederive_layout(style.as_ref()) {
-            let cells: Vec<View<DynamicMessage>> =
-                child_views.into_iter().filter(|v| !is_visually_empty(v)).collect();
-            let base = View::Grid { cols, gap, cells, style };
+            let cells: Vec<View<DynamicMessage>> = child_views
+                .into_iter()
+                .filter(|v| !is_visually_empty(v))
+                .collect();
+            let base = View::Grid {
+                cols,
+                gap,
+                cells,
+                style,
+            };
             return fold_floats(base, floats);
         }
-        let use_col = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Column));
+        let use_col = matches!(
+            rederive_layout(style.as_ref()),
+            Some(RederivedLayout::Column)
+        );
 
         let mut builder = if use_col {
             View::<DynamicMessage>::col()
@@ -3269,35 +3774,55 @@ impl<'a> AuraViewBuilder<'a> {
                 let mut style = style.unwrap_or_default();
                 // Container 的 legacy prop(padding/width/height)搬进 style,
                 // Grid 渲染走 apply_column_style 只读 style。
-                if padding > 0 && !style.classes.iter().any(|c| matches!(c, StyleClass::Padding(_))) {
+                if padding > 0
+                    && !style
+                        .classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::Padding(_)))
+                {
                     style = style.add(StyleClass::Padding(SizeValue::Fixed(padding)));
                 }
                 if let Some(w) = width {
-                    if !style.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
+                    if !style
+                        .classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::Width(_)))
+                    {
                         style = style.add(StyleClass::Width(SizeValue::Pixels(w as f32)));
                     }
                 }
                 if let Some(h) = height {
-                    if !style.classes.iter().any(|c| matches!(c, StyleClass::Height(_))) {
+                    if !style
+                        .classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::Height(_)))
+                    {
                         style = style.add(StyleClass::Height(SizeValue::Pixels(h as f32)));
                     }
                 }
-                View::Grid { cols, gap, cells: child_views, style: Some(style) }
+                View::Grid {
+                    cols,
+                    gap,
+                    cells: child_views,
+                    style: Some(style),
+                }
             }
             Some(RederivedLayout::Row) => View::Row {
                 children: child_views,
                 spacing: 0,
                 padding,
                 style,
-            onclick: None, on_right_click: None,
-        },
+                onclick: None,
+                on_right_click: None,
+            },
             Some(RederivedLayout::Column) => View::Column {
                 children: child_views,
                 spacing: 0,
                 padding,
                 style,
-            onclick: None, on_right_click: None,
-        },
+                onclick: None,
+                on_right_click: None,
+            },
             None => {
                 let child_view = if child_views.is_empty() {
                     View::Empty
@@ -3309,8 +3834,9 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 0,
                         padding: 0,
                         style: None,
-            onclick: None, on_right_click: None,
-        }
+                        onclick: None,
+                        on_right_click: None,
+                    }
                 };
                 let mut builder = View::container(child_view).padding(padding);
                 if let Some(w) = width {
@@ -3369,13 +3895,18 @@ impl<'a> AuraViewBuilder<'a> {
                 spacing: 0,
                 padding: 0,
                 style: Some(Style::default().add(StyleClass::ItemsCenter)),
-            onclick: None, on_right_click: None,
-        }
+                onclick: None,
+                on_right_click: None,
+            }
         };
 
         let full_style = match style {
-            Some(s) => s.add(StyleClass::Width(SizeValue::Full)).add(StyleClass::Height(SizeValue::Full)),
-            None => Style::default().add(StyleClass::Width(SizeValue::Full)).add(StyleClass::Height(SizeValue::Full)),
+            Some(s) => s
+                .add(StyleClass::Width(SizeValue::Full))
+                .add(StyleClass::Height(SizeValue::Full)),
+            None => Style::default()
+                .add(StyleClass::Width(SizeValue::Full))
+                .add(StyleClass::Height(SizeValue::Full)),
         };
         let mut builder = View::container(child_view).center_x().center_y();
         builder = builder.with_style(full_style);
@@ -3394,9 +3925,10 @@ impl<'a> AuraViewBuilder<'a> {
     ) -> View<DynamicMessage> {
         let resolved = match content {
             AuraTextContent::Literal(s) => s.clone(),
-            AuraTextContent::Interpolated { template, bindings: tpl_bindings } => {
-                self.resolve_interpolation_tracked(template, tpl_bindings, bindings, path, probe)
-            }
+            AuraTextContent::Interpolated {
+                template,
+                bindings: tpl_bindings,
+            } => self.resolve_interpolation_tracked(template, tpl_bindings, bindings, path, probe),
         };
         View::Text {
             content: resolved,
@@ -3446,22 +3978,28 @@ impl<'a> AuraViewBuilder<'a> {
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let probe_path: Vec<u16> = path.iter().map(|&x| x as u16).collect();
-        let content = self.extract_string_with(props, "text", bindings)
+        let content = self
+            .extract_string_with(props, "text", bindings)
             .or_else(|| self.extract_string_with(props, "content", bindings))
             .or_else(|| self.extract_string_with(props, "label", bindings))
             .unwrap_or_else(|| {
                 // Try to get content from child text nodes. For interpolated
                 // children, also record each binding at this element's path.
-                children.iter()
+                children
+                    .iter()
                     .filter_map(|c| match c {
                         AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
-                        AuraNode::Text(AuraTextContent::Interpolated { template, bindings: tpl_bindings }) => {
+                        AuraNode::Text(AuraTextContent::Interpolated {
+                            template,
+                            bindings: tpl_bindings,
+                        }) => {
                             // Record bindings for this child, attributed to the
                             // text element (current path) — consistent with the
                             // plain-text-node case.
                             for field_name in tpl_bindings {
                                 let pattern = format!("${{{}}}", format!(".{}", field_name));
-                                let value_str = self.read_state_as_string_with(field_name, bindings);
+                                let value_str =
+                                    self.read_state_as_string_with(field_name, bindings);
                                 probe.record_state(&probe_path, pattern, value_str);
                             }
                             Some(self.resolve_interpolation_with(template, tpl_bindings, bindings))
@@ -3470,9 +4008,9 @@ impl<'a> AuraViewBuilder<'a> {
                         // 此前只认 Text 节点——`label { text (text: m.label) {} }`
                         // 的子元素求值被跳过,宿主元素内容为空(os-config §P 现场
                         // "整个 label 缺位"根因)。
-                        AuraNode::Element { tag, props: cprops, .. }
-                            if Self::TEXT_LIKE_TAGS.contains(&tag.as_str()) =>
-                        {
+                        AuraNode::Element {
+                            tag, props: cprops, ..
+                        } if Self::TEXT_LIKE_TAGS.contains(&tag.as_str()) => {
                             self.child_element_text(cprops, bindings)
                         }
                         _ => None,
@@ -3498,7 +4036,9 @@ impl<'a> AuraViewBuilder<'a> {
         if matches!(tag, "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
             let default = match tag {
                 "h1" => Style::parse("text-4xl font-bold tracking-tight text-primary mb-4").ok(),
-                "h2" => Style::parse("text-3xl font-bold tracking-tight text-primary mt-8 mb-4").ok(),
+                "h2" => {
+                    Style::parse("text-3xl font-bold tracking-tight text-primary mt-8 mb-4").ok()
+                }
                 "h3" => Style::parse("text-xl font-semibold text-primary mb-3").ok(),
                 "h4" => Style::parse("text-lg font-semibold mb-2").ok(),
                 "h5" => Style::parse("text-base font-semibold mb-1").ok(),
@@ -3519,7 +4059,8 @@ impl<'a> AuraViewBuilder<'a> {
         // If this text element has an onclick/click event, render it as a
         // Button so the click handler fires (View::Text has no onclick field).
         if let Some(event) = aura_events_get_base(events, "onclick")
-            .or_else(|| aura_events_get_base(events, "click")) {
+            .or_else(|| aura_events_get_base(events, "click"))
+        {
             let onclick = self.event_to_message_with(event, bindings);
             return View::Button {
                 disabled: false,
@@ -3588,7 +4129,8 @@ impl<'a> AuraViewBuilder<'a> {
             }
         }
         lines.push(
-            "该内嵌容器为 Web 端组件，VM 端暂不内嵌示例画面；完整交互请使用 auto run（Vue 端）查看".to_string(),
+            "该内嵌容器为 Web 端组件，VM 端暂不内嵌示例画面；完整交互请使用 auto run（Vue 端）查看"
+                .to_string(),
         );
         let mut children: Vec<View<DynamicMessage>> = Vec::new();
         for (i, line) in lines.iter().enumerate() {
@@ -3700,14 +4242,20 @@ impl<'a> AuraViewBuilder<'a> {
             })
             .map(|val| val.as_bool())
             .unwrap_or(false);
-        let p063_sk = if sync_anchor { editor_key.map(|s| s.to_string()) } else { None };
+        let p063_sk = if sync_anchor {
+            editor_key.map(|s| s.to_string())
+        } else {
+            None
+        };
         // PLAN-063 T-04d-2: sink 注册与 sync_anchor 解耦——sync_anchor 是
         // 左栏编辑器的高亮开关；sync_anchor_target 属右栏 autodown 元素
         //（锚槽与 scroll_top 写臂所在）。有 target prop 即注册（字段名
         // 字符串字面量，剥前导点）。
         if let Some(field) = self.extract_string_with(props, "sync_anchor_target", bindings) {
             eprintln!("[P063-SINK] registered");
-            crate::ui::anchor_slot::set_target_sink(Some(field.trim_start_matches('.').to_string()));
+            crate::ui::anchor_slot::set_target_sink(Some(
+                field.trim_start_matches('.').to_string(),
+            ));
         }
         let offset = props
             .get("scroll_top")
@@ -3726,38 +4274,36 @@ impl<'a> AuraViewBuilder<'a> {
         let on_scroll = aura_events_get_base(events, "onscroll").map(|ev| {
             let handler = extract_handler_name(&ev.handler).to_string();
             let widget = self.widget_name.clone();
-            crate::ui::view::ScrollCallback::new(
-                move |m: crate::ui::view::ScrollMetrics| {
-                    #[cfg(all(feature = "autodown", feature = "code-editor", feature = "ui-iced"))]
-                    if let Some(sk) = &p063_sk {
-                        if let Some(idx) = crate::ui::autodown_editor::core::set_anchor_from_scroll(
-                            sk,
-                            m.offset_y as f64,
-                            m.viewport_h as f64,
-                        ) {
-                            eprintln!("[P063-T] pending={}", idx);
-                            crate::ui::anchor_slot::set_pending_anchor(idx);
-                        }
+            crate::ui::view::ScrollCallback::new(move |m: crate::ui::view::ScrollMetrics| {
+                #[cfg(all(feature = "autodown", feature = "code-editor", feature = "ui-iced"))]
+                if let Some(sk) = &p063_sk {
+                    if let Some(idx) = crate::ui::autodown_editor::core::set_anchor_from_scroll(
+                        sk,
+                        m.offset_y as f64,
+                        m.viewport_h as f64,
+                    ) {
+                        eprintln!("[P063-T] pending={}", idx);
+                        crate::ui::anchor_slot::set_pending_anchor(idx);
                     }
-                    #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
-                    if let Some(_sk) = &p063_sk {
-                        let _ = _sk;
-                    }
-                    DynamicMessage::Typed {
-                        widget_name: widget.clone(),
-                        event_name: handler.clone(),
-                        // PLAN-043 T6：实参序 (height, client, top)。VM 轨由
-                        // update 层 rust 直写快道消费（renderer.rs T6 拦截——
-                        // 引擎 handler 对 float 实参/算术写入腐坏，DEBTS 登记；
-                        // handler 保留为 vue 契约面）。
-                        args: vec![
-                            Value::Float(m.content_h as f64),
-                            Value::Float(m.viewport_h as f64),
-                            Value::Float(m.offset_y as f64),
-                        ],
-                    }
-                },
-            )
+                }
+                #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
+                if let Some(_sk) = &p063_sk {
+                    let _ = _sk;
+                }
+                DynamicMessage::Typed {
+                    widget_name: widget.clone(),
+                    event_name: handler.clone(),
+                    // PLAN-043 T6：实参序 (height, client, top)。VM 轨由
+                    // update 层 rust 直写快道消费（renderer.rs T6 拦截——
+                    // 引擎 handler 对 float 实参/算术写入腐坏，DEBTS 登记；
+                    // handler 保留为 vue 契约面）。
+                    args: vec![
+                        Value::Float(m.content_h as f64),
+                        Value::Float(m.viewport_h as f64),
+                        Value::Float(m.offset_y as f64),
+                    ],
+                }
+            })
         });
         (true, offset, on_scroll, details_onclick)
     }
@@ -3781,7 +4327,11 @@ impl<'a> AuraViewBuilder<'a> {
         };
         let mut m = std::collections::HashMap::new();
         for (k, val) in obj.iter() {
-            let Some(u) = k.to_string().trim().strip_prefix('t').and_then(|d| d.parse::<u64>().ok())
+            let Some(u) = k
+                .to_string()
+                .trim()
+                .strip_prefix('t')
+                .and_then(|d| d.parse::<u64>().ok())
             else {
                 continue;
             };
@@ -3814,8 +4364,8 @@ impl<'a> AuraViewBuilder<'a> {
         aura_events_get_base(events, "oncolresize").map(|ev| {
             let handler = extract_handler_name(&ev.handler).to_string();
             let widget = self.widget_name.clone();
-            std::sync::Arc::new(
-                move |key: u64, m: crate::ui::view::ColResizeMetrics| DynamicMessage::Typed {
+            std::sync::Arc::new(move |key: u64, m: crate::ui::view::ColResizeMetrics| {
+                DynamicMessage::Typed {
                     widget_name: widget.clone(),
                     event_name: handler.clone(),
                     args: vec![
@@ -3823,8 +4373,8 @@ impl<'a> AuraViewBuilder<'a> {
                         auto_val::Value::Int(m.col as i32),
                         auto_val::Value::Float(m.width as f64),
                     ],
-                },
-            ) as crate::ui::view::TableColResizeFn<DynamicMessage>
+                }
+            }) as crate::ui::view::TableColResizeFn<DynamicMessage>
         })
     }
 
@@ -3897,16 +4447,16 @@ impl<'a> AuraViewBuilder<'a> {
         aura_events_get_base(events, "onfocusblock").map(|ev| {
             let handler = extract_handler_name(&ev.handler).to_string();
             let widget = self.widget_name.clone();
-            crate::ui::view::FocusCallback::new(
-                move |m: crate::ui::view::FocusMetrics| DynamicMessage::Typed {
+            crate::ui::view::FocusCallback::new(move |m: crate::ui::view::FocusMetrics| {
+                DynamicMessage::Typed {
                     widget_name: widget.clone(),
                     event_name: handler.clone(),
                     args: vec![
                         auto_val::Value::Int(m.block.map(|b| b as i32).unwrap_or(-1)),
                         auto_val::Value::Float(m.height as f64),
                     ],
-                },
-            )
+                }
+            })
         })
     }
 
@@ -3961,9 +4511,9 @@ impl<'a> AuraViewBuilder<'a> {
         let is_final = props
             .get("final")
             .map(|v| match v {
-                AuraPropValue::Expr(expr) => {
-                    self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
-                }
+                AuraPropValue::Expr(expr) => self
+                    .resolve_expr_to_value(expr, bindings)
+                    .map(|val| val.as_bool()),
                 _ => None,
             })
             .flatten()
@@ -3995,7 +4545,16 @@ impl<'a> AuraViewBuilder<'a> {
         // 到内容全高（外滚）。编辑壳自身样式保留在内层。
         if scroll_sync {
             return View::Scrollable {
-                child: Box::new(View::AutodownEditor { key, value, is_final, on_change, on_focus, on_link, placeholder, style }),
+                child: Box::new(View::AutodownEditor {
+                    key,
+                    value,
+                    is_final,
+                    on_change,
+                    on_focus,
+                    on_link,
+                    placeholder,
+                    style,
+                }),
                 width: None,
                 height: None,
                 style: Style::parse("w-full h-full").ok(),
@@ -4007,7 +4566,16 @@ impl<'a> AuraViewBuilder<'a> {
                 controller: None,
             };
         }
-        View::AutodownEditor { key, value, is_final, on_change, on_focus, on_link, placeholder, style }
+        View::AutodownEditor {
+            key,
+            value,
+            is_final,
+            on_change,
+            on_focus,
+            on_link,
+            placeholder,
+            style,
+        }
     }
 
     /// PLAN-066: 原生外部组件注册表派发——内置臂穷尽后、.at AuraWidget 前查
@@ -4124,9 +4692,7 @@ impl<'a> AuraViewBuilder<'a> {
             // (此前落 unknown fallback → View::Empty)。与 tracked 层同名臂镜像。
             "svg" => self.convert_svg_image(props, children, bindings),
             // Plan 484: hover 命中区 —— 与 tracked 层同名臂镜像(文件 D-GAP 规则)。
-            "mouse-area" => {
-                self.convert_mouse_area_untracked(props, events, children, bindings)
-            }
+            "mouse-area" => self.convert_mouse_area_untracked(props, events, children, bindings),
             // Plan 563: 状态驱动画布 —— 与 tracked 层同名臂镜像(D-GAP;
             // leaf 无 probing 面,共用 convert_canvas)。
             "canvas" => self.convert_canvas(props, events, bindings),
@@ -4140,20 +4706,24 @@ impl<'a> AuraViewBuilder<'a> {
                 let mut path = Vec::new();
                 let mut id_map = crate::ui::debug_id_map::DebugIdMap::default();
                 let mut probe = crate::ui::debug::BuildProbe::default();
-                self.convert_popover(props, events, children, &mut path, &mut id_map, &mut probe, bindings)
+                self.convert_popover(
+                    props,
+                    events,
+                    children,
+                    &mut path,
+                    &mut id_map,
+                    &mut probe,
+                    bindings,
+                )
             }
             // PLAN-717: mirror the tracked calendar arm above.
             "calendar" | "Calendar" => self.convert_calendar(props, bindings),
             // Plan 497: 每窗口真缩略 leaf（与 tracked 层同名臂镜像，D-GAP；
             // 字面形式与 render_support/schema.rs 三表同款 window_thumbnail）。
-            "window_thumbnail" => {
-                self.convert_window_thumbnail(props, bindings)
-            }
+            "window_thumbnail" => self.convert_window_thumbnail(props, bindings),
             // PLAN-012 W3: 整桌面等比预览 leaf（tracked/untracked 双臂镜像，
             // window_thumbnail 同款 D-GAP 纪律；SD-02 DSL 合同面）。
-            "workspace_preview" => {
-                self.convert_workspace_preview(props, bindings)
-            }
+            "workspace_preview" => self.convert_workspace_preview(props, bindings),
 
             // Command palette preview components are also web imports. Give
             // the gallery's static sample VM-native controls before placeholder
@@ -4178,7 +4748,10 @@ impl<'a> AuraViewBuilder<'a> {
                 {
                     group_children.push(View::Text {
                         content: heading,
-                        style: Style::parse("px-2 py-1.5 text-xs font-medium text-muted-foreground").ok(),
+                        style: Style::parse(
+                            "px-2 py-1.5 text-xs font-medium text-muted-foreground",
+                        )
+                        .ok(),
                         selectable: false,
                     });
                 }
@@ -4257,28 +4830,24 @@ impl<'a> AuraViewBuilder<'a> {
             }
             "carousel_previous" | "carousel-previous" => {
                 let mut p = props.clone();
-                p.entry("text".to_string()).or_insert_with(|| {
-                    AuraPropValue::Expr(crate::ast::Expr::Str("‹".into()))
-                });
+                p.entry("text".to_string())
+                    .or_insert_with(|| AuraPropValue::Expr(crate::ast::Expr::Str("‹".into())));
                 p.entry("variant".to_string()).or_insert_with(|| {
                     AuraPropValue::Expr(crate::ast::Expr::Str("outline".into()))
                 });
-                p.entry("size".to_string()).or_insert_with(|| {
-                    AuraPropValue::Expr(crate::ast::Expr::Str("icon".into()))
-                });
+                p.entry("size".to_string())
+                    .or_insert_with(|| AuraPropValue::Expr(crate::ast::Expr::Str("icon".into())));
                 self.convert_button(&p, events, children, bindings)
             }
             "carousel_next" | "carousel-next" => {
                 let mut p = props.clone();
-                p.entry("text".to_string()).or_insert_with(|| {
-                    AuraPropValue::Expr(crate::ast::Expr::Str("›".into()))
-                });
+                p.entry("text".to_string())
+                    .or_insert_with(|| AuraPropValue::Expr(crate::ast::Expr::Str("›".into())));
                 p.entry("variant".to_string()).or_insert_with(|| {
                     AuraPropValue::Expr(crate::ast::Expr::Str("outline".into()))
                 });
-                p.entry("size".to_string()).or_insert_with(|| {
-                    AuraPropValue::Expr(crate::ast::Expr::Str("icon".into()))
-                });
+                p.entry("size".to_string())
+                    .or_insert_with(|| AuraPropValue::Expr(crate::ast::Expr::Str("icon".into())));
                 self.convert_button(&p, events, children, bindings)
             }
 
@@ -4290,10 +4859,7 @@ impl<'a> AuraViewBuilder<'a> {
             // PLAN-053 P-053-6: registry 已注册同名适配器 widget 优先于图标
             // 回落（tracked 双胎同款守卫,详见 tracked 臂注释）。
             tag if self.is_imported_component(tag)
-                && self
-                    .widget_registry
-                    .and_then(|r| r.get(tag))
-                    .is_none() =>
+                && self.widget_registry.and_then(|r| r.get(tag)).is_none() =>
             {
                 // PLAN-625 T-09(b): 非 icon 的 web-ecosystem 组件不再画 lucide
                 // glyph 占位（组件 ≠ 图标;ui-gallery AppViewport 实证=空盒无
@@ -4308,10 +4874,13 @@ impl<'a> AuraViewBuilder<'a> {
             }
 
             // Core element widgets
-            "text" | "label" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "a" | "link" | "small" | "strong" | "em" | "b" | "i" => {
+            "text" | "label" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "p" | "span" | "a"
+            | "link" | "small" | "strong" | "em" | "b" | "i" => {
                 self.convert_text_element(tag, props, events, children, bindings)
             }
-            "button" | "btn" | "native_button" => self.convert_button(props, events, children, bindings),
+            "button" | "btn" | "native_button" => {
+                self.convert_button(props, events, children, bindings)
+            }
             // native_button：vue 侧显式原生逃生名（避开 button→shadcn
             // Button 映射，schema.rs 2514 注）；VM 侧与 button 同臂
             //（PLAN-051 T6：demo settings 弹层按钮两轨原生）。
@@ -4333,9 +4902,8 @@ impl<'a> AuraViewBuilder<'a> {
             "dialog" | "Dialog" => {
                 self.convert_alert_dialog(props, children, bindings, ModalDialogFamily::Dialog)
             }
-            "dropdown-menu" | "dropdown_menu" | "dropdownmenu" | "DropdownMenu" => {
-                self.convert_alert_dialog(props, children, bindings, ModalDialogFamily::DropdownMenu)
-            }
+            "dropdown-menu" | "dropdown_menu" | "dropdownmenu" | "DropdownMenu" => self
+                .convert_alert_dialog(props, children, bindings, ModalDialogFamily::DropdownMenu),
             "alert-dialog" | "alert_dialog" | "alertdialog" => {
                 self.convert_alert_dialog(props, children, bindings, ModalDialogFamily::Alert)
             }
@@ -4367,12 +4935,12 @@ impl<'a> AuraViewBuilder<'a> {
             }
             // PLAN-534: sheet/drawer/hover-card trigger/content 组外兜底
             // 透传（untracked 镜像,镜像 dialog 先例）。
-            "sheet-trigger" | "sheet_trigger" | "sheettrigger"
-            | "drawer-trigger" | "drawer_trigger" | "drawertrigger"
-            | "hover-card-trigger" | "hover_card_trigger" | "hovercard-trigger" | "hovercardtrigger"
-            | "sheet-content" | "sheet_content" | "sheetcontent"
-            | "drawer-content" | "drawer_content" | "drawercontent"
-            | "hover-card-content" | "hover_card_content" | "hovercard-content" | "hovercardcontent" => {
+            "sheet-trigger" | "sheet_trigger" | "sheettrigger" | "drawer-trigger"
+            | "drawer_trigger" | "drawertrigger" | "hover-card-trigger" | "hover_card_trigger"
+            | "hovercard-trigger" | "hovercardtrigger" | "sheet-content" | "sheet_content"
+            | "sheetcontent" | "drawer-content" | "drawer_content" | "drawercontent"
+            | "hover-card-content" | "hover_card_content" | "hovercard-content"
+            | "hovercardcontent" => {
                 let views: Vec<View<DynamicMessage>> = children
                     .iter()
                     .map(|c| self.convert_node_with(c, bindings))
@@ -4380,12 +4948,19 @@ impl<'a> AuraViewBuilder<'a> {
                 match views.len() {
                     0 => View::Empty,
                     1 => views.into_iter().next().unwrap(),
-                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None },
+                    _ => View::Row {
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                        on_right_click: None,
+                    },
                 }
             }
             // PLAN-534: sheet/drawer styled 子臂（untracked 镜像）。
-            "sheet-title" | "sheet_title" | "sheettitle"
-            | "drawer-title" | "drawer_title" | "drawertitle" => {
+            "sheet-title" | "sheet_title" | "sheettitle" | "drawer-title" | "drawer_title"
+            | "drawertitle" => {
                 let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
@@ -4394,20 +4969,20 @@ impl<'a> AuraViewBuilder<'a> {
                 let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "sheet-header" | "sheet_header" | "sheetheader"
-            | "drawer-header" | "drawer_header" | "drawerheader" => {
+            "sheet-header" | "sheet_header" | "sheetheader" | "drawer-header" | "drawer_header"
+            | "drawerheader" => {
                 let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
                 self.convert_column(&p, children, bindings)
             }
-            "sheet-footer" | "sheet_footer" | "sheetfooter"
-            | "drawer-footer" | "drawer_footer" | "drawerfooter" => {
+            "sheet-footer" | "sheet_footer" | "sheetfooter" | "drawer-footer" | "drawer_footer"
+            | "drawerfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
                 let mut v = self.convert_row(&p, children, bindings);
                 self.set_layout_events(&mut v, events, bindings);
                 v
             }
-            "sheet-close" | "sheet_close" | "sheetclose"
-            | "drawer-close" | "drawer_close" | "drawerclose" => {
+            "sheet-close" | "sheet_close" | "sheetclose" | "drawer-close" | "drawer_close"
+            | "drawerclose" => {
                 // 镜像 dialog-close:outline 按钮,onclick 取铸造 close。
                 let mut p = props.clone();
                 p.insert(
@@ -4416,10 +4991,18 @@ impl<'a> AuraViewBuilder<'a> {
                 );
                 self.convert_button(&p, events, children, bindings)
             }
-            "alert-dialog-trigger" | "alert_dialog_trigger" | "alertdialog-trigger"
-            | "alert-dialog-content" | "alert_dialog_content" | "alertdialog-content"
-            | "dialog-trigger" | "dialog_trigger" | "dialogtrigger"
-            | "dialog-content" | "dialog_content" | "dialogcontent" => {
+            "alert-dialog-trigger"
+            | "alert_dialog_trigger"
+            | "alertdialog-trigger"
+            | "alert-dialog-content"
+            | "alert_dialog_content"
+            | "alertdialog-content"
+            | "dialog-trigger"
+            | "dialog_trigger"
+            | "dialogtrigger"
+            | "dialog-content"
+            | "dialog_content"
+            | "dialogcontent" => {
                 // 透传:子件原位渲染（dialog 臂已分区;组外兜底裸渲染）。
                 let views: Vec<View<DynamicMessage>> = children
                     .iter()
@@ -4428,26 +5011,45 @@ impl<'a> AuraViewBuilder<'a> {
                 match views.len() {
                     0 => View::Empty,
                     1 => views.into_iter().next().unwrap(),
-                    _ => View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None },
+                    _ => View::Row {
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                        on_right_click: None,
+                    },
                 }
             }
-            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title"
-            | "dialog-title" | "dialog_title" | "dialogtitle" => {
+            "alert-dialog-title" | "alert_dialog_title" | "alertdialog-title" | "dialog-title"
+            | "dialog_title" | "dialogtitle" => {
                 let p = self.with_class_prop(props, bindings, "text-lg font-semibold");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-description" | "alert_dialog_description" | "alertdialog-description"
-            | "dialog-description" | "dialog_description" | "dialogdescription" => {
+            "alert-dialog-description"
+            | "alert_dialog_description"
+            | "alertdialog-description"
+            | "dialog-description"
+            | "dialog_description"
+            | "dialogdescription" => {
                 let p = self.with_class_prop(props, bindings, "text-sm text-muted-foreground");
                 self.convert_text_element(tag, &p, events, children, bindings)
             }
-            "alert-dialog-header" | "alert_dialog_header" | "alertdialog-header"
-            | "dialog-header" | "dialog_header" | "dialogheader" => {
+            "alert-dialog-header"
+            | "alert_dialog_header"
+            | "alertdialog-header"
+            | "dialog-header"
+            | "dialog_header"
+            | "dialogheader" => {
                 let p = self.with_class_prop(props, bindings, "flex flex-col gap-2");
                 self.convert_column(&p, children, bindings)
             }
-            "alert-dialog-footer" | "alert_dialog_footer" | "alertdialog-footer"
-            | "dialog-footer" | "dialog_footer" | "dialogfooter" => {
+            "alert-dialog-footer"
+            | "alert_dialog_footer"
+            | "alertdialog-footer"
+            | "dialog-footer"
+            | "dialog_footer"
+            | "dialogfooter" => {
                 let p = self.with_class_prop(props, bindings, "flex justify-end gap-2");
                 let mut v = self.convert_row(&p, children, bindings);
                 self.set_layout_events(&mut v, events, bindings);
@@ -4465,8 +5067,12 @@ impl<'a> AuraViewBuilder<'a> {
             // PLAN-533 T7: dropdown-menu 子件——item（有 onclick 走按钮,
             // 纯文本项 text 预设）/label/separator。
             "dropdown-menu-item" | "dropdown_menu_item" | "dropdownmenuitem" => {
-                let preset = "w-full px-2 py-1.5 text-sm cursor-pointer hover:bg-secondary text-start";
-                if events.iter().any(|(e, _)| matches!(e.as_str(), "onclick" | "onClick" | "on_click")) {
+                let preset =
+                    "w-full px-2 py-1.5 text-sm cursor-pointer hover:bg-secondary text-start";
+                if events
+                    .iter()
+                    .any(|(e, _)| matches!(e.as_str(), "onclick" | "onClick" | "on_click"))
+                {
                     let mut b = props.clone();
                     b.insert(
                         "variant".to_string(),
@@ -4476,12 +5082,24 @@ impl<'a> AuraViewBuilder<'a> {
                     self.convert_button(&b2, events, children, bindings)
                 } else {
                     let p = self.with_class_prop(props, bindings, preset);
-                    self.convert_text_element(tag, &p, &std::collections::HashMap::new(), children, bindings)
+                    self.convert_text_element(
+                        tag,
+                        &p,
+                        &std::collections::HashMap::new(),
+                        children,
+                        bindings,
+                    )
                 }
             }
             "dropdown-menu-label" | "dropdown_menu_label" | "dropdownmenulabel" => {
                 let p = self.with_class_prop(props, bindings, "px-2 py-1.5 text-sm font-semibold");
-                self.convert_text_element(tag, &p, &std::collections::HashMap::new(), children, bindings)
+                self.convert_text_element(
+                    tag,
+                    &p,
+                    &std::collections::HashMap::new(),
+                    children,
+                    bindings,
+                )
             }
             "dropdown-menu-separator" | "dropdown_menu_separator" | "dropdownmenuseparator" => {
                 View::Container {
@@ -4491,7 +5109,8 @@ impl<'a> AuraViewBuilder<'a> {
                     height: None,
                     center_x: false,
                     center_y: false,
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                     style: Style::parse("w-full h-px bg-border my-1").ok(),
                 }
             }
@@ -4519,17 +5138,26 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_sidebar_provider(props, events, children, bindings)
             }
             "sidebar_header" | "sidebar-header" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::HEADER_BASE,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::HEADER_BASE,
             ),
             "sidebar_footer" | "sidebar-footer" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::FOOTER_BASE,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::FOOTER_BASE,
             ),
             "sidebar_content" | "sidebar-content" => {
                 self.convert_sidebar_content(props, children, bindings)
             }
             "sidebar_separator" | "sidebar-separator" => self.convert_sidebar_separator(),
             "sidebar_inset" | "sidebar-inset" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::INSET_BASE,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::INSET_BASE,
             ),
             "sidebar_group" | "sidebar-group" => {
                 self.convert_sidebar_group(props, children, bindings)
@@ -4538,16 +5166,25 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_sidebar_group_label(tag, props, events, children, bindings)
             }
             "sidebar_group_content" | "sidebar-group-content" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::GROUP_CONTENT,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::GROUP_CONTENT,
             ),
             "sidebar_group_action" | "sidebar-group-action" => {
                 self.convert_sidebar_group_action(props, events, children, bindings)
             }
             "sidebar_menu" | "sidebar-menu" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::MENU_BASE,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::MENU_BASE,
             ),
             "sidebar_menu_item" | "sidebar-menu-item" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::MENU_ITEM,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::MENU_ITEM,
             ),
             "sidebar_menu_action" | "sidebar-menu-action" => {
                 self.convert_sidebar_menu_action(props, events, children, bindings)
@@ -4559,7 +5196,10 @@ impl<'a> AuraViewBuilder<'a> {
                 self.convert_sidebar_menu_button(props, events, children, bindings, false)
             }
             "sidebar_menu_sub" | "sidebar-menu-sub" => self.convert_sidebar_region(
-                props, children, bindings, crate::ui_gen::sidebar_contract::MENU_SUB,
+                props,
+                children,
+                bindings,
+                crate::ui_gen::sidebar_contract::MENU_SUB,
             ),
             "sidebar_menu_sub_item" | "sidebar-menu-sub-item" => {
                 self.convert_children_passthrough(children, bindings)
@@ -4610,9 +5250,9 @@ impl<'a> AuraViewBuilder<'a> {
                     let is_final = props
                         .get("final")
                         .map(|v| match v {
-                            AuraPropValue::Expr(expr) => {
-                                self.resolve_expr_to_value(expr, bindings).map(|val| val.as_bool())
-                            }
+                            AuraPropValue::Expr(expr) => self
+                                .resolve_expr_to_value(expr, bindings)
+                                .map(|val| val.as_bool()),
                             _ => None,
                         })
                         .flatten()
@@ -4697,13 +5337,9 @@ impl<'a> AuraViewBuilder<'a> {
             // avatar-fallback 走文本臂（居中由容器注入）。
             "avatar" => self.convert_avatar(props, children, bindings),
             "avatar-image" => self.convert_image_or_icon(props, bindings),
-            "avatar-fallback" => self.convert_text_element(
-                "avatar-fallback",
-                props,
-                events,
-                children,
-                bindings,
-            ),
+            "avatar-fallback" => {
+                self.convert_text_element("avatar-fallback", props, events, children, bindings)
+            }
 
             // Child widget lookup or fallback
             _ => {
@@ -4712,14 +5348,23 @@ impl<'a> AuraViewBuilder<'a> {
                 // here in the fallback before child-widget lookup. Extract the
                 // `to`/`href` prop for navigation and `label`/`text` for display.
                 if tag == "nav-link" || tag == "nav_link" {
-                    let to = self.extract_string(props, "to")
+                    let to = self
+                        .extract_string(props, "to")
                         .or_else(|| self.extract_string(props, "href"))
                         .unwrap_or_default();
-                    let label = self.extract_string(props, "label")
+                    let label = self
+                        .extract_string(props, "label")
                         .or_else(|| self.extract_string(props, "text"))
                         .unwrap_or_default();
                     let icon = self.extract_string(props, "icon").unwrap_or_default();
-                    return self.render_link_button_with_icon(&label, &[], &to, &icon, bindings, false);
+                    return self.render_link_button_with_icon(
+                        &label,
+                        &[],
+                        &to,
+                        &icon,
+                        bindings,
+                        false,
+                    );
                 }
                 // Plan 412 续(toast VM 化):toast-provider 是 vue 端 <Toaster/>
                 // 挂载点;VM 端的悬浮层由 renderer 在 dynamic_view 顶层注入
@@ -4753,8 +5398,9 @@ impl<'a> AuraViewBuilder<'a> {
                         center_x: false,
                         center_y: false,
                         style: Style::parse(&format!("h-3 w-3 rounded-full {}", dot_bg)).ok(),
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                     let name_view = View::Text {
                         content: name,
                         style: Style::parse("text-base font-semibold uppercase tracking-wider text-muted-foreground").ok(),
@@ -4773,8 +5419,9 @@ impl<'a> AuraViewBuilder<'a> {
                         spacing: 0,
                         padding: 0,
                         style: Style::parse("items-center gap-2 mb-4").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                     // component-cards → Grid(cols=2, gap-3)
                     // Plan 409 §10 续 10: 设 CATEGORY_COLOR 供 component-card
                     // 继承颜色(save/restore 支持嵌套)。
@@ -4791,10 +5438,15 @@ impl<'a> AuraViewBuilder<'a> {
                     CATEGORY_COLOR.with(|c| *c.borrow_mut() = prev_color);
                     // Plan 409 §10 续 11: 响应式列数(对齐 vue sm/lg/xl 断点)。
                     let win_w = crate::ui::style::iced_adapter::window_width();
-                    let cols = if win_w < 640.0 { 1 }
-                        else if win_w < 1024.0 { 2 }
-                        else if win_w < 1280.0 { 3 }
-                        else { 4 };
+                    let cols = if win_w < 640.0 {
+                        1
+                    } else if win_w < 1024.0 {
+                        2
+                    } else if win_w < 1280.0 {
+                        3
+                    } else {
+                        4
+                    };
                     // Plan 409 §10 续 14: 等宽 grid(col[rows])。每 row(w-full) 含
                     // cols 个 cell;cell(component-card)自带 flex-1,在 row 里等分
                     // 宽度,实现上下左右对齐(不用 View::Grid,因其 cell Shrink 不齐)。
@@ -4802,31 +5454,37 @@ impl<'a> AuraViewBuilder<'a> {
                         let mut rows_views: Vec<View<DynamicMessage>> = Vec::new();
                         let mut iter = cells.into_iter();
                         loop {
-                            let chunk: Vec<View<DynamicMessage>> = iter.by_ref().take(cols).collect();
-                            if chunk.is_empty() { break; }
+                            let chunk: Vec<View<DynamicMessage>> =
+                                iter.by_ref().take(cols).collect();
+                            if chunk.is_empty() {
+                                break;
+                            }
                             rows_views.push(View::Row {
                                 children: chunk,
                                 spacing: 12,
                                 padding: 0,
                                 style: Style::parse("w-full").ok(),
-            onclick: None, on_right_click: None,
-        });
+                                onclick: None,
+                                on_right_click: None,
+                            });
                         }
                         View::Column {
                             children: rows_views,
                             spacing: 12,
                             padding: 0,
                             style: Style::parse("w-full").ok(),
-            onclick: None, on_right_click: None,
-        }
+                            onclick: None,
+                            on_right_click: None,
+                        }
                     };
                     return View::Column {
                         children: vec![title, grid],
                         spacing: 16,
                         padding: 0,
                         style: None,
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 // Plan 409 §10 组 E: preview-card / codeblock VM 识别。vue codegen
                 // 对它们做特殊处理(generate_previewcard_html / generate_codeblock_html
@@ -4838,9 +5496,13 @@ impl<'a> AuraViewBuilder<'a> {
                     // Plan 409 §10 续 19: 预览卡片(对齐 vue button.vue:126-180):
                     // 圆角 border 容器 + 居中预览区 + Code toggle(展开/收起) +
                     // Auto/Vue tab + 代码区。show/tab 来自 preview_states(局部 UI state)。
-                    let id = self.extract_string(props, "id").unwrap_or_else(|| "preview".to_string());
-                    let ui = self.preview_states
-                        .and_then(|m| m.get(&id)).copied()
+                    let id = self
+                        .extract_string(props, "id")
+                        .unwrap_or_else(|| "preview".to_string());
+                    let ui = self
+                        .preview_states
+                        .and_then(|m| m.get(&id))
+                        .copied()
                         .unwrap_or_default();
                     let child_views: Vec<View<DynamicMessage>> = children
                         .iter()
@@ -4850,15 +5512,26 @@ impl<'a> AuraViewBuilder<'a> {
                     let inner: View<DynamicMessage> = if child_views.len() == 1 {
                         child_views.into_iter().next().unwrap()
                     } else {
-                        View::Column { children: child_views, spacing: 8, padding: 0, style: None, onclick: None, on_right_click: None }
+                        View::Column {
+                            children: child_views,
+                            spacing: 8,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                            on_right_click: None,
+                        }
                     };
                     let preview_area = View::Container {
                         child: Box::new(inner),
-                        padding: 0, width: None, height: None,
-                        center_x: true, center_y: true,
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: true,
+                        center_y: true,
                         style: Style::parse("min-h-[100px] w-full p-4").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                     // Plan 409 §10 续 21: 合并 Code title 行与 Auto/Vue tab 行为一行
                     // toolbar:[Auto][Vue] ... [copy][chevron](展开/收起)。代码区在
                     // 下方(展开时)。Plan 411: 对齐 vue 合并版 —— 右侧 copy icon
@@ -4868,7 +5541,11 @@ impl<'a> AuraViewBuilder<'a> {
                         let mut vg = VueGenerator::new();
                         vg.gen_previewcard_code(props, children)
                     };
-                    let code = if matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue) { vue_code } else { auto_code };
+                    let code = if matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue) {
+                        vue_code
+                    } else {
+                        auto_code
+                    };
                     // Plan 411: active tab 下划线用 2px 主题色条实现 ——
                     // border-b-2(仅底边)解析器不支持,iced button 边框四边统一。
                     // 结构:定宽列(w-[72px]) + Button(w-full + text-center,px-4
@@ -4894,30 +5571,55 @@ impl<'a> AuraViewBuilder<'a> {
                         };
                         let underline = View::Container {
                             child: Box::new(View::Empty),
-                            padding: 0, width: None, height: None,
-                            center_x: false, center_y: false,
-                            style: Style::parse(if active { "h-[2px] w-full bg-primary" } else { "h-[2px] w-full" }).ok(),
-            onclick: None, on_right_click: None,
-        };
+                            padding: 0,
+                            width: None,
+                            height: None,
+                            center_x: false,
+                            center_y: false,
+                            style: Style::parse(if active {
+                                "h-[2px] w-full bg-primary"
+                            } else {
+                                "h-[2px] w-full"
+                            })
+                            .ok(),
+                            onclick: None,
+                            on_right_click: None,
+                        };
                         View::Column {
                             children: vec![btn, underline],
-                            spacing: 0, padding: 0,
+                            spacing: 0,
+                            padding: 0,
                             style: Style::parse("w-[72px]").ok(),
-            onclick: None, on_right_click: None,
-        }
+                            onclick: None,
+                            on_right_click: None,
+                        }
                     };
-let tabs_inner = View::Row {
+                    let tabs_inner = View::Row {
                         children: vec![
-                            mk_tab("Auto", "auto", matches!(ui.tab, crate::ui::dynamic::PreviewTab::Auto)),
-                            mk_tab("Vue", "vue", matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue)),
+                            mk_tab(
+                                "Auto",
+                                "auto",
+                                matches!(ui.tab, crate::ui::dynamic::PreviewTab::Auto),
+                            ),
+                            mk_tab(
+                                "Vue",
+                                "vue",
+                                matches!(ui.tab, crate::ui::dynamic::PreviewTab::Vue),
+                            ),
                         ],
-                        spacing: 0, padding: 0, style: None,
-            onclick: None, on_right_click: None,
-        };
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                        on_right_click: None,
+                    };
                     let icon_btn_style = "px-2 py-1.5 text-xs text-muted-foreground bg-transparent";
                     let copy_btn = View::Button {
                         disabled: false,
-                        label: format!("\u{EE01}{}\u{EE02}", if ui.copied { "check" } else { "copy" }),
+                        label: format!(
+                            "\u{EE01}{}\u{EE02}",
+                            if ui.copied { "check" } else { "copy" }
+                        ),
                         content: None,
                         onclick: crate::ui::interpreter::DynamicMessage::Typed {
                             widget_name: self.widget_name.clone(),
@@ -4929,7 +5631,14 @@ let tabs_inner = View::Row {
                     };
                     let toggle = View::Button {
                         disabled: false,
-                        label: format!("\u{EE01}{}\u{EE02}", if ui.show { "chevron-down" } else { "chevron-right" }),
+                        label: format!(
+                            "\u{EE01}{}\u{EE02}",
+                            if ui.show {
+                                "chevron-down"
+                            } else {
+                                "chevron-right"
+                            }
+                        ),
                         content: None,
                         onclick: crate::ui::interpreter::DynamicMessage::Typed {
                             widget_name: self.widget_name.clone(),
@@ -4941,18 +5650,25 @@ let tabs_inner = View::Row {
                     };
                     let right_icons = View::Row {
                         children: vec![copy_btn, toggle],
-                        spacing: 4, padding: 0,
+                        spacing: 4,
+                        padding: 0,
                         // Plan 411: tabs 贴 toolbar 左缘(vue 无容器内边距),右侧
                         // icon 组留 pr-2 呼吸位 —— 此前容器 px-2 让 Auto 左侧多出空白。
                         style: Style::parse("pr-2").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                     let toolbar = View::Row {
                         children: vec![tabs_inner, right_icons],
-                        spacing: 0, padding: 0,
-                        style: Style::parse("items-center justify-between border-t bg-zinc-800 w-full").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        spacing: 0,
+                        padding: 0,
+                        style: Style::parse(
+                            "items-center justify-between border-t bg-zinc-800 w-full",
+                        )
+                        .ok(),
+                        onclick: None,
+                        on_right_click: None,
+                    };
                     let mut col_kids: Vec<View<DynamicMessage>> = vec![preview_area, toolbar];
                     // 展开时:代码区(按 tab 选 auto/vue)。
                     if ui.show {
@@ -4963,45 +5679,73 @@ let tabs_inner = View::Row {
                         };
                         let code_area = View::Container {
                             child: Box::new(code_text),
-                            padding: 0, width: None, height: None, center_x: false, center_y: false,
+                            padding: 0,
+                            width: None,
+                            height: None,
+                            center_x: false,
+                            center_y: false,
                             style: Style::parse("p-4 bg-zinc-950 border-t w-full").ok(),
-            onclick: None, on_right_click: None,
-        };
+                            onclick: None,
+                            on_right_click: None,
+                        };
                         col_kids.push(code_area);
                     }
                     return View::Container {
                         child: Box::new(View::Column {
-                            children: col_kids, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None,
+                            children: col_kids,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                            on_right_click: None,
                         }),
-                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
                         // Plan 411: p-[1px] 模拟 CSS border-box 语义 —— iced 的
                         // border 画在边界内侧但不参与布局,子元素全宽叠在边框上:
                         // 自带背景的 toolbar/code 盖住边框画到边缘,无背景的预览区
                         // 露出边框,视觉上预览区比下方窄 1px。1px 内边距让子元素
                         // 整体收进边框,两侧对齐(vue 中 border 本就在 content box 外)。
-                        style: Style::parse("rounded-lg border bg-zinc-900 w-full overflow-hidden p-[1px]").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        style: Style::parse(
+                            "rounded-lg border bg-zinc-900 w-full overflow-hidden p-[1px]",
+                        )
+                        .ok(),
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 if tag == "codeblock" || tag == "code_block" || tag == "code-block" {
                     // Plan 409 §10 续 16/18: 代码块(对齐 vue button.vue:110-123):
                     // 圆角 border 容器 + header(lang 标签) + 深色 monospace 代码。
-                    let code = self.extract_string(props, "code")
+                    let code = self
+                        .extract_string(props, "code")
                         .or_else(|| self.extract_string(props, "text"))
                         .or_else(|| self.extract_children_text(children, bindings))
                         .unwrap_or_default();
                     let lang = self.extract_string(props, "lang").unwrap_or_default();
-                    let lang_label = if lang.is_empty() { "code".to_string() } else { lang.clone() };
+                    let lang_label = if lang.is_empty() {
+                        "code".to_string()
+                    } else {
+                        lang.clone()
+                    };
                     let header = View::Container {
                         child: Box::new(View::Text {
                             content: lang_label,
                             style: Style::parse("text-xs font-medium").ok(),
                             selectable: false,
                         }),
-                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
                         style: Style::parse("px-4 py-2 border-b bg-zinc-800 text-zinc-400").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                     // Plan 442 A6: lang-<token> class carries the language to
                     // the renderer's syntect highlight path (read-only code
                     // highlighting, musk-038 T16 决策 (a)); lang-less blocks
@@ -5013,50 +5757,94 @@ let tabs_inner = View::Row {
                     };
                     let code_text = View::Text {
                         content: code,
-                        style: Style::parse(&format!("font-mono text-sm text-zinc-50{lang_class}")).ok(),
+                        style: Style::parse(&format!("font-mono text-sm text-zinc-50{lang_class}"))
+                            .ok(),
                         selectable: false,
                     };
                     let code_area = View::Container {
                         child: Box::new(code_text),
-                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
                         style: Style::parse("p-4").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                     return View::Container {
                         child: Box::new(View::Column {
                             children: vec![header, code_area],
-                            spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                            on_right_click: None,
                         }),
-                        padding: 0, width: None, height: None, center_x: false, center_y: false,
-                        style: Style::parse("rounded-lg border bg-zinc-950 overflow-hidden w-full").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
+                        style: Style::parse("rounded-lg border bg-zinc-950 overflow-hidden w-full")
+                            .ok(),
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 // Plan 409 §10 续 16: table → 表格(Column[Row[cells]]),对齐 vue。
                 // table/thead/tbody → Column(tr 堆叠);tr → Row(th/td 横排);
                 // th/td → Container(border + padding 形成网格) > Text。
                 if tag == "table" {
                     let views: Vec<View<DynamicMessage>> = children
-                        .iter().map(|n| self.convert_node_with(n, bindings))
-                        .filter(|v| !matches!(v, View::Empty)).collect();
+                        .iter()
+                        .map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty))
+                        .collect();
                     return View::Column {
-                        children: views, spacing: 0, padding: 0,
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
                         style: Style::parse("border rounded w-full text-sm").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
-                if tag == "thead" || tag == "tbody" || tag == "tfoot"
-                    || tag == "table-header" || tag == "table-body" || tag == "table-footer" {
+                if tag == "thead"
+                    || tag == "tbody"
+                    || tag == "tfoot"
+                    || tag == "table-header"
+                    || tag == "table-body"
+                    || tag == "table-footer"
+                {
                     let views: Vec<View<DynamicMessage>> = children
-                        .iter().map(|n| self.convert_node_with(n, bindings))
-                        .filter(|v| !matches!(v, View::Empty)).collect();
-                    return View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None };
+                        .iter()
+                        .map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty))
+                        .collect();
+                    return View::Column {
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 if tag == "tr" || tag == "table-row" {
                     let views: Vec<View<DynamicMessage>> = children
-                        .iter().map(|n| self.convert_node_with(n, bindings))
-                        .filter(|v| !matches!(v, View::Empty)).collect();
-                    return View::Row { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None };
+                        .iter()
+                        .map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty))
+                        .collect();
+                    return View::Row {
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 if tag == "th" || tag == "td" || tag == "table-head" || tag == "table-cell" {
                     let is_head = tag == "th" || tag == "table-head";
@@ -5065,10 +5853,15 @@ let tabs_inner = View::Row {
                     // 且 th/td 的 class/style prop 并入预设（后者优先，同
                     // convert_button 惯例）——此前用户样式被整体忽略。
                     let (cell_preset, text_style) = if is_head {
-                        ("px-4 py-2 border border-input flex-1 text-left font-semibold",
-                         "text-foreground")
+                        (
+                            "px-4 py-2 border border-input flex-1 text-left font-semibold",
+                            "text-foreground",
+                        )
                     } else {
-                        ("px-4 py-2 border border-input flex-1", "text-muted-foreground")
+                        (
+                            "px-4 py-2 border border-input flex-1",
+                            "text-muted-foreground",
+                        )
                     };
                     let user_cell = self
                         .extract_string_with(props, "class", bindings)
@@ -5085,14 +5878,24 @@ let tabs_inner = View::Row {
                     // 优先按子视图渲染,text prop 为纯文本单元格兜底(带 bindings——
                     // extract_string 的空 bindings 解不出 p.name/.nameH 等引用)。
                     let child_views: Vec<View<DynamicMessage>> = children
-                        .iter().map(|n| self.convert_node_with(n, bindings))
-                        .filter(|v| !matches!(v, View::Empty)).collect();
+                        .iter()
+                        .map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty))
+                        .collect();
                     let content = if child_views.len() == 1 {
                         child_views.into_iter().next().unwrap()
                     } else if child_views.len() > 1 {
-                        View::Row { children: child_views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
+                        View::Row {
+                            children: child_views,
+                            spacing: 0,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                            on_right_click: None,
+                        }
                     } else {
-                        let text = self.extract_children_text(children, bindings)
+                        let text = self
+                            .extract_children_text(children, bindings)
                             .or_else(|| self.extract_string_with(props, "text", bindings))
                             .unwrap_or_default();
                         View::Text {
@@ -5119,10 +5922,15 @@ let tabs_inner = View::Row {
                     }
                     return View::Container {
                         child: Box::new(content),
-                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
                         style: Style::parse(&cell_style).ok(),
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 // Plan 450 / 019 批次三: AutoDown 面板词汇 → iced 降级渲染。
                 // registry 登记见 widget/registry.rs register_document_panel_widgets;
@@ -5143,7 +5951,8 @@ let tabs_inner = View::Row {
                         5 => "text-base font-semibold mb-1",
                         _ => "text-sm font-semibold mb-1",
                     };
-                    let content = self.extract_children_text(children, bindings)
+                    let content = self
+                        .extract_children_text(children, bindings)
                         .or_else(|| self.extract_string(props, "text"))
                         .unwrap_or_default();
                     return View::Text {
@@ -5154,31 +5963,65 @@ let tabs_inner = View::Row {
                 }
                 if tag == "quote" || tag == "blockquote" {
                     let views: Vec<View<DynamicMessage>> = children
-                        .iter().map(|n| self.convert_node_with(n, bindings))
-                        .filter(|v| !matches!(v, View::Empty)).collect();
+                        .iter()
+                        .map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty))
+                        .collect();
                     let inner = if views.is_empty() {
-                        View::Text { content: String::new(), style: None, selectable: false }
+                        View::Text {
+                            content: String::new(),
+                            style: None,
+                            selectable: false,
+                        }
                     } else if views.len() == 1 {
                         views.into_iter().next().unwrap()
                     } else {
-                        View::Column { children: views, spacing: 4, padding: 0, style: None, onclick: None, on_right_click: None }
+                        View::Column {
+                            children: views,
+                            spacing: 4,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                            on_right_click: None,
+                        }
                     };
                     return View::Container {
                         child: Box::new(inner),
-                        padding: 0, width: None, height: None, center_x: false, center_y: false,
-                        style: Style::parse("border-l-4 pl-4 py-2 w-full text-muted-foreground").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
+                        style: Style::parse("border-l-4 pl-4 py-2 w-full text-muted-foreground")
+                            .ok(),
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 if tag == "callout" {
                     let kind = self.extract_string(props, "kind").unwrap_or_default();
                     let title = self.extract_string(props, "title").unwrap_or_default();
                     let (tint_cls, title_style) = match kind.as_str() {
-                        "tip" | "success" => ("border-emerald-500/40 bg-emerald-500/10", "text-sm font-medium text-emerald-400"),
-                        "warning" | "warn" => ("border-amber-500/40 bg-amber-500/10", "text-sm font-medium text-amber-400"),
-                        "danger" | "error" | "caution" => ("border-red-500/40 bg-red-500/10", "text-sm font-medium text-red-400"),
-                        "note" | "info" => ("border-blue-500/40 bg-blue-500/10", "text-sm font-medium text-blue-400"),
-                        _ => ("border-zinc-500/40 bg-zinc-500/10", "text-sm font-medium text-zinc-400"),
+                        "tip" | "success" => (
+                            "border-emerald-500/40 bg-emerald-500/10",
+                            "text-sm font-medium text-emerald-400",
+                        ),
+                        "warning" | "warn" => (
+                            "border-amber-500/40 bg-amber-500/10",
+                            "text-sm font-medium text-amber-400",
+                        ),
+                        "danger" | "error" | "caution" => (
+                            "border-red-500/40 bg-red-500/10",
+                            "text-sm font-medium text-red-400",
+                        ),
+                        "note" | "info" => (
+                            "border-blue-500/40 bg-blue-500/10",
+                            "text-sm font-medium text-blue-400",
+                        ),
+                        _ => (
+                            "border-zinc-500/40 bg-zinc-500/10",
+                            "text-sm font-medium text-zinc-400",
+                        ),
                     };
                     let mut kids: Vec<View<DynamicMessage>> = Vec::new();
                     if !title.is_empty() {
@@ -5188,27 +6031,44 @@ let tabs_inner = View::Row {
                             selectable: false,
                         });
                     }
-                    kids.extend(children
-                        .iter().map(|n| self.convert_node_with(n, bindings))
-                        .filter(|v| !matches!(v, View::Empty)));
+                    kids.extend(
+                        children
+                            .iter()
+                            .map(|n| self.convert_node_with(n, bindings))
+                            .filter(|v| !matches!(v, View::Empty)),
+                    );
                     return View::Container {
                         child: Box::new(View::Column {
-                            children: kids, spacing: 8, padding: 0, style: None, onclick: None, on_right_click: None,
+                            children: kids,
+                            spacing: 8,
+                            padding: 0,
+                            style: None,
+                            onclick: None,
+                            on_right_click: None,
                         }),
-                        padding: 0, width: None, height: None, center_x: false, center_y: false,
-                        style: Style::parse(&format!("rounded-lg border {tint_cls} p-4 w-full")).ok(),
-            onclick: None, on_right_click: None,
-        };
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
+                        style: Style::parse(&format!("rounded-lg border {tint_cls} p-4 w-full"))
+                            .ok(),
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 if tag == "details" {
                     // Details → Accordion 单项(对齐表"可对齐 Accordion 族"裁定)。
                     // VM 降级无 toggle 回写,on_toggle 留 None → 静态展开式折叠头。
                     use crate::ui::view::AccordionItem;
-                    let summary = self.extract_string(props, "summary")
+                    let summary = self
+                        .extract_string(props, "summary")
                         .unwrap_or_else(|| "Details".to_string());
                     let views: Vec<View<DynamicMessage>> = children
-                        .iter().map(|n| self.convert_node_with(n, bindings))
-                        .filter(|v| !matches!(v, View::Empty)).collect();
+                        .iter()
+                        .map(|n| self.convert_node_with(n, bindings))
+                        .filter(|v| !matches!(v, View::Empty))
+                        .collect();
                     return View::Accordion {
                         items: vec![AccordionItem {
                             title: summary,
@@ -5224,7 +6084,8 @@ let tabs_inner = View::Row {
                 // 以下三面板是"注册位"面板(消费方注册渲染器,plan 017 待澄清 #2):
                 // iced 侧无专用渲染器,降级为可见的源码/引用文本,避免内容静默丢弃。
                 if tag == "math_block" || tag == "mathblock" || tag == "math-block" {
-                    let source = self.extract_string(props, "source")
+                    let source = self
+                        .extract_string(props, "source")
                         .or_else(|| self.extract_children_text(children, bindings))
                         .unwrap_or_default();
                     return View::Container {
@@ -5233,13 +6094,19 @@ let tabs_inner = View::Row {
                             style: Style::parse("font-mono text-sm").ok(),
                             selectable: false,
                         }),
-                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
                         style: Style::parse("rounded-lg border bg-card p-4 w-full").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 if tag == "query_block" || tag == "queryblock" || tag == "query-block" {
-                    let query = self.extract_string(props, "query")
+                    let query = self
+                        .extract_string(props, "query")
                         .or_else(|| self.extract_children_text(children, bindings))
                         .unwrap_or_default();
                     return View::Container {
@@ -5248,10 +6115,15 @@ let tabs_inner = View::Row {
                             style: Style::parse("font-mono text-xs text-muted-foreground").ok(),
                             selectable: false,
                         }),
-                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
                         style: Style::parse("rounded-lg border p-3 w-full").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 if tag == "embed_block" || tag == "embedblock" || tag == "embed-block" {
                     let target = self.extract_string(props, "target").unwrap_or_default();
@@ -5261,10 +6133,15 @@ let tabs_inner = View::Row {
                             style: Style::parse("text-sm text-muted-foreground").ok(),
                             selectable: false,
                         }),
-                        padding: 0, width: None, height: None, center_x: false, center_y: false,
+                        padding: 0,
+                        width: None,
+                        height: None,
+                        center_x: false,
+                        center_y: false,
                         style: Style::parse("rounded-lg border bg-muted p-3 w-full").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                 }
                 // Plan 410: component-card → navigable link button (to + name + desc).
                 // Plan 409 §10 续 15: 完整卡片样式(对齐 vue index.vue:52-60):
@@ -5280,9 +6157,17 @@ let tabs_inner = View::Row {
                     let color = CATEGORY_COLOR.with(|c| c.borrow().clone());
                     let (border_cls, box_bg, icon_cls) = match color.as_str() {
                         "blue" => ("border-blue-500/40", "bg-blue-500/10", "text-blue-400"),
-                        "emerald" => ("border-emerald-500/40", "bg-emerald-500/10", "text-emerald-400"),
+                        "emerald" => (
+                            "border-emerald-500/40",
+                            "bg-emerald-500/10",
+                            "text-emerald-400",
+                        ),
                         "amber" => ("border-amber-500/40", "bg-amber-500/10", "text-amber-400"),
-                        "purple" => ("border-purple-500/40", "bg-purple-500/10", "text-purple-400"),
+                        "purple" => (
+                            "border-purple-500/40",
+                            "bg-purple-500/10",
+                            "text-purple-400",
+                        ),
                         "rose" => ("border-rose-500/40", "bg-rose-500/10", "text-rose-400"),
                         // Plan 412 F7: Layout 分组 sky(#0ea5e9)
                         "sky" => ("border-sky-500/40", "bg-sky-500/10", "text-sky-400"),
@@ -5302,9 +6187,11 @@ let tabs_inner = View::Row {
                         style: Style::parse(&format!(
                             "h-10 w-10 shrink-0 rounded-lg border {} {}",
                             border_cls, box_bg
-                        )).ok(),
-            onclick: None, on_right_click: None,
-        };
+                        ))
+                        .ok(),
+                        onclick: None,
+                        on_right_click: None,
+                    };
                     // 文字列:主标题(font-medium text-sm) + 副标题(text-xs muted),换行。
                     let mut text_kids: Vec<View<DynamicMessage>> = vec![View::Text {
                         content: name.clone(),
@@ -5323,16 +6210,18 @@ let tabs_inner = View::Row {
                         spacing: 2,
                         padding: 0,
                         style: None,
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                     // content: icon_box + 文字列(顶部对齐)。
                     let content = View::Row {
                         children: vec![icon_box, text_col],
                         spacing: 12,
                         padding: 0,
                         style: Style::parse("items-start gap-3 w-full").ok(),
-            onclick: None, on_right_click: None,
-        };
+                        onclick: None,
+                        on_right_click: None,
+                    };
                     return View::Button {
                         disabled: false,
                         label: name,
@@ -5345,7 +6234,8 @@ let tabs_inner = View::Row {
                         style: Style::parse(&format!(
                             "rounded-xl border {} bg-card p-4 text-left flex-1",
                             border_cls
-                        )).ok(),
+                        ))
+                        .ok(),
                         on_right_click: None,
                     };
                 }
@@ -5359,7 +6249,13 @@ let tabs_inner = View::Row {
                     if let Some(child_widget) = registry.get(tag) {
                         // Plan 476: 调用位 children 里的 slot 填充传给子构建器。
                         let fills = self.slot_fills_for(children, bindings);
-                        return self.render_child_widget(child_widget, props, events, bindings, fills.as_ref());
+                        return self.render_child_widget(
+                            child_widget,
+                            props,
+                            events,
+                            bindings,
+                            fills.as_ref(),
+                        );
                     }
                 }
 
@@ -5379,8 +6275,9 @@ let tabs_inner = View::Row {
                         spacing: 0,
                         padding: 0,
                         style: None,
-            onclick: None, on_right_click: None,
-        }
+                        onclick: None,
+                        on_right_click: None,
+                    }
                 }
             }
         }
@@ -5390,25 +6287,25 @@ let tabs_inner = View::Row {
     /// iced has no icon font; this gives nav-link items visual distinction.
     fn icon_to_emoji(icon: &str) -> Option<&'static str> {
         match icon {
-            "bell" => Some("\u{1F514}"),           // 🔔
-            "command" => Some("\u{2318}"),         // ⌘
-            "image" => Some("\u{1F5BC}"),          // 🖼️
-            "layout-grid" => Some("\u{25A6}"),     // ▦
-            "menu" => Some("\u{2630}"),            // ☰
+            "bell" => Some("\u{1F514}"),                // 🔔
+            "command" => Some("\u{2318}"),              // ⌘
+            "image" => Some("\u{1F5BC}"),               // 🖼️
+            "layout-grid" => Some("\u{25A6}"),          // ▦
+            "menu" => Some("\u{2630}"),                 // ☰
             "mouse-pointer-click" => Some("\u{1F5B1}"), // 🖱️
-            "navigation" => Some("\u{1F9ED}"),     // 🧭
-            "search" => Some("\u{1F50D}"),         // 🔍
-            "square-stack" => Some("\u{1F4E6}"),   // 📦
-            "type" => Some("\u{1F4DD}"),           // 📝
-            "home" => Some("\u{1F3E0}"),           // 🏠
-            "settings" => Some("\u{2699}"),        // ⚙️
-            "layers" => Some("\u{1F5C2}"),         // 🗂️
-            "arrow-right" => Some("\u{27A1}"),     // ➡️
-            "folder" => Some("\u{1F4C1}"),         // 📁
-            "mail" => Some("\u{1F4E7}"),           // 📧
-            "book" => Some("\u{1F4D6}"),           // 📖
-            "github" => Some("\u{1F47D}"),         // 👽 (no github emoji)
-            "check-square" => Some("\u{2705}"),    // ✅
+            "navigation" => Some("\u{1F9ED}"),          // 🧭
+            "search" => Some("\u{1F50D}"),              // 🔍
+            "square-stack" => Some("\u{1F4E6}"),        // 📦
+            "type" => Some("\u{1F4DD}"),                // 📝
+            "home" => Some("\u{1F3E0}"),                // 🏠
+            "settings" => Some("\u{2699}"),             // ⚙️
+            "layers" => Some("\u{1F5C2}"),              // 🗂️
+            "arrow-right" => Some("\u{27A1}"),          // ➡️
+            "folder" => Some("\u{1F4C1}"),              // 📁
+            "mail" => Some("\u{1F4E7}"),                // 📧
+            "book" => Some("\u{1F4D6}"),                // 📖
+            "github" => Some("\u{1F47D}"),              // 👽 (no github emoji)
+            "check-square" => Some("\u{2705}"),         // ✅
             _ => None,
         }
     }
@@ -5419,7 +6316,13 @@ let tabs_inner = View::Row {
     /// `__current_route`, causing `outlet` to re-render the new page. The label
     /// comes from the link's text or its first text child.
     /// Plan 408: optional icon name is mapped to emoji and prepended to label.
-    fn render_link_button(&self, text: &str, children: &[crate::aura::AuraNode], to: &str, _bindings: &Bindings) -> View<DynamicMessage> {
+    fn render_link_button(
+        &self,
+        text: &str,
+        children: &[crate::aura::AuraNode],
+        to: &str,
+        _bindings: &Bindings,
+    ) -> View<DynamicMessage> {
         // Plan 409 §10 组 C: header link（AuraNode::Link，如 Docs/Widgets）走这里，
         // 用主题色 text-primary。nav-link/component-card 不走这里（它们直接调
         // render_link_button_with_icon 并传 themed=false）。
@@ -5433,7 +6336,15 @@ let tabs_inner = View::Row {
     /// `link (to:) { text / row / icon ... }`. The `label` is still derived
     /// from the children (for the snapshot builder / accessibility), but the
     /// rendered content is the container, not a flattened `to` string.
-    fn render_link_button_with_icon(&self, text: &str, children: &[crate::aura::AuraNode], to: &str, icon: &str, bindings: &Bindings, themed: bool) -> View<DynamicMessage> {
+    fn render_link_button_with_icon(
+        &self,
+        text: &str,
+        children: &[crate::aura::AuraNode],
+        to: &str,
+        icon: &str,
+        bindings: &Bindings,
+        themed: bool,
+    ) -> View<DynamicMessage> {
         // Plan 409 §6: convert child nodes into a content subtree. When
         // non-empty, the button renders this container instead of the label
         // string (link is no longer a leaf).
@@ -5455,8 +6366,9 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: None,
-            onclick: None, on_right_click: None,
-        }))
+                    onclick: None,
+                    on_right_click: None,
+                }))
             }
         };
 
@@ -5495,10 +6407,11 @@ let tabs_inner = View::Row {
             style: if themed {
                 Style::parse("text-primary").ok()
             } else {
-                let active = !to.is_empty() && match self.read_state("__current_route") {
-                    Ok(auto_val::Value::Str(s)) => s.as_str() == to,
-                    _ => false,
-                };
+                let active = !to.is_empty()
+                    && match self.read_state("__current_route") {
+                        Ok(auto_val::Value::Str(s)) => s.as_str() == to,
+                        _ => false,
+                    };
                 if active {
                     Style::parse("bg-accent text-accent-foreground font-medium rounded-md").ok()
                 } else {
@@ -5535,10 +6448,17 @@ let tabs_inner = View::Row {
     ) -> View<DynamicMessage> {
         // PLAN-045 T-07 拆账：outlet 页构建耗时单列（AUTO_MEMO_DIAG 门）。
         let __diag = std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1");
-        let __t0 = if __diag { Some(std::time::Instant::now()) } else { None };
+        let __t0 = if __diag {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
         let __out = self.render_outlet_inner(bindings, tracked, prop_memo);
         if let (true, Some(t0)) = (__diag, __t0) {
-            eprintln!("[VM-VIEW-OUTLET] outlet_ms={}", (std::time::Instant::now() - t0).as_millis());
+            eprintln!(
+                "[VM-VIEW-OUTLET] outlet_ms={}",
+                (std::time::Instant::now() - t0).as_millis()
+            );
         }
         __out
     }
@@ -5566,13 +6486,23 @@ let tabs_inner = View::Row {
         // Match the current path against each route pattern. A pattern segment
         // starting with ':' matches any single path segment and is captured as
         // a route param (e.g. "/book/:id" matches "/book/3" → id=3).
-        let cur_segs: Vec<&str> = current.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+        let cur_segs: Vec<&str> = current
+            .trim_matches('/')
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .collect();
         for route in routes {
-            let pat_segs: Vec<&str> = route.path.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
+            let pat_segs: Vec<&str> = route
+                .path
+                .trim_matches('/')
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .collect();
             if pat_segs.len() != cur_segs.len() {
                 continue;
             }
-            let mut params: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            let mut params: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
             let mut matched = true;
             for (pat, cur) in pat_segs.iter().zip(cur_segs.iter()) {
                 if let Some(param_name) = pat.strip_prefix(':') {
@@ -5606,10 +6536,21 @@ let tabs_inner = View::Row {
                 if !memo_on {
                     return match tracked {
                         Some((path, id_map, probe)) => self.render_child_widget_tracked(
-                            page_widget, &empty_props, &empty_events, bindings, path, id_map, probe, None,
+                            page_widget,
+                            &empty_props,
+                            &empty_events,
+                            bindings,
+                            path,
+                            id_map,
+                            probe,
+                            None,
                         ),
                         None => self.render_child_widget(
-                            page_widget, &empty_props, &empty_events, bindings, None,
+                            page_widget,
+                            &empty_props,
+                            &empty_events,
+                            bindings,
+                            None,
                         ),
                     };
                 }
@@ -5658,7 +6599,11 @@ let tabs_inner = View::Row {
         const SITE_OUTLET_PAGE: u8 = 6;
 
         // 循环守卫（同 render_child_widget 首检）。
-        if self.active_child_widgets.borrow().contains(&page_widget.name) {
+        if self
+            .active_child_widgets
+            .borrow()
+            .contains(&page_widget.name)
+        {
             return View::Empty;
         }
         // PLAN-711 T-03 (M-01): Init 登记化——渲染路径只登记 demand（判定
@@ -5671,8 +6616,8 @@ let tabs_inner = View::Row {
                 .bridge
                 .init_identity_changed(&page_widget.name, &identity)
             {
-                let (child_state_id, init_props) = self
-                    .prepare_child_render_state_snap(page_widget, empty_props, bindings);
+                let (child_state_id, init_props) =
+                    self.prepare_child_render_state_snap(page_widget, empty_props, bindings);
                 let _decision = self.bridge.register_init_demand(
                     &page_widget.name,
                     &identity,
@@ -5680,7 +6625,11 @@ let tabs_inner = View::Row {
                     init_props,
                 );
                 return self.render_outlet_page_full(
-                    page_widget, empty_props, empty_events, bindings, tracked,
+                    page_widget,
+                    empty_props,
+                    empty_events,
+                    bindings,
+                    tracked,
                 );
             }
         }
@@ -5697,8 +6646,7 @@ let tabs_inner = View::Row {
             empty_props,
             empty_events,
         );
-        let _child_state_id =
-            self.prepare_child_render_state(page_widget, empty_props, bindings);
+        let _child_state_id = self.prepare_child_render_state(page_widget, empty_props, bindings);
 
         // 静态扫描（含组件模板读槽）+ 骨架键。
         let probe_on = tracked
@@ -5706,25 +6654,29 @@ let tabs_inner = View::Row {
             .map(|(_, _, p)| p.is_enabled())
             .unwrap_or(false);
         let page_slice = std::slice::from_ref(&page_widget.view_tree);
-        let slots =
-            match scan_static_with_components(empty_props, page_slice, self.widget_registry) {
-                ScanVerdict::Slots(sl) => sl,
-                ScanVerdict::Degrade(reason) => {
-                    self.bridge.with_memo_cache(|c| c.note_degraded());
-                    // PLAN-708 T-01：Degrade 不再静默——诊断门下输出原因
-                    // （DataTable 每帧全量重建 9.5s 的可观测性缺口，T-00
-                    // baseline §3.3 实录；诊断面正式采集归 T-06）。
-                    if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
-                        eprintln!(
-                            "[MEMO-DIAG] site=6 DEGRADE page={} reason={}",
-                            page_widget.name, reason
-                        );
-                    }
-                    return self.render_outlet_page_full(
-                        page_widget, empty_props, empty_events, bindings, tracked,
+        let slots = match scan_static_with_components(empty_props, page_slice, self.widget_registry)
+        {
+            ScanVerdict::Slots(sl) => sl,
+            ScanVerdict::Degrade(reason) => {
+                self.bridge.with_memo_cache(|c| c.note_degraded());
+                // PLAN-708 T-01：Degrade 不再静默——诊断门下输出原因
+                // （DataTable 每帧全量重建 9.5s 的可观测性缺口，T-00
+                // baseline §3.3 实录；诊断面正式采集归 T-06）。
+                if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
+                    eprintln!(
+                        "[MEMO-DIAG] site=6 DEGRADE page={} reason={}",
+                        page_widget.name, reason
                     );
                 }
-            };
+                return self.render_outlet_page_full(
+                    page_widget,
+                    empty_props,
+                    empty_events,
+                    bindings,
+                    tracked,
+                );
+            }
+        };
         let key = MemoKey {
             ctx_state_obj: self.memo_ctx_obj(),
             site: SITE_OUTLET_PAGE,
@@ -5762,8 +6714,15 @@ let tabs_inner = View::Row {
                 )
             })
         });
-        if let Some((seq_at_fill, gfp_entry, dyn_fp, product, probe_replay, idmap_replay, dyn_deps)) =
-            cached
+        if let Some((
+            seq_at_fill,
+            gfp_entry,
+            dyn_fp,
+            product,
+            probe_replay,
+            idmap_replay,
+            dyn_deps,
+        )) = cached
         {
             if seq_at_fill == seq && gfp_entry == gfp {
                 self.bridge.with_memo_cache(|c| {
@@ -5805,17 +6764,15 @@ let tabs_inner = View::Row {
                     .memo_slots_fp(&slots, bindings)
                     .map(|fp| Self::memo_combine_dyn(fp, None));
                 if matches!((cur, dyn_fp), (Some(a), Some(b)) if a == b) {
-                    let refreshed = dyn_deps
-                        .as_ref()
-                        .map(|pairs| {
-                            pairs
-                                .iter()
-                                .map(|(k, _)| {
-                                    let v = self.bridge.vm().path_version(k.heap_id, &k.path);
-                                    (k.clone(), v)
-                                })
-                                .collect()
-                        });
+                    let refreshed = dyn_deps.as_ref().map(|pairs| {
+                        pairs
+                            .iter()
+                            .map(|(k, _)| {
+                                let v = self.bridge.vm().path_version(k.heap_id, &k.path);
+                                (k.clone(), v)
+                            })
+                            .collect()
+                    });
                     self.bridge.with_memo_cache(|c| {
                         c.refresh_seq(&key, seq);
                         if let Some(pairs) = refreshed {
@@ -5906,7 +6863,14 @@ let tabs_inner = View::Row {
         }
         match tracked {
             Some((path, id_map, probe)) => self.render_child_widget_tracked(
-                page_widget, empty_props, empty_events, bindings, path, id_map, probe, None,
+                page_widget,
+                empty_props,
+                empty_events,
+                bindings,
+                path,
+                id_map,
+                probe,
+                None,
             ),
             None => {
                 self.render_child_widget(page_widget, empty_props, empty_events, bindings, None)
@@ -5933,9 +6897,9 @@ let tabs_inner = View::Row {
     ) -> Option<bool> {
         match props.get(key)? {
             AuraPropValue::Expr(Expr::Bool(b)) => Some(*b),
-            AuraPropValue::Expr(expr) => {
-                self.resolve_expr_to_value(expr, bindings).map(|v| v.as_bool())
-            }
+            AuraPropValue::Expr(expr) => self
+                .resolve_expr_to_value(expr, bindings)
+                .map(|v| v.as_bool()),
             _ => None,
         }
     }
@@ -5965,7 +6929,9 @@ let tabs_inner = View::Row {
     fn is_lucide_name(name: &str) -> bool {
         !name.is_empty()
             && name.len() <= 48
-            && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            && name
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
             && name.starts_with(|c: char| c.is_ascii_lowercase())
     }
 
@@ -5984,17 +6950,29 @@ let tabs_inner = View::Row {
     ) -> View<DynamicMessage> {
         use crate::ui_gen::nav_contract as nc;
 
-        let to = self.extract_string_with(props, "to", bindings).unwrap_or_default();
+        let to = self
+            .extract_string_with(props, "to", bindings)
+            .unwrap_or_default();
         let label = self
             .extract_string_with(props, "label", bindings)
             .or_else(|| self.extract_string_with(props, "text", bindings))
             .unwrap_or_default();
-        let desc = self.extract_string_with(props, "desc", bindings).unwrap_or_default();
-        let badge = self.extract_string_with(props, "badge", bindings).unwrap_or_default();
-        let icon = self.extract_string_with(props, "icon", bindings).unwrap_or_default();
-        let size = self.extract_string_with(props, "size", bindings).unwrap_or_default();
+        let desc = self
+            .extract_string_with(props, "desc", bindings)
+            .unwrap_or_default();
+        let badge = self
+            .extract_string_with(props, "badge", bindings)
+            .unwrap_or_default();
+        let icon = self
+            .extract_string_with(props, "icon", bindings)
+            .unwrap_or_default();
+        let size = self
+            .extract_string_with(props, "size", bindings)
+            .unwrap_or_default();
         let disabled = self.extract_bool(props, "disabled").unwrap_or(false)
-            || self.extract_bool_expr(props, "disabled", bindings).unwrap_or(false);
+            || self
+                .extract_bool_expr(props, "disabled", bindings)
+                .unwrap_or(false);
         let exact = self.extract_bool(props, "exact").unwrap_or(false);
 
         let active = self
@@ -6040,8 +7018,9 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: None,
-            onclick: None, on_right_click: None,
-        }))
+                    onclick: None,
+                    on_right_click: None,
+                }))
             }
         } else {
             let is_lg = size == "lg";
@@ -6055,13 +7034,21 @@ let tabs_inner = View::Row {
                     });
                 } else {
                     // Emoji / literal text icon.
-                    parts.push(View::Text { content: icon, style: None, selectable: false });
+                    parts.push(View::Text {
+                        content: icon,
+                        style: None,
+                        selectable: false,
+                    });
                 }
             }
             if !label.is_empty() || !desc.is_empty() {
                 let mut texts: Vec<View<DynamicMessage>> = Vec::new();
                 if !label.is_empty() {
-                    texts.push(View::Text { content: label.clone(), style: None, selectable: false });
+                    texts.push(View::Text {
+                        content: label.clone(),
+                        style: None,
+                        selectable: false,
+                    });
                 }
                 if !desc.is_empty() {
                     texts.push(View::Text {
@@ -6082,8 +7069,9 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: Style::parse(&texts_cls).ok(),
-            onclick: None, on_right_click: None,
-        });
+                    onclick: None,
+                    on_right_click: None,
+                });
             }
             if !badge.is_empty() {
                 parts.push(View::Text {
@@ -6097,14 +7085,19 @@ let tabs_inner = View::Row {
             } else {
                 // Gap/alignment on the content row matches the base class
                 // (gap-2 items-center / lg: gap-3 items-start).
-                let row_cls = if is_lg { "items-start gap-3" } else { "items-center gap-2" };
+                let row_cls = if is_lg {
+                    "items-start gap-3"
+                } else {
+                    "items-center gap-2"
+                };
                 Some(Box::new(View::Row {
                     children: parts,
                     spacing: 0,
                     padding: 0,
                     style: Style::parse(row_cls).ok(),
-            onclick: None, on_right_click: None,
-        }))
+                    onclick: None,
+                    on_right_click: None,
+                }))
             }
         };
 
@@ -6174,7 +7167,9 @@ let tabs_inner = View::Row {
             .or_else(|| self.extract_string_with(props, "text", bindings))
             .unwrap_or_default();
         let collapsible = self.extract_bool(props, "collapsible").unwrap_or(false)
-            || self.extract_bool_expr(props, "collapsible", bindings).unwrap_or(false);
+            || self
+                .extract_bool_expr(props, "collapsible", bindings)
+                .unwrap_or(false);
         let indent = self.extract_bool(props, "indent").unwrap_or(false);
 
         let key = format!("__nav_group_open:{}", label);
@@ -6205,16 +7200,22 @@ let tabs_inner = View::Row {
                 children: vec![
                     View::Text {
                         content: chevron.to_string(),
-                        style: Style::parse("text-[11px] text-muted-foreground w-[14px] shrink-0").ok(),
+                        style: Style::parse("text-[11px] text-muted-foreground w-[14px] shrink-0")
+                            .ok(),
                         selectable: false,
                     },
-                    View::Text { content: label.clone(), style: None, selectable: false },
+                    View::Text {
+                        content: label.clone(),
+                        style: None,
+                        selectable: false,
+                    },
                 ],
                 spacing: 0,
                 padding: 0,
                 style: Style::parse("items-center gap-2").ok(),
-            onclick: None, on_right_click: None,
-        });
+                onclick: None,
+                on_right_click: None,
+            });
             let mut class = format!("{} {}", nc::GROUP_TOGGLE, nc::GROUP_TOGGLE_HOVER);
             if let Some(user) = self
                 .extract_string_with(props, "class", bindings)
@@ -6260,8 +7261,9 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: Style::parse(&content_cls).ok(),
-            onclick: None, on_right_click: None,
-        });
+                    onclick: None,
+                    on_right_click: None,
+                });
             }
         }
 
@@ -6270,7 +7272,8 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse("flex flex-col").ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
 
@@ -6314,7 +7317,8 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(nc::SEARCH_ROW).ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
 
@@ -6328,7 +7332,9 @@ let tabs_inner = View::Row {
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
         let search = self.extract_bool(props, "search").unwrap_or(false)
-            || self.extract_bool_expr(props, "search", bindings).unwrap_or(false);
+            || self
+                .extract_bool_expr(props, "search", bindings)
+                .unwrap_or(false);
         if !search {
             return self.convert_container(props, children, bindings);
         }
@@ -6351,7 +7357,8 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(&style).ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
 
@@ -6385,9 +7392,14 @@ let tabs_inner = View::Row {
         let rewritten: Vec<AuraNode> = children
             .iter()
             .map(|n| match n {
-                AuraNode::Element { tag, props: cp, events: ce, children: cc, span, debug_id }
-                    if tag == "sidebar" && !cp.contains_key("open") =>
-                {
+                AuraNode::Element {
+                    tag,
+                    props: cp,
+                    events: ce,
+                    children: cc,
+                    span,
+                    debug_id,
+                } if tag == "sidebar" && !cp.contains_key("open") => {
                     let mut cp2 = cp.clone();
                     cp2.insert(
                         "open".to_string(),
@@ -6453,7 +7465,8 @@ let tabs_inner = View::Row {
                 } else {
                     crate::ui::style::Style::parse(column_style).ok()
                 },
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             }
         }
     }
@@ -6511,7 +7524,11 @@ let tabs_inner = View::Row {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let p = self.with_class_prop(props, bindings, crate::ui_gen::sidebar_contract::CONTENT_BASE);
+        let p = self.with_class_prop(
+            props,
+            bindings,
+            crate::ui_gen::sidebar_contract::CONTENT_BASE,
+        );
         let no_events: HashMap<String, AuraEvent> = HashMap::new();
         self.convert_scroll(&p, &no_events, children, bindings)
     }
@@ -6526,7 +7543,8 @@ let tabs_inner = View::Row {
             height: None,
             center_x: false,
             center_y: false,
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
             style: Style::parse(&format!(
                 "h-px {}",
                 crate::ui_gen::sidebar_contract::SEPARATOR
@@ -6547,7 +7565,9 @@ let tabs_inner = View::Row {
     ) -> View<DynamicMessage> {
         use crate::ui_gen::sidebar_contract as sc;
         let collapsible = self.extract_bool(props, "collapsible").unwrap_or(false)
-            || self.extract_bool_expr(props, "collapsible", bindings).unwrap_or(false);
+            || self
+                .extract_bool_expr(props, "collapsible", bindings)
+                .unwrap_or(false);
         let p = self.with_class_prop(props, bindings, sc::GROUP_BASE);
         if !collapsible {
             return self.convert_column(&p, children, bindings);
@@ -6557,12 +7577,14 @@ let tabs_inner = View::Row {
             .extract_string_with(props, "label", bindings)
             .or_else(|| {
                 children.iter().find_map(|n| match n {
-                    AuraNode::Element { tag, props: lp, children: lc, .. }
-                        if tag == "sidebar_group_label" || tag == "sidebar-group-label" =>
-                    {
-                        self.extract_string_with(lp, "text", bindings)
-                            .or_else(|| self.extract_children_text(lc, bindings))
-                    }
+                    AuraNode::Element {
+                        tag,
+                        props: lp,
+                        children: lc,
+                        ..
+                    } if tag == "sidebar_group_label" || tag == "sidebar-group-label" => self
+                        .extract_string_with(lp, "text", bindings)
+                        .or_else(|| self.extract_children_text(lc, bindings)),
                     _ => None,
                 })
             })
@@ -6581,9 +7603,17 @@ let tabs_inner = View::Row {
             label: label_text.clone(),
             content: Some(Box::new(View::Row {
                 children: vec![
-                    View::Text { content: label_text, style: None, selectable: false },
                     View::Text {
-                        content: if open { "▾".to_string() } else { "▸".to_string() },
+                        content: label_text,
+                        style: None,
+                        selectable: false,
+                    },
+                    View::Text {
+                        content: if open {
+                            "▾".to_string()
+                        } else {
+                            "▸".to_string()
+                        },
                         style: Style::parse("ml-auto text-muted-foreground").ok(),
                         selectable: false,
                     },
@@ -6591,7 +7621,8 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding: 0,
                 style: Style::parse("w-full items-center").ok(),
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
             })),
             onclick: crate::ui::interpreter::DynamicMessage::Typed {
                 widget_name: self.widget_name.clone(),
@@ -6628,7 +7659,8 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(&class).ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
 
@@ -6641,7 +7673,11 @@ let tabs_inner = View::Row {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let p = self.with_class_prop(props, bindings, crate::ui_gen::sidebar_contract::GROUP_LABEL);
+        let p = self.with_class_prop(
+            props,
+            bindings,
+            crate::ui_gen::sidebar_contract::GROUP_LABEL,
+        );
         self.convert_text_element(tag, &p, events, children, bindings)
     }
 
@@ -6696,7 +7732,11 @@ let tabs_inner = View::Row {
             let v = self.convert_children_passthrough(children, bindings);
             Some(Box::new(v))
         } else if !text.is_empty() {
-            Some(Box::new(View::Text { content: text.clone(), style: None, selectable: false }))
+            Some(Box::new(View::Text {
+                content: text.clone(),
+                style: None,
+                selectable: false,
+            }))
         } else {
             None
         };
@@ -6723,7 +7763,8 @@ let tabs_inner = View::Row {
         let label = if !text.is_empty() {
             text
         } else {
-            self.extract_children_text(children, bindings).unwrap_or_default()
+            self.extract_children_text(children, bindings)
+                .unwrap_or_default()
         };
         View::Button {
             disabled: false,
@@ -6779,18 +7820,26 @@ let tabs_inner = View::Row {
     ) -> View<DynamicMessage> {
         use crate::ui_gen::sidebar_contract as sc;
 
-        let to = self.extract_string_with(props, "to", bindings).unwrap_or_default();
+        let to = self
+            .extract_string_with(props, "to", bindings)
+            .unwrap_or_default();
         let text = self
             .extract_string_with(props, "text", bindings)
             .or_else(|| self.extract_string_with(props, "label", bindings))
             .unwrap_or_default();
-        let icon = self.extract_string_with(props, "icon", bindings).unwrap_or_default();
-        let size = self.extract_string_with(props, "size", bindings).unwrap_or_default();
+        let icon = self
+            .extract_string_with(props, "icon", bindings)
+            .unwrap_or_default();
+        let size = self
+            .extract_string_with(props, "size", bindings)
+            .unwrap_or_default();
         let variant = self
             .extract_string_with(props, "variant", bindings)
             .unwrap_or_default();
         let disabled = self.extract_bool(props, "disabled").unwrap_or(false)
-            || self.extract_bool_expr(props, "disabled", bindings).unwrap_or(false);
+            || self
+                .extract_bool_expr(props, "disabled", bindings)
+                .unwrap_or(false);
         let exact = self.extract_bool(props, "exact").unwrap_or(false);
 
         let active = self
@@ -6836,7 +7885,8 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: Style::parse("items-center gap-2").ok(),
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 }))
             }
         } else {
@@ -6848,11 +7898,19 @@ let tabs_inner = View::Row {
                         style: Style::parse("h-4 w-4 shrink-0").ok(),
                     });
                 } else {
-                    parts.push(View::Text { content: icon, style: None, selectable: false });
+                    parts.push(View::Text {
+                        content: icon,
+                        style: None,
+                        selectable: false,
+                    });
                 }
             }
             if !text.is_empty() {
-                parts.push(View::Text { content: text.clone(), style: None, selectable: false });
+                parts.push(View::Text {
+                    content: text.clone(),
+                    style: None,
+                    selectable: false,
+                });
             }
             if parts.is_empty() {
                 None
@@ -6862,7 +7920,8 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: Style::parse("items-center gap-2").ok(),
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 }))
             }
         };
@@ -6962,7 +8021,8 @@ let tabs_inner = View::Row {
         }
 
         // 2. Collect child state field names (model vars + injected props).
-        let mut child_field_names: Vec<String> = child_widget.state_vars
+        let mut child_field_names: Vec<String> = child_widget
+            .state_vars
             .iter()
             .map(|v| v.name.clone())
             .collect();
@@ -7018,28 +8078,21 @@ let tabs_inner = View::Row {
             if !resolved_props.contains_key(&prop.name) {
                 if self.bridge.read_state(&prop.name).is_ok() {
                     if let Some(default_expr) = &prop.default {
-                        snapshot_defaults.push((
-                            prop.name.clone(),
-                            eval_initial_without_vm(default_expr),
-                        ));
+                        snapshot_defaults
+                            .push((prop.name.clone(), eval_initial_without_vm(default_expr)));
                     }
                     continue;
                 }
                 if let Some(default_expr) = &prop.default {
-                    resolved_props.insert(
-                        prop.name.clone(),
-                        eval_initial_without_vm(default_expr),
-                    );
+                    resolved_props.insert(prop.name.clone(), eval_initial_without_vm(default_expr));
                 }
             }
         }
 
         // 5. Ensure child state object exists on the VM heap + write props.
-        let root_id = self.bridge.ensure_child_state(
-            &child_widget.name,
-            &child_field_names,
-            &resolved_props,
-        );
+        let root_id =
+            self.bridge
+                .ensure_child_state(&child_widget.name, &child_field_names, &resolved_props);
         let mut snapshot = resolved_props
             .into_iter()
             .collect::<Vec<(String, auto_val::Value)>>();
@@ -7068,10 +8121,7 @@ let tabs_inner = View::Row {
         bindings: &Bindings,
     ) {
         // Init 在提取期被移入 lifecycle 向量(extract.rs),不在 handlers 表。
-        let has_init = child_widget
-            .lifecycle
-            .iter()
-            .any(|l| l.name == "Init");
+        let has_init = child_widget.lifecycle.iter().any(|l| l.name == "Init");
         if !has_init {
             return;
         }
@@ -7168,8 +8218,12 @@ let tabs_inner = View::Row {
             if !key.starts_with("on") {
                 continue;
             }
-            let AuraPropValue::Expr(expr) = pv else { continue };
-            let Some((handler, params)) = callback_prop_route(expr) else { continue };
+            let AuraPropValue::Expr(expr) = pv else {
+                continue;
+            };
+            let Some((handler, params)) = callback_prop_route(expr) else {
+                continue;
+            };
             crate::ui::child_emit::record_route(
                 &child_name,
                 key,
@@ -7207,7 +8261,12 @@ let tabs_inner = View::Row {
         if let Some(psink) = self.mount_path_sink {
             psink.register(&child_widget.name);
         }
-        Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
+        Self::record_child_callback_routes_for(
+            self.widget_name.clone(),
+            child_widget.name.clone(),
+            props,
+            events,
+        );
         let (child_state_id, init_props) =
             self.prepare_child_render_state_snap(child_widget, props, bindings);
         // Plan 437 Phase 2: 子组件 Init 补发 —— 此前 VM 轨只有根 widget 的
@@ -7311,7 +8370,12 @@ let tabs_inner = View::Row {
         if let Some(psink) = self.mount_path_sink {
             psink.register(&child_widget.name);
         }
-        Self::record_child_callback_routes_for(self.widget_name.clone(), child_widget.name.clone(), props, events);
+        Self::record_child_callback_routes_for(
+            self.widget_name.clone(),
+            child_widget.name.clone(),
+            props,
+            events,
+        );
         if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
             eprintln!(
                 "[MEMO-DIAG] child_widget={} keyed_loops={}",
@@ -7397,7 +8461,8 @@ let tabs_inner = View::Row {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let spacing = self.extract_u16(props, "spacing")
+        let spacing = self
+            .extract_u16(props, "spacing")
             .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
@@ -7421,7 +8486,10 @@ let tabs_inner = View::Row {
         let child_views: Vec<View<DynamicMessage>> = child_views
             .into_iter()
             .filter_map(|v| match extract_absolute_position(&v) {
-                Some(pos) => { floats.push((v, pos)); None }
+                Some(pos) => {
+                    floats.push((v, pos));
+                    None
+                }
                 None => Some(v),
             })
             .collect();
@@ -7431,7 +8499,12 @@ let tabs_inner = View::Row {
         // 浮层不占格。
         let red = rederive_layout(style.as_ref());
         if let Some(RederivedLayout::Grid { cols, gap }) = red {
-            let base = View::Grid { cols, gap, cells: child_views, style };
+            let base = View::Grid {
+                cols,
+                gap,
+                cells: child_views,
+                style,
+            };
             return fold_floats(base, floats);
         }
         let use_row = matches!(red, Some(RederivedLayout::Row));
@@ -7446,7 +8519,13 @@ let tabs_inner = View::Row {
 
         // Plan 048:提取 overflow 标志 + style clone(builder.with_style 会 move style)。
         let needs_scroll = style.as_ref().map_or(false, |s| {
-            s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::OverflowYAuto | crate::ui::style::StyleClass::OverflowAuto))
+            s.classes.iter().any(|c| {
+                matches!(
+                    c,
+                    crate::ui::style::StyleClass::OverflowYAuto
+                        | crate::ui::style::StyleClass::OverflowAuto
+                )
+            })
         });
         let scroll_style = if needs_scroll { style.clone() } else { None };
 
@@ -7474,14 +8553,16 @@ let tabs_inner = View::Row {
             let (viewport_visual, _) = split_scroll_visual_classes(&sc);
             let scroll_view = View::Scrollable {
                 child: Box::new(col_view),
-                width: None, height: None,
+                width: None,
+                height: None,
                 style: if viewport_visual.is_some() {
                     Some(ensure_full_scroll_dims(&sc))
                 } else {
                     Some(sc)
                 },
                 auto_scroll: false,
-                offset: None, on_scroll: None,
+                offset: None,
+                on_scroll: None,
                 axes: crate::ui::scroll::ScrollAxes::Y,
                 scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
                 controller: None,
@@ -7517,7 +8598,8 @@ let tabs_inner = View::Row {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let spacing = self.extract_u16(props, "spacing")
+        let spacing = self
+            .extract_u16(props, "spacing")
             .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
@@ -7571,7 +8653,8 @@ let tabs_inner = View::Row {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let spacing = self.extract_u16(props, "spacing")
+        let spacing = self
+            .extract_u16(props, "spacing")
             .or_else(|| self.extract_u16(props, "gap").map(|g| g * 4))
             .unwrap_or(0);
         let padding = self.extract_u16(props, "padding").unwrap_or(0);
@@ -7584,17 +8667,33 @@ let tabs_inner = View::Row {
         let mut child_views: Vec<View<DynamicMessage>> = Vec::new();
         for n in children {
             match n {
-                AuraNode::Conditional { condition, then_body, else_body, .. } => {
+                AuraNode::Conditional {
+                    condition,
+                    then_body,
+                    else_body,
+                    ..
+                } => {
                     let is_true = self.eval_condition_with(condition, bindings);
                     let empty = Vec::new();
-                    let body = if is_true { then_body } else { else_body.as_ref().unwrap_or(&empty) };
+                    let body = if is_true {
+                        then_body
+                    } else {
+                        else_body.as_ref().unwrap_or(&empty)
+                    };
                     for child_node in body {
                         child_views.push(self.convert_node_with(child_node, bindings));
                     }
                 }
-                AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                AuraNode::ForLoop {
+                    var,
+                    index,
+                    iterable,
+                    body,
+                    ..
+                } => {
                     // 同 convert_grid(:1675):用 for_loop_iterations spread 进 row
-                    child_views.extend(self.for_loop_iterations(var, index, iterable, body, bindings));
+                    child_views
+                        .extend(self.for_loop_iterations(var, index, iterable, body, bindings));
                 }
                 _ => {
                     // Plan 476: 拼接感知——slot outlet 的 fill 子节点作兄弟展开
@@ -7611,7 +8710,10 @@ let tabs_inner = View::Row {
         let child_views: Vec<View<DynamicMessage>> = child_views
             .into_iter()
             .filter_map(|v| match extract_absolute_position(&v) {
-                Some(pos) => { floats.push((v, pos)); None }
+                Some(pos) => {
+                    floats.push((v, pos));
+                    None
+                }
                 None => Some(v),
             })
             .collect();
@@ -7623,10 +8725,18 @@ let tabs_inner = View::Row {
                 .into_iter()
                 .filter(|v| !is_visually_empty(v))
                 .collect();
-            let base = View::Grid { cols, gap, cells, style };
+            let base = View::Grid {
+                cols,
+                gap,
+                cells,
+                style,
+            };
             return fold_floats(base, floats);
         }
-        let use_col = matches!(rederive_layout(style.as_ref()), Some(RederivedLayout::Column));
+        let use_col = matches!(
+            rederive_layout(style.as_ref()),
+            Some(RederivedLayout::Column)
+        );
 
         let mut builder = if use_col {
             View::<DynamicMessage>::col()
@@ -7689,19 +8799,17 @@ let tabs_inner = View::Row {
                 Value::Int(id) if id >= 4_000_000 => {
                     auto_val::Array::from(self.bridge.index_list_all(id as usize))
                 }
-                Value::VmRef(r) => {
-                    auto_val::Array::from(self.bridge.index_list_all(r.id))
-                }
+                Value::VmRef(r) => auto_val::Array::from(self.bridge.index_list_all(r.id)),
                 _ => return Vec::new(),
             }
         } else {
-        // PLAN-051 C3 对齐:state 读 miss → computed 求值回退(resolve_iterable
-        // 内置;grid/row 展开路径此前漏齐 —— `for cell in .days` 这类 computed
-        // for 源在 grid/row 内展开成 0 cell,Plan 522 016 迁移实证)。
-        match self.resolve_iterable(iterable, bindings) {
-            Some(elems) => auto_val::Array::from(elems),
-            None => return Vec::new(),
-        }
+            // PLAN-051 C3 对齐:state 读 miss → computed 求值回退(resolve_iterable
+            // 内置;grid/row 展开路径此前漏齐 —— `for cell in .days` 这类 computed
+            // for 源在 grid/row 内展开成 0 cell,Plan 522 016 迁移实证)。
+            match self.resolve_iterable(iterable, bindings) {
+                Some(elems) => auto_val::Array::from(elems),
+                None => return Vec::new(),
+            }
         };
         array
             .iter()
@@ -7724,9 +8832,20 @@ let tabs_inner = View::Row {
                 } else if views.len() == 1 {
                     // Plan 370 (Issue 1): skip Empty body views (see convert_node_with ForLoop).
                     let v = views.into_iter().next().unwrap();
-                    if matches!(v, View::Empty) { None } else { Some(v) }
+                    if matches!(v, View::Empty) {
+                        None
+                    } else {
+                        Some(v)
+                    }
                 } else {
-                    Some(View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None })
+                    Some(View::Column {
+                        children: views,
+                        spacing: 0,
+                        padding: 0,
+                        style: None,
+                        onclick: None,
+                        on_right_click: None,
+                    })
                 }
             })
             .collect()
@@ -7792,15 +8911,18 @@ let tabs_inner = View::Row {
         let cells: Vec<View<DynamicMessage>> = children
             .iter()
             .flat_map(|n| match n {
-                AuraNode::ForLoop { var, index, iterable, body, .. } => {
-                    self.for_loop_iterations(var, index, iterable, body, bindings)
-                }
-                other => {
-                    self.expand_one_child_untracked(other, bindings)
-                        .into_iter()
-                        .filter(|v| !matches!(v, View::Empty))
-                        .collect::<Vec<_>>()
-                }
+                AuraNode::ForLoop {
+                    var,
+                    index,
+                    iterable,
+                    body,
+                    ..
+                } => self.for_loop_iterations(var, index, iterable, body, bindings),
+                other => self
+                    .expand_one_child_untracked(other, bindings)
+                    .into_iter()
+                    .filter(|v| !matches!(v, View::Empty))
+                    .collect::<Vec<_>>(),
             })
             .collect();
 
@@ -7813,7 +8935,12 @@ let tabs_inner = View::Row {
         // renderer. Construct `View::Grid` here;
         // both render paths (render_dynamic_view VM, into_iced rust) consume
         // it identically, so they can never drift again. (Plan 319.)
-        View::Grid { cols, gap, cells, style }
+        View::Grid {
+            cols,
+            gap,
+            cells,
+            style,
+        }
     }
 
     /// Convert a container element.
@@ -7841,35 +8968,55 @@ let tabs_inner = View::Row {
         match rederive_layout(style.as_ref()) {
             Some(RederivedLayout::Grid { cols, gap }) => {
                 let mut style = style.unwrap_or_default();
-                if padding > 0 && !style.classes.iter().any(|c| matches!(c, StyleClass::Padding(_))) {
+                if padding > 0
+                    && !style
+                        .classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::Padding(_)))
+                {
                     style = style.add(StyleClass::Padding(SizeValue::Fixed(padding)));
                 }
                 if let Some(w) = width {
-                    if !style.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
+                    if !style
+                        .classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::Width(_)))
+                    {
                         style = style.add(StyleClass::Width(SizeValue::Pixels(w as f32)));
                     }
                 }
                 if let Some(h) = height {
-                    if !style.classes.iter().any(|c| matches!(c, StyleClass::Height(_))) {
+                    if !style
+                        .classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::Height(_)))
+                    {
                         style = style.add(StyleClass::Height(SizeValue::Pixels(h as f32)));
                     }
                 }
-                View::Grid { cols, gap, cells: child_views, style: Some(style) }
+                View::Grid {
+                    cols,
+                    gap,
+                    cells: child_views,
+                    style: Some(style),
+                }
             }
             Some(RederivedLayout::Row) => View::Row {
                 children: child_views,
                 spacing: 0,
                 padding,
                 style,
-            onclick: None, on_right_click: None,
-        },
+                onclick: None,
+                on_right_click: None,
+            },
             Some(RederivedLayout::Column) => View::Column {
                 children: child_views,
                 spacing: 0,
                 padding,
                 style,
-            onclick: None, on_right_click: None,
-        },
+                onclick: None,
+                on_right_click: None,
+            },
             None => {
                 let child_view = if child_views.is_empty() {
                     View::Empty
@@ -7881,8 +9028,9 @@ let tabs_inner = View::Row {
                         spacing: 0,
                         padding: 0,
                         style: None,
-            onclick: None, on_right_click: None,
-        }
+                        onclick: None,
+                        on_right_click: None,
+                    }
                 };
                 let mut builder = View::container(child_view).padding(padding);
                 if let Some(w) = width {
@@ -7925,14 +9073,19 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding: 0,
                 style: Some(Style::default().add(StyleClass::ItemsCenter)),
-            onclick: None, on_right_click: None,
-        }
+                onclick: None,
+                on_right_click: None,
+            }
         };
 
         // center defaults to w-full h-full so it fills its parent and centers content
         let full_style = match style {
-            Some(s) => s.add(StyleClass::Width(SizeValue::Full)).add(StyleClass::Height(SizeValue::Full)),
-            None => Style::default().add(StyleClass::Width(SizeValue::Full)).add(StyleClass::Height(SizeValue::Full)),
+            Some(s) => s
+                .add(StyleClass::Width(SizeValue::Full))
+                .add(StyleClass::Height(SizeValue::Full)),
+            None => Style::default()
+                .add(StyleClass::Width(SizeValue::Full))
+                .add(StyleClass::Height(SizeValue::Full)),
         };
         let mut builder = View::container(child_view).center_x().center_y();
         builder = builder.with_style(full_style);
@@ -7960,7 +9113,11 @@ let tabs_inner = View::Row {
             .extract_string_with(props, "fallback_icon", bindings)
             .unwrap_or_else(|| "app-window".to_string());
         let style = self.extract_style_with(props, bindings);
-        View::WindowThumbnail { wid, fallback_icon, style }
+        View::WindowThumbnail {
+            wid,
+            fallback_icon,
+            style,
+        }
     }
 
     /// PLAN-012 W3：整桌面等比预览 leaf（window_thumbnail 同型——宿主
@@ -7978,7 +9135,11 @@ let tabs_inner = View::Row {
             .extract_string_with(props, "fallback", bindings)
             .unwrap_or_else(|| "app-window".to_string());
         let style = self.extract_style_with(props, bindings);
-        View::WorkspacePreview { ws, fallback_icon, style }
+        View::WorkspacePreview {
+            ws,
+            fallback_icon,
+            style,
+        }
     }
 
     fn convert_image_or_icon(
@@ -8028,7 +9189,9 @@ let tabs_inner = View::Row {
             }
         }
         // image: src as-is with loop variable / state bindings support
-        let src = self.extract_string_with(props, "src", bindings).unwrap_or_default();
+        let src = self
+            .extract_string_with(props, "src", bindings)
+            .unwrap_or_default();
         View::Image { src, style }
     }
 
@@ -8096,7 +9259,9 @@ let tabs_inner = View::Row {
         // 字面量 "on"/"off" 先行（extract_string_with 对 bool 绑定会解析成
         // "true"/"false"，不命中即落 bool 通道），bool 绑定（.liked）走
         // extract_bool_expr（Expr::Bool 直读 / 变量经 resolve 求值）。
-        let state: Option<bool> = match self.extract_string_with(props, "state", bindings).as_deref()
+        let state: Option<bool> = match self
+            .extract_string_with(props, "state", bindings)
+            .as_deref()
         {
             Some("on") => Some(true),
             Some("off") => Some(false),
@@ -8168,12 +9333,7 @@ let tabs_inner = View::Row {
             .extract_string_with(props, "title", bindings)
             .or_else(|| self.extract_string_with(props, "label", bindings))
             .or_else(|| self.extract_string_with(props, "alt", bindings))
-            .unwrap_or_else(|| {
-                src.rsplit(['/', '\\'])
-                    .next()
-                    .unwrap_or("")
-                    .to_string()
-            });
+            .unwrap_or_else(|| src.rsplit(['/', '\\']).next().unwrap_or("").to_string());
         let style = self.extract_style(props);
         // 上行 handler：载荷在分发时刻回填（ScrollCallback 同款——事件名取自
         // `.OnTime` 这类 handler 模式，widget 名用于宿主路由）。
@@ -8187,9 +9347,7 @@ let tabs_inner = View::Row {
                             crate::ui::view::MediaEventPayload::Time(s) => Value::Float(s),
                             crate::ui::view::MediaEventPayload::Duration(s) => Value::Float(s),
                             crate::ui::view::MediaEventPayload::Playing(b) => Value::Bool(b),
-                            crate::ui::view::MediaEventPayload::Error(s) => {
-                                Value::Str(s.into())
-                            }
+                            crate::ui::view::MediaEventPayload::Error(s) => Value::Str(s.into()),
                         };
                         DynamicMessage::Typed {
                             widget_name: widget.clone(),
@@ -8325,8 +9483,12 @@ let tabs_inner = View::Row {
         // Extract value and max, compute progress ratio. bindings 版:for 循环
         // 内 `value: item.pct` 的循环变量绑定解析(auto-os-config Storage 卡
         // 组件化时发现——空 bindings 版循环内恒 0%)。
-        let value = self.extract_f64_with(props, "value", bindings).unwrap_or(0.0);
-        let max = self.extract_f64_with(props, "max", bindings).unwrap_or(100.0);
+        let value = self
+            .extract_f64_with(props, "value", bindings)
+            .unwrap_or(0.0);
+        let max = self
+            .extract_f64_with(props, "max", bindings)
+            .unwrap_or(100.0);
         let progress = if max > 0.0 {
             (value / max).clamp(0.0, 1.0)
         } else {
@@ -8355,7 +9517,11 @@ let tabs_inner = View::Row {
         let base = self.event_to_message_with(event, bindings);
         Some(crate::ui::view::PointerMoveHandler::new(
             move |fraction: f32, _y: f32| match &base {
-                DynamicMessage::Typed { widget_name, event_name, args } => {
+                DynamicMessage::Typed {
+                    widget_name,
+                    event_name,
+                    args,
+                } => {
                     let mut new_args = args.clone();
                     // 与 mouse_area_move_arm 同规约：+1e-3 分数化，绕开
                     // auto_val nanbox 整值 float 实参绑定的腐坏路径。
@@ -8377,10 +9543,7 @@ let tabs_inner = View::Row {
     /// 中高 Fill,双向 Fill 让 spacer 在任一方向的 flex 容器里都占据主轴剩余,
     /// 对齐 vue 侧 spacer→div 补 `flex-1` 的语义),交叉轴 Fill 复现 CSS 默认
     /// stretch。显式 style(spacer (style: "w-8"))不受影响。
-    fn convert_spacer(
-        &self,
-        props: &HashMap<String, AuraPropValue>,
-    ) -> View<DynamicMessage> {
+    fn convert_spacer(&self, props: &HashMap<String, AuraPropValue>) -> View<DynamicMessage> {
         let style = self.extract_style(props);
 
         let child = View::Empty;
@@ -8388,9 +9551,7 @@ let tabs_inner = View::Row {
         if let Some(s) = style {
             builder = builder.with_style(s);
         } else {
-            builder = builder.with_style(
-                Style::parse("flex-1").unwrap()
-            );
+            builder = builder.with_style(Style::parse("flex-1").unwrap());
         }
         builder.build()
     }
@@ -8406,7 +9567,9 @@ let tabs_inner = View::Row {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let color = self.extract_string(props, "color").unwrap_or_else(|| "blue".to_string());
+        let color = self
+            .extract_string(props, "color")
+            .unwrap_or_else(|| "blue".to_string());
         let extra = self.extract_string(props, "class").unwrap_or_default();
         let size = self.extract_u16(props, "size").unwrap_or(12);
         // 维度:数字(Tailwind 单位)或 "full";缺省回退 size。
@@ -8432,7 +9595,11 @@ let tabs_inner = View::Row {
 
         let child = if children.is_empty() {
             match self.extract_string(props, "text") {
-                Some(t) if !t.is_empty() => View::Text { content: t, style: None, selectable: false },
+                Some(t) if !t.is_empty() => View::Text {
+                    content: t,
+                    style: None,
+                    selectable: false,
+                },
                 _ => View::Empty,
             }
         } else if children.len() == 1 {
@@ -8442,22 +9609,28 @@ let tabs_inner = View::Row {
                 .iter()
                 .map(|n| self.convert_node_with(n, bindings))
                 .collect();
-            View::Column { children: views, spacing: 0, padding: 0, style: None, onclick: None, on_right_click: None }
+            View::Column {
+                children: views,
+                spacing: 0,
+                padding: 0,
+                style: None,
+                onclick: None,
+                on_right_click: None,
+            }
         };
 
-        View::container(child).center_x().center_y().with_style(style).build()
+        View::container(child)
+            .center_x()
+            .center_y()
+            .with_style(style)
+            .build()
     }
 
     /// Convert a divider element: renders a horizontal line separator.
-    fn convert_divider(
-        &self,
-        _props: &HashMap<String, AuraPropValue>,
-    ) -> View<DynamicMessage> {
+    fn convert_divider(&self, _props: &HashMap<String, AuraPropValue>) -> View<DynamicMessage> {
         let child = View::Empty;
         let mut builder = View::container(child);
-        builder = builder.with_style(
-            Style::parse("w-full h-1 bg-gray-200").unwrap()
-        );
+        builder = builder.with_style(Style::parse("w-full h-1 bg-gray-200").unwrap());
         builder.build()
     }
 
@@ -8550,9 +9723,10 @@ let tabs_inner = View::Row {
         // menu 高亮协议，按钮 Status::Hovered 即悬停反馈）；accent 双盘
         // token 随主题/深浅自解。disabled 走置灰通道，不挂 hover。
         // rounded-sm 静止态零视觉（radius 无 border 不上色），仅 hover 块圆角。
-        let row_style =
-            Style::parse(&format!("h-7 w-full px-0 py-0 justify-start text-left rounded-sm{item_opacity}"))
-                .ok();
+        let row_style = Style::parse(&format!(
+            "h-7 w-full px-0 py-0 justify-start text-left rounded-sm{item_opacity}"
+        ))
+        .ok();
         let Some(onclick) = onclick else {
             // 无 handler：置灰静态行（不可点、可读——不再隐藏）。
             return View::Row {
@@ -8619,12 +9793,17 @@ let tabs_inner = View::Row {
         let mut items: Vec<View<DynamicMessage>> = Vec::new();
         let mut events: Vec<(Vec<usize>, String)> = Vec::new();
         for (item_idx, item_node) in nodes.iter().enumerate() {
-            let Some(itag) = node_tag(item_node) else { continue };
+            let Some(itag) = node_tag(item_node) else {
+                continue;
+            };
             let itag = itag.replace('_', "-");
             let Some((iprops, ievents, ikids)) = (match item_node {
-                AuraNode::Element { props, events, children, .. } => {
-                    Some((props, events, children))
-                }
+                AuraNode::Element {
+                    props,
+                    events,
+                    children,
+                    ..
+                } => Some((props, events, children)),
                 _ => None,
             }) else {
                 continue;
@@ -8667,10 +9846,7 @@ let tabs_inner = View::Row {
                         .get("onclick")
                         .or_else(|| aura_events_get_base(ievents, "onclick"))
                         .map(|ev| self.event_to_message_with(ev, bindings));
-                    events.push((
-                        vec![item_idx],
-                        format!("__menubar_item({:?})", title),
-                    ));
+                    events.push((vec![item_idx], format!("__menubar_item({:?})", title)));
                     items.push(self.menu_item_button_view(
                         &title,
                         icon,
@@ -8716,9 +9892,9 @@ let tabs_inner = View::Row {
                 // 解析）下传子项作选中判定；onclick 回写 store（用户
                 // handler 责任，与 shadcn update:value 等价面）。
                 "menubar-radio-group" => {
-                    let group_value =
-                        self.extract_string_with(iprops, "value", bindings)
-                            .unwrap_or_default();
+                    let group_value = self
+                        .extract_string_with(iprops, "value", bindings)
+                        .unwrap_or_default();
                     let (radio_items, radio_events) = self.build_menu_panel_items(
                         ikids,
                         bindings,
@@ -8790,7 +9966,13 @@ let tabs_inner = View::Row {
                     let mut sub_title = String::new();
                     let mut sub_content: &[AuraNode] = &[];
                     for sk in ikids {
-                        if let AuraNode::Element { tag: stag, props: sprops, children: skids, .. } = sk {
+                        if let AuraNode::Element {
+                            tag: stag,
+                            props: sprops,
+                            children: skids,
+                            ..
+                        } = sk
+                        {
                             match stag.replace('_', "-").as_str() {
                                 "menubar-sub-trigger" => {
                                     sub_title = self
@@ -8803,10 +9985,7 @@ let tabs_inner = View::Row {
                             }
                         }
                     }
-                    events.push((
-                        vec![item_idx],
-                        format!("__menubar_toggle(\"{}\")", sub_id),
-                    ));
+                    events.push((vec![item_idx], format!("__menubar_toggle(\"{}\")", sub_id)));
                     let toggle_msg = DynamicMessage::Typed {
                         widget_name: self.widget_name.clone(),
                         event_name: "__menubar_toggle".to_string(),
@@ -8958,11 +10137,10 @@ let tabs_inner = View::Row {
     ) -> View<DynamicMessage> {
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
 
-        let (base_vec, mut probe_mut): (Option<Vec<usize>>, Option<&mut BuildProbe>) =
-            match path {
-                Some((b, p)) => (Some(b.to_vec()), Some(p)),
-                None => (None, None),
-            };
+        let (base_vec, mut probe_mut): (Option<Vec<usize>>, Option<&mut BuildProbe>) = match path {
+            Some((b, p)) => (Some(b.to_vec()), Some(p)),
+            None => (None, None),
+        };
         macro_rules! record {
             ($($idx:expr),* => $handler:expr) => {
                 if let (Some(base), Some(probe)) = (&base_vec, probe_mut.as_deref_mut()) {
@@ -9003,7 +10181,9 @@ let tabs_inner = View::Row {
         let mut children_out: Vec<View<DynamicMessage>> = Vec::new();
         let mut menu_index = 0usize;
         for menu_node in children {
-            let Some(tag) = node_tag(menu_node) else { continue };
+            let Some(tag) = node_tag(menu_node) else {
+                continue;
+            };
             let tag_lc = tag.replace('_', "-");
             if tag_lc != "menubar-menu" {
                 continue;
@@ -9116,8 +10296,10 @@ let tabs_inner = View::Row {
 
             // PLAN-695 T-04：面板配色字面 #16171B/zinc-700 → popover/border
             // 语义 token（浅色主题白板深字可读；深色 registry dark 表同源）。
-            let mut panel_style =
-                Style::parse("w-44 bg-popover text-popover-foreground border border-border shadow-md py-1").ok();
+            let mut panel_style = Style::parse(
+                "w-44 bg-popover text-popover-foreground border border-border shadow-md py-1",
+            )
+            .ok();
             if let Some(st) = panel_style.as_mut() {
                 if !st.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
                     let owned = std::mem::take(st);
@@ -9174,11 +10356,10 @@ let tabs_inner = View::Row {
 
         // Split the optional (path, probe) once: matching through a shared
         // reference would downgrade the &mut binding, so we own the pieces.
-        let (base_vec, mut probe_mut): (Option<Vec<usize>>, Option<&mut BuildProbe>) =
-            match path {
-                Some((b, p)) => (Some(b.to_vec()), Some(p)),
-                None => (None, None),
-            };
+        let (base_vec, mut probe_mut): (Option<Vec<usize>>, Option<&mut BuildProbe>) = match path {
+            Some((b, p)) => (Some(b.to_vec()), Some(p)),
+            None => (None, None),
+        };
         macro_rules! record {
             ($($idx:expr),* => $handler:expr) => {
                 if let (Some(base), Some(probe)) = (&base_vec, probe_mut.as_deref_mut()) {
@@ -9195,9 +10376,12 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: None,
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
-        let Some(cfg) = action_config() else { return empty() };
+        let Some(cfg) = action_config() else {
+            return empty();
+        };
         if cfg.menus.is_empty() {
             return empty();
         }
@@ -9277,7 +10461,9 @@ let tabs_inner = View::Row {
                             items.push(self.convert_sep(&sep_props, bindings));
                         }
                         MenuItem::Action(id) => {
-                            let Some(a) = cfg.action_by_id(id) else { continue };
+                            let Some(a) = cfg.action_by_id(id) else {
+                                continue;
+                            };
                             let handler = a.handler.trim_start_matches('.').to_string();
                             record!(children.len(), 1, items.len() => &a.handler);
                             // Plan 418 §8.4③ + 423 P3: checked-if / enabled-if
@@ -9285,10 +10471,14 @@ let tabs_inner = View::Row {
                             // `.field`、比较运算、state 引用;求值失败=未勾选/
                             // 禁用,保守)。每项固定 16px 勾选槽,已勾选时渲染
                             // lucide check 图标(对齐 VSCode 菜单)。
-                            let checked = a.checked_if.as_deref()
+                            let checked = a
+                                .checked_if
+                                .as_deref()
                                 .map(|cond| self.eval_condition_with(cond, bindings))
                                 .unwrap_or(false);
-                            let enabled = a.enabled_if.as_deref()
+                            let enabled = a
+                                .enabled_if
+                                .as_deref()
                                 .map(|cond| self.eval_condition_with(cond, bindings))
                                 .unwrap_or(true);
                             // PLAN-629 T-06: 前导槽 = 勾选（checked 时）或
@@ -9325,8 +10515,10 @@ let tabs_inner = View::Row {
             // 内容宽。
             // PLAN-695 T-04：面板配色字面 #16171B/zinc-700 → popover/border
             // 语义 token（浅色主题白板深字可读）。
-            let mut panel_style =
-                Style::parse("w-44 bg-popover text-popover-foreground border border-border shadow-md py-1").ok();
+            let mut panel_style = Style::parse(
+                "w-44 bg-popover text-popover-foreground border border-border shadow-md py-1",
+            )
+            .ok();
             if let Some(s) = panel_style.as_mut() {
                 if !s.classes.iter().any(|c| matches!(c, StyleClass::Width(_))) {
                     let owned = std::mem::take(s);
@@ -9338,8 +10530,9 @@ let tabs_inner = View::Row {
                 spacing: 0,
                 padding: 0,
                 style: panel_style,
-            onclick: None, on_right_click: None,
-        };
+                onclick: None,
+                on_right_click: None,
+            };
             children.push(View::Popover {
                 anchor: PopoverAnchor::Widget(Box::new(trigger)),
                 content: Box::new(panel),
@@ -9366,7 +10559,8 @@ let tabs_inner = View::Row {
             } else {
                 Style::parse(&user).ok()
             },
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
 
@@ -9563,7 +10757,12 @@ let tabs_inner = View::Row {
         // PLAN-533 T5: 裸文本 trigger（text prop 无子）→ Button,onclick 取
         // parser 铸造的 toggle（或用户显式绑定）。
         let anchor_view = match trigger {
-            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+            Some(AuraNode::Element {
+                children: t_children,
+                props: t_props,
+                events: t_events,
+                ..
+            }) => {
                 if t_children.is_empty() {
                     self.bare_trigger_button_view(t_props, t_events, bindings)
                 } else {
@@ -9578,7 +10777,8 @@ let tabs_inner = View::Row {
                             spacing: 0,
                             padding: 0,
                             style: None,
-                            onclick: None, on_right_click: None,
+                            onclick: None,
+                            on_right_click: None,
                         },
                     }
                 }
@@ -9587,7 +10787,10 @@ let tabs_inner = View::Row {
         };
         // 面板:content 子件装 col,挂 shadcn AlertDialogContent 同款 chrome。
         let panel_children: Vec<View<DynamicMessage>> = match content {
-            Some(AuraNode::Element { children: c_children, .. }) => c_children
+            Some(AuraNode::Element {
+                children: c_children,
+                ..
+            }) => c_children
                 .iter()
                 .map(|c| self.convert_node_with(c, bindings))
                 .collect(),
@@ -9611,7 +10814,8 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(panel_chrome).ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         let open = match props.get("open") {
             Some(AuraPropValue::Expr(e)) => matches!(
@@ -9623,7 +10827,10 @@ let tabs_inner = View::Row {
         // PLAN-533 T6: 可关闭族（dialog）铸造形态的 ESC/外点/锚点 dismiss
         // 折算 __dlg_close_N（update:open(false)）;alert 族与显式绑定自管
         // 形态不接管。
-        let on_dismiss = if matches!(family, ModalDialogFamily::Dialog | ModalDialogFamily::DropdownMenu) {
+        let on_dismiss = if matches!(
+            family,
+            ModalDialogFamily::Dialog | ModalDialogFamily::DropdownMenu
+        ) {
             Self::minted_dismiss_msg(&self.widget_name, props)
         } else {
             None
@@ -9652,7 +10859,12 @@ let tabs_inner = View::Row {
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
         let (trigger, content) = Self::alert_dialog_split_children(children);
         let anchor_view = match trigger {
-            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+            Some(AuraNode::Element {
+                children: t_children,
+                props: t_props,
+                events: t_events,
+                ..
+            }) => {
                 // PLAN-533 T5: 裸文本 trigger（text prop 无子）→ Button
                 // （铸造/显式 onclick 经 convert_button 接线）。
                 if t_children.is_empty() {
@@ -9671,7 +10883,8 @@ let tabs_inner = View::Row {
                             spacing: 0,
                             padding: 0,
                             style: None,
-                            onclick: None, on_right_click: None,
+                            onclick: None,
+                            on_right_click: None,
                         },
                     }
                 }
@@ -9679,7 +10892,11 @@ let tabs_inner = View::Row {
             _ => View::Empty,
         };
         let mut panel_children: Vec<View<DynamicMessage>> = Vec::new();
-        if let Some(AuraNode::Element { children: c_children, .. }) = content {
+        if let Some(AuraNode::Element {
+            children: c_children,
+            ..
+        }) = content
+        {
             for (i, c) in c_children.iter().enumerate() {
                 path.push(i);
                 panel_children
@@ -9705,7 +10922,8 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(panel_chrome).ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         let open = match props.get("open") {
             Some(AuraPropValue::Expr(e)) => matches!(
@@ -9717,7 +10935,10 @@ let tabs_inner = View::Row {
         // PLAN-533 T6: 可关闭族（dialog）铸造形态的 ESC/外点/锚点 dismiss
         // 折算 __dlg_close_N（update:open(false)）;alert 族与显式绑定自管
         // 形态不接管。
-        let on_dismiss = if matches!(family, ModalDialogFamily::Dialog | ModalDialogFamily::DropdownMenu) {
+        let on_dismiss = if matches!(
+            family,
+            ModalDialogFamily::Dialog | ModalDialogFamily::DropdownMenu
+        ) {
             Self::minted_dismiss_msg(&self.widget_name, props)
         } else {
             None
@@ -9743,12 +10964,13 @@ let tabs_inner = View::Row {
         use crate::ui::view::PopoverPlacement;
         let raw = match props.get(key) {
             Some(AuraPropValue::Expr(Expr::Str(s))) => Some(s.to_string()),
-            Some(AuraPropValue::Expr(e)) => self
-                .resolve_expr_to_value(e, bindings)
-                .and_then(|v| match v {
-                    Value::Str(s) => Some(s.to_string()),
-                    _ => None,
-                }),
+            Some(AuraPropValue::Expr(e)) => {
+                self.resolve_expr_to_value(e, bindings)
+                    .and_then(|v| match v {
+                        Value::Str(s) => Some(s.to_string()),
+                        _ => None,
+                    })
+            }
             _ => None,
         };
         match raw.as_deref() {
@@ -9766,10 +10988,7 @@ let tabs_inner = View::Row {
     /// PLAN-534 D2: sheet/drawer 面板 chrome（与 rust.rs 轨同串,保双轨
     /// 视觉一致）。横向（L/R）w-96 定宽 + h-full 拉满;纵向（T/B）w-full
     /// 拉满;drawer 竖向追加贴缘圆角（bottom rounded-t / top rounded-b）。
-    fn side_panel_chrome(
-        placement: crate::ui::view::PopoverPlacement,
-        is_drawer: bool,
-    ) -> String {
+    fn side_panel_chrome(placement: crate::ui::view::PopoverPlacement, is_drawer: bool) -> String {
         use crate::ui::view::PopoverPlacement;
         let base = match placement {
             PopoverPlacement::EdgeLeft | PopoverPlacement::EdgeRight => {
@@ -9798,7 +11017,8 @@ let tabs_inner = View::Row {
                 height: None,
                 center_x: false,
                 center_y: false,
-                onclick: None, on_right_click: None,
+                onclick: None,
+                on_right_click: None,
                 style: Style::parse("w-8 h-1 rounded-full bg-muted").ok(),
             }),
             padding: 0,
@@ -9806,7 +11026,8 @@ let tabs_inner = View::Row {
             height: None,
             center_x: true,
             center_y: false,
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
             style: Style::parse("w-full py-2").ok(),
         }
     }
@@ -9827,7 +11048,12 @@ let tabs_inner = View::Row {
         let (trigger, content) = Self::alert_dialog_split_children(children);
         // 锚:trigger 子件原位渲染（裸文本 trigger → Button,同 dialog 族）。
         let anchor_view = match trigger {
-            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+            Some(AuraNode::Element {
+                children: t_children,
+                props: t_props,
+                events: t_events,
+                ..
+            }) => {
                 if t_children.is_empty() {
                     self.bare_trigger_button_view(t_props, t_events, bindings)
                 } else {
@@ -9842,7 +11068,8 @@ let tabs_inner = View::Row {
                             spacing: 0,
                             padding: 0,
                             style: None,
-                            onclick: None, on_right_click: None,
+                            onclick: None,
+                            on_right_click: None,
                         },
                     }
                 }
@@ -9850,7 +11077,10 @@ let tabs_inner = View::Row {
             _ => View::Empty,
         };
         let mut panel_children: Vec<View<DynamicMessage>> = match content {
-            Some(AuraNode::Element { children: c_children, .. }) => c_children
+            Some(AuraNode::Element {
+                children: c_children,
+                ..
+            }) => c_children
                 .iter()
                 .map(|c| self.convert_node_with(c, bindings))
                 .collect(),
@@ -9873,7 +11103,8 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(&Self::side_panel_chrome(placement, is_drawer)).ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         let open = match props.get("open") {
             Some(AuraPropValue::Expr(e)) => matches!(
@@ -9910,7 +11141,12 @@ let tabs_inner = View::Row {
         use crate::ui::view::PopoverAnchor;
         let (trigger, content) = Self::alert_dialog_split_children(children);
         let anchor_view = match trigger {
-            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+            Some(AuraNode::Element {
+                children: t_children,
+                props: t_props,
+                events: t_events,
+                ..
+            }) => {
                 if t_children.is_empty() {
                     self.bare_trigger_button_view(t_props, t_events, bindings)
                 } else {
@@ -9927,7 +11163,8 @@ let tabs_inner = View::Row {
                             spacing: 0,
                             padding: 0,
                             style: None,
-                            onclick: None, on_right_click: None,
+                            onclick: None,
+                            on_right_click: None,
                         },
                     }
                 }
@@ -9935,7 +11172,11 @@ let tabs_inner = View::Row {
             _ => View::Empty,
         };
         let mut panel_children: Vec<View<DynamicMessage>> = Vec::new();
-        if let Some(AuraNode::Element { children: c_children, .. }) = content {
+        if let Some(AuraNode::Element {
+            children: c_children,
+            ..
+        }) = content
+        {
             for (i, c) in c_children.iter().enumerate() {
                 path.push(i);
                 panel_children
@@ -9959,7 +11200,8 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse(&Self::side_panel_chrome(placement, is_drawer)).ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         let open = match props.get("open") {
             Some(AuraPropValue::Expr(e)) => matches!(
@@ -9996,7 +11238,12 @@ let tabs_inner = View::Row {
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
         let (trigger, content) = Self::alert_dialog_split_children(children);
         let (anchor_inner, on_enter, on_exit) = match trigger {
-            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+            Some(AuraNode::Element {
+                children: t_children,
+                props: t_props,
+                events: t_events,
+                ..
+            }) => {
                 let on_enter = aura_events_get_base(t_events, "onmouseenter")
                     .or_else(|| aura_events_get_base(t_events, "onhover"))
                     .map(|event| self.event_to_message_with(event, bindings));
@@ -10017,7 +11264,8 @@ let tabs_inner = View::Row {
                             spacing: 0,
                             padding: 0,
                             style: None,
-                            onclick: None, on_right_click: None,
+                            onclick: None,
+                            on_right_click: None,
                         },
                     }
                 };
@@ -10044,7 +11292,10 @@ let tabs_inner = View::Row {
             },
         };
         let panel_children: Vec<View<DynamicMessage>> = match content {
-            Some(AuraNode::Element { children: c_children, .. }) => c_children
+            Some(AuraNode::Element {
+                children: c_children,
+                ..
+            }) => c_children
                 .iter()
                 .map(|c| self.convert_node_with(c, bindings))
                 .collect(),
@@ -10055,7 +11306,8 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse("w-80 bg-popover border rounded-lg shadow-md p-4").ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         let open = match props.get("open") {
             Some(AuraPropValue::Expr(e)) => matches!(
@@ -10087,7 +11339,12 @@ let tabs_inner = View::Row {
         use crate::ui::view::{PopoverAnchor, PopoverPlacement};
         let (trigger, content) = Self::alert_dialog_split_children(children);
         let (anchor_inner, on_enter, on_exit) = match trigger {
-            Some(AuraNode::Element { children: t_children, props: t_props, events: t_events, .. }) => {
+            Some(AuraNode::Element {
+                children: t_children,
+                props: t_props,
+                events: t_events,
+                ..
+            }) => {
                 let on_enter = aura_events_get_base(t_events, "onmouseenter")
                     .or_else(|| aura_events_get_base(t_events, "onhover"))
                     .map(|event| self.event_to_message_with(event, bindings));
@@ -10110,7 +11367,8 @@ let tabs_inner = View::Row {
                             spacing: 0,
                             padding: 0,
                             style: None,
-                            onclick: None, on_right_click: None,
+                            onclick: None,
+                            on_right_click: None,
                         },
                     }
                 };
@@ -10136,7 +11394,11 @@ let tabs_inner = View::Row {
             },
         };
         let mut panel_children: Vec<View<DynamicMessage>> = Vec::new();
-        if let Some(AuraNode::Element { children: c_children, .. }) = content {
+        if let Some(AuraNode::Element {
+            children: c_children,
+            ..
+        }) = content
+        {
             for (i, c) in c_children.iter().enumerate() {
                 path.push(i);
                 panel_children
@@ -10149,7 +11411,8 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: Style::parse("w-80 bg-popover border rounded-lg shadow-md p-4").ok(),
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
         let open = match props.get("open") {
             Some(AuraPropValue::Expr(e)) => matches!(
@@ -10182,15 +11445,12 @@ let tabs_inner = View::Row {
 
         let expr_value = |key: &str| -> Option<Value> {
             match props.get(key)? {
-                AuraPropValue::Expr(e) => {
-                    self.resolve_expr_to_value(e, bindings)
-                }
+                AuraPropValue::Expr(e) => self.resolve_expr_to_value(e, bindings),
                 _ => None,
             }
         };
         let has_open_prop = props.contains_key("open");
-        let open_prop = expr_value("open")
-            .map(|v| matches!(v, Value::Bool(true)));
+        let open_prop = expr_value("open").map(|v| matches!(v, Value::Bool(true)));
         let coord = |key: &str| -> Option<f32> {
             match expr_value(key)? {
                 Value::Float(f) => Some(f as f32),
@@ -10234,9 +11494,7 @@ let tabs_inner = View::Row {
         // 点锚（渲染期面板原点被最近按下位置取代；未记录时退化为坐标锚
         // 语义，面板落窗原点）。触发件与面板可分离：单实例菜单挂视图根。
         let (px, py) = match (px, py) {
-            (None, None) if placement == PopoverPlacement::Pointer => {
-                (Some(0.0f32), Some(0.0f32))
-            }
+            (None, None) if placement == PopoverPlacement::Pointer => (Some(0.0f32), Some(0.0f32)),
             other => other,
         };
         // 面板 chrome:popover 标签的 class 落在 content 列上(visual wrap 绘制)。
@@ -10272,7 +11530,13 @@ let tabs_inner = View::Row {
         }
 
         // 自管开合:slot id 按构建路径键(结构稳定则跨重建稳定)。
-        let slot_id = format!("pv_{}", path.iter().map(|p| p.to_string()).collect::<Vec<_>>().join("_"));
+        let slot_id = format!(
+            "pv_{}",
+            path.iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join("_")
+        );
         let self_managed_open = || popover_open().as_deref() == Some(slot_id.as_str());
 
         let internal_toggle = DynamicMessage::Typed {
@@ -10308,21 +11572,22 @@ let tabs_inner = View::Row {
         match anchor_xy {
             (Some(x), Some(y)) => {
                 let open = open_prop.unwrap_or_else(self_managed_open);
-                let on_dismiss = ondismiss_handler()
-                    .map(|h| DynamicMessage::Typed {
-                        widget_name: self.widget_name.clone(),
-                        event_name: h.trim_start_matches('.').to_string(),
-                        args: vec![],
-                    });
+                let on_dismiss = ondismiss_handler().map(|h| DynamicMessage::Typed {
+                    widget_name: self.widget_name.clone(),
+                    event_name: h.trim_start_matches('.').to_string(),
+                    args: vec![],
+                });
                 View::Popover {
                     anchor: PopoverAnchor::Point { x, y },
                     content: Box::new(View::Column {
-                        children: self.convert_popover_items(children, 0, path, id_map, probe, bindings),
+                        children: self
+                            .convert_popover_items(children, 0, path, id_map, probe, bindings),
                         spacing: 0,
                         padding: 0,
                         style: panel_style,
-            onclick: None, on_right_click: None,
-        }),
+                        onclick: None,
+                        on_right_click: None,
+                    }),
                     placement,
                     open,
                     on_dismiss,
@@ -10348,35 +11613,45 @@ let tabs_inner = View::Row {
                 // 锚转换:单子直接占槽 0;多子包 Row(槽 0,子槽 i)。
                 let mut anchor = if anchor_src.len() == 1 {
                     path.push(0);
-                    let v = self.convert_node_tracked_ctx(anchor_src[0], path, id_map, probe, bindings);
+                    let v =
+                        self.convert_node_tracked_ctx(anchor_src[0], path, id_map, probe, bindings);
                     path.pop();
                     v
                 } else if anchor_src.is_empty() {
                     View::Empty
                 } else {
-                    let inner: Vec<View<DynamicMessage>> = self
-                        .convert_popover_items(&anchor_src.iter().map(|n| (*n).clone()).collect::<Vec<_>>(), 0, path, id_map, probe, bindings);
+                    let inner: Vec<View<DynamicMessage>> = self.convert_popover_items(
+                        &anchor_src.iter().map(|n| (*n).clone()).collect::<Vec<_>>(),
+                        0,
+                        path,
+                        id_map,
+                        probe,
+                        bindings,
+                    );
                     View::Row {
                         children: inner,
                         spacing: 0,
                         padding: 0,
                         style: None,
-            onclick: None, on_right_click: None,
-        }
+                        onclick: None,
+                        on_right_click: None,
+                    }
                 };
 
                 let open = open_prop.unwrap_or_else(self_managed_open);
-                let on_dismiss = Some(ondismiss_handler()
-                    .map(|h| DynamicMessage::Typed {
-                        widget_name: self.widget_name.clone(),
-                        event_name: h.trim_start_matches('.').to_string(),
-                        args: vec![],
-                    })
-                    .unwrap_or_else(|| DynamicMessage::Typed {
-                        widget_name: self.widget_name.clone(),
-                        event_name: "__popover_close".to_string(),
-                        args: vec![],
-                    }));
+                let on_dismiss = Some(
+                    ondismiss_handler()
+                        .map(|h| DynamicMessage::Typed {
+                            widget_name: self.widget_name.clone(),
+                            event_name: h.trim_start_matches('.').to_string(),
+                            args: vec![],
+                        })
+                        .unwrap_or_else(|| DynamicMessage::Typed {
+                            widget_name: self.widget_name.clone(),
+                            event_name: "__popover_close".to_string(),
+                            args: vec![],
+                        }),
+                );
 
                 // 自管形态:默认 onclick(无 handler 时 convert_button 产出
                 // String("click"))的 Button 锚注入内部 toggle(点锚开合)。
@@ -10393,16 +11668,25 @@ let tabs_inner = View::Row {
                     }
                 }
 
-                let owned_content: Vec<AuraNode> = content_src.iter().map(|n| (*n).clone()).collect();
+                let owned_content: Vec<AuraNode> =
+                    content_src.iter().map(|n| (*n).clone()).collect();
                 View::Popover {
                     anchor: PopoverAnchor::Widget(Box::new(anchor)),
                     content: Box::new(View::Column {
-                        children: self.convert_popover_items(&owned_content, 1, path, id_map, probe, bindings),
+                        children: self.convert_popover_items(
+                            &owned_content,
+                            1,
+                            path,
+                            id_map,
+                            probe,
+                            bindings,
+                        ),
                         spacing: 0,
                         padding: 0,
                         style: panel_style,
-            onclick: None, on_right_click: None,
-        }),
+                        onclick: None,
+                        on_right_click: None,
+                    }),
                     placement,
                     open,
                     on_dismiss,
@@ -10455,16 +11739,21 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style: None,
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         };
-        let Some(cfg) = action_config() else { return empty() };
+        let Some(cfg) = action_config() else {
+            return empty();
+        };
 
         let mut children: Vec<View<DynamicMessage>> = Vec::new();
         for item in &cfg.toolbar {
             match item {
                 MenuItem::Separator => children.push(self.convert_sep(&HashMap::new(), bindings)),
                 MenuItem::Action(id) => {
-                    let Some(a) = cfg.action_by_id(id) else { continue };
+                    let Some(a) = cfg.action_by_id(id) else {
+                        continue;
+                    };
                     let handler = a.handler.trim_start_matches('.').to_string();
                     // §8.4①: 按真实子位置记录(children.len() —— sep 也占
                     // 位;独立计数器会令 sep 之后的按钮索引全部前移错位)。
@@ -10487,7 +11776,9 @@ let tabs_inner = View::Row {
                     };
                     children.push(View::Button {
                         // Plan 423 P3: enabled-if → disabled 态(表达式引擎)。
-                        disabled: !a.enabled_if.as_deref()
+                        disabled: !a
+                            .enabled_if
+                            .as_deref()
                             .map(|cond| self.eval_condition_with(cond, bindings))
                             .unwrap_or(true),
                         label,
@@ -10520,7 +11811,8 @@ let tabs_inner = View::Row {
             } else {
                 Style::parse(&user).ok()
             },
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
 
@@ -10570,7 +11862,8 @@ let tabs_inner = View::Row {
             center_x: true,
             center_y: true,
             style,
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
 
@@ -10623,7 +11916,8 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 }
             }
         } else {
@@ -10656,7 +11950,8 @@ let tabs_inner = View::Row {
                     spacing: 0,
                     padding: 0,
                     style: None,
-                    onclick: None, on_right_click: None,
+                    onclick: None,
+                    on_right_click: None,
                 },
             }
         };
@@ -10680,8 +11975,8 @@ let tabs_inner = View::Row {
     /// - The tag's main argument
     /// Plan 446 批五 U7: 文本类 tag 清单（children 折叠与元素转换共用）。
     const TEXT_LIKE_TAGS: &'static [&'static str] = &[
-        "text", "label", "h1", "h2", "h3", "h4", "h5", "h6", "p", "span",
-        "a", "link", "small", "strong", "em", "b", "i",
+        "text", "label", "h1", "h2", "h3", "h4", "h5", "h6", "p", "span", "a", "link", "small",
+        "strong", "em", "b", "i",
     ];
 
     /// Plan 446 批五 U7(链4): 文本类子元素的文本内容提取（绑定感知，
@@ -10704,22 +11999,27 @@ let tabs_inner = View::Row {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let content = self.extract_string_with(props, "text", bindings)
+        let content = self
+            .extract_string_with(props, "text", bindings)
             .or_else(|| self.extract_string_with(props, "content", bindings))
             .or_else(|| self.extract_string_with(props, "label", bindings))
             .unwrap_or_else(|| {
                 // Try to get content from child text nodes
-                children.iter()
+                children
+                    .iter()
                     .filter_map(|c| match c {
                         AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
-                        AuraNode::Text(AuraTextContent::Interpolated { template, bindings: tpl_bindings }) => {
+                        AuraNode::Text(AuraTextContent::Interpolated {
+                            template,
+                            bindings: tpl_bindings,
+                        }) => {
                             Some(self.resolve_interpolation_with(template, tpl_bindings, bindings))
                         }
                         // Plan 446 批五 U7(链4): 同 tracked 变体——文本类子元素
                         // 的内容折叠(绑定感知)。
-                        AuraNode::Element { tag, props: cprops, .. }
-                            if Self::TEXT_LIKE_TAGS.contains(&tag.as_str()) =>
-                        {
+                        AuraNode::Element {
+                            tag, props: cprops, ..
+                        } if Self::TEXT_LIKE_TAGS.contains(&tag.as_str()) => {
                             self.child_element_text(cprops, bindings)
                         }
                         _ => None,
@@ -10745,7 +12045,9 @@ let tabs_inner = View::Row {
         if matches!(tag, "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
             let default = match tag {
                 "h1" => Style::parse("text-4xl font-bold tracking-tight text-primary mb-4").ok(),
-                "h2" => Style::parse("text-3xl font-bold tracking-tight text-primary mt-8 mb-4").ok(),
+                "h2" => {
+                    Style::parse("text-3xl font-bold tracking-tight text-primary mt-8 mb-4").ok()
+                }
                 "h3" => Style::parse("text-xl font-semibold text-primary mb-3").ok(),
                 "h4" => Style::parse("text-lg font-semibold mb-2").ok(),
                 "h5" => Style::parse("text-base font-semibold mb-1").ok(),
@@ -10771,7 +12073,8 @@ let tabs_inner = View::Row {
         // The Button renderer applies chromeless styling when no bg/border is
         // present, so the visual appearance matches plain text.
         if let Some(event) = aura_events_get_base(events, "onclick")
-            .or_else(|| aura_events_get_base(events, "click")) {
+            .or_else(|| aura_events_get_base(events, "click"))
+        {
             let onclick = self.event_to_message_with(event, bindings);
             return View::Button {
                 disabled: false,
@@ -10823,7 +12126,15 @@ let tabs_inner = View::Row {
         let n = children.len();
         let mut out = Vec::with_capacity(n);
         for (i, child) in children.iter().enumerate() {
-            let AuraNode::Element { tag, props: item_props, events, children: item_children, span, debug_id } = child else {
+            let AuraNode::Element {
+                tag,
+                props: item_props,
+                events,
+                children: item_children,
+                span,
+                debug_id,
+            } = child
+            else {
                 out.push(child.clone());
                 continue;
             };
@@ -10899,9 +12210,12 @@ let tabs_inner = View::Row {
         // label via PUA markers (same scheme nav-link uses, §2.3) and only use
         // a real text/label/child text if provided — so `button (icon:"menu")`
         // renders just the icon, not "Button".
-        let icon = self.extract_string_with(props, "icon", bindings).unwrap_or_default();
+        let icon = self
+            .extract_string_with(props, "icon", bindings)
+            .unwrap_or_default();
         let label = if !icon.is_empty() {
-            let text_part = self.extract_string_with(props, "text", bindings)
+            let text_part = self
+                .extract_string_with(props, "text", bindings)
                 .or_else(|| self.extract_string_with(props, "label", bindings))
                 .or_else(|| self.extract_children_text(children, bindings))
                 .unwrap_or_default();
@@ -10923,13 +12237,16 @@ let tabs_inner = View::Row {
         // PLAN-054 T1: EE03 后缀推迟到构造 View::Button 时才拼入 label——
         // 内容子树的 leading Text 必须用干净 label,否则 EE03 PUA 字形落
         // 可见文本流(A1 卡片 "Y<id>" / A2 "Y新建会话" 常显的根因)。
-        let pua_title = self.extract_string_with(props, "title", bindings).unwrap_or_default();
+        let pua_title = self
+            .extract_string_with(props, "title", bindings)
+            .unwrap_or_default();
 
         // `variant` selects a base style preset (Tailwind classes); the user's
         // class/style augments it. "text"/absent = chromeless (renders as text
         // via the renderer's class-driven style); "primary" = theme-colored
         // filled button (Plan 409 §8: theme-aware instead of hardcoded blue).
-        let variant = self.extract_string_with(props, "variant", bindings)
+        let variant = self
+            .extract_string_with(props, "variant", bindings)
             .unwrap_or_default();
         // Plan 409 §10 续 7:variant → shadcn-vue 对齐的 Tailwind class preset
         // (由 renderer 的 class 驱动样式)。default/缺省 = primary(主题色填充,与
@@ -10943,7 +12260,9 @@ let tabs_inner = View::Row {
         let preset: &str = crate::ui::style::variants::button_variant_preset(variant.as_str());
         // Plan 409 §10 续 17: size → shadcn 对齐的尺寸 preset(h/px)。button 默认
         // Shrink,需显式 height 才能区分 sm/default/lg(renderer button 分支读 height)。
-        let size = self.extract_string_with(props, "size", bindings).unwrap_or_default();
+        let size = self
+            .extract_string_with(props, "size", bindings)
+            .unwrap_or_default();
         let size_preset: &str = crate::ui::style::variants::button_size_preset(size.as_str());
         // Plan 414 R13 fix: variant=icon carries its own square sizing in the
         // variant preset (h-7 w-7); the default "h-10 px-4" size preset would
@@ -10959,7 +12278,8 @@ let tabs_inner = View::Row {
         let style = {
             // Binding-aware so a class can come from the loop variable, e.g.
             // `class: cell.style` where each cell carries its own Tailwind class.
-            let user = self.extract_string_with(props, "class", bindings)
+            let user = self
+                .extract_string_with(props, "class", bindings)
                 .or_else(|| self.extract_string_with(props, "style", bindings));
             // Plan 446 批五 U7(链3): 求值成功但样式类全被丢弃(自定义类名不在
             // Tailwind 词汇表,如 os-config 的 "e-row active")时显式告警——
@@ -10967,7 +12287,9 @@ let tabs_inner = View::Row {
             // (§P 处方:"求值失败→静默兜底"改显式告警)。
             if let Some(u) = user.as_deref() {
                 if !u.trim().is_empty()
-                    && Style::parse(u).map(|s| s.classes.is_empty()).unwrap_or(true)
+                    && Style::parse(u)
+                        .map(|s| s.classes.is_empty())
+                        .unwrap_or(true)
                 {
                     log::warn!(
                         "[446-U7] button class/style resolved to '{}' but no style classes \
@@ -10986,7 +12308,11 @@ let tabs_inner = View::Row {
                 None => base,
                 Some(c) => format!("{} {}", base, c),
             };
-            if merged.is_empty() { None } else { Style::parse(&merged).ok() }
+            if merged.is_empty() {
+                None
+            } else {
+                Style::parse(&merged).ok()
+            }
         };
 
         // Resolve the onclick event handler to a DynamicMessage.
@@ -11056,7 +12382,7 @@ let tabs_inner = View::Row {
                     // hover: utilities only feed button hover styling; a text
                     // child view never consumes them.
                     hover_classes: Vec::new(),
-            variant_classes: Vec::new(),
+                    variant_classes: Vec::new(),
                 });
                 views.push(View::Text {
                     content: label.clone(),
@@ -11118,7 +12444,7 @@ let tabs_inner = View::Row {
                             .cloned()
                             .collect(),
                         hover_classes: Vec::new(),
-            variant_classes: Vec::new(),
+                        variant_classes: Vec::new(),
                     });
                     if is_col {
                         Some(Box::new(View::Column {
@@ -11126,16 +12452,18 @@ let tabs_inner = View::Row {
                             spacing,
                             padding: 0,
                             style: layout_style,
-            onclick: None, on_right_click: None,
-        }))
+                            onclick: None,
+                            on_right_click: None,
+                        }))
                     } else {
                         Some(Box::new(View::Row {
                             children: views,
                             spacing,
                             padding: 0,
                             style: layout_style,
-            onclick: None, on_right_click: None,
-        }))
+                            onclick: None,
+                            on_right_click: None,
+                        }))
                     }
                 }
             }
@@ -11145,7 +12473,8 @@ let tabs_inner = View::Row {
 
         // Plan 423 P3: disabled / disabled-if —— 表达式统一走 eval_condition_with
         // (支持 `.field`、比较运算与 state 引用;求值失败=禁用,保守)。
-        let disabled = if let Some(cond) = self.extract_string_with(props, "disabled-if", bindings) {
+        let disabled = if let Some(cond) = self.extract_string_with(props, "disabled-if", bindings)
+        {
             !self.eval_condition_with(&cond, bindings)
         } else {
             self.extract_string_with(props, "disabled", bindings)
@@ -11179,17 +12508,20 @@ let tabs_inner = View::Row {
         children: &[AuraNode],
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let variant = self.extract_string_with(props, "variant", bindings)
+        let variant = self
+            .extract_string_with(props, "variant", bindings)
             .unwrap_or_default();
         let preset: &str = match variant.as_str() {
             "outline" => "border border-input text-foreground",
             "secondary" => "bg-secondary text-secondary-foreground",
             "destructive" => "bg-destructive text-destructive-foreground",
-            _ => "bg-primary text-primary-foreground",  // default
+            _ => "bg-primary text-primary-foreground", // default
         };
         // shadcn Badge 基础:inline-flex items-center + 圆角胶囊 + 紧凑 padding + 小字。
-        let base = "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium";
-        let user = self.extract_string_with(props, "class", bindings)
+        let base =
+            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium";
+        let user = self
+            .extract_string_with(props, "class", bindings)
             .or_else(|| self.extract_string_with(props, "style", bindings));
         let merged = match user {
             Some(c) => format!("{} {} {}", base, preset, c),
@@ -11205,7 +12537,9 @@ let tabs_inner = View::Row {
             .filter(|v| !matches!(v, View::Empty))
             .collect();
         if child_views.is_empty() {
-            let text = self.extract_string_with(props, "text", bindings).unwrap_or_default();
+            let text = self
+                .extract_string_with(props, "text", bindings)
+                .unwrap_or_default();
             if !text.is_empty() {
                 child_views.push(View::Text {
                     content: text,
@@ -11219,7 +12553,8 @@ let tabs_inner = View::Row {
             spacing: 0,
             padding: 0,
             style,
-            onclick: None, on_right_click: None,
+            onclick: None,
+            on_right_click: None,
         }
     }
 
@@ -11230,16 +12565,20 @@ let tabs_inner = View::Row {
         events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let placeholder = self.extract_string_with(props, "placeholder", bindings)
+        let placeholder = self
+            .extract_string_with(props, "placeholder", bindings)
             .or_else(|| self.extract_string_with(props, "text", bindings))
             .unwrap_or_default();
 
         // Resolve value from state if it's a StateRef
-        let value = self.extract_string_with(props, "value", bindings).unwrap_or_default();
+        let value = self
+            .extract_string_with(props, "value", bindings)
+            .unwrap_or_default();
 
         // Plan 448 / Design 22: input adopts Shadcn-Vue default preset
         // (border rounded-md px-3 py-2 text-sm)
-        let user = self.extract_string_with(props, "class", bindings)
+        let user = self
+            .extract_string_with(props, "class", bindings)
             .or_else(|| self.extract_string_with(props, "style", bindings));
         let default_preset = "border rounded-md px-3 py-2 text-sm";
         let merged = match user.as_deref() {
@@ -11295,10 +12634,16 @@ let tabs_inner = View::Row {
         events: &HashMap<String, crate::aura::AuraEvent>,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let value = self.extract_f64_with(props, "value", bindings).unwrap_or(0.0) as f32;
+        let value = self
+            .extract_f64_with(props, "value", bindings)
+            .unwrap_or(0.0) as f32;
         let min = self.extract_f64_with(props, "min", bindings).unwrap_or(0.0) as f32;
-        let max = self.extract_f64_with(props, "max", bindings).unwrap_or(100.0) as f32;
-        let step = self.extract_f64_with(props, "step", bindings).map(|s| s as f32);
+        let max = self
+            .extract_f64_with(props, "max", bindings)
+            .unwrap_or(100.0) as f32;
+        let step = self
+            .extract_f64_with(props, "step", bindings)
+            .map(|s| s as f32);
 
         // 直构 View::Slider（不经 builder .on_change——闭包重包会丢
         // SliderChangeHandler 的标签旁路，快照 actions 面）。
@@ -11327,7 +12672,11 @@ let tabs_inner = View::Row {
         let label = extract_handler_name(&event.handler).to_string();
         Some(crate::ui::view::SliderChangeHandler::new_labeled(
             move |v: f32| match &base {
-                DynamicMessage::Typed { widget_name, event_name, args } => {
+                DynamicMessage::Typed {
+                    widget_name,
+                    event_name,
+                    args,
+                } => {
                     let mut new_args = args.clone();
                     new_args.push(Value::Float(v as f64));
                     DynamicMessage::Typed {
@@ -11428,10 +12777,7 @@ let tabs_inner = View::Row {
                     } else {
                         // 446-U4 既有契约:handler 以选中值为实参（单串编码,
                         // 与循环按钮实参同一条已证 decode 路径）。
-                        DynamicMessage::String(format!(
-                            "{}\u{1F}s\u{1F}{}",
-                            handler, chosen
-                        ))
+                        DynamicMessage::String(format!("{}\u{1F}s\u{1F}{}", handler, chosen))
                     }
                 })
             });
@@ -11460,16 +12806,22 @@ let tabs_inner = View::Row {
     ) {
         for child in children {
             match child {
-                AuraNode::Element { tag, props: cprops, children: ckids, .. }
-                    if tag == "option" || tag == "Option" =>
-                {
+                AuraNode::Element {
+                    tag,
+                    props: cprops,
+                    children: ckids,
+                    ..
+                } if tag == "option" || tag == "Option" => {
                     let label = self
                         .child_element_text(cprops, bindings)
                         .or_else(|| {
-                            ckids.iter().filter_map(|k| match k {
-                                AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
-                                _ => None,
-                            }).next()
+                            ckids
+                                .iter()
+                                .filter_map(|k| match k {
+                                    AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
+                                    _ => None,
+                                })
+                                .next()
                         })
                         .unwrap_or_default();
                     if label.is_empty() {
@@ -11483,11 +12835,16 @@ let tabs_inner = View::Row {
                     labels.push(label);
                     values.push(value);
                 }
-                AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                AuraNode::ForLoop {
+                    var,
+                    index,
+                    iterable,
+                    body,
+                    ..
+                } => {
                     let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
                     let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
-                    let has_inner_dot =
-                        stripped.contains('.') && !stripped.starts_with("store.");
+                    let has_inner_dot = stripped.contains('.') && !stripped.starts_with("store.");
                     let array = if has_inner_dot {
                         match self.resolve_iterable(iterable, bindings) {
                             Some(elems) => auto_val::Array::from(elems),
@@ -11532,17 +12889,20 @@ let tabs_inner = View::Row {
         events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let placeholder = self.extract_string_with(props, "placeholder", bindings)
+        let placeholder = self
+            .extract_string_with(props, "placeholder", bindings)
             .unwrap_or_default();
 
         // Plan 370: autodown_editor uses `content:` for its text; standard
         // inputs use `value:`. Accept either so editor bodies render.
-        let value = self.extract_string_with(props, "value", bindings)
+        let value = self
+            .extract_string_with(props, "value", bindings)
             .or_else(|| self.extract_string_with(props, "content", bindings))
             .unwrap_or_default();
 
         // Plan 448 / Design 22: textarea adopts Shadcn-Vue default preset
-        let user_ta = self.extract_string_with(props, "class", bindings)
+        let user_ta = self
+            .extract_string_with(props, "class", bindings)
             .or_else(|| self.extract_string_with(props, "style", bindings));
         let default_ta_preset = "border rounded-md px-3 py-2 text-sm";
         let merged_ta = match user_ta.as_deref() {
@@ -11602,7 +12962,8 @@ let tabs_inner = View::Row {
         }
         builder = builder.highlight(highlight);
         builder = builder.ghost(
-            self.extract_string_with(props, "ghost", bindings).unwrap_or_default(),
+            self.extract_string_with(props, "ghost", bindings)
+                .unwrap_or_default(),
         );
 
         // Plan 057 续(Tab 补全):收集 onkeydown.* 绑定 — 规范化键名(剥
@@ -11621,7 +12982,10 @@ let tabs_inner = View::Row {
                 let norm = rest
                     .split('.')
                     .filter(|seg| {
-                        !matches!(*seg, "prevent" | "stop" | "exact" | "capture" | "self" | "once")
+                        !matches!(
+                            *seg,
+                            "prevent" | "stop" | "exact" | "capture" | "self" | "once"
+                        )
                     })
                     .collect::<Vec<_>>()
                     .join(".")
@@ -11736,7 +13100,10 @@ let tabs_inner = View::Row {
                 let norm = rest
                     .split('.')
                     .filter(|seg| {
-                        !matches!(*seg, "prevent" | "stop" | "exact" | "capture" | "self" | "once")
+                        !matches!(
+                            *seg,
+                            "prevent" | "stop" | "exact" | "capture" | "self" | "once"
+                        )
                     })
                     .collect::<Vec<_>>()
                     .join(".")
@@ -11962,8 +13329,14 @@ let tabs_inner = View::Row {
             .filter_map(|item| {
                 let obj = self.bridge.materialize_obj_ref(item);
                 if let auto_val::Value::Obj(map) = obj {
-                    let text = map.get("text").map(|v| v.as_str().to_string()).unwrap_or_default();
-                    let kind = map.get("kind").map(|v| v.as_str().to_string()).unwrap_or_default();
+                    let text = map
+                        .get("text")
+                        .map(|v| v.as_str().to_string())
+                        .unwrap_or_default();
+                    let kind = map
+                        .get("kind")
+                        .map(|v| v.as_str().to_string())
+                        .unwrap_or_default();
                     if text.is_empty() && kind.is_empty() {
                         None
                     } else {
@@ -11983,18 +13356,19 @@ let tabs_inner = View::Row {
         events: &HashMap<String, AuraEvent>,
         bindings: &Bindings,
     ) -> View<DynamicMessage> {
-        let label = self.extract_string(props, "text")
+        let label = self
+            .extract_string(props, "text")
             .or_else(|| self.extract_string(props, "label"))
             .unwrap_or_default();
 
         // Resolve checked from state ref, literal, or binding path (e.g., todo.done)
-        let is_checked = props.get("checked")
+        let is_checked = props
+            .get("checked")
             .or_else(|| props.get("is_checked"))
             .map(|v| match v {
-                AuraPropValue::Expr(expr) => {
-                    self.resolve_expr_to_value(expr, bindings)
-                        .map(|val| val.as_bool())
-                }
+                AuraPropValue::Expr(expr) => self
+                    .resolve_expr_to_value(expr, bindings)
+                    .map(|val| val.as_bool()),
                 _ => None,
             })
             .flatten()
@@ -12012,7 +13386,10 @@ let tabs_inner = View::Row {
             view = view.on_toggle(msg);
         }
         if let Some(s) = style {
-            if let View::Checkbox { style: ref mut st, .. } = view {
+            if let View::Checkbox {
+                style: ref mut st, ..
+            } = view
+            {
                 *st = Some(s);
             }
         }
@@ -12024,12 +13401,17 @@ let tabs_inner = View::Row {
     // ========================================================================
 
     /// Convert an AuraTextContent to a string, resolving interpolations.
-    fn convert_text_with(&self, content: &AuraTextContent, bindings: &Bindings) -> View<DynamicMessage> {
+    fn convert_text_with(
+        &self,
+        content: &AuraTextContent,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
         let resolved = match content {
             AuraTextContent::Literal(s) => s.clone(),
-            AuraTextContent::Interpolated { template, bindings: tpl_bindings } => {
-                self.resolve_interpolation_with(template, tpl_bindings, bindings)
-            }
+            AuraTextContent::Interpolated {
+                template,
+                bindings: tpl_bindings,
+            } => self.resolve_interpolation_with(template, tpl_bindings, bindings),
         };
 
         View::Text {
@@ -12045,7 +13427,12 @@ let tabs_inner = View::Row {
 
     /// Resolve a string interpolation template containing `${.field}` references.
     /// Resolve interpolation with loop variable bindings support.
-    fn resolve_interpolation_with(&self, template: &str, tpl_bindings: &[String], loop_bindings: &Bindings) -> String {
+    fn resolve_interpolation_with(
+        &self,
+        template: &str,
+        tpl_bindings: &[String],
+        loop_bindings: &Bindings,
+    ) -> String {
         let mut result = resolve_i18n_template(template);
 
         for field_name in tpl_bindings {
@@ -12054,14 +13441,22 @@ let tabs_inner = View::Row {
             // Err → 输出 "${...}" 字面量。构造嵌套 Dot 表达式走
             // resolve_expr_to_value(bindings/computed/state + Obj 遍历),失败再回退。
             // 前导点区分根:带点 = self 根;不带 = 裸 Ident 根(首段查 bindings)。
-            let pattern_dot = format!("${{{}}}", format!(".{}", field_name.trim_start_matches('.')));
+            let pattern_dot = format!(
+                "${{{}}}",
+                format!(".{}", field_name.trim_start_matches('.'))
+            );
             let pattern_bare = format!("${{{}}}", field_name);
             let value_str = if field_name.contains('.') {
                 let trimmed = field_name.trim_start_matches('.');
                 let mut parts = trimmed.split('.');
                 let root_name = parts.next().unwrap_or("");
                 let mut expr = Expr::Ident(
-                    if field_name.starts_with('.') { ".".to_string() } else { root_name.to_string() }.into(),
+                    if field_name.starts_with('.') {
+                        ".".to_string()
+                    } else {
+                        root_name.to_string()
+                    }
+                    .into(),
                 );
                 if !field_name.starts_with('.') {
                     for part in parts {
@@ -12159,11 +13554,10 @@ let tabs_inner = View::Row {
                 let obj_val = self.resolve_expr_to_value(object, bindings);
                 let field_str = field.as_str();
                 match obj_val {
-                    Some(Value::Obj(map)) => {
-                        map.get(field_str)
-                            .map(|v| value_to_display_string(&v))
-                            .unwrap_or_default()
-                    }
+                    Some(Value::Obj(map)) => map
+                        .get(field_str)
+                        .map(|v| value_to_display_string(&v))
+                        .unwrap_or_default(),
                     Some(Value::Int(id)) if id >= 4_000_000 => {
                         let raw = Value::Int(id);
                         let materialized = self.bridge.materialize_obj_ref(&raw);
@@ -12202,9 +13596,14 @@ let tabs_inner = View::Row {
                         // then body must be a single expression (Plan 339 contract)
                         if let Some(stmt) = first_meaningful_stmt(&branch.body) {
                             match stmt {
-                                crate::ast::Stmt::Expr(e) => return self.resolve_expr_to_string_with(e, bindings),
+                                crate::ast::Stmt::Expr(e) => {
+                                    return self.resolve_expr_to_string_with(e, bindings)
+                                }
                                 crate::ast::Stmt::If(nested_if) => {
-                                    return self.resolve_expr_to_string_with(&crate::ast::Expr::If(nested_if.clone()), bindings);
+                                    return self.resolve_expr_to_string_with(
+                                        &crate::ast::Expr::If(nested_if.clone()),
+                                        bindings,
+                                    );
                                 }
                                 _ => {}
                             }
@@ -12215,9 +13614,14 @@ let tabs_inner = View::Row {
                 if let Some(else_body) = &if_expr.else_ {
                     if let Some(stmt) = first_meaningful_stmt(else_body) {
                         match stmt {
-                            crate::ast::Stmt::Expr(e) => return self.resolve_expr_to_string_with(e, bindings),
+                            crate::ast::Stmt::Expr(e) => {
+                                return self.resolve_expr_to_string_with(e, bindings)
+                            }
                             crate::ast::Stmt::If(nested_if) => {
-                                return self.resolve_expr_to_string_with(&crate::ast::Expr::If(nested_if.clone()), bindings);
+                                return self.resolve_expr_to_string_with(
+                                    &crate::ast::Expr::If(nested_if.clone()),
+                                    bindings,
+                                );
                             }
                             _ => {}
                         }
@@ -12229,28 +13633,26 @@ let tabs_inner = View::Row {
             // (如 "grid grid-cols-" + n)此前无 Bina 臂 → 求值为空串,动态
             // 拼的 Tailwind 类整体丢失。委托 resolve_expr_to_value 的
             // Bina(Add)(display-form 拼接,958819ab2 已实现)。
-            Expr::Bina(_, Op::Add, _) => {
-                match self.resolve_expr_to_value(expr, bindings) {
-                    Some(v) => value_to_display_string(&v),
-                    None => String::new(),
-                }
-            }
+            Expr::Bina(_, Op::Add, _) => match self.resolve_expr_to_value(expr, bindings) {
+                Some(v) => value_to_display_string(&v),
+                None => String::new(),
+            },
             // Plan 437 Phase 2:索引表达式(`seg["d"]`)—— svg 子树动态
             // 属性此前无 Index 臂 → 空串 → attr 被丢(循环段记录的路径/
             // 颜色整体消失)。委托 resolve_expr_to_value 的 Index 臂
             // (含 VmRef 记录物化)后取 display 形态。
-            Expr::Index(_, _) => {
-                match self.resolve_expr_to_value(expr, bindings) {
-                    Some(v) => value_to_display_string(&v),
-                    None => String::new(),
-                }
-            }
+            Expr::Index(_, _) => match self.resolve_expr_to_value(expr, bindings) {
+                Some(v) => value_to_display_string(&v),
+                None => String::new(),
+            },
             // PLAN-050 T9 (C7): t("k")/i18n.t("k") 文本/prop 位——经查表
             // 取文案（未命中回落 key），此前无 Call 臂 → 恒空串。
             Expr::Call(call) => {
                 if let Expr::Ident(name) = call.name.as_ref() {
                     if crate::ui::style::has_style_recipe(name.as_str()) {
-                        if let Ok(desugared) = crate::ui::style::expand_recipe_call(name.as_str(), &call.args.args) {
+                        if let Ok(desugared) =
+                            crate::ui::style::expand_recipe_call(name.as_str(), &call.args.args)
+                        {
                             return self.resolve_expr_to_string_with(&desugared, bindings);
                         }
                     }
@@ -12263,8 +13665,7 @@ let tabs_inner = View::Row {
                         };
                         t_call_params(&resolver, call)
                     };
-                    let text =
-                        crate::ui::i18n_lookup::lookup(&key).unwrap_or(key);
+                    let text = crate::ui::i18n_lookup::lookup(&key).unwrap_or(key);
                     return crate::ui::i18n_lookup::substitute_params(&text, &params);
                 }
                 match self.resolve_expr_to_value(expr, bindings) {
@@ -12329,8 +13730,7 @@ let tabs_inner = View::Row {
                     // 求值入网；guard 嵌套使外层 memo 条目/信号收编本信号的
                     // dep 面（pull 式级联）。
                     if bindings.is_empty() {
-                        if let Some(hit) =
-                            self.bridge.computed_signal_hit(&self.widget_name, name)
+                        if let Some(hit) = self.bridge.computed_signal_hit(&self.widget_name, name)
                         {
                             return Some(hit);
                         }
@@ -12341,8 +13741,12 @@ let tabs_inner = View::Row {
                             _ => self.resolve_expr_to_value(&c.expr, bindings),
                         });
                         if let Some(v) = &out {
-                            self.bridge
-                                .computed_signal_store(&self.widget_name, name, v.clone(), &rec);
+                            self.bridge.computed_signal_store(
+                                &self.widget_name,
+                                name,
+                                v.clone(),
+                                &rec,
+                            );
                         }
                         return out;
                     }
@@ -12352,10 +13756,7 @@ let tabs_inner = View::Row {
                     // expression resolver cannot provide. A missing fn (older
                     // construction path) degrades to None, the old behavior.
                     if let Expr::Block(_) = &c.expr {
-                        return self
-                            .bridge
-                            .call_computed_fn(&self.widget_name, name)
-                            .ok();
+                        return self.bridge.call_computed_fn(&self.widget_name, name).ok();
                     }
                     return self.resolve_expr_to_value(&c.expr, bindings);
                 }
@@ -12388,7 +13789,9 @@ let tabs_inner = View::Row {
                     let id = self.bridge.state_obj_id();
                     return Some(self.bridge.materialize_obj_ref(&Value::Int(id as i32)));
                 }
-                bindings.get(field_name).cloned()
+                bindings
+                    .get(field_name)
+                    .cloned()
                     .or_else(|| self.eval_computed(field_name, bindings))
                     .or_else(|| self.read_state(field_name).ok())
             }
@@ -12440,7 +13843,8 @@ let tabs_inner = View::Row {
                         if let Some(v) = bindings.get(field.as_str()) {
                             return Some(v.clone());
                         }
-                        return self.eval_computed(field.as_str(), bindings)
+                        return self
+                            .eval_computed(field.as_str(), bindings)
                             .or_else(|| self.read_state(field.as_str()).ok());
                     }
                 }
@@ -12478,7 +13882,11 @@ let tabs_inner = View::Row {
                 match (&target_val, &index_val) {
                     (Value::Array(arr), Value::Int(i)) => {
                         let idx = *i as usize;
-                        if idx < arr.len() { Some(arr[idx].clone()) } else { None }
+                        if idx < arr.len() {
+                            Some(arr[idx].clone())
+                        } else {
+                            None
+                        }
                     }
                     (Value::Obj(map), Value::Str(key)) => map.get(key.as_str()),
                     // Plan 318: index into a list/array stored as a VmRef or Int
@@ -12564,13 +13972,17 @@ let tabs_inner = View::Row {
             // falls back to the literal "${name}" placeholder.
             Expr::Bina(left, Op::And, right) => {
                 let l = self.resolve_expr_to_value(left, bindings)?;
-                if matches!(&l, Value::Bool(false) | Value::Nil) { return Some(Value::Bool(false)); }
+                if matches!(&l, Value::Bool(false) | Value::Nil) {
+                    return Some(Value::Bool(false));
+                }
                 let r = self.resolve_expr_to_value(right, bindings)?;
                 Some(Value::Bool(!matches!(&r, Value::Bool(false) | Value::Nil)))
             }
             Expr::Bina(left, Op::Or, right) => {
                 let l = self.resolve_expr_to_value(left, bindings)?;
-                if !matches!(&l, Value::Bool(false) | Value::Nil) { return Some(Value::Bool(true)); }
+                if !matches!(&l, Value::Bool(false) | Value::Nil) {
+                    return Some(Value::Bool(true));
+                }
                 let r = self.resolve_expr_to_value(right, bindings)?;
                 Some(Value::Bool(!matches!(&r, Value::Bool(false) | Value::Nil)))
             }
@@ -12580,12 +13992,10 @@ let tabs_inner = View::Row {
             // view-build fast path; previously fell to `_ => None`, voiding
             // any computed containing `??` and rendering the literal
             // "${name}" placeholder in VM snapshots.
-            Expr::NullCoalesce(left, right) => {
-                match self.resolve_expr_to_value(left, bindings) {
-                    Some(v) if !matches!(v, Value::Nil) => Some(v),
-                    _ => self.resolve_expr_to_value(right, bindings),
-                }
-            }
+            Expr::NullCoalesce(left, right) => match self.resolve_expr_to_value(left, bindings) {
+                Some(v) if !matches!(v, Value::Nil) => Some(v),
+                _ => self.resolve_expr_to_value(right, bindings),
+            },
             // Plan 053 后续(ash-gui VM): string concat via `+` (e.g. `"~" + .store.cwd...`
             // in cwd_display, `"⚙ " + .store.job_list.len()` in jobs_label). When either
             // operand resolves to a string, concatenate display forms.
@@ -12625,7 +14035,11 @@ let tabs_inner = View::Row {
                         call.args.args.first().and_then(|a| match a {
                             crate::ast::Arg::Pos(e) => {
                                 let s = self.resolve_expr_to_string_with(e, bindings);
-                                if s.is_empty() { None } else { Some(s) }
+                                if s.is_empty() {
+                                    None
+                                } else {
+                                    Some(s)
+                                }
                             }
                             _ => None,
                         })
@@ -12638,11 +14052,9 @@ let tabs_inner = View::Row {
                             };
                             t_call_params(&resolver, call)
                         };
-                        let text =
-                            crate::ui::i18n_lookup::lookup(&key).unwrap_or_else(|| key);
+                        let text = crate::ui::i18n_lookup::lookup(&key).unwrap_or_else(|| key);
                         return Some(Value::Str(
-                            crate::ui::i18n_lookup::substitute_params(&text, &params)
-                                .into(),
+                            crate::ui::i18n_lookup::substitute_params(&text, &params).into(),
                         ));
                     }
                 }
@@ -12695,22 +14107,22 @@ let tabs_inner = View::Row {
                     let recv = self.resolve_expr_to_value(recv_expr, bindings)?;
                     let arg = |i: usize| -> Option<i32> {
                         call.args.args.get(i).and_then(|a| match a {
-                            crate::ast::Arg::Pos(e) => {
-                                self.resolve_expr_to_value(e, bindings).and_then(|v| match v {
+                            crate::ast::Arg::Pos(e) => self
+                                .resolve_expr_to_value(e, bindings)
+                                .and_then(|v| match v {
                                     Value::Int(n) => Some(n),
                                     Value::Float(f) => Some(f as i32),
                                     Value::Double(f) => Some(f as i32),
                                     _ => None,
-                                })
-                            }
+                                }),
                             _ => None,
                         })
                     };
                     let arg_str = |i: usize| -> Option<String> {
                         call.args.args.get(i).and_then(|a| match a {
-                            crate::ast::Arg::Pos(e) => {
-                                self.resolve_expr_to_value(e, bindings).map(|v| value_to_display_string(&v))
-                            }
+                            crate::ast::Arg::Pos(e) => self
+                                .resolve_expr_to_value(e, bindings)
+                                .map(|v| value_to_display_string(&v)),
                             _ => None,
                         })
                     };
@@ -12860,7 +14272,10 @@ let tabs_inner = View::Row {
         match item {
             Value::Obj(map) => {
                 // Check title field for a match
-                let title = map.get("title").map(|v| value_to_display_string(&v)).unwrap_or_default();
+                let title = map
+                    .get("title")
+                    .map(|v| value_to_display_string(&v))
+                    .unwrap_or_default();
                 title.to_lowercase().contains(&search_lower)
             }
             _ => true, // non-obj items always match
@@ -12925,7 +14340,7 @@ let tabs_inner = View::Row {
                     }
                 }
                 if matched {
-                    cond = cond[1..cond.len()-1].trim();
+                    cond = cond[1..cond.len() - 1].trim();
                 } else {
                     break;
                 }
@@ -13009,7 +14424,8 @@ let tabs_inner = View::Row {
                     // 与无点臂 PLAN-048 L1 同口径：剥 store. 前缀后查 computed 表。
                     let name = path.strip_prefix("store.").unwrap_or(path);
                     let name = name.rsplit('.').next().unwrap_or(name);
-                    return self.eval_computed(name, bindings)
+                    return self
+                        .eval_computed(name, bindings)
                         .map(|v| v.as_bool())
                         .unwrap_or(false);
                 }
@@ -13036,7 +14452,8 @@ let tabs_inner = View::Row {
             // PLAN-749 G1: fn 调用真值位兜底（`if extractRunId(.tc)` 形——
             // musk chat_message.at:339 坑①家族第三型：同 fn 在 computed/
             // text 位工作、条件位此前静默返空）。
-            return self.resolve_condition_operand_fallback(cond, bindings)
+            return self
+                .resolve_condition_operand_fallback(cond, bindings)
                 .map(|v| v.as_bool())
                 .unwrap_or(false);
         };
@@ -13044,7 +14461,10 @@ let tabs_inner = View::Row {
         // Read state value for lhs
         // Normalize spaces inside .len() so "notes.len ( )" matches ".len()" suffix.
         // The parser may produce "len ( )" with spaces inside the parens.
-        let lhs_normalized = lhs.replace(" ( ", "(").replace("( ", "(").replace(" )", ")");
+        let lhs_normalized = lhs
+            .replace(" ( ", "(")
+            .replace("( ", "(")
+            .replace(" )", ")");
         // PLAN-053 P-053-2: nil 态追踪 —— Nil 的显示串是 ""，与 null 家族
         // 字面量("None"/"null"/"nil")字符串比较恒不等(musk gate 卡常显
         // 根因)。比较阶段按 null 语义处理，见下方 compare 段。
@@ -13199,15 +14619,13 @@ let tabs_inner = View::Row {
                                 rhs_nil = matches!(v, Value::Nil | Value::Null);
                                 value_to_display_string(&v)
                             }
-                            None => {
-                                match self.resolve_condition_operand_fallback(rhs, bindings) {
-                                    Some(v) => {
-                                        rhs_nil = matches!(v, Value::Nil | Value::Null);
-                                        value_to_display_string(&v)
-                                    }
-                                    None => return false,
+                            None => match self.resolve_condition_operand_fallback(rhs, bindings) {
+                                Some(v) => {
+                                    rhs_nil = matches!(v, Value::Nil | Value::Null);
+                                    value_to_display_string(&v)
                                 }
-                            }
+                                None => return false,
+                            },
                         }
                     }
                 }
@@ -13269,22 +14687,16 @@ let tabs_inner = View::Row {
     /// bridge.call_vm_fn 与 t()/style recipe 通道、Dot 臂含 store 特判）。
     /// 仅兜底不前置：既有绿臂语义零扰动；解析失败回 None（调用方落原
     /// false 语义）。
-    fn resolve_condition_operand_fallback(
-        &self,
-        src: &str,
-        bindings: &Bindings,
-    ) -> Option<Value> {
+    fn resolve_condition_operand_fallback(&self, src: &str, bindings: &Bindings) -> Option<Value> {
         let trimmed = src.trim();
         if trimmed.is_empty() {
             return None;
         }
         // 操作数不该再含比较/逻辑操作符（外层已拆分）——防御性跳过，
         // 避免把复合条件当单表达式误解析。
-        if [
-            " == ", " != ", " && ", " || ", " > ", " < ", " >= ", " <= ",
-        ]
-        .iter()
-        .any(|op| trimmed.contains(op))
+        if [" == ", " != ", " && ", " || ", " > ", " < ", " >= ", " <= "]
+            .iter()
+            .any(|op| trimmed.contains(op))
         {
             return None;
         }
@@ -13315,7 +14727,7 @@ let tabs_inner = View::Row {
         let mut replacements: Vec<(String, String)> = Vec::new();
 
         while i + 2 < len {
-            if i + 3 < len && &bytes[i..i+3] == b"${." {
+            if i + 3 < len && &bytes[i..i + 3] == b"${." {
                 // Found start of interpolation: ${.
                 let start = i;
                 let mut end = i + 3;
@@ -13357,7 +14769,7 @@ let tabs_inner = View::Row {
                     }
                 }
                 i = end + 1;
-            } else if i + 2 < len && &bytes[i..i+2] == b"${" {
+            } else if i + 2 < len && &bytes[i..i + 2] == b"${" {
                 // Plan 503: loop-member form ${member.field} — single dot
                 // path into the loop-bound Obj row.
                 let start = i;
@@ -13379,8 +14791,7 @@ let tabs_inner = View::Row {
                             );
                             if let Some(v) = self.resolve_expr_to_value(&expr, bindings) {
                                 let full_pattern = s[start..end + 1].to_string();
-                                replacements
-                                    .push((full_pattern, value_to_display_string(&v)));
+                                replacements.push((full_pattern, value_to_display_string(&v)));
                             }
                         }
                     }
@@ -13479,7 +14890,10 @@ let tabs_inner = View::Row {
     }
 
     fn resolve_binding_path(&self, path: &str, bindings: &Bindings) -> Option<Value> {
-        let clean_path = path.strip_prefix("this.").or_else(|| path.strip_prefix('.')).unwrap_or(path);
+        let clean_path = path
+            .strip_prefix("this.")
+            .or_else(|| path.strip_prefix('.'))
+            .unwrap_or(path);
         let parts: Vec<&str> = clean_path.split('.').collect();
         if parts.is_empty() {
             return None;
@@ -13549,7 +14963,11 @@ let tabs_inner = View::Row {
         let on_move = aura_events_get_base(events, "onmousemove").map(|event| {
             let base = self.event_to_message_with(event, bindings);
             crate::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| match &base {
-                DynamicMessage::Typed { widget_name, event_name, args } => {
+                DynamicMessage::Typed {
+                    widget_name,
+                    event_name,
+                    args,
+                } => {
                     let mut new_args = args.clone();
                     // PLAN-043 T9: +1e-3 分数化——auto_val nanbox 整值 float
                     // 实参绑定腐坏绕道（DEBTS 043 引擎债；0.001px 不可见）。
@@ -13580,7 +14998,11 @@ let tabs_inner = View::Row {
     ) -> crate::ui::view::PointerMoveHandler<DynamicMessage> {
         let base = self.event_to_message_with(event, bindings);
         crate::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| match &base {
-            DynamicMessage::Typed { widget_name, event_name, args } => {
+            DynamicMessage::Typed {
+                widget_name,
+                event_name,
+                args,
+            } => {
                 let mut new_args = args.clone();
                 new_args.push(Value::Float(x as f64 + 0.001));
                 new_args.push(Value::Float(y as f64 + 0.001));
@@ -13612,16 +15034,15 @@ let tabs_inner = View::Row {
             .extract_string_with(props, "coords", bindings)
             .and_then(|s| parse_coords_extent(&s));
         let clear = self.extract_string_with(props, "clear", bindings);
-        let on_pen_start = aura_events_get_base(events, "onpenstart")
-            .map(|e| self.pen_handler(e, bindings));
-        let on_pen_move = aura_events_get_base(events, "onpenmove")
-            .map(|e| self.pen_handler(e, bindings));
-        let on_pen_end = aura_events_get_base(events, "onpenend")
-            .map(|e| self.pen_handler(e, bindings));
+        let on_pen_start =
+            aura_events_get_base(events, "onpenstart").map(|e| self.pen_handler(e, bindings));
+        let on_pen_move =
+            aura_events_get_base(events, "onpenmove").map(|e| self.pen_handler(e, bindings));
+        let on_pen_end =
+            aura_events_get_base(events, "onpenend").map(|e| self.pen_handler(e, bindings));
         // PLAN-661 T-05（R-1）：onhit → ElementHitHandler（命中元素 id
         // 字符串载荷；标签旁路供快照 actions 挂 press）。
-        let on_hit = aura_events_get_base(events, "onhit")
-            .map(|e| self.hit_handler(e, bindings));
+        let on_hit = aura_events_get_base(events, "onhit").map(|e| self.hit_handler(e, bindings));
         let style = self.extract_style_with(props, bindings);
         View::Canvas {
             scene,
@@ -13660,9 +15081,7 @@ let tabs_inner = View::Row {
             },
             _ => return None,
         };
-        let pts = self
-            .read_state_as_vec(&format!("{prefix}_pts"))
-            .ok()?;
+        let pts = self.read_state_as_vec(&format!("{prefix}_pts")).ok()?;
         let meta = self
             .read_state_as_vec(&format!("{prefix}_meta"))
             .unwrap_or_default();
@@ -13694,7 +15113,11 @@ let tabs_inner = View::Row {
         let label = extract_handler_name(&event.handler).to_string();
         crate::ui::view::ElementHitHandler::new_labeled(
             move |id: String| match &base {
-                DynamicMessage::Typed { widget_name, event_name, args } => {
+                DynamicMessage::Typed {
+                    widget_name,
+                    event_name,
+                    args,
+                } => {
                     let mut new_args = args.clone();
                     new_args.push(Value::Str(id.into()));
                     DynamicMessage::Typed {
@@ -13936,15 +15359,31 @@ let tabs_inner = View::Row {
         let mut inner = String::new();
         for child in children {
             match child {
-                AuraNode::Element { tag: ctag, props: cprops, children: cchildren, .. } => {
+                AuraNode::Element {
+                    tag: ctag,
+                    props: cprops,
+                    children: cchildren,
+                    ..
+                } => {
                     if is_svg_shape_tag(ctag) {
-                        inner.push_str(&self.serialize_svg_element(ctag, cprops, cchildren, bindings));
+                        inner.push_str(
+                            &self.serialize_svg_element(ctag, cprops, cchildren, bindings),
+                        );
                     }
                 }
-                AuraNode::Conditional { condition, then_body, else_body, .. } => {
+                AuraNode::Conditional {
+                    condition,
+                    then_body,
+                    else_body,
+                    ..
+                } => {
                     let is_true = self.eval_condition_with(condition, bindings);
                     let empty = Vec::new();
-                    let body = if is_true { then_body } else { else_body.as_ref().unwrap_or(&empty) };
+                    let body = if is_true {
+                        then_body
+                    } else {
+                        else_body.as_ref().unwrap_or(&empty)
+                    };
                     inner.push_str(&self.serialize_svg_children(body, bindings));
                 }
                 // Plan 437 Phase 2:for 循环展开 —— Conditional 修复(Plan 445
@@ -13952,23 +15391,31 @@ let tabs_inner = View::Row {
                 // 不出现在 svgdoc(组件化 chart 的 seg 循环全空)。迭代语义
                 // 与主转换器 ForLoop 臂一致(bindings → heap-id/VmRef 列表 →
                 // read_state_as_vec),逐项绑定 var 后递归序列化循环体。
-                AuraNode::ForLoop { var, index, iterable, body, .. } => {
+                AuraNode::ForLoop {
+                    var,
+                    index,
+                    iterable,
+                    body,
+                    ..
+                } => {
                     let state_name = iterable.strip_prefix('.').unwrap_or(iterable);
                     let stripped = iterable.strip_prefix('.').unwrap_or(iterable);
-                    let items: Vec<Value> = if stripped.contains('.') && !stripped.starts_with("store.") {
-                        self.resolve_iterable(iterable, bindings).unwrap_or_default()
-                    } else if let Some(val) = bindings.get(state_name).cloned() {
-                        match val {
-                            auto_val::Value::Array(arr) => arr.iter().cloned().collect(),
-                            auto_val::Value::Int(id) if id >= 4_000_000 => {
-                                self.bridge.index_list_all(id as usize)
+                    let items: Vec<Value> =
+                        if stripped.contains('.') && !stripped.starts_with("store.") {
+                            self.resolve_iterable(iterable, bindings)
+                                .unwrap_or_default()
+                        } else if let Some(val) = bindings.get(state_name).cloned() {
+                            match val {
+                                auto_val::Value::Array(arr) => arr.iter().cloned().collect(),
+                                auto_val::Value::Int(id) if id >= 4_000_000 => {
+                                    self.bridge.index_list_all(id as usize)
+                                }
+                                auto_val::Value::VmRef(r) => self.bridge.index_list_all(r.id),
+                                _ => Vec::new(),
                             }
-                            auto_val::Value::VmRef(r) => self.bridge.index_list_all(r.id),
-                            _ => Vec::new(),
-                        }
-                    } else {
-                        self.read_state_as_vec(state_name).unwrap_or_default()
-                    };
+                        } else {
+                            self.read_state_as_vec(state_name).unwrap_or_default()
+                        };
                     for (i, item) in items.iter().enumerate() {
                         let mut loop_bindings = bindings.clone();
                         loop_bindings.insert(var.clone(), self.bridge.materialize_obj_ref(item));
@@ -13984,11 +15431,7 @@ let tabs_inner = View::Row {
         inner
     }
 
-    fn extract_string(
-        &self,
-        props: &HashMap<String, AuraPropValue>,
-        key: &str,
-    ) -> Option<String> {
+    fn extract_string(&self, props: &HashMap<String, AuraPropValue>, key: &str) -> Option<String> {
         self.extract_string_with(props, key, &Bindings::new())
     }
 
@@ -14003,26 +15446,40 @@ let tabs_inner = View::Row {
     /// yields "Welcome\nJust now" (newline-separated), so the iced renderer
     /// can render title and time on separate lines with different styling.
     fn extract_children_text(&self, children: &[AuraNode], bindings: &Bindings) -> Option<String> {
-        let parts: Vec<String> = children.iter().filter_map(|c| match c {
-            AuraNode::Element { tag, props, .. }
-                if matches!(tag.as_str(), "text" | "label" | "h1" | "h2" | "h3" | "p" | "span") =>
-            {
-                self.extract_string_with(props, "text", bindings)
-                    .or_else(|| self.extract_string_with(props, "label", bindings))
-            }
-            AuraNode::Element { tag, children, .. }
-                if matches!(tag.as_str(), "row" | "col" | "column" | "container" | "scrollable" | "grid") =>
-            {
-                // Recurse into layout containers to find nested text.
-                self.extract_children_text(children, bindings)
-            }
-            AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
-            AuraNode::Text(AuraTextContent::Interpolated { template, bindings: tpl_bindings }) => {
-                Some(self.resolve_interpolation_with(template, tpl_bindings, bindings))
-            }
-            _ => None,
-        }).collect();
-        if parts.is_empty() { None } else { Some(parts.join("\n")) }
+        let parts: Vec<String> = children
+            .iter()
+            .filter_map(|c| match c {
+                AuraNode::Element { tag, props, .. }
+                    if matches!(
+                        tag.as_str(),
+                        "text" | "label" | "h1" | "h2" | "h3" | "p" | "span"
+                    ) =>
+                {
+                    self.extract_string_with(props, "text", bindings)
+                        .or_else(|| self.extract_string_with(props, "label", bindings))
+                }
+                AuraNode::Element { tag, children, .. }
+                    if matches!(
+                        tag.as_str(),
+                        "row" | "col" | "column" | "container" | "scrollable" | "grid"
+                    ) =>
+                {
+                    // Recurse into layout containers to find nested text.
+                    self.extract_children_text(children, bindings)
+                }
+                AuraNode::Text(AuraTextContent::Literal(s)) => Some(s.clone()),
+                AuraNode::Text(AuraTextContent::Interpolated {
+                    template,
+                    bindings: tpl_bindings,
+                }) => Some(self.resolve_interpolation_with(template, tpl_bindings, bindings)),
+                _ => None,
+            })
+            .collect();
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("\n"))
+        }
     }
 
     fn extract_string_with(
@@ -14065,9 +15522,7 @@ let tabs_inner = View::Row {
                 // resolve_expr_to_value 不查 computed 表——`.html` 落 None。
                 // 对裸 computed/Dot 引用补 computed 表兜底（与条件求值同口径）。
                 let computed_name = match expr {
-                    Expr::Dot(obj, field)
-                        if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") =>
-                    {
+                    Expr::Dot(obj, field) if matches!(obj.as_ref(), Expr::Ident(n) if n.as_str() == "." || n.as_str() == "self") => {
                         Some(field.as_str())
                     }
                     Expr::Ident(n) => Some(n.as_str().trim_start_matches('.')),
@@ -14096,11 +15551,7 @@ let tabs_inner = View::Row {
 
     /// Extract a u16 property from AuraNode props.
     /// PLAN-018 D10:int(scheme)字面量提取(负值合法:哨兵 -1 跟随主题)。
-    fn extract_i32_prop(
-        &self,
-        props: &HashMap<String, AuraPropValue>,
-        key: &str,
-    ) -> Option<i32> {
+    fn extract_i32_prop(&self, props: &HashMap<String, AuraPropValue>, key: &str) -> Option<i32> {
         match props.get(key)? {
             AuraPropValue::Expr(expr) => match expr {
                 Expr::Int(i) => Some(*i),
@@ -14124,11 +15575,7 @@ let tabs_inner = View::Row {
         Some(val.as_int())
     }
 
-    fn extract_u16(
-        &self,
-        props: &HashMap<String, AuraPropValue>,
-        key: &str,
-    ) -> Option<u16> {
+    fn extract_u16(&self, props: &HashMap<String, AuraPropValue>, key: &str) -> Option<u16> {
         match props.get(key)? {
             AuraPropValue::Expr(expr) => match expr {
                 Expr::Int(i) => {
@@ -14176,11 +15623,7 @@ let tabs_inner = View::Row {
     }
 
     /// Extract a bool property from AuraNode props.
-    fn extract_bool(
-        &self,
-        props: &HashMap<String, AuraPropValue>,
-        key: &str,
-    ) -> Option<bool> {
+    fn extract_bool(&self, props: &HashMap<String, AuraPropValue>, key: &str) -> Option<bool> {
         match props.get(key)? {
             AuraPropValue::Expr(Expr::Bool(b)) => Some(*b),
             _ => None,
@@ -14188,11 +15631,7 @@ let tabs_inner = View::Row {
     }
 
     /// Extract a float property from AuraNode props (supports StateRef resolution).
-    fn extract_f64(
-        &self,
-        props: &HashMap<String, AuraPropValue>,
-        key: &str,
-    ) -> Option<f64> {
+    fn extract_f64(&self, props: &HashMap<String, AuraPropValue>, key: &str) -> Option<f64> {
         let empty_bindings = HashMap::new();
         self.extract_f64_with(props, key, &empty_bindings)
     }
@@ -14225,11 +15664,9 @@ let tabs_inner = View::Row {
     /// Extract a style property from AuraNode props.
     ///
     /// Looks for a "class" or "style" prop and parses it into a Style object.
-    fn extract_style(
-        &self,
-        props: &HashMap<String, AuraPropValue>,
-    ) -> Option<Style> {
-        let style_str = self.extract_string(props, "class")
+    fn extract_style(&self, props: &HashMap<String, AuraPropValue>) -> Option<Style> {
+        let style_str = self
+            .extract_string(props, "class")
             .or_else(|| self.extract_string(props, "style"))?;
 
         Style::parse(&style_str).ok()
@@ -14263,9 +15700,12 @@ let tabs_inner = View::Row {
 /// 报废：desktop.at 图标格样式链嵌套 else 内含注释 → 条件样式求值落
 /// 空串 → hover 变体类 VM 轨整体丢失（布局件 hover 消费面归零）。
 fn first_meaningful_stmt(body: &crate::ast::Body) -> Option<&crate::ast::Stmt> {
-    body.stmts.iter().find(
-        |s| !matches!(s, crate::ast::Stmt::Comment(_) | crate::ast::Stmt::EmptyLine(_)),
-    )
+    body.stmts.iter().find(|s| {
+        !matches!(
+            s,
+            crate::ast::Stmt::Comment(_) | crate::ast::Stmt::EmptyLine(_)
+        )
+    })
 }
 
 /// PLAN-748 T-07（jade 件一根修）：滚动转写的视觉类上移。CSS 语义里
@@ -14312,9 +15752,20 @@ fn split_scroll_visual_classes(s: &Style) -> (Option<Style>, Style) {
         classes.push(height_cls.unwrap_or(crate::ui::style::StyleClass::Height(
             crate::ui::style::SizeValue::Full,
         )));
-        Style { classes, hover_classes: Vec::new(), variant_classes: Vec::new() }
+        Style {
+            classes,
+            hover_classes: Vec::new(),
+            variant_classes: Vec::new(),
+        }
     });
-    (viewport, Style { classes: rest, hover_classes: s.hover_classes.clone(), variant_classes: s.variant_classes.clone() })
+    (
+        viewport,
+        Style {
+            classes: rest,
+            hover_classes: s.hover_classes.clone(),
+            variant_classes: s.variant_classes.clone(),
+        },
+    )
 }
 
 /// PLAN-748 T-07：视口包装分支的 Scrollable 头寸补全——外部尺寸语义已由
@@ -14323,13 +15774,27 @@ fn split_scroll_visual_classes(s: &Style) -> (Option<Style>, Style) {
 /// 42px）。显式 w-*/h-* 保留原类（容器已镜像，同值无双关）。
 fn ensure_full_scroll_dims(s: &Style) -> Style {
     let mut classes = s.classes.clone();
-    if !classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::Width(_))) {
-        classes.push(crate::ui::style::StyleClass::Width(crate::ui::style::SizeValue::Full));
+    if !classes
+        .iter()
+        .any(|c| matches!(c, crate::ui::style::StyleClass::Width(_)))
+    {
+        classes.push(crate::ui::style::StyleClass::Width(
+            crate::ui::style::SizeValue::Full,
+        ));
     }
-    if !classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::Height(_))) {
-        classes.push(crate::ui::style::StyleClass::Height(crate::ui::style::SizeValue::Full));
+    if !classes
+        .iter()
+        .any(|c| matches!(c, crate::ui::style::StyleClass::Height(_)))
+    {
+        classes.push(crate::ui::style::StyleClass::Height(
+            crate::ui::style::SizeValue::Full,
+        ));
     }
-    Style { classes, hover_classes: s.hover_classes.clone(), variant_classes: s.variant_classes.clone() }
+    Style {
+        classes,
+        hover_classes: s.hover_classes.clone(),
+        variant_classes: s.variant_classes.clone(),
+    }
 }
 
 /// PLAN-050 T7 (C5): 生产管线的 use.web component 名单（lib.rs 装载期从
@@ -14445,9 +15910,7 @@ fn t_call_params(
     call: &crate::ast::Call,
 ) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    if let Some(crate::ast::Arg::Pos(crate::ast::Expr::Object(pairs))) =
-        call.args.args.get(1)
-    {
+    if let Some(crate::ast::Arg::Pos(crate::ast::Expr::Object(pairs))) = call.args.args.get(1) {
         for pair in pairs {
             if let Some(v) = build(&pair.value) {
                 out.push((pair.key.to_astr().to_string(), v));
@@ -14545,11 +16008,12 @@ fn rederive_layout(style: Option<&crate::ui::style::Style>) -> Option<RederivedL
     use crate::ui::style::StyleClass;
     let s = style?;
     let has = |pred: &dyn Fn(&StyleClass) -> bool| s.classes.iter().any(pred);
-    let is_col = |c: &StyleClass| {
-        matches!(c, StyleClass::FlexCol | StyleClass::FlexColReverse)
-    };
+    let is_col = |c: &StyleClass| matches!(c, StyleClass::FlexCol | StyleClass::FlexColReverse);
     let is_row = |c: &StyleClass| {
-        matches!(c, StyleClass::Flex | StyleClass::FlexRow | StyleClass::FlexRowReverse)
+        matches!(
+            c,
+            StyleClass::Flex | StyleClass::FlexRow | StyleClass::FlexRowReverse
+        )
     };
     let is_grid = |c: &StyleClass| matches!(c, StyleClass::Grid);
     // 多个 grid-cols-N 并存时取最后一个:Tailwind mobile-first,后写的断点类
@@ -14570,7 +16034,10 @@ fn rederive_layout(style: Option<&crate::ui::style::Style>) -> Option<RederivedL
                     _ => None,
                 })
                 .unwrap_or(0);
-            return Some(RederivedLayout::Grid { cols: cols.max(1), gap });
+            return Some(RederivedLayout::Grid {
+                cols: cols.max(1),
+                gap,
+            });
         }
     }
     if has(&is_col) {
@@ -14589,9 +16056,11 @@ fn rederive_layout(style: Option<&crate::ui::style::Style>) -> Option<RederivedL
 /// Plan 409 §10 续 5: 读 View 的 style,若 position:absolute 返回其
 /// top/right/bottom/left offset(用于 Overlay 浮层定位)。
 fn extract_absolute_position(v: &View<DynamicMessage>) -> Option<crate::ui::view::OverlayPosition> {
-    use crate::ui::style::iced_adapter::{IcedStyle, IcedPosition};
+    use crate::ui::style::iced_adapter::{IcedPosition, IcedStyle};
     let style = match v {
-        View::Row { style, .. } | View::Column { style, .. } | View::Container { style, .. } => style.as_ref()?,
+        View::Row { style, .. } | View::Column { style, .. } | View::Container { style, .. } => {
+            style.as_ref()?
+        }
         // PLAN-536 T6(题5 ②): button(会话卡 × 删除钮)/mouse_area(Plan 484
         // 注:其 style 参与 absolute/z 判定)同样可作悬浮载体。
         View::Button { style, .. } | View::MouseArea { style, .. } => style.as_ref()?,
@@ -14634,7 +16103,11 @@ fn fold_floats(
 ) -> View<DynamicMessage> {
     let mut acc = base;
     for (content, position) in floats {
-        acc = View::Overlay { base: Box::new(acc), content: Box::new(content), position };
+        acc = View::Overlay {
+            base: Box::new(acc),
+            content: Box::new(content),
+            position,
+        };
     }
     acc
 }
@@ -14656,10 +16129,7 @@ fn parse_coords_extent(s: &str) -> Option<(f32, f32)> {
 /// Plan 563: 场景数据契约解析(纯函数,双端映射规约的 Rust 侧)——
 /// pts 项 "x1,y1|x2,y2|..." / meta 项 "color,width,eraser"(逗号分隔,
 /// eraser 位 "0"/"1")。宽容解析:坏点/坏 meta 位跳过或取默认,不炸。
-fn parse_canvas_scene(
-    pts: &[Value],
-    meta: &[Value],
-) -> crate::ui::view::CanvasScene {
+fn parse_canvas_scene(pts: &[Value], meta: &[Value]) -> crate::ui::view::CanvasScene {
     let val_str = |v: &Value| -> String {
         match v {
             Value::Str(s) => s.as_str().to_string(),
@@ -14704,9 +16174,17 @@ fn parse_canvas_scene(
             .next()
             .map(|s| s.trim() == "1" || s.trim().eq_ignore_ascii_case("true"))
             .unwrap_or(false);
-        strokes.push(crate::ui::view::CanvasStroke { points, color, width, eraser });
+        strokes.push(crate::ui::view::CanvasStroke {
+            points,
+            color,
+            width,
+            eraser,
+        });
     }
-    crate::ui::view::CanvasScene { strokes, ..Default::default() }
+    crate::ui::view::CanvasScene {
+        strokes,
+        ..Default::default()
+    }
 }
 
 /// PLAN-661 T-05: `<前缀>_nodes` 项 `"id,x,y,shape,color[,r|w,h]"` →
@@ -14729,13 +16207,33 @@ pub(crate) fn parse_canvas_nodes(items: &[Value]) -> Vec<crate::ui::view::Canvas
         };
         let shape = parts[3].to_ascii_lowercase();
         let shape = if shape == "rect" { "rect" } else { "circle" }.to_string();
-        let color = if parts[4].is_empty() { "#3b82f6" } else { parts[4] }.to_string();
+        let color = if parts[4].is_empty() {
+            "#3b82f6"
+        } else {
+            parts[4]
+        }
+        .to_string();
         let (r, w, h) = if shape == "rect" {
-            let w = parts.get(5).and_then(|s| s.parse::<f32>().ok()).unwrap_or(40.0);
-            let h = parts.get(6).and_then(|s| s.parse::<f32>().ok()).unwrap_or(w);
+            let w = parts
+                .get(5)
+                .and_then(|s| s.parse::<f32>().ok())
+                .unwrap_or(40.0);
+            let h = parts
+                .get(6)
+                .and_then(|s| s.parse::<f32>().ok())
+                .unwrap_or(w);
             (None, Some(w), Some(h))
         } else {
-            (Some(parts.get(5).and_then(|s| s.parse::<f32>().ok()).unwrap_or(16.0)), None, None)
+            (
+                Some(
+                    parts
+                        .get(5)
+                        .and_then(|s| s.parse::<f32>().ok())
+                        .unwrap_or(16.0),
+                ),
+                None,
+                None,
+            )
         };
         nodes.push(crate::ui::view::CanvasNode {
             id: parts[0].to_string(),
@@ -14783,7 +16281,14 @@ pub(crate) fn parse_canvas_edges(items: &[Value]) -> Vec<crate::ui::view::Canvas
             .and_then(|s| s.parse::<f32>().ok())
             .filter(|w| *w > 0.0)
             .unwrap_or(2.0);
-        edges.push(crate::ui::view::CanvasEdge { x1, y1, x2, y2, color, width });
+        edges.push(crate::ui::view::CanvasEdge {
+            x1,
+            y1,
+            x2,
+            y2,
+            color,
+            width,
+        });
     }
     edges
 }
@@ -14811,12 +16316,24 @@ pub(crate) fn parse_canvas_labels(items: &[Value]) -> Vec<crate::ui::view::Canva
         let (text, color, size) = match parts.len() {
             3 => (parts[2].to_string(), "#111827".to_string(), 14.0),
             4 => {
-                let c = if parts[3].is_empty() { "#111827".to_string() } else { parts[3].to_string() };
+                let c = if parts[3].is_empty() {
+                    "#111827".to_string()
+                } else {
+                    parts[3].to_string()
+                };
                 (parts[2].to_string(), c, 14.0)
             }
             5 => {
-                let c = if parts[3].is_empty() { "#111827".to_string() } else { parts[3].to_string() };
-                let sz = parts[4].parse::<f32>().ok().filter(|s| *s > 0.0).unwrap_or(14.0);
+                let c = if parts[3].is_empty() {
+                    "#111827".to_string()
+                } else {
+                    parts[3].to_string()
+                };
+                let sz = parts[4]
+                    .parse::<f32>()
+                    .ok()
+                    .filter(|s| *s > 0.0)
+                    .unwrap_or(14.0);
                 (parts[2].to_string(), c, sz)
             }
             _ => (parts[2..].join(","), "#111827".to_string(), 14.0),
@@ -14824,7 +16341,13 @@ pub(crate) fn parse_canvas_labels(items: &[Value]) -> Vec<crate::ui::view::Canva
         if text.is_empty() {
             continue;
         }
-        labels.push(crate::ui::view::CanvasLabel { x, y, text, color, size });
+        labels.push(crate::ui::view::CanvasLabel {
+            x,
+            y,
+            text,
+            color,
+            size,
+        });
     }
     labels
 }
@@ -14838,7 +16361,6 @@ fn canvas_val_str(v: &Value) -> String {
         _ => String::new(),
     }
 }
-
 
 /// Extract a clean handler name from an event pattern.
 ///
@@ -14941,8 +16463,7 @@ fn value_to_display_string(value: &Value) -> String {
 /// 替换——编辑器内容即 value，VM/Vue 两轨着色原文一致。不变式：段文本
 /// 顺序拼接 == value。names 为空 → 整体单段 text。
 fn mention_segments(value: &str, names: &[String]) -> Vec<(String, String)> {
-    let known: std::collections::HashSet<String> =
-        names.iter().map(|n| n.to_lowercase()).collect();
+    let known: std::collections::HashSet<String> = names.iter().map(|n| n.to_lowercase()).collect();
     let mut segs: Vec<(String, String)> = Vec::new();
     let mut text = String::new();
     let bytes = value.as_bytes();
@@ -14950,9 +16471,7 @@ fn mention_segments(value: &str, names: &[String]) -> Vec<(String, String)> {
     while i < bytes.len() {
         if bytes[i] == b'@' {
             let mut end = i + 1;
-            while end < bytes.len()
-                && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
-            {
+            while end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
                 end += 1;
             }
             // @ 是单字节 ASCII，词字符均为 ASCII，切片边界安全。
@@ -15009,8 +16528,8 @@ fn strings_from_values(items: &[Value]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aura::{AuraEvent, AuraStateDef, AuraWidget};
     use crate::ast::Type;
+    use crate::aura::{AuraEvent, AuraStateDef, AuraWidget};
     use std::collections::HashMap;
 
     /// PLAN-014 F-03：分支体语句筛合同——注释/空行不计入「单表达式」合同，
@@ -15018,7 +16537,11 @@ mod tests {
     #[test]
     fn first_meaningful_stmt_skips_comments_and_blank_lines() {
         use crate::ast::{Body, Stmt};
-        let mk = |stmts: Vec<Stmt>| Body { stmts, has_new_line: false, source_lines: vec![] };
+        let mk = |stmts: Vec<Stmt>| Body {
+            stmts,
+            has_new_line: false,
+            source_lines: vec![],
+        };
         let with_comments = mk(vec![
             Stmt::Comment("注释行".into()),
             Stmt::Expr(crate::ast::Expr::Int(7)),
@@ -15071,14 +16594,14 @@ mod tests {
     fn p641_content() -> AuraNode {
         AuraNode::element("tabs-content").with_child(AuraNode::element("text"))
     }
-    fn p641_run_fold(
-        builder: &AuraViewBuilder,
-        tabs_root: AuraNode,
-    ) -> View<DynamicMessage> {
+    fn p641_run_fold(builder: &AuraViewBuilder, tabs_root: AuraNode) -> View<DynamicMessage> {
         let (props, events, children) = match &tabs_root {
-            AuraNode::Element { props, events, children, .. } => {
-                (props.clone(), events.clone(), children.clone())
-            }
+            AuraNode::Element {
+                props,
+                events,
+                children,
+                ..
+            } => (props.clone(), events.clone(), children.clone()),
             _ => panic!("tabs root must be an element"),
         };
         builder.convert_tabs(&props, &events, &children, &Bindings::new())
@@ -15100,7 +16623,9 @@ mod tests {
             let View::Column { children, .. } = view else {
                 panic!("calendar should render as a column, got {view:?}");
             };
-            assert!(matches!(children.first(), Some(View::Text { content, .. }) if !content.is_empty()));
+            assert!(
+                matches!(children.first(), Some(View::Text { content, .. }) if !content.is_empty())
+            );
             let Some(View::Grid { cols, cells, .. }) = children.get(1) else {
                 panic!("calendar should contain a native date grid: {children:?}");
             };
@@ -15147,10 +16672,21 @@ mod tests {
         let Some(View::Grid { cells, .. }) = children.get(1) else {
             panic!("selected month should retain its date grid");
         };
-        assert_eq!(cell_text(&cells[11]), "1", "February 2024 begins on Thursday");
-        assert_eq!(cell_text(&cells[39]), "29", "leap day remains in the final row");
         assert_eq!(
-            cells[7..].iter().filter(|cell| !cell_text(cell).is_empty()).count(),
+            cell_text(&cells[11]),
+            "1",
+            "February 2024 begins on Thursday"
+        );
+        assert_eq!(
+            cell_text(&cells[39]),
+            "29",
+            "leap day remains in the final row"
+        );
+        assert_eq!(
+            cells[7..]
+                .iter()
+                .filter(|cell| !cell_text(cell).is_empty())
+                .count(),
             29,
             "leap February contains twenty-nine visible date cells"
         );
@@ -15177,7 +16713,13 @@ mod tests {
             .with_child(p641_content());
 
         match p641_run_fold(&builder, tabs) {
-            View::Tabs { labels, contents, selected, variant, .. } => {
+            View::Tabs {
+                labels,
+                contents,
+                selected,
+                variant,
+                ..
+            } => {
                 assert_eq!(labels, vec!["Alpha", "Beta"]);
                 assert_eq!(contents.len(), 2);
                 assert_eq!(selected, 0);
@@ -15203,24 +16745,42 @@ mod tests {
             .with_prop("value", crate::ast::Expr::Float(30.0, Default::default()))
             .with_event("onchange", ".SetVol");
         let (props, events, _children) = match &node {
-            AuraNode::Element { props, events, children, .. } => {
-                (props.clone(), events.clone(), children.clone())
-            }
+            AuraNode::Element {
+                props,
+                events,
+                children,
+                ..
+            } => (props.clone(), events.clone(), children.clone()),
             _ => panic!("slider node must be an element"),
         };
         match builder.convert_slider(&props, &events, &Bindings::new()) {
-            View::Slider { min, max, value, step, on_change: Some(handler), .. } => {
+            View::Slider {
+                min,
+                max,
+                value,
+                step,
+                on_change: Some(handler),
+                ..
+            } => {
                 assert_eq!((min, max, value, step), (0.0, 100.0, 30.0, Some(1.0)));
-                assert_eq!(handler.label(), Some("SetVol"), "label bypass feeds snapshot actions");
+                assert_eq!(
+                    handler.label(),
+                    Some("SetVol"),
+                    "label bypass feeds snapshot actions"
+                );
                 match handler.call(75.0) {
-                    DynamicMessage::Typed { event_name, args, .. } => {
+                    DynamicMessage::Typed {
+                        event_name, args, ..
+                    } => {
                         assert_eq!(event_name, "SetVol");
                         assert_eq!(args, vec![Value::Float(75.0)], "f32 payload as first arg");
                     }
                     other => panic!("expected Typed message, got {other:?}"),
                 }
             }
-            View::Slider { on_change: None, .. } => panic!("onchange declared but handler missing"),
+            View::Slider {
+                on_change: None, ..
+            } => panic!("onchange declared but handler missing"),
             other => panic!("Expected View::Slider, got {:?}", other),
         }
 
@@ -15228,13 +16788,18 @@ mod tests {
         let bare = AuraNode::element("slider")
             .with_prop("value", crate::ast::Expr::Float(7.0, Default::default()));
         let (props2, events2, _) = match &bare {
-            AuraNode::Element { props, events, children, .. } => {
-                (props.clone(), events.clone(), children.clone())
-            }
+            AuraNode::Element {
+                props,
+                events,
+                children,
+                ..
+            } => (props.clone(), events.clone(), children.clone()),
             _ => panic!("bare node must be an element"),
         };
         match builder.convert_slider(&props2, &events2, &Bindings::new()) {
-            View::Slider { on_change: None, .. } => {}
+            View::Slider {
+                on_change: None, ..
+            } => {}
             other => panic!("Expected bare slider with no handler, got {:?}", other),
         }
     }
@@ -15247,9 +16812,9 @@ mod tests {
         let nodes = vec![
             Value::str("n1,100,200,circle,#ff0000,12"),
             Value::str("n2,300,400,rect,#00ff00,80,50"),
-            Value::str("bogus"),             // <5 段 → 跳过
-            Value::str("n3,xx,400,rect"),    // 坐标非数值 → 跳过
-            Value::Int(0),                   // 空串形态 → 跳过
+            Value::str("bogus"),          // <5 段 → 跳过
+            Value::str("n3,xx,400,rect"), // 坐标非数值 → 跳过
+            Value::Int(0),                // 空串形态 → 跳过
         ];
         let parsed = parse_canvas_nodes(&nodes);
         assert_eq!(parsed.len(), 2);
@@ -15305,13 +16870,19 @@ mod tests {
         };
 
         // variant: enclosed 生效；非法值回退 Default（AC-01 兜底）。
-        match p641_run_fold(&builder, mk(vec![("variant", crate::ast::Expr::Str("enclosed".into()))])) {
+        match p641_run_fold(
+            &builder,
+            mk(vec![("variant", crate::ast::Expr::Str("enclosed".into()))]),
+        ) {
             View::Tabs { variant, .. } => {
                 assert_eq!(variant, crate::ui::view::TabsVariant::Enclosed)
             }
             other => panic!("Expected View::Tabs, got {:?}", other),
         }
-        match p641_run_fold(&builder, mk(vec![("variant", crate::ast::Expr::Str("bogus".into()))])) {
+        match p641_run_fold(
+            &builder,
+            mk(vec![("variant", crate::ast::Expr::Str("bogus".into()))]),
+        ) {
             View::Tabs { variant, .. } => {
                 assert_eq!(variant, crate::ui::view::TabsVariant::Default)
             }
@@ -15319,7 +16890,10 @@ mod tests {
         }
 
         // selected：value 值串匹配 > active 索引 > defaultvalue > 0；越界钳制。
-        match p641_run_fold(&builder, mk(vec![("value", crate::ast::Expr::Str("b".into()))])) {
+        match p641_run_fold(
+            &builder,
+            mk(vec![("value", crate::ast::Expr::Str("b".into()))]),
+        ) {
             View::Tabs { selected, .. } => assert_eq!(selected, 1),
             other => panic!("Expected View::Tabs, got {:?}", other),
         }
@@ -15386,7 +16960,9 @@ mod tests {
             View::Tabs { on_select, .. } => {
                 let cb = on_select.expect("onselect should wire on_select");
                 match cb.call(1) {
-                    DynamicMessage::Typed { event_name, args, .. } => {
+                    DynamicMessage::Typed {
+                        event_name, args, ..
+                    } => {
                         assert_eq!(event_name, "SelectTab");
                         assert_eq!(args, vec![Value::str("b")]);
                     }
@@ -15410,7 +16986,12 @@ mod tests {
                     .with_child(AuraNode::element("text")),
             );
         match p641_run_fold(&builder, flat) {
-            View::Tabs { labels, contents, selected, .. } => {
+            View::Tabs {
+                labels,
+                contents,
+                selected,
+                ..
+            } => {
                 assert_eq!(labels, vec!["One", "Two"]);
                 assert_eq!(contents.len(), 2);
                 assert_eq!(selected, 0);
@@ -15448,10 +17029,14 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         // Hidden fn synthesized and exported (invocable through the public
@@ -15507,10 +17092,14 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         // PLAN-668 A-06：PLAN-633 起「无任何 store 工程时字面 `store` 别名
         // 不展平」（view_store_alias_real_name 空快照语义）——裸装载单测
@@ -15543,10 +17132,14 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App");
@@ -15655,10 +17248,14 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App");
@@ -15667,18 +17264,21 @@ mod tests {
         fn find_popover(v: &View<DynamicMessage>) -> Option<&View<DynamicMessage>> {
             match v {
                 View::Popover { content, .. } => Some(content),
-                View::Column { children, .. }
-                | View::Row { children, .. } => {
+                View::Column { children, .. } | View::Row { children, .. } => {
                     children.iter().find_map(find_popover)
                 }
-                View::Button { content: Some(c), .. } => find_popover(c),
+                View::Button {
+                    content: Some(c), ..
+                } => find_popover(c),
                 View::Container { child, .. } => find_popover(child),
                 _ => None,
             }
         }
         let content = find_popover(&view).expect("menubar popover synthesized");
         let (items, panel_style) = match content {
-            View::Column { children, style, .. } => (children, style),
+            View::Column {
+                children, style, ..
+            } => (children, style),
             other => panic!("panel must be a Column, got {other:?}"),
         };
         assert_eq!(items.len(), 3, "two action items + one sep");
@@ -15686,9 +17286,10 @@ mod tests {
         // must keep an explicit width so the column never falls back to Fill.
         let panel_style = panel_style.as_ref().expect("panel style present");
         assert!(
-            panel_style.classes.iter().any(
-                |c| matches!(c, StyleClass::Width(crate::ui::style::SizeValue::Fixed(44)))
-            ),
+            panel_style
+                .classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::Width(crate::ui::style::SizeValue::Fixed(44)))),
             "panel must keep explicit w-44 width, got {:?}",
             panel_style.classes
         );
@@ -15697,7 +17298,9 @@ mod tests {
             View::Button { style, content, .. } => {
                 let st = style.as_ref().expect("item button style");
                 assert!(
-                    st.classes.iter().any(|c| matches!(c, StyleClass::JustifyStart)),
+                    st.classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::JustifyStart)),
                     "item button must carry justify-start, got {:?}",
                     st.classes
                 );
@@ -15711,7 +17314,9 @@ mod tests {
             View::Column { style, .. } => {
                 let st = style.as_ref().expect("sep style");
                 assert!(
-                    st.classes.iter().any(|c| matches!(c, StyleClass::Height(_))),
+                    st.classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::Height(_))),
                     "horizontal sep must carry its hairline height, got {:?}",
                     st.classes
                 );
@@ -15751,10 +17356,14 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App");
@@ -15766,14 +17375,18 @@ mod tests {
                 View::Column { children, .. } | View::Row { children, .. } => {
                     children.iter().find_map(find_popover)
                 }
-                View::Button { content: Some(c), .. } => find_popover(c),
+                View::Button {
+                    content: Some(c), ..
+                } => find_popover(c),
                 View::Container { child, .. } => find_popover(child),
                 _ => None,
             }
         }
         let content = find_popover(&view).expect("declarative menubar popover");
         let (items, panel_style) = match content {
-            View::Column { children, style, .. } => (children, style),
+            View::Column {
+                children, style, ..
+            } => (children, style),
             other => panic!("panel must be a Column, got {other:?}"),
         };
         // checkbox item + separator + plain item
@@ -15790,7 +17403,11 @@ mod tests {
         // Item 0: checkbox item with icon-free leading (unchecked → blank),
         // title 切换 Console.
         match &items[0] {
-            View::Button { label, content: Some(inner), .. } => {
+            View::Button {
+                label,
+                content: Some(inner),
+                ..
+            } => {
                 assert_eq!(label, "切换 Console");
                 match inner.as_ref() {
                     View::Row { children, .. } => {
@@ -15805,7 +17422,11 @@ mod tests {
         match &items[1] {
             View::Column { style, .. } => {
                 assert!(
-                    style.as_ref().unwrap().classes.iter()
+                    style
+                        .as_ref()
+                        .unwrap()
+                        .classes
+                        .iter()
                         .any(|c| matches!(c, StyleClass::Height(_))),
                     "separator horizontal"
                 );
@@ -15821,13 +17442,18 @@ mod tests {
         // Checked expression flips with state: rebuild after writing true.
         set_menubar_open(Some("view".to_string()));
         let mut bridge2 = VmBridge::new(&widget).unwrap();
-        bridge2.write_state("console_open", auto_val::Value::Bool(true)).unwrap();
+        bridge2
+            .write_state("console_open", auto_val::Value::Bool(true))
+            .unwrap();
         let builder2 = AuraViewBuilder::new(&bridge2, "App");
         let (view2, _id_map2, _probe2) = builder2.build_with_debug(&widget.view_tree);
         let content2 = find_popover(&view2).expect("popover after state flip");
         match content2 {
             View::Column { children, .. } => match &children[0] {
-                View::Button { content: Some(inner), .. } => match inner.as_ref() {
+                View::Button {
+                    content: Some(inner),
+                    ..
+                } => match inner.as_ref() {
                     View::Row { children, .. } => match &children[0] {
                         // left group row
                         View::Row { children, .. } => match &children[0] {
@@ -15880,10 +17506,14 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App");
@@ -15895,69 +17525,78 @@ mod tests {
                 View::Column { children, .. } | View::Row { children, .. } => {
                     children.iter().find_map(find_popover)
                 }
-                View::Button { content: Some(c), .. } => find_popover(c),
+                View::Button {
+                    content: Some(c), ..
+                } => find_popover(c),
                 View::Container { child, .. } => find_popover(child),
                 _ => None,
             }
         }
         let content = find_popover(&view).expect("declarative menubar popover");
         let (items, panel_style) = match content {
-            View::Column { children, style, .. } => (children, style),
+            View::Column {
+                children, style, ..
+            } => (children, style),
             other => panic!("panel must be a Column, got {other:?}"),
         };
         // 面板底色 = Popover 语义变体（不再是字面 Hex(0x16171B)）。
         let st = panel_style.as_ref().expect("panel style");
         assert!(
-            st.classes.iter().any(
-                |c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Popover))
-            ),
+            st.classes.iter().any(|c| matches!(
+                c,
+                StyleClass::BackgroundColor(crate::ui::style::Color::Popover)
+            )),
             "panel bg must be popover token, got {:?}",
             st.classes
         );
         assert!(
-            st.classes.iter().any(
-                |c| matches!(c, StyleClass::TextColor(crate::ui::style::Color::PopoverForeground))
-            ),
+            st.classes.iter().any(|c| matches!(
+                c,
+                StyleClass::TextColor(crate::ui::style::Color::PopoverForeground)
+            )),
             "panel foreground must be popover-foreground token, got {:?}",
             st.classes
         );
         // 三项齐渲染：可点 + disabled 置灰 + 无 handler 置灰（不再隐藏）。
         assert_eq!(items.len(), 4, "enabled + disabled + no-handler + sep");
         match &items[0] {
-            View::Button { disabled, style, .. } => {
+            View::Button {
+                disabled, style, ..
+            } => {
                 assert!(!disabled, "item 0 enabled");
                 // hover 默认（组件族根修）：可点项挂 hover:bg-accent 变体，
                 // 基础 classes 不含底色（静止态 chromeless）。
                 let s = style.as_ref().expect("item 0 style");
                 assert!(
                     s.has_variant(crate::ui::style::Variant::Hover)
-                        && s.variant_slice(crate::ui::style::Variant::Hover).iter().any(
-                            |c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Accent))
-                        ),
+                        && s.variant_slice(crate::ui::style::Variant::Hover)
+                            .iter()
+                            .any(|c| matches!(
+                                c,
+                                StyleClass::BackgroundColor(crate::ui::style::Color::Accent)
+                            )),
                     "enabled item must carry hover:bg-accent, got {:?}",
                     s.variant_classes
                 );
                 assert!(
-                    !s.classes.iter().any(
-                        |c| matches!(c, StyleClass::BackgroundColor(_))
-                    ),
+                    !s.classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::BackgroundColor(_))),
                     "item rest state must stay chromeless, got {:?}",
                     s.classes
                 );
             }
             other => panic!("item 0 must be Button, got {other:?}"),
         }
-        for (idx, label, as_button) in
-            [(1usize, "断线重连", true), (2, "重命名", false)]
-        {
+        for (idx, label, as_button) in [(1usize, "断线重连", true), (2, "重命名", false)] {
             let st = match &items[idx] {
-                View::Button { disabled, style, .. } if as_button => {
+                View::Button {
+                    disabled, style, ..
+                } if as_button => {
                     assert!(disabled, "item {idx} ({label}) must be disabled");
                     style.as_ref().expect("dimmed style")
                 }
-                View::Row { style, .. } if !as_button => {
-                    style.as_ref().expect("static row style")
-                }
+                View::Row { style, .. } if !as_button => style.as_ref().expect("static row style"),
                 other => panic!("item {idx} ({label}) unexpected shape, got {other:?}"),
             };
             assert!(
@@ -16003,10 +17642,14 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         fn find_popovers<'a>(
@@ -16022,17 +17665,21 @@ mod tests {
                         find_popovers(c, out);
                     }
                 }
-                View::Button { content: Some(c), .. } => find_popovers(c, out),
+                View::Button {
+                    content: Some(c), ..
+                } => find_popovers(c, out),
                 View::Container { child, .. } => find_popovers(child, out),
                 _ => {}
             }
         }
         fn accent_on(v: &View<DynamicMessage>) -> bool {
             match v {
-                View::Button { style: Some(s), .. } => s
-                    .classes
-                    .iter()
-                    .any(|c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Accent))),
+                View::Button { style: Some(s), .. } => s.classes.iter().any(|c| {
+                    matches!(
+                        c,
+                        StyleClass::BackgroundColor(crate::ui::style::Color::Accent)
+                    )
+                }),
                 View::MouseArea { content, .. } => accent_on(content),
                 _ => false,
             }
@@ -16063,7 +17710,10 @@ mod tests {
             crate::ui::view::PopoverAnchor::Widget(b) => {
                 assert!(!accent_on(b), "inactive trigger no accent");
                 match b.as_ref() {
-                    View::MouseArea { on_enter: Some(msg), .. } => {
+                    View::MouseArea {
+                        on_enter: Some(msg),
+                        ..
+                    } => {
                         let repr = format!("{msg:?}");
                         assert!(
                             repr.contains("menubar_toggle") && repr.contains("edit"),
@@ -16090,16 +17740,24 @@ mod tests {
         for a in &anchors2 {
             match a {
                 crate::ui::view::PopoverAnchor::Widget(b) => {
-                    assert!(matches!(b.as_ref(), View::Button { .. }), "closed state: bare button");
+                    assert!(
+                        matches!(b.as_ref(), View::Button { .. }),
+                        "closed state: bare button"
+                    );
                     assert!(!accent_on(b), "closed state: no accent");
                     // hover 默认：闭态 trigger 挂 hover:bg-accent 变体（基础
                     // classes 仍无 accent——静止态与断言上行为不变）。
                     match b.as_ref() {
                         View::Button { style: Some(s), .. } => {
                             assert!(
-                                s.variant_slice(crate::ui::style::Variant::Hover).iter().any(
-                                    |c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Accent))
-                                ),
+                                s.variant_slice(crate::ui::style::Variant::Hover)
+                                    .iter()
+                                    .any(|c| matches!(
+                                        c,
+                                        StyleClass::BackgroundColor(
+                                            crate::ui::style::Color::Accent
+                                        )
+                                    )),
                                 "closed trigger must carry hover:bg-accent, got {:?}",
                                 s.variant_classes
                             );
@@ -16152,10 +17810,14 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = crate::parser::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App");
@@ -16167,18 +17829,26 @@ mod tests {
                 View::Column { children, .. } | View::Row { children, .. } => {
                     children.iter().find_map(find_popover)
                 }
-                View::Button { content: Some(c), .. } => find_popover(c),
+                View::Button {
+                    content: Some(c), ..
+                } => find_popover(c),
                 View::Container { child, .. } => find_popover(child),
                 _ => None,
             }
         }
         let content = find_popover(&view).expect("main popover");
         let (items, _) = match content {
-            View::Column { children, style, .. } => (children, style),
+            View::Column {
+                children, style, ..
+            } => (children, style),
             other => panic!("panel Column, got {other:?}"),
         };
         // label + radio-group + sep + sub + shortcut = 5 项全渲染。
-        assert_eq!(items.len(), 5, "label+radio+sep+sub+shortcut, got {items:?}");
+        assert_eq!(
+            items.len(),
+            5,
+            "label+radio+sep+sub+shortcut, got {items:?}"
+        );
 
         // label：muted 静态文本（外观）。
         match &items[0] {
@@ -16186,9 +17856,10 @@ mod tests {
                 assert_eq!(content, "外观");
                 let st = style.as_ref().unwrap();
                 assert!(
-                    st.classes.iter().any(
-                        |c| matches!(c, StyleClass::TextColor(crate::ui::style::Color::OnSurface))
-                    ),
+                    st.classes.iter().any(|c| matches!(
+                        c,
+                        StyleClass::TextColor(crate::ui::style::Color::OnSurface)
+                    )),
                     "label muted color, got {:?}",
                     st.classes
                 );
@@ -16200,7 +17871,10 @@ mod tests {
             View::Column { children, .. } => {
                 assert_eq!(children.len(), 2, "two radio items");
                 match &children[1] {
-                    View::Button { content: Some(inner), .. } => match inner.as_ref() {
+                    View::Button {
+                        content: Some(inner),
+                        ..
+                    } => match inner.as_ref() {
                         View::Row { children, .. } => match &children[0] {
                             View::Row { children, .. } => match &children[0] {
                                 View::Image { src, .. } => assert!(
@@ -16223,9 +17897,19 @@ mod tests {
         // 面板项在 content Column 内。AUTO_MENU_SUBMENU_INLINE=1 降级路径
         // 仍回旧内联形态（左 hairline 缩进节）。
         match &items[3] {
-            View::Popover { anchor, content, placement, open, .. } => {
+            View::Popover {
+                anchor,
+                content,
+                placement,
+                open,
+                ..
+            } => {
                 assert!(!*open, "closed state: nested popover not open");
-                assert_eq!(*placement, PopoverPlacement::RightTop, "T-06 top-aligned right-open");
+                assert_eq!(
+                    *placement,
+                    PopoverPlacement::RightTop,
+                    "T-06 top-aligned right-open"
+                );
                 match anchor {
                     PopoverAnchor::Widget(trigger) => match trigger.as_ref() {
                         View::Button { label, .. } => assert_eq!(label, "导入"),
@@ -16234,7 +17918,9 @@ mod tests {
                     other => panic!("widget anchor, got {other:?}"),
                 }
                 match content.as_ref() {
-                    View::Column { children, style, .. } => {
+                    View::Column {
+                        children, style, ..
+                    } => {
                         assert_eq!(children.len(), 1, "sub panel items");
                         match &children[0] {
                             View::Button { label, .. } => assert_eq!(label, "从文件"),
@@ -16242,9 +17928,10 @@ mod tests {
                         }
                         let st = style.as_ref().expect("panel style");
                         assert!(
-                            st.classes.iter().any(
-                                |c| matches!(c, StyleClass::BackgroundColor(crate::ui::style::Color::Popover))
-                            ),
+                            st.classes.iter().any(|c| matches!(
+                                c,
+                                StyleClass::BackgroundColor(crate::ui::style::Color::Popover)
+                            )),
                             "floating panel carries popover chrome, got {:?}",
                             st.classes
                         );
@@ -16267,7 +17954,11 @@ mod tests {
             View::Column { children, .. } => children,
             other => panic!("panel Column, got {other:?}"),
         };
-        assert_eq!(items_sub.len(), 5, "open state: same item count (floating popover open flag flips, no inline insert)");
+        assert_eq!(
+            items_sub.len(),
+            5,
+            "open state: same item count (floating popover open flag flips, no inline insert)"
+        );
         match &items_sub[3] {
             View::Popover { open, .. } => {
                 assert!(*open, "sub open via composite key file::sub-3");
@@ -16294,23 +17985,22 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let children = vec![AuraNode::Text(AuraTextContent::Literal("x".into()))];
-        let dyn_cols = crate::ast::Expr::Dot(
-            Box::new(crate::ast::Expr::Ident("self".into())),
-            "n".into(),
-        );
+        let dyn_cols =
+            crate::ast::Expr::Dot(Box::new(crate::ast::Expr::Ident("self".into())), "n".into());
 
         let mut props: HashMap<String, AuraPropValue> = HashMap::new();
-        props.insert(
-            "cols".to_string(),
-            AuraPropValue::Expr(dyn_cols.clone()),
-        );
+        props.insert("cols".to_string(), AuraPropValue::Expr(dyn_cols.clone()));
 
         // Dynamic: initial state n = 3.
         let bridge = VmBridge::new(&widget).unwrap();
@@ -16373,30 +18063,51 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let widget = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         // Collect the three row style exprs in view order.
         fn collect_rows(node: &AuraNode, out: &mut Vec<crate::ast::Expr>) {
             match node {
-                AuraNode::Element { tag, props, children, .. } => {
+                AuraNode::Element {
+                    tag,
+                    props,
+                    children,
+                    ..
+                } => {
                     if tag == "row" {
                         if let Some(crate::aura::AuraPropValue::Expr(e)) = props.get("style") {
                             out.push(e.clone());
                         }
                     }
-                    for c in children { collect_rows(c, out); }
+                    for c in children {
+                        collect_rows(c, out);
+                    }
                 }
                 AuraNode::ForLoop { body, .. } => {
-                    for c in body { collect_rows(c, out); }
+                    for c in body {
+                        collect_rows(c, out);
+                    }
                 }
-                AuraNode::Conditional { then_body, else_body, .. } => {
-                    for c in then_body { collect_rows(c, out); }
+                AuraNode::Conditional {
+                    then_body,
+                    else_body,
+                    ..
+                } => {
+                    for c in then_body {
+                        collect_rows(c, out);
+                    }
                     if let Some(els) = else_body {
-                        for c in els { collect_rows(c, out); }
+                        for c in els {
+                            collect_rows(c, out);
+                        }
                     }
                 }
                 _ => {}
@@ -16429,7 +18140,9 @@ mod tests {
 
         // Flip state: conditional part appears; concat picks else-branch.
         let mut bridge_mut = VmBridge::new(&widget).unwrap();
-        bridge_mut.write_state("on", auto_val::Value::Bool(false)).unwrap();
+        bridge_mut
+            .write_state("on", auto_val::Value::Bool(false))
+            .unwrap();
         let builder2 = AuraViewBuilder::new(&bridge_mut, "App");
         assert_eq!(
             builder2.resolve_expr_to_string_with(&rows[0], &Bindings::new()),
@@ -16476,7 +18189,9 @@ mod tests {
         match builder.build(&node) {
             View::Text { content, style, .. } => {
                 assert_eq!(content, "Title");
-                let expected = Style::parse("text-3xl font-bold tracking-tight text-primary mt-8 mb-4").unwrap();
+                let expected =
+                    Style::parse("text-3xl font-bold tracking-tight text-primary mt-8 mb-4")
+                        .unwrap();
                 assert_eq!(style.expect("heading style").classes, expected.classes);
             }
             _ => panic!("Expected View::Text for heading"),
@@ -16507,7 +18222,8 @@ mod tests {
             .with_child(AuraNode::text("second"));
         match builder.build(&node) {
             View::Container { child, style, .. } => {
-                let expected = Style::parse("border-l-4 pl-4 py-2 w-full text-muted-foreground").unwrap();
+                let expected =
+                    Style::parse("border-l-4 pl-4 py-2 w-full text-muted-foreground").unwrap();
                 assert_eq!(style.expect("quote style").classes, expected.classes);
                 // 多子包 Column,Empty 子被过滤。
                 match *child {
@@ -16533,7 +18249,10 @@ mod tests {
             View::Container { child, style, .. } => {
                 // 颜色 class 解析为 Rgba;amber-500 = rgb(245,158,11)。
                 let style_dbg = format!("{:?}", style.expect("callout style"));
-                assert!(style_dbg.contains("r: 245, g: 158, b: 11"), "warning tint: {style_dbg}");
+                assert!(
+                    style_dbg.contains("r: 245, g: 158, b: 11"),
+                    "warning tint: {style_dbg}"
+                );
                 match *child {
                     View::Column { children, .. } => {
                         // title 头 + 1 个内容子
@@ -16543,7 +18262,10 @@ mod tests {
                                 assert_eq!(content, "小心");
                                 // 无 alpha 的 text-amber-400 保持色板枚举形态
                                 // (容器 border-amber-500/40 带 alpha 才转 Rgba)。
-                                assert!(format!("{:?}", style).contains("Amber(400)"), "title tint");
+                                assert!(
+                                    format!("{:?}", style).contains("Amber(400)"),
+                                    "title tint"
+                                );
                             }
                             _ => panic!("Expected title Text"),
                         }
@@ -16565,7 +18287,9 @@ mod tests {
             .with_prop("summary", Expr::Str("展开".into()))
             .with_child(AuraNode::text("hidden body"));
         match builder.build(&node) {
-            View::Accordion { items, on_toggle, .. } => {
+            View::Accordion {
+                items, on_toggle, ..
+            } => {
                 assert_eq!(items.len(), 1);
                 assert_eq!(items[0].title, "展开");
                 assert!(items[0].expanded, "VM 降级默认展开");
@@ -16591,7 +18315,11 @@ mod tests {
             let builder = AuraViewBuilder::new(&bridge, "Test");
             let node = AuraNode::element(tag).with_prop(prop, Expr::Str(value.into()));
             // embed 面板带 "↪ " 引用前缀;math/query 原文显示。
-            let expected_content = if tag == "embed_block" { format!("↪ {value}") } else { value.to_string() };
+            let expected_content = if tag == "embed_block" {
+                format!("↪ {value}")
+            } else {
+                value.to_string()
+            };
             match builder.build(&node) {
                 View::Container { child, style, .. } => {
                     assert!(style.is_some(), "{tag} needs a boxed style");
@@ -16635,7 +18363,10 @@ mod tests {
             assert!(!g.0.contains_key("p043_reg_0"), "最旧键已逐出");
             assert!(!g.0.contains_key("p043_reg_7"), "第 8 旧键已逐出");
             assert!(g.0.contains_key("p043_reg_8"), "第 9 键起在册（恰留 32）");
-            assert!(g.0.contains_key(&format!("p043_reg_{}", n - 1)), "最新键在册");
+            assert!(
+                g.0.contains_key(&format!("p043_reg_{}", n - 1)),
+                "最新键在册"
+            );
         }
         // 既有键复用不占新位、不触发淘汰
         {
@@ -16664,16 +18395,29 @@ mod tests {
             .with_prop("placeholder_height", Expr::Float(96.0, "96".into()))
             .with_prop("scroll_sync", Expr::Bool(true));
         match builder.build(&node) {
-            View::Scrollable { child, offset, on_scroll, .. } => {
+            View::Scrollable {
+                child,
+                offset,
+                on_scroll,
+                ..
+            } => {
                 assert_eq!(offset, None, "no scroll_top prop → no offset binding");
-                assert!(on_scroll.is_none(), "no onscroll event → no read-out message");
+                assert!(
+                    on_scroll.is_none(),
+                    "no onscroll event → no read-out message"
+                );
                 match *child {
                     View::Column { children, .. } => {
                         assert_eq!(children.len(), 2);
                         // PLAN-044 T4：ghost 消费——首块被 Column[ghost, block]
                         // spacing=0 包裹，ghost = Container{height:96, bg-muted}
                         //（ignored→consumed 断言翻转）。
-                        let View::Column { children: wrap, spacing, .. } = &children[0] else {
+                        let View::Column {
+                            children: wrap,
+                            spacing,
+                            ..
+                        } = &children[0]
+                        else {
                             panic!("expected ghost wrap column at block 0")
                         };
                         assert_eq!(*spacing, 0);
@@ -16689,7 +18433,10 @@ mod tests {
                         match &wrap[1] {
                             View::Text { content, style, .. } => {
                                 assert_eq!(content, "标题");
-                                let expected = Style::parse("text-4xl font-bold tracking-tight text-primary mb-4").unwrap();
+                                let expected = Style::parse(
+                                    "text-4xl font-bold tracking-tight text-primary mb-4",
+                                )
+                                .unwrap();
                                 assert_eq!(style.as_ref().unwrap().classes, expected.classes);
                             }
                             _ => panic!("expected heading text inside ghost wrap"),
@@ -16705,8 +18452,8 @@ mod tests {
 
         // markdown 别名同臂；final 缺省 true。
         let builder = AuraViewBuilder::new(&bridge, "Test");
-        let node = AuraNode::element("markdown")
-            .with_prop("content", Expr::Str("- 甲\n- 乙\n".into()));
+        let node =
+            AuraNode::element("markdown").with_prop("content", Expr::Str("- 甲\n- 乙\n".into()));
         match builder.build(&node) {
             View::Column { children, .. } => {
                 assert_eq!(children.len(), 1);
@@ -16744,23 +18491,50 @@ mod tests {
             .with_prop("scroll_top", Expr::Float(128.0, "128".into()))
             .with_event("onscroll", ".LeftScroll");
         match builder.build(&node) {
-            View::Scrollable { offset, on_scroll: Some(cb), .. } => {
-                assert_eq!(offset, Some((0.0, 128.0)), "scroll_top binding → offset write arm");
+            View::Scrollable {
+                offset,
+                on_scroll: Some(cb),
+                ..
+            } => {
+                assert_eq!(
+                    offset,
+                    Some((0.0, 128.0)),
+                    "scroll_top binding → offset write arm"
+                );
                 match cb.call(ScrollMetrics {
-                    offset_x: 0.0, offset_y: 42.0,
-                    viewport_w: 100.0, viewport_h: 200.0,
-                    content_w: 100.0, content_h: 800.0,
+                    offset_x: 0.0,
+                    offset_y: 42.0,
+                    viewport_w: 100.0,
+                    viewport_h: 200.0,
+                    content_w: 100.0,
+                    content_h: 800.0,
                 }) {
-                    DynamicMessage::Typed { widget_name, event_name, args } => {
+                    DynamicMessage::Typed {
+                        widget_name,
+                        event_name,
+                        args,
+                    } => {
                         assert_eq!(widget_name, "Test");
                         assert_eq!(event_name, "LeftScroll");
                         // PLAN-043 T6 实参序（height, client, top）——top 居末
                         // 位是 VM 引擎整值 float 实参绑定 bug 的绕道形态
                         //（EDITOR-CONTRACT §11 注记）。
                         assert_eq!(args.len(), 3, "height/client/top three measurements");
-                        assert!(matches!(args[0], auto_val::Value::Float(f) if (f - 800.0).abs() < 1e-6), "scrollHeight = args[0], got {:?}", args[0]);
-                        assert!(matches!(args[1], auto_val::Value::Float(f) if (f - 200.0).abs() < 1e-6), "clientHeight = args[1], got {:?}", args[1]);
-                        assert!(matches!(args[2], auto_val::Value::Float(f) if (f - 42.0).abs() < 1e-6), "scrollTop = args[2], got {:?}", args[2]);
+                        assert!(
+                            matches!(args[0], auto_val::Value::Float(f) if (f - 800.0).abs() < 1e-6),
+                            "scrollHeight = args[0], got {:?}",
+                            args[0]
+                        );
+                        assert!(
+                            matches!(args[1], auto_val::Value::Float(f) if (f - 200.0).abs() < 1e-6),
+                            "clientHeight = args[1], got {:?}",
+                            args[1]
+                        );
+                        assert!(
+                            matches!(args[2], auto_val::Value::Float(f) if (f - 42.0).abs() < 1e-6),
+                            "scrollTop = args[2], got {:?}",
+                            args[2]
+                        );
                     }
                     other => panic!("expected Typed message, got {:?}", other),
                 }
@@ -16782,16 +18556,32 @@ mod tests {
             .with_event("onscroll", ".RightScroll");
         let (view, _id_map, _probe) = builder.build_with_debug_gated(&node, false);
         match view {
-            View::Scrollable { offset, on_scroll: Some(cb), .. } => {
-                assert_eq!(offset, Some((0.0, 64.0)), "streamed arm: scroll_top binding");
+            View::Scrollable {
+                offset,
+                on_scroll: Some(cb),
+                ..
+            } => {
+                assert_eq!(
+                    offset,
+                    Some((0.0, 64.0)),
+                    "streamed arm: scroll_top binding"
+                );
                 match cb.call(ScrollMetrics {
-                    offset_x: 0.0, offset_y: 7.0,
-                    viewport_w: 100.0, viewport_h: 200.0,
-                    content_w: 100.0, content_h: 800.0,
+                    offset_x: 0.0,
+                    offset_y: 7.0,
+                    viewport_w: 100.0,
+                    viewport_h: 200.0,
+                    content_w: 100.0,
+                    content_h: 800.0,
                 }) {
-                    DynamicMessage::Typed { event_name, args, .. } => {
+                    DynamicMessage::Typed {
+                        event_name, args, ..
+                    } => {
                         assert_eq!(event_name, "RightScroll");
-                        assert!(matches!(args[2], auto_val::Value::Float(f) if (f - 7.0).abs() < 1e-6), "scrollTop = args[2]");
+                        assert!(
+                            matches!(args[2], auto_val::Value::Float(f) if (f - 7.0).abs() < 1e-6),
+                            "scrollTop = args[2]"
+                        );
                     }
                     other => panic!("streamed arm: expected Typed message, got {:?}", other),
                 }
@@ -16816,21 +18606,45 @@ mod tests {
             .with_prop("content", Expr::Str("段甲。\n".into()))
             .with_event("onfocusblock", ".OnEditorFocus");
         match builder.build(&node) {
-            View::AutodownEditor { on_focus: Some(cb), .. } => {
-                let msg = cb.call(FocusMetrics { block: Some(1), height: 128.0 });
+            View::AutodownEditor {
+                on_focus: Some(cb), ..
+            } => {
+                let msg = cb.call(FocusMetrics {
+                    block: Some(1),
+                    height: 128.0,
+                });
                 match msg {
-                    DynamicMessage::Typed { widget_name, event_name, args } => {
+                    DynamicMessage::Typed {
+                        widget_name,
+                        event_name,
+                        args,
+                    } => {
                         assert_eq!(widget_name, "Test");
                         assert_eq!(event_name, "OnEditorFocus");
-                        assert!(matches!(args[0], auto_val::Value::Int(1)), "block index, got {:?}", args[0]);
-                        assert!(matches!(args[1], auto_val::Value::Float(f) if (f - 128.0).abs() < 1e-6), "height, got {:?}", args[1]);
+                        assert!(
+                            matches!(args[0], auto_val::Value::Int(1)),
+                            "block index, got {:?}",
+                            args[0]
+                        );
+                        assert!(
+                            matches!(args[1], auto_val::Value::Float(f) if (f - 128.0).abs() < 1e-6),
+                            "height, got {:?}",
+                            args[1]
+                        );
                     }
                     other => panic!("expected Typed message, got {:?}", other),
                 }
                 // 失焦变体：block=None → (Int -1, 0.0)。
-                match cb.call(FocusMetrics { block: None, height: 0.0 }) {
+                match cb.call(FocusMetrics {
+                    block: None,
+                    height: 0.0,
+                }) {
                     DynamicMessage::Typed { args, .. } => {
-                        assert!(matches!(args[0], auto_val::Value::Int(-1)), "blur encodes -1, got {:?}", args[0]);
+                        assert!(
+                            matches!(args[0], auto_val::Value::Int(-1)),
+                            "blur encodes -1, got {:?}",
+                            args[0]
+                        );
                     }
                     other => panic!("expected Typed blur message, got {:?}", other),
                 }
@@ -16856,8 +18670,13 @@ mod tests {
             _ => panic!("tracked arm: expected editor view"),
         };
         let cb: FocusCallback<DynamicMessage> = editor.expect("tracked arm wires on_focus too");
-        match cb.call(FocusMetrics { block: Some(0), height: 64.0 }) {
-            DynamicMessage::Typed { event_name, args, .. } => {
+        match cb.call(FocusMetrics {
+            block: Some(0),
+            height: 64.0,
+        }) {
+            DynamicMessage::Typed {
+                event_name, args, ..
+            } => {
                 assert_eq!(event_name, "OnEditorFocus2");
                 assert!(matches!(args[0], auto_val::Value::Int(0)));
             }
@@ -16883,7 +18702,9 @@ mod tests {
             .with_prop("content", Expr::Str("段甲。\n".into()))
             .with_event("on\"open-wiki-link\"", ".OpenWikiLink");
         match builder.build(&node) {
-            View::AutodownEditor { on_link: Some(cb), .. } => {
+            View::AutodownEditor {
+                on_link: Some(cb), ..
+            } => {
                 assert_wiki_link_payload(cb, "OpenWikiLink");
             }
             _ => panic!("expected View::AutodownEditor with on_link (quoted full name)"),
@@ -16897,7 +18718,9 @@ mod tests {
             .with_prop("content", Expr::Str("段乙。\n".into()))
             .with_event("onopenwikilink", ".OpenLinkShort");
         match builder.build(&node) {
-            View::AutodownEditor { on_link: Some(cb), .. } => {
+            View::AutodownEditor {
+                on_link: Some(cb), ..
+            } => {
                 assert_wiki_link_payload(cb, "OpenLinkShort");
             }
             _ => panic!("expected View::AutodownEditor with on_link (attr shorthand)"),
@@ -16907,8 +18730,8 @@ mod tests {
         let widget = make_test_widget("Test", vec![]);
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Test");
-        let node = AuraNode::element("autodown_editor")
-            .with_prop("content", Expr::Str("段丙。\n".into()));
+        let node =
+            AuraNode::element("autodown_editor").with_prop("content", Expr::Str("段丙。\n".into()));
         match builder.build(&node) {
             View::AutodownEditor { on_link, .. } => {
                 assert!(on_link.is_none(), "undeclared on_link defaults to None");
@@ -16922,7 +18745,11 @@ mod tests {
                 anchor: "锚点甲".to_string(),
             });
             match msg {
-                DynamicMessage::Typed { widget_name, event_name, args } => {
+                DynamicMessage::Typed {
+                    widget_name,
+                    event_name,
+                    args,
+                } => {
                     assert_eq!(widget_name, "Test");
                     assert_eq!(event_name, handler);
                     assert_eq!(args.len(), 2, "双参（第二参非源块身份）");
@@ -16940,7 +18767,10 @@ mod tests {
                 other => panic!("expected Typed message, got {:?}", other),
             }
             // 无锚变体：空串（非 None/undefined 字面）。
-            let msg = cb.call(WikiLinkMetrics { target: "无锚页".to_string(), anchor: String::new() });
+            let msg = cb.call(WikiLinkMetrics {
+                target: "无锚页".to_string(),
+                anchor: String::new(),
+            });
             match msg {
                 DynamicMessage::Typed { args, .. } => {
                     assert!(
@@ -16994,13 +18824,27 @@ mod tests {
             let builder = AuraViewBuilder::new(&bridge, "Test");
             match builder.build(&node) {
                 View::Column { children, .. } => {
-                    let View::Table { col_widths, on_col_resize: Some(cb), .. } = &children[0]
+                    let View::Table {
+                        col_widths,
+                        on_col_resize: Some(cb),
+                        ..
+                    } = &children[0]
                     else {
-                        panic!("expected View::Table with resize channel, got {:?}", children[0])
+                        panic!(
+                            "expected View::Table with resize channel, got {:?}",
+                            children[0]
+                        )
                     };
                     assert!(col_widths.is_none(), "Nil state → 自然宽");
-                    match cb.call(ColResizeMetrics { col: 1, width: 133.0 }) {
-                        DynamicMessage::Typed { widget_name, event_name, args } => {
+                    match cb.call(ColResizeMetrics {
+                        col: 1,
+                        width: 133.0,
+                    }) {
+                        DynamicMessage::Typed {
+                            widget_name,
+                            event_name,
+                            args,
+                        } => {
                             assert_eq!(widget_name, "Test");
                             assert_eq!(event_name, "OnColResize");
                             match &args[0] {
@@ -17034,7 +18878,11 @@ mod tests {
             let builder = AuraViewBuilder::new(&bridge, "Test");
             match builder.build(&node) {
                 View::Column { children, .. } => {
-                    let View::Table { col_widths, on_col_resize: Some(_), .. } = &children[0]
+                    let View::Table {
+                        col_widths,
+                        on_col_resize: Some(_),
+                        ..
+                    } = &children[0]
                     else {
                         panic!("expected View::Table")
                     };
@@ -17057,7 +18905,12 @@ mod tests {
             let builder = AuraViewBuilder::new(&bridge, "Test");
             match builder.build(&plain) {
                 View::Column { children, .. } => {
-                    let View::Table { col_widths, on_col_resize, .. } = &children[0] else {
+                    let View::Table {
+                        col_widths,
+                        on_col_resize,
+                        ..
+                    } = &children[0]
+                    else {
                         panic!("expected View::Table")
                     };
                     assert!(col_widths.is_none(), "prop 缺席不读 state");
@@ -17076,7 +18929,12 @@ mod tests {
     fn test_autodown_details_onclick_message_channel() {
         fn find_details_onclick(v: &View<DynamicMessage>) -> Option<&DynamicMessage> {
             match v {
-                View::Row { onclick, children, .. } | View::Column { onclick, children, .. } => {
+                View::Row {
+                    onclick, children, ..
+                }
+                | View::Column {
+                    onclick, children, ..
+                } => {
                     if onclick.is_some() {
                         return onclick.as_ref();
                     }
@@ -17097,14 +18955,21 @@ mod tests {
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Test");
         let node = AuraNode::element("autodown")
-            .with_prop("content", Expr::Str("$details(summary:\"折叠\") {\n藏起来的正文。\n}\n".into()))
+            .with_prop(
+                "content",
+                Expr::Str("$details(summary:\"折叠\") {\n藏起来的正文。\n}\n".into()),
+            )
             .with_event("ondetailsclick", ".ToggleDetails");
         match builder.build(&node) {
             view @ (View::Column { .. } | View::Scrollable { .. }) => {
                 let msg = find_details_onclick(&view)
                     .expect("details summary row must carry onclick message");
                 match msg {
-                    DynamicMessage::Typed { widget_name, event_name, args } => {
+                    DynamicMessage::Typed {
+                        widget_name,
+                        event_name,
+                        args,
+                    } => {
                         assert_eq!(widget_name, "Test");
                         assert_eq!(event_name, "ToggleDetails");
                         assert!(
@@ -17138,7 +19003,14 @@ mod tests {
             .with_prop("placeholder", Expr::Str("Start typing...".into()))
             .with_event("oninput", ".DocEdit");
         match builder.build(&node) {
-            View::AutodownEditor { key, value, is_final, on_change, placeholder, .. } => {
+            View::AutodownEditor {
+                key,
+                value,
+                is_final,
+                on_change,
+                placeholder,
+                ..
+            } => {
                 assert_eq!(key, "doc-ed");
                 assert_eq!(value, "# 编辑\nn");
                 assert!(is_final);
@@ -17170,8 +19042,8 @@ mod tests {
     /// carrying Toggle+StartEdit+Delete events and the × button's class).
     #[test]
     fn test_tracked_row_conditional_splice_probe_slots() {
-        use crate::ui::debug_id_map::DebugIdMap;
         use crate::ui::debug::BuildProbe;
+        use crate::ui::debug_id_map::DebugIdMap;
 
         fn event_node(tag: &str, handler: &str, label: &str) -> AuraNode {
             let mut events = HashMap::new();
@@ -17190,12 +19062,19 @@ mod tests {
                 );
             }
             let mut class_props = HashMap::new();
-            class_props.insert("class".to_string(), AuraPropValue::Expr(Expr::Str(format!("cls-{}", handler).into())));
+            class_props.insert(
+                "class".to_string(),
+                AuraPropValue::Expr(Expr::Str(format!("cls-{}", handler).into())),
+            );
             AuraNode::Element {
                 tag: tag.to_string(),
                 props: if tag == "button" {
-                    let mut p = props.clone(); p.extend(class_props); p
-                } else { class_props },
+                    let mut p = props.clone();
+                    p.extend(class_props);
+                    p
+                } else {
+                    class_props
+                },
                 events,
                 children: Vec::new(),
                 span: None,
@@ -17232,7 +19111,13 @@ mod tests {
         let mut id_map = DebugIdMap::default();
         let mut probe = BuildProbe::new();
         let mut path = Vec::new();
-        let _ = builder.convert_node_tracked_ctx(&row, &mut path, &mut id_map, &mut probe, &Bindings::new());
+        let _ = builder.convert_node_tracked_ctx(
+            &row,
+            &mut path,
+            &mut id_map,
+            &mut probe,
+            &Bindings::new(),
+        );
 
         let snap = probe.snapshot().clone();
         let by_path: Vec<(Vec<u16>, usize)> = snap
@@ -17252,7 +19137,12 @@ mod tests {
             })
             .collect();
         slots.sort();
-        assert_eq!(slots, vec![0u16, 1, 2], "slots 0/1/2 under the row: {:?}", by_path);
+        assert_eq!(
+            slots,
+            vec![0u16, 1, 2],
+            "slots 0/1/2 under the row: {:?}",
+            by_path
+        );
     }
 
     /// REGRESSION: a button whose label comes from inner `text` children
@@ -17273,7 +19163,10 @@ mod tests {
             tag: "text".to_string(),
             props: {
                 let mut m = HashMap::new();
-                m.insert("text".to_string(), AuraPropValue::Expr(Expr::Str("Welcome".into())));
+                m.insert(
+                    "text".to_string(),
+                    AuraPropValue::Expr(Expr::Str("Welcome".into())),
+                );
                 m
             },
             events: HashMap::new(),
@@ -17301,14 +19194,15 @@ mod tests {
 
     #[test]
     fn test_build_text_with_state_ref() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(42),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Counter");
 
@@ -17341,22 +19235,35 @@ mod tests {
         let mut node = AuraNode::element("mouse-area")
             .with_prop("style", Expr::Str("w-[64px] h-[240px]".into()));
         if let AuraNode::Element { events, .. } = &mut node {
-            events.insert("onmouseenter".to_string(), AuraEvent {
-                handler: ".Hover".to_string(),
-                params: vec!["0".to_string()],
-            });
-            events.insert("onmouseleave".to_string(), AuraEvent {
-                handler: ".HoverOut".to_string(),
-                params: vec![],
-            });
+            events.insert(
+                "onmouseenter".to_string(),
+                AuraEvent {
+                    handler: ".Hover".to_string(),
+                    params: vec!["0".to_string()],
+                },
+            );
+            events.insert(
+                "onmouseleave".to_string(),
+                AuraEvent {
+                    handler: ".HoverOut".to_string(),
+                    params: vec![],
+                },
+            );
         }
         let view = builder.build(&node);
 
         match view {
-            View::MouseArea { on_enter, on_exit, style, .. } => {
+            View::MouseArea {
+                on_enter,
+                on_exit,
+                style,
+                ..
+            } => {
                 let enter = on_enter.expect("onmouseenter must resolve to a message");
                 match enter {
-                    DynamicMessage::Typed { event_name, args, .. } => {
+                    DynamicMessage::Typed {
+                        event_name, args, ..
+                    } => {
                         assert_eq!(event_name, "Hover");
                         assert_eq!(args.len(), 1, "literal arg 0 must ride along");
                     }
@@ -17378,24 +19285,37 @@ mod tests {
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Chart");
 
-        let mut node = AuraNode::element("mouse-area")
-            .with_prop("coords", Expr::Str("560x300".into()));
+        let mut node =
+            AuraNode::element("mouse-area").with_prop("coords", Expr::Str("560x300".into()));
         if let AuraNode::Element { events, .. } = &mut node {
-            events.insert("onmousemove".to_string(), AuraEvent {
-                handler: ".PointerMove".to_string(),
-                params: vec![],
-            });
-            events.insert("onmouseenter".to_string(), AuraEvent {
-                handler: ".Hover".to_string(),
-                params: vec![],
-            });
+            events.insert(
+                "onmousemove".to_string(),
+                AuraEvent {
+                    handler: ".PointerMove".to_string(),
+                    params: vec![],
+                },
+            );
+            events.insert(
+                "onmouseenter".to_string(),
+                AuraEvent {
+                    handler: ".Hover".to_string(),
+                    params: vec![],
+                },
+            );
         }
         match builder.build(&node) {
-            View::MouseArea { on_move, logical_extent, on_enter, .. } => {
+            View::MouseArea {
+                on_move,
+                logical_extent,
+                on_enter,
+                ..
+            } => {
                 assert_eq!(logical_extent, Some((560.0, 300.0)), "coords WxH 解析");
                 let h = on_move.expect("onmousemove must resolve to a move handler");
                 match h.call(280.0, 150.0) {
-                    DynamicMessage::Typed { event_name, args, .. } => {
+                    DynamicMessage::Typed {
+                        event_name, args, ..
+                    } => {
                         assert_eq!(event_name, "PointerMove");
                         assert_eq!(args.len(), 2, "坐标必须追加为两个实参");
                         // PLAN-043 T9: 坐标实参 +1e-3 分数化（nanbox 绕道）。
@@ -17421,13 +19341,20 @@ mod tests {
         let mut node = AuraNode::element("mouse-area")
             .with_prop("style", Expr::Str("w-[64px] h-[64px]".into()));
         if let AuraNode::Element { events, .. } = &mut node {
-            events.insert("onmousemove".to_string(), AuraEvent {
-                handler: ".RawMove".to_string(),
-                params: vec![],
-            });
+            events.insert(
+                "onmousemove".to_string(),
+                AuraEvent {
+                    handler: ".RawMove".to_string(),
+                    params: vec![],
+                },
+            );
         }
         match builder.build(&node) {
-            View::MouseArea { on_move, logical_extent, .. } => {
+            View::MouseArea {
+                on_move,
+                logical_extent,
+                ..
+            } => {
                 assert_eq!(logical_extent, None, "无 coords = raw px 模式");
                 assert!(on_move.is_some(), "onmousemove 臂仍接线");
             }
@@ -17453,7 +19380,10 @@ mod tests {
         ];
         let scene = parse_canvas_scene(&pts, &meta);
         assert_eq!(scene.strokes.len(), 2);
-        assert_eq!(scene.strokes[0].points, vec![(10.0, 20.0), (30.0, 40.0), (50.0, 60.0)]);
+        assert_eq!(
+            scene.strokes[0].points,
+            vec![(10.0, 20.0), (30.0, 40.0), (50.0, 60.0)]
+        );
         assert_eq!(scene.strokes[0].color, "#111827");
         assert!((scene.strokes[0].width - 3.0).abs() < f32::EPSILON);
         assert!(!scene.strokes[0].eraser);
@@ -17493,28 +19423,47 @@ mod tests {
             .with_prop("coords", Expr::Str("400x300".into()))
             .with_prop("clear", Expr::Str("#ffffff".into()));
         if let AuraNode::Element { events, .. } = &mut node {
-            events.insert("onpenstart".to_string(), AuraEvent {
-                handler: ".PenStart".to_string(),
-                params: vec![],
-            });
-            events.insert("onpenmove".to_string(), AuraEvent {
-                handler: ".PenMove".to_string(),
-                params: vec![],
-            });
-            events.insert("onpenend".to_string(), AuraEvent {
-                handler: ".PenEnd".to_string(),
-                params: vec![],
-            });
+            events.insert(
+                "onpenstart".to_string(),
+                AuraEvent {
+                    handler: ".PenStart".to_string(),
+                    params: vec![],
+                },
+            );
+            events.insert(
+                "onpenmove".to_string(),
+                AuraEvent {
+                    handler: ".PenMove".to_string(),
+                    params: vec![],
+                },
+            );
+            events.insert(
+                "onpenend".to_string(),
+                AuraEvent {
+                    handler: ".PenEnd".to_string(),
+                    params: vec![],
+                },
+            );
         }
         match builder.build(&node) {
-            View::Canvas { scene, logical_extent, clear, on_pen_start, on_pen_move, on_pen_end, .. } => {
+            View::Canvas {
+                scene,
+                logical_extent,
+                clear,
+                on_pen_start,
+                on_pen_move,
+                on_pen_end,
+                ..
+            } => {
                 // 无 strokes_pts 状态 → 空场景降级(初始态)。
                 assert!(scene.strokes.is_empty(), "缺状态表 = 空画布");
                 assert_eq!(logical_extent, Some((400.0, 300.0)));
                 assert_eq!(clear.as_deref(), Some("#ffffff"));
                 // pen handler 坐标追加(mouse_area_move_arm 同型,+0.001 分数化)。
                 match on_pen_start.expect("onpenstart 必须接线").call(12.0, 34.0) {
-                    DynamicMessage::Typed { event_name, args, .. } => {
+                    DynamicMessage::Typed {
+                        event_name, args, ..
+                    } => {
                         assert_eq!(event_name, "PenStart");
                         assert!(matches!(args[0], Value::Float(f) if (f - 12.001).abs() < 1e-9));
                         assert!(matches!(args[1], Value::Float(f) if (f - 34.001).abs() < 1e-9));
@@ -17536,14 +19485,15 @@ mod tests {
         // Plan 049:BlockItem 折叠 body 的条件 `if !.collapsed` 在 collapsed=false
         // 时必须为 true。修复前 eval_condition_with 不认识 `!` 前缀,`! .collapsed`
         // 落入 resolve_binding_path → None → false,导致 ls 结果默认全隐藏。
-        let widget = make_test_widget("Fold", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Fold",
+            vec![AuraStateDef {
                 name: "collapsed".to_string(),
                 type_info: Type::Bool,
                 initial: Expr::Bool(false),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Fold");
 
@@ -17565,14 +19515,15 @@ mod tests {
     #[test]
     fn test_conditional_negation_hides_when_true() {
         // collapsed=true → `if !.collapsed` → false → body 隐藏(折叠生效)。
-        let widget = make_test_widget("Fold", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Fold",
+            vec![AuraStateDef {
                 name: "collapsed".to_string(),
                 type_info: Type::Bool,
                 initial: Expr::Bool(true),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Fold");
 
@@ -17618,12 +19569,15 @@ mod tests {
     // （非 label）。
     #[test]
     fn test_select_for_loop_options_and_value_contract() {
-        let widget = make_test_widget("Sel", vec![AuraStateDef {
-            name: "providers".to_string(),
-            type_info: Type::List(Box::new(Type::StrSlice)),
-            initial: Expr::Str(String::new().into()),
-            decorators: vec![],
-        }]);
+        let widget = make_test_widget(
+            "Sel",
+            vec![AuraStateDef {
+                name: "providers".to_string(),
+                type_info: Type::List(Box::new(Type::StrSlice)),
+                initial: Expr::Str(String::new().into()),
+                decorators: vec![],
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
         let mk = |v: &str, l: &str| {
             let mut o = auto_val::Obj::new();
@@ -17634,7 +19588,10 @@ mod tests {
         bridge
             .write_state(
                 "providers",
-                Value::Array(auto_val::Array::from(vec![mk("zhipu", "Zhipu"), mk("ds", "DeepSeek")])),
+                Value::Array(auto_val::Array::from(vec![
+                    mk("zhipu", "Zhipu"),
+                    mk("ds", "DeepSeek"),
+                ])),
             )
             .unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Sel");
@@ -17650,20 +19607,29 @@ mod tests {
                 iterable: ".providers".to_string(),
                 key_expr: None,
                 body: vec![AuraNode::element("option")
-                    .with_prop("value", Expr::Dot(
-                        Box::new(Expr::Ident("o".into())),
-                        "value".into(),
-                    ))
-                    .with_prop("text", Expr::Dot(
-                        Box::new(Expr::Ident("o".into())),
-                        "label".into(),
-                    ))],
+                    .with_prop(
+                        "value",
+                        Expr::Dot(Box::new(Expr::Ident("o".into())), "value".into()),
+                    )
+                    .with_prop(
+                        "text",
+                        Expr::Dot(Box::new(Expr::Ident("o".into())), "label".into()),
+                    )],
                 span: None,
                 debug_id: None,
             });
         match builder.build(&node) {
-            View::Select { options, selected_index, on_select, .. } => {
-                assert_eq!(options, vec!["Zhipu", "DeepSeek"], "D2: 循环选项全收（修复前 []）");
+            View::Select {
+                options,
+                selected_index,
+                on_select,
+                ..
+            } => {
+                assert_eq!(
+                    options,
+                    vec!["Zhipu", "DeepSeek"],
+                    "D2: 循环选项全收（修复前 []）"
+                );
                 assert_eq!(
                     selected_index, Some(1),
                     "D3: value 'ds' 经 value 数组匹配 idx=1（label 文本 'DeepSeek'≠'ds'，纯文本匹配会 miss）"
@@ -17686,12 +19652,15 @@ mod tests {
     // `.Apply(e, $event.target.value)` 的 vm 对位,Typed 消息）。
     #[test]
     fn test_select_event_slot_substitution() {
-        let widget = make_test_widget("Sel", vec![AuraStateDef {
-            name: "providers".to_string(),
-            type_info: Type::List(Box::new(Type::StrSlice)),
-            initial: Expr::Str(String::new().into()),
-            decorators: vec![],
-        }]);
+        let widget = make_test_widget(
+            "Sel",
+            vec![AuraStateDef {
+                name: "providers".to_string(),
+                type_info: Type::List(Box::new(Type::StrSlice)),
+                initial: Expr::Str(String::new().into()),
+                decorators: vec![],
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
         let mut o = auto_val::Obj::new();
         o.set("value", Value::str("zhipu"));
@@ -17712,14 +19681,14 @@ mod tests {
                 iterable: ".providers".to_string(),
                 key_expr: None,
                 body: vec![AuraNode::element("option")
-                    .with_prop("value", Expr::Dot(
-                        Box::new(Expr::Ident("o".into())),
-                        "value".into(),
-                    ))
-                    .with_prop("text", Expr::Dot(
-                        Box::new(Expr::Ident("o".into())),
-                        "label".into(),
-                    ))],
+                    .with_prop(
+                        "value",
+                        Expr::Dot(Box::new(Expr::Ident("o".into())), "value".into()),
+                    )
+                    .with_prop(
+                        "text",
+                        Expr::Dot(Box::new(Expr::Ident("o".into())), "label".into()),
+                    )],
                 span: None,
                 debug_id: None,
             });
@@ -17734,12 +19703,15 @@ mod tests {
             View::Select { on_select, .. } => {
                 let cb = on_select.expect("onchange present");
                 match cb.call(0, "Zhipu") {
-                    DynamicMessage::Typed { event_name, args, .. } => {
+                    DynamicMessage::Typed {
+                        event_name, args, ..
+                    } => {
                         assert_eq!(event_name, "Apply");
                         assert_eq!(args.len(), 2, "静态参数 + $event 补位");
                         assert_eq!(args[0], Value::str("fixed"));
                         assert_eq!(
-                            args[1], Value::str("zhipu"),
+                            args[1],
+                            Value::str("zhipu"),
                             "$event 位收 option value（非 label 'Zhipu'）"
                         );
                     }
@@ -17762,7 +19734,11 @@ mod tests {
             .with_prop("text", Expr::Str("select me".into()))
             .with_prop("selectable", Expr::Bool(true));
         match builder.build(&node) {
-            View::Text { content, selectable, .. } => {
+            View::Text {
+                content,
+                selectable,
+                ..
+            } => {
                 assert_eq!(content, "select me");
                 assert!(selectable, "selectable: true must ride View::Text");
             }
@@ -17779,8 +19755,7 @@ mod tests {
         }
 
         // 缺省(不声明)= false
-        let node = AuraNode::element("text")
-            .with_prop("text", Expr::Str("plain".into()));
+        let node = AuraNode::element("text").with_prop("text", Expr::Str("plain".into()));
         match builder.build(&node) {
             View::Text { selectable, .. } => assert!(!selectable, "default off"),
             other => panic!("expected View::Text, got {:?}", other),
@@ -17792,14 +19767,15 @@ mod tests {
         // Plan 049:渲染子组件(BlockList → BlockItem)时,子组件 model 变量
         // 的默认值必须种入统一 root state。否则 `.collapsed` 首次读取 Err →
         // 条件 false(内容隐藏)+ 字符串回退 "${collapse_glyph}"。
-        let child = make_test_widget("BlockItem", vec![
-            AuraStateDef {
+        let child = make_test_widget(
+            "BlockItem",
+            vec![AuraStateDef {
                 name: "collapsed".to_string(),
                 type_info: Type::Bool,
                 initial: Expr::Bool(false),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let parent = make_test_widget("BlockList", vec![]);
         let bridge = VmBridge::new(&parent).unwrap();
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
@@ -17832,7 +19808,9 @@ mod tests {
             View::Text { content, .. } => content.contains(needle),
             View::Button { label, content, .. } => {
                 label.contains(needle)
-                    || content.as_ref().map_or(false, |c| view_contains_text(c, needle))
+                    || content
+                        .as_ref()
+                        .map_or(false, |c| view_contains_text(c, needle))
             }
             View::Row { children, .. } | View::Column { children, .. } => {
                 children.iter().any(|c| view_contains_text(c, needle))
@@ -17875,11 +19853,12 @@ mod tests {
         let child = make_test_widget("Child", vec![]);
         let child_widget_view = child_with_outlet(Some("header"), "title");
         let mut parent = make_test_widget("Parent", vec![]);
-        parent.view_tree = slot_call_node("Child", vec![
-            AuraNode::element("slot")
+        parent.view_tree = slot_call_node(
+            "Child",
+            vec![AuraNode::element("slot")
                 .with_prop("name", Expr::Str("header".into()))
-                .with_child(AuraNode::text("FILL-MARKER")),
-        ]);
+                .with_child(AuraNode::text("FILL-MARKER"))],
+        );
         let _ = child_widget_view; // view_tree 在下方整体赋值（child 需 mut）
         let mut child = child;
         child.view_tree = child_widget_view;
@@ -17895,36 +19874,44 @@ mod tests {
             "named slot fill must render at the outlet; got: {:?}",
             view
         );
-        assert!(view_contains_text(&view, "title"), "child's own view must still render");
+        assert!(
+            view_contains_text(&view, "title"),
+            "child's own view must still render"
+        );
     }
 
     #[test]
     fn test_slot_fill_resolves_parent_scope() {
         // 父 state label="parent-value"、子 state label="child-value"——
         // fill 内 text .label 必须解析到父作用域。
-        let child = make_test_widget("Child", vec![
-            AuraStateDef {
+        let child = make_test_widget(
+            "Child",
+            vec![AuraStateDef {
                 name: "label".to_string(),
                 type_info: Type::StrSlice,
                 initial: Expr::Str("child-value".into()),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let mut child = child;
         child.view_tree = child_with_outlet(Some("x"), "hdr");
-        let mut parent = make_test_widget("Parent", vec![
-            AuraStateDef {
+        let mut parent = make_test_widget(
+            "Parent",
+            vec![AuraStateDef {
                 name: "label".to_string(),
                 type_info: Type::StrSlice,
                 initial: Expr::Str("parent-value".into()),
                 decorators: vec![],
-            },
-        ]);
-        parent.view_tree = slot_call_node("Child", vec![
-            AuraNode::element("slot")
+            }],
+        );
+        parent.view_tree = slot_call_node(
+            "Child",
+            vec![AuraNode::element("slot")
                 .with_prop("name", Expr::Str("x".into()))
-                .with_child(AuraNode::element("text").with_prop("text", Expr::Ident(".label".into()))),
-        ]);
+                .with_child(
+                    AuraNode::element("text").with_prop("text", Expr::Ident(".label".into())),
+                )],
+        );
 
         let bridge = VmBridge::new(&parent).unwrap();
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
@@ -17950,11 +19937,12 @@ mod tests {
         let mut child = child;
         child.view_tree = child_with_outlet(Some("x"), "hdr");
         let mut parent = make_test_widget("Parent", vec![]);
-        parent.view_tree = slot_call_node("Child", vec![
-            AuraNode::element("slot")
+        parent.view_tree = slot_call_node(
+            "Child",
+            vec![AuraNode::element("slot")
                 .with_prop("name", Expr::Str("x".into()))
-                .with_child(AuraNode::element("button").with_event("onclick", ".Clicked")),
-        ]);
+                .with_child(AuraNode::element("button").with_event("onclick", ".Clicked"))],
+        );
 
         let bridge = VmBridge::new(&parent).unwrap();
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
@@ -17965,22 +19953,33 @@ mod tests {
         // 深度找 Button 断言其 onclick 路由到父 widget。
         fn find_button(view: &View<DynamicMessage>) -> Option<&DynamicMessage> {
             match view {
-                View::Button { onclick, content, .. } => {
+                View::Button {
+                    onclick, content, ..
+                } => {
                     if content.is_some() {
-                        if let Some(c) = content { if let Some(m) = find_button(c) { return Some(m); } }
+                        if let Some(c) = content {
+                            if let Some(m) = find_button(c) {
+                                return Some(m);
+                            }
+                        }
                     }
                     Some(onclick)
                 }
                 View::Row { children, .. } | View::Column { children, .. } => {
                     children.iter().find_map(find_button)
                 }
-                View::Container { child, .. } | View::Scrollable { child, .. } => find_button(child),
+                View::Container { child, .. } | View::Scrollable { child, .. } => {
+                    find_button(child)
+                }
                 _ => None,
             }
         }
         match find_button(&view) {
             Some(DynamicMessage::Typed { widget_name, .. }) => {
-                assert_eq!(widget_name, "Parent", "fill events must route to the parent widget");
+                assert_eq!(
+                    widget_name, "Parent",
+                    "fill events must route to the parent widget"
+                );
             }
             other => panic!("fill button must carry a Typed message, got {:?}", other),
         }
@@ -17998,11 +19997,12 @@ mod tests {
                 .with_child(AuraNode::text("FALLBACK")),
         );
         let mut parent = make_test_widget("Parent", vec![]);
-        parent.view_tree = slot_call_node("Child", vec![
-            AuraNode::element("slot")
+        parent.view_tree = slot_call_node(
+            "Child",
+            vec![AuraNode::element("slot")
                 .with_prop("name", Expr::Str("nope".into()))
-                .with_child(AuraNode::text("GHOST")),
-        ]);
+                .with_child(AuraNode::text("GHOST"))],
+        );
 
         let bridge = VmBridge::new(&parent).unwrap();
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
@@ -18028,9 +20028,7 @@ mod tests {
         let mut child = child;
         child.view_tree = child_with_outlet(None, "hdr");
         let mut parent = make_test_widget("Parent", vec![]);
-        parent.view_tree = slot_call_node("Child", vec![
-            AuraNode::text("DEFAULT-FILL"),
-        ]);
+        parent.view_tree = slot_call_node("Child", vec![AuraNode::text("DEFAULT-FILL")]);
 
         let bridge = VmBridge::new(&parent).unwrap();
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
@@ -18051,16 +20049,16 @@ mod tests {
         // 递增），而非单包装视图。
         let child = make_test_widget("Child", vec![]);
         let mut child = child;
-        child.view_tree = AuraNode::element("row").with_child(
-            AuraNode::element("slot").with_prop("name", Expr::Str("acts".into())),
-        );
+        child.view_tree = AuraNode::element("row")
+            .with_child(AuraNode::element("slot").with_prop("name", Expr::Str("acts".into())));
         let mut parent = make_test_widget("Parent", vec![]);
-        parent.view_tree = slot_call_node("Child", vec![
-            AuraNode::element("slot")
+        parent.view_tree = slot_call_node(
+            "Child",
+            vec![AuraNode::element("slot")
                 .with_prop("name", Expr::Str("acts".into()))
                 .with_child(AuraNode::text("B1"))
-                .with_child(AuraNode::text("B2")),
-        ]);
+                .with_child(AuraNode::text("B2"))],
+        );
 
         let bridge = VmBridge::new(&parent).unwrap();
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
@@ -18071,7 +20069,12 @@ mod tests {
         match view {
             View::Row { ref children, .. } => {
                 // outlet 展开为 2 个兄弟文本视图（未被包成单一节点）
-                assert_eq!(children.len(), 2, "fill children must splice as siblings: {:?}", children);
+                assert_eq!(
+                    children.len(),
+                    2,
+                    "fill children must splice as siblings: {:?}",
+                    children
+                );
                 assert!(view_contains_text(&view, "B1"));
                 assert!(view_contains_text(&view, "B2"));
             }
@@ -18086,22 +20089,24 @@ mod tests {
         let child = make_test_widget("Child", vec![]);
         let mut child = child;
         child.view_tree = child_with_outlet(Some("x"), "hdr");
-        let mut parent = make_test_widget("Parent", vec![
-            AuraStateDef {
+        let mut parent = make_test_widget(
+            "Parent",
+            vec![AuraStateDef {
                 name: "greeting".to_string(),
                 type_info: Type::StrSlice,
                 initial: Expr::Str("hello".into()),
                 decorators: vec![],
-            },
-        ]);
-        parent.view_tree = slot_call_node("Child", vec![
-            AuraNode::element("slot")
+            }],
+        );
+        parent.view_tree = slot_call_node(
+            "Child",
+            vec![AuraNode::element("slot")
                 .with_prop("name", Expr::Str("x".into()))
                 .with_child(AuraNode::Text(AuraTextContent::Interpolated {
                     template: "G: ${.greeting}".to_string(),
                     bindings: vec!["greeting".to_string()],
-                })),
-        ]);
+                }))],
+        );
 
         let bridge = VmBridge::new(&parent).unwrap();
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
@@ -18115,9 +20120,9 @@ mod tests {
             view
         );
         let snap = probe.snapshot();
-        let has_fill_binding = snap.values().any(|e| {
-            e.state_bindings.iter().any(|b| b.expr.contains("greeting"))
-        });
+        let has_fill_binding = snap
+            .values()
+            .any(|e| e.state_bindings.iter().any(|b| b.expr.contains("greeting")));
         assert!(
             has_fill_binding,
             "fill subtree's state binding must reach the BuildProbe (tracked path); snap: {:?}",
@@ -18131,14 +20136,15 @@ mod tests {
 
     #[test]
     fn build_with_debug_captures_nested_state_binding() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(42),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Counter");
 
@@ -18146,12 +20152,10 @@ mod tests {
             tag: "col".to_string(),
             props: HashMap::new(),
             events: HashMap::new(),
-            children: vec![
-                AuraNode::Text(AuraTextContent::Interpolated {
-                    template: "Count: ${.count}".to_string(),
-                    bindings: vec!["count".to_string()],
-                }),
-            ],
+            children: vec![AuraNode::Text(AuraTextContent::Interpolated {
+                template: "Count: ${.count}".to_string(),
+                bindings: vec!["count".to_string()],
+            })],
             span: None,
             debug_id: None,
         };
@@ -18169,14 +20173,15 @@ mod tests {
     fn build_with_debug_skips_literal_text_sibling() {
         // col with two text children: one interpolated, one literal.
         // Only the interpolated one should produce a probe entry.
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(42),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Counter");
 
@@ -18220,23 +20225,26 @@ mod tests {
         use crate::ui::debug::ForIter;
         // Widget declares an `items` state field (initial dummy, overwritten
         // below). State expr has no array literal, so we seed via write_state.
-        let widget = make_test_widget("List", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "List",
+            vec![AuraStateDef {
                 name: "items".to_string(),
                 type_info: Type::List(Box::new(Type::StrSlice)),
                 initial: Expr::Str(String::new().into()),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
-        bridge.write_state(
-            "items",
-            Value::Array(auto_val::Array::from(vec![
-                Value::str("apple"),
-                Value::str("banana"),
-                Value::str("cherry"),
-            ])),
-        ).unwrap();
+        bridge
+            .write_state(
+                "items",
+                Value::Array(auto_val::Array::from(vec![
+                    Value::str("apple"),
+                    Value::str("banana"),
+                    Value::str("cherry"),
+                ])),
+            )
+            .unwrap();
         let builder = AuraViewBuilder::new(&bridge, "List");
 
         // for item in .items { text("${.item}") }
@@ -18254,11 +20262,13 @@ mod tests {
         };
         let (_view, _id_map, probe) = builder.build_with_debug(&node);
         let snap = probe.snapshot();
-        let for_entries: Vec<&ForIter> = snap.values()
+        let for_entries: Vec<&ForIter> = snap
+            .values()
             .filter_map(|e| e.for_context.as_ref())
             .collect();
         assert_eq!(for_entries.len(), 3, "three iterations captured");
-        let mut by_index: Vec<(usize, &str)> = for_entries.iter()
+        let mut by_index: Vec<(usize, &str)> = for_entries
+            .iter()
             .map(|f| (f.index.unwrap(), f.value_repr.as_str()))
             .collect();
         by_index.sort_by_key(|(i, _)| *i);
@@ -18278,22 +20288,25 @@ mod tests {
         //
         // Before Fix A the builder recorded at `[i, 0]` (it pushed the
         // body-index unconditionally) — this test would fail with len==2.
-        let widget = make_test_widget("List", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "List",
+            vec![AuraStateDef {
                 name: "items".to_string(),
                 type_info: Type::List(Box::new(Type::StrSlice)),
                 initial: Expr::Str(String::new().into()),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
-        bridge.write_state(
-            "items",
-            Value::Array(auto_val::Array::from(vec![
-                Value::str("apple"),
-                Value::str("banana"),
-            ])),
-        ).unwrap();
+        bridge
+            .write_state(
+                "items",
+                Value::Array(auto_val::Array::from(vec![
+                    Value::str("apple"),
+                    Value::str("banana"),
+                ])),
+            )
+            .unwrap();
         let builder = AuraViewBuilder::new(&bridge, "List");
 
         // for item in .items { text("${.item}") }  — body.len() == 1
@@ -18315,13 +20328,25 @@ mod tests {
         path_keys.sort();
         // one entry per iteration (each combines for_context + state binding),
         // each at a single-segment path
-        assert_eq!(path_keys, vec![vec![0u16], vec![1u16]],
-            "Fix A: single-body loop body paths are [i], not [i, 0]");
+        assert_eq!(
+            path_keys,
+            vec![vec![0u16], vec![1u16]],
+            "Fix A: single-body loop body paths are [i], not [i, 0]"
+        );
         // each entry carries both the for-context and the state binding
         for k in &path_keys {
             let entry = snap.get(k).unwrap();
-            assert!(entry.for_context.is_some(), "for_context present at {:?}", k);
-            assert_eq!(entry.state_bindings.len(), 1, "state binding present at {:?}", k);
+            assert!(
+                entry.for_context.is_some(),
+                "for_context present at {:?}",
+                k
+            );
+            assert_eq!(
+                entry.state_bindings.len(),
+                1,
+                "state binding present at {:?}",
+                k
+            );
         }
     }
 
@@ -18330,19 +20355,22 @@ mod tests {
         // Plan 309 Phase 1 (Fix A) regression guard: a multi-node body is
         // wrapped in a Column per iteration, so the body-index level IS
         // present in the VTree — the builder must STILL push it (`[i, bi]`).
-        let widget = make_test_widget("List", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "List",
+            vec![AuraStateDef {
                 name: "items".to_string(),
                 type_info: Type::List(Box::new(Type::StrSlice)),
                 initial: Expr::Str(String::new().into()),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
-        bridge.write_state(
-            "items",
-            Value::Array(auto_val::Array::from(vec![Value::str("x")])),
-        ).unwrap();
+        bridge
+            .write_state(
+                "items",
+                Value::Array(auto_val::Array::from(vec![Value::str("x")])),
+            )
+            .unwrap();
         let builder = AuraViewBuilder::new(&bridge, "List");
 
         // for item in .items { text("${.item}"); text("tail") }  — body.len() == 2
@@ -18365,10 +20393,14 @@ mod tests {
         let snap = probe.snapshot();
         // first body node at [0, 0]; literal "tail" produces no probe entry.
         // The interpolated node keeps the two-segment path (body-index present).
-        assert!(snap.contains_key(&vec![0u16, 0u16]),
-            "multi-body loop keeps body-index level: key [0,0] expected");
-        assert!(!snap.contains_key(&vec![0u16]),
-            "multi-body loop must NOT collapse to single-segment [0]");
+        assert!(
+            snap.contains_key(&vec![0u16, 0u16]),
+            "multi-body loop keeps body-index level: key [0,0] expected"
+        );
+        assert!(
+            !snap.contains_key(&vec![0u16]),
+            "multi-body loop must NOT collapse to single-segment [0]"
+        );
     }
 
     // ========================================================================
@@ -18397,23 +20429,30 @@ mod tests {
     }
 
     fn widget_with_items() -> (AuraWidget, VmBridge) {
-        let widget = make_test_widget("Grid", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Grid",
+            vec![AuraStateDef {
                 name: "items".to_string(),
                 type_info: Type::List(Box::new(Type::StrSlice)),
                 initial: Expr::Str(String::new().into()),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
-        bridge.write_state(
-            "items",
-            Value::Array(auto_val::Array::from(vec![
-                Value::str("a"), Value::str("b"), Value::str("c"),
-                Value::str("d"), Value::str("e"), Value::str("f"),
-                Value::str("g"),
-            ])),
-        ).unwrap();
+        bridge
+            .write_state(
+                "items",
+                Value::Array(auto_val::Array::from(vec![
+                    Value::str("a"),
+                    Value::str("b"),
+                    Value::str("c"),
+                    Value::str("d"),
+                    Value::str("e"),
+                    Value::str("f"),
+                    Value::str("g"),
+                ])),
+            )
+            .unwrap();
         (widget, bridge)
     }
 
@@ -18431,11 +20470,16 @@ mod tests {
         match view {
             View::Grid { cols, cells, .. } => {
                 assert_eq!(cols, 7);
-                assert_eq!(cells.len(), 7,
-                    "for inside grid must flatten to one cell per iteration");
+                assert_eq!(
+                    cells.len(),
+                    7,
+                    "for inside grid must flatten to one cell per iteration"
+                );
             }
-            other => panic!("Expected View::Grid with 7 cells, got {:?} (kind)",
-                std::mem::discriminant(&other)),
+            other => panic!(
+                "Expected View::Grid with 7 cells, got {:?} (kind)",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -18444,9 +20488,13 @@ mod tests {
     // ========================================================================
 
     fn styled_node(tag: &str, style: &str, child_count: usize) -> AuraNode {
-        let mut node = AuraNode::element(tag).with_prop("style", Expr::Str(style.to_string().into()));
+        let mut node =
+            AuraNode::element(tag).with_prop("style", Expr::Str(style.to_string().into()));
         for i in 0..child_count {
-            node = node.with_child(AuraNode::Text(AuraTextContent::Literal(format!("{}", i + 1))));
+            node = node.with_child(AuraNode::Text(AuraTextContent::Literal(format!(
+                "{}",
+                i + 1
+            ))));
         }
         node
     }
@@ -18464,23 +20512,38 @@ mod tests {
         // 写法)在 VM 必须获得真实网格,gap-4 = 4 units × 4px = 16px。
         let view = build_plain(&styled_node("div", "grid grid-cols-3 gap-4", 6));
         match view {
-            View::Grid { cols, gap, cells, style } => {
+            View::Grid {
+                cols,
+                gap,
+                cells,
+                style,
+            } => {
                 assert_eq!(cols, 3);
                 assert_eq!(gap, 16, "gap-4 → 16px");
                 assert_eq!(cells.len(), 6);
                 assert!(style.is_some(), "style 类保留在结果 View 上");
             }
-            other => panic!("Expected View::Grid, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "Expected View::Grid, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
     #[test]
     fn plan412_responsive_grid_cols_participate() {
         // 响应式前缀剥离(Plan 411 P0-B)与重派生叠加:md:grid-cols-2 生效。
-        let view = build_plain(&styled_node("div", "grid grid-cols-1 md:grid-cols-2 gap-4", 4));
+        let view = build_plain(&styled_node(
+            "div",
+            "grid grid-cols-1 md:grid-cols-2 gap-4",
+            4,
+        ));
         match view {
             View::Grid { cols, .. } => assert_eq!(cols, 2, "md: 剥离后 grid-cols-2 参与派生"),
-            other => panic!("Expected View::Grid, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "Expected View::Grid, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -18488,11 +20551,16 @@ mod tests {
     fn plan412_container_flex_classes_rederive() {
         // flex-col → Column;flex → Row(无子节点差异,只看 View 类型)
         match build_plain(&styled_node("div", "flex flex-col gap-2", 2)) {
-            View::Column { children, style, .. } => {
+            View::Column {
+                children, style, ..
+            } => {
                 assert_eq!(children.len(), 2);
                 assert!(style.is_some());
             }
-            other => panic!("flex flex-col → Column, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "flex flex-col → Column, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
         match build_plain(&styled_node("div", "flex items-center gap-2", 2)) {
             View::Row { children, .. } => assert_eq!(children.len(), 2),
@@ -18509,10 +20577,17 @@ mod tests {
         }
         match build_plain(&styled_node("row", "flex-col", 2)) {
             View::Column { .. } => {}
-            other => panic!("row+flex-col → Column, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "row+flex-col → Column, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
         // col + grid 类 → Grid(/grid 页写法)
-        match build_plain(&styled_node("col", "grid grid-cols-3 gap-4 w-full max-w-lg", 6)) {
+        match build_plain(&styled_node(
+            "col",
+            "grid grid-cols-3 gap-4 w-full max-w-lg",
+            6,
+        )) {
             View::Grid { cols, gap, .. } => {
                 assert_eq!((cols, gap), (3, 16));
             }
@@ -18533,7 +20608,10 @@ mod tests {
                 assert_eq!(cols, 2, "grid-cols-2 类覆盖 cols prop");
                 assert_eq!(gap, 16, "gap-4 类(16px)覆盖 gap prop(8px)");
             }
-            other => panic!("Expected View::Grid, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "Expected View::Grid, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -18542,7 +20620,10 @@ mod tests {
         // 无布局类 → 原 Container 路径(回归保护)
         match build_plain(&styled_node("div", "p-4 bg-card rounded-lg border", 1)) {
             View::Container { .. } => {}
-            other => panic!("plain div → Container, got {:?}", std::mem::discriminant(&other)),
+            other => panic!(
+                "plain div → Container, got {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
@@ -18559,21 +20640,40 @@ mod tests {
         let (view, _id_map, probe) = builder.build_with_debug(&grid_with_for_loop_node());
         match view {
             View::Grid { cells, .. } => {
-                assert_eq!(cells.len(), 7,
-                    "tracked for-in-grid must also flatten to 7 cells");
+                assert_eq!(
+                    cells.len(),
+                    7,
+                    "tracked for-in-grid must also flatten to 7 cells"
+                );
             }
-            other => panic!("Expected tracked View::Grid with 7 cells, got {:?} (kind)",
-                std::mem::discriminant(&other)),
+            other => panic!(
+                "Expected tracked View::Grid with 7 cells, got {:?} (kind)",
+                std::mem::discriminant(&other)
+            ),
         }
         let snap = probe.snapshot();
         let mut keys: Vec<Vec<u16>> = snap.keys().cloned().collect();
         keys.sort();
         // Each iteration's for-context recorded at the flat cell path [0..7].
-        assert_eq!(keys, vec![vec![0u16], vec![1], vec![2], vec![3], vec![4], vec![5], vec![6]],
-            "tracked grid cell paths must be flat sequential [0..7]");
+        assert_eq!(
+            keys,
+            vec![
+                vec![0u16],
+                vec![1],
+                vec![2],
+                vec![3],
+                vec![4],
+                vec![5],
+                vec![6]
+            ],
+            "tracked grid cell paths must be flat sequential [0..7]"
+        );
         for k in &keys {
-            assert!(snap.get(k).unwrap().for_context.is_some(),
-                "for_context present at flat cell path {:?}", k);
+            assert!(
+                snap.get(k).unwrap().for_context.is_some(),
+                "for_context present at flat cell path {:?}",
+                k
+            );
         }
     }
 
@@ -18585,14 +20685,15 @@ mod tests {
         // `cell.label` actually resolves to each Obj's "label" string. If this
         // fails, an empty day grid is explained by the view path (hypothesis B),
         // not just the grid-flattening.
-        let widget = make_test_widget("Cal", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Cal",
+            vec![AuraStateDef {
                 name: "days".to_string(),
                 type_info: Type::List(Box::new(Type::StrSlice)),
                 initial: Expr::Str(String::new().into()),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
 
         fn cell(label: &str, date: &str, other: bool) -> Value {
@@ -18602,14 +20703,16 @@ mod tests {
             o.set("is_other_month", Value::Bool(other));
             Value::Obj(Box::new(o))
         }
-        bridge.write_state(
-            "days",
-            Value::Array(auto_val::Array::from(vec![
-                cell("31", "2026-05-31", true),
-                cell("1", "2026-06-01", false),
-                cell("2", "2026-06-02", false),
-            ])),
-        ).unwrap();
+        bridge
+            .write_state(
+                "days",
+                Value::Array(auto_val::Array::from(vec![
+                    cell("31", "2026-05-31", true),
+                    cell("1", "2026-06-01", false),
+                    cell("2", "2026-06-02", false),
+                ])),
+            )
+            .unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Cal");
 
         // grid { for cell in .days { button cell.label { ... } } }
@@ -18643,28 +20746,37 @@ mod tests {
         match view {
             View::Grid { cells, .. } => {
                 assert_eq!(cells.len(), 3, "for over 3 Obj cells → 3 grid cells");
-                let labels: Vec<String> = cells.iter().map(|c| match c {
-                    View::Button { label, .. } => label.clone(),
-                    _ => "(not button)".to_string(),
-                }).collect();
-                assert_eq!(labels, vec!["31", "1", "2"],
-                    "button cell.label must resolve each Obj's label field");
+                let labels: Vec<String> = cells
+                    .iter()
+                    .map(|c| match c {
+                        View::Button { label, .. } => label.clone(),
+                        _ => "(not button)".to_string(),
+                    })
+                    .collect();
+                assert_eq!(
+                    labels,
+                    vec!["31", "1", "2"],
+                    "button cell.label must resolve each Obj's label field"
+                );
             }
-            other => panic!("Expected View::Grid, got discriminant {:?}",
-                std::mem::discriminant(&other)),
+            other => panic!(
+                "Expected View::Grid, got discriminant {:?}",
+                std::mem::discriminant(&other)
+            ),
         }
     }
 
     #[test]
     fn plan606_for_loop_image_resolves_bindings_and_fit() {
-        let widget = make_test_widget("Gallery", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Gallery",
+            vec![AuraStateDef {
                 name: "items".to_string(),
                 type_info: Type::List(Box::new(Type::StrSlice)),
                 initial: Expr::Str(String::new().into()),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
 
         fn item(id: i32, thumb: &str, title: &str) -> Value {
@@ -18674,13 +20786,15 @@ mod tests {
             o.set("title", Value::str(title));
             Value::Obj(Box::new(o))
         }
-        bridge.write_state(
-            "items",
-            Value::Array(auto_val::Array::from(vec![
-                item(1, "https://example.com/1.jpg", "Mountain"),
-                item(2, "data:image/svg+xml;utf8,<svg></svg>", "Bridge"),
-            ])),
-        ).unwrap();
+        bridge
+            .write_state(
+                "items",
+                Value::Array(auto_val::Array::from(vec![
+                    item(1, "https://example.com/1.jpg", "Mountain"),
+                    item(2, "data:image/svg+xml;utf8,<svg></svg>", "Bridge"),
+                ])),
+            )
+            .unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Gallery");
 
         // grid { for it in .items { image (src: it.thumb, fit: "cover") } }
@@ -18725,7 +20839,10 @@ mod tests {
                         assert_eq!(src, "https://example.com/1.jpg");
                         let s = style.as_ref().expect("fit: cover -> style");
                         assert!(
-                            s.classes.iter().any(|c| matches!(c, StyleClass::ObjectFit(crate::ui::style::ObjectFit::Cover))),
+                            s.classes.iter().any(|c| matches!(
+                                c,
+                                StyleClass::ObjectFit(crate::ui::style::ObjectFit::Cover)
+                            )),
                             "style should have ObjectFit::Cover"
                         );
                     }
@@ -18755,15 +20872,17 @@ mod tests {
 
         let node = AuraNode::Element {
             tag: "button".to_string(),
-            props: HashMap::from([
-                ("label".to_string(), AuraPropValue::Expr(Expr::Str("Inc".into()))),
-            ]),
-            events: HashMap::from([
-                ("onclick".to_string(), AuraEvent {
+            props: HashMap::from([(
+                "label".to_string(),
+                AuraPropValue::Expr(Expr::Str("Inc".into())),
+            )]),
+            events: HashMap::from([(
+                "onclick".to_string(),
+                AuraEvent {
                     handler: ".Inc".to_string(),
                     params: vec![],
-                }),
-            ]),
+                },
+            )]),
             children: vec![],
             span: None,
             debug_id: None,
@@ -18786,12 +20905,13 @@ mod tests {
         let button = |handler: &str| AuraNode::Element {
             tag: "button".to_string(),
             props: HashMap::new(),
-            events: HashMap::from([
-                ("onclick".to_string(), AuraEvent {
+            events: HashMap::from([(
+                "onclick".to_string(),
+                AuraEvent {
                     handler: handler.to_string(),
                     params: vec![],
-                }),
-            ]),
+                },
+            )]),
             children: vec![],
             span: None,
             debug_id: None,
@@ -18808,8 +20928,13 @@ mod tests {
         let (_view, _id_map, probe) = builder.build_with_debug(&node);
         let snap = probe.snapshot();
         // Each button is captured at its own child path with one event each.
-        let event_paths: Vec<(Vec<u16>, &str)> = snap.iter()
-            .flat_map(|(path, e)| e.events.iter().map(move |ev| (path.clone(), ev.handler.as_str())))
+        let event_paths: Vec<(Vec<u16>, &str)> = snap
+            .iter()
+            .flat_map(|(path, e)| {
+                e.events
+                    .iter()
+                    .map(move |ev| (path.clone(), ev.handler.as_str()))
+            })
             .collect();
         assert_eq!(event_paths.len(), 2, "two events captured");
         let handlers: Vec<&str> = {
@@ -18835,17 +20960,19 @@ mod tests {
                 ("padding".to_string(), AuraPropValue::Expr(Expr::Int(5))),
             ]),
             events: HashMap::new(),
-            children: vec![
-                AuraNode::text("Child 1"),
-                AuraNode::text("Child 2"),
-            ],
+            children: vec![AuraNode::text("Child 1"), AuraNode::text("Child 2")],
             span: None,
             debug_id: None,
         };
         let view = builder.build(&node);
 
         match view {
-            View::Column { spacing, padding, children, .. } => {
+            View::Column {
+                spacing,
+                padding,
+                children,
+                ..
+            } => {
                 assert_eq!(spacing, 10);
                 assert_eq!(padding, 5);
                 assert_eq!(children.len(), 2);
@@ -18862,21 +20989,18 @@ mod tests {
 
         let node = AuraNode::Element {
             tag: "row".to_string(),
-            props: HashMap::from([
-                ("spacing".to_string(), AuraPropValue::Expr(Expr::Int(8))),
-            ]),
+            props: HashMap::from([("spacing".to_string(), AuraPropValue::Expr(Expr::Int(8)))]),
             events: HashMap::new(),
-            children: vec![
-                AuraNode::text("A"),
-                AuraNode::text("B"),
-            ],
+            children: vec![AuraNode::text("A"), AuraNode::text("B")],
             span: None,
             debug_id: None,
         };
         let view = builder.build(&node);
 
         match view {
-            View::Row { spacing, children, .. } => {
+            View::Row {
+                spacing, children, ..
+            } => {
                 assert_eq!(spacing, 8);
                 assert_eq!(children.len(), 2);
             }
@@ -18894,15 +21018,17 @@ mod tests {
             span: None,
             debug_id: None,
             tag: "button".to_string(),
-            props: HashMap::from([
-                ("text".to_string(), AuraPropValue::Expr(Expr::Str("Increment".into()))),
-            ]),
-            events: HashMap::from([
-                ("onclick".to_string(), AuraEvent {
+            props: HashMap::from([(
+                "text".to_string(),
+                AuraPropValue::Expr(Expr::Str("Increment".into())),
+            )]),
+            events: HashMap::from([(
+                "onclick".to_string(),
+                AuraEvent {
                     handler: ".Inc".to_string(),
                     params: vec![],
-                }),
-            ]),
+                },
+            )]),
             children: vec![],
         };
         let view = builder.build(&node);
@@ -18911,7 +21037,11 @@ mod tests {
             View::Button { label, onclick, .. } => {
                 assert_eq!(label, "Increment");
                 match onclick {
-                    DynamicMessage::Typed { widget_name, event_name, args } => {
+                    DynamicMessage::Typed {
+                        widget_name,
+                        event_name,
+                        args,
+                    } => {
                         assert_eq!(widget_name, "Counter");
                         assert_eq!(event_name, "Inc");
                         assert!(args.is_empty());
@@ -18938,21 +21068,30 @@ mod tests {
             debug_id: None,
             tag: "col".to_string(),
             props: HashMap::new(),
-            events: HashMap::from([
-                ("oncontextmenu".to_string(), AuraEvent {
+            events: HashMap::from([(
+                "oncontextmenu".to_string(),
+                AuraEvent {
                     handler: ".BlankMenu".to_string(),
                     params: vec![],
-                }),
-            ]),
+                },
+            )]),
             children: vec![],
         };
         let view = builder.build(&node);
 
         match view {
-            View::Column { onclick, on_right_click, .. } => {
+            View::Column {
+                onclick,
+                on_right_click,
+                ..
+            } => {
                 assert!(onclick.is_none(), "onclick 缺席不应被 oncontextmenu 误填");
                 match on_right_click {
-                    Some(DynamicMessage::Typed { widget_name, event_name, .. }) => {
+                    Some(DynamicMessage::Typed {
+                        widget_name,
+                        event_name,
+                        ..
+                    }) => {
                         assert_eq!(widget_name, "Desktop");
                         assert_eq!(event_name, "BlankMenu");
                     }
@@ -18982,10 +21121,7 @@ mod tests {
                     events: HashMap::new(),
                     span: None,
                     debug_id: None,
-                    children: vec![
-                        AuraNode::text("Left"),
-                        AuraNode::text("Right"),
-                    ],
+                    children: vec![AuraNode::text("Left"), AuraNode::text("Right")],
                 },
                 AuraNode::text("Bottom"),
             ],
@@ -18996,7 +21132,10 @@ mod tests {
             View::Column { children, .. } => {
                 assert_eq!(children.len(), 2);
                 match &children[0] {
-                    View::Row { children: row_children, .. } => {
+                    View::Row {
+                        children: row_children,
+                        ..
+                    } => {
                         assert_eq!(row_children.len(), 2);
                     }
                     _ => panic!("Expected View::Row as first child"),
@@ -19016,9 +21155,7 @@ mod tests {
             tag: "custom_widget".to_string(),
             props: HashMap::new(),
             events: HashMap::new(),
-            children: vec![
-                AuraNode::text("Content"),
-            ],
+            children: vec![AuraNode::text("Content")],
             span: None,
             debug_id: None,
         };
@@ -19080,13 +21217,22 @@ mod tests {
             View::Image { src, style } => {
                 assert!(src.starts_with("svgdoc:"), "svgdoc src: {src}");
                 let doc = &src["svgdoc:".len()..];
-                assert!(doc.contains(r#"viewBox="0 0 24 24""#), "viewBox attr: {doc}");
+                assert!(
+                    doc.contains(r#"viewBox="0 0 24 24""#),
+                    "viewBox attr: {doc}"
+                );
                 assert!(doc.contains(r#"d="M4 4h16v16h-16z""#), "path d attr: {doc}");
                 assert!(doc.contains(r#"fill="currentColor""#), "fill attr: {doc}");
-                assert!(!doc.contains("w-6"), "class 不进文档(由 View::Image style 承载): {doc}");
+                assert!(
+                    !doc.contains("w-6"),
+                    "class 不进文档(由 View::Image style 承载): {doc}"
+                );
                 let style = style.expect("class prop → View::Image style");
                 assert!(
-                    style.classes.iter().any(|c| matches!(c, StyleClass::Width(_))),
+                    style
+                        .classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::Width(_))),
                     "w-6 parsed: {:?}",
                     style.classes
                 );
@@ -19151,7 +21297,11 @@ mod tests {
         assert_eq!((zoom, offset_x, offset_y, rotation), (2.0, 12.5, -4.0, 90));
         assert_eq!(filter, "linear");
         let event_name = |message: DynamicMessage| match message {
-            DynamicMessage::Typed { widget_name, event_name, args } => {
+            DynamicMessage::Typed {
+                widget_name,
+                event_name,
+                args,
+            } => {
                 assert_eq!(widget_name, "Viewer");
                 assert!(args.is_empty());
                 event_name
@@ -19184,22 +21334,24 @@ mod tests {
 
     #[test]
     fn test_state_binding_in_text_element() {
-        let widget = make_test_widget("Counter", vec![
-            AuraStateDef {
+        let widget = make_test_widget(
+            "Counter",
+            vec![AuraStateDef {
                 name: "count".to_string(),
                 type_info: Type::Int,
                 initial: Expr::Int(7),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Counter");
 
         let node = AuraNode::Element {
             tag: "text".to_string(),
-            props: HashMap::from([
-                ("text".to_string(), AuraPropValue::Expr(Expr::Ident(".count".into()))),
-            ]),
+            props: HashMap::from([(
+                "text".to_string(),
+                AuraPropValue::Expr(Expr::Ident(".count".into())),
+            )]),
             events: HashMap::new(),
             span: None,
             debug_id: None,
@@ -19223,15 +21375,17 @@ mod tests {
 
         let node = AuraNode::Element {
             tag: "button".to_string(),
-            props: HashMap::from([
-                ("label".to_string(), AuraPropValue::Expr(Expr::Str("Reset".into()))),
-            ]),
-            events: HashMap::from([
-                ("onclick".to_string(), AuraEvent {
+            props: HashMap::from([(
+                "label".to_string(),
+                AuraPropValue::Expr(Expr::Str("Reset".into())),
+            )]),
+            events: HashMap::from([(
+                "onclick".to_string(),
+                AuraEvent {
                     handler: "Msg::Reset".to_string(),
                     params: vec![],
-                }),
-            ]),
+                },
+            )]),
             span: None,
             debug_id: None,
             children: vec![],
@@ -19271,20 +21425,23 @@ mod tests {
         bindings.insert("todo".to_string(), Value::Obj(Box::new(todo_obj)));
 
         // Set up state: filter = "active"
-        let widget = make_test_widget("App", vec![
-            AuraStateDef {
-                name: "filter".to_string(),
-                type_info: Type::StrOwned,
-                initial: Expr::Str("active".into()),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "todos".to_string(),
-                type_info: Type::StrOwned,
-                initial: Expr::Str("[]".into()),
-                decorators: vec![],
-            },
-        ]);
+        let widget = make_test_widget(
+            "App",
+            vec![
+                AuraStateDef {
+                    name: "filter".to_string(),
+                    type_info: Type::StrOwned,
+                    initial: Expr::Str("active".into()),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "todos".to_string(),
+                    type_info: Type::StrOwned,
+                    initial: Expr::Str("[]".into()),
+                    decorators: vec![],
+                },
+            ],
+        );
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App");
 
@@ -19292,13 +21449,19 @@ mod tests {
         let cond1 = ".filter == \"active\" && todo.done == false";
         let r1 = builder.eval_condition_with(cond1, &bindings);
         eprintln!("cond1='{}' result={}", cond1, r1);
-        assert!(r1, "Expected true for active filter with done=false, got false");
+        assert!(
+            r1,
+            "Expected true for active filter with done=false, got false"
+        );
 
         // Test: .filter == "all" → should be true when filter is "active"? No, false
         let cond2 = ".filter == \"all\"";
         let r2 = builder.eval_condition_with(cond2, &bindings);
         eprintln!("cond2='{}' result={}", cond2, r2);
-        assert!(!r2, "Expected false for 'all' filter when filter is 'active'");
+        assert!(
+            !r2,
+            "Expected false for 'all' filter when filter is 'active'"
+        );
 
         // Test the full compound condition: .filter == "all" || ( .filter == "active" && todo.done == false )
         let cond_full = ".filter == \"all\" || ( .filter == \"active\" && todo.done == false )";
@@ -19307,13 +21470,24 @@ mod tests {
 
         // Also test the inner part directly
         let inner = ".filter == \"active\" && todo.done == false";
-        eprintln!("inner='{}' result={}", inner, builder.eval_condition_with(inner, &bindings));
+        eprintln!(
+            "inner='{}' result={}",
+            inner,
+            builder.eval_condition_with(inner, &bindings)
+        );
 
         // Test right side of || directly
         let right = "( .filter == \"active\" && todo.done == false )";
-        eprintln!("right='{}' result={}", right, builder.eval_condition_with(right, &bindings));
+        eprintln!(
+            "right='{}' result={}",
+            right,
+            builder.eval_condition_with(right, &bindings)
+        );
 
-        assert!(r_full, "Expected true for full condition with active filter + undone todo");
+        assert!(
+            r_full,
+            "Expected true for full condition with active filter + undone todo"
+        );
 
         // Test with done=true AND filter="completed"
         let mut todo_done = auto_val::Obj::new();
@@ -19324,53 +21498,64 @@ mod tests {
         bindings_done.insert("todo".to_string(), Value::Obj(Box::new(todo_done)));
 
         // Create a builder with filter="completed" state
-        let widget_completed = make_test_widget("App", vec![
-            AuraStateDef {
+        let widget_completed = make_test_widget(
+            "App",
+            vec![AuraStateDef {
                 name: "filter".to_string(),
                 type_info: Type::StrOwned,
                 initial: Expr::Str("completed".into()),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let bridge_completed = VmBridge::new(&widget_completed).unwrap();
         let builder_completed = AuraViewBuilder::new(&bridge_completed, "App");
 
         let cond_completed = "( .filter == \"completed\" && todo.done == true )";
-        assert!(builder_completed.eval_condition_with(cond_completed, &bindings_done)
-            || {
+        assert!(
+            builder_completed.eval_condition_with(cond_completed, &bindings_done) || {
                 // Also try without parens (parser may produce either)
                 let cond2 = ".filter == \"completed\" && todo.done == true";
                 builder_completed.eval_condition_with(cond2, &bindings_done)
             },
-            "Expected true for completed filter + done todo");
+            "Expected true for completed filter + done todo"
+        );
 
         // Active filter should NOT match done item
         let cond_active_done = ".filter == \"active\" && todo.done == false";
-        assert!(!builder.eval_condition_with(cond_active_done, &bindings_done),
-            "Expected false for active filter + done=true todo");
+        assert!(
+            !builder.eval_condition_with(cond_active_done, &bindings_done),
+            "Expected false for active filter + done=true todo"
+        );
 
         // Test editing_id conditions (the "double input" bug)
         // When editing_id=-1 and todo.id=0, editing_id != todo.id
         // Need a builder with editing_id state
-        let widget_edit = make_test_widget("App", vec![
-            AuraStateDef {
+        let widget_edit = make_test_widget(
+            "App",
+            vec![AuraStateDef {
                 name: "editing_id".to_string(),
                 type_info: Type::StrOwned,
                 initial: Expr::Str("-1".into()),
                 decorators: vec![],
-            },
-        ]);
+            }],
+        );
         let bridge_edit = VmBridge::new(&widget_edit).unwrap();
         let builder_edit = AuraViewBuilder::new(&bridge_edit, "App");
 
         let cond_edit_eq = ".editing_id == todo.id";
         let r_eq = builder_edit.eval_condition_with(cond_edit_eq, &bindings);
-        eprintln!("editing_id==-1, todo.id=0: '.editing_id == todo.id' => {}", r_eq);
+        eprintln!(
+            "editing_id==-1, todo.id=0: '.editing_id == todo.id' => {}",
+            r_eq
+        );
         assert!(!r_eq, "editing_id=-1 should NOT equal todo.id=0");
 
         let cond_edit_neq = ".editing_id != todo.id";
         let r_neq = builder_edit.eval_condition_with(cond_edit_neq, &bindings);
-        eprintln!("editing_id==-1, todo.id=0: '.editing_id != todo.id' => {}", r_neq);
+        eprintln!(
+            "editing_id==-1, todo.id=0: '.editing_id != todo.id' => {}",
+            r_neq
+        );
         assert!(r_neq, "editing_id=-1 should NOT equal todo.id=0 (neq)");
     }
 
@@ -19381,17 +21566,23 @@ mod tests {
     /// token=nil (047 R9 登录墙缺位根因).
     #[test]
     fn test_plan048_store_computed_condition_auth_gate() {
-        let widget = make_test_widget("App", vec![AuraStateDef {
-            name: "token".to_string(),
-            type_info: Type::StrOwned,
-            initial: Expr::Str("".into()),
-            decorators: vec![],
-        }]);
+        let widget = make_test_widget(
+            "App",
+            vec![AuraStateDef {
+                name: "token".to_string(),
+                type_info: Type::StrOwned,
+                initial: Expr::Str("".into()),
+                decorators: vec![],
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
         let computed = vec![crate::aura::AuraComputed {
             name: "authenticated".to_string(),
             expr: Expr::Bina(
-                Box::new(Expr::Dot(Box::new(Expr::Ident(".".into())), "token".to_string().into())),
+                Box::new(Expr::Dot(
+                    Box::new(Expr::Ident(".".into())),
+                    "token".to_string().into(),
+                )),
                 Op::Neq,
                 Box::new(Expr::None),
             ),
@@ -19406,7 +21597,9 @@ mod tests {
         );
 
         // token 恢复(JWT) → authenticated=true → gate false → 主 UI 分支
-        bridge.write_state("token", Value::Str("jwt-abc".into())).unwrap();
+        bridge
+            .write_state("token", Value::Str("jwt-abc".into()))
+            .unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App").with_computed(&computed);
         assert!(
             !builder.eval_condition_with("store.authenticated != true", &Bindings::new()),
@@ -19427,23 +21620,31 @@ mod tests {
     /// 渲染裸 "${name}" 占位。期望：左值非 Nil 取左值；Nil/缺字段落右值。
     #[test]
     fn test_plan077_computed_null_coalesce() {
-        let widget = make_test_widget("App", vec![AuraStateDef {
-            name: "runId".to_string(),
-            type_info: Type::StrOwned,
-            initial: Expr::Str("".into()),
-            decorators: vec![],
-        }]);
+        let widget = make_test_widget(
+            "App",
+            vec![AuraStateDef {
+                name: "runId".to_string(),
+                type_info: Type::StrOwned,
+                initial: Expr::Str("".into()),
+                decorators: vec![],
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
         let computed = vec![crate::aura::AuraComputed {
             name: "label".to_string(),
             expr: Expr::NullCoalesce(
-                Box::new(Expr::Dot(Box::new(Expr::Ident(".".into())), "runId".to_string().into())),
+                Box::new(Expr::Dot(
+                    Box::new(Expr::Ident(".".into())),
+                    "runId".to_string().into(),
+                )),
                 Box::new(Expr::Str("—".into())),
             ),
         }];
 
         // 有值：取左值
-        bridge.write_state("runId", Value::Str("run-fixture".into())).unwrap();
+        bridge
+            .write_state("runId", Value::Str("run-fixture".into()))
+            .unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App").with_computed(&computed);
         assert_eq!(
             builder.eval_computed("label", &Bindings::new()),
@@ -19488,10 +21689,14 @@ mod tests {
         let session = crate::session::CompilerSession::ui();
         let mut parser = Parser::from(child_src).with_session(session);
         let ast = parser.parse().expect("parse");
-        let decl = ast.stmts.iter().find_map(|s| match s {
-            crate::ast::Stmt::WidgetDecl(d) => Some(d),
-            _ => None,
-        }).expect("widget decl");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                crate::ast::Stmt::WidgetDecl(d) => Some(d),
+                _ => None,
+            })
+            .expect("widget decl");
         let child = crate::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut parent = make_test_widget("Parent", vec![]);
@@ -19535,17 +21740,26 @@ mod tests {
         let mut events = HashMap::new();
         events.insert(
             "onkeydown.enter.exact.prevent".to_string(),
-            AuraEvent { handler: ".send".to_string(), params: vec!["this.text".to_string()] },
+            AuraEvent {
+                handler: ".send".to_string(),
+                params: vec!["this.text".to_string()],
+            },
         );
         events.insert(
             "onkeydown.tab".to_string(),
-            AuraEvent { handler: ".Tab".to_string(), params: vec![] },
+            AuraEvent {
+                handler: ".Tab".to_string(),
+                params: vec![],
+            },
         );
         let node = AuraNode::Element {
             tag: "textarea".to_string(),
             props: {
                 let mut p = HashMap::new();
-                p.insert("value".to_string(), AuraPropValue::Expr(Expr::Str("hi".into())));
+                p.insert(
+                    "value".to_string(),
+                    AuraPropValue::Expr(Expr::Str("hi".into())),
+                );
                 p
             },
             events,
@@ -19560,7 +21774,10 @@ mod tests {
                     "enter.exact.prevent 必须规整为键名 enter; got {:?}",
                     keydown.keys().collect::<Vec<_>>()
                 );
-                assert!(keydown.contains_key("tab"), "无修饰 onkeydown.tab 保持键名 tab");
+                assert!(
+                    keydown.contains_key("tab"),
+                    "无修饰 onkeydown.tab 保持键名 tab"
+                );
                 assert!(!keydown.contains_key("enter.exact"), "带修饰残键不得存在");
             }
             _ => panic!("Expected View::Textarea"),
@@ -19574,25 +21791,34 @@ mod tests {
     /// 构建期求值的实参值。
     #[test]
     fn plan051_textarea_keydown_args_baked() {
-        let widget = make_test_widget("W", vec![AuraStateDef {
-            name: "text".to_string(),
-            type_info: Type::StrOwned,
-            initial: Expr::Str("  typed draft ".into()),
-            decorators: vec![],
-        }]);
+        let widget = make_test_widget(
+            "W",
+            vec![AuraStateDef {
+                name: "text".to_string(),
+                type_info: Type::StrOwned,
+                initial: Expr::Str("  typed draft ".into()),
+                decorators: vec![],
+            }],
+        );
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "W");
 
         let mut events = HashMap::new();
         events.insert(
             "onkeydown.enter.exact.prevent".to_string(),
-            AuraEvent { handler: ".send".to_string(), params: vec!["this.text".to_string()] },
+            AuraEvent {
+                handler: ".send".to_string(),
+                params: vec!["this.text".to_string()],
+            },
         );
         let node = AuraNode::Element {
             tag: "textarea".to_string(),
             props: {
                 let mut p = HashMap::new();
-                p.insert("value".to_string(), AuraPropValue::Expr(Expr::Str("  typed draft ".into())));
+                p.insert(
+                    "value".to_string(),
+                    AuraPropValue::Expr(Expr::Str("  typed draft ".into())),
+                );
                 p
             },
             events,
@@ -19631,7 +21857,11 @@ mod tests {
             View::Input { on_submit, .. } => {
                 let msg = on_submit.expect("onenter 必须接 on_submit");
                 match msg {
-                    DynamicMessage::Typed { widget_name, event_name, .. } => {
+                    DynamicMessage::Typed {
+                        widget_name,
+                        event_name,
+                        ..
+                    } => {
                         assert_eq!(widget_name, "Composer");
                         assert_eq!(event_name, "DoSend");
                     }
@@ -19680,7 +21910,10 @@ mod tests {
     #[test]
     fn plan493_mention_segments_empty_names() {
         let segs = mention_segments("hello @assistant", &[]);
-        assert_eq!(segs, vec![("hello @assistant".to_string(), "text".to_string())]);
+        assert_eq!(
+            segs,
+            vec![("hello @assistant".to_string(), "text".to_string())]
+        );
     }
 
     /// PLAN-493 T1: 覆盖不变式——段文本顺序拼接 == value（含 CJK/换行等
@@ -19699,20 +21932,23 @@ mod tests {
     /// View::Textarea.highlight 携带 mention 段，段文本拼回 == value。
     #[test]
     fn plan493_textarea_mentions_wired() {
-        let widget = make_test_widget("W", vec![
-            AuraStateDef {
-                name: "text".to_string(),
-                type_info: Type::StrOwned,
-                initial: Expr::Str("@assistant hi".into()),
-                decorators: vec![],
-            },
-            AuraStateDef {
-                name: "mentionNames".to_string(),
-                type_info: Type::List(Box::new(Type::StrSlice)),
-                initial: Expr::Str(String::new().into()),
-                decorators: vec![],
-            },
-        ]);
+        let widget = make_test_widget(
+            "W",
+            vec![
+                AuraStateDef {
+                    name: "text".to_string(),
+                    type_info: Type::StrOwned,
+                    initial: Expr::Str("@assistant hi".into()),
+                    decorators: vec![],
+                },
+                AuraStateDef {
+                    name: "mentionNames".to_string(),
+                    type_info: Type::List(Box::new(Type::StrSlice)),
+                    initial: Expr::Str(String::new().into()),
+                    decorators: vec![],
+                },
+            ],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge.write_state(
             "mentionNames",
@@ -19727,7 +21963,9 @@ mod tests {
             .with_prop("value", Expr::Ident(".text".into()))
             .with_prop("mentions", Expr::Ident(".mentionNames".into()));
         match builder.build(&node) {
-            View::Textarea { value, highlight, .. } => {
+            View::Textarea {
+                value, highlight, ..
+            } => {
                 assert_eq!(value, "@assistant hi");
                 assert_eq!(
                     highlight,
@@ -19747,12 +21985,15 @@ mod tests {
     /// 变红说明有人把 eval_computed/call_vm_fn 回调进了名单解析。
     #[test]
     fn plan493_mentions_computed_degrades_to_plain() {
-        let mut widget = make_test_widget("W", vec![AuraStateDef {
-            name: "text".to_string(),
-            type_info: Type::StrOwned,
-            initial: Expr::Str("@assistant hi".into()),
-            decorators: vec![],
-        }]);
+        let mut widget = make_test_widget(
+            "W",
+            vec![AuraStateDef {
+                name: "text".to_string(),
+                type_info: Type::StrOwned,
+                initial: Expr::Str("@assistant hi".into()),
+                decorators: vec![],
+            }],
+        );
         widget.computed = vec![crate::aura::AuraComputed {
             name: "mentionNames".to_string(),
             expr: Expr::Str("assistant".into()),
@@ -19767,7 +22008,8 @@ mod tests {
             View::Textarea { highlight, .. } => {
                 assert!(
                     highlight.is_empty(),
-                    "computed 名单不得解析（call 链 UAF 红线）: {:?}", highlight
+                    "computed 名单不得解析（call 链 UAF 红线）: {:?}",
+                    highlight
                 );
             }
             _ => panic!("Expected View::Textarea"),
@@ -19783,10 +22025,7 @@ mod tests {
 
         let node = AuraNode::element("textarea")
             .with_prop("value", Expr::Str("@coder!".into()))
-            .with_prop(
-                "mentions",
-                Expr::Array(vec![Expr::Str("coder".into())]),
-            );
+            .with_prop("mentions", Expr::Array(vec![Expr::Str("coder".into())]));
         match builder.build(&node) {
             View::Textarea { highlight, .. } => {
                 assert_eq!(
@@ -19850,10 +22089,7 @@ mod tests {
         let builder = AuraViewBuilder::with_registry(&bridge, "List51d", &registry);
         let view = builder.build(&root_widget.view_tree);
         // 收集两实例按钮的 onclick 实参。
-        fn collect_button_args(
-            v: &View<DynamicMessage>,
-            out: &mut Vec<String>,
-        ) {
+        fn collect_button_args(v: &View<DynamicMessage>, out: &mut Vec<String>) {
             match v {
                 View::Column { children, .. } | View::Row { children, .. } => {
                     for c in children {
@@ -19875,8 +22111,16 @@ mod tests {
         let mut got: Vec<String> = Vec::new();
         collect_button_args(&view, &mut got);
         assert_eq!(got.len(), 2, "两实例各一按钮; got {:?}", got);
-        assert!(got.contains(&"aaa".to_string()), "实例 aaa 的实参必须为己 id: {:?}", got);
-        assert!(got.contains(&"bbb".to_string()), "实例 bbb 的实参必须为己 id: {:?}", got);
+        assert!(
+            got.contains(&"aaa".to_string()),
+            "实例 aaa 的实参必须为己 id: {:?}",
+            got
+        );
+        assert!(
+            got.contains(&"bbb".to_string()),
+            "实例 bbb 的实参必须为己 id: {:?}",
+            got
+        );
     }
 
     /// PLAN-050 T9+C1 残余收尾: 按钮内容子树布局方向——按钮样式带 `flex`
@@ -19895,22 +22139,36 @@ mod tests {
                 "style",
                 Expr::Str("w-full flex items-center justify-start gap-2 px-3 py-2".into()),
             )
-            .with_child(AuraNode::element("svg").with_prop("viewBox", Expr::Str("0 0 24 24".into())))
+            .with_child(
+                AuraNode::element("svg").with_prop("viewBox", Expr::Str("0 0 24 24".into())),
+            )
             .with_child(AuraNode::text("会话"));
         let view = builder.build(&node);
-        let View::Button { content: Some(content), .. } = view else {
+        let View::Button {
+            content: Some(content),
+            ..
+        } = view
+        else {
             panic!("期望带 content 子树的 Button");
         };
         match *content {
             View::Row { spacing, style, .. } => {
-                assert!((f32::from(spacing) - 8.0).abs() < f32::EPSILON, "gap-2 → spacing 8; got {}", spacing);
+                assert!(
+                    (f32::from(spacing) - 8.0).abs() < f32::EPSILON,
+                    "gap-2 → spacing 8; got {}",
+                    spacing
+                );
                 let st = style.expect("items-*/justify-* 应随 style 下传");
                 assert!(
-                    st.classes.iter().any(|c| matches!(c, StyleClass::ItemsCenter)),
+                    st.classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::ItemsCenter)),
                     "items-center 应在 Row style"
                 );
                 assert!(
-                    st.classes.iter().any(|c| matches!(c, StyleClass::JustifyStart)),
+                    st.classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::JustifyStart)),
                     "justify-start 应在 Row style"
                 );
             }
@@ -19919,14 +22177,26 @@ mod tests {
 
         // flex-col → Column（原行为保留）
         let node = AuraNode::element("button")
-            .with_prop("style", Expr::Str("flex flex-col items-center gap-1".into()))
-            .with_child(AuraNode::element("svg").with_prop("viewBox", Expr::Str("0 0 24 24".into())))
+            .with_prop(
+                "style",
+                Expr::Str("flex flex-col items-center gap-1".into()),
+            )
+            .with_child(
+                AuraNode::element("svg").with_prop("viewBox", Expr::Str("0 0 24 24".into())),
+            )
             .with_child(AuraNode::text("B"));
         let view = builder.build(&node);
-        let View::Button { content: Some(content), .. } = view else {
+        let View::Button {
+            content: Some(content),
+            ..
+        } = view
+        else {
             panic!("期望带 content 子树的 Button");
         };
-        assert!(matches!(*content, View::Column { .. }), "flex-col 应包 Column");
+        assert!(
+            matches!(*content, View::Column { .. }),
+            "flex-col 应包 Column"
+        );
     }
 
     /// PLAN-050 T7 (C5): use.web component 声明的图标组件（`Folder { size: 14 }`）
@@ -19949,7 +22219,8 @@ mod tests {
         let widget = make_test_widget("Test", vec![]);
         let bridge = VmBridge::new(&widget).unwrap();
         let registry = crate::ui::widget_registry::WidgetRegistry::new();
-        let builder = AuraViewBuilder::with_registry_and_imports(&bridge, "Test", &registry, &imports);
+        let builder =
+            AuraViewBuilder::with_registry_and_imports(&bridge, "Test", &registry, &imports);
 
         // PLAN-748 T-02：判别器改为 lucide 名集成员资格（含 "icon" 字样
         // 向后兼容）——Folder ∈ lucide 名集恢复 glyph（A-05 曾按
@@ -19959,7 +22230,10 @@ mod tests {
         let view = builder.build(&node);
         match view {
             View::Image { src, style } => {
-                assert_eq!(src, "lucide:folder", "Folder 应映射 lucide:folder; got {src}");
+                assert_eq!(
+                    src, "lucide:folder",
+                    "Folder 应映射 lucide:folder; got {src}"
+                );
                 let s = style.expect("size 应产出样式");
                 assert!(
                     s.classes.iter().any(|c| matches!(c, StyleClass::Width(SizeValue::Pixels(p)) if (*p - 14.0).abs() < f32::EPSILON)),
@@ -19996,7 +22270,8 @@ mod tests {
             ref_fields: vec![],
         };
         let imports_vp = vec![crate::ast::Stmt::UseWeb(vec![ext_vp])];
-        let builder_vp = AuraViewBuilder::with_registry_and_imports(&bridge, "Test", &registry, &imports_vp);
+        let builder_vp =
+            AuraViewBuilder::with_registry_and_imports(&bridge, "Test", &registry, &imports_vp);
         let node_vp = AuraNode::element("AppViewport").with_prop("app", Expr::Str("demo-1".into()));
         let view_vp = builder_vp.build(&node_vp);
         match &view_vp {
@@ -20019,7 +22294,8 @@ mod tests {
         let widget2 = make_test_widget("Test2", vec![]);
         let bridge2 = VmBridge::new(&widget2).unwrap();
         let registry2 = crate::ui::widget_registry::WidgetRegistry::new();
-        let builder2 = AuraViewBuilder::with_registry_and_imports(&bridge2, "Test2", &registry2, &[]);
+        let builder2 =
+            AuraViewBuilder::with_registry_and_imports(&bridge2, "Test2", &registry2, &[]);
         let node2 = AuraNode::element("Folder_icon").with_prop("size", Expr::Int(14));
         assert!(
             !matches!(builder2.build(&node2), View::Image { .. }),
@@ -20051,9 +22327,11 @@ mod tests {
 
     fn nav_hover_classes(v: &View<DynamicMessage>) -> Vec<crate::ui::style::StyleClass> {
         match v {
-            View::Button { style, .. } => {
-                style.as_ref().expect("nav-item style").hover_classes.clone()
-            }
+            View::Button { style, .. } => style
+                .as_ref()
+                .expect("nav-item style")
+                .hover_classes
+                .clone(),
             other => panic!("期望 View::Button,得到 {other:?}"),
         }
     }
@@ -20072,9 +22350,16 @@ mod tests {
             .with_prop("icon", Expr::Str("message-square".into()))
             .with_prop("label", Expr::Str("会话".into()));
         match builder.build(&node) {
-            View::Button { onclick, content, style, .. } => {
+            View::Button {
+                onclick,
+                content,
+                style,
+                ..
+            } => {
                 match onclick {
-                    DynamicMessage::Typed { event_name, args, .. } => {
+                    DynamicMessage::Typed {
+                        event_name, args, ..
+                    } => {
                         assert_eq!(event_name, "__navigate");
                         assert_eq!(args.first().map(|v| v.as_str()), Some("/chats"));
                     }
@@ -20086,9 +22371,19 @@ mod tests {
                     "icon+texts 合成内容应为 Row"
                 );
                 let st = style.expect("style");
-                assert!(classes_contain(&st.classes, nc::ITEM_BASE_MD), "基类缺失: {:?}", st.classes);
-                assert!(hover_classes_contain(&st.hover_classes, nc::ITEM_HOVER), "未选中应挂 hover");
-                assert!(!classes_contain(&st.classes, nc::ITEM_ACTIVE), "不应有 active 块");
+                assert!(
+                    classes_contain(&st.classes, nc::ITEM_BASE_MD),
+                    "基类缺失: {:?}",
+                    st.classes
+                );
+                assert!(
+                    hover_classes_contain(&st.hover_classes, nc::ITEM_HOVER),
+                    "未选中应挂 hover"
+                );
+                assert!(
+                    !classes_contain(&st.classes, nc::ITEM_ACTIVE),
+                    "不应有 active 块"
+                );
             }
             other => panic!("期望 View::Button,得到 {other:?}"),
         }
@@ -20098,14 +22393,19 @@ mod tests {
     #[test]
     fn test_nav_item_router_mode_active() {
         use crate::ui_gen::nav_contract as nc;
-        let widget = make_test_widget("Test", vec![AuraStateDef {
-            name: "__current_route".to_string(),
-            type_info: Type::StrOwned,
-            initial: Expr::Str("/".into()),
-            decorators: vec![],
-        }]);
+        let widget = make_test_widget(
+            "Test",
+            vec![AuraStateDef {
+                name: "__current_route".to_string(),
+                type_info: Type::StrOwned,
+                initial: Expr::Str("/".into()),
+                decorators: vec![],
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
-        bridge.write_state("__current_route", auto_val::Value::str("/chats")).unwrap();
+        bridge
+            .write_state("__current_route", auto_val::Value::str("/chats"))
+            .unwrap();
 
         // 精确命中。
         let node = AuraNode::element("nav-item")
@@ -20113,8 +22413,14 @@ mod tests {
             .with_prop("label", Expr::Str("会话".into()));
         let v = AuraViewBuilder::new(&bridge, "Test").build(&node);
         let classes = nav_style_classes(&v);
-        assert!(classes_contain(&classes, nc::ITEM_ACTIVE), "命中应有 active 块");
-        assert!(!hover_classes_contain(&nav_hover_classes(&v), nc::ITEM_HOVER), "选中不再挂完整 hover 组");
+        assert!(
+            classes_contain(&classes, nc::ITEM_ACTIVE),
+            "命中应有 active 块"
+        );
+        assert!(
+            !hover_classes_contain(&nav_hover_classes(&v), nc::ITEM_HOVER),
+            "选中不再挂完整 hover 组"
+        );
         // PLAN-063 Phase B T19 (KD 061 D23): active 自带中性灰 hover。
         assert!(
             hover_classes_contain(&nav_hover_classes(&v), "hover:bg-accent"),
@@ -20125,12 +22431,17 @@ mod tests {
         let node = AuraNode::element("nav-item").with_prop("to", Expr::Str("/chats".into()));
         let classes = nav_style_classes(&AuraViewBuilder::new(&bridge, "Test").build(&node));
         assert!(classes_contain(&classes, nc::ITEM_ACTIVE));
-        bridge.write_state("__current_route", auto_val::Value::str("/chats/1")).unwrap();
+        bridge
+            .write_state("__current_route", auto_val::Value::str("/chats/1"))
+            .unwrap();
         let node = AuraNode::element("nav-item")
             .with_prop("to", Expr::Str("/chats".into()))
             .with_prop("exact", Expr::Bool(true));
         let classes = nav_style_classes(&AuraViewBuilder::new(&bridge, "Test").build(&node));
-        assert!(!classes_contain(&classes, nc::ITEM_ACTIVE), "exact 下前缀不命中");
+        assert!(
+            !classes_contain(&classes, nc::ITEM_ACTIVE),
+            "exact 下前缀不命中"
+        );
     }
 
     /// 状态模式：onclick 用户消息 + active 表达式驱动选中；disabled 灰置。
@@ -20148,7 +22459,12 @@ mod tests {
             .with_prop("active", Expr::Bool(true))
             .with_event("onclick", ".Select(1)");
         match builder.build(&node) {
-            View::Button { onclick, disabled, style, .. } => {
+            View::Button {
+                onclick,
+                disabled,
+                style,
+                ..
+            } => {
                 match onclick {
                     DynamicMessage::Typed { event_name, .. } => {
                         assert!(event_name.starts_with("Select"), "用户消息名: {event_name}");
@@ -20171,7 +22487,9 @@ mod tests {
             .with_prop("label", Expr::Str("禁用".into()))
             .with_prop("disabled", Expr::Bool(true));
         match builder.build(&node) {
-            View::Button { disabled, style, .. } => {
+            View::Button {
+                disabled, style, ..
+            } => {
                 assert!(disabled);
                 let st = style.expect("style");
                 assert!(classes_contain(&st.classes, nc::ITEM_DISABLED));
@@ -20200,9 +22518,14 @@ mod tests {
                 assert_eq!(children.len(), 2, "头 + 成员列");
                 match &children[0] {
                     View::Button { onclick, .. } => match onclick.clone() {
-                        DynamicMessage::Typed { event_name, args, .. } => {
+                        DynamicMessage::Typed {
+                            event_name, args, ..
+                        } => {
                             assert_eq!(event_name, "__nav_toggle");
-                            assert_eq!(args.first().map(|v| v.as_str()), Some("__nav_group_open:分组"));
+                            assert_eq!(
+                                args.first().map(|v| v.as_str()),
+                                Some("__nav_group_open:分组")
+                            );
                         }
                         other => panic!("期望 __nav_toggle,得到 {other:?}"),
                     },
@@ -20253,19 +22576,37 @@ mod tests {
             .with_event("onsearch", ".SearchChanged")
             .with_child(AuraNode::element("nav-item").with_prop("label", Expr::Str("项".into())));
         match builder.build(&node) {
-            View::Column { children, style, .. } => {
+            View::Column {
+                children, style, ..
+            } => {
                 assert!(style.expect("nav 容器 style").classes.len() > 0);
                 assert_eq!(children.len(), 2, "搜索行 + 子节点");
                 match &children[0] {
-                    View::Row { children: row_children, style, .. } => {
+                    View::Row {
+                        children: row_children,
+                        style,
+                        ..
+                    } => {
                         let classes = style.as_ref().expect("搜索行 style").classes.clone();
-                        assert!(classes_contain(&classes, nc::SEARCH_ROW), "搜索行契约类缺失");
-                        assert!(matches!(&row_children[0], View::Text { content, .. } if content == "🔍"), "搜索图标应为 🔍 文本字形");
-                        assert!(matches!(&row_children[1], View::Input { .. }), "第二个应为输入框");
+                        assert!(
+                            classes_contain(&classes, nc::SEARCH_ROW),
+                            "搜索行契约类缺失"
+                        );
+                        assert!(
+                            matches!(&row_children[0], View::Text { content, .. } if content == "🔍"),
+                            "搜索图标应为 🔍 文本字形"
+                        );
+                        assert!(
+                            matches!(&row_children[1], View::Input { .. }),
+                            "第二个应为输入框"
+                        );
                     }
                     other => panic!("搜索行应为 Row,得到 {other:?}"),
                 }
-                assert!(matches!(&children[1], View::Button { .. }), "nav-item 子节点");
+                assert!(
+                    matches!(&children[1], View::Button { .. }),
+                    "nav-item 子节点"
+                );
             }
             other => panic!("期望 View::Column,得到 {other:?}"),
         }
@@ -20293,9 +22634,15 @@ mod tests {
         };
         let provider = AuraNode::element("sidebar_provider").with_child(sidebar_node());
         match builder.build(&provider) {
-            View::Column { children, style, .. } => {
+            View::Column {
+                children, style, ..
+            } => {
                 let classes = style.expect("sidebar 根 style").classes;
-                assert!(classes_contain(&classes, sc::SIDEBAR_BASE), "根契约基座缺失: {:?}", classes);
+                assert!(
+                    classes_contain(&classes, sc::SIDEBAR_BASE),
+                    "根契约基座缺失: {:?}",
+                    classes
+                );
                 assert!(classes_contain(&classes, sc::WIDTH_VM), "VM 宽度缺失");
                 assert_eq!(children.len(), 3, "header/content/footer 三分区");
                 assert!(matches!(&children[0], View::Column { .. }), "header 列");
@@ -20350,7 +22697,9 @@ mod tests {
                 assert_eq!(children.len(), 2, "toggle 头 + 内容");
                 match &children[0] {
                     View::Button { onclick, .. } => match onclick.clone() {
-                        DynamicMessage::Typed { event_name, args, .. } => {
+                        DynamicMessage::Typed {
+                            event_name, args, ..
+                        } => {
                             assert_eq!(event_name, "__nav_toggle");
                             assert_eq!(
                                 args.first().map(|v| v.as_str()),
@@ -20383,7 +22732,10 @@ mod tests {
             .with_child(AuraNode::text("x"));
         match AuraViewBuilder::new(&bridge, "Test").build(&node) {
             View::Column { children, .. } => {
-                assert!(matches!(&children[0], View::Text { .. }), "非折叠 label 为 Text");
+                assert!(
+                    matches!(&children[0], View::Text { .. }),
+                    "非折叠 label 为 Text"
+                );
             }
             other => panic!("期望 View::Column,得到 {other:?}"),
         }
@@ -20419,19 +22771,31 @@ mod tests {
                 ),
             );
         match builder.build(&node) {
-            View::Column { children, style, .. } => {
+            View::Column {
+                children, style, ..
+            } => {
                 assert!(
                     classes_contain(&style.expect("menu style").classes, sc::MENU_BASE),
                     "menu 契约类缺失"
                 );
                 assert_eq!(children.len(), 2, "item + sub");
                 match &children[0] {
-                    View::Column { children: item_children, style, .. } => {
+                    View::Column {
+                        children: item_children,
+                        style,
+                        ..
+                    } => {
                         assert!(
-                            classes_contain(&style.as_ref().expect("item style").classes, sc::MENU_ITEM),
+                            classes_contain(
+                                &style.as_ref().expect("item style").classes,
+                                sc::MENU_ITEM
+                            ),
                             "item 契约类缺失"
                         );
-                        assert!(matches!(&item_children[0], View::Button { .. }), "button 子");
+                        assert!(
+                            matches!(&item_children[0], View::Button { .. }),
+                            "button 子"
+                        );
                         match &item_children[1] {
                             View::Text { content, style, .. } => {
                                 assert_eq!(content, "3");
@@ -20451,7 +22815,10 @@ mod tests {
                 match &children[1] {
                     View::Column { style, .. } => {
                         assert!(
-                            classes_contain(&style.as_ref().expect("sub style").classes, sc::MENU_SUB),
+                            classes_contain(
+                                &style.as_ref().expect("sub style").classes,
+                                sc::MENU_SUB
+                            ),
                             "sub 缩进契约类缺失"
                         );
                     }
@@ -20468,34 +22835,58 @@ mod tests {
     #[test]
     fn test_sidebar_menu_button_states_and_route() {
         use crate::ui_gen::sidebar_contract as sc;
-        let widget = make_test_widget("Test", vec![AuraStateDef {
-            name: "__current_route".to_string(),
-            type_info: Type::StrOwned,
-            initial: Expr::Str("/".into()),
-            decorators: vec![],
-        }]);
+        let widget = make_test_widget(
+            "Test",
+            vec![AuraStateDef {
+                name: "__current_route".to_string(),
+                type_info: Type::StrOwned,
+                initial: Expr::Str("/".into()),
+                decorators: vec![],
+            }],
+        );
         let mut bridge = VmBridge::new(&widget).unwrap();
-        bridge.write_state("__current_route", auto_val::Value::str("/dash")).unwrap();
+        bridge
+            .write_state("__current_route", auto_val::Value::str("/dash"))
+            .unwrap();
 
         // 默认态：to: → __navigate，未命中 → hover 无 active。
         let node = AuraNode::element("sidebar_menu_button")
             .with_prop("to", Expr::Str("/settings".into()))
             .with_prop("text", Expr::Str("设置".into()));
         match AuraViewBuilder::new(&bridge, "Test").build(&node) {
-            View::Button { onclick, style, disabled, .. } => {
+            View::Button {
+                onclick,
+                style,
+                disabled,
+                ..
+            } => {
                 assert!(!disabled);
                 match onclick {
-                    DynamicMessage::Typed { event_name, args, .. } => {
+                    DynamicMessage::Typed {
+                        event_name, args, ..
+                    } => {
                         assert_eq!(event_name, "__navigate");
                         assert_eq!(args.first().map(|v| v.as_str()), Some("/settings"));
                     }
                     other => panic!("期望 __navigate,得到 {other:?}"),
                 }
                 let st = style.expect("style");
-                assert!(classes_contain(&st.classes, sc::MENU_BUTTON_BASE), "基座缺失");
-                assert!(classes_contain(&st.classes, sc::MENU_BUTTON_SIZE_DEFAULT), "尺寸缺失");
-                assert!(hover_classes_contain(&st.hover_classes, sc::MENU_BUTTON_HOVER), "未选中应挂 hover");
-                assert!(!classes_contain(&st.classes, sc::MENU_BUTTON_ACTIVE), "不应有 active 块");
+                assert!(
+                    classes_contain(&st.classes, sc::MENU_BUTTON_BASE),
+                    "基座缺失"
+                );
+                assert!(
+                    classes_contain(&st.classes, sc::MENU_BUTTON_SIZE_DEFAULT),
+                    "尺寸缺失"
+                );
+                assert!(
+                    hover_classes_contain(&st.hover_classes, sc::MENU_BUTTON_HOVER),
+                    "未选中应挂 hover"
+                );
+                assert!(
+                    !classes_contain(&st.classes, sc::MENU_BUTTON_ACTIVE),
+                    "不应有 active 块"
+                );
             }
             other => panic!("期望 View::Button,得到 {other:?}"),
         }
@@ -20509,19 +22900,30 @@ mod tests {
             View::Button { style, .. } => style.as_ref().expect("style"),
             other => panic!("期望 View::Button,得到 {other:?}"),
         };
-        assert!(classes_contain(&st.classes, sc::MENU_BUTTON_ACTIVE), "命中应有 active 块");
-        assert!(!hover_classes_contain(&st.hover_classes, sc::MENU_BUTTON_HOVER), "选中不挂 hover");
+        assert!(
+            classes_contain(&st.classes, sc::MENU_BUTTON_ACTIVE),
+            "命中应有 active 块"
+        );
+        assert!(
+            !hover_classes_contain(&st.hover_classes, sc::MENU_BUTTON_HOVER),
+            "选中不挂 hover"
+        );
 
         // disabled：灰置 + 无 hover。
         let node = AuraNode::element("sidebar_menu_button")
             .with_prop("text", Expr::Str("禁用".into()))
             .with_prop("disabled", Expr::Bool(true));
         match AuraViewBuilder::new(&bridge, "Test").build(&node) {
-            View::Button { disabled, style, .. } => {
+            View::Button {
+                disabled, style, ..
+            } => {
                 assert!(disabled);
                 let st = style.expect("style");
                 assert!(classes_contain(&st.classes, sc::MENU_BUTTON_DISABLED));
-                assert!(!hover_classes_contain(&st.hover_classes, sc::MENU_BUTTON_HOVER));
+                assert!(!hover_classes_contain(
+                    &st.hover_classes,
+                    sc::MENU_BUTTON_HOVER
+                ));
             }
             other => panic!("期望 View::Button,得到 {other:?}"),
         }
@@ -20535,8 +22937,14 @@ mod tests {
             View::Button { style, .. } => style.as_ref().expect("style"),
             other => panic!("期望 View::Button,得到 {other:?}"),
         };
-        assert!(classes_contain(&st.classes, sc::MENU_SUB_BUTTON_BASE), "sub 基座缺失");
-        assert!(classes_contain(&st.classes, sc::MENU_SUB_BUTTON_SIZE_SM), "sub sm 尺寸缺失");
+        assert!(
+            classes_contain(&st.classes, sc::MENU_SUB_BUTTON_BASE),
+            "sub 基座缺失"
+        );
+        assert!(
+            classes_contain(&st.classes, sc::MENU_SUB_BUTTON_SIZE_SM),
+            "sub sm 尺寸缺失"
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -20555,8 +22963,8 @@ mod tests {
         let builder = AuraViewBuilder::new(&bridge, "Test");
 
         for key in ["style", "class"] {
-            let node = AuraNode::element("sidebar_content")
-                .with_prop(key, Expr::Str("px-2 pb-2".into()));
+            let node =
+                AuraNode::element("sidebar_content").with_prop(key, Expr::Str("px-2 pb-2".into()));
             match builder.build(&node) {
                 View::Scrollable { style, .. } => {
                     let classes = style.expect("scroll style").classes;
@@ -20702,7 +23110,8 @@ mod tests {
                     "state:off 未注入 muted dim: {classes:?}"
                 );
                 assert!(
-                    classes.iter()
+                    classes
+                        .iter()
                         .all(|c| !matches!(c, crate::ui::style::StyleClass::StrokeWidth(_))),
                     "state:off 不得加重: {classes:?}"
                 );
@@ -20809,7 +23218,6 @@ mod tests {
             other => panic!("icon 应为 Image,得到 {other:?}"),
         }
     }
-
 }
 
 /// Plan 422 P4: popover 子标签的 tag/children 读取(闭包无法表达返回借用的
@@ -20835,9 +23243,23 @@ fn popover_node_children(n: &AuraNode) -> &[AuraNode] {
 fn is_svg_shape_tag(tag: &str) -> bool {
     matches!(
         tag,
-        "svg" | "path" | "circle" | "rect" | "line" | "polyline" | "polygon"
-            | "ellipse" | "g" | "defs" | "use" | "stop" | "linearGradient"
-            | "radialGradient" | "clipPath" | "mask" | "text"
+        "svg"
+            | "path"
+            | "circle"
+            | "rect"
+            | "line"
+            | "polyline"
+            | "polygon"
+            | "ellipse"
+            | "g"
+            | "defs"
+            | "use"
+            | "stop"
+            | "linearGradient"
+            | "radialGradient"
+            | "clipPath"
+            | "mask"
+            | "text"
     )
 }
 
@@ -20891,8 +23313,8 @@ fn strip_html_tags(html: &str) -> String {
                     _ => {
                         // 数字实体 &#NNN; / &#xHH;
                         if let Some(num) = entity.strip_prefix('#') {
-                            let code = if let Some(hex) = num.strip_prefix('x')
-                                .or_else(|| num.strip_prefix('X'))
+                            let code = if let Some(hex) =
+                                num.strip_prefix('x').or_else(|| num.strip_prefix('X'))
                             {
                                 u32::from_str_radix(hex, 16).ok()
                             } else {
@@ -20977,21 +23399,26 @@ mod plan571_button_default_variant_tests {
         let widget = make_test_widget("Counter");
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "Counter");
-        let mut props = HashMap::from([
-            ("label".to_string(), AuraPropValue::Expr(Expr::Str("Save".into()))),
-        ]);
+        let mut props = HashMap::from([(
+            "label".to_string(),
+            AuraPropValue::Expr(Expr::Str("Save".into())),
+        )]);
         if let Some(v) = variant {
-            props.insert("variant".to_string(), AuraPropValue::Expr(Expr::Str(v.into())));
+            props.insert(
+                "variant".to_string(),
+                AuraPropValue::Expr(Expr::Str(v.into())),
+            );
         }
         let node = AuraNode::Element {
             tag: "button".to_string(),
             props,
-            events: HashMap::from([
-                ("onclick".to_string(), AuraEvent {
+            events: HashMap::from([(
+                "onclick".to_string(),
+                AuraEvent {
                     handler: "Msg::Reset".to_string(),
                     params: vec![],
-                }),
-            ]),
+                },
+            )]),
             span: None,
             debug_id: None,
             children: vec![],
@@ -21023,7 +23450,10 @@ mod plan571_button_default_variant_tests {
         let v = Some("default");
         let view = build_button(v);
         assert!(
-            has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Muted))),
+            has_class(&view, &|c| matches!(
+                c,
+                StyleClass::BackgroundColor(Color::Muted)
+            )),
             "显式 default 基线 = muted 中性填充 (variant={v:?})"
         );
         assert!(
@@ -21031,11 +23461,17 @@ mod plan571_button_default_variant_tests {
             "显式 default 必须有发丝描边（UA 预填等价）(variant={v:?})"
         );
         assert!(
-            has_class(&view, &|c| matches!(c, StyleClass::BorderColor(Color::Border))),
+            has_class(&view, &|c| matches!(
+                c,
+                StyleClass::BorderColor(Color::Border)
+            )),
             "描边色 = border 语义色 (variant={v:?})"
         );
         assert!(
-            !has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Primary))),
+            !has_class(&view, &|c| matches!(
+                c,
+                StyleClass::BackgroundColor(Color::Primary)
+            )),
             "显式 default 不得再用主题色填充 (variant={v:?})"
         );
     }
@@ -21045,7 +23481,10 @@ mod plan571_button_default_variant_tests {
         for v in ["primary", "submit"] {
             let view = build_button(Some(v));
             assert!(
-                has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Primary))),
+                has_class(&view, &|c| matches!(
+                    c,
+                    StyleClass::BackgroundColor(Color::Primary)
+                )),
                 "{v} = 主题色填充"
             );
             assert!(
@@ -21059,7 +23498,10 @@ mod plan571_button_default_variant_tests {
     fn secondary_is_deeper_fill_without_border() {
         let view = build_button(Some("secondary"));
         assert!(
-            has_class(&view, &|c| matches!(c, StyleClass::BackgroundColor(Color::Secondary))),
+            has_class(&view, &|c| matches!(
+                c,
+                StyleClass::BackgroundColor(Color::Secondary)
+            )),
             "secondary = 纯填充"
         );
         assert!(
@@ -21073,8 +23515,8 @@ mod plan571_button_default_variant_tests {
 /// DynamicComponent view 构建 → View 树断言）。
 #[cfg(test)]
 mod plan534_side_panel_tests {
-    use crate::ui::view::{PopoverAnchor, PopoverPlacement, View};
     use crate::ui::interpreter::DynamicMessage;
+    use crate::ui::view::{PopoverAnchor, PopoverPlacement, View};
 
     fn build_view(src: &str) -> View<DynamicMessage> {
         let dc = crate::build_dynamic_component(src, None).expect("build component");
@@ -21089,11 +23531,15 @@ mod plan534_side_panel_tests {
     fn progress_onseek_builds_seek_handler() {
         fn find_progress(view: &View<DynamicMessage>) -> Option<(f32, bool)> {
             match view {
-                View::ProgressBar { progress, on_seek, .. } => Some((*progress, on_seek.is_some())),
+                View::ProgressBar {
+                    progress, on_seek, ..
+                } => Some((*progress, on_seek.is_some())),
                 View::Row { children, .. } | View::Column { children, .. } => {
                     children.iter().find_map(find_progress)
                 }
-                View::Container { child, .. } | View::Scrollable { child, .. } => find_progress(child),
+                View::Container { child, .. } | View::Scrollable { child, .. } => {
+                    find_progress(child)
+                }
                 _ => None,
             }
         }
@@ -21106,8 +23552,14 @@ mod plan534_side_panel_tests {
              }",
         );
         let (progress, has_seek) = find_progress(&with_seek).expect("progress 节点");
-        assert!((progress - 0.25).abs() < 1e-4, "value/max 归一 0..1，实得 {progress}");
-        assert!(has_seek, "声明 onseek 后必须挂上 on_seek（否则 VM 端不可拖拽）");
+        assert!(
+            (progress - 0.25).abs() < 1e-4,
+            "value/max 归一 0..1，实得 {progress}"
+        );
+        assert!(
+            has_seek,
+            "声明 onseek 后必须挂上 on_seek（否则 VM 端不可拖拽）"
+        );
 
         // 未声明 onseek → 纯展示条，零 handler（兼容约束）
         let plain = build_view(
@@ -21152,12 +23604,17 @@ mod plan534_side_panel_tests {
         );
         let on_seek = find_on_seek(&placeholder).expect("progress 节点带 on_seek");
         let msg = on_seek.call(0.5, 0.0);
-        let DynamicMessage::Typed { event_name, args, .. } = msg else {
+        let DynamicMessage::Typed {
+            event_name, args, ..
+        } = msg
+        else {
             panic!("Seek 应产出 Typed 消息");
         };
         assert_eq!(event_name, "Seek");
         assert!(
-            !args.iter().any(|a| matches!(a, auto_val::Value::Str(s) if s.as_str().starts_with('$'))),
+            !args
+                .iter()
+                .any(|a| matches!(a, auto_val::Value::Str(s) if s.as_str().starts_with('$'))),
             "占位串不得进 args（实得 {args:?}）"
         );
         match args.first() {
@@ -21226,12 +23683,24 @@ mod plan534_side_panel_tests {
         );
         let pop = find_popover(&view).expect("树内应有 View::Popover");
         match pop {
-            View::Popover { placement, open, on_dismiss, .. } => {
-                assert_eq!(placement, &PopoverPlacement::EdgeRight, "side 缺省 right → EdgeRight");
+            View::Popover {
+                placement,
+                open,
+                on_dismiss,
+                ..
+            } => {
+                assert_eq!(
+                    placement,
+                    &PopoverPlacement::EdgeRight,
+                    "side 缺省 right → EdgeRight"
+                );
                 assert!(!open, "初渲染 open=false");
                 match on_dismiss {
                     Some(DynamicMessage::Typed { event_name, .. }) => {
-                        assert_eq!(event_name, "__dlg_close_1", "铸造 dismiss 折算 __dlg_close_N");
+                        assert_eq!(
+                            event_name, "__dlg_close_1",
+                            "铸造 dismiss 折算 __dlg_close_N"
+                        );
                     }
                     other => panic!("sheet 为可关闭族,铸造形态必有 dismiss,得到 {other:?}"),
                 }
@@ -21261,8 +23730,17 @@ mod plan534_side_panel_tests {
         );
         let pop = find_popover(&view).expect("树内应有 View::Popover");
         match pop {
-            View::Popover { content, placement, on_dismiss, .. } => {
-                assert_eq!(placement, &PopoverPlacement::EdgeBottom, "direction=bottom → EdgeBottom");
+            View::Popover {
+                content,
+                placement,
+                on_dismiss,
+                ..
+            } => {
+                assert_eq!(
+                    placement,
+                    &PopoverPlacement::EdgeBottom,
+                    "direction=bottom → EdgeBottom"
+                );
                 assert!(on_dismiss.is_some(), "drawer 同 sheet 为可关闭族");
                 match content.as_ref() {
                     View::Column { children, .. } => {
@@ -21301,12 +23779,19 @@ mod plan534_side_panel_tests {
         );
         let pop = find_popover(&view).expect("树内应有 View::Popover");
         match pop {
-            View::Popover { anchor, placement, on_dismiss, .. } => {
+            View::Popover {
+                anchor,
+                placement,
+                on_dismiss,
+                ..
+            } => {
                 assert_eq!(placement, &PopoverPlacement::Bottom, "hover 卡悬于锚下");
                 assert!(on_dismiss.is_none(), "非模态:无 dismiss 折算");
                 match anchor {
                     PopoverAnchor::Widget(inner) => match inner.as_ref() {
-                        View::MouseArea { on_enter, on_exit, .. } => {
+                        View::MouseArea {
+                            on_enter, on_exit, ..
+                        } => {
                             assert!(on_enter.is_some(), "铸造 enter 须接进 MouseArea");
                             assert!(on_exit.is_some(), "铸造 leave 须接进 MouseArea");
                         }
@@ -21318,7 +23803,6 @@ mod plan534_side_panel_tests {
             other => panic!("应定位到 Popover,得到 {other:?}"),
         }
     }
-
 }
 
 // ── PLAN-080 定罪探针：musk 消息行 rowClass 的 IR 解析 ──────────────────
@@ -21377,7 +23861,9 @@ mod plan080_rowclass_probe_tests {
         match view {
             View::Column { style: Some(s), .. } => {
                 assert!(
-                    s.classes.iter().any(|c| matches!(c, StyleClass::MaxWidthPct(70.0))),
+                    s.classes
+                        .iter()
+                        .any(|c| matches!(c, StyleClass::MaxWidthPct(70.0))),
                     "MaxWidthPct(70) 应在场: {:?}",
                     s.classes
                 );
@@ -21396,11 +23882,19 @@ fn count_keyed_loops_free(node: &AuraNode) -> usize {
         AuraNode::Element { children, .. } | AuraNode::Link { children, .. } => {
             children.iter().map(count_keyed_loops_free).sum::<usize>()
         }
-        AuraNode::Conditional { then_body, else_body, .. } => {
-            then_body.iter().chain(else_body.iter().flatten()).map(count_keyed_loops_free).sum::<usize>()
-        }
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => then_body
+            .iter()
+            .chain(else_body.iter().flatten())
+            .map(count_keyed_loops_free)
+            .sum::<usize>(),
         AuraNode::MemoBlock { body, .. } => body.iter().map(count_keyed_loops_free).sum::<usize>(),
-        AuraNode::Component { children, .. } => children.iter().map(count_keyed_loops_free).sum::<usize>(),
+        AuraNode::Component { children, .. } => {
+            children.iter().map(count_keyed_loops_free).sum::<usize>()
+        }
         _ => 0,
     }
 }
@@ -21553,10 +24047,9 @@ impl<'a> AuraViewBuilder<'a> {
                     // 插入 → 恒 FILL 每帧全量重建）：以标记参与指纹，条目照
                     // 插；该槽的陈旧防护由 dyn_deps 版本检查承担（fill 渲染
                     // 期已录 dep；deps_unchanged 失配即全量重渲，绝不陈旧）。
-                    let fp = crate::ui::memo_deps::fingerprint_value(
-                        &v,
-                        &|x| self.bridge.expand_heap_for_fingerprint(x),
-                    )
+                    let fp = crate::ui::memo_deps::fingerprint_value(&v, &|x| {
+                        self.bridge.expand_heap_for_fingerprint(x)
+                    })
                     .unwrap_or_else(|| {
                         use std::hash::{Hash, Hasher};
                         let mut mh = std::collections::hash_map::DefaultHasher::new();
@@ -21633,8 +24126,15 @@ impl<'a> AuraViewBuilder<'a> {
                 )
             })
         });
-        if let Some((seq_at_fill, gfp_entry, dyn_fp, product, probe_replay, idmap_replay, dyn_deps)) =
-            cached
+        if let Some((
+            seq_at_fill,
+            gfp_entry,
+            dyn_fp,
+            product,
+            probe_replay,
+            idmap_replay,
+            dyn_deps,
+        )) = cached
         {
             if seq_at_fill == seq && gfp_entry == gfp {
                 self.bridge.with_memo_cache(|c| {
@@ -21682,17 +24182,15 @@ impl<'a> AuraViewBuilder<'a> {
                     if Some(cur) == dyn_fp {
                         // fp_slow 命中：基线前移（seq + 动态 dep 版本）——后续
                         // 帧回到 seq/version 快路径。
-                        let refreshed = dyn_deps
-                            .as_ref()
-                            .map(|pairs| {
-                                pairs
-                                    .iter()
-                                    .map(|(k, _)| {
-                                        let v = self.bridge.vm().path_version(k.heap_id, &k.path);
-                                        (k.clone(), v)
-                                    })
-                                    .collect()
-                            });
+                        let refreshed = dyn_deps.as_ref().map(|pairs| {
+                            pairs
+                                .iter()
+                                .map(|(k, _)| {
+                                    let v = self.bridge.vm().path_version(k.heap_id, &k.path);
+                                    (k.clone(), v)
+                                })
+                                .collect()
+                        });
                         self.bridge.with_memo_cache(|c| {
                             c.refresh_seq(&key, seq);
                             if let Some(pairs) = refreshed {
@@ -21714,17 +24212,15 @@ impl<'a> AuraViewBuilder<'a> {
                     if let Some(slots_fp) = self.memo_slots_fp(&slots, bindings) {
                         let cur = Self::memo_combine_dyn(slots_fp, None);
                         if Some(cur) == dyn_fp {
-                            let refreshed = dyn_deps
-                                .as_ref()
-                                .map(|pairs| {
-                                    pairs
-                                        .iter()
-                                        .map(|(k, _)| {
-                                            let v = self.bridge.vm().path_version(k.heap_id, &k.path);
-                                            (k.clone(), v)
-                                        })
-                                        .collect()
-                                });
+                            let refreshed = dyn_deps.as_ref().map(|pairs| {
+                                pairs
+                                    .iter()
+                                    .map(|(k, _)| {
+                                        let v = self.bridge.vm().path_version(k.heap_id, &k.path);
+                                        (k.clone(), v)
+                                    })
+                                    .collect()
+                            });
                             self.bridge.with_memo_cache(|c| {
                                 c.refresh_seq(&key, seq);
                                 if let Some(pairs) = refreshed {
@@ -21892,7 +24388,13 @@ impl<'a> AuraViewBuilder<'a> {
     ) {
         use std::hash::Hash;
         for c in children {
-            if let AuraNode::Element { tag, props, children, .. } = c {
+            if let AuraNode::Element {
+                tag,
+                props,
+                children,
+                ..
+            } = c
+            {
                 let tag_lc = tag.replace('_', "-");
                 if tag_lc == "sidebar-menu-button" || tag_lc == "sidebar-menu-sub-button" {
                     let to = self
@@ -21946,7 +24448,8 @@ impl<'a> AuraViewBuilder<'a> {
         if !bindings.is_empty() {
             self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
             memo_diag("for_item", "nested-bindings");
-            return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
+            return self
+                .convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
         }
 
         // ── iterable 解析（与 keyless 同一通道，None → View::Empty）。
@@ -21964,13 +24467,18 @@ impl<'a> AuraViewBuilder<'a> {
             }
             s
         };
-        let slots = match crate::ui::memo_deps::scan_for_item_body(body, self.widget_registry, &loop_vars)
-        {
+        let slots = match crate::ui::memo_deps::scan_for_item_body(
+            body,
+            self.widget_registry,
+            &loop_vars,
+        ) {
             crate::ui::memo_deps::ScanVerdict::Slots(s) => s,
             crate::ui::memo_deps::ScanVerdict::Degrade(reason) => {
                 self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
                 memo_diag("for_item", &format!("scan:{}", reason));
-                return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
+                return self.convert_for_unkeyed(
+                    var, index, iterable, body, path, id_map, probe, bindings,
+                );
             }
         };
         let skeleton_fp = crate::ui::memo_deps::for_site_fingerprint(
@@ -22006,26 +24514,34 @@ impl<'a> AuraViewBuilder<'a> {
             let Some(kv) = self.resolve_expr_to_value(key_expr, &lb) else {
                 self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
                 memo_diag("for_item", "key-eval");
-                return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
+                return self.convert_for_unkeyed(
+                    var, index, iterable, body, path, id_map, probe, bindings,
+                );
             };
             let expand = |x: &Value| self.bridge.expand_heap_for_fingerprint(x);
             let Some(kfp) = crate::ui::memo_deps::fingerprint_value(&kv, &expand) else {
                 self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
                 memo_diag("for_item", "key-fp");
-                return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
+                return self.convert_for_unkeyed(
+                    var, index, iterable, body, path, id_map, probe, bindings,
+                );
             };
             if !seen.insert(kfp) {
                 // 重复 key → 整体降级（一次性诊断），绝不静默去重。
                 self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
                 memo_diag("for_item", "dup-key");
-                return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
+                return self.convert_for_unkeyed(
+                    var, index, iterable, body, path, id_map, probe, bindings,
+                );
             }
             let Some(ifp) = crate::ui::memo_deps::fingerprint_value(item, &expand) else {
                 // 项值超 4096 预算 → 整体降级（AC-03；展开不了的堆引用
                 // 绝不按含 id 指纹命中）。
                 self.bridge.with_memo_cache(|c| c.note_degraded_site(SITE));
                 memo_diag("for_item", "item-fp-budget");
-                return self.convert_for_unkeyed(var, index, iterable, body, path, id_map, probe, bindings);
+                return self.convert_for_unkeyed(
+                    var, index, iterable, body, path, id_map, probe, bindings,
+                );
             };
             plans.push(KeyedPlan {
                 key_fp: kfp,
@@ -22036,7 +24552,8 @@ impl<'a> AuraViewBuilder<'a> {
         }
 
         // ── 容量抬升（Q-03：千行列表防 LRU 抖动，硬顶 MEMO_CACHE_CAP_MAX）。
-        self.bridge.with_memo_cache(|c| c.ensure_capacity(plans.len()));
+        self.bridge
+            .with_memo_cache(|c| c.ensure_capacity(plans.len()));
 
         // ── pass 2：按 iterable 当前序逐项命中/fill。
         let base_u16: Vec<u16> = path.iter().map(|&x| x as u16).collect();
@@ -22103,8 +24620,11 @@ impl<'a> AuraViewBuilder<'a> {
                     // index 位 → 值指纹比对（档 A 慢路径同源）。
                     self.memo_slots_fp(&slots0, &plan.loop_bindings)
                         .map(|sfp| {
-                            Some(Self::memo_combine_for(sfp, plan.item_fp, index.as_ref().map(|_| i as u64)))
-                                == dyn0
+                            Some(Self::memo_combine_for(
+                                sfp,
+                                plan.item_fp,
+                                index.as_ref().map(|_| i as u64),
+                            )) == dyn0
                         })
                         .unwrap_or(false)
                 } else {
@@ -22158,7 +24678,15 @@ impl<'a> AuraViewBuilder<'a> {
                             Err(_) => false,
                         };
                         let out = self.render_for_item_view(
-                            i, &plan.item, var, index, iterable, body, path, id_map, probe,
+                            i,
+                            &plan.item,
+                            var,
+                            index,
+                            iterable,
+                            body,
+                            path,
+                            id_map,
+                            probe,
                             &plan.loop_bindings,
                         );
                         // 项体读槽录制域内估值（未走分支的槽入集，保守）。
@@ -22366,9 +24894,7 @@ impl<'a> AuraViewBuilder<'a> {
             } else if gfp0 == gfp {
                 // 慢路径：deps 值指纹恒比；默认语义再加读槽重解析。
                 match self.memo_slots_fp(deps, bindings) {
-                    Some(dfp) if exact => {
-                        Some(Self::memo_combine_block(dfp, None)) == dyn0
-                    }
+                    Some(dfp) if exact => Some(Self::memo_combine_block(dfp, None)) == dyn0,
                     Some(dfp) => self
                         .memo_slots_fp(&slots0, bindings)
                         .map(|sfp| Some(Self::memo_combine_block(dfp, Some(sfp))) == dyn0)
@@ -22407,8 +24933,7 @@ impl<'a> AuraViewBuilder<'a> {
                     };
                     eprintln!("[MEMO-DIAG] site=8 {label} (exact={exact})");
                 }
-                let base_u16: Vec<u16> =
-                    path[..base_len].iter().map(|&x| x as u16).collect();
+                let base_u16: Vec<u16> = path[..base_len].iter().map(|&x| x as u16).collect();
                 Self::replay_memo_subtree(probe, id_map, &base_u16, None, prel, irel);
                 return product;
             }
@@ -22977,7 +25502,6 @@ mod plan045_memo_tests {
         }
     }
 
-
     fn memo_widget() -> AuraWidget {
         make_memo_widget(
             "MemoApp",
@@ -23010,8 +25534,8 @@ mod plan045_memo_tests {
             .with_prop("title", Expr::Str("Show URLs".into()))
             .with_prop("checked", Expr::Ident(".show_urls".into()));
         let content = AuraNode::element("menubar-content").with_child(item);
-        let trigger = AuraNode::element("menubar-trigger")
-            .with_prop("text", Expr::Str("File".into()));
+        let trigger =
+            AuraNode::element("menubar-trigger").with_prop("text", Expr::Str("File".into()));
         let menu = AuraNode::element("menubar-menu")
             .with_prop("value", Expr::Str("file".into()))
             .with_child(trigger)
@@ -23152,8 +25676,7 @@ mod plan045_memo_tests {
                 bindings: vec!["unrelated".to_string()],
             }));
         let content = AuraNode::element("menubar-content").with_child(interp_item);
-        let trigger =
-            AuraNode::element("menubar-trigger").with_prop("text", Expr::Str("F".into()));
+        let trigger = AuraNode::element("menubar-trigger").with_prop("text", Expr::Str("F".into()));
         let menu = AuraNode::element("menubar-menu")
             .with_child(trigger)
             .with_child(content);
@@ -23189,18 +25712,11 @@ mod plan045_memo_tests {
         let node = menubar_node(true);
 
         let empty_registry = crate::ui::widget_registry::WidgetRegistry::new();
-        let b = AuraViewBuilder::with_registry_and_imports(
-            &bridge,
-            "MemoApp",
-            &empty_registry,
-            &[],
-        );
+        let b =
+            AuraViewBuilder::with_registry_and_imports(&bridge, "MemoApp", &empty_registry, &[]);
         // fill：probe enabled（build_with_debug 默认 enabled）。
         let (_, _, probe1) = b.build_with_debug(&node);
-        assert!(
-            !probe1.is_enabled() || true,
-            "fill probe 在册"
-        );
+        assert!(!probe1.is_enabled() || true, "fill probe 在册");
         bridge.with_memo_cache(|c| assert_eq!(c.len(), 1, "fill 条目在册"));
 
         // 命中帧：全新 probe（同 enabled），产物来自缓存，probe 面须重放。
@@ -23234,8 +25750,8 @@ mod plan045_memo_tests {
                 decorators: vec![],
             }],
         );
-        page_widget.view_tree = AuraNode::element("text")
-            .with_prop("text", Expr::Ident(".title".into()));
+        page_widget.view_tree =
+            AuraNode::element("text").with_prop("text", Expr::Ident(".title".into()));
         let mut registry = WidgetRegistry::new();
         registry.register(page_widget);
         registry.register_route_alias("row", "RowPage");
@@ -23308,22 +25824,48 @@ mod plan045_memo_tests {
         let cases: &[(G, Option<bool>, bool, &str)] = &[
             (G::ForceOff, None, false, "env=0 覆盖 prop 未设"),
             (G::ForceOff, Some(false), false, "env=0 × 显式 false"),
-            (G::ForceOff, Some(true), false, "env=0 覆盖显式 true（诊断强制关）"),
+            (
+                G::ForceOff,
+                Some(true),
+                false,
+                "env=0 覆盖显式 true（诊断强制关）",
+            ),
             (G::ForceOn, None, true, "env=1 强开 prop 未设"),
-            (G::ForceOn, Some(false), true, "env=1 覆盖显式 false（并集契约变化点）"),
+            (
+                G::ForceOn,
+                Some(false),
+                true,
+                "env=1 覆盖显式 false（并集契约变化点）",
+            ),
             (G::ForceOn, Some(true), true, "env=1 × 显式 true"),
-            (G::Unset, None, true, "未设 × 未设 → 缺省 on（r2 缺省面变更）"),
+            (
+                G::Unset,
+                None,
+                true,
+                "未设 × 未设 → 缺省 on（r2 缺省面变更）",
+            ),
             (G::Unset, Some(false), false, "未设 × 显式 false"),
             (G::Unset, Some(true), true, "未设 × 显式 true"),
         ];
         for (env, prop, want, why) in cases {
-            assert_eq!(AuraViewBuilder::resolve_outlet_memo(*env, *prop), *want, "{}", why);
+            assert_eq!(
+                AuraViewBuilder::resolve_outlet_memo(*env, *prop),
+                *want,
+                "{}",
+                why
+            );
         }
         // 菜单/nav 族：env 覆盖 + 字面量缺省关（045 语义保留）。
         assert!(!AuraViewBuilder::resolve_site_memo(G::Unset, false));
         assert!(AuraViewBuilder::resolve_site_memo(G::Unset, true));
-        assert!(!AuraViewBuilder::resolve_site_memo(G::ForceOff, true), "env=0 诊断强关覆盖字面量 true");
-        assert!(AuraViewBuilder::resolve_site_memo(G::ForceOn, false), "env=1 强开覆盖字面量 false");
+        assert!(
+            !AuraViewBuilder::resolve_site_memo(G::ForceOff, true),
+            "env=0 诊断强关覆盖字面量 true"
+        );
+        assert!(
+            AuraViewBuilder::resolve_site_memo(G::ForceOn, false),
+            "env=1 强开覆盖字面量 false"
+        );
     }
 
     /// env 门解析：`0`/`1`/未设/其他值四形态（诊断"其他值=未设"容错）。
@@ -23331,13 +25873,25 @@ mod plan045_memo_tests {
     fn plan708_memo_env_gate_parsing() {
         let _guard = PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("AUTO_OUTLET_MEMO");
-        assert!(matches!(AuraViewBuilder::memo_env_gate(), MemoEnvGate::Unset));
+        assert!(matches!(
+            AuraViewBuilder::memo_env_gate(),
+            MemoEnvGate::Unset
+        ));
         std::env::set_var("AUTO_OUTLET_MEMO", "0");
-        assert!(matches!(AuraViewBuilder::memo_env_gate(), MemoEnvGate::ForceOff));
+        assert!(matches!(
+            AuraViewBuilder::memo_env_gate(),
+            MemoEnvGate::ForceOff
+        ));
         std::env::set_var("AUTO_OUTLET_MEMO", "1");
-        assert!(matches!(AuraViewBuilder::memo_env_gate(), MemoEnvGate::ForceOn));
+        assert!(matches!(
+            AuraViewBuilder::memo_env_gate(),
+            MemoEnvGate::ForceOn
+        ));
         std::env::set_var("AUTO_OUTLET_MEMO", "garbage");
-        assert!(matches!(AuraViewBuilder::memo_env_gate(), MemoEnvGate::Unset));
+        assert!(matches!(
+            AuraViewBuilder::memo_env_gate(),
+            MemoEnvGate::Unset
+        ));
         std::env::remove_var("AUTO_OUTLET_MEMO");
     }
 
@@ -23357,8 +25911,8 @@ mod plan045_memo_tests {
                 decorators: vec![],
             }],
         );
-        page_widget.view_tree = AuraNode::element("text")
-            .with_prop("text", Expr::Ident(".title".into()));
+        page_widget.view_tree =
+            AuraNode::element("text").with_prop("text", Expr::Ident(".title".into()));
         let mut registry = WidgetRegistry::new();
         registry.register(page_widget);
         registry.register_route_alias("row", "RowPage");
@@ -23415,8 +25969,8 @@ mod plan045_memo_tests {
                 decorators: vec![],
             }],
         );
-        page_widget.view_tree = AuraNode::element("text")
-            .with_prop("text", Expr::Ident(".title".into()));
+        page_widget.view_tree =
+            AuraNode::element("text").with_prop("text", Expr::Ident(".title".into()));
         let mut registry = WidgetRegistry::new();
         registry.register(page_widget);
         registry.register_route_alias("row", "RowPage");
@@ -23478,8 +26032,8 @@ mod plan045_memo_tests {
                 decorators: vec![],
             }],
         );
-        page_widget.view_tree = AuraNode::element("text")
-            .with_prop("text", Expr::Ident(".title".into()));
+        page_widget.view_tree =
+            AuraNode::element("text").with_prop("text", Expr::Ident(".title".into()));
         let mut registry = WidgetRegistry::new();
         registry.register(page_widget);
         registry.register_route_alias("row", "RowPage");
@@ -23551,14 +26105,10 @@ mod plan045_memo_tests {
                 }],
             );
             let node = AuraNode::element("col")
+                .with_child(AuraNode::element("h1").with_prop("text", Expr::Str("Row".into())))
                 .with_child(
-                    AuraNode::element("h1").with_prop("text", Expr::Str("Row".into())),
-                )
-                .with_child(
-                    AuraNode::element("badge").with_prop(
-                        "visible",
-                        Expr::Ident(".page_flag".into()),
-                    ),
+                    AuraNode::element("badge")
+                        .with_prop("visible", Expr::Ident(".page_flag".into())),
                 );
             w.view_tree = node;
             w
@@ -23846,12 +26396,16 @@ mod plan046_for_memo_tests {
     /// fill 后无写重建 → 快速路径全命中、产物一致（AC-02 基础面）。
     #[test]
     fn plan046_keyed_fill_then_fast_hit() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
-            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]))
+            .write_state(
+                "rows",
+                obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]),
+            )
             .unwrap();
         let node = keyed_node(None, id_key());
 
@@ -23869,19 +26423,26 @@ mod plan046_for_memo_tests {
     /// AC-02 重排：键集不变序变 → 全部命中；输出序恒随 iterable 当前序。
     #[test]
     fn plan046_keyed_reorder_all_hit_output_order() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
-            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]))
+            .write_state(
+                "rows",
+                obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]),
+            )
             .unwrap();
         let node = keyed_node(None, id_key());
         let _ = tracked_build(&bridge, &node);
         let (h0, m0, _, _) = counts(&bridge);
 
         bridge
-            .write_state("rows", obj_rows(&[row(3, "ccc"), row(1, "aaa"), row(2, "bbb")]))
+            .write_state(
+                "rows",
+                obj_rows(&[row(3, "ccc"), row(1, "aaa"), row(2, "bbb")]),
+            )
             .unwrap();
         let k = tracked_build(&bridge, &node);
         let (h1, m1, _, _) = counts(&bridge);
@@ -23898,32 +26459,44 @@ mod plan046_for_memo_tests {
     /// AC-02 单项内容修改（key 稳定）：仅该项慢路径 miss，其余命中。
     #[test]
     fn plan046_keyed_single_modify_only_item_misses() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
-            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]))
+            .write_state(
+                "rows",
+                obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]),
+            )
             .unwrap();
         let node = keyed_node(None, id_key());
         let _ = tracked_build(&bridge, &node);
         let (h0, m0, _, _) = counts(&bridge);
 
         bridge
-            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "zzz"), row(3, "ccc")]))
+            .write_state(
+                "rows",
+                obj_rows(&[row(1, "aaa"), row(2, "zzz"), row(3, "ccc")]),
+            )
             .unwrap();
         let k = tracked_build(&bridge, &node);
         let (h1, m1, _, _) = counts(&bridge);
         assert_eq!(h1 - h0, 2, "未变两项命中");
         assert_eq!(m1 - m0, 1, "仅内容变化项 miss（key 同条目在册）");
-        assert!(k.contains("zzz") && !k.contains("bbb"), "产物反映新内容：{}", k);
+        assert!(
+            k.contains("zzz") && !k.contains("bbb"),
+            "产物反映新内容：{}",
+            k
+        );
     }
 
     /// AC-02 增删：新增项 fill（新键新条目）、删除项靠 LRU 闲置，存续全命中。
     #[test]
     fn plan046_keyed_add_remove_only_delta() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -23941,10 +26514,16 @@ mod plan046_for_memo_tests {
             .unwrap();
         let _ = tracked_build(&bridge, &node);
         let (h1, m1, _, n1) = counts(&bridge);
-        assert_eq!((h1 - h0, m1 - m0), (2, 0), "新增仅 333 fill（新键），存续全命中");
+        assert_eq!(
+            (h1 - h0, m1 - m0),
+            (2, 0),
+            "新增仅 333 fill（新键），存续全命中"
+        );
         assert_eq!(n1, n0 + 1);
 
-        bridge.write_state("rows", obj_rows(&[row(1, "aaa")])).unwrap();
+        bridge
+            .write_state("rows", obj_rows(&[row(1, "aaa")]))
+            .unwrap();
         let _ = tracked_build(&bridge, &node);
         let (h2, m2, _, _) = counts(&bridge);
         assert_eq!((h2 - h1, m2 - m1), (1, 0), "删除后存续项命中，零 miss");
@@ -23954,23 +26533,34 @@ mod plan046_for_memo_tests {
     /// 产物依赖位置时正确性优先，宁可多重求值）。
     #[test]
     fn plan046_keyed_index_declared_reorder_misses() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
-            .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]))
+            .write_state(
+                "rows",
+                obj_rows(&[row(1, "aaa"), row(2, "bbb"), row(3, "ccc")]),
+            )
             .unwrap();
         let node = keyed_node(Some("i"), id_key());
         let _ = tracked_build(&bridge, &node);
         let (h0, m0, _, _) = counts(&bridge);
 
         bridge
-            .write_state("rows", obj_rows(&[row(3, "ccc"), row(1, "aaa"), row(2, "bbb")]))
+            .write_state(
+                "rows",
+                obj_rows(&[row(3, "ccc"), row(1, "aaa"), row(2, "bbb")]),
+            )
             .unwrap();
         let k = tracked_build(&bridge, &node);
         let (h1, m1, _, _) = counts(&bridge);
-        assert_eq!((h1 - h0, m1 - m0), (0, 3), "index 声明 → 重排全失效（保守）");
+        assert_eq!(
+            (h1 - h0, m1 - m0),
+            (0, 3),
+            "index 声明 → 重排全失效（保守）"
+        );
         let (pc, pa, pb) = (
             k.find("ccc").unwrap(),
             k.find("aaa").unwrap(),
@@ -23982,8 +26572,9 @@ mod plan046_for_memo_tests {
     /// AC-03 重复 key：整体降级原始路径（绝不静默去重），产物与非 key 化一致。
     #[test]
     fn plan046_dup_key_degrades_to_raw() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -24005,8 +26596,9 @@ mod plan046_for_memo_tests {
     /// AC-03 key 求值失败（读缺失字段）：整体降级，行为与非 key 化一致。
     #[test]
     fn plan046_key_eval_fail_degrades_to_raw() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -24025,8 +26617,9 @@ mod plan046_for_memo_tests {
     /// AC-03 项值超指纹预算（4096 节点）：整体降级，key 可解析也不入缓存。
     #[test]
     fn plan046_item_fp_budget_degrades_to_raw() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         let mut big = auto_val::Obj::new();
@@ -24039,7 +26632,10 @@ mod plan046_for_memo_tests {
             )),
         );
         bridge
-            .write_state("rows", Value::Array(auto_val::Array::from(vec![Value::obj(big)])))
+            .write_state(
+                "rows",
+                Value::Array(auto_val::Array::from(vec![Value::obj(big)])),
+            )
             .unwrap();
         let keyed = keyed_node(None, id_key());
         let plain = unkeyed_node();
@@ -24055,11 +26651,17 @@ mod plan046_for_memo_tests {
     /// （T-01 D-4 保守裁定），渲染行为与原始一致。
     #[test]
     fn plan046_nested_keyed_for_degrades() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
-        bridge.write_state("outers", Value::Array(auto_val::Array::from(vec![Value::Int(1)]))).unwrap();
+        bridge
+            .write_state(
+                "outers",
+                Value::Array(auto_val::Array::from(vec![Value::Int(1)])),
+            )
+            .unwrap();
         bridge
             .write_state("rows", obj_rows(&[row(1, "aaa"), row(2, "bbb")]))
             .unwrap();
@@ -24077,15 +26679,20 @@ mod plan046_for_memo_tests {
         let (_, _, d, n) = counts(&bridge);
         assert!(d >= 1, "内层嵌套绑定上下文降级计数");
         assert_eq!(n, 0, "降级不建条目");
-        assert!(k.contains("aaa") && k.contains("bbb"), "内层原始渲染在册：{}", k);
+        assert!(
+            k.contains("aaa") && k.contains("bbb"),
+            "内层原始渲染在册：{}",
+            k
+        );
     }
 
     /// probe/idmap 簿记重放：命中帧事件索引在册（fill 帧 probe 面 = 命中帧
     /// probe 面——ForIter.index 补丁到当前迭代位）。
     #[test]
     fn plan046_keyed_hit_replays_probe_bookkeeping() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = keyed_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -24093,8 +26700,7 @@ mod plan046_for_memo_tests {
             .unwrap();
         let node = keyed_node(None, id_key());
 
-        let (_, _, probe_fill) =
-            AuraViewBuilder::new(&bridge, "KeyedApp").build_with_debug(&node);
+        let (_, _, probe_fill) = AuraViewBuilder::new(&bridge, "KeyedApp").build_with_debug(&node);
         let fill_for: Vec<usize> = probe_fill
             .snapshot()
             .values()
@@ -24105,14 +26711,17 @@ mod plan046_for_memo_tests {
         bridge
             .write_state("rows", obj_rows(&[row(2, "bbb"), row(1, "aaa")]))
             .unwrap();
-        let (_, _, probe_hit) =
-            AuraViewBuilder::new(&bridge, "KeyedApp").build_with_debug(&node);
+        let (_, _, probe_hit) = AuraViewBuilder::new(&bridge, "KeyedApp").build_with_debug(&node);
         let hit_for: Vec<usize> = probe_hit
             .snapshot()
             .values()
             .filter_map(|e| e.for_context.as_ref().map(|f| f.index.unwrap()))
             .collect();
-        assert_eq!(hit_for.len(), fill_for.len(), "命中帧 probe 条目数与 fill 帧一致");
+        assert_eq!(
+            hit_for.len(),
+            fill_for.len(),
+            "命中帧 probe 条目数与 fill 帧一致"
+        );
         assert!(
             hit_for.iter().all(|idx| matches!(idx, 0 | 1)),
             "重排命中帧 ForIter.index 补丁在 [0,1] 内：{:?}",
@@ -24128,8 +26737,6 @@ mod plan046_memo_block_tests {
     use super::*;
     use crate::ast::Type;
     use crate::aura::{AuraStateDef, AuraWidget};
-
-
 
     fn block_widget() -> AuraWidget {
         AuraWidget {
@@ -24210,8 +26817,9 @@ mod plan046_memo_block_tests {
     /// 无写快速路径命中。
     #[test]
     fn plan046_block_default_deps_and_slot_semantics() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = block_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         // 块体读 .count（自动读槽）；deps 声明 .other。
@@ -24233,20 +26841,26 @@ mod plan046_memo_block_tests {
         assert_eq!(k0, k1, "快路径产物一致");
 
         // 块内读槽变化（.count）→ 失效重求值，产物更新（AC-04）。
-        bridge.write_state("count", auto_val::Value::Int(7)).unwrap();
+        bridge
+            .write_state("count", auto_val::Value::Int(7))
+            .unwrap();
         let k2 = tracked_build(&bridge, &node);
         let (_, m1, _, _) = counts(&bridge);
         assert_eq!(m1 - m0, 1, "读槽变化失效一次");
         assert!(k2.contains("7"), "产物反映新 count：{}", k2);
 
         // deps 变化（.other）→ 失效重求值（AC-04）。
-        bridge.write_state("other", auto_val::Value::Int(3)).unwrap();
+        bridge
+            .write_state("other", auto_val::Value::Int(3))
+            .unwrap();
         let _ = tracked_build(&bridge, &node);
         let (_, m2, _, _) = counts(&bridge);
         assert_eq!(m2 - m1, 1, "deps 变化失效一次");
 
         // 无关写（.hidden）→ 慢路径命中（deps+读槽全同）。
-        bridge.write_state("hidden", auto_val::Value::Int(9)).unwrap();
+        bridge
+            .write_state("hidden", auto_val::Value::Int(9))
+            .unwrap();
         let _ = tracked_build(&bridge, &node);
         let (h2, _, _, _) = counts(&bridge);
         assert!(h2 > h1, "无关写慢路径命中（deps∪读槽全同）");
@@ -24256,13 +26870,14 @@ mod plan046_memo_block_tests {
     /// 签名担保的陈旧自担面）；deps 变化照常失效。
     #[test]
     fn plan046_block_exact_pure_deps_judgment() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = block_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         let node = block_node(
             vec![Expr::Ident(".other".into())],
-            true, // exact
+            true,                       // exact
             vec![state_text("hidden")], // 隐藏读不在 deps——作者担保其不产陈旧
         );
 
@@ -24270,13 +26885,21 @@ mod plan046_memo_block_tests {
         let (h0, m0, _, _) = counts(&bridge);
 
         // 隐藏读变化 → 纯 deps 判定 → 命中（陈旧由语料自担——AC-05 契约）。
-        bridge.write_state("hidden", auto_val::Value::Int(5)).unwrap();
+        bridge
+            .write_state("hidden", auto_val::Value::Int(5))
+            .unwrap();
         let _ = tracked_build(&bridge, &node);
         let (h1, m1, _, _) = counts(&bridge);
-        assert_eq!((h1 - h0, m1 - m0), (1, 0), "exact 纯 deps：隐藏读变化仍命中");
+        assert_eq!(
+            (h1 - h0, m1 - m0),
+            (1, 0),
+            "exact 纯 deps：隐藏读变化仍命中"
+        );
 
         // deps 变化 → 失效重求值。
-        bridge.write_state("other", auto_val::Value::Int(2)).unwrap();
+        bridge
+            .write_state("other", auto_val::Value::Int(2))
+            .unwrap();
         let _ = tracked_build(&bridge, &node);
         let (_, m2, _, _) = counts(&bridge);
         assert_eq!(m2 - m1, 1, "exact 模式 deps 变化照常失效");
@@ -24286,8 +26909,9 @@ mod plan046_memo_block_tests {
     /// ——deps 变化失效重建、无关写命中。
     #[test]
     fn plan046_block_call_prop_covered_by_deps() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = block_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         // 模拟 charts path：`chart (path: compute(.data))`——Call 形态 prop。
@@ -24309,19 +26933,28 @@ mod plan046_memo_block_tests {
 
         let _ = tracked_build(&bridge, &node); // fill（Call 不降级）
         let (h0, m0, d0, n0) = counts(&bridge);
-        assert_eq!((h0, m0, d0), (0, 0, 0), "Call 形态由 deps 覆盖，fill 无降级");
+        assert_eq!(
+            (h0, m0, d0),
+            (0, 0, 0),
+            "Call 形态由 deps 覆盖，fill 无降级"
+        );
         assert_eq!(n0, 1, "块条目在册");
 
         // deps（.data）变化 → 失效重建。
         bridge
-            .write_state("data", Value::Array(auto_val::Array::from(vec![Value::Int(1)])))
+            .write_state(
+                "data",
+                Value::Array(auto_val::Array::from(vec![Value::Int(1)])),
+            )
             .unwrap();
         let _ = tracked_build(&bridge, &node);
         let (_, m1, _, _) = counts(&bridge);
         assert_eq!(m1, 1, "deps 变化失效");
 
         // 无关写 → 慢路径命中。
-        bridge.write_state("hidden", auto_val::Value::Int(1)).unwrap();
+        bridge
+            .write_state("hidden", auto_val::Value::Int(1))
+            .unwrap();
         let _ = tracked_build(&bridge, &node);
         let (h1, _, _, _) = counts(&bridge);
         assert_eq!(h1, 1, "无关写慢路径命中");
@@ -24331,8 +26964,9 @@ mod plan046_memo_block_tests {
     /// `exact` 块内 ForLoop（deps 覆盖 iterable）→ 可缓存。
     #[test]
     fn plan046_block_nested_for_degrade_and_exact_override() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = block_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         let inner = AuraNode::ForLoop {
@@ -24349,7 +26983,11 @@ mod plan046_memo_block_tests {
         };
 
         // 默认语义：嵌套 for → 降级，不建条目。
-        let default_block = block_node(vec![Expr::Ident(".data".into())], false, vec![inner.clone()]);
+        let default_block = block_node(
+            vec![Expr::Ident(".data".into())],
+            false,
+            vec![inner.clone()],
+        );
         let _ = tracked_build(&bridge, &default_block);
         let (_, _, d0, n0) = counts(&bridge);
         assert_eq!((d0, n0), (1, 0), "块内 ForLoop 默认降级");
@@ -24370,8 +27008,9 @@ mod plan046_memo_block_tests {
     /// 完全惰性（零条目零计数）。
     #[test]
     fn plan046_block_untracked_shared_gate() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = block_widget();
         let bridge = VmBridge::new(&widget).unwrap();
         let node = block_node(
@@ -24394,8 +27033,9 @@ mod plan046_memo_block_tests {
     /// per-site 分解计数：memo 块门走 site_counts[MEMO_SITE_MEMO_BLOCK]。
     #[test]
     fn plan046_block_site_counts() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = block_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         let node = block_node(
@@ -24405,7 +27045,9 @@ mod plan046_memo_block_tests {
         );
 
         let _ = tracked_build(&bridge, &node); // fill
-        bridge.write_state("count", auto_val::Value::Int(4)).unwrap();
+        bridge
+            .write_state("count", auto_val::Value::Int(4))
+            .unwrap();
         let _ = tracked_build(&bridge, &node); // miss
         let _ = tracked_build(&bridge, &node); // fast hit
         bridge.with_memo_cache(|c| {
@@ -24417,7 +27059,9 @@ mod plan046_memo_block_tests {
     /// AC-04 episode 翻转：menubar_open 翻面 → 慢路径 miss（互斥防并发翻转）。
     #[test]
     fn plan046_block_episode_flip_miss() {
-        let _guard = super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = block_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         let node = block_node(
@@ -24533,8 +27177,9 @@ mod plan047_gate_tests {
     /// resolve 探针零增量。
     #[test]
     fn plan047_version_fast_unrelated_write_zero_reeval() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = vf_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -24543,18 +27188,26 @@ mod plan047_gate_tests {
         let node = vf_node();
 
         let k0 = vf_build(&bridge, &node); // fill
-        let probe0 = bridge.resolve_probe_count.load(std::sync::atomic::Ordering::Relaxed);
+        let probe0 = bridge
+            .resolve_probe_count
+            .load(std::sync::atomic::Ordering::Relaxed);
         // 无写对照帧：seq_fast——探针增量 = pass-1 key 规划的合法求解
         // （键集 diff 每帧现算；含 Dot→Ident 递归，2 项×2 次）。
         let _ = vf_build(&bridge, &node);
         let (sf0, vf0, fp0) = vf_kinds(&bridge);
-        let probe1 = bridge.resolve_probe_count.load(std::sync::atomic::Ordering::Relaxed);
+        let probe1 = bridge
+            .resolve_probe_count
+            .load(std::sync::atomic::Ordering::Relaxed);
 
         // 无关写（.other）→ 全局 seq 动、动态 dep 面不动。
-        bridge.write_state("other", auto_val::Value::Int(9)).unwrap();
+        bridge
+            .write_state("other", auto_val::Value::Int(9))
+            .unwrap();
         let k1 = vf_build(&bridge, &node);
         let (sf1, vf1, fp1) = vf_kinds(&bridge);
-        let probe2 = bridge.resolve_probe_count.load(std::sync::atomic::Ordering::Relaxed);
+        let probe2 = bridge
+            .resolve_probe_count
+            .load(std::sync::atomic::Ordering::Relaxed);
 
         assert_eq!(vf1 - vf0, 2, "version_fast 命中（两项条目各计一次）");
         assert_eq!(fp1 - fp0, 0, "指纹慢路径零调用（零重解析）");
@@ -24573,8 +27226,9 @@ mod plan047_gate_tests {
     /// 下一无关写帧回到 version_fast（基线前移语义）。
     #[test]
     fn plan047_fp_slow_hit_refreshes_dep_baselines() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = vf_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -24595,7 +27249,9 @@ mod plan047_gate_tests {
         assert_eq!(vf1, vf0, "version_fast 未走（版本已动）");
 
         // 基线已随 fp_slow 命中刷新 → 下一无关写帧回 version_fast。
-        bridge.write_state("other", auto_val::Value::Int(3)).unwrap();
+        bridge
+            .write_state("other", auto_val::Value::Int(3))
+            .unwrap();
         let _ = vf_build(&bridge, &node);
         let (_, vf2, fp2) = vf_kinds(&bridge);
         assert_eq!(vf2 - vf1, 1, "基线刷新后 version_fast 恢复");
@@ -24606,8 +27262,9 @@ mod plan047_gate_tests {
     /// 新值（AC-07 正确性下限：绝不陈旧）。
     #[test]
     fn plan047_content_change_refills_no_stale() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = vf_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -24629,8 +27286,9 @@ mod plan047_gate_tests {
     /// 判定序：无写重建走 seq_fast（version_fast 不消费）。
     #[test]
     fn plan047_seq_fast_precedes_version_fast() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = vf_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
         bridge
@@ -24732,8 +27390,12 @@ mod plan047_signal_tests {
 
     fn sig_counts(bridge: &VmBridge) -> (u64, u64) {
         (
-            bridge.signal_hits.load(std::sync::atomic::Ordering::Relaxed),
-            bridge.signal_misses.load(std::sync::atomic::Ordering::Relaxed),
+            bridge
+                .signal_hits
+                .load(std::sync::atomic::Ordering::Relaxed),
+            bridge
+                .signal_misses
+                .load(std::sync::atomic::Ordering::Relaxed),
         )
     }
 
@@ -24741,8 +27403,9 @@ mod plan047_signal_tests {
     /// 产物保真（绝不陈旧）。
     #[test]
     fn plan047_signal_inline_hit_and_invalidation() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = sig_widget(inline_mirror());
         let mut bridge = VmBridge::new(&widget).unwrap();
         let node = sig_view();
@@ -24753,14 +27416,18 @@ mod plan047_signal_tests {
         assert_eq!((h0, m0), (0, 1), "首帧 miss 入网");
 
         // 无关写 → 信号 deps 未动 → 命中复用（computed 零重算）。
-        bridge.write_state("other", auto_val::Value::Int(9)).unwrap();
+        bridge
+            .write_state("other", auto_val::Value::Int(9))
+            .unwrap();
         let k1 = sig_build(&bridge, &widget.computed, &node);
         let (h1, _) = sig_counts(&bridge);
         assert_eq!(h1 - h0, 1, "无关写帧信号命中");
         assert_eq!(k0, k1, "产物一致");
 
         // deps 变化（.count）→ 信号重算 → 产物保真。
-        bridge.write_state("count", auto_val::Value::Int(7)).unwrap();
+        bridge
+            .write_state("count", auto_val::Value::Int(7))
+            .unwrap();
         let k2 = sig_build(&bridge, &widget.computed, &node);
         let (_, m2) = sig_counts(&bridge);
         assert!(m2 > m0, "deps 变化信号重算");
@@ -24771,8 +27438,9 @@ mod plan047_signal_tests {
     /// 引擎读臂录制的 dep 面承载失效判定（T-04 端到端）。
     #[test]
     fn plan047_signal_block_channel() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = sig_widget(block_mirror());
         let mut bridge = VmBridge::new(&widget).unwrap();
         // 合成通道在册性预检：__computed_SigApp_mirror 必须已合成（缺失 =
@@ -24788,13 +27456,17 @@ mod plan047_signal_tests {
         assert!(k0.contains("1"), "block 通道初值: {k0}");
         let (h0, m0) = sig_counts(&bridge);
 
-        bridge.write_state("other", auto_val::Value::Int(9)).unwrap();
+        bridge
+            .write_state("other", auto_val::Value::Int(9))
+            .unwrap();
         let k1 = sig_build(&bridge, &widget.computed, &node);
         let (h1, _) = sig_counts(&bridge);
         assert_eq!(h1 - h0, 1, "block 通道无关写命中");
         assert_eq!(k0, k1, "产物一致");
 
-        bridge.write_state("count", auto_val::Value::Int(5)).unwrap();
+        bridge
+            .write_state("count", auto_val::Value::Int(5))
+            .unwrap();
         let k2 = sig_build(&bridge, &widget.computed, &node);
         let (_, m2) = sig_counts(&bridge);
         assert!(m2 > m0, "block 通道 deps 变化重算");
@@ -24805,8 +27477,9 @@ mod plan047_signal_tests {
     /// 失效（即使条目自身不直读该状态）。
     #[test]
     fn plan047_signal_deps_absorbed_into_memo_entry() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = sig_widget(inline_mirror());
         let mut bridge = VmBridge::new(&widget).unwrap();
         // memo 块包 computed 读——块条目 deps 由录制收编（含 .mirror 的
@@ -24814,19 +27487,18 @@ mod plan047_signal_tests {
         let node = AuraNode::MemoBlock {
             deps: vec![Expr::Ident(".other".into())],
             exact: false,
-            body: vec![AuraNode::element("text").with_prop(
-                "text",
-                Expr::Ident(".mirror".into()),
-            )],
+            body: vec![AuraNode::element("text").with_prop("text", Expr::Ident(".mirror".into()))],
             span: None,
             debug_id: None,
         };
 
         let _ = sig_build(&bridge, &widget.computed, &node); // fill（块条目 + 信号同帧入网）
         let _ = sig_build(&bridge, &widget.computed, &node); // 无关重建（块快路径 + 信号命中）
-        // 直写 count（信号 dep 面）——块条目必须经 version_fast miss 落重求
-        // 值（条目收编了信号的 dep 键），产物保真。
-        bridge.write_state("count", auto_val::Value::Int(3)).unwrap();
+                                                             // 直写 count（信号 dep 面）——块条目必须经 version_fast miss 落重求
+                                                             // 值（条目收编了信号的 dep 键），产物保真。
+        bridge
+            .write_state("count", auto_val::Value::Int(3))
+            .unwrap();
         let k = sig_build(&bridge, &widget.computed, &node);
         assert!(k.contains("3"), "级联失效落地: {k}");
     }
@@ -24891,8 +27563,8 @@ mod plan047_convergence_tests {
             .with_prop("checked", Expr::Ident(".mirror".into()));
         let content = AuraNode::element("menubar-content").with_child(item);
         // trigger text 读 computed——闭合态 popover 产物可见面（保真观察点）。
-        let trigger = AuraNode::element("menubar-trigger")
-            .with_prop("text", Expr::Ident(".mirror".into()));
+        let trigger =
+            AuraNode::element("menubar-trigger").with_prop("text", Expr::Ident(".mirror".into()));
         let menu = AuraNode::element("menubar-menu")
             .with_prop("value", Expr::Str("file".into()))
             .with_child(trigger)
@@ -24904,11 +27576,7 @@ mod plan047_convergence_tests {
         mb.with_child(menu)
     }
 
-    fn conv_build(
-        bridge: &VmBridge,
-        computed: &[AuraComputed],
-        node: &AuraNode,
-    ) -> String {
+    fn conv_build(bridge: &VmBridge, computed: &[AuraComputed], node: &AuraNode) -> String {
         let (v, _idmap, _probe) = AuraViewBuilder::new(bridge, "ConvApp")
             .with_computed(computed)
             .build_with_debug(node);
@@ -24919,8 +27587,9 @@ mod plan047_convergence_tests {
     /// **逐字节一致**；门确证入册（非静默降级）；deps 变化经信号级联保真。
     #[test]
     fn plan047_computed_widget_memo_parity() {
-        let _guard =
-            super::plan045_memo_tests::PLAN045_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = super::plan045_memo_tests::PLAN045_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let widget = conv_widget();
         let mut bridge = VmBridge::new(&widget).unwrap();
 

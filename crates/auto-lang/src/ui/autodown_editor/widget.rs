@@ -20,9 +20,7 @@ use iced::keyboard::{self, key, Key, Modifiers};
 use iced::mouse::ScrollDelta;
 use iced::{Background, Color, Element, Font, Length, Point, Rectangle, Size, Theme};
 
-use super::{
-    AutodownEditorCore, DocDrawList, DocInput,
-};
+use super::{AutodownEditorCore, DocDrawList, DocInput};
 use crate::ui::code_editor::core::{EditorButton, EditorClipboard, EditorKey, EditorModifiers};
 use crate::ui::code_editor::draw::{CaretDraw, PreeditDraw, Rect};
 use crate::ui::code_editor::theme::Rgba;
@@ -32,7 +30,9 @@ use crate::ui::code_editor::theme::Rgba;
 /// (first-writer-wins,与 code editor 同源调用).
 fn install_font_system_source() {
     crate::ui::code_editor::core::set_font_system_call(|with| {
-        let mut guard = iced::advanced::graphics::text::font_system().write().unwrap();
+        let mut guard = iced::advanced::graphics::text::font_system()
+            .write()
+            .unwrap();
         with(guard.raw());
     });
 }
@@ -46,7 +46,8 @@ impl EditorClipboard for IcedClipboard<'_> {
         self.inner.read(iced::advanced::clipboard::Kind::Standard)
     }
     fn write(&mut self, text: &str) {
-        self.inner.write(iced::advanced::clipboard::Kind::Standard, text.to_owned());
+        self.inner
+            .write(iced::advanced::clipboard::Kind::Standard, text.to_owned());
     }
 }
 
@@ -165,16 +166,29 @@ impl<'a, M: Clone> DocEditor<'a, M> {
             Key::Named(key::Named::Delete) => EditorKey::Delete,
             Key::Named(key::Named::Escape) => EditorKey::Escape,
             Key::Named(key::Named::Tab) => EditorKey::Tab,
-            Key::Character(c) => c.chars().next().map(EditorKey::Char).unwrap_or_else(|| EditorKey::Other(c.to_string())),
+            Key::Character(c) => c
+                .chars()
+                .next()
+                .map(EditorKey::Char)
+                .unwrap_or_else(|| EditorKey::Other(c.to_string())),
             other => EditorKey::Other(format!("{other:?}")),
         }
     }
 
     fn map_modifiers(m: &Modifiers) -> EditorModifiers {
-        EditorModifiers { shift: m.shift(), control: m.control(), alt: m.alt(), logo: m.logo() }
+        EditorModifiers {
+            shift: m.shift(),
+            control: m.control(),
+            alt: m.alt(),
+            logo: m.logo(),
+        }
     }
 
-    fn ime_request(&self, last_caret: Option<Rect>, bounds: Rectangle) -> input_method::InputMethod<&'static str> {
+    fn ime_request(
+        &self,
+        last_caret: Option<Rect>,
+        bounds: Rectangle,
+    ) -> input_method::InputMethod<&'static str> {
         let Some(caret) = last_caret else {
             return input_method::InputMethod::Disabled;
         };
@@ -195,7 +209,8 @@ impl<'a, M: Clone> DocEditor<'a, M> {
     /// 内容高度实测（layout/draw 共用；整形缓存落在 cosmic 内部）。
     fn measure(&self, viewport_w: f32) -> super::DocFrame {
         crate::ui::code_editor::core::with_font_system(|fs| {
-            self.core.render_frame(fs, viewport_w, self.base_color, self.placeholder.as_deref())
+            self.core
+                .render_frame(fs, viewport_w, self.base_color, self.placeholder.as_deref())
         })
     }
 }
@@ -233,7 +248,10 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
         let max = limits.max();
         let width = limits.resolve(self.width, Length::Shrink, max).width;
         let frame = self.measure((width - 2.0 * CONTENT_PAD_X).max(1.0));
-        Node::new(Size::new(width, (frame.height + 2.0 * CONTENT_PAD_Y).max(BODY_MIN_H)))
+        Node::new(Size::new(
+            width,
+            (frame.height + 2.0 * CONTENT_PAD_Y).max(BODY_MIN_H),
+        ))
     }
 
     fn update(
@@ -256,7 +274,12 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
         }
 
         // PLAN-748 T-10：鼠标命中坐标进内容坐标系（padding 内缩）。
-        let local = |p: Point| (p.x - bounds.x - CONTENT_PAD_X, p.y - bounds.y - CONTENT_PAD_Y);
+        let local = |p: Point| {
+            (
+                p.x - bounds.x - CONTENT_PAD_X,
+                p.y - bounds.y - CONTENT_PAD_Y,
+            )
+        };
         let input = match event {
             Event::Mouse(mouse::Event::ButtonPressed(button)) => {
                 if !cursor.is_over(bounds) {
@@ -300,13 +323,16 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                 Some(DocInput::MouseDragged { x, y })
             }
             Event::Mouse(mouse::Event::WheelScrolled { .. }) => None, // 页面滚动透传
-            Event::Keyboard(keyboard::Event::KeyPressed { key, modifiers, text, .. }) => {
-                Some(DocInput::KeyPressed {
-                    key: Self::map_key(key),
-                    text: text.as_ref().map(|t| t.to_string()),
-                    modifiers: Self::map_modifiers(modifiers),
-                })
-            }
+            Event::Keyboard(keyboard::Event::KeyPressed {
+                key,
+                modifiers,
+                text,
+                ..
+            }) => Some(DocInput::KeyPressed {
+                key: Self::map_key(key),
+                text: text.as_ref().map(|t| t.to_string()),
+                modifiers: Self::map_modifiers(modifiers),
+            }),
             Event::Keyboard(keyboard::Event::ModifiersChanged(m)) => {
                 Some(DocInput::ModifiersChanged(Self::map_modifiers(m)))
             }
@@ -414,7 +440,8 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                 bounds,
             );
             if run.strike {
-                let approx_w = run.text.chars().count() as f32 * run.size * if run.mono { 0.6 } else { 0.52 };
+                let approx_w =
+                    run.text.chars().count() as f32 * run.size * if run.mono { 0.6 } else { 0.52 };
                 let mid_y = run.y + run.size * 0.55;
                 fill_quad(
                     renderer,
@@ -423,11 +450,15 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                 );
             }
             if run.underline {
-                let approx_w = run.text.chars().count() as f32 * run.size * if run.mono { 0.6 } else { 0.52 };
+                let approx_w =
+                    run.text.chars().count() as f32 * run.size * if run.mono { 0.6 } else { 0.52 };
                 let base_y = run.y + run.size * 0.88;
                 fill_quad(
                     renderer,
-                    Rectangle::new(Point::new(ox + run.x, oy + base_y), Size::new(approx_w, 1.2)),
+                    Rectangle::new(
+                        Point::new(ox + run.x, oy + base_y),
+                        Size::new(approx_w, 1.2),
+                    ),
                     to_color(run.color),
                 );
             }
@@ -446,7 +477,12 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                 stroke_rect(
                     renderer,
                     bounds,
-                    Rect { x: r.x, y: r.y, w: r.w, h: r.h },
+                    Rect {
+                        x: r.x,
+                        y: r.y,
+                        w: r.w,
+                        h: r.h,
+                    },
                     Color::from_rgba(0.96, 0.62, 0.06, 0.95),
                 );
             }
@@ -460,7 +496,9 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                     content: preedit.text.clone(),
                     bounds: Size::new(bounds.width, preedit.font_size * 1.4),
                     size: preedit.font_size.into(),
-                    line_height: adv_text::LineHeight::Absolute((preedit.font_size * 4.0 / 3.0).into()),
+                    line_height: adv_text::LineHeight::Absolute(
+                        (preedit.font_size * 4.0 / 3.0).into(),
+                    ),
                     font: Font::default(),
                     align_x: adv_text::Alignment::Left,
                     align_y: iced::alignment::Vertical::Top,
@@ -471,7 +509,11 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
                 to_color(preedit.color),
                 bounds,
             );
-            fill_quad(renderer, to_rect(bounds, preedit.underline), to_color(preedit.color));
+            fill_quad(
+                renderer,
+                to_rect(bounds, preedit.underline),
+                to_color(preedit.color),
+            );
         }
         // PLAN-069 T2：slash 弹层浮层（最顶层——preedit 之上；层 rect/选中
         // 项高亮 + 标题/描述双行文本，几何与配色由 core render_frame 单源）。
@@ -518,7 +560,10 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
             }
         }
         // CaretDraw/PreeditDraw 类型再导出用于状态缓存（防未用告警）。
-        let _ = (std::mem::size_of::<CaretDraw>(), std::mem::size_of::<PreeditDraw>());
+        let _ = (
+            std::mem::size_of::<CaretDraw>(),
+            std::mem::size_of::<PreeditDraw>(),
+        );
     }
 
     fn mouse_interaction(
@@ -553,14 +598,24 @@ fn run_font(mono: bool, bold: bool, italic: bool) -> Font {
     // FontSystem（install_font_system_source），buffer 测量侧
     // sans_family()=Name("Inter") 同步。原先 Font::default() 落系统
     // sans，✔/□/•/数字字形与只读臂不同（用户截图①②③根因）。
-    let family = if mono { mono_iced_font() } else { Font::with_name("Inter") };
+    let family = if mono {
+        mono_iced_font()
+    } else {
+        Font::with_name("Inter")
+    };
     let family = if bold {
-        Font { weight: iced::font::Weight::Bold, ..family }
+        Font {
+            weight: iced::font::Weight::Bold,
+            ..family
+        }
     } else {
         family
     };
     if italic {
-        Font { style: iced::font::Style::Italic, ..family }
+        Font {
+            style: iced::font::Style::Italic,
+            ..family
+        }
     } else {
         family
     }
@@ -578,14 +633,20 @@ fn mono_iced_font() -> Font {
 /// （见 CONTENT_PAD_X/Y 头注）。
 fn to_rect(origin: Rectangle, r: Rect) -> Rectangle {
     Rectangle::new(
-        Point::new(origin.x + r.x + CONTENT_PAD_X, origin.y + r.y + CONTENT_PAD_Y),
+        Point::new(
+            origin.x + r.x + CONTENT_PAD_X,
+            origin.y + r.y + CONTENT_PAD_Y,
+        ),
         Size::new(r.w, r.h),
     )
 }
 
 fn fill_quad(renderer: &mut iced::Renderer, rect: Rectangle, color: Color) {
     renderer.fill_quad(
-        renderer::Quad { bounds: rect, ..renderer::Quad::default() },
+        renderer::Quad {
+            bounds: rect,
+            ..renderer::Quad::default()
+        },
         Background::Color(color),
     );
 }
@@ -596,9 +657,15 @@ fn stroke_rect(renderer: &mut iced::Renderer, origin: Rectangle, r: Rect, color:
     let abs = to_rect(origin, r);
     let edges = [
         Rectangle::new(abs.position(), Size::new(abs.width, px)),
-        Rectangle::new(Point::new(abs.x, abs.y + abs.height - px), Size::new(abs.width, px)),
+        Rectangle::new(
+            Point::new(abs.x, abs.y + abs.height - px),
+            Size::new(abs.width, px),
+        ),
         Rectangle::new(Point::new(abs.x, abs.y), Size::new(px, abs.height)),
-        Rectangle::new(Point::new(abs.x + abs.width - px, abs.y), Size::new(px, abs.height)),
+        Rectangle::new(
+            Point::new(abs.x + abs.width - px, abs.y),
+            Size::new(px, abs.height),
+        ),
     ];
     for e in edges {
         fill_quad(renderer, e, color);
@@ -616,7 +683,12 @@ mod tests {
     use super::*;
     use crate::ui::autodown_editor::{autodown_editor, storage_key, DocInput};
 
-    const WHITE: Rgba = Rgba { r: 1., g: 1., b: 1., a: 1. };
+    const WHITE: Rgba = Rgba {
+        r: 1.,
+        g: 1.,
+        b: 1.,
+        a: 1.,
+    };
 
     /// PLAN-044 T2：消息可达——模拟点击第一块 → focus_changed →
     /// publish 把 on_focus 消息发进 shell，载荷 (block, height) 与
@@ -628,8 +700,10 @@ mod tests {
         static FS: std::sync::OnceLock<std::sync::RwLock<cosmic_text::FontSystem>> =
             std::sync::OnceLock::new();
         crate::ui::code_editor::core::set_font_system_call(|with| {
-            let mut guard =
-                FS.get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new())).write().unwrap();
+            let mut guard = FS
+                .get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new()))
+                .write()
+                .unwrap();
             with(&mut guard);
         });
         let sk = storage_key("p044_t2_focus_msg");
@@ -644,7 +718,11 @@ mod tests {
         let out = crate::ui::code_editor::core::with_font_system(|fs| {
             core.handle_input(
                 fs,
-                DocInput::MousePressed { button: EditorButton::Left, x: 10.0, y: 8.0 },
+                DocInput::MousePressed {
+                    button: EditorButton::Left,
+                    x: 10.0,
+                    y: 8.0,
+                },
                 &mut crate::ui::code_editor::core::NullClipboard,
             )
         });
@@ -657,8 +735,8 @@ mod tests {
         enum FocusMsg {
             F(Option<usize>, f32),
         }
-        let editor = DocEditor::<FocusMsg>::new(&sk, WHITE)
-            .on_focus(|m| FocusMsg::F(m.block, m.height));
+        let editor =
+            DocEditor::<FocusMsg>::new(&sk, WHITE).on_focus(|m| FocusMsg::F(m.block, m.height));
         let mut msgs: Vec<FocusMsg> = Vec::new();
         let mut shell = Shell::new(&mut msgs);
         editor.publish(&out, &mut shell);
@@ -677,8 +755,10 @@ mod tests {
         static FS: std::sync::OnceLock<std::sync::RwLock<cosmic_text::FontSystem>> =
             std::sync::OnceLock::new();
         crate::ui::code_editor::core::set_font_system_call(|with| {
-            let mut guard =
-                FS.get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new())).write().unwrap();
+            let mut guard = FS
+                .get_or_init(|| std::sync::RwLock::new(cosmic_text::FontSystem::new()))
+                .write()
+                .unwrap();
             with(&mut guard);
         });
         let sk = storage_key("p732_r_real_event");
@@ -699,8 +779,8 @@ mod tests {
         enum LinkMsg {
             Link(String, String),
         }
-        let editor = DocEditor::<LinkMsg>::new(&sk, WHITE)
-            .on_link(|m| LinkMsg::Link(m.target, m.anchor));
+        let editor =
+            DocEditor::<LinkMsg>::new(&sk, WHITE).on_link(|m| LinkMsg::Link(m.target, m.anchor));
         let element: iced::Element<'_, LinkMsg> = editor.into();
         // tiny_skia Secondary 臂：纯 CPU 记录器（iced::Renderer 的合法值，
         // headless 同款构造）。
@@ -716,19 +796,32 @@ mod tests {
         );
         let mut messages: Vec<LinkMsg> = Vec::new();
         fn drive(
-            ui: &mut iced_runtime::user_interface::UserInterface<'_, LinkMsg, iced::Theme, iced::Renderer>,
+            ui: &mut iced_runtime::user_interface::UserInterface<
+                '_,
+                LinkMsg,
+                iced::Theme,
+                iced::Renderer,
+            >,
             evts: &[iced::event::Event],
             cursor: iced::mouse::Cursor,
             renderer: &mut iced::Renderer,
             messages: &mut Vec<LinkMsg>,
         ) {
-            let _ = ui.update(evts, cursor, renderer, &mut iced::advanced::clipboard::Null, messages);
+            let _ = ui.update(
+                evts,
+                cursor,
+                renderer,
+                &mut iced::advanced::clipboard::Null,
+                messages,
+            );
         }
 
         // 按下（cursor 在链接段中心）→ 无消息（激活只在完整点击）。
         drive(
             &mut ui,
-            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left))],
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left),
+            )],
             iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
             &mut renderer,
             &mut messages,
@@ -737,7 +830,9 @@ mod tests {
         // 抬起（同点）→ 恰一条激活消息，载荷双 Str 逐值。
         drive(
             &mut ui,
-            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left))],
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left),
+            )],
             iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
             &mut renderer,
             &mut messages,
@@ -753,14 +848,18 @@ mod tests {
         messages.clear();
         drive(
             &mut ui,
-            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left))],
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left),
+            )],
             iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
             &mut renderer,
             &mut messages,
         );
         drive(
             &mut ui,
-            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left))],
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left),
+            )],
             iced::mouse::Cursor::Available(iced::Point::new(9999.0, 9999.0)),
             &mut renderer,
             &mut messages,
@@ -770,21 +869,27 @@ mod tests {
         // 负例：拖选超阈（CursorMoved 走生产 MouseDragged 臂）后抬起 → 零激活。
         drive(
             &mut ui,
-            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left))],
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonPressed(iced::mouse::Button::Left),
+            )],
             iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
             &mut renderer,
             &mut messages,
         );
         drive(
             &mut ui,
-            &[iced::event::Event::Mouse(iced::mouse::Event::CursorMoved { position: iced::Point::new(cx + 40.0, cy + 8.0) })],
+            &[iced::event::Event::Mouse(iced::mouse::Event::CursorMoved {
+                position: iced::Point::new(cx + 40.0, cy + 8.0),
+            })],
             iced::mouse::Cursor::Available(iced::Point::new(cx + 40.0, cy + 8.0)),
             &mut renderer,
             &mut messages,
         );
         drive(
             &mut ui,
-            &[iced::event::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left))],
+            &[iced::event::Event::Mouse(
+                iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left),
+            )],
             iced::mouse::Cursor::Available(iced::Point::new(cx, cy)),
             &mut renderer,
             &mut messages,
@@ -801,6 +906,9 @@ mod tests {
     #[test]
     fn p748_content_wrapper_padding_matches_engine_css() {
         assert_eq!(CONTENT_PAD_Y, 16.0, "上下 padding = 1rem（引擎 css :103）");
-        assert_eq!(CONTENT_PAD_X, 20.0, "左右 padding = 1.25rem（引擎 css :103）");
+        assert_eq!(
+            CONTENT_PAD_X, 20.0,
+            "左右 padding = 1.25rem（引擎 css :103）"
+        );
     }
 }
