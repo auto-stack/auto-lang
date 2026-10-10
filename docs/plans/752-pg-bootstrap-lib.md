@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-752
-status: execution_done               # drafting → executing → execution_done → reviewed → archived
+status: reviewed               # drafting → executing → execution_done → reviewed → archived
 feature_name: pg-bootstrap-lib
 author: [agent]
 created_at: 2026-10-09
@@ -197,6 +197,15 @@ pub fn bootstrap_lib_source() -> Option<&'static str>
 
 ## 9. 复审记录
 
+- 2026-10-09 `stage: review | PLAN-752 | r1 | outcome: pass | reviewed e194481f6
+  （code tip fc76d2fb4）| base c5adecd1b | dep auto-down @895f8d0 | spec_inputs:
+  docs/specs/auto-playground/project.md（SD-01）+ playground-vue/project.md（SD-02），
+  docsha 随 merge 冻结 | acceptance_results: AC-01 pass（全量 80/105 逐字节一致；
+  抽样复现 9/12，3 条不一致逐条实证为 #[ignore] 隔离语料）/AC-02 pass（负面对照
+  Undefined symbol + demo 28/28）/AC-03 pass（e2e 拦截 2/2 live 重跑）/AC-04 pass
+  （plan746 9/9 + 走查 +31MB 峰值回落无泄露）/AC-05 pass（红集 14=14，互差 2 条
+  负载 flake 隔离绿；tv 162/162）| findings: 无（SD-01 笔误修正 e194481f6，docs-only）|
+  evidence: p752-report.md + 本轮 curl/截图实录 | next: merge`
 - 2026-10-09 `stage: work | PLAN-752 | r1 | outcome: pass | code plan-752-dev @ fc76d2fb4
   （+spec 预埋）| tasks T-01..T-05 全完成 | evidence：单测/tv/e2e/全量走查（p752-report.md）/
   红集对拍零新增 | blockers: 无 | next: review`
