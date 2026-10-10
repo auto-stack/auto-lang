@@ -47,10 +47,18 @@ store handler 域（含 timer/lifecycle 派发）与视图 computed 域（表达
    `push_i32(0)` 占位（自述"not passed as scalar args"）——从 Rust 侧带列表实参直接
    派发 handler（`call_widget_handler` 直发形态）时 handler 收到 0。既有已知约定；
    主链（视图动作/MCP action）只传标量。需要时应走 `call_vm_fn`（正确编码）。
-3. **预存红族 musk_vm_track p053_1/p053_4/p053_6/p054**（master 3053f1fdf 基线即红，
-   PLAN-733 修复前后零行为变化；**PLAN-749 复审异根甄别**：视图条件通道三缺口
-   修复后本族仍 97/6 零增减——残腿属子件 computed 挂载面[=PLAN-748 断点①同域]，
-   非条件通道/调用语义；指针移交 **PLAN-748 T-02**）。
+3. **预存红族 musk_vm_track p053_1/p053_4/p053_6/p054——已收口（PLAN-748 T-02，
+   2026-10-10）**（master 3053f1fdf 基线即红，PLAN-733 修复前后零行为变化；
+   PLAN-749 复审异根甄别后残腿属子件挂载面）。PLAN-748 分解定音六红三根：
+   ①p053_1×2+p053_6 = `.store.X` 泛名展平三口径不一致（resolve_expr_to_value
+   Dot 臂空快照拒展平 vs read_state/store_source_field 无条件）→ Dot(Dot(self,
+   store),X) 无条件展平根修（真名限定仍走快照门，PLAN-633 语义保持），
+   musk_vm_track 97/6→100/3；②p054×2 = imported 图标组件判别器
+   （PLAN-625 T-09(b) `tag.contains("icon")` 粗闸误判 PascalCase lucide 名→
+   占位卡）→ lucide 名集成员资格判别（`is_icon_component_tag`，AppViewport
+   ∉ 名集保持占位卡意图），102/103；③p053_4 = merged `#[api]` CALL_NAT
+   发射面**异根**（codegen 债务观察项，KNOWN-DEBT P733-R2 条目③在案）——
+   本边界唯一余留。
 4. **视图 `.x.length` 模板成员链**（附页①矩阵⑤表现层）：engine GET_FIELD 的
    ListData `.length` 臂已存在（plan-022），视图侧 Rust 求值器 `materialize_obj_ref`
    对 ListData 引用原样透传（只物化对象）——模板位 `.length` 求值链未全覆盖，

@@ -732,6 +732,43 @@ demo 轨/app 轨分道扬镳的 enduring 数据源契约（2026-09-20 落地，�
 4. **旧 Fill 包装形态退役（retire）**：build_row 不再用「子项包 height:Fill 容器」模拟 stretch（该形态依赖有界祖先，无界下塌缩 0 高）；上节第 6 条「内嵌 demo 避免 items-stretch」约定自本节起解除，008 语料还原 items-stretch。scroll 兜底本身（overflow-hidden 列包 Shrink Scrollable）不受影响。
 5. **非目标**：012-clock 横向 stretch 行（列交叉轴=宽度，现实现无害）；iced 引擎级 flex 补丁（P642-D12 远期路线 B，iced 升级时处理）。
 
+## overflow 滚动转写·视口视觉层（PLAN-748）
+
+`overflow-y-auto`（及 `overflow-auto`）col 经 aura_view_builder `needs_scroll`
+转写为 `View::Scrollable` 时的 enduring 视觉契约（2026-10-10 落地，jade-edit
+供料件一根修）：
+
+1. **视觉类上移视口**（add）：bg/border/rounded/shadow/ring 族
+   （`StyleClass::is_visual_paint`）上移到**视口层** `View::Container`——CSS
+   语义里滚动容器的背景/边框属容器本体，随容器在 stretch/bounded 语境拉伸
+   满高；滚动内容 col 拿剥离余集（内容止于内容高，视觉不随之止步——
+   「侧栏 bg 底边=树内容底」根因消除）。此前转写把整串 style clone 给内容
+   col，`flex-col` 等显式显示类阻断 overflow-y 的 height=Fill 推断时视觉
+   随内容塌缩。无视觉类 → 零包装层（现行为不变）。
+2. **视口头寸镜像**：视口 Container 拷贝原显式 Width/Height 类、缺省补
+   Full；Scrollable 在容器内 Fill×Fill 铺满（`ensure_full_scroll_dims`）——
+   iced 0.14 `Limits::(Shrink)` 置 compression 位，Fill 子件在压缩轴解析为
+   内容高（StretchLine measure 遍同机制），Shrink 包装会塌缩。
+3. **类序无关**：由 Style::parse 逐 token 解析天然保证（layout_tests
+   `p748_j2_explicit_height_scrollable_class_order_invariant` 三变体等价锁
+   在案——h-full 类串首位/末位/乱序渲染等价）。
+4. **回归锚**：`crates/auto-lang/src/ui/iced/layout_tests.rs` p748_j1/j2/j3
+   （复现形几何 + 结构锁）；`split_scroll_visual_classes`/`
+   `ensure_full_scroll_dims`（aura_view_builder）。
+
+## autodown_editor 引擎 parity（PLAN-748）
+
+vm 轨 `autodown_editor` 官方件的内建视觉基线（2026-10-10 落地，jade-edit
+供料件四）：**内容 wrapper padding 与 auto-down 引擎 CSS 等值**——上下
+16 / 左右 20 逻辑 px，单一真源 = 引擎
+`autodown/packages/engine/src/editor/styles/autodown-editor.css:103`
+`.autodown-editor-content-wrapper { padding: 1rem 1.25rem }`（vue 轨由引擎
+样式层承担，vm 件内建等值层使双轨呈现等值）。widget 契约四点联动：
+layout 内缩测量（宽 −2×20、高 +2×16）/ draw 内容原点平移 / update 鼠标
+命中坐标内缩 / IME 光标锚偏移。常量锚：`autodown_editor/widget.rs`
+`CONTENT_PAD_X/Y`（单源锁测试在案）；行为锚：plan732 真实 iced 事件全管线
+点击 + `p748_t10_editor_wrapper_padding_in_layout`（哨兵 y = 内容高 + 32）。
+
 ## MCP fixture trigger 派发契约（PLAN-659）
 
 `autoui_fixture`（`AUTOUI_TEST_FIXTURES=1` 门控，VM-only）的 trigger
