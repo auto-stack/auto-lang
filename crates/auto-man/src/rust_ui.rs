@@ -5036,16 +5036,19 @@ fn type_to_rust_str(ty: &auto_lang::ast::Type) -> String {
 mod tests {
     use super::*;
 
-    /// PLAN-738 T-12：workspace lock 新鲜度真值表——双方一致才新鲜；
-    /// 首次物化（收据 absent→lock 出现）=确定性物化判新鲜；旧收据缺
-    /// 字段（None）/lock 消失/值漂移均保守再生。
+    /// PLAN-738 R5-01：workspace lock 新鲜度真值表（严格比较）。首次
+    /// 物化（absent→实际值）**不在纯函数层豁免**——由 backend_generation_
+    /// is_fresh 的绑定分支处理（判新鲜的同时把实际 lock 身份写回收据，
+    /// 一次性收敛；R5 反例：纯 absent 豁免会永久放行后续漂移）。旧收据
+    /// 缺字段（None）/lock 消失/值漂移均保守再生。
     #[test]
     fn lock_freshness_truth_table() {
         assert!(lock_freshness(Some("a1b2"), Some("a1b2")));
         assert!(!lock_freshness(Some("a1b2"), Some("c3d4")));
         assert!(!lock_freshness(Some("a1b2"), Some("absent")));
-        // 首次物化：生成时未建 lock，首次构建后出现——新鲜。
-        assert!(lock_freshness(Some("absent"), Some("c3d4")));
+        // 纯函数层 absent≠实值：首启豁免只经门内绑定分支（见
+        // review738_r5_lock_binding_state_machine 状态机测试）。
+        assert!(!lock_freshness(Some("absent"), Some("c3d4")));
         assert!(lock_freshness(Some("absent"), Some("absent")));
         assert!(!lock_freshness(None, Some("a1b2")));
         assert!(!lock_freshness(Some("absent"), None));
