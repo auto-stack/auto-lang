@@ -4,6 +4,18 @@
    "id": "reports",
    "items": [
     {
+     "id": "P738-5",
+     "title": "PLAN-738 Phase 3 执行收据（scope/strict/reference-audit/manifest/acceptance/verification）",
+     "file": "docs/plans/reports/738-phase3-scope.md",
+     "content": "566 差异机械分类（552 纯格式逐字节验证）；strict 门契约注册表；引用闭包全路径审计（139 FQN 引用 11 组臂归属）；manifest 双指纹+workspace lock 收据；AC↔任务↔证据对账；最终门禁（裸 t 16 红全基线/tv 162/tt 非基线 0/服务链 1/1）。",
+     "related": [
+      "P738-3"
+     ],
+     "status": "active",
+     "created": "2026-10-10",
+     "last_modified": "2026-10-10"
+    },
+    {
      "id": "P651-1",
      "title": "autodown-editor-block-closure — 变更摘要",
      "content": "编辑器 block 类型三态矩阵与闭合（RC-E 引擎对拍单元）。T-00 三态支持矩阵在案（attachments/651-matrix.md：17 kind × view/edit/streaming × engine-TS/core-Rust 逐格，双实现独立盘点交叉校验）；T-01+T-02 红项 8 格全闭合（VM 编辑壳 core.rs：fence 语言发射/query+embed 冻结源行/mermaid 入 fence 族/math 叶 %{ }% 往返/块锚 ^id 通道/details 折叠点击翻转/行首规则 7→10 对齐 TS INPUT_RULES/表格 align+IAL canonical :--- 还原）+ 5 项 DEBTS 提案（Q-4）+ 2 豁免维持；T-03 对拍 gate 常驻（t651_* 9/9 + autodown_editor 121/121 + closure corpus 幂等锚；gallery editor_tab 状态占位登记=auto-down a615d69）。回归：parser parity 16 测绿 + vm-smoke groups 1-10 绿（group 4 预存红在案/group 11 探针甄别 PASS）+ tf 2568/2569（唯一败=ui_gen 预存红 master 复现）。landing=master ff3c85b25..86b020ece（cherry-pick 等价落盘）。",
@@ -3620,6 +3632,28 @@
    "id": "designs",
    "items": [
     {
+     "id": "P738-2",
+     "title": "实际 provider 索引与发射侧适配契约表（VM/Rust 运行形态分家·C c.* 直连）",
+     "file": "docs/specs/stdlib/design/backend-assembly.md",
+     "content": "VM=名称/ID+真实 shim 双面；Rust=producer 文件+pub use 链解析（Standalone crate/Embedded 镜像分家，3 参 post 仅 Embedded）；C=c.* 声明+libc（ext 面 TARGET_UNSUPPORTED）。ADAPTER_RULES 契约表（侧信道/cast/元数分派/流 facade/bool→int if 壳/宽度归一/Null 哨兵族）；已证漂移面（is_valid/is_null/as_bool 公共 int vs producer bool）如实拒绝。同步 module-resolution（装配计划/导入闭包/缓存边界）与 trans overview（引用闭包全路径四形态）。来源 PLAN-738。",
+     "related": [
+      "P738-1"
+     ],
+     "status": "active",
+     "created": "2026-10-10",
+     "last_modified": "2026-10-10"
+    },
+    {
+     "id": "P738-1",
+     "title": "标准库装配契约与 AssemblyManifest（inventory/actual 分离·双指纹）",
+     "file": "docs/specs/stdlib/design/assembly-manifest.md",
+     "content": "两类清单分离（inventory 全量分母/actual 真实快照）；schema 4 双重身份——fingerprint=共同装配身份（消费者中立投影，CLI/会话/生成收据三角相等）+consumer_fingerprint=收据身份（旧 schema 3 语义）；验证等级 declared→executed，Resolved-only 非引用核心调用成功依据；核心六模块被引用闭包 strict（DRIFT/UNVERIFIED 拒绝）。来源 PLAN-738（delivered@9ff34ae0d）。",
+     "status": "active",
+     "created": "2026-10-10",
+     "last_modified": "2026-10-10",
+     "related": []
+    },
+    {
      "id": "P666-1",
      "title": "ui-gallery 双轨事实源契约（demo 轨/app 轨分道扬镳）",
      "file": "docs/specs/auto-lang/ui/overview.md",
@@ -5461,6 +5495,19 @@
    "id": "tests",
    "items": [
     {
+     "id": "P738-3",
+     "title": "PLAN-738 测试矩阵（全分母双拼写/三角对拍/lock 状态机/服务链）",
+     "file": "docs/plans/reports/738-phase3-verification.md",
+     "content": "receiver 全分母 12 方法×双拼写漂移矩阵；CLI actual↔会话↔生成收据三角（真实消费者零 clone）；workspace lock 一次绑定状态机（漂移/删除/缺字段/读错误 fail-closed 拒绝）；正式生成服务完整链（生成→实编→serve→ready→业务→stdlib-only 失效→再生）；裸 t/tv/tt 非基线红=0 分诊。",
+     "related": [
+      "P738-1",
+      "P738-2"
+     ],
+     "status": "active",
+     "created": "2026-10-10",
+     "last_modified": "2026-10-10"
+    },
+    {
      "id": "P619-5",
      "title": "015-notes-vm-vue-parity — 门禁与回归锚",
      "content": "tools/parity_shot_diff.py 预算门禁（面色 ≤2/通道、ink 比 ∈[0.9,1.1]、左缩进 ≤1px，违规 exit 1，正负例双向实测）+ 015-notes acceptance T14/C-PARITY-1 + autoui-verifier 技能「步骤 3.5 像素预算对拍」；回归锚 plan619_* 8 条（含 plan619_lucide_doc_renders_geometric_ink——纯 CPU 栅格化断言 ink 充满度=几何值 0.833，修前 0.583 必红）；19 MCP 场景（就绪闸门 wait_ready 修入 runner）+ 18 Vue playwright 场景；cargo tv/t 零新增红（预存红逐条归因在案）。",
@@ -6552,6 +6599,20 @@
   {
    "id": "reviews",
    "items": [
+    {
+     "id": "P738-4",
+     "title": "PLAN-738 审计链收据（R1 needs_fix→R8 pass→merge 修复轮 R9/R10）",
+     "file": "docs/plans/archive/738-stdlib-assembly-manifest-and-core-validation.md",
+     "content": "R1（9 findings）→R2 修复→R3（freshness 真值表属性剥离+计数勘误）→R4 pass→R5（lock 永久放行/receiver 绕过/clone 三角三项必修）→R6（receiver 只钉 len）→R7（has_key 拆段臂+case④ 误伤）→R8 pass（全分母矩阵四级证据）；merge rebase 实现冲突（主链冗余 re-merge 回归→契约撤销假红，插桩实证）修复后 R9（lock fail-open 既有漏网）→R10 pass。终态 delivery=9ff34ae0d。",
+     "related": [
+      "P738-1",
+      "P738-2",
+      "P738-3"
+     ],
+     "status": "active",
+     "created": "2026-10-10",
+     "last_modified": "2026-10-10"
+    },
     {
      "id": "P666-2",
      "title": "ui-demo-repatriation 复审合并收据",
