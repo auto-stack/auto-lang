@@ -16,6 +16,11 @@ pub struct RunRequest {
     /// default 10). The VM cooperatively terminates the run once the
     /// deadline passes and the response carries a structured timeout error.
     pub timeout_secs: Option<u64>,
+    /// PLAN-752: prepend the AAVM v1 bootstrap lib (auto/lib-legacy,
+    /// AUTO_LIB_FILES manifest — same concat as the golden is_bootstrap
+    /// branch) to the bare source before compiling. Hosts enable it for
+    /// vm-bootstrap corpus notes; no effect on project/files runs.
+    pub prepend_lib: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -42,7 +47,7 @@ pub async fn run_handler(
                 Some(files) if !files.is_empty() => {
                     vm_runner::run_files_project(&req.source, files, deadline)
                 }
-                _ => vm_runner::run_source(&req.source, deadline),
+                _ => vm_runner::run_source(&req.source, deadline, req.prepend_lib.unwrap_or(false)),
             },
         }
     })

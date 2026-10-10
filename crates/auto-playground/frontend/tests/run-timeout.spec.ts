@@ -82,3 +82,38 @@ test.describe('Run execution deadline', () => {
     expect(runPayload.timeout_secs).toBe(60);
   });
 });
+
+test.describe('Bootstrap lib prepend (PLAN-752)', () => {
+  async function runPayloadFor(page: import('@playwright/test').Page, query: string) {
+    let runPayload: any = null;
+    page.on('request', (req) => {
+      if (req.url().endsWith('/api/run') && req.method() === 'POST') {
+        runPayload = req.postDataJSON();
+      }
+    });
+    await page.goto('/');
+    await page.waitForSelector('.cm-content', { timeout: 10000 });
+    await page.fill('input[type="text"]', query);
+    await page.waitForTimeout(500);
+    // 侧栏搜索结果第一项即目标笔记。
+    await page.locator('aside button', { hasText: query }).first().click();
+    await page.click('.run-btn');
+    await page.waitForResponse(
+      (res) => res.url().endsWith('/api/run') && res.status() === 200,
+      { timeout: 30000 },
+    );
+    return runPayload;
+  }
+
+  test('vm-bootstrap note sends prepend_lib=true and runs', async ({ page }) => {
+    const payload = await runPayloadFor(page, 'a2r_hello');
+    expect(payload).not.toBeNull();
+    expect(payload.prepend_lib).toBe(true);
+  });
+
+  test('non-bootstrap note does not send prepend_lib', async ({ page }) => {
+    const payload = await runPayloadFor(page, 'Fibonacci');
+    expect(payload).not.toBeNull();
+    expect(payload.prepend_lib ?? false).toBe(false);
+  });
+});

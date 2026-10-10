@@ -80,10 +80,18 @@ export function usePlaygroundFull() {
   // with `project_dir` (playground-demo) they overlay the server copy; without
   // one (manifest notes, Plan 582) the backend materializes them in a temp dir
   // and resolves modules relative to `entry` (main.at or the active/first file).
+  // PLAN-752: bootstrap 语料（vm-bootstrap 组）宿主开关——为真时后端前置
+  // AAVM v1 lib-legacy 拼接（golden is_bootstrap 同款清单）。
+  const prependLib = ref(false);
+  function setPrependLib(v: boolean) {
+    prependLib.value = v;
+  }
+
   function projectRequestBody(body: Record<string, unknown>) {
     // PLAN-746 (F-746-R1): 合法慢示例（parity C/sync-http 族 ~10.5s）需要
     // 高于服务端默认 10s 的执行上限——宿主显式请求 60s（服务端 clamp 上限）。
     body.timeout_secs = 60;
+    if (prependLib.value) body.prepend_lib = true;
     if (projectDir.value) {
       syncActiveBuffer();
       body.project_dir = projectDir.value;
@@ -443,6 +451,7 @@ export function usePlaygroundFull() {
     transFiles, selectedTransFile,
     highlightedSourceLine, highlightedOutputLines, highlightedOutputFiles, mappedSourceFiles,
     shareToast,
+    setPrependLib,
     run, runCode, transpile, switchTab, selectTransFile, selectFile, loadExample, highlightSourceLine, highlightOutputLine, getSourceFileForOutputLine, clearHighlight,
     share,
   };

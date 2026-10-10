@@ -44,7 +44,13 @@ const visibleGroups = computed(() => {
 const noteMeta = computed(() => {
   const n = activeNote.value;
   if (!n) return null;
-  return { title: n.title, sourcePath: n.sourcePath, sourceType: n.sourceType };
+  return {
+    title: n.title,
+    sourcePath: n.sourcePath,
+    sourceType: n.sourceType,
+    // PLAN-752: AAVM v1 自举语料（裸片段引用 lib-legacy 符号）需前置拼接。
+    prependLib: n.id.startsWith('vm-bootstrap/'),
+  };
 });
 
 // 结构化类型（InstanceType 触发宿主 vue-tsc 过深类型实例化，P581-D2 家族限制）。

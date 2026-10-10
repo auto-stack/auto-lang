@@ -27,8 +27,28 @@ fn meta_to_json(meta: auto_lang::vm::disasm::BytecodeMeta) -> Option<serde_json:
     serde_json::to_value(meta).ok()
 }
 
-pub fn run_source(source: &str, deadline: Option<std::time::Instant>) -> RunResult {
+pub fn run_source(
+    source: &str,
+    deadline: Option<std::time::Instant>,
+    prepend_lib: bool,
+) -> RunResult {
     let start = Instant::now();
+
+    // PLAN-752: bootstrap notes are bare fragments that reference symbols
+    // from the AAVM v1 lib — concat it like the golden is_bootstrap branch.
+    let owned;
+    let source = if prepend_lib {
+        match auto_lang::bootstrap_lib_source() {
+            Some(lib) => {
+                owned = format!("{}
+{}", lib, source);
+                &owned
+            }
+            None => source,
+        }
+    } else {
+        source
+    };
 
     let (result, stdout, bytecode, meta) = match auto_lang::run_with_capture_and_bytecode_with_deadline(source, deadline) {
         Ok((res, out, bc, meta)) => (res, out, disasm_to_json(bc), meta_to_json(meta)),
