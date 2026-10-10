@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-753
-status: execution_done
+status: reviewed
 feature_name: ecosystem-readme-refresh
 author: [codex]
 created_at: 2026-10-10
@@ -169,6 +169,39 @@ os-ai-introduction.ts=82a30a079252edd0a14a1b77570e5b52e570ac75bea0392913190262f1
 2026-10-10 /auto-plan:new：stage=new；revision=1；outcome=blocked（待 L1 计划确认）。
 合同、事实源、图片候选和验证路径已明确，next=确认后 work。
 本轮新增 T-01..05、AC-01..06、SD-01..02；仅完成调研与内容草案，不声称 README 已更新。
+
+### 2026-10-10 /auto-plan:review — revision 1 文档交付门禁
+
+- stage: review；plan_id: PLAN-753；plan_revision: 1；outcome: pass（文档、规范增量及
+  合入前复审门禁；不将合入后投影/归档/清理记为已完成）。
+- reviewed_commit: `884aeed8a6e526c0cd6525c70ecead2e9edf21c9`。
+- base_commit: `f68e1690ec4a1911478afa74e44311cb1bd55eb3`。
+- dependency_revisions: auto-down `895f8d0f9355c9f5ec3ce8fca268bdb768395846`。
+- independence: 本实施会话中的显式独立步骤，没有另开 agent/session；从已提交 diff、
+  实际来源与证据重新构造结论，不依赖执行勾选。该限制保留在收据中。
+- spec_inputs: website 现势四产品/OS/AI 规范、applications/os-ai-introduction 作者数据、
+  crates/auto 的 CLI/manifest、v0.5 历史说明和当前语料；引用与承诺逐项重新核对。
+- frozen_spec_delta: SD-01 SHA256 `895310da8b5aeb39289d4641811b42e8ad017aa6bc30c89e048f61e79ea6cfda`；
+  SD-02 project.md SHA256 `2c34c8e9418c53fa689659ff5806e9073b791b101a39d4f30349237ec5cfacb5`。
+
+| AC | Task / artifact | 复验与结论 |
+|---|---|---|
+| AC-01 | T-02；两版 README | pass：四层职责、应用/学习入口、自然双语逐节对照；根页 154/147 行，长语言细节下沉；窄宽 GFM 证据 |
+| AC-02 | T-02；README 产品与 release 段 | pass：实际四主产品 + AutoDown 基础 + 系统 Demo；与现势 Spec/产品数据核对，无统一成熟度或自主内核/无人值守承诺 |
+| AC-03 | T-03；overview EN/ZH、CLI | pass：§5 主题完整，旧 evaluator/GPUI/planned 无残留；提交后重新运行 8 例精确输出断言通过，UI 项目片段与原语料一致，旧规范版本身份保留 |
+| AC-04 | T-02/04；README public 引用、页面证据 | pass：三张原图无源文件 diff，hash 与报告一致；双语 alt/日期/来源齐备，8 视图无页面横溢 |
+| AC-05 | T-03/04；链接、hub、生成概览 | pass：提交后提取 226 引用再验，本地/仓内路径零缺失；9 外仓正文正确；站点 EN/ZH 路由及卡片实际 DOM 正确 |
+| AC-06 | T-05；review + merge checkpoints | 合入前部分 pass：revision/提交绑定、SD 元数据与遗漏扫描完成；投影/归档/清理是合入后待办，仍为 partial，不能把本复审视作完整生命周期通过 |
+
+- 本 baseline 的 website build / DOM / GFM 证据复用：自最终构建后仅 LF 规范化和新增
+  不参与网站生成的报告/记账，四篇正文/导航语义、依赖与构建配置未变；hash 锁定 Spec delta。
+  链接、输出断言与 diff --check 在已提交 baseline 上重跑通过。
+- 遗漏/延后/workaround 扫描：无文档验收遗漏、功能代码变更、伪截图、占位页面或未批准
+  语法降级；P753-D1 是现有 store/schema 前置问题，归档并未被假设完成。
+- finding P753-D1（medium，AC-06/T-05）：知识投影需受支持的 store 恢复，保留原数据。
+  见 [报告](reports/753-readme-verification.md) 与 KNOWN-DEBT-AND-RISKS；非 README 内容缺陷。
+- next: /auto-plan:merge 合入已复审文档与 SD；投影读取失败时停止写入，保留 reviewed 计划，
+  不归档/清理，不声称工作流完整通过。
 
 ## 10. 待澄清事项
 
