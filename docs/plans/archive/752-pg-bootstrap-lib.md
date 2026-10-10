@@ -200,7 +200,7 @@ pub fn bootstrap_lib_source() -> Option<&'static str>
 - 2026-10-09 `PLAN-752:r1 merge 收据 | prepared(e194481f6→rebase 5b3b4e257,range-diff=) |
   landed(master tip=5b3b4e257,ff-only;主检出产物重建:playground 二进制+frontend dist) |
   ledger_refreshed(.autoos/specs.json designs 段 P752-1/P752-2,docsha 冻结;INDEX 26 projects;
-  auto-playground/playground-vue plans.md 回写;README §5 手工回退) | archived | cleaned(见最终回执) |
+  auto-playground/playground-vue plans.md 回写;README §5 手工回退) | archived | cleaned(worktree/分支/组目录已移除;wt-guard 首跑拦截 npm workspace junction(frontend/node_modules/auto-playground-vue→worktree 内部包,按规约 rmdir 只删链接)——复跑双 guard clean,主检出 packages 完好) |
   batch_regression: 752%5≠2;due 判定见 .last-batch-regression.json | completion_kind: delivered`
 - 2026-10-09 `stage: review | PLAN-752 | r1 | outcome: pass | reviewed e194481f6
   （code tip fc76d2fb4）| base c5adecd1b | dep auto-down @895f8d0 | spec_inputs:
