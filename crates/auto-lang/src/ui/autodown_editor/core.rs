@@ -938,6 +938,18 @@ impl AutodownEditorCore {
         self.layout.lock().unwrap().links.clone()
     }
 
+    /// jade 反馈①（链接 hover 指针）：内容坐标 (x,y) 是否落在链接段矩形
+    /// 内——widget `mouse_interaction` 的 hover 门。与点击门（MouseReleased
+    /// 完整点击第二腿）同一布局快照、同一内容坐标系，命中口径一致。
+    pub fn link_hover_at(&self, x: f32, y: f32) -> bool {
+        self.layout
+            .lock()
+            .unwrap()
+            .links
+            .iter()
+            .any(|r| r.rect.contains(Pt::new(x, y)))
+    }
+
     /// PLAN-063 T-04d: 锚块索引读写（scroll 回调写，draw 臂读）。
     pub fn set_anchor_block(&self, i: i32) {
         self.anchor_block.store(i, Ordering::Relaxed);
@@ -2431,7 +2443,16 @@ impl AutodownEditorCore {
                 };
                 let run_base = list.runs.len();
                 let block_h = ed.with_buffer(|buf| {
-                    buffer_block_runs(buf, text_x, text_y, size, line_h, &ctx, &mut list.runs)
+                    buffer_block_runs(
+                        buf,
+                        text_x,
+                        text_y,
+                        size,
+                        line_h,
+                        &ctx,
+                        &mut list.runs,
+                        &mut list.fills,
+                    )
                 });
                 // PLAN-732：cell 叶链接命中区（快照匹配期才产——本地编辑
                 // 暂态失活，与 mark 区间同口径）。
@@ -2640,7 +2661,16 @@ impl AutodownEditorCore {
                 },
             };
             let block_h = ed.with_buffer(|buf| {
-                buffer_block_runs(buf, x_off, text_y, size, line_h, &ctx, &mut list.runs)
+                buffer_block_runs(
+                    buf,
+                    x_off,
+                    text_y,
+                    size,
+                    line_h,
+                    &ctx,
+                    &mut list.runs,
+                    &mut list.fills,
+                )
             });
 
             // PLAN-732：顶层/容器叶链接命中区（快照匹配期才产；折行链接
@@ -3175,6 +3205,9 @@ pub struct BlockDrawCtx<'a> {
 /// 单个已布局 Buffer → 样式化 DocRun 段。**纯函数**：只读 layout_runs，
 /// 不整形、不触状态——编辑壳（render_frame）与只读臂 fence 正文（T4）
 /// 共用，「同一 Buffer + 同一绘制路径」的结构基座。返回块内容高（px）。
+/// jade 反馈②：行内 code 段同步发芯片底色矩形进 `fills`（先于选区绘制
+/// ——选区盖芯片；`mono` family 已由 ensure_code_family_spans 承担）。
+#[allow(clippy::too_many_arguments)]
 pub fn buffer_block_runs(
     buf: &Buffer,
     x_origin: f32,
@@ -3183,6 +3216,7 @@ pub fn buffer_block_runs(
     line_h: f32,
     ctx: &BlockDrawCtx,
     out: &mut Vec<DocRun>,
+    fills: &mut Vec<(Rect, Rgba)>,
 ) -> f32 {
     // 行前缀偏移表：mark 区间是全块字节坐标，layout run 的 glyph 偏移是
     // 行内坐标——求交前先平移。cosmic 行文本不含行尾符，故 +1 为换行宽。
@@ -3204,7 +3238,9 @@ pub fn buffer_block_runs(
         } else {
             None
         };
-        push_styled_pieces(&run, attrs, ctx, base_off, x_origin, top, size, line_h, out);
+        push_styled_pieces(
+            &run, attrs, ctx, base_off, x_origin, top, size, line_h, out, fills,
+        );
     }
     block_h
 }
@@ -3213,6 +3249,10 @@ pub fn buffer_block_runs(
 /// 取并集成格，逐格取覆盖的语法色 + mark 样式。styled_ok=false 时 mark
 /// 退化基础样式（本地编辑后、回写重建前的暂态）；无 attrs 时语法色缺席。
 /// 区间偏移先加行前缀（Plan 428 P2 + code_editor push_run_pieces 同路）。
+/// jade 反馈②：st.code 格同步发芯片底色（autodown_blocks::inline_code_bg_rgba
+/// ——vue 轨引擎 CSS 8% muted 同源；几何 = 字形 x 段 ±4px、行高内居中，
+/// 圆角由绘制侧 quad radius 承担）。
+#[allow(clippy::too_many_arguments)]
 fn push_styled_pieces(
     run: &cosmic_text::LayoutRun,
     attrs: Option<&cosmic_text::AttrsList>,
@@ -3223,6 +3263,7 @@ fn push_styled_pieces(
     size: f32,
     line_h: f32,
     out: &mut Vec<DocRun>,
+    fills: &mut Vec<(Rect, Rgba)>,
 ) {
     let (Some(first), Some(last)) = (run.glyphs.first(), run.glyphs.last()) else {
         return;
@@ -3303,6 +3344,30 @@ fn push_styled_pieces(
             continue;
         }
         let Some(x0) = index_x(run, s) else { continue };
+        // jade 反馈②：行内 code 芯片底色（文字基色不动——vue 轨引擎 CSS
+        // `color: var(--ad-fg)` 同语义；mono family 由
+        // ensure_code_family_spans 承担，芯片补齐第三轨缺的底色件）。
+        if st.code {
+            if let Some(x1) = index_x(run, e) {
+                let (cr, cg, cb, ca) = autodown_blocks::inline_code_bg_rgba();
+                let pad_x = 4.0;
+                let chip_h = (size * 1.45).min(line_h);
+                fills.push((
+                    Rect::new(
+                        x_origin + x0 - pad_x,
+                        y_top + (line_h - chip_h) / 2.0,
+                        (x1 - x0).abs() + 2.0 * pad_x,
+                        chip_h,
+                    ),
+                    Rgba {
+                        r: cr as f32 / 255.0,
+                        g: cg as f32 / 255.0,
+                        b: cb as f32 / 255.0,
+                        a: ca,
+                    },
+                ));
+            }
+        }
         let color = match color {
             Some(c) => Rgba {
                 r: c.r() as f32 / 255.0,
@@ -7539,6 +7604,7 @@ $callout(type: \"info\", title: \"B\") {
                     line_h,
                     &ctx,
                     &mut replay,
+                    &mut Vec::new(),
                 )
             });
         }
@@ -9390,6 +9456,60 @@ $details(summary: \"收起项\") {
             c.link_regions().is_empty(),
             "代码块/行内代码/外链零 wiki 区间"
         );
+    }
+
+    /// jade 反馈①：hover 命中门——链接段矩形中心命中 `link_hover_at`
+    ///（widget mouse_interaction 的 Pointer 门数据源）；矩形外零命中。
+    /// 命中点取真实布局产物中心（同 plan732 口径，不猜坐标）。
+    #[test]
+    fn jade_feedback_link_hover_gate() {
+        let c = core_for("jade_hover", "跳转到：[[欢迎页]] 与 [[嵌套页]]。\n");
+        let _ = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        let regions = c.link_regions();
+        assert!(regions.len() >= 2, "两链接区在册");
+        let (cx, cy) = region_center(&regions[0]);
+        assert!(c.link_hover_at(cx, cy), "段矩形中心必命中");
+        assert!(!c.link_hover_at(9999.0, 9999.0), "界外零命中");
+        // 负例联动：行内代码字面 `[[..]]` 不产 hover 区（parser 层负例的
+        // hover 面同锁）。
+        let neg = core_for("jade_hover_neg", "行内 `[[NotLink]]` 代码。\n");
+        let _ = run_fs(|fs| neg.render_frame(fs, 400.0, WHITE, None));
+        assert!(!neg.link_hover_at(10.0, 10.0), "无链接区即全页零 hover 命中");
+    }
+
+    /// jade 反馈②：行内 code 芯片底色——含行内 code 的段落发 8% muted
+    /// 芯片 fill（autodown_blocks::inline_code_bg_rgba 同值），纯文本段
+    /// 零芯片；fence chrome fill 不受影响。
+    #[test]
+    fn jade_feedback_inline_code_chip_fill() {
+        let (cr, cg, cb, ca) = autodown_blocks::inline_code_bg_rgba();
+        let chip = Rgba {
+            r: cr as f32 / 255.0,
+            g: cg as f32 / 255.0,
+            b: cb as f32 / 255.0,
+            a: ca,
+        };
+        let c = core_for("jade_chip", "输入 `[[写作示例]]` 形式的链接。\n");
+        let frame = run_fs(|fs| c.render_frame(fs, 400.0, WHITE, None));
+        assert!(
+            frame.list.fills.iter().any(|(_, col)| *col == chip),
+            "行内 code 段发芯片底色 fill"
+        );
+        let plain = core_for("jade_chip_plain", "纯文本无代码。\n");
+        let frame_plain = run_fs(|fs| plain.render_frame(fs, 400.0, WHITE, None));
+        assert!(
+            frame_plain.list.fills.iter().all(|(_, col)| *col != chip),
+            "纯文本段零芯片"
+        );
+        // 文字色不动（基色白）——vue 轨引擎 CSS `color: var(--ad-fg)` 同语义。
+        let code_run = frame
+            .list
+            .runs
+            .iter()
+            .find(|r| r.text.contains("写作示例"))
+            .expect("code 文本 run 在册");
+        assert_eq!(code_run.color, WHITE, "code 文字保持基色");
+        assert!(code_run.mono, "code 文本 mono family（PLAN-050 F4 原语义不变）");
     }
 
     /// C 组：折行链接分段——长链接在窄视口折行后每 run 一段、各段独立

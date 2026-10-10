@@ -574,11 +574,21 @@ impl<M: Clone> Widget<M, Theme, iced::Renderer> for DocEditor<'_, M> {
         _viewport: &Rectangle,
         _renderer: &iced::Renderer,
     ) -> mouse::Interaction {
-        if cursor.is_over(layout.bounds()) {
-            mouse::Interaction::Text
-        } else {
-            mouse::Interaction::default()
+        if !cursor.is_over(layout.bounds()) {
+            return mouse::Interaction::default();
         }
+        // jade 反馈①：wikilink hover 段矩形命中 → Pointer（对齐 vue 轨
+        // `a.autodown-link { cursor: pointer }`）。命中区 = render_frame
+        // 布局快照 links；坐标经 padding 内缩进内容系——与 update 的
+        // local()/点击门（MouseReleased 同区间核对）同口径。
+        if let Some(p) = cursor.position() {
+            let x = p.x - layout.bounds().x - CONTENT_PAD_X;
+            let y = p.y - layout.bounds().y - CONTENT_PAD_Y;
+            if self.core.link_hover_at(x, y) {
+                return mouse::Interaction::Pointer;
+            }
+        }
+        mouse::Interaction::Text
     }
 }
 

@@ -307,6 +307,15 @@ pub fn heading_strong_rgb() -> (u8, u8, u8) {
     }
 }
 
+/// jade 反馈②（行内 code 观感）：行内 code 芯片底色——vue 轨引擎 CSS
+/// `.autodown-editor-content code { background: hsl(var(--ad-muted,
+/// 220 9% 46%) / 0.08) }` 同源（hsl(220 9% 46%) ≈ rgb(107,114,128)）。
+/// alpha 合成暗/亮底各自成景，故暗亮同值不分档（同 CSS 单值语义）；
+/// 只读臂同类串 `bg-muted` 同款观感。
+pub fn inline_code_bg_rgba() -> (u8, u8, u8, f32) {
+    (107, 114, 128, 0.08)
+}
+
 /// heading 编辑壳字号表（从 autodown_editor::core::kind_font_size 搬家）。
 /// PLAN-053 T14：与 heading_classes 同源收敛 §7.3（25.3/21.3/18.9），
 /// h4-h6 级联对齐只读臂（18/16/14，h6 原 BODY_SIZE 16 与 text-sm 差
