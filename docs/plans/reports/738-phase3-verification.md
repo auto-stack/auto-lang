@@ -71,3 +71,7 @@ R5 补充复审（[738-review-r5.md](738-review-r5.md)）三项必修闭合；§
 | CLI 级 R5 反例复验 | 原始 exit0+`JsonValue.len` proof；len int→str 漂移 exit1+`SIGNATURE_DRIFT`（真实 auto.exe） |
 
 修复链：`bc0b95cfd`（三项主体）→ `796d279a4`（真值表对齐状态机）→ `68398d2d6`（守卫+切片，tt 归零）。R5 findings→AC 映射重开项（T-11..T-14）全部重闭；SD-04/05 重锚、SD-06/07 维持；acceptance 计数勘误清零。
+
+## 8. R6 修复轮收据（2026-10-10，最终提交见 git log）
+
+R6 复审（[738-review-r6.md](738-review-r6.md)）P738-R6-01 必修闭合：receiver 方法面泛化到全部公共方法（shape③ 全方法 + 模块面落穿 + 未接管发射臂 case④ 诚实拒绝 + json 值实参 Value 面分派修正 + Vec<T>→[]T 序列面）；双拼写漂移矩阵（keys/as_int/is_null × receiver/模块限定）落为正式测试 `receiver_method_drift_matrix_both_spellings`——keys/as_int 基线零违规+proof/漂移拒绝，is_null 双拼写基线即拒（公共 int vs producer bool 真漂移，同 is_valid 族诚实面）。R6-02：bind 写失败保守判陈旧。R6-03：plan498_bar_group_emphasis 入 flake 名册（隔离复跑绿）。SD-04/reference-audit #11 按实际行为重锚。受影响门禁见下表（本节提交时附齐）。

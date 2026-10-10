@@ -90,11 +90,14 @@ merge 前若 T-14 后续提交改变行为，以最终提交复锚。
 - **六核心引用闭包全路径**：限定 Dot（含 Json 别名）、具名/裸名/通配导入、
   `auto.<core>.<method>` 三段形状、for-in 流反糖、`fn expr` Await 臂、
   **公共方法 receiver 调用**（`Owner.method` 分母归属：模块限定/扁平
-  value_* helper/json 值绑定直发三形态收敛，拆段片段与链式中间形态记
-  边界）——全部经 `verify_rust_reference`（契约表驱动）；provider claim
-  无真实 callee=PROVIDER_CLAIM_NO_CALLEE；漂移=SIGNATURE_DRIFT；未证明
+  value_* helper/json 值绑定直发/未接管发射臂四形态——前三验证，
+  第四（发射原样保留、实参丢失）诚实拒绝）——全部经
+  `verify_rust_reference`（契约表驱动）；provider claim 无真实 callee
+  =PROVIDER_CLAIM_NO_CALLEE；漂移=SIGNATURE_DRIFT；未证明
   =SIGNATURE_UNVERIFIED，不产出成功产物。方法符号的 receiver/is_static
-  证据来自公共声明事实。
+  证据来自公共声明事实；序列面 Vec<T>→[]T 按名身份；既有真漂移面
+  （JsonValue.is_null/is_valid 公共 int vs Rust producer bool）双拼写
+  一致拒绝，不擅改公开 ABI。
 - 面外边界（记档不删）：类型名渲染、`json!` 宏复合、legacy 平面符号
   （http_post）、无公共声明的 legacy 别名（json.get/get_u64 等，P738-D2
   在案）。

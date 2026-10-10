@@ -20,7 +20,7 @@
 | 8 | for-in 流反糖（`stream_next[_async](&recv)`） | 编译器反糖（非用户调用名） | 反糖点直接验证（本轮新增） | ✅ |
 | 9 | json! 宏/from_value 复合（宏调用文本） | 宏 | — | **面外**：宏展开非函数调用；其载荷经 from_value 调用点证明 |
 | 10 | `emit_http_verb_call`（动词族，同步/async 面） | Dot 臂内部 | 经 #3 路径 | ✅ |
-| 11 | JsonValue 接收者方法臂（`d.get(...)` 等，变量接收者） | Dot(var, method) | — | **边界**：接收者形状经类型分派发射；公共 JsonValue.* 面（12 方法）的独立证明属 D3b 接收者分型面（本计划 §5.3 方 法面第四绑定面同类冻结）；发射的 callee 与公共面同名的经 #4 别名臂已覆盖 Dot(Json/JsonValue) 形状 |
+| 11 | JsonValue 接收者方法臂（`d.get(...)`/`v.keys()` 等，变量接收者） | Dot(var, method) | **call() receiver 分支（R5-02/R6-01）** | ✅ 公共方法分母归属（12 方法）：模块限定/扁平 value_* helper/json 值绑定 def-use 直发三形态验证 + 未接管发射臂（原样保留实参丢失）诚实拒绝；序列面 Vec<T>→[]T；既有真漂移面（is_null/is_valid 公共 int vs producer bool）双拼写一致拒绝 |
 
 **R2 声明对账结论**：「329 发射点均属胶水/面外」不成立——本轮把 #3/#5/#7/#8 四类（用户可达的核心调用形状）全部接入 strict 收集/验证；#1/#6/#9 确为面外；#4 的 legacy 别名与 #11 的接收者面按既有登记债务（P738-D2/json 面分裂；方法面第四绑定面）保留边界并在本报告显式列出，不以「胶水」一言蔽之。
 
