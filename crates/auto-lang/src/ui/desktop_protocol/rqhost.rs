@@ -1351,6 +1351,212 @@ pub fn run_daemon(wellknown: &str) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
+// PLAN-102 D-1 —— bridge 宿主：去窗 rq 宿主 + WS 桥
+// ---------------------------------------------------------------------------
+
+/// 一条 WS 桥镜像会话（消费端 = musk backend 中继 / 任何讲 ProtocolMsg
+/// 的 WS 客户端）。`remote.rs` RemoteMirror 同构：Hello 订阅（app 名）→
+/// Welcome + 变化帧推送；InputMsg 上行直投目标 client 连接（权威命中在
+/// app 侧——与 remote mirror 同律）。
+struct BridgeMirror {
+    end: Box<dyn Transport + Send>,
+    /// 订阅目标（Hello.app_name；目标 client 未落地时每拍重试）。
+    app: Option<String>,
+    /// 已兑现订阅的 client 下标（client 退场时置回未订阅）。
+    subscribed: Option<usize>,
+    /// 已推送帧版本键（client.frames——变化才推）。
+    pushed_version: Option<u64>,
+    /// 推送序（frame_id 单调）。
+    seq: u64,
+}
+
+/// bridge 宿主主循环（`auto rqhost --pipe <p> --bridge-ws <port>
+/// --bridge-token <tok>`）——**不开任何 OS 窗**：adopt/pump/composed 全
+/// 部复用 daemon core（[`RqServe`]/[`adopt_one`]/[`pump_client`]——
+/// 窗面只在 RqEvent 消费侧，本宿主把事件面换为 WS 桥）。
+///
+/// - 下行（app→消费端）：`FrameReadyV2`（remote 臂 DisplayList v2；v1
+///   客户端退化 `FrameReady`）+ `Control`（ImeRequest/SetCursor 透传——
+///   消费端 IME 定位/光标 UX 位）。
+/// - 上行（消费端→app）：`Input(InputMsg)` 直投目标 client（wid 即
+///   Welcome 分配值——与 remote mirror 同一收尾）。
+/// - 安全边界与 remote WS 同律：回环 + 静态 token，缺省不监听。
+pub fn run_bridge(wellknown: &str, ws_port: u16, token: &str) -> Result<(), String> {
+    let (serve, _claim) = RqServe::start(wellknown).map_err(|e| format!("bridge serve: {e:?}"))?;
+    let ws = transport::ws::WsListener::bind(ws_port, token)
+        .map_err(|e| format!("bridge ws bind: {e:?}"))?;
+    let mut ws = ws;
+    let line = format!(
+        "[rqhost-bridge] ws listening on 127.0.0.1:{} (token required) — pipe `{wellknown}`",
+        ws.port()
+    );
+    eprintln!("{line}");
+    let mut ids = RqIds::default();
+    let mut clients: Vec<RqClient> = Vec::new();
+    let mut mirrors: Vec<BridgeMirror> = Vec::new();
+    loop {
+        // 1) 认领转连落成的客户端（RqServe 后台线程已备好端点）。
+        loop {
+            let next = serve.pending.lock().unwrap().pop();
+            let Some((app_name, end)) = next else { break };
+            match adopt_one(app_name, end, &mut ids, 5000) {
+                Some((client, _)) => {
+                    eprintln!(
+                        "[rqhost-bridge] adopted `{}` ({}x{})",
+                        client.app_name, client.width, client.height
+                    );
+                    clients.push(client);
+                }
+                None => eprintln!("[rqhost-bridge] adoption 未收敛（弃置）"),
+            }
+        }
+        // 2) 泵客户端（Welcome/BufferAlloc/Ack 由 apply_actions 内部回发；
+        //    窗面事件在此换为 WS 桥面）。
+        for ci in (0..clients.len()).rev() {
+            let (events, alive) = pump_client(&mut clients[ci], &mut ids);
+            let wid = clients[ci].inner.wid.map(|w| w.0).unwrap_or(0);
+            for ev in events {
+                let wire = match ev {
+                    RqEvent::ImeRequest { enabled } => {
+                        Some(ProtocolMsg::Control(ControlMsg::ImeRequest { wid, enabled }))
+                    }
+                    RqEvent::SetCursor { kind } => {
+                        Some(ProtocolMsg::Control(ControlMsg::SetCursor { wid, kind }))
+                    }
+                    // Adopted/Reclaimed 为窗面事件（bridge 无窗；帧推送面
+                    // 在下段按 composed 变化驱动）。
+                    _ => None,
+                };
+                if let Some(wire) = wire {
+                    for m in mirrors.iter_mut() {
+                        if m.subscribed == Some(ci) {
+                            let _ = m.end.send(&wire);
+                        }
+                    }
+                }
+            }
+            if !alive {
+                let gone = clients.remove(ci);
+                eprintln!("[rqhost-bridge] client `{}` 退场", gone.app_name);
+                for m in mirrors.iter_mut() {
+                    if m.subscribed == Some(ci) {
+                        m.subscribed = None;
+                        m.pushed_version = None;
+                    }
+                }
+            }
+        }
+        // 3) 镜像泵：入站（Hello/Input）→ 订阅兑现 → 变化帧推送。
+        let mut dead_mirrors = Vec::new();
+        for (mi, mirror) in mirrors.iter_mut().enumerate() {
+            loop {
+                match mirror.end.try_recv() {
+                    Some(Ok(msg)) => match msg {
+                        ProtocolMsg::Handshake(HandshakeMsg::Hello { app_name, .. }) => {
+                            if mirror.app.as_deref() != Some(app_name.as_str()) {
+                                mirror.app = Some(app_name);
+                                mirror.subscribed = None;
+                                mirror.pushed_version = None;
+                            }
+                        }
+                        ProtocolMsg::Input(input) => {
+                            if let Some(ci) = mirror.subscribed {
+                                let _ = clients[ci].inner.end.send(&ProtocolMsg::Input(input));
+                            }
+                        }
+                        _ => {}
+                    },
+                    Some(Err(_)) => continue,
+                    None => break,
+                }
+            }
+            if mirror.end.is_eof() {
+                dead_mirrors.push(mi);
+                continue;
+            }
+            // 订阅兑现（目标在册才发 Welcome——remote_mirror_subscribe 同律）。
+            if mirror.app.is_some() && mirror.subscribed.is_none() {
+                let app_name = mirror.app.clone().unwrap_or_default();
+                if let Some(ci) = clients.iter().position(|c| c.app_name == app_name) {
+                    let client = &clients[ci];
+                    let (app_id, wid) = match (client.inner.app_id, client.inner.wid) {
+                        (Some(a), Some(w)) => (a.0, w.0),
+                        _ => continue,
+                    };
+                    let welcome = ProtocolMsg::Handshake(HandshakeMsg::Welcome {
+                        app_id,
+                        wid,
+                        surface: 0,
+                        rect: crate::ui::desktop_protocol::message::WRect {
+                            x: 0.0,
+                            y: 0.0,
+                            w: client.width,
+                            h: client.height,
+                        },
+                        frame_mode: super::message::FrameMode::Commands,
+                        extra_surfaces: Vec::new(),
+                    });
+                    if mirror.end.send(&welcome).is_ok() {
+                        mirror.subscribed = Some(ci);
+                        mirror.pushed_version = None;
+                        eprintln!("[rqhost-bridge] mirror subscribed `{app_name}`");
+                    }
+                }
+            }
+            // 变化帧推送（v2 优先；v1 客户端退化）。
+            if let Some(ci) = mirror.subscribed {
+                let version = clients[ci].frames;
+                if mirror.pushed_version != Some(version) {
+                    let wid = clients[ci].inner.wid.map(|w| w.0).unwrap_or(0);
+                    let revision = clients[ci].last_revision;
+                    let msg = if let Some(v2) = composed_v2(&clients[ci]) {
+                        mirror.seq += 1;
+                        ProtocolMsg::Frame(FrameMsg::FrameReadyV2 {
+                            wid,
+                            frame_id: mirror.seq,
+                            slot: 0,
+                            damage: None,
+                            revision,
+                            payload: v2.clone(),
+                        })
+                    } else if let Some(v1) = composed(&clients[ci]) {
+                        mirror.seq += 1;
+                        ProtocolMsg::Frame(FrameMsg::FrameReady {
+                            wid,
+                            frame_id: mirror.seq,
+                            slot: 0,
+                            damage: None,
+                            revision,
+                            payload: v1.clone(),
+                        })
+                    } else {
+                        continue;
+                    };
+                    if mirror.end.send(&msg).is_ok() {
+                        mirror.pushed_version = Some(version);
+                    }
+                }
+            }
+        }
+        for mi in dead_mirrors.into_iter().rev() {
+            mirrors.remove(mi);
+        }
+        // 4) WS 受理。
+        while let Some(end) = ws.try_accept() {
+            eprintln!("[rqhost-bridge] mirror connected");
+            mirrors.push(BridgeMirror {
+                end,
+                app: None,
+                subscribed: None,
+                pushed_version: None,
+                seq: 0,
+            });
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // 测试
 // ---------------------------------------------------------------------------
 
