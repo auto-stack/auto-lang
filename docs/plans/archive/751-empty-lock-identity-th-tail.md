@@ -350,3 +350,15 @@ tempfile 隔离 workspace + `AUTO_RUST_WORKSPACE` env 指向（沿既有 R5 状�
 
 （无——R11 修复要求已给出明确口径：仅 NotFound 视为 absent、成功读取统一
 内容身份、共用分类实现、补空文件一次绑定与再生成测试、保留读错误矩阵。）
+
+## 归档后收尾注记（2026-10-10）
+
+- **批量回归到期判定：DUE 但 blocked（前置不满足）**——收据 2026-10-08T11:20Z/
+  covered 740，其后 750（5 倍数）/752/753/751 已落地且 >48h 有合并。发车前置
+  检查：主检出自带**他方在途 WIP**（`examples/ui/020-music-player/src/front/
+  {app,viewport}.at` 两文件 +25 行，属 VM 走查会话——`.tmp-vm-*` 探针产物同源，
+  最后修改今日 10:52），tf 画廊围栏编译 020 示例，脏树结果对 covered_commit
+  不具归因力；机器当时零 cargo/nextest 进程（单实例可满足，仅树污染一项阻塞）。
+  未动他方 WIP（stash/包含均否——2026-09-15 master 零 WIP 裁定归其 owner 路由）。
+  **unblock**：020 WIP owner 收口（落 fix-* worktree 或直裁提交）后主检出重跑
+  `/auto-plan:regress`（窗口 `3c2f3c347..HEAD`）。
