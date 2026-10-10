@@ -364,6 +364,16 @@ fastfail 崩溃且审计无行时，优先按栈溢出排查（重建符号 + RU
 - **P751-D1 闭合候选（复审时定稿）**：PLAN-755 已按专项修复并全档复验——①根因实证：契约错误（`SIGNATURE_UNVERIFIED` #9937/#3108，`crate::run` 32ms 快返）被夹具 `let _ =` 吞掉 + 本机拒绝连接 ~2.15s/次 × ready-poll 50 次 + 客户端 60 次重试爬行 = nextest 120s TERMINATING；"accept 后不响应/60s×2 read timeout"旧机制证伪（read 相位从未到达），见 [755-startup-diagnosis.md](reports/755-startup-diagnosis.md)。②修复：HTTP 公共面 41 项缺契约补齐 + 5 项 inventory 契约漂移覆盖 + 走查/merge 存活常驻守卫（[755-contract-inventory.md](reports/755-contract-inventory.md)）；夹具启动诊断有界化。③复验：串行全档 th **102 项 101 过/1 红（仅 back_proxy 在册基线红）/0 超时，186.4s**——14 timeout 清零、interop 转绿、86 绿零回归（[755-th-full-receipt.md](reports/755-th-full-receipt.md)）。bisect 候选锚点（dd9ffe35b/19973b089）随根因实证销案；规范增量 SD-01（公共面契约覆盖完整性）落 assembly-manifest.md。
 - P751-D2（auto-man 盲区）不在 PLAN-755 范围，保持开放。
 
+### PLAN-755 独立复审 R2（2026-10-10，needs_fix）
+
+| ID | 级别 | 影响验收 | 证据与修复要求 |
+|---|---|---|---|
+| P755-R2-01 | medium/P2 | AC-01、T-02 | 三启动助手的 `Err(panic)` 直接 Debug 格式化 boxed Any，父线程消息只得 `Any { .. }`。实际 plan730 助手注入标记 panic，负向验收 0/1（2.153s），标记只在默认子线程 hook，未转发至启动失败载荷；三处提取 &str/String payload 并冻结真实助手反例。 |
+| P755-R2-02 | medium/P2 | AC-06、T-06 | clean `4ce645516` 的四改动 Rust 文件 rustfmt check exit 1；此前“fmt 干净”与提交工件不符。格式修复提交后重新绑定门禁证据。 |
+| P755-R2-03 | medium/P2，簿记已纠正 | AC-07、T-07 | SD-01 modify 已存在的 assembly-manifest.md，不能因新增节登记为新组件；本复审已修正 spec-impact 分类，规范语义不变，修后重审定稿。 |
+
+契约守卫及上传/重定向原反例独立 2/2 + 2/2 通过，主要 HTTP 修复事实保留；整项退回 executing，P751-D1 保留闭合候选，尚不销案。详细证据：[755-review-r2.md](reports/755-review-r2.md)。
+
 ### P753（2026-10-10，README 计划知识投影前置阻塞）
 
 | id | 级别 | 领域 | 内容 | 锚点 |

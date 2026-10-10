@@ -1,0 +1,136 @@
+Diff in \\?\D:\autostack\.wt\lang-755\auto-lang\crates\auto-lang\src\vm\native.rs:391:
+             "void",
+         );
+         // Response 构造面（Plan 346 redirect 在内）：
+-        native_interface.declare_contract_identity("auto.http.response", &[], &[], "Response");        native_interface.declare_method_contract_identity(
++        native_interface.declare_contract_identity("auto.http.response", &[], &[], "Response");
++        native_interface.declare_method_contract_identity(
+             "auto.http.response_status",
+             "Response",
+             &["Response", "int"],
+Diff in \\?\D:\autostack\.wt\lang-755\auto-lang\crates\auto-lang\src\vm\native.rs:451:
+             "Response",
+         );
+         // 客户端面（get/request 族已有；同步 post_sync/bearer 与状态查询补齐）：
+-        native_interface.declare_contract_identity("auto.http.post", &[], &["str", "str"], "Response");
+-        native_interface.declare_contract_identity("auto.http.put", &[], &["str", "str"], "Response");
++        native_interface.declare_contract_identity(
++            "auto.http.post",
++            &[],
++            &["str", "str"],
++            "Response",
++        );
++        native_interface.declare_contract_identity(
++            "auto.http.put",
++            &[],
++            &["str", "str"],
++            "Response",
++        );
+         native_interface.declare_contract_identity("auto.http.delete", &[], &["str"], "Response");
+         native_interface.declare_contract_identity(
+             "auto.http.post_sync",
+Diff in \\?\D:\autostack\.wt\lang-755\auto-lang\crates\auto-lang\src\tests\plan755_http_contract_tests.rs:108:
+ fn plan755_http_contracts_survive_cffi_merge() {
+     let mut interface = production_interface();
+     let registry = crate::vm::native_registry::BIGVM_NATIVES.lock().unwrap();
+-    let sampled: Vec<(String, u16)> = ["auto.http.get", "auto.http.upload_receive", "auto.http.response_redirect"]
+-        .iter()
+-        .filter_map(|name| {
+-            registry
+-                .peek_qualified(name)
+-                .or_else(|| interface.resolve(name))
+-                .map(|id| (name.to_string(), id))
+-        })
+-        .collect();
++    let sampled: Vec<(String, u16)> = [
++        "auto.http.get",
++        "auto.http.upload_receive",
++        "auto.http.response_redirect",
++    ]
++    .iter()
++    .filter_map(|name| {
++        registry
++            .peek_qualified(name)
++            .or_else(|| interface.resolve(name))
++            .map(|id| (name.to_string(), id))
++    })
++    .collect();
+     assert!(sampled.len() == 3, "采样 native 名解析不全: {sampled:?}");
+     for (name, id) in &sampled {
+         assert!(
+Diff in \\?\D:\autostack\.wt\lang-755\auto-lang\crates\auto-lang\src\tests\plan730_http_upload_tests.rs:264:
+         let _server = std::thread::Builder::new()
+             .stack_size(8 * 1024 * 1024)
+             .spawn(move || {
+-                let outcome = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+-                    || crate::run(&code),
+-                )) {
++                let outcome = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++                    crate::run(&code)
++                })) {
+                     Ok(Ok(value)) => {
+-                        format!("crate::run returned Ok ({} bytes) without serving", value.len())
++                        format!(
++                            "crate::run returned Ok ({} bytes) without serving",
++                            value.len()
++                        )
+                     }
+                     Ok(Err(err)) => format!("crate::run failed: {err}"),
+                     Err(panic) => format!("crate::run panicked: {panic:?}"),
+Diff in \\?\D:\autostack\.wt\lang-755\auto-lang\crates\auto-lang\src\vm\ffi\http_server.rs:1778:
+             let _server = std::thread::Builder::new()
+                 .stack_size(8 * 1024 * 1024)
+                 .spawn(move || {
+-                    let outcome = match std::panic::catch_unwind(
+-                        std::panic::AssertUnwindSafe(|| crate::run(&code)),
+-                    ) {
+-                        Ok(Ok(value)) => format!(
+-                            "crate::run returned Ok ({} bytes) without serving",
+-                            value.len()
+-                        ),
+-                        Ok(Err(err)) => format!("crate::run failed: {err}"),
+-                        Err(panic) => format!("crate::run panicked: {panic:?}"),
+-                    };
++                    let outcome =
++                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
++                            crate::run(&code)
++                        })) {
++                            Ok(Ok(value)) => format!(
++                                "crate::run returned Ok ({} bytes) without serving",
++                                value.len()
++                            ),
++                            Ok(Err(err)) => format!("crate::run failed: {err}"),
++                            Err(panic) => format!("crate::run panicked: {panic:?}"),
++                        };
+                     let _ = outcome_tx.send(outcome);
+                 })
+                 .expect("spawn server thread");
+Diff in \\?\D:\autostack\.wt\lang-755\auto-lang\crates\auto-lang\src\vm\ffi\http_server.rs:1833:
+             let _server = std::thread::Builder::new()
+                 .stack_size(16 * 1024 * 1024)
+                 .spawn(move || {
+-                    let outcome = match std::panic::catch_unwind(
+-                        std::panic::AssertUnwindSafe(|| {
++                    let outcome =
++                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                             crate::run_with_capture_and_path(&source, &source_path)
+-                        }),
+-                    ) {
+-                        Ok(Ok(value)) => format!(
+-                            "run_with_capture_and_path returned Ok ({} bytes) without serving",
+-                            value.0.len()
+-                        ),
+-                        Ok(Err(err)) => format!("run_with_capture_and_path failed: {err}"),
+-                        Err(panic) => format!("run_with_capture_and_path panicked: {panic:?}"),
+-                    };
++                        })) {
++                            Ok(Ok(value)) => format!(
++                                "run_with_capture_and_path returned Ok ({} bytes) without serving",
++                                value.0.len()
++                            ),
++                            Ok(Err(err)) => format!("run_with_capture_and_path failed: {err}"),
++                            Err(panic) => format!("run_with_capture_and_path panicked: {panic:?}"),
++                        };
+                     let _ = outcome_tx.send(outcome);
+                 })
+                 .expect("spawn real example API server");

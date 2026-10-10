@@ -1,0 +1,8 @@
+Test execution output; compiler warnings omitted.
+────────────
+ Nextest run ID cce45ccd-80f9-4e23-8b99-d2e444969399 with nextest profile: default
+    Starting 2 tests across 1 binary (6851 tests skipped)
+        PASS [   0.596s] (1/2) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_plain_endpoint_untouched
+        PASS [   0.629s] (2/2) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_a_redirect_302_with_location
+────────────
+     Summary [   1.260s] 2 tests run: 2 passed, 6851 skipped
