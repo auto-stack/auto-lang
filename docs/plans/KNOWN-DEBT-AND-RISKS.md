@@ -342,3 +342,8 @@ fastfail 崩溃且审计无行时，优先按栈溢出排查（重建符号 + RU
 |---|---|---|---|---|
 | P751-D1 | high | HTTP e2e 挂死族 | **plan730 上传 e2e 整族（14 项）+ e2e_a_redirect_302 确定性挂死**——服务端 accept 后不响应（60s×2 read timeout 累计 120s 被 nextest TERMINATING）；隔离单跑确定性复现（vm_plain_endpoint_untouched / e2e_a_redirect_302_with_location 均 TIMEOUT 120.0s）；与负载无关（同条件 plan326 兄弟 39 项 0.6s 全绿）。红移窗口=PLAN-738 系列（plan734 时代 th 99/101 绿 `ae9b7a7e2` → 738 后转红；http_server.rs 最后触碰=R2 `bade1845c`，其后 `19973b089` 触及 http 族契约注册撤销语义；R2 收据自述 th 绿与本轮矛盾）。**根因 bisect + 修复走后续专项计划**；候选锚点 `dd9ffe35b`/`19973b089` | docs/plans/reports/751-th-full-receipt.md；crates/auto-lang/src/tests/plan730_http_upload_tests.rs:254（start_server）/ crates/auto-lang/src/vm/ffi/http_server.rs |
 | P751-D2 | medium | auto-man 日常档盲区 | **auto-man lib 3 项预存红**（基面 stash 实证 0/3 同红，与 PLAN-751 diff 无关）：`vue::plan593_index_css_golden_tests::index_css_values_match_p1_baseline`（CSS 金样漂移）、`rust_ui::tests::test_shell_pack_lib_freshness`（shell-pack 入库物过期，panic 自述需重跑 regen_shell_pack#[ignore]+提交）、`rust_ui::tests::merged_api_client_crud_fallback_for_uncovered_endpoints`（merged API 客户端金样漂移）。根因：日常档 `cargo t` 只 `-p auto-lang`，auto-man 面长期脱离例行门禁——清偿方向：修复三红 + 将 auto-man scoped 面纳入复审触面清单 | crates/auto-man/src/rust_ui.rs:5743/6203；crates/auto-man/src/vue.rs（plan593 金样） |
+### P753（2026-10-10，README 计划知识投影前置阻塞）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P753-D1 | medium | runtime Specs store 兼容性 | 既有 `.autoos/specs.json` 无法由当前 AutoMusk store 加载；任务自有 loopback 服务 `GET /api/specs` 返回 500，已停止。原账本 hash 保持不变；不通过手改 JSON 或删除重建修复。README/语言文档可独立复验，但 store-mediated 投影及随后的计划归档/清理必须等待受支持的恢复路径。未将此项视为已完成。 | [验证报告](reports/753-readme-verification.md)；PLAN-753 §9；auto-musk backend/crates/musk/src/specs.rs |

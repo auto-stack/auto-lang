@@ -25,6 +25,11 @@
 
 ## 模块架构
 
+仓库落地页（PLAN-753）：README.md / README.cn.md 概述 AutoLang、AutoUI、AutoOS、AutoAI
+及四主应用，直接共享 website/public 的桌面、AutoEdit 与 AutoShell 原图；当前语言介绍位于
+docs/language/overview.md / overview.cn.md，生成 EN/ZH 同路径概览并由学习入口取数。
+内容分层、事实来源与双上下文链接规则见 [ecosystem README](design/ecosystem-readme.md)。
+
 ```mermaid
 graph LR
   vp[.vitepress 配置与主题] --> docs[docs 英文文档]

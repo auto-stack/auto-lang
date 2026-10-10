@@ -60,6 +60,15 @@ export const DOCS_HUB = {
   ],
   cards: [
     {
+      key: 'language-overview',
+      title: { en: 'The language today', zh: '当前语言概览' },
+      desc: {
+        en: 'AutoVM, Rust shipping, syntax examples, ecosystem bridges, and current support boundaries.',
+        zh: 'AutoVM、Rust 发布、语法示例、生态互操作与当前支持范围。',
+      },
+      href: '/docs/language/overview',
+    },
+    {
       key: 'spec',
       title: { en: 'Language specification', zh: '语言规范' },
       desc: {
