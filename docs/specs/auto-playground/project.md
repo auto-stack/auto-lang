@@ -57,3 +57,10 @@ graph LR
 > 10s 截断，失控程序仍被截止兜住（复审 F-746-R1 定谳）。
 > 执行 panic（执行线程内部）返回干净 Err 不再 unwrap 噪音 500（SD-04）。
 > print 内建 kwargs 形态（`print(x, end=..)`）编译期拒绝（SD-02，见 auto-vm spec）。
+
+> **PLAN-752（2026-10-09，executing）**：`prepend_lib: bool`（默认 false）——
+> 为真时裸 source 路径按 AUTO_LIB_FILES（lib-legacy 12 文件，依赖序）前置拼接
+> AAvm v1 自举 lib（golden is_bootstrap 同款清单，单一事实源 pub(crate) 常量），
+> 使 vm-bootstrap 组笔记（note.id 前缀 `vm-bootstrap/`）在 playground 可运行
+> （官方宿主自动开启；走查 105 条 104 成功/80 条 golden 逐字节一致，余为仓库
+> 既有 #[ignore] 隔离态）。project/files 路径不受影响。
