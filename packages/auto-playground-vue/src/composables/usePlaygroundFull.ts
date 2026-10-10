@@ -2,7 +2,9 @@ import { ref, watch, computed } from 'vue';
 import type { BytecodeMeta, RunResponse, TransResponse, OutputTab, SourceMapEntry, TransFile, ProjectFile } from '../types';
 import { runTypeScript } from '../utils/tsRunner';
 
-const API_BASE = '/api';
+// PLAN-754: apiBase 参数化（默认 '/api'）——website 宿主经 PlaygroundIDEApp
+// 传入探测到的后端地址。
+const DEFAULT_API_BASE = '/api';
 const STORAGE_KEY = 'auto-playground:state';
 
 interface PersistedState {
@@ -43,7 +45,13 @@ function persistState(state: PersistedState) {
   } catch { /* ignore quota errors */ }
 }
 
-export function usePlaygroundFull() {
+export interface UsePlaygroundFullOptions {
+  /** 后端 API base（默认 '/api'）。PLAN-754：website 宿主探测传入。 */
+  apiBase?: string;
+}
+
+export function usePlaygroundFull(options: UsePlaygroundFullOptions = {}) {
+  const API_BASE = options.apiBase ?? DEFAULT_API_BASE;
   const saved = loadPersistedState();
 
   const source = ref(saved.source ?? DEFAULT_SOURCE);
