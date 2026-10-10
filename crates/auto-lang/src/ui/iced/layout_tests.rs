@@ -3593,3 +3593,153 @@ widget App {
          实测 B1.x={x1:.1} B2.x={x2:.1} B3.x={x3:.1}——bounds 塌缩即命中全落卡 1"
     );
 }
+
+// ===== PLAN-748 T-06: jade 供料 iced 渲染器四件定音探针 =====
+//
+// 供料包 jade-edit docs/upstream/2026-10-09-vm-layout-stretch-supply.md
+// （证据 exp5..13，exp5=健康基线）。三件布局复现形走完整 .at →
+// build_dynamic_component → View → into_iced 管线（覆盖 aura_view_builder
+// needs_scroll 转写 / axis_fix_col_child / build_row StretchLine /
+// build_scrollable 全链）。断言即期望终态：修复前红 = 定音复现证据（V06
+// ），修复后绿 = 回归锁（V07）。件四（autodown_editor wrapper padding）
+// 确证缺口豁免定音，归 T-10。P748_PROBE=1 可叠加 stretch_line 配给 dump。
+
+/// .at 源 → View<DynamicMessage>（真管线）。
+fn p748_view(src: &str) -> crate::ui::view::View<crate::ui::interpreter::DynamicMessage> {
+    let dc = crate::build_dynamic_component(src, None).expect("build component");
+    let (view, _, _) = dc.view_with_debug_gated(false);
+    view
+}
+
+/// 收集 Scrollable 视口 bounds (x,y,w,h)。
+struct P748ScrollSink(std::sync::Arc<std::sync::Mutex<Vec<(f32, f32, f32, f32)>>>);
+impl iced_test::selector::Selector for P748ScrollSink {
+    type Output = ();
+    fn select(&mut self, candidate: iced_test::selector::Candidate<'_>) -> Option<()> {
+        if let iced_test::selector::Candidate::Scrollable { bounds, .. } = candidate {
+            self.0.lock().unwrap().push((bounds.x, bounds.y, bounds.width, bounds.height));
+        }
+        None
+    }
+    fn description(&self) -> String {
+        "p748-scroll-sink".into()
+    }
+}
+
+/// 收集 Container bounds (x,y,w,h)。
+struct P748BoxSink(std::sync::Arc<std::sync::Mutex<Vec<(f32, f32, f32, f32)>>>);
+impl iced_test::selector::Selector for P748BoxSink {
+    type Output = ();
+    fn select(&mut self, candidate: iced_test::selector::Candidate<'_>) -> Option<()> {
+        if let iced_test::selector::Candidate::Container { bounds, .. } = candidate {
+            self.0.lock().unwrap().push((bounds.x, bounds.y, bounds.width, bounds.height));
+        }
+        None
+    }
+    fn description(&self) -> String {
+        "p748-box-sink".into()
+    }
+}
+
+fn p748_sink_dump(label: &str, v: &[(f32, f32, f32, f32)]) {
+    let pretty: Vec<String> = v
+        .iter()
+        .map(|(x, y, w, h)| format!("({x:.0},{y:.0},{w:.0},{h:.0})"))
+        .collect();
+    eprintln!("[P748-{label}] {pretty:?}");
+}
+
+/// 件一：items-stretch 行不交叉轴拉伸 Shrink 高子项（jade 实测侧栏
+/// bg-card 底边止于内容高 550/786，行本身 flex-1 满高正常）。复现形 =
+/// 供料最小形；窗口 1024×768 下行高 ≈ 768，左列内容高 ≈ 60px。判据：
+/// 左列（w-56=224px Scrollable）视口高 ≥ 400px（拉伸到行高）。
+#[test]
+fn p748_j1_stretch_line_stretches_shrink_height_scrollable_child() {
+    let mut right_lines = String::new();
+    for i in 1..=14 {
+        right_lines.push_str(&format!("                    text \"J1R{i}\"\n"));
+    }
+    let src = format!(
+        "widget P748J1 {{\n    view {{\n        col (style: \"h-full w-full\") {{\n            row (style: \"flex-1 items-stretch w-full\") {{\n                col (style: \"w-56 bg-card overflow-y-auto\") {{\n                    text \"J1L1\"\n                    text \"J1L2\"\n                }}\n                col (style: \"flex-1\") {{\n{right_lines}                }}\n            }}\n        }}\n    }}\n}}\n"
+    );
+    let mut ui = simulator(p748_view(&src).into_iced());
+    let scrolls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let boxes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let _ = ui.find(P748ScrollSink(scrolls.clone()));
+    let _ = ui.find(P748BoxSink(boxes.clone()));
+    let sb = scrolls.lock().unwrap().clone();
+    p748_sink_dump("J1-scroll", &sb);
+    p748_sink_dump("J1-box", &boxes.lock().unwrap().clone());
+    let (_rx, _ry, rw, rh) = bounds_of(&mut ui, "J1R14");
+    eprintln!("[P748-J1] 右列末行 J1R14 = ({rw:.1},{rh:.1})（内容高代理）");
+    assert!(!sb.is_empty(), "复现形必须有一个 Scrollable（overflow-y-auto 转写）");
+    let (x, y, w, h) = sb[0];
+    assert!(
+        (w - 224.0).abs() < 3.0,
+        "左列 Scrollable 宽必须 = w-56（224px），实测 {w:.1}"
+    );
+    assert!(
+        h >= 400.0,
+        "左列 Scrollable 视口高必须拉伸到行高（≈768，≥400 下界），实测 {h:.1} @({x:.0},{y:.0})——止于内容高即件一复现"
+    );
+}
+
+/// 件二：overflow-y-auto col 挂显式高 h-full → 子树零几何 + 类序敏感
+/// （首位=全局降级、末位=局部消失）。三变体同构断言：哨兵可见（非零
+/// 几何）+ 首位/末位两变体哨兵几何全等（类序无关不变式）+ flex-1 对照
+/// 组可见（jade 报告的正常形态）。
+#[test]
+fn p748_j2_explicit_height_scrollable_class_order_invariant() {
+    let variant = |left_style: &str| -> (f32, f32, f32, f32) {
+        let src = format!(
+            "widget P748J2 {{\n    view {{\n        col (style: \"h-full w-full\") {{\n            row (style: \"flex-1 items-stretch w-full\") {{\n                col (style: \"{left_style}\") {{\n                    text \"J2L1\"\n                    text \"J2L2\"\n                }}\n                col (style: \"flex-1\") {{\n                    text \"J2R1\"\n                    text \"J2R2\"\n                    text \"J2R3\"\n                }}\n            }}\n        }}\n    }}\n}}\n"
+        );
+        let mut ui = simulator(p748_view(&src).into_iced());
+        let scrolls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let _ = ui.find(P748ScrollSink(scrolls.clone()));
+        p748_sink_dump(&format!("J2[{left_style}]-scroll"), &scrolls.lock().unwrap().clone());
+        bounds_of(&mut ui, "J2L1")
+    };
+    let a = variant("h-full w-56 bg-card overflow-y-auto"); // h-full 首位（live=全局降级）
+    let b = variant("w-56 bg-card overflow-y-auto h-full"); // h-full 末位（live=局部消失）
+    let c = variant("w-56 bg-card overflow-y-auto flex-1"); // flex-1 对照（jade 报告正常）
+    eprintln!("[P748-J2] 首位={a:?} 末位={b:?} flex-1={c:?}");
+    for (label, s) in [("首位", a), ("末位", b), ("flex-1 对照", c)] {
+        assert!(
+            s.2 > 15.0 && s.3 > 10.0,
+            "{label} 变体哨兵 J2L1 必须非零几何（w>15,h>10），实测 ({s:.1?})——零几何即件二复现"
+        );
+    }
+    assert!(
+        (a.0 - b.0).abs() < 1.5 && (a.1 - b.1).abs() < 1.5 && (a.2 - b.2).abs() < 1.5 && (a.3 - b.3).abs() < 1.5,
+        "h-full 首位/末位两变体哨兵几何必须全等（类序无关不变式），实测 首位={a:?} 末位={b:?}"
+    );
+}
+
+/// 件三：StretchLine 主轴配给挤掉末位定宽子项（jade 右栏 w-72 面板开即
+/// 不可见）。复现形 [w-56, flex-1, w-72]；窗口 1024 宽。判据：C 列可见
+/// （存在 288px 宽容器在行右端 + 哨兵非零），B 份额 = 行宽 − A − C。
+#[test]
+fn p748_j3_stretch_line_fixed_flex_fixed_allocation() {
+    let src = "widget P748J3 {\n    view {\n        col (style: \"h-full w-full\") {\n            row (style: \"flex-1 items-stretch w-full overflow-hidden\") {\n                col (style: \"w-56 bg-card\") {\n                    text \"J3A\"\n                }\n                col (style: \"flex-1\") {\n                    text \"J3B1\"\n                    text \"J3B2\"\n                    text \"J3B3\"\n                }\n                col (style: \"w-72 bg-card\") {\n                    text \"J3C\"\n                }\n            }\n        }\n    }\n}\n";
+    let mut ui = simulator(p748_view(src).into_iced());
+    let boxes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let _ = ui.find(P748BoxSink(boxes.clone()));
+    let bx = boxes.lock().unwrap().clone();
+    p748_sink_dump("J3-box", &bx);
+    let (cx, _cy, cw, ch) = bounds_of(&mut ui, "J3C");
+    let (bx1, _by1, bw1, _bh1) = bounds_of(&mut ui, "J3B1");
+    eprintln!("[P748-J3] J3C=({cx:.1},{cw:.1},{ch:.1}) J3B1=({bx1:.1},{bw1:.1})");
+    assert!(
+        cw > 15.0 && ch > 10.0,
+        "末位定宽子 C 的哨兵 J3C 必须可见（w>15,h>10），实测 ({cw:.1},{ch:.1})——塌 0 即件三复现"
+    );
+    assert!(
+        bx.iter().any(|&(_x, _y, w, _h)| (w - 288.0).abs() < 4.0),
+        "必须存在 w-72（288px）定宽容器，实测容器集 {bx:?}"
+    );
+    assert!(
+        cx > 700.0,
+        "C 列必须落在行右端（x>700，期望 ≈1024−288），实测 {cx:.1}"
+    );
+}

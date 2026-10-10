@@ -107,12 +107,27 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
         // —— 宽度探测遍：主轴配给份额（非 fill 子项按序吃自然宽，fill 子项
         // 均分剩余——flex first/third pass 同式）。份额宽必须先定：文本换行
         // 行数依赖最终宽，测高用错宽会把最高卡测短（内容下溢钳裁）。
+        // P748_PROBE=1 时逐子项 dump 配给过程（PLAN-748 T-06 定音探针面）。
+        let probe = std::env::var("P748_PROBE").is_ok();
         let mut available = (avail_w - total_spacing).max(0.0);
         let fill_sum: f32 = self
             .children
             .iter()
             .map(|c| fill_portion(c.as_widget().size().width))
             .sum();
+        if probe {
+            eprintln!(
+                "[P748-SL] n={n} avail_w={avail_w:.1} spacing={} fill_sum={fill_sum:.1} fill_height={} max_h={:.1}",
+                self.spacing, self.fill_height, max.height
+            );
+            for (i, c) in self.children.iter().enumerate() {
+                let s = c.as_widget().size();
+                eprintln!(
+                    "[P748-SL] child[{i}] widget_len=({:?},{:?}) portion={:.1}",
+                    s.width, s.height, fill_portion(s.width)
+                );
+            }
+        }
         let mut final_w = vec![0.0f32; n];
         for (i, child) in self.children.iter_mut().enumerate() {
             if fill_portion(child.as_widget().size().width) == 0.0 {
@@ -127,6 +142,11 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
                 let w = node.size().width;
                 available -= w;
                 final_w[i] = w;
+                if probe {
+                    eprintln!(
+                        "[P748-SL] width-pass child[{i}] natural_w={w:.1} available_left={available:.1}"
+                    );
+                }
             }
         }
         let remaining = available.max(0.0);
@@ -138,6 +158,9 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
                 } else {
                     0.0
                 };
+                if probe {
+                    eprintln!("[P748-SL] width-pass child[{i}] fill share={:.1}", final_w[i]);
+                }
             }
         }
 
@@ -158,6 +181,12 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
                 .as_widget_mut()
                 .layout(&mut tree.children[i], renderer, &child_limits);
             natural_h = natural_h.max(node.size().height);
+            if probe {
+                eprintln!(
+                    "[P748-SL] measure child[{i}] w={:.1} natural_h_child={:.1}",
+                    final_w[i], node.size().height
+                );
+            }
         }
         let effective = line_effective_height(self.fill_height, natural_h, max.height);
 
@@ -180,6 +209,13 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
             );
             nodes[i] =
                 child.as_widget_mut().layout(&mut tree.children[i], renderer, &child_limits);
+            if probe {
+                let s = nodes[i].size();
+                eprintln!(
+                    "[P748-SL] final child[{i}] min_h={min_h:.1} node=({:.1},{:.1})",
+                    s.width, s.height
+                );
+            }
         }
 
         // 定位：顺序排列 + spacing（行高 = effective，子项顶对齐——拉伸后
