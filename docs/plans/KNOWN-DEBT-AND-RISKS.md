@@ -263,6 +263,15 @@
 | P738-D1 | medium | 生产 native 注册面 ID 相撞真冲突（T-04 遗留 b 分诊裁决） | 扫描面动态 id 相撞 13 组（id1607 char×conv、id9930-9933 http×transfer 等）冻结基线（t04 `id_alias_conflict_detection`）。T-06 分诊裁决：`auto stdlib inspect --check` 按模块前缀把冲突组归入受影响模块**如实上报非零**（check_http_reports_frozen_id_conflicts 冻结），不静默、不弱化；重编号=ABI 变更，归 D3b/后续计划 | validate.rs id_alias_conflict_groups；crates/auto/src/cmd_stdlib.rs check_core；plan738 27/27 基线 |
 | P738-D2 | medium | 核心模块 id 面分裂（T-04 遗留 c 同族扩展） | json 实勘（T-06 探针）：生产绑定面=catalog canonical 名（`auto.json.get`@1906，register_std_shims 实绑，生产 json 可用）；校验器问的公共扫描名面（`auto.json.json_get`@99xx）无 shim 可调——诚实判 Unverified（check_json_scan_face_unverified_nonzero 冻结）。与 http 扫描前缀名（裁决①）、io 第四绑定面（VmModule 方法表，遗留 a）同族：**公共符号 canonical 面全量重写**为统一清偿路径（下轮） | vm/native_catalog.rs 19xx 段；validate.rs canonical_native_name；cmd_stdlib.rs 实勘注记 |
 
+## PLAN-738 补充复审 R9（2026-10-10，needs_fix @19973b089）
+
+本节是本期未满足验收的**必修**，不是批准延期；主链 re-merge 回归已修复，以下两项阻塞本轮收口。证据与修复合同见 [738-review-r9.md](reports/738-review-r9.md)。
+
+| id | 级别 | 领域 | 必要修复 | 锚点 |
+|---|---|---|---|---|
+| P738-R9-01 | medium | lock 读取失败 | 未绑定收据 absent + Cargo.lock 读取 PermissionDenied 被实际门误判 fresh；生成/复用两端只允许 NotFound=absent，其他错误传播/判陈旧，补 unbound/bound 读取失败反例，保留一次绑定语义 | rust_ui.rs:4025 / api_gen.rs:1071；AC-06/07/08，T-12/13/14 |
+| P738-R9-02 | medium | 格式健康门 | 最终 14 文件默认与 skip_children 检查均 exit1；只处理三文件剩余布局并提交，绑定实际通过的新提交收据 | lib.rs:119 / renderer.rs:24761 / engine.rs:9840、9852；AC-08，T-14 |
+
 ## PLAN-738 补充复审 R5（2026-10-10，needs_fix @9c255993b）
 
 本节为 revision 3 **未满足原验收的阻塞项**，不构成批准延期或 D3b 豁免。R4 pass 保留历史，本轮由实际反例回退 executing，详见 [738-review-r5.md](reports/738-review-r5.md)。

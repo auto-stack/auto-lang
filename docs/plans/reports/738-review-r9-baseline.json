@@ -1,0 +1,552 @@
+{
+  "stage": "review",
+  "plan_id": "PLAN-738",
+  "plan_revision": 3,
+  "outcome": "needs_fix",
+  "date": "2026-10-10",
+  "reviewed_commit": "19973b0899f27267db15a39669c124579f41a505",
+  "main_entry_commit": "c212e1c7a71b0bfea6972b0d1c9b86d78eeb794b",
+  "replay_base": "1be1783fea45162fbcae0c6a21859d2fa2588608",
+  "repair_parent": "adfb7a5d1bf108b03c101284f67e8b3a6e80056c",
+  "previous_review_commit": "3713337d97f37d68bddaca22ce16fb152cfc8db5",
+  "dependency_revisions": {
+    "auto-down": "895f8d0f9355c9f5ec3ce8fca268bdb768395846"
+  },
+  "worktree_clean_end": true,
+  "spec_inputs": [
+    {
+      "path": "docs/specs/stdlib/project.md",
+      "main_sha256": "cd3d00bac3b2c7df1ac0320321c69fee37965fa40395d725656f7bc07114e26c",
+      "proposed_worktree_sha256": "a6b3bdb9be29817813a1b5392d95e879ef1e5aabd894fb193dca8b461a2f838c",
+      "main_source_commit": "a80f3598407e38c856eada040d657374737919e5",
+      "worktree_source_commit": "adfb7a5d1bf108b03c101284f67e8b3a6e80056c"
+    },
+    {
+      "path": "docs/specs/stdlib/design/backend-assembly.md",
+      "main_sha256": "8c25d12cae4ed3a4f1d5a83a1fdbf70c4f6424528b4cbf7bc1c18b5f8054c9ea",
+      "proposed_worktree_sha256": "3b0fdf8d3db511375b2292e26632f4e9545651b6ae61e6376168aa2993441096",
+      "main_source_commit": "ec0eae41fbee05c2dee09445006114a4e9e95242",
+      "worktree_source_commit": "adfb7a5d1bf108b03c101284f67e8b3a6e80056c"
+    },
+    {
+      "path": "docs/specs/auto-lang/frontend/design/module-resolution.md",
+      "main_sha256": "fd110c6fb836795893b76c0709d280262362dc66be3b9a56b2ba3fdf2aa50d7f",
+      "proposed_worktree_sha256": "f512f84d740fd1a0231298d62962fc0794fb66968fadab958ca207355e25e273",
+      "main_source_commit": "866772379c2923d54675e8375897ca7c360003b7",
+      "worktree_source_commit": "adfb7a5d1bf108b03c101284f67e8b3a6e80056c"
+    },
+    {
+      "path": "docs/specs/auto-lang/trans/overview.md",
+      "main_sha256": "aabb0e631519721d4f5bb6def129d747177d5406bb4105f1bfea3f427ae323cb",
+      "proposed_worktree_sha256": "17ec8a50208c0eb69c57caca5718b0e38b68e94f82e3706b5be53aaa98cb27be",
+      "main_source_commit": "ec0eae41fbee05c2dee09445006114a4e9e95242",
+      "worktree_source_commit": "adfb7a5d1bf108b03c101284f67e8b3a6e80056c"
+    },
+    {
+      "path": "docs/specs/auto-lang/runtime/design/networking-stdlib.md",
+      "main_sha256": "356436040c868450c6a73a49f27b9f0dd5af29342a3e93395fcd10f19529279e",
+      "proposed_worktree_sha256": "ca7af367b0745b860d02085162c282fc53ec80d1a930ea632279e072d23ff609",
+      "main_source_commit": "6eb396e5a0c14c653807d61f4c6650fba06052ae",
+      "worktree_source_commit": "adfb7a5d1bf108b03c101284f67e8b3a6e80056c"
+    },
+    {
+      "path": "docs/specs/auto-man/design/api-generation-integrity.md",
+      "main_sha256": "b66721c99150e39f2b86c4689c976a77c4ed934cf1ff1aef98667ded91fc225a",
+      "proposed_worktree_sha256": "a92adaeeb5fb0bd9314bc6927e36847aa73b9d31055db74e8512d5b6953c0631",
+      "main_source_commit": "ec0eae41fbee05c2dee09445006114a4e9e95242",
+      "worktree_source_commit": "adfb7a5d1bf108b03c101284f67e8b3a6e80056c"
+    },
+    {
+      "path": "docs/specs/auto-cli/project.md",
+      "main_sha256": "7af13cc3e86b0df2397fad6b7d0136ae7503b058f2f2853fc86f771889e1a0ad",
+      "proposed_worktree_sha256": "b7393417eab4aba0349b8cabd757626100f51f3e250c21af3d4ef0fe5d957b7b",
+      "main_source_commit": "a80f3598407e38c856eada040d657374737919e5",
+      "worktree_source_commit": "adfb7a5d1bf108b03c101284f67e8b3a6e80056c"
+    },
+    {
+      "path": "docs/specs/stdlib/design/assembly-manifest.md",
+      "main_sha256": null,
+      "proposed_worktree_sha256": "71a696ff4aedf1d1f4b8b23fceb69a28620e00762f9761b36b9efe67fca583f8",
+      "main_source_commit": null,
+      "worktree_source_commit": "adfb7a5d1bf108b03c101284f67e8b3a6e80056c"
+    },
+    {
+      "path": "docs/plans/reports/738-sd-drafts.md",
+      "main_sha256": "77daac33a388f119201425a82238eb14cd5b2cbc696bbf6be8fe736ddc451953",
+      "proposed_worktree_sha256": "77daac33a388f119201425a82238eb14cd5b2cbc696bbf6be8fe736ddc451953",
+      "main_source_commit": "920fa3d30ca1276ead5d00f0ddf607c048e45780",
+      "worktree_source_commit": "920fa3d30ca1276ead5d00f0ddf607c048e45780"
+    }
+  ],
+  "configuration_inputs": [
+    {
+      "path": "Cargo.toml",
+      "sha256": "b28ec42e011549c8242b9d744625dd17a5a5cde84664e7556d49bde2f773ce01"
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "8b2b3290edb132afaf533f7a27d927ae916d0e4e6603416223cd038093b37ba4"
+    },
+    {
+      "path": ".cargo/config.toml",
+      "sha256": "13cb02bef7ce0ad685135e36b667ccbe54ab1a04ba6d743de1a3c5f41d239003"
+    },
+    {
+      "path": ".config/nextest.toml",
+      "sha256": "0fbea4b493e2437105d5cd68c616549b1a39aaad6ae4b2f85fd83adf4782d5a2"
+    }
+  ],
+  "repair_scope": {
+    "files": 14,
+    "insertions": 21207,
+    "deletions": 13239,
+    "only_behavior_change": "lib.rs removal of redundant stdlib merge",
+    "files_sha256": [
+      {
+        "path": "crates/auto-lang/src/lib.rs",
+        "sha256": "094a5b68e74656671df634bd4c5bade0e84f76d5b6a4a6fde0afceb45aaa1a3a"
+      },
+      {
+        "path": "crates/auto-lang/src/tests.rs",
+        "sha256": "3c5720a4ca0dc1f9535b3523f92d1672754b12a748619eb311b0d09b40be4988"
+      },
+      {
+        "path": "crates/auto-lang/src/tests/plan746_pg_mem_tests.rs",
+        "sha256": "745cf27118f81740ab124eac4d6fc69d18f5b2f0c973a37980562f8fc705e6c9"
+      },
+      {
+        "path": "crates/auto-lang/src/tests/plan748_breakpoint_probes.rs",
+        "sha256": "b792ebbcda5204a0a3a9a8be993e5c97d38e9c86f2063378b8ca758e91c752dc"
+      },
+      {
+        "path": "crates/auto-lang/src/tests/plan749_read_semantics_tests.rs",
+        "sha256": "106a57a154f757b90f32c787bcf1c3b8215f0c44b1128310b76d9ef91d252a15"
+      },
+      {
+        "path": "crates/auto-lang/src/ui/aura_view_builder.rs",
+        "sha256": "07c92652f29dfae1d13e586f9107ba0ae003569cebacc7938aaacbd6c7c3e83b"
+      },
+      {
+        "path": "crates/auto-lang/src/ui/autodown_editor/widget.rs",
+        "sha256": "97068b25c4f63c70fdd267a831afe5a7d54ce6f2ab3cbb9c8beeaa2dde2200b4"
+      },
+      {
+        "path": "crates/auto-lang/src/ui/iced/layout_tests.rs",
+        "sha256": "b21bbda0ca0e5b71eed4343856dc9e52b8f2c30f7afb75ec09c6974c511d8226"
+      },
+      {
+        "path": "crates/auto-lang/src/ui/iced/renderer.rs",
+        "sha256": "5abaf43a4abb5187e0e3a891b6c839f736235947f183665a8a8a6ce2a5516119"
+      },
+      {
+        "path": "crates/auto-lang/src/ui/iced/stretch_line.rs",
+        "sha256": "1adb96cf93e079cf466f06f0f3562fe34219aef57245d27a3b4476ba8c415a01"
+      },
+      {
+        "path": "crates/auto-lang/src/ui/layout.rs",
+        "sha256": "ef940b2bc9df9f807c2d14c99e5d0933e3acad5ef136cb4029eb7074be2f455c"
+      },
+      {
+        "path": "crates/auto-lang/src/vm/codegen.rs",
+        "sha256": "13aa3e086b4e6001170d0997e5ea415751a6ed4e4d2709231d5dfa0156dc9a8f"
+      },
+      {
+        "path": "crates/auto-lang/src/vm/engine.rs",
+        "sha256": "e11c1a8737587972c6afa9b59b73ed48310b8802f9597d967bd3995ea234126b"
+      },
+      {
+        "path": "crates/auto-lang/src/vm/ffi/stdlib.rs",
+        "sha256": "9018e77bd9c513c567efa7a9f62509bcc8dd8f72065ea48fc1089c90cf26f4d5"
+      }
+    ]
+  },
+  "logs": [
+    {
+      "path": ".review738-r9-api.log",
+      "sha256": "75f7e6aa8141611387bb063e01fc7bf3b28caf216c216891a3ddf1f379d415e9",
+      "bytes": 166116,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 20.55s",
+        "test result: ok. 44 passed; 0 failed; 1 ignored; 0 measured; 317 filtered out; finished in 1.64s"
+      ],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-build-cli.log",
+      "sha256": "b2ddcb0d8db68a3eb7b859c3e900e9fed194ef58116608e89e4eeaf8339471f0",
+      "bytes": 370294,
+      "summary": [
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 25.57s"
+      ],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-check.log",
+      "sha256": "4f49f5409feb8c116038ac2adbd97ba2f82fda0c19053685097748957af83e23",
+      "bytes": 370294,
+      "summary": [
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 10.90s"
+      ],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-cli-baseline.log",
+      "sha256": "ad1569bb6fa13002815706fd7eefce93ddd6c68501ecfdc5896ea8696856b678",
+      "bytes": 254664,
+      "summary": [],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-cli-drift.log",
+      "sha256": "b4f2967db0d48b7fa7a3c481b40f6b58b31dc21e8d99f2356bcf1bcbe7fc686c",
+      "bytes": 1288,
+      "summary": [],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-cli-probes.log",
+      "sha256": "d41eb2b11b728da01571fdb559976f74cc539aefb9d6ace9e7c5aafc805ec1fc",
+      "bytes": 920,
+      "summary": [],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-cli-shadow.log",
+      "sha256": "1dc0f0b2b3c009f8fcb2200cda20b7f86932044f2c2c62e2ac988f07ec469670",
+      "bytes": 251023,
+      "summary": [],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-cli.log",
+      "sha256": "77e404865618c0e0338c6fe597fef8b32aae984d601faeb57b83c8bd3a1879a3",
+      "bytes": 370971,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.76s",
+        "test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.64s"
+      ],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-composition-numstat.log",
+      "sha256": "7fbb67a8c84275f32cd4794328f8d4189111b971752aedd2daba15e5d4fe3823",
+      "bytes": 4205,
+      "summary": [],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-fmt-default.log",
+      "sha256": "ee7bd72ac9cefbc85787883e868abed29fd8d6a5c0ee31194344bbbe999bacec",
+      "bytes": 7644,
+      "summary": [],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-fmt.log",
+      "sha256": "20db1f4a837ca38ee4b61bdbbd29da8bcb69051bfce538bf305036284b183f2c",
+      "bytes": 4074,
+      "summary": [],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-isolate-plan484_024.log",
+      "sha256": "d4e774b3bc084bbda3d236c2c169244c0942ba97df3274c6d101d21be105627f",
+      "bytes": 225162,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 32.50s",
+        "     Summary [   0.344s] 2 tests run: 2 passed, 6761 skipped"
+      ],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-isolate-plan502_m3_layout_geometry_e2e.log",
+      "sha256": "e504372e1c002713010a07f5d415db77d3b553c2658d0ca11161c6c8a888bdca",
+      "bytes": 224912,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.52s",
+        "     Summary [   0.299s] 1 test run: 1 passed, 6762 skipped"
+      ],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-isolate-plan707_client_manual_next_is_done_close.log",
+      "sha256": "05570162ff989e7a8bca9c088370cd25b534f3a391bcea3ad58e9d6d2d3a347a",
+      "bytes": 225860,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.51s",
+        "    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6758 filtered out; finished in 0.03s",
+        "     Summary [   0.128s] 1 test run: 0 passed, 1 failed, 6762 skipped"
+      ],
+      "failed_names": [
+        "auto-lang tests::plan707_client_tests::plan707_client_manual_next_is_done_close"
+      ]
+    },
+    {
+      "path": ".review738-r9-isolate-test_029_photo_gallery.log",
+      "sha256": "abe9a9fd0f764b6128b0975ad054a5359fef2718de9532cf5a37bcf1ddc461a3",
+      "bytes": 226310,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.53s",
+        "    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6758 filtered out; finished in 10.08s",
+        "     Summary [  10.167s] 1 test run: 0 passed, 1 failed, 6762 skipped"
+      ],
+      "failed_names": [
+        "auto-lang tests::plan606_gallery_tests::plan606_gallery_tests::test_029_photo_gallery_thumbnails_render_with_resolved_src_and_cover_fit"
+      ]
+    },
+    {
+      "path": ".review738-r9-lock-read-error.log",
+      "sha256": "02aa8596dc5b7d26183619e2d2d856a0d5bc1392ebf78da8bee4da6da71b7227",
+      "bytes": 159854,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 31.80s",
+        "R5_PROBE R9 recorded=absent lock_read_error=PermissionDenied is_fresh=true",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 362 filtered out; finished in 0.85s"
+      ],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-lock.log",
+      "sha256": "932cd0128fd7a535af9b85bd99a79566c4f6b93cdfaf4efacb16da6f2f538e73",
+      "bytes": 162834,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.60s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 361 filtered out; finished in 0.98s"
+      ],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-main-diff.log",
+      "sha256": "8dea79b9a14b5150a9f1c5fd20c28430f9ac87d9b659c6be0f1e33816efac53e",
+      "bytes": 153191,
+      "summary": [],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-range-diff.log",
+      "sha256": "a7f8a792170323b26b1c6f0a59a366f91d479cf0bd129cde622f4fc3d60e9221",
+      "bytes": 24274244,
+      "summary": [],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-service.log",
+      "sha256": "b778714840a5f66080b09a436edaada127b2094549c46ca062571e99af2a89f8",
+      "bytes": 163534,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.02s",
+        "test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 364 filtered out; finished in 48.95s"
+      ],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-t.log",
+      "sha256": "10221ec99fed72c25c3b79c76164809df9742785398bbb6139141c7892dedf88",
+      "bytes": 842715,
+      "summary": [
+        "    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6758 filtered out; finished in 0.00s",
+        "    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.02s",
+        "    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.05s",
+        "    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1 filtered out; finished in 15.83s",
+        "     Summary [ 102.539s] 5224 tests run: 5210 passed (1 slow), 14 failed, 1539 skipped"
+      ],
+      "failed_names": [
+        "auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_4_merged_api_warning::merged_mode_api_call_emits_warn_opcode",
+        "auto-lang tests::plan484_chart_component_tests::plan484_smoke::plan484_024_charts_streaming_recompute",
+        "auto-lang tests::plan502_diagram_tests::plan502_m3_layout_geometry_e2e",
+        "auto-lang tests::plan707_client_tests::plan707_client_manual_next_is_done_close",
+        "auto-lang tests::plan748_breakpoint_probes::p748_t00_handler_dynamic_arm",
+        "auto-lang tests::plan748_breakpoint_probes::p748_t00_handler_static_arm",
+        "auto-lang tests::plan606_gallery_tests::plan606_gallery_tests::test_029_photo_gallery_thumbnails_render_with_resolved_src_and_cover_fit",
+        "auto-lang ui::desktop_protocol::client_runtime::tests::projector_counter_layout_and_hits",
+        "auto-lang ui::iced::renderer::tests::desktop_bus_inbox_drains_through_real_arms",
+        "auto-lang ui::iced::renderer::tests::desktop_surface_merge_dedupe_and_injection",
+        "auto-lang vm::ffi::term_engine::ash_leak_probe::ash_stream_leak_probe",
+        "auto-lang::schema_drift queue_coverage_drift_fence",
+        "auto-lang::docs_gen kitchen_sink_page_in_sync",
+        "auto-lang::schema_drift schema_drift_fence"
+      ]
+    },
+    {
+      "path": ".review738-r9-th-stop.log",
+      "sha256": "0bfacc44beb9226f436fa2d3e7c6a702f3cdbbdd469c368c0687051e85867124",
+      "bytes": 606,
+      "summary": [],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-th.log",
+      "sha256": "cc25a9545e13fd94cd85421c272877c48a9cf957b15e494b1889bc4ff711134c",
+      "bytes": 214019,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 47s",
+        "    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6859 filtered out; finished in 0.06s",
+        "    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6859 filtered out; finished in 109.58s"
+      ],
+      "failed_names": [
+        "auto-lang back_proxy_tests::http_e2e_back_proxy_real_routes_corpora_data_face",
+        "auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_client730_server_interop"
+      ]
+    },
+    {
+      "path": ".review738-r9-truth.log",
+      "sha256": "526b6a982bac93c60fdb69528ef8eb6a4e1d8099db5c9229375d751d5ea73e66",
+      "bytes": 162882,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.58s",
+        "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 360 filtered out; finished in 0.00s"
+      ],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-tt.log",
+      "sha256": "6a31d691e4b2df8000be3024f0959574bfbd02721461d4ce98c3c267fef1cc7f",
+      "bytes": 826886,
+      "summary": [
+        "    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7391 filtered out; finished in 0.03s",
+        "    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7391 filtered out; finished in 0.13s",
+        "    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7391 filtered out; finished in 0.42s",
+        "    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 7391 filtered out; finished in 0.00s",
+        "     Summary [ 108.418s] 5595 tests run: 5585 passed, 10 failed, 1787 skipped"
+      ],
+      "failed_names": [
+        "auto-lang tests::musk_vm_track_tests::musk_vm_track_p053_4_merged_api_warning::merged_mode_api_call_emits_warn_opcode",
+        "auto-lang tests::plan484_chart_component_tests::plan484_smoke::plan484_024_charts_streaming_recompute",
+        "auto-lang tests::plan502_diagram_tests::plan502_m3_layout_geometry_e2e",
+        "auto-lang tests::plan707_client_tests::plan707_client_manual_next_is_done_close",
+        "auto-lang tests::plan748_breakpoint_probes::p748_t00_handler_dynamic_arm",
+        "auto-lang tests::plan606_gallery_tests::plan606_gallery_tests::test_029_photo_gallery_thumbnails_render_with_resolved_src_and_cover_fit",
+        "auto-lang ui::desktop_protocol::client_runtime::tests::projector_counter_layout_and_hits",
+        "auto-lang ui::iced::renderer::tests::desktop_bus_inbox_drains_through_real_arms",
+        "auto-lang ui::iced::renderer::tests::desktop_surface_merge_dedupe_and_injection",
+        "auto-lang vm::ffi::term_engine::ash_leak_probe::ash_stream_leak_probe"
+      ]
+    },
+    {
+      "path": ".review738-r9-tv.log",
+      "sha256": "876cbd435baa35b47c6f6244a7a3a0d23efc204a0b5a5337cc4355979a29a8e1",
+      "bytes": 220945,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.10s",
+        "     Summary [   3.960s] 162 tests run: 162 passed, 6587 skipped"
+      ],
+      "failed_names": []
+    },
+    {
+      "path": ".review738-r9-witness.log",
+      "sha256": "ecfdc93d568dfd6d0c3679f52698ce4c9d870ce504514c0d776c1969d29d4f82",
+      "bytes": 205066,
+      "summary": [
+        "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.51s",
+        "test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 6756 filtered out; finished in 7.08s"
+      ],
+      "failed_names": []
+    }
+  ],
+  "actual_cli": {
+    "cli_sha256": "f53528cdc5953e53d59866779e04b483dbe6c27f52cf095f0272e721d1b6d966",
+    "results": [
+      {
+        "name": "baseline",
+        "exit": 0,
+        "status": "pass",
+        "symbols": [
+          "JsonValue.has_key",
+          "JsonValue.keys",
+          "parse"
+        ],
+        "violations": [],
+        "verification": [
+          "signature_checked",
+          "signature_checked",
+          "signature_checked"
+        ]
+      },
+      {
+        "name": "drift",
+        "exit": 1,
+        "status": "fail",
+        "symbols": [],
+        "violations": [
+          {
+            "message": "STDASSEMBLY.SIGNATURE_DRIFT: json.JsonValue.has_key: public return str does not match the adapter return int"
+          }
+        ],
+        "verification": []
+      },
+      {
+        "name": "shadow",
+        "exit": 0,
+        "status": "pass",
+        "symbols": [],
+        "violations": [],
+        "verification": []
+      }
+    ]
+  },
+  "temporary_probe": {
+    "script": "docs/plans/reports/738-review-r9-probe.py",
+    "script_sha256": "e0a2058d4c5b33ac186b1a8682330d1c5bfb06a52ad03a3692a12d824bcd6676",
+    "harness": "docs/plans/reports/738-review-r5-probe.py",
+    "harness_sha256": "eb5a748ec10dc453e0733e4c11d97a21b0523dadf69af8371d11f26f9a49dc8e",
+    "selected": 1,
+    "test_exit": 101,
+    "exact_bytes_restored": true,
+    "observed": "recorded=absent lock_read_error=PermissionDenied is_fresh=true"
+  },
+  "health": {
+    "rustfmt_version": "1.9.0-stable (88d9e12ae1 2026-08-18)",
+    "rustfmt_exit": 1,
+    "diff_check_exit": 0,
+    "fixed_point_sequences": {
+      "lib.rs": [
+        false,
+        true,
+        true,
+        true
+      ],
+      "ui/iced/renderer.rs": [
+        false,
+        true,
+        true,
+        true
+      ],
+      "vm/engine.rs": [
+        false,
+        true,
+        true,
+        true
+      ]
+    }
+  },
+  "counts": {
+    "plan738_daily_passed": 73,
+    "plan724_daily_passed": 5,
+    "http_selected": 102,
+    "http_passed": 43,
+    "http_failed": 2,
+    "http_incomplete": 57,
+    "http_status": "stopped_after_conclusive_needs_fix_and_reproduced_known_long_failure; not a pass"
+  },
+  "findings": [
+    "P738-R9-01",
+    "P738-R9-02"
+  ],
+  "acceptance_results": {
+    "AC-01": "pass",
+    "AC-02": "pass",
+    "AC-03": "pass",
+    "AC-04": "pass",
+    "AC-05": "pass",
+    "AC-06": "fail",
+    "AC-07": "partial",
+    "AC-08": "fail"
+  },
+  "reopened_tasks": [
+    "T-12",
+    "T-13",
+    "T-14"
+  ],
+  "current_step": 4,
+  "next": "work in existing plan worktree; fix then independent review; no merge"
+}
