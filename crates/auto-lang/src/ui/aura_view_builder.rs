@@ -9221,6 +9221,7 @@ impl<'a> AuraViewBuilder<'a> {
         }
         let px = self
             .extract_u16(props, "size")
+            .or_else(|| self.eval_u16_prop(props, "size", bindings))
             .map(|v| v as f32)
             .filter(|v| *v > 0.0)
             .unwrap_or(DEFAULT_ICON_PX);
@@ -9230,7 +9231,6 @@ impl<'a> AuraViewBuilder<'a> {
         if !has_h {
             s.classes.push(StyleClass::Height(SizeValue::Pixels(px)));
         }
-        let _ = bindings;
         Some(s)
     }
 
@@ -15592,6 +15592,9 @@ impl<'a> AuraViewBuilder<'a> {
                         None
                     }
                 }
+                // 绑定/变量表达式（icon { size: .size } 的 widget 参数引用）
+                // 经 resolve 求值取整——原先非字面量恒 None，size 恒落默认值
+                // （musk 工具栏图标传 12/14/16 全部无效的根因，r8 实测定罪）。
                 _ => None,
             },
             AuraPropValue::StyleBinding(_) => None,
@@ -16556,6 +16559,41 @@ mod tests {
     }
 
     /// Helper: create a minimal AuraWidget for testing.
+    /// toolbar-icons r8（musk）：icon size 绑定解析回归——见下方测试。
+    #[test]
+    fn r8_marker_probe() {
+        assert!(true);
+    }
+
+    /// toolbar-icons r8（musk）：icon 的 size 走绑定（widget 参数引用
+    /// `icon { size: .size }`）时必须解析——原 extract_u16 非字面量恒
+    /// None，size 恒落默认 20px（12/14/16 全部无效，musk 消息工具栏
+    /// 实测定罪）。直测 with_icon_size 的 bindings 通道。
+    #[test]
+    fn r8_icon_size_binding_resolves_widget_param() {
+        let widget = make_test_widget("Test", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let registry = crate::ui::widget_registry::WidgetRegistry::new();
+        let builder =
+            AuraViewBuilder::with_registry_and_imports(&bridge, "Test", &registry, &[]);
+        let node = AuraNode::element("icon")
+            .with_prop("name", Expr::Str("copy".into()))
+            .with_prop("size", Expr::Ident(crate::ast::Name::from("size")));
+        let AuraNode::Element { props, .. } = &node else {
+            panic!("期望 Element 节点")
+        };
+        let bindings: Bindings =
+            HashMap::from([("size".to_string(), auto_val::Value::Int(12))]);
+        let style = builder
+            .with_icon_size(None, props, &bindings)
+            .expect("绑定 size 应产出样式");
+        assert!(
+            style.classes.iter().any(|c| matches!(c, StyleClass::Width(SizeValue::Pixels(p)) if (*p - 12.0).abs() < f32::EPSILON)),
+            "icon 应为 12px（绑定 size=.size 应解析）; got {:?}",
+            style.classes
+        );
+    }
+
     fn make_test_widget(name: &str, state_vars: Vec<AuraStateDef>) -> AuraWidget {
         AuraWidget {
             named_views: Vec::new(),
@@ -22243,6 +22281,8 @@ mod tests {
             }
             other => panic!("期望 View::Image（lucide glyph）,得到 {other:?}"),
         }
+
+
 
         // 含 "icon" 的 tag 保持 glyph 路径（625 向后兼容面）。
         let node_i = AuraNode::element("Folder_icon").with_prop("size", Expr::Int(14));
