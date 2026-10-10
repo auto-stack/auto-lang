@@ -3625,6 +3625,18 @@
      ],
      "status": "published",
      "created": "2026-10-10"
+    },
+    {
+     "id": "P750-1",
+     "title": "vue 轨 store handler 事件重入与 await 悬窗契约（PLAN-750 SD-01）",
+     "content": "契约=docs/specs/auto-lang/ui/overview.md「vue 轨 store handler 事件重入与 await 悬窗契约（PLAN-750）」节，五条：①handler 体在显式 await 点之间的同步段原子；②await 悬窗内同 store 事件**可重入**（两轨一致——vm INPUT_TEXT/vue 引擎事件同理，重入安全由身份重查而非调用互斥达成）；③悬窗内身份分配（x==\"\" → await alloc() 形态）的**单飞责任在宿主**——重入双分配覆写身份，身份重查兜不住「身份被换」，分配臂须 in-flight 门（范式指针 evidence/p750/supply-draft.md §三；jade d0003 卡死+d0004 空目录双分配事故直证）；④双轨事件节奏分野——vm 轨 MCP 往返串行、vue 轨引擎逐键直达（首挂载逐键发射存活，间隔可 ~5ms < 悬窗 15-60ms），vue 宿主必须按「事件可落进任意 await 悬窗」设计，vm 绿不构成反证；⑤保存流 write+read 双 await 屏障=观测事实非时序保证。负面契约：vue 轨**不提供**跨 handler 串行化（键入时延会耦合前序排水链——jade PLAN-031 T-05 逐键 POST 风暴要规避的形态），互斥需求由宿主 .at 以 in-flight 门表达。归因背景：jade 4/4 结算失败=RC-C 潜伏竞态（codegen 零 diff+后端 RTT 恒等+绿时代载体 v2747 同败三证），非 auto-lang 回归；修复主体=jade .at 分配臂守卫（供料包交接）。证据：docs/plans/evidence/p750/{repro.md,repro.mjs,supply-draft.md}，reviewed_commit ea513a627。",
+     "file": "docs/specs/auto-lang/ui/overview.md#vue-轨-store-handler-事件重入与-await-悬窗契约（PLAN-750）",
+     "related": [
+      "PLAN-750",
+      "PLAN-748"
+     ],
+     "status": "published",
+     "created": "2026-10-10"
     }
    ]
   },
@@ -8793,6 +8805,17 @@
      "file": "docs/plans/archive/748-vm-cond-eval-and-field-write.md",
      "related": [
       "PLAN-748"
+     ],
+     "status": "published",
+     "created": "2026-10-10"
+    },
+    {
+     "id": "P750-2",
+     "title": "PLAN-750 rv1 复审收据（2026-10-10）",
+     "content": "reviewed_commit=ea513a627（基线 95d5d3297，diff=仅 docs/ 六文件 631 行零 crates/ 变更——Category A 门禁成立）。同会话复审限制披露+工件重建：D 场景独立重跑第三次复现完整失败签名（draft_begin×2/双分配 d0002 空目录/checkpoint erev=2 卡死无 settle——复现器 3/3）。acceptance：AC-03/04/06/07 pass；AC-01/02/05 pass-on-contract+external-pending（产品面终态绿依赖 jade 应用供料——748-AC-14 先例结构，owner=jade，复验回执回填归档计划 §9）。findings F-R1..R4 全 nonblocking（external-pending 登记/SD-01 交叉引用措辞/run1 错配产物留档/矩阵设计被更直接判别取代之理由在案）。next=merge。外部跟踪：jade 供料包=evidence/p750/supply-draft.md（.at in-flight 门修复范式+负载窗否证纪律）。",
+     "file": "docs/plans/archive/750-vue-draft-settle-race.md",
+     "related": [
+      "PLAN-750"
      ],
      "status": "published",
      "created": "2026-10-10"
