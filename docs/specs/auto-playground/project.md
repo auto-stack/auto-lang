@@ -60,7 +60,7 @@ graph LR
 
 > **PLAN-752（2026-10-09，executing）**：`prepend_lib: bool`（默认 false）——
 > 为真时裸 source 路径按 AUTO_LIB_FILES（lib-legacy 12 文件，依赖序）前置拼接
-> AAvm v1 自举 lib（golden is_bootstrap 同款清单，单一事实源 pub(crate) 常量），
+> AAVM v1 自举 lib（golden is_bootstrap 同款清单，单一事实源 pub(crate) 常量），
 > 使 vm-bootstrap 组笔记（note.id 前缀 `vm-bootstrap/`）在 playground 可运行
 > （官方宿主自动开启；走查 105 条 104 成功/80 条 golden 逐字节一致，余为仓库
 > 既有 #[ignore] 隔离态）。project/files 路径不受影响。
