@@ -7605,6 +7605,18 @@ pub fn startup_window_level() -> iced::window::Level {
     }
 }
 
+/// PLAN-102（auto-musk canvas 内嵌）：boot 期窗口隐藏位。`AUTO_VM_HIDDEN=1`
+/// = 应用窗不进 OS 桌面（Plan 500 像素臂 `Settings{visible:false}` 同语义
+/// ——渲染/截图照常，MCP `autoui_screenshot` 即帧源），且不要求像素桥协议
+/// 宿主（消费走既有 MCP 通道，零管线新增）。缺省零变化（独立运行形态
+/// 不变）。运行期显隐切换（内嵌↔独立窗不重启）由宿主侧对目标窗
+/// ShowWindow 承载（canvas-embed-probe P4 验证口径）。
+pub fn startup_window_hidden() -> bool {
+    std::env::var("AUTO_VM_HIDDEN")
+        .map(|v| matches!(v.trim(), "1" | "true" | "TRUE" | "True"))
+        .unwrap_or(false)
+}
+
 /// PLAN-097 演示 UX:窗口初始位置环境契约。`AUTO_VM_POSITION=x,y`(逻辑
 /// 像素)→ `Position::Specific`——canvas 会话按宿主窗右侧确定性停靠,
 /// 不遮宿主(缺省 = OS 选择,独立运行形态不变)。
@@ -17979,7 +17991,9 @@ fn compare_pngs(
                         position,
                         // Plan 500 步骤 4：像素臂 child 窗口隐藏——渲染/
                         // 截图照常，仅不进 OS 桌面 z 序（合成归宿主虚拟窗）。
-                        visible: !opts.pixels,
+                        // PLAN-102：AUTO_VM_HIDDEN=1 同语义 boot 隐藏位（无像素
+                        // 桥——canvas 内嵌消费走 MCP 截图/动作通道）。
+                        visible: !opts.pixels && !startup_window_hidden(),
                         ..Default::default()
                     });
                     session.register_window(win_id, app_id, size);
