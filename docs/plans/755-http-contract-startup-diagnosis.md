@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-755
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: http-contract-startup-diagnosis
 author: [zcode-agent]
 created_at: 2026-10-10
@@ -274,6 +274,36 @@ gate 可达性 | 处置`。gate 可达 = 该 id 会被 `stdlib/auto/http.at` 某
   102/101 pass/0 timeout（186.4s）；日常档 12 红全预存归档（基线同红/在册/隔离过三类实证）；
   tv 162/162；零新增警告+fmt 干净。blockers 无。next `review`（/auto-plan:review，独立复审
   AC-01..AC-07 与 SD-01 规范增量，复审门已含本档证据）。
+- 2026-10-10 review（/auto-plan:review）：stage `review`；plan_id PLAN-755；plan_revision 1；
+  **outcome `pass`**（→ `reviewed`，next `merge`）。
+  - reviewed_commit `4ce645516`（branch `plan-755-dev`：`327069006`/`00e7f712c`/`4ce645516`，
+    worktree clean）；base `d6e4819ba`；依赖 auto-down detached@`895f8d0`（组内兄弟）。
+    规范输入：assembly-manifest.md@`4ce645516` blob `383d2dab`。
+  - **独立性声明**：本复审在实施会话内进行——结论从工件重建并关键复现，不采信执行者叙述：
+    ①AC-01 未修基面形态经 git 重建的抛弃式 worktree@`327069006` 独立复现（两原反例 ~2.1s 有界
+    FAIL，panic 含 `SIGNATURE_UNVERIFIED #9937`），复验后 wt-guard clean 移除；②AC-04/AC-02 守卫与
+    原反例 HEAD 复跑 2/2+2/2 PASS；③AC-05 串行全档 th 二次独立采样 **102 run/101 pass/1 fail/
+    0 timeout（200.6s）**与首轮（186.4s）一致，唯一红= back_proxy 在册基线红同形。
+  - acceptance_results：AC-01 pass / AC-02 pass / AC-03 pass / AC-04 pass / AC-05 pass / AC-06 pass /
+    AC-07 pass。
+    - AC-03 结构审计：`stdlib_assembly/` 零触碰；全 diff 无 verify_core_reference/
+      verify_assembly_references/CORE_MODULES/Unsupported 改动（`verify_core_reference` 仅现于新测试
+      注释）；夹具 diff 仅移除 5 行吞错代码，零断言删改；`stdlib.rs` 与 `stdlib/auto/http.at` 均未
+      触碰（计划内条件路径未触发）。
+    - AC-06 红名单核算：12 红全预存——在册（musk_p053_4=P733-R2③、plan606、schema×2、
+      kitchen_sink 族）+ 主检出基线同红实证 6 项 + 双端隔离 PASS 负载 flake 1 项（plan502）。
+  - findings（均非阻塞）：O-1 门禁 `cargo t` 以 `--no-fail-fast` 执行（nextest 默认首红即取消，
+    全量核算必需；测试集无缩减）；O-2 merge 存活守卫采样 3 id 非全 46（机制级覆盖，walk 补全量
+    面；改进候选非缺口）；O-3 13 项 resolved-but-unbound 已在盘点报告 §3 登记（既有 shim/id 分派
+    缺口，755 边界外，如后续被发射路径触达走 PROVIDER_CLAIM_NO_CALLEE 分诊）；O-4 并行态
+    vm_quoted_boundary_wire flake 已在收据登记（serial 纪律内不复发）。
+  - 规范增量审定：SD-01（modify assembly-manifest.md，新增「公共面契约覆盖完整性」节）描述当前
+    行为与持久决策（覆盖规则/守卫锚点/unbound 边界），路径与 AC 关联正确；frontmatter 定稿
+    supersedes=[]（增补非替换）、new=[docs/specs/stdlib/design/assembly-manifest.md]、
+    touched_goals=[GOAL-003, GOAL-016]。发布随 merge。
+  - evidence：reports/{755-startup-diagnosis,755-contract-inventory,755-th-full-receipt}.md（含命令
+    与逐名对账）；本记录内嵌复现命令/结果摘录（R3 抛弃式 worktree 复现、th 双采样）；KNOWN-DEBT
+    P751-D1 闭合候选注记（merge 时定稿销案）。
 
 ## 10. 待澄清事项
 
