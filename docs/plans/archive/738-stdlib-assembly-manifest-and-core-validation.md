@@ -557,6 +557,17 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
   [R6 重开 2026-10-10] R5 needs_fix 后的重闭收据（`68398d2d6`，见 §9）经 R6 复核：R5-01/R5-03 闭合、R5-02 部分闭合（P738-R6-01）——本任务最终档须随新修复提交重跑受影响门禁+CLI 反例后再交下一轮独立 review。
 
 ## 9. 复审记录
+
+### 归档后补充复查 R11（2026-10-10）
+
+- stage: review；plan_id: PLAN-738；plan_revision: 3；outcome: **needs_fix（后续修复项，归档终态不回退）**。
+- reviewed_commit: `9ff34ae0d0b52959de85949eed279e18ce832d7e`（实际落地）；base_commit: R10 `41b4d4be52723ec2462e5ab511d3ea8e588dd38e`；dependency: auto-down `895f8d0f9355c9f5ec3ce8fca268bdb768395846`，根 lock/Spec 输入哈希见 baseline。
+- R9-01/02 已闭合确证：实际生成/复用门的未绑定、已绑定读错误与恢复矩阵通过；五文件格式 exit 0；既有一次绑定状态机 1/1。crates/stdlib/Cargo.toml/.cargo/.config 在 R10、落地和本次主检出间一致；R10 服务 1/1 为历史证据，不冒充本轮重跑。
+- P738-R11-01（P2，AC-06/07，SD-05）：成功读取空 Cargo.lock，生成侧收据为 `811c9dc5`，消费门归 `absent`；正式再生后未变输入仍 stale。真实探针 0/1、exit 101，读错误矩阵先通过，再在两端身份一致断言失败。R10-02 观察升级后续必修；原归档和历史 pass 保留。
+- 验证尾项：R9 th 45/102、57 项未跑仍只有移交 regress 记录，旧批量收据未覆盖此次落地，不能称完整 HTTP 档通过。
+- evidence: [R11 报告](../reports/738-review-r11.md)、[baseline](../reports/738-review-r11-baseline.json)、[真实探针](../reports/738-review-r11-probe.py)、[探针测试日志](../reports/738-review-r11-evidence.txt)。本上下文曾做 R5/R9 复查，未参与 R9 修复；本轮定向验证，不宣称全新上下文全 AC 复审。
+- state: **archived / delivered 保持**；next: 按仓库流程另立后续修复合同及 worktree，统一空文件与 NotFound 身份分类，补负例及服务复验，并完成完整串行 th/到期批量回归。未实施代码修复，不发布新规范，不把登记当批准延期。
+
   [✅ R9 修复重闭（框补翻）] R9-02 四格式点于 41b4d4be5 收敛（token 等价核证）；R10 pass 含服务链补跑 1/1；delivery=9ff34ae0d，HTTP 全档未完成段点名移交 regress（merge 收据）。
 
 ### 独立复审 R10（2026-10-10，pass → reviewed；R9 必修闭合定向复审·全新上下文）

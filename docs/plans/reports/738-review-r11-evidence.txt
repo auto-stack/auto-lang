@@ -1,0 +1,30 @@
+Test execution output; preceding compiler warnings omitted.
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 18.83s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src\lib.rs (D:/autostack/auto-lang/target\debug\deps\auto_man-64245cd8e240a5dd.exe)
+
+running 1 test
+test rust_ui::tests::review738_r5_lock_drift_after_first_materialization ...   ✓ Generated Rust server: project-back/
+  ✓ Generated Rust server: project-back/
+  ✓ Generated Rust server: project-back/
+R5_PROBE R11 read-error generator+unbound+bound+recovery PASS
+  ✓ Generated Rust server: project-back/
+  ✓ Generated Rust server: project-back/
+R5_PROBE R11 empty-lock first_fresh=true first_receipt="absent" regenerated_receipt="811c9dc5" regenerated_fresh=false
+
+thread 'rust_ui::tests::review738_r5_lock_drift_after_first_materialization' (24228) panicked at crates\auto-man\src\rust_ui.rs:5127:9:
+assertion `left == right` failed: empty lock must have one identity in generator and freshness consumer
+  left: String("absent")
+ right: String("811c9dc5")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    rust_ui::tests::review738_r5_lock_drift_after_first_materialization
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 363 filtered out; finished in 1.40s
+
+error: test failed, to rerun pass `-p auto-man --lib`
