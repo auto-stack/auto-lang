@@ -1763,25 +1763,51 @@ mod plan326_tests {
         /// snapshot). The server thread is detached (blocks forever; the test
         /// process reaps it on exit — fine because CI runs each `cargo test`
         /// invocation as a separate process).
+        ///
+        /// PLAN-755 T-02: bounded startup diagnostics. A startup failure (e.g.
+        /// SIGNATURE_UNVERIFIED, `crate::run` returning Err within ~30ms) must
+        /// surface with its real reason inside the ready window instead of
+        /// being swallowed by `let _ =` and buried in client-side
+        /// connect-refused retries (~2.15s per attempt on this host — the
+        /// 751-R2 120s TERMINATING mechanism).
         fn start_server(code: &str, port: u16) -> u16 {
             clear_http_routes();
             std::env::set_var("AUTO_HTTP_PORT", port.to_string());
             let code = code.to_string();
+            let (outcome_tx, outcome_rx) = std::sync::mpsc::channel::<String>();
             let _server = std::thread::Builder::new()
                 .stack_size(8 * 1024 * 1024)
                 .spawn(move || {
-                    let _ = crate::run(&code);
+                    let outcome = match std::panic::catch_unwind(
+                        std::panic::AssertUnwindSafe(|| crate::run(&code)),
+                    ) {
+                        Ok(Ok(value)) => format!(
+                            "crate::run returned Ok ({} bytes) without serving",
+                            value.len()
+                        ),
+                        Ok(Err(err)) => format!("crate::run failed: {err}"),
+                        Err(panic) => format!("crate::run panicked: {panic:?}"),
+                    };
+                    let _ = outcome_tx.send(outcome);
                 })
                 .expect("spawn server thread");
             // Wait for the server to accept connections before returning, so the
             // first http_get doesn't race against a not-yet-bound listener.
             for _ in 0..50 {
                 if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                    break;
+                    return port;
+                }
+                if let Ok(outcome) = outcome_rx.try_recv() {
+                    panic!("test server failed to start on port {port}: {outcome}");
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
-            port
+            panic!(
+                "test server never accepted connections on port {port}: {}",
+                outcome_rx.try_recv().unwrap_or_else(|_| {
+                    "crate::run still blocking but the port is not accepting".to_string()
+                })
+            );
         }
 
         /// Start the real back/api.at with its sibling db.at resolved from the
@@ -1802,19 +1828,43 @@ mod plan326_tests {
             let source = std::fs::read_to_string(&entry)
                 .unwrap_or_else(|error| panic!("read {}: {error}", entry.display()));
             let source_path = entry.to_string_lossy().into_owned();
+            // PLAN-755 T-02：同 start_server 的有界启动诊断（Err/panic 不吞）。
+            let (outcome_tx, outcome_rx) = std::sync::mpsc::channel::<String>();
             let _server = std::thread::Builder::new()
                 .stack_size(16 * 1024 * 1024)
                 .spawn(move || {
-                    let _ = crate::run_with_capture_and_path(&source, &source_path);
+                    let outcome = match std::panic::catch_unwind(
+                        std::panic::AssertUnwindSafe(|| {
+                            crate::run_with_capture_and_path(&source, &source_path)
+                        }),
+                    ) {
+                        Ok(Ok(value)) => format!(
+                            "run_with_capture_and_path returned Ok ({} bytes) without serving",
+                            value.0.len()
+                        ),
+                        Ok(Err(err)) => format!("run_with_capture_and_path failed: {err}"),
+                        Err(panic) => format!("run_with_capture_and_path panicked: {panic:?}"),
+                    };
+                    let _ = outcome_tx.send(outcome);
                 })
                 .expect("spawn real example API server");
             for _ in 0..50 {
                 if TcpStream::connect(("127.0.0.1", port)).is_ok() {
                     return port;
                 }
+                if let Ok(outcome) = outcome_rx.try_recv() {
+                    panic!("{example} VM API failed to start on port {port}: {outcome}");
+                }
                 std::thread::sleep(Duration::from_millis(100));
             }
-            panic!("{} VM API did not listen on port {port}", example);
+            panic!(
+                "{} VM API did not listen on port {port}: {}",
+                example,
+                outcome_rx.try_recv().unwrap_or_else(|_| {
+                    "run_with_capture_and_path still blocking but the port is not accepting"
+                        .to_string()
+                })
+            );
         }
 
         /// P442-4: e2e 端口唯一性守卫。nextest 每测试一进程并行执行，两个
