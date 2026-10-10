@@ -750,7 +750,7 @@ P748_PROBE=1 配给过程 dump（env 门控，常驻）；③iced 0.14 `Limits::
 - ledger_refreshed: .autoos/specs.json（tracked，经 worktree 提交）——designs P748-1/P748-2、reviews P748-3 新增 + designs P733-2 边界③刷新（同 target current-knowledge 更新），回读核验 ✓
 - archived: docs/plans/archive/748-vm-cond-eval-and-field-write.md（status: archived，completion_kind: delivered）
 - observations: ①AC-14（jade 撤层复验）external-pending——jade 侧需新构建（本 merge 后 auto.exe/release）方可撤 4b398a4 两层 workaround 复验，669/682 先例流程；②**生产工件未重建**：release auto.exe（含 jade 所需 autodown+padding 修复）与依赖仓构建均陈旧——jade 复验/用户取用前须重建（本仓无运行中生产进程，不需重启）；③批量回归未到期（last_covered=740@2026-10-08T11:20Z，741..749 无 %5==0 计划落地，<48h）——下一合并或 plan 750 触发；④gallery 围栏随批量档
-- cleaned: 见后续提交（wt-guard → worktree/branch/组目录移除回执）
+- cleaned: wt-guard clean ✓（无 reparse point）→ worktree lang-748/auto-lang 移除 ✓ → branch plan-748-dev 删除（was 575cd5778）✓ → 组目录保留（.wt/lang-748/auto-down 兄弟在位——非本计划 worktree，own lifecycle）
 
 ## 待澄清事项
 
