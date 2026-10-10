@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-753
-status: executing
+status: execution_done
 feature_name: ecosystem-readme-refresh
 author: [codex]
 created_at: 2026-10-10
@@ -15,7 +15,7 @@ new_spec_components: [docs/specs/website/design/ecosystem-readme.md]
 touched_goals: [GOAL-014]
 
 affects: [website, auto-lang]
-current_step: 0
+current_step: 4
 total_steps: 5
 ---
 
@@ -149,14 +149,14 @@ os-ai-introduction.ts=82a30a079252edd0a14a1b77570e5b52e570ac75bea0392913190262f1
 
 ## 8. 执行步骤
 
-- [ ] **T-01**（确认 revision 1 后；AC-01..05）：重新核对基线，仅提交本计划、proposal、
+- [x] **T-01**（确认 revision 1 后；AC-01..05）：重新核对基线，仅提交本计划、proposal、
   .next-id；scripts/new-wt-group.sh lang-753 --branch plan-753-dev 建专属双仓组，
   auto-down 仅读依赖；填写最终事实/命令/图片 hash 表。
-- [ ] **T-02**（T-01 后；AC-01/02/04）：worktree 重写 README.md、README.cn.md，
+- [x] **T-02**（T-01 后；AC-01/02/04）：worktree 重写 README.md、README.cn.md，
   生态/应用矩阵、共享原图、学习与 quick start 入口一致完整。
-- [ ] **T-03**（T-01 后；AC-03/05）：新增 docs/language/overview.md、overview.cn.md，
+- [x] **T-03**（T-01 后；AC-03/05）：新增 docs/language/overview.md、overview.cn.md，
   必要时更新 learning-navigation.mjs；核对当前语料/CLI并记录旧内容去向。
-- [ ] **T-04**（T-02/03 后；AC-01..05）：完成 §6 验证，写
+- [x] **T-04**（T-02/03 后；AC-01..05）：完成 §6 验证，写
   docs/plans/reports/753-readme-verification.md；证据附真实渲染截图与未通过项处理。
 - [ ] **T-05**（T-04 后；AC-06）：显式 /auto-plan:review 独立于实施结论逐项复验，
   扫描遗漏/延后/workaround；通过后 /auto-plan:merge 沉淀 SD-01/02、账本与 spec-index、
@@ -175,3 +175,16 @@ os-ai-introduction.ts=82a30a079252edd0a14a1b77570e5b52e570ac75bea0392913190262f1
 - 已解决：用户确认 revision 1，授权继续执行。
 - 可选：若已有确定的新官网主域名可替换源码优先入口；当前公网状态不阻碍本计划，
   本轮不自动扩展为网站部署或发布。
+
+## 11. 执行实录（2026-10-10）
+
+- stage: work；plan_revision: 1；T-01..04 已完成，进入 review。
+- 审批簿记 f68e1690e 后由 new-wt-group 建 lang-753 专属组；auto-down detached
+  895f8d0 仅读。本轮按批准合同完成两版 README、当前语言概览、学习入口与 SD-01/02。
+- 证据：[验证报告](reports/753-readme-verification.md)，八幅窄/宽 GFM 页面捕获。
+  8 个去重独立示例精确输出断言通过；152 本地引用、52 仓库源码引用无缺失，9 外仓
+  正文核验通过；website build 133.04s，EN/ZH 新概览与 hub 卡片实际 DOM 通过。
+- Category A：未跑 cargo t/docs_gen；未改 crates 下实现或正式语法规约。
+- 合入收尾的前置风险 P753-D1：当前 store 读取现有 runtime Specs 账本 HTTP 500；
+  原数据未写入/删除。T-05 中投影/归档/cleanup 尚未完成，不能将报告解释成完整交付收据。
+  复审将独立判断文档与 SD-01/02；若其通过，只能合入可验内容并保留 publication 阻塞。
