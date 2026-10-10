@@ -1988,6 +1988,56 @@ impl StyleClass {
 
         Err(format!("Unknown style class: {}", class))
     }
+
+    /// PLAN-748 T-07（jade 件一根修）：视觉绘制类——bg/border/rounded/
+    /// shadow/ring 族。`overflow-y-auto` 元素转写为 Scrollable 时，该子集
+    /// 上移到视口层（CSS 语义：滚动容器的背景/边框属容器本体，随容器
+    /// 拉伸满高；滚动内容止于内容高，视觉类留在内容上即「bg 底边止于
+    /// 内容底」）。见 aura_view_builder::split_scroll_visual_classes。
+    pub fn is_visual_paint(&self) -> bool {
+        matches!(
+            self,
+            StyleClass::BackgroundColor(_)
+                | StyleClass::Border
+                | StyleClass::BorderBottom
+                | StyleClass::BorderTop
+                | StyleClass::BorderLeft
+                | StyleClass::BorderRight
+                | StyleClass::Border0
+                | StyleClass::BorderWidth(_)
+                | StyleClass::BorderLeftWidth(_)
+                | StyleClass::BorderColor(_)
+                | StyleClass::Rounded
+                | StyleClass::RoundedSm
+                | StyleClass::RoundedMd
+                | StyleClass::RoundedLg
+                | StyleClass::RoundedXl
+                | StyleClass::Rounded2Xl
+                | StyleClass::Rounded3Xl
+                | StyleClass::RoundedFull
+                | StyleClass::RoundedNone
+                | StyleClass::RoundedT(_)
+                | StyleClass::RoundedB(_)
+                | StyleClass::RoundedL(_)
+                | StyleClass::RoundedR(_)
+                | StyleClass::RoundedTL(_)
+                | StyleClass::RoundedTR(_)
+                | StyleClass::RoundedBL(_)
+                | StyleClass::RoundedBR(_)
+                | StyleClass::Shadow
+                | StyleClass::ShadowSm
+                | StyleClass::ShadowMd
+                | StyleClass::ShadowLg
+                | StyleClass::ShadowXl
+                | StyleClass::Shadow2Xl
+                | StyleClass::ShadowNone
+                | StyleClass::ShadowColor(_)
+                | StyleClass::ShadowArbitrary(_)
+                | StyleClass::RingWidth(_)
+                | StyleClass::RingColor(_)
+                | StyleClass::RingInset
+        )
+    }
 }
 
 /// Helper function to parse size values

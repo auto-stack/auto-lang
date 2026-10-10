@@ -3743,3 +3743,65 @@ fn p748_j3_stretch_line_fixed_flex_fixed_allocation() {
         "C 列必须落在行右端（x>700，期望 ≈1024−288），实测 {cx:.1}"
     );
 }
+
+/// 件一根修回归锁（PLAN-748 T-07）：overflow-y-auto col 的视觉类
+/// （bg/border/radius/shadow/ring）上移**视口容器层**（CSS 语义：滚动容器
+/// 本体的背景随容器满高），滚动内容 col 拿剥离余集（内容止于内容高，
+/// 视觉不再随之止步——jade 侧栏 bg 底边=树内容底的根因）。无视觉类 →
+/// 零包装层（现行为不变）。
+#[test]
+fn p748_j1_scroll_visual_classes_move_to_viewport() {
+    use crate::ui::style::StyleClass;
+    let src_with_visual = "widget P748J1V {\n    view {\n        col (style: \"h-full w-full\") {\n            row (style: \"flex-1 items-stretch w-full\") {\n                col (style: \"w-56 bg-card border-r overflow-y-auto flex-col\") {\n                    text \"J1VL\"\n                }\n                col (style: \"flex-1\") {\n                    text \"J1VR\"\n                }\n            }\n        }\n    }\n}\n";
+    let view = p748_view(src_with_visual);
+    // 根 col → row → 第一子：必须是 Container（视觉）> Scrollable > col。
+    let View::Column { children: root_kids, .. } = view else {
+        panic!("期望根 Column");
+    };
+    let View::Row { children: row_kids, .. } = &root_kids[0] else {
+        panic!("期望 Row");
+    };
+    let View::Container { style: vp_style, child, .. } = &row_kids[0] else {
+        panic!("期望视口 Container 包装（有 bg-card/border-r 视觉类），实际 {:?}",
+            std::mem::discriminant(&row_kids[0]))
+    };
+    let vp_classes = vp_style.as_ref().map(|s| &s.classes).unwrap();
+    assert!(
+        vp_classes.iter().any(|c| matches!(c, StyleClass::BackgroundColor(_))),
+        "视口容器必须承载 bg-card"
+    );
+    assert!(
+        vp_classes.iter().any(|c| matches!(c, StyleClass::BorderRight)),
+        "视口容器必须承载 border-r"
+    );
+    let View::Scrollable { child: content, style: sc_style, .. } = child.as_ref() else {
+        panic!("期望 Container 内为 Scrollable");
+    };
+    let _ = sc_style;
+    let View::Column { style: c_style, .. } = content.as_ref() else {
+        panic!("期望 Scrollable 内为内容 col");
+    };
+    let content_classes = c_style.as_ref().map(|s| &s.classes).unwrap();
+    assert!(
+        content_classes.iter().all(|c| !c.is_visual_paint()),
+        "内容 col 必须剥离全部视觉类，实际 {:?}", content_classes
+    );
+    assert!(
+        content_classes.iter().any(|c| matches!(c, StyleClass::FlexCol)),
+        "布局类（flex-col）保留在内容 col"
+    );
+
+    // 形 2：无视觉类 → 零包装层（Scrollable 直挂 row）。
+    let src_plain = src_with_visual.replace(
+        "w-56 bg-card border-r overflow-y-auto flex-col",
+        "w-56 overflow-y-auto flex-col",
+    );
+    let view2 = p748_view(&src_plain);
+    let View::Column { children: root2, .. } = view2 else { panic!("期望根 Column") };
+    let View::Row { children: row2, .. } = &root2[0] else { panic!("期望 Row") };
+    assert!(
+        matches!(row2[0], View::Scrollable { .. }),
+        "无视觉类的滚动 col 不得新增包装层（现行为不变），实际 {:?}",
+        std::mem::discriminant(&row2[0])
+    );
+}

@@ -2719,8 +2719,17 @@ impl<'a> AuraViewBuilder<'a> {
             s.classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::OverflowYAuto | crate::ui::style::StyleClass::OverflowAuto))
         });
         let scroll_style = if needs_scroll { style.clone() } else { None };
-        if let Some(s) = style {
-            builder = builder.with_style(s);
+        // PLAN-748 T-07：滚动内容 col 拿视觉类剥离后的余集（bg/border 上移
+        // 视口层，见 split_scroll_visual_classes）。
+        match (style, scroll_style.as_ref()) {
+            (Some(s), Some(sc)) => {
+                let (_, rest) = split_scroll_visual_classes(sc);
+                builder = builder.with_style(rest);
+            }
+            (Some(s), None) => {
+                builder = builder.with_style(s);
+            }
+            _ => {}
         }
         for child in child_views {
             builder = builder.child(child);
@@ -2729,14 +2738,38 @@ impl<'a> AuraViewBuilder<'a> {
         // PLAN-536 T6: overflow 包 Scrollable 之后再包 Overlay 悬浮层——
         // 浮层锚=父容器(含滚动外壳)整体 bounds。
         if needs_scroll {
-            let base = View::Scrollable {
+            let sc = scroll_style.expect("needs_scroll ⇒ Some");
+            let (viewport_visual, _) = split_scroll_visual_classes(&sc);
+            let scroll_view = View::Scrollable {
                 child: Box::new(col_view),
-                width: None, height: None, style: scroll_style,
+                width: None, height: None,
+                style: if viewport_visual.is_some() {
+                    Some(ensure_full_scroll_dims(&sc))
+                } else {
+                    Some(sc)
+                },
                 auto_scroll: false,
                 offset: None, on_scroll: None,
                 axes: crate::ui::scroll::ScrollAxes::Y,
                 scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
                 controller: None,
+            };
+            // PLAN-748 T-07：视觉子集上移视口容器（Shrink 包装随 Scrollable
+            // Fill 解析满高；build_container 经 apply_side_borders 承载单侧
+            // 边框）。无视觉类 → 零包装层（现行为不变）。
+            let base = match viewport_visual {
+                Some(v) => View::Container {
+                    child: Box::new(scroll_view),
+                    padding: 0,
+                    width: None,
+                    height: None,
+                    center_x: false,
+                    center_y: false,
+                    style: Some(v),
+                    onclick: None,
+                    on_right_click: None,
+                },
+                None => scroll_view,
             };
             return fold_floats(base, floats);
         }
@@ -7417,8 +7450,17 @@ let tabs_inner = View::Row {
         });
         let scroll_style = if needs_scroll { style.clone() } else { None };
 
-        if let Some(s) = style {
-            builder = builder.with_style(s);
+        // PLAN-748 T-07：滚动内容 col 拿视觉类剥离后的余集（tracked 双胎
+        // 同款，见 split_scroll_visual_classes）。
+        match (style, scroll_style.as_ref()) {
+            (Some(s), Some(sc)) => {
+                let (_, rest) = split_scroll_visual_classes(sc);
+                builder = builder.with_style(rest);
+            }
+            (Some(s), None) => {
+                builder = builder.with_style(s);
+            }
+            _ => {}
         }
 
         for child in child_views {
@@ -7428,14 +7470,35 @@ let tabs_inner = View::Row {
         let col_view = builder.build();
         // Plan 048:overflow-y-auto / overflow-auto → Scrollable。
         let base = if needs_scroll {
-            View::Scrollable {
+            let sc = scroll_style.expect("needs_scroll ⇒ Some");
+            let (viewport_visual, _) = split_scroll_visual_classes(&sc);
+            let scroll_view = View::Scrollable {
                 child: Box::new(col_view),
-                width: None, height: None, style: scroll_style,
+                width: None, height: None,
+                style: if viewport_visual.is_some() {
+                    Some(ensure_full_scroll_dims(&sc))
+                } else {
+                    Some(sc)
+                },
                 auto_scroll: false,
                 offset: None, on_scroll: None,
                 axes: crate::ui::scroll::ScrollAxes::Y,
                 scrollbar_policy: crate::ui::scroll::ScrollbarPolicy::Auto,
                 controller: None,
+            };
+            match viewport_visual {
+                Some(v) => View::Container {
+                    child: Box::new(scroll_view),
+                    padding: 0,
+                    width: None,
+                    height: None,
+                    center_x: false,
+                    center_y: false,
+                    style: Some(v),
+                    onclick: None,
+                    on_right_click: None,
+                },
+                None => scroll_view,
             }
         } else {
             col_view
@@ -14203,6 +14266,70 @@ fn first_meaningful_stmt(body: &crate::ast::Body) -> Option<&crate::ast::Stmt> {
     body.stmts.iter().find(
         |s| !matches!(s, crate::ast::Stmt::Comment(_) | crate::ast::Stmt::EmptyLine(_)),
     )
+}
+
+/// PLAN-748 T-07（jade 件一根修）：滚动转写的视觉类上移。CSS 语义里
+/// `overflow-y-auto` 元素的 bg/border/radius/shadow 属**滚动容器本体**
+/// （视口层，随容器在 stretch/bounded 语境拉伸满高），不属滚动内容
+/// （内容止于内容高）。此前转写把整串 style clone 给内容 col——
+/// `flex-col` 等显式显示类阻断 overflow-y 的 height=Fill 推断时，内容
+/// col 止于内容高，bg/border 随之止步（jade 侧栏 bg 底边=树内容底
+/// 550/786 的根因；视口 Scrollable 本身 Fill 拉伸正常）。
+///
+/// 拆分：`(视口视觉子集, 内容布局余集)`。视口子集为空 → 零包装层
+/// （无视觉类的滚动 col 现行为不变）。hover/variant 类随内容（现状
+/// 保持；纯视觉 hover 上移留后续按需）。
+///
+/// 视口子集附带头寸镜像：拷贝原显式 Width/Height 类，缺省补 Full——
+/// iced 0.14 `Limits::(Shrink)` 置 compression 位，Fill 子件在压缩轴
+/// 解析为内容高（Scrollable 在 Shrink 容器内塌 42px 实证）；视口容器
+/// 须与 Scrollable 同 Length 才能传递拉伸。缺省 Full 与 from_style 对
+/// overflow-y 的 height=Fill 推断、Scrollable 缺省 width=Fill 同口径。
+fn split_scroll_visual_classes(s: &Style) -> (Option<Style>, Style) {
+    let mut visual = Vec::new();
+    let mut rest = Vec::new();
+    let mut width_cls: Option<crate::ui::style::StyleClass> = None;
+    let mut height_cls: Option<crate::ui::style::StyleClass> = None;
+    for c in &s.classes {
+        match c {
+            crate::ui::style::StyleClass::Width(_) => {
+                width_cls = Some(c.clone());
+                rest.push(c.clone());
+            }
+            crate::ui::style::StyleClass::Height(_) => {
+                height_cls = Some(c.clone());
+                rest.push(c.clone());
+            }
+            _ if c.is_visual_paint() => visual.push(c.clone()),
+            _ => rest.push(c.clone()),
+        }
+    }
+    let viewport = (!visual.is_empty()).then(|| {
+        let mut classes = visual;
+        classes.push(width_cls.unwrap_or(crate::ui::style::StyleClass::Width(
+            crate::ui::style::SizeValue::Full,
+        )));
+        classes.push(height_cls.unwrap_or(crate::ui::style::StyleClass::Height(
+            crate::ui::style::SizeValue::Full,
+        )));
+        Style { classes, hover_classes: Vec::new(), variant_classes: Vec::new() }
+    });
+    (viewport, Style { classes: rest, hover_classes: s.hover_classes.clone(), variant_classes: s.variant_classes.clone() })
+}
+
+/// PLAN-748 T-07：视口包装分支的 Scrollable 头寸补全——外部尺寸语义已由
+/// 视口容器镜像承担，Scrollable 在容器内以 Fill×Fill 铺满（无显式
+/// Width/Height 类时补 Full；Shrink 会在容器压缩语境塌内容高，J1 实测
+/// 42px）。显式 w-*/h-* 保留原类（容器已镜像，同值无双关）。
+fn ensure_full_scroll_dims(s: &Style) -> Style {
+    let mut classes = s.classes.clone();
+    if !classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::Width(_))) {
+        classes.push(crate::ui::style::StyleClass::Width(crate::ui::style::SizeValue::Full));
+    }
+    if !classes.iter().any(|c| matches!(c, crate::ui::style::StyleClass::Height(_))) {
+        classes.push(crate::ui::style::StyleClass::Height(crate::ui::style::SizeValue::Full));
+    }
+    Style { classes, hover_classes: s.hover_classes.clone(), variant_classes: s.variant_classes.clone() }
 }
 
 /// PLAN-050 T7 (C5): 生产管线的 use.web component 名单（lib.rs 装载期从
