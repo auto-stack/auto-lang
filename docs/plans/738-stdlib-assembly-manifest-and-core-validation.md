@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-738
-status: executing
+status: reviewed
 feature_name: stdlib-assembly-manifest-and-core-validation
 author: [agent]
 created_at: 2026-10-03
 updated_at: 2026-10-10
 plan_revision: 3
-current_step: 4  # R9 needs_fix：T-12/13/14 重开；T-01/T-09/T-10/T-11 完成；主链修复与 R8 历史证据保留
+current_step: 7  # R10 pass：T-12/13/14 R9 修复重闭；T-01/T-09..T-14 完成；T-02..T-08 由 Phase 3 承接（R8 口径恢复）
 total_steps: 14
 supersedes_spec_components:
   - docs/specs/stdlib/project.md
@@ -96,8 +96,11 @@ affects: [crates/auto-lang/src/compile.rs, crates/auto-lang/src/autovm_persisten
 - 门禁（41b4d4be5）：classify 1/1、双真值表、api_gen 44/44、lock 状态机 1/1（shell_pack=R3 在案预存）；cb_web_mime PASS、plan738 73/73 抽验；R9 已证合同面两树逐字节一致——VM/契约/服务链门禁不重复全跑
 - next: R10 独立复审（定向：R9-01/02 闭合+修复树面）→ pass 重启 merge
 
+**2026-10-10 R10 独立复审：pass → reviewed，可重启 merge。** R9-01 双端闭合确证（gate：NotFound→absent 哨兵/其它错误→None 落入 `lock_freshness` `_ => false` 保守陈旧，反例 recorded="absent"×PermissionDenied 现判 false 有显式断言；生成侧非 NotFound 读错误 return Err 拒写收据）；R9-02 token 级核证（lib/engine 去空白 token 流逐字节一致、renderer 唯一差异=尾逗号移除 AST 等价）+ rustfmt 五文件机械干净；门禁全绿（plan738 73/73、tv 162/162 含 cb_web_mime PASS、api_gen 44+1 ignored、lock 状态机 1/1、三 crate check 零 error、**正式生成服务链 1/1@42.29s——R9-I 明确要求的重跑项，work 交接省略由本轮补跑**）；SD 沉淀与合同面（stdlib_assembly/native*/stdlib/**）在 19973b089..41b4d4be5 逐字节未扰动。三项 P4 观察登记（负例矩阵 bound×None 无显式断言、空 lock 文件归 absent 哨兵、服务链省略流程记录）。详见 [738-review-r10.md](reports/738-review-r10.md)。
+
 ### merge 收据（2026-10-10，PLAN-738:r3 → needs_fix/实现冲突）
 
+- **2026-10-10 R10 处置更新：修复复审 pass，可重启 merge**——R9-01/02 已在修复合并树 `41b4d4be5` 闭合（R10 pass，[738-review-r10.md](reports/738-review-r10.md)）；rebase 重放基面须更新为该提交所在链（19973b089→41b4d4be5），landed 及其后各步骤自此重启。
 - stage: merge | plan_id: PLAN-738 | plan_revision: 3 | outcome: needs_fix（落地受阻：rebase 实现冲突）
 - reviewed_commit: 3713337d9（R8 pass 不变；代码未改动）
 - prepared ✓: SD 沉淀提交 `641f66a5f`（3713337d9 的文档后代，worktree 已回滚保留在该 tip）
@@ -483,6 +486,7 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 ### Phase 3 / T-12：manifest 共同身份与多消费者三角对拍（R9 重开）
 
 > R9：以下完成说明保留为历史执行证据；读取失败角落与最终格式门尚未闭合，修复要求见 §9 R9 与 [738-review-r9.md](reports/738-review-r9.md)。
+> [✅ 已完成·R9 修复重闭 2026-10-10] `41b4d4be5`：lock 读错误 fail-closed（gate `classify_lock_read` NotFound=absent 哨兵/其它=None 保守陈旧；生成侧 Err 拒写收据；单测 classify_lock_read_fail_closed 含端到端 absent×None=false）；正式生成服务链 1/1@42.29s（R10 补跑）；R10 pass 确证。
 
 - [x] 依赖 T-10/11。触面：`stdlib_assembly/manifest.rs::{AssemblyManifest::freeze,...}`、`CompileSession`/batch/persistent 最终快照、`trans/{rust,c}.rs`、`lib.rs`、`auto/src/cmd_stdlib.rs` actual/check、`auto-man/src/api_gen.rs::{generated_api_assembly,current_generated_api_assembly,...}`、`rust_ui.rs` 新鲜度门与正式服务 ready。先记录共同 identity/消费者 receipt 投影、schema 兼容和已有收据迁移规则；未知/旧不完整快照须明确陈旧或拒绝。
   [✅ 已完成] worktree `b6cfc6df1`（基线 `84bec29ef`）：**schema 3→4 双指纹**——`fingerprint`=共同装配身份（consumer 名置空+consumer_input 源剔除的中立投影哈希）、`consumer_fingerprint`=消费者收据身份（全量 payload，=旧单指纹语义）；迁移规则=新鲜度门/api_gen 烘焙常量/在途核对全部切 `consumer_fingerprint()`（同消费者跨时语义零变化），跨消费者断言用 `fingerprint()`；未知/旧快照维持保守再生真值表。
@@ -498,6 +502,7 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 ### Phase 3 / T-13：SD-01..07 终稿与原任务验收对账（R9 重开）
 
 > R9：以下完成说明保留为历史执行证据；读取失败角落与最终格式门尚未闭合，修复要求见 §9 R9 与 [738-review-r9.md](reports/738-review-r9.md)。
+> [✅ 已完成·R9 修复重闭 2026-10-10] SD-05 读取失败拒绝语义与 `41b4d4be5` 行为一致（SD 沉淀 `adfb7a5d1` 九文件在修复链上逐字节未扰动，`git diff 19973b089 41b4d4be5 -- docs/specs/` 为空）；R10 确证。
 
 - [ ] 依赖 T-09..12。修订主检出 `docs/plans/reports/738-sd-drafts.md`，形成对当前 canonical 可应用的新增/替换正文和位置；保留七条 SD ID 与 frontmatter spec-impact。纠正 SD-06 的退出码；核对 manifest 字段/共同身份、strict 验证等级、动态引用边界、真实生成依赖与 D3a/D3b 能力声明，不将草稿规范降到当前缺陷行为。
   [✅ 已完成] SD 终稿重绑 Phase 3 提交链（2c1b4a763→c1579ed71→84bec29ef→b6cfc6df1）：SD-01 升 schema 4 双指纹+Resolved-only 非成功依据；SD-02 增运行形态分家+适配契约注册表+json.is_valid 漂移如实上报；SD-03 增核心导入闭包；SD-04 增闭包全路径+面外边界显式化；SD-05 增 consumer_fingerprint 统一/back 模块闭包/workspace lock；SD-06 退出码纠正为 2=错误、3=partial（以代码为准）；SD-07 维持 D3a/D3b 边界。七条 SD ID 与 frontmatter spec-impact 不变。
@@ -514,6 +519,7 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
 ### Phase 3 / T-14：最终提交门禁、真实验收与独立 review 交接（R9 重开）
 
 > R9：以下完成说明保留为历史执行证据；读取失败角落与最终格式门尚未闭合，修复要求见 §9 R9 与 [738-review-r9.md](reports/738-review-r9.md)。
+> [✅ 已完成·R9 修复重闭 2026-10-10] `41b4d4be5` 格式门收敛（四点 token 级纯格式+rustfmt 五文件干净）、三 crate check 零 error、零 debug 残留、worktree clean；门禁=plan738 73/73、tv 162/162（cb_web_mime PASS）、api_gen 44+1 ignored、lock 状态机/classify 1/1、服务链 1/1@42.29s（R10 实跑收据）；R10 pass。
 
 - [ ] 依赖 T-09..13。先提交全部实现/测试，冻结 clean code commit 与依赖/lock/features。按 §6.3/§6.4 执行三 crate check、完整裸 t + tv/tt/串行 th、必要 scoped/CLI/API 档、三目标同源与 C stdio witness、正式生成服务完整链。运行期间不改输入；若再修代码，新提交重跑受影响门禁，不能沿用旧提交成功记录作为最终证明。
   [✅ 已完成·R3 修复重闭] 原 `b3a4d660e` 收据在案；R3 needs_fix 后新提交 `9c255993b`（R3-01 一行属性复位）按纪律重跑受影响门禁：freshness 双真值表真实运行绿（shell_pack 环境红在案）、api_gen 43/43、auto-man check 零 error、`--tests` never-used 基线 1→0、rustfmt clean。
@@ -528,6 +534,26 @@ inspect验证不执行网络/文件业务；真实执行witness在单独fixture�
   [R6 重开 2026-10-10] R5 needs_fix 后的重闭收据（`68398d2d6`，见 §9）经 R6 复核：R5-01/R5-03 闭合、R5-02 部分闭合（P738-R6-01）——本任务最终档须随新修复提交重跑受影响门禁+CLI 反例后再交下一轮独立 review。
 
 ## 9. 复审记录
+
+### 独立复审 R10（2026-10-10，pass → reviewed；R9 必修闭合定向复审·全新上下文）
+
+- stage: review
+- plan_id: PLAN-738
+- plan_revision: 3（验收合同不变）
+- outcome: **pass**——P738-R9-01/R9-02 在修复合并树 `41b4d4be5` 闭合确证；门禁全绿（含本轮补跑的正式生成服务链）；无新引入问题；修复合并树可落地，**可重启 merge**
+- reviewed_commit: `41b4d4be52723ec2462e5ab511d3ea8e588dd38e`（worktree `D:/autostack/.wt/lang-738/auto-lang`，plan-738-dev，入场/结束 clean，只读复审；diff=5 files +74/−31 与声称触面一致）
+- base_commit: 修复父 `19973b089`（R9-I/R9-II 对象）；历史链 R8 reviewed `3713337d9`/SD `641f66a5f`/SD 沉淀 `adfb7a5d1`；主检出入场 `925c3186a`
+- dependency_revisions: auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`（未触）
+- 复审范围声明：R8 已对全 AC/SD pass、R9-I/II 已确证主链修复机制并判两项 reviewed 树既有必修；本轮定向复核两项闭合+修复合并树回归面+一致性，不重复全 AC 审计（合同面经本轮机械复核在 19973b089..41b4d4be5 逐字节一致，VM/契约门禁省略依据成立）
+- R9-01 闭合确证（major）：gate 侧 `classify_lock_read`（NotFound→`Some(Vec::new())`=absent 哨兵；其它错误→`None`）→ `current_lock` 映射（None 不进 map）→ `lock_freshness`（L4079-84）`_ => false`——**recorded="absent"×PermissionDenied 现判 false**，显式断言在案（classify_lock_read_fail_closed L5188+真值表 L5076）；旧 `.ok().or_else(absent)` fail-open 路径已删；R5 一次绑定/R6-02 绑定失败保守语义保留（状态机 1/1）。生成侧 api_gen.rs 非 NotFound 读错误 `return Err` 拒写收据，旧 `unwrap_or_else(|_| absent)` 已删
+- R9-02 闭合确证（major）：三文件 hunk **token 级核证**——lib.rs/engine.rs 去空白 token 流与父提交逐字节一致；renderer.rs 唯一差异=`catch_unwind(...,)` 尾逗号移除（AST 等价）；`rustfmt --edition 2021 --check`（1.9.0-stable）五触面文件全部干净 exit 0，不扩大范围
+- findings: 无必修。P738-R10-01（P4 观察）负例矩阵 bound(hash)×读错误(None) 无显式单测断言（语义由 `_ => false` 单臂覆盖）+「恢复可读收敛」无专门测试（机制=读路径纯函数零状态）；P738-R10-02（P4 观察）真实 0 字节 Cargo.lock 归 absent 哨兵（语义可辩护、非 fail-open、cargo 实际不产空 lock）；P738-R10-03（流程记录）work 交接以「合同面一致」省略 R9-I 明确要求的服务链重跑——省略理由覆盖面不含 rust_ui.rs lock 门（服务链 ready 消费路径），本轮补跑闭合
+- evidence（全部 41b4d4be5 worktree 独立实跑，2026-10-10 串行）: classify_lock_read_fail_closed 1/1；freshness 族 2 passed（双真值表）+shell_pack 预存红（R3 起在案，机制分诊=对拍 auto-os/shell 外部仓生成物与修复触面零交集）；review738_r5_lock 1/1；api_gen 44 passed/1 ignored；`cargo t plan738` 73/73@42.5s；`cargo tv` 162/162@2.4s（**cb_web_mime PASS@1.2s**）；正式生成服务完整链 `--features test-http-e2e http_e2e_plan738 -- --ignored` **1/1@42.29s**；三 crate check exit 0 零 error（触面 hunk 零新警告，存量 warning 在 hunk 外）；worktree clean；修复 diff 新增行零 debug 残留；`git diff 19973b089 41b4d4be5 -- docs/specs/` 空（SD 九文件未扰动）；合同面（stdlib_assembly//native.rs/native_catalog.rs/native_registry.rs/stdlib/）`git diff --quiet` 逐字节一致。详见 [738-review-r10.md](reports/738-review-r10.md)
+- acceptance_results: 本轮定向面全 pass；AC-06/07/08 的 R9-01 拖累解除——与 R8 全 AC/SD pass 合并生效
+- independence: 全新上下文 R10 agent（用户受派 R9 必修闭合定向复审），未参与本计划任何实现/复审
+- omissions/debt: P738-R8-01/02、P738-R9-03 观察维持；P738-R10-01/02/03 新登记（登记不等于批准延期）；R9-I 的 HTTP 全档未完成段（45/102 停跑）随 merge 后批量回归收口（regress 到期判定已触发：last_covered=740@2026-10-08T11:20Z）
+- state: **reviewed**（current_step=7，R8 口径恢复：T-01/T-09..T-14 完成，T-02..T-08 由 Phase 3 承接）；不合入、不归档、不删 worktree；禁 tf
+- next: **重启 merge**（`/auto-plan:merge PLAN-738`，授权后）——SD 沉淀已在树（adfb7a5d1）、ledger/Design33/索引、wt-guard+worktree 清理；rebase 重放基面=41b4d4be5 所在链
 
 ### 独立复审 R9-II（2026-10-10，needs_fix 确认 → executing；merge 修复轮定向·全新上下文）
 
