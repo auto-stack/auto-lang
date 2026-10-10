@@ -13,3 +13,4 @@
 | 719 | website-os-ai-introduction | ✅（reviewed→archived） | [archive](../../plans/archive/719-website-os-ai-introduction.md) | LaOS/OS over OS/AI+Lang+OS 连续介绍；宿主/独立系统/自有内核分明，双语总览和历史长文、公开来源、SSR/search 与响应式阅读 |
 | 722 | website-apps-introduction | ✅（reviewed→archived） | [archive](../../plans/archive/722-website-apps-introduction.md) | 四主应用中英概览和独立阅读页；AutoShell原证据迁入guide保留交互；28候选用途与后台边界冻结，后续723补实图并合并概览 |
 | 723 | website-demo-introductions | ✅（reviewed→archived） | [archive](../../plans/archive/723-website-demo-introductions.md) | r2在双语Apps概览接入六类28真实图卡片和就地操作/条件/版本/源码，58旧路由兼容深链；AutoEdit/Shell批准主图，Musk/Jade等待素材；70项回归通过 |
+| 756 | website-v05-copy-and-capture-slots | reviewed（待投影验证后归档） | [Plan](../../plans/756-website-v05-copy-and-capture-slots.md) | 双语首页/v0.5 四主应用、发布与后端条件/入口修正；12 项文字待拍槽与逐图拍摄合同，已批准原图保留 |
