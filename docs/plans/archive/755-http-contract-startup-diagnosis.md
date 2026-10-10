@@ -372,7 +372,7 @@ gate 可达性 | 处置`。gate 可达 = 该 id 会被 `stdlib/auto/http.at` 某
   p736/p748/750/751/752）。
 - **archived**：`git mv` 至 `docs/plans/archive/755-http-contract-startup-diagnosis.md`，
   status=archived，completion_kind: **delivered**。KNOWN-DEBT P751-D1 同批销案（下述）。
-- **cleaned**：见下（收尾提交后回填核验）。
+- **cleaned**：wt-guard 双 clean（auto-lang + auto-down 兄弟）后移除两 worktree、删除分支 plan-755-dev（was e586b9113，全部已落地）、组目录 `.wt/lang-755/` 移除；主检出 worktree 计数 12→11。
 
 ### spec-sync 回写记录（v1 惯例保留）
 
