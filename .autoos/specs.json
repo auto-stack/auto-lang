@@ -1341,6 +1341,18 @@
      ],
      "status": "published",
      "created": "2026-10-10"
+    },
+    {
+     "id": "P755-3",
+     "title": "PLAN-755 th 全档对账收据（14 timeout 清零）",
+     "content": "串行单实例 nextest（--jobs 1 --no-fail-fast，th 别名语义）：102 run / 101 pass / 1 fail / 0 timeout / 200.4s，对比 751 基线 86 passed / 2 failed / 14 timed out / 1962.969s。逐名对账：14 项 timeout 全清（13 plan730 + e2e_a_redirect_302）、interop 转绿、back_proxy 维持在册基线红同形未恶化、86 绿零回归。120s 挂死机制闭合：契约错误 32ms 快返被 let _ = 吞掉 × 本机 ~2.15s/次拒绝连接 × ready-poll 50 次 + 客户端 60 次重试 = nextest 120s TERMINATING；read 相位从未到达。诊断/盘点/对账三收据在 docs/plans/reports/755-*。",
+     "file": "docs/plans/reports/755-th-full-receipt.md",
+     "related": [
+      "PLAN-755",
+      "PLAN-751"
+     ],
+     "status": "published",
+     "created": "2026-10-10"
     }
    ]
   },
@@ -5548,6 +5560,19 @@
      ],
      "status": "published",
      "created": "2026-10-10"
+    },
+    {
+     "id": "P755-1",
+     "title": "stdlib 装配契约公共面覆盖完整性（PLAN-755 SD-01）",
+     "content": "契约=docs/specs/stdlib/design/assembly-manifest.md「公共面契约覆盖完整性（PLAN-755）」节：公共层（.at pub 面）每个 resolved+bound 符号必须在 NativeInterface::production() 最终身份声明有独立适配契约且 signature_matches 逐字核对；缺声明与漂移（inventory 按 Rust 栈载荷推导返回 int 而公共面为 Response）都是缺陷；句柄类返回按公共身份声明（显式身份最后落位，覆盖 inventory 推导与 merge 撤销语义）。新增公共 native 必须同步补契约并附覆盖对账表。常驻守卫=plan755_http_public_face_contract_coverage 走查 + plan755_http_contracts_survive_cffi_merge。resolved-but-unbound 属 shim 缺口走 PROVIDER_CLAIM_NO_CALLEE 分诊不在契约侧补。交付：production() 尾部 +46 条声明（41 缺契约含 upload_receive/commit/reject 与 response_redirect，5 条 ok 族漂移覆盖）+ declare_generic_method_contract_identity（RequestBuilder.json[T]）。",
+     "file": "docs/specs/stdlib/design/assembly-manifest.md",
+     "related": [
+      "PLAN-755",
+      "PLAN-738",
+      "PLAN-751"
+     ],
+     "status": "published",
+     "created": "2026-10-10"
     }
    ]
   },
@@ -8874,6 +8899,19 @@
      "content": "复审 rv1 pass（plan_revision 1；reviewed_commit f16de5a19+fe3d78937，rebase 后 226ebfbbb+ba9b4281b，基面 0884add2a；依赖 auto-down detached@895f8d0）。独立性限制披露：执行会话内复审，裁定从工件重建（关键验证于已提交修订复跑：三测试 3/3 PASS、调用点 grep 恰两处+classify_lock_read 零残留、rustfmt exit 0）。AC-01..06 全 pass；findings P751-D1（high：plan730 上传族 14 项+e2e_a_redirect_302 确定性挂死，红移窗口=PLAN-738 系列，th 面与 751 diff 零因果）与 P751-D2（medium：auto-man 3 预存红=日常档盲区）登记 KNOWN-DEBT 非阻塞。R11 修复要求五要素逐项对上；R11 探针场景形式化为常驻回归测试。",
      "file": "docs/plans/archive/751-empty-lock-identity-th-tail.md",
      "related": [
+      "PLAN-751",
+      "PLAN-738"
+     ],
+     "status": "published",
+     "created": "2026-10-10"
+    },
+    {
+     "id": "P755-2",
+     "title": "PLAN-755 审计收据（R1 pass → R2 needs_fix → R3 pass → merge delivered）",
+     "content": "R1 pass（实施会话内，工件重建+关键复现：未修基面抛弃式 worktree 复现 2.1s 有界 FAIL 含 SIGNATURE_UNVERIFIED、串行 th 双采样一致）；独立 R2 needs_fix（2026-10-10，P755-R2-01 panic 载荷 {panic:?} 只得 Any{..} 未转发（负向反例 0/1）、P755-R2-02 clean 树四文件 rustfmt exit 1、P755-R2-03 modify 误填 new 已纠正）；修复 5672e8e2d（rebase 前 e121debf8，range-diff 全等）：共享 spawn_outcome_reporter + panic_payload_text downcast 提取 + 负向冻结测试随日常档常驻 + R2 同款 fmt 命令三复验 exit 0；R3 聚焦 pass（提交态工件核验，无 {panic:?} 残留、diff 仅新增断言、门零触碰）。AC-01..07 全 pass；串行 th 102/101/1 在册红/0 超时（751 基线 86/2/14）；P751-D1 闭合销案。",
+     "file": "docs/plans/archive/755-http-contract-startup-diagnosis.md",
+     "related": [
+      "PLAN-755",
       "PLAN-751",
       "PLAN-738"
      ],
