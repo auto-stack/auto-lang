@@ -6,6 +6,7 @@
 - diff_base: `226ebfbbb^`；执行者旧基面 `0884add2aead438010bf20bca3c8aae08b896961`。依赖 auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`；根 Cargo.lock/规范版本哈希见 baseline。
 - 独立性：本上下文曾发现 R11，未实施/复审/合入 751；现在从真实工件与新反例重建结论。不是全新上下文全项目审计。
 - 验证在独立 detached worktree 进行，生产源未改；仅临时 cfg(test) 探针，结束逐字节恢复。主检出 UI WIP 未触碰。
+- 复验 worktree 及 auto-down 兄弟检出均经 wt-guard clean 后移除；探针、测试日志与绑定哈希已复制至主检出报告目录。
 
 ## 1. P738-R11-01 已闭合
 
@@ -70,6 +71,6 @@ test result: FAILED. 0 passed; 1 failed; ... finished in 0.10s
 
 收尾簿记另有可直接纠正项：计划缺 frontmatter revision、已有 spec 误填 new_component 且缺 docs/specs 前缀、归档后 current_step 仍 5/6；按原合同与已完成 merge 收据修正，不改变 AC。
 
-批量回归 **DUE** 仍成立（750 落地触发）。截至 2026-10-10 16:08 CST，距旧收据 2026-10-08 11:20 UTC 约 44h48m，不能用「>48h」作依据；当时 753 仅批准/执行中。主检出仍有 020 示例 WIP，regress 要求主检出除簿记外干净，因此仍待 owner 收口；本轮未动 WIP、未擅跑批量档。
+批量回归 **DUE** 仍成立（750 落地触发）。截至 2026-10-10 16:08 CST，距旧收据 2026-10-08 11:20 UTC 约 44h48m，不能用「>48h」作依据；当时 753 仅批准/执行中，主检出仍有 020 示例 WIP，regress 前置未满足。本轮未动 WIP、未擅跑批量档。报告收尾期间 owner 已提交 020 的两文件（`f3a7548b5`），旧 WIP 阻塞原因不再直接沿用；下次 regress 发车前须重新核查当前干净度与机器负载。
 
 next：738/751 保持 archived；另立 HTTP 契约与启动错误专项修复合同，以本轮具名反例为入口，补齐 public provider 契约和有界启动诊断，再完成逐项真实 HTTP/完整 th 复验。空 lock 修复不需再次重开。

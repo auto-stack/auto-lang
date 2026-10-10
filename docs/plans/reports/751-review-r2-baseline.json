@@ -1,0 +1,129 @@
+{
+  "stage": "review",
+  "plan_id": "PLAN-751",
+  "plan_revision": 1,
+  "outcome": "needs_fix",
+  "state_policy": "archived remains terminal; lock repair passes; HTTP follow-up required",
+  "reviewed_commit": "d79282eb6d671ebd279fd823b48be4cba9e592ea",
+  "implementation_commit": "226ebfbbb637ade69e8d6b38ee05f400e9110452",
+  "diff_base": "5f6feca5ad9ae91bbd205b1160e61beae31aa049",
+  "executor_original_base": "0884add2aead438010bf20bca3c8aae08b896961",
+  "main_commit_at_recording": "7b5f0d7f75a2b2527a450e2803f407537ee7ae83",
+  "dependency_revisions": {
+    "auto-down": "895f8d0f9355c9f5ec3ce8fca268bdb768395846"
+  },
+  "root_cargo_lock_sha256": "900e2976e70c4bc89779c3fd502275537a6a5da57e7da2a6b72befcb3b623bf1",
+  "root_cargo_lock_origin": "Copy of main checkout untracked lock, taken before tests; no assumption of equality with executor lock",
+  "spec_inputs": [
+    {
+      "path": "docs/specs/auto-man/design/api-generation-integrity.md",
+      "sha256": "a210601f1e83b07cb136adf41627a215bab27ca5746fec6458be307213768530",
+      "source_commit": "ba9b4281b862e39a67c6a96b32ae8b42adaa64e7"
+    }
+  ],
+  "execution_cwd": "D:\\autostack\\.wt\\review-751-r2\\auto-lang",
+  "cargo_target_dir": "D:/autostack/auto-lang/target",
+  "lock_probe": {
+    "selected": 1,
+    "passed": 1,
+    "failed": 0,
+    "seconds": 1.55,
+    "cargo_exit": 0,
+    "restored_exact_bytes": true,
+    "empty_lock_first_receipt": "811c9dc5",
+    "empty_lock_regenerated_receipt": "811c9dc5",
+    "empty_lock_regenerated_fresh": true,
+    "read_errors_and_recovery": "PASS"
+  },
+  "http_probe": {
+    "selected": 1,
+    "passed": 0,
+    "failed": 1,
+    "seconds": 0.1,
+    "cargo_exit": 101,
+    "restored_exact_bytes": true,
+    "actual_entry": "crate::run with bounded channel and AUTO_HTTP_PORT=0; complete original upload program and exact redirect source",
+    "errors": [
+      "http.upload_receive native #9937 SIGNATURE_UNVERIFIED",
+      "http.response_redirect native #3108 SIGNATURE_UNVERIFIED"
+    ],
+    "precise_timeout_cause_not_proven": true
+  },
+  "original_http": {
+    "command": "cargo nextest run -p auto-lang --lib --features test-http-e2e --jobs 1 --no-fail-fast http_e2e_plan730_vm_plain_endpoint_untouched",
+    "selected": 1,
+    "passed": 0,
+    "timed_out": 1,
+    "seconds": 120.046,
+    "exit": 100,
+    "source_unmodified": true,
+    "observed_output": "nil deprecation only; timeout mechanism unresolved"
+  },
+  "service": {
+    "command": "cargo test -p auto-man --lib --features test-http-e2e http_e2e_plan738 -- --ignored --test-threads=1",
+    "first_attempt": "compile failed before test; os error 1455 paging space",
+    "second_attempt": "test 0/1 in 0.93s; hardcoded local target directory absent with shared CARGO_TARGET_DIR",
+    "final_attempt": {
+      "selected": 1,
+      "passed": 1,
+      "failed": 0,
+      "seconds": 361.01,
+      "cargo_exit": 0,
+      "fixture_adaptation": "cfg(test) target path reads CARGO_TARGET_DIR; all assertions retained",
+      "restored_exact_bytes": true,
+      "cargo_build_jobs": 2
+    }
+  },
+  "format": {
+    "command": "rustfmt --edition 2021 --check --config skip_children=true rust_ui.rs api_gen.rs",
+    "exit": 0
+  },
+  "worktree_clean_end": true,
+  "cleanup": {
+    "auto_lang_guard": "clean",
+    "auto_down_guard": "clean",
+    "both_worktrees_removed": true,
+    "empty_group_removed": true,
+    "durable_evidence_copied_before_cleanup": true
+  },
+  "not_rerun": [
+    "daily full t",
+    "auto-man full lib suite",
+    "full 102-test th",
+    "tf",
+    "taa",
+    "tu",
+    "docs_gen"
+  ],
+  "reuse_policy": "Executor full suites retained as history only; no new full-gate pass granted",
+  "evidence": [
+    {
+      "path": "751-review-r2-lock-evidence.txt",
+      "sha256": "c00e5b5249a543add85c2522821c2ae5e25128fa7b25e8ba044594b441d8ec0f"
+    },
+    {
+      "path": "751-review-r2-http-evidence.txt",
+      "sha256": "e2b91a091f1c0a77fb2cd371c2eefbea228f88abfda1381fcb5b5c2810f785b3"
+    },
+    {
+      "path": "751-review-r2-service-evidence.txt",
+      "sha256": "cb96a1b3ed5b539ebb21ef9b854f6fff57aef55f659b1c21165c30f19d4b442d"
+    },
+    {
+      "path": "751-review-r2-original-http-evidence.txt",
+      "sha256": "2d865dd745fe0a3cf75ef6918922e60cc30669cf41c8d245bef742dcba2de868"
+    },
+    {
+      "path": "751-review-r2-lock-probe.py",
+      "sha256": "a446e0b6f6cf7b8e7af28c2cda69518fc0ea8d2c799b5568bb5f53501284f2c2"
+    },
+    {
+      "path": "751-review-r2-http-probe.py",
+      "sha256": "3d4a6dd9f55f50860a8c81d627943cfed7a034a3d806f925ea8479d6e9c06b31"
+    },
+    {
+      "path": "751-review-r2-service-probe.py",
+      "sha256": "f7f5e27f05a5b5564a3b0b8ba6536ce06b275aff0336fbc1d9c81220adb36c78"
+    }
+  ]
+}
