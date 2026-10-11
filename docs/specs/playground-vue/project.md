@@ -34,6 +34,7 @@ graph LR
 |---|---|---|
 | SnippetRunner / PlaygroundCard | 分层入口（Plan 581）：拼图层（autorun/内联输出/单动作位）与卡片层（toolbar 四开关/输出 tabs/调试面板，#output 插槽+defineExpose 驱动内嵌 Runner） | active |
 | AutoPlayground / AutoPlaygroundFull | 兼容别名（@deprecated 薄包装）/ IDE 层入口（index.ts 导出） | active |
+| PlaygroundIDEApp | 双端同形宿主（Plan 754）：NotesSidebar + AutoPlaygroundFull 聚合，apiBase/manifestBase props，`?note=` 深链，组运行契约内聚 | active |
 | components | 编辑器/控制台/字节码/调试/回放/文件树等面板 | active |
 | composables | usePlayground / useDebugger / useReplayPlayer 等 | active |
 | lang | CodeMirror 6 语言支持（auto / abt）、暗色模式 | active |
@@ -43,3 +44,12 @@ graph LR
 > **PLAN-752（2026-10-09，executing）**：noteMeta 增可选 `prependLib?: boolean`
 > ——宿主按笔记组前缀（vm-bootstrap/）判定，组件 watch 透传至 usePlaygroundFull
 > → 请求体 `prepend_lib`（SD-02 契约；为 false 时字段不发送）。
+
+> **PLAN-754（2026-10-10，executing）**：新增 `PlaygroundIDEApp` 双端同形宿主
+> ——聚合 NotesSidebar（分组树+搜索）+ AutoPlaygroundFull（IDE）+ noteMeta 构造
+> （vm-bootstrap/ 组 prepend_lib 前缀判定自 App.vue 迁入内聚）+ `?note=<id>` 启动
+> 深链（载入后 history.replaceState 清参）；props `apiBase`（默认 '/api'）/
+> `manifestBase`（默认 '/playground-data/notes.json'）；`usePlaygroundFull` 增
+> `options.apiBase` 参数化（模块级 API_BASE 常量改 options 回落）。独立版
+> App.vue 瘦壳化换用本组件（SD-01 契约）；NotesExplorer/PlaygroundCard 保留导出，
+> 供书页内嵌宿主继续使用。

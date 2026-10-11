@@ -63,4 +63,15 @@ graph LR
 
 > **Plan 582（2026-09-07，archived）**：/playground（EN/ZH）换 Notes Explorer；旧 /playground/ SPA 退役为 meta-refresh 重定向；prepare-content 裸尖括号通用转义器（P581-D1 清偿）；AutoFence 书页围栏 ▶ Run（§12 迁移路线同期入档）；playground-notes e2e + playwright.config。
 
+> **PLAN-754（2026-10-10，executing）**：/playground（EN/ZH）换 `PlaygroundIDEPage`
+> （theme 组件）：apiBase 探测——同源 `/api`（fetch `<base>/examples`，content-type+
+> JSON 结构双校验防 VitePress SPA 回退 200+HTML 假阳）失败 fallback
+> `http://127.0.0.1:3030/api`（本地后端约定），先探测后渲染门控（setup 期固化
+> apiBase）；双探失败 backendDown 提示（浏览可用，Run 需本地后端）。页形态=
+> `<PlaygroundIDEApp>` sidebar+IDE（与独立版同形，SD-02 契约）；Notes Explorer/
+> PlaygroundCard 降级为书页内嵌宿主（/playground 页不再用）。website 构建依赖
+> 入册规则（SD-03）：dedupe 契约包（highlight.js/@codemirror/*/
+> lucide-vue-next/@lezer/highlight 等）必须进 website/package.json dependencies
+> （PLAN-718 dedupe 强制根解析的入册要求）。
+
 > **Plan 715（2026-09-30，archived）**：全站 UI 刷新——navigation.ts 单源双语导航/当前位置/共享 SPA 例外；VitePress local search 接线（合成热键法+CodeMirror 捕获守卫）；全站设计令牌与断点矩阵（360/390/768/1024/1440 无溢出）；HomeDemo 轻量三视图（预置/实时/降级诚实契约）；v0.5 发布页 ReleaseLanding 数据驱动重建（产品前置/理念 details 展开/统计后移/launcher 实图换 TODO 占位）；EvidenceImage/ScreenshotGallery/AppLandingLayout 统一图片与骨架；e2e 64 例 + 五断点×双语×深浅截图矩阵；site-ui/home-demo 双测试族。证据：docs/reports/p715-website-ui-{baseline,review}.md。
