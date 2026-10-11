@@ -56,9 +56,14 @@ store handler 域（含 timer/lifecycle 派发）与视图 computed 域（表达
    musk_vm_track 97/6→100/3；②p054×2 = imported 图标组件判别器
    （PLAN-625 T-09(b) `tag.contains("icon")` 粗闸误判 PascalCase lucide 名→
    占位卡）→ lucide 名集成员资格判别（`is_icon_component_tag`，AppViewport
-   ∉ 名集保持占位卡意图），102/103；③p053_4 = merged `#[api]` CALL_NAT
-   发射面**异根**（codegen 债务观察项，KNOWN-DEBT P733-R2 条目③在案）——
-   本边界唯一余留。
+   ∉ 名集保持占位卡意图），102/103；③p053_4 = merged `#[api]` 发射面**异根**——PLAN-759 T-03（2026-10-11）
+   定谳并清偿：PLAN-633（`4d5f8de13`）起 merged 模式 `#[api]` 裸调用为
+   三分支契约——①host 桥注册→`auto.host.call` 改写；②实现体已随 imports
+   编入本模块（exports 在场）→守卫放行**模块内直调**（防 no-op null 与真
+   调用栈序纠缠吞返回值）；③实现体缺席（跨模块/未装载）→发 `CALL_NAT
+   3142` 桩，native 语义=带 `AUTO_VM_MERGE`/`AUTO_BACKEND` 行动指引的
+   RuntimeError（PLAN-734 D7）。双臂已由测试锁定（直调落账 + 缺实现报错），
+   KNOWN-DEBT P733-R2③ 随 PLAN-759 销案。
 4. **视图 `.x.length` 模板成员链**（附页①矩阵⑤表现层）：engine GET_FIELD 的
    ListData `.length` 臂已存在（plan-022），视图侧 Rust 求值器 `materialize_obj_ref`
    对 ListData 引用原样透传（只物化对象）——模板位 `.length` 求值链未全覆盖，

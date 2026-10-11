@@ -1597,3 +1597,18 @@ a2r 编译面轨随缺省翻转计划另立。
   （evidence/740/downstream-handoff-v3.md——54Hz 探针档带内；HTTP 驱动
   scroll 时延地板 ~36.5Hz 如实注记）；027 ~93ms 恒定 pacing 上游不复现，
   下游定责归下游域复判件消费。
+
+## PLAN-759 注记（2026-10-11）
+
+- **壁纸测试态隔离规约**（712 T-13/T-14 优先级语义的测试侧契约）：
+  `load_desktop_wallpaper` 的目录档（config `wallpapers_dir` → env
+  `AUTO_DESKTOP_WALLPAPERS_DIR` → stella 素材目录探测）使 `#hex` 色值
+  在有壁纸目录的机器上被主题默认图/目录首图覆盖——**机器相关断言漂移**。
+  凡断言壁纸解析值的测试，会话构造时必须以存活至测试结束的空临时目录
+  写入 `config.wallpapers_dir` 隔离（先例：desktop_bus_inbox_drains /
+  desktop_surface_merge 双测）；断言保持逐字精确，禁止「预期色值或任意
+  图片存在」宽松放行。
+- **登记债务**：硬编码 `D:\Down\stella-os\wallpapers` 探测
+  （renderer.rs `wallpapers_dir_or_default`，PLAN-526 T19 机器便利默认）
+  挪 env/配置显式开启——dev 便利不应进库代码路径；独立裁定，非消红
+  前置（KNOWN-DEBT R5-② 条目）。
