@@ -1,68 +1,58 @@
 {
-  "last_covered_plan_id": 761,
-  "timestamp": "2026-10-11T07:41:00.136011Z",
-  "covered_commit": "5314cf0f18774acc7628237fabbca13cf868362c",
+  "last_covered_plan_id": 766,
+  "timestamp": "2026-10-11T16:46:23.120252Z",
+  "covered_commit": "76500e0c6050b2673a3ab62a560b701a673569c0",
   "legs": [
     "tf",
     "tt",
-    "tb"
+    "tb",
+    "taa"
   ],
   "leg_results": {
     "tf": {
-      "seconds": 132.405,
-      "run": 6265,
-      "passed": 6263,
-      "failed": 2,
+      "seconds": 77.3,
+      "run": 6279,
+      "passed": 6279,
+      "failed": 0,
       "skipped": 519,
-      "failures": [
-        "ui::app_registry::tests::launch_three_real_apps_via_registry_resolver",
-        "ui::app_registry::tests::scan_examples_ui_curation_set"
-      ],
-      "log_sha256": "6bb9461cbc5132b47407ec3f5548db2f51b5c8f911a85260b48f28824e5f4057",
-      "source_commit": "5314cf0f18774acc7628237fabbca13cf868362c"
+      "note": "首跑 fail-fast 于 ffi_dual_019 单红中止;--no-fail-fast 全量 6279/6279 绿"
     },
     "tt": {
-      "seconds": 150.944,
-      "run": 5614,
-      "passed": 5610,
-      "failed": 4,
-      "skipped": 1789,
-      "failures": [
-        "tests::plan437_child_init_tests::plan437_child_init::gallery_chart_components_render_geometry",
-        "ui::app_registry::tests::launch_three_real_apps_via_registry_resolver",
-        "ui::app_registry::tests::scan_examples_ui_curation_set",
-        "ui::back_provision::tests::launch_provision_lifecycle_via_resolver"
-      ],
-      "log_sha256": "04850645b195c9b2648cf3711a1614c1ad02ef0c69f318ffe9649f645cbfdc5d",
-      "source_commit": "5314cf0f18774acc7628237fabbca13cf868362c"
+      "seconds": 101.3,
+      "run": 5627,
+      "passed": 5627,
+      "failed": 0,
+      "skipped": 1790
     },
     "tb": {
-      "seconds": 104.214,
-      "run": 5298,
-      "passed": 5296,
-      "failed": 2,
-      "skipped": 1541,
-      "failures": [
-        "ui::app_registry::tests::launch_three_real_apps_via_registry_resolver",
-        "ui::app_registry::tests::scan_examples_ui_curation_set"
-      ],
-      "log_sha256": "7af8751426b2a69bd8421ec7e6cb9c08bd3c45dd0659f0904b5121a660b782ea",
-      "source_commit": "5314cf0f18774acc7628237fabbca13cf868362c"
+      "seconds": 71.1,
+      "run": 5311,
+      "passed": 5311,
+      "failed": 0,
+      "skipped": 1542,
+      "note": "首跑 state_file::lock 瞬态红(F-762-R2 已知形态);--no-fail-fast 全量绿"
+    },
+    "taa": {
+      "seconds": 78.5,
+      "run": 6275,
+      "passed": 6270,
+      "failed": 5,
+      "skipped": 640,
+      "note": "3 红=P763-R1 已知(aavm2 goldens/compile_corpus/compile_use_corpus);另 2=ffi_dual_019/plan498_legend 负载 flake,定向复跑均绿(ffi_dual_019 亦在 tf 全量绿)"
     }
   },
-  "new_reds": [
-    "tests::plan437_child_init_tests::plan437_child_init::gallery_chart_components_render_geometry"
-  ],
-  "new_red_notes": "新观察仅tt失败，tf/tb通过；未证明由合并窗口引入，也不以偶发绿销案。已按流程独立分诊PLAN-762:r1 drafting，未执行修复。",
-  "triage_plan": "docs/plans/762-chart-init-batch-flake.md",
-  "verdict": "new-observation-triaged",
+  "new_reds": [],
   "known_reds_seen": [
-    "ui::app_registry::tests::scan_examples_ui_curation_set",
-    "ui::app_registry::tests::launch_three_real_apps_via_registry_resolver",
-    "ui::back_provision::tests::launch_provision_lifecycle_via_resolver"
+    "tests::aavm2_a2r::test_aavm2_goldens_check",
+    "tests::aavm_runner_tests::test_aavm2_compile_corpus",
+    "tests::aavm_runner_tests::test_aavm2_compile_use_corpus"
   ],
-  "known_red_notes": "registry双红与KNOWN-DEBT REG-3共享target同名exe签名一致；back_provision是738复审已登记间歇观测，本次OS10013 PermissionDenied，tf/tb通过。",
-  "taa_skipped_reason": "2aff077ac..5314cf0f1无aavm触发面，lib.rs无变更；未运行taa/t3。",
-  "window_note": "上一收据755后Plan760整五落地触发。覆盖最高已交付761；762仅分诊草案，不算落地。主检出只有已记录759共享文档WIP，六本机配置忽略。启动各腿前检查无其他gate；tf/tt过程中他会话后来启动fix-bp-root-env-lock局部检查，tb过程中该会话开始日常档，记录此并发观测限制，不据此断言根因。三腿代码同5314cf0f1；tb中仅新建762草案文档，未改代码。",
-  "report": "docs/plans/reports/761-batch-regression.md"
+  "known_red_notes": "P763-R1 在册基线预存债(KNOWN-DEBT-AND-RISKS,763 迁移前基线双证);本轮零新增。",
+  "flake_observations": [
+    "tests::ffi_dual_tests::ffi_dual_019_dep_layout_invariants(tf 首跑+taa 各一次红,tf 全量与 taa 定向绿)",
+    "tests::plan498_chart_interaction_tests::plan498_charts::plan498_legend_toggle_visibility(taa 红,定向绿;charts flake 族同 plan484_024)",
+    "state_file::tests::lock_serializes_critical_sections(tb 首跑红,全量绿;F-762-R2 在案形态)"
+  ],
+  "window_note": "窗口 5314cf0f1..HEAD 覆盖 763(目录归并+CI 退役)/764(website)/765(vm-host 稳定)落地与 766 草案。taa 触发=763 lib.rs AAVM v1 legacy 库路径摘除(AUTO_LIB_FILES 族)+aavm2_m* 测试文件迁移性改动。tf/tt 期间他会话在 musk 仓跑 parity_wiki 单测(轻载并发观测,非 auto-lang 全量档)。 766(website captures)于跑腿期间落地(纯 docs/website 提交,零 Rust 面),收据按运行窗最高落地号记 766。",
+  "verdict": "green-with-known-reds"
 }
