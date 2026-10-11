@@ -302,6 +302,22 @@ fn get_support_details(tag: &str) -> TagSupport {
             &["open", "style", "placement"],
             "modal/dialog not implemented — renders as Column",
         ),
+        // PLAN-759 T-01: carousel/command 族由 Plan 717 入 vb/aura.at（彼时
+        // 误标 iced:partial 且未同步本表——P6-3 围栏红）。iced 轨当前无真实
+        // 渲染面（web_component 降级呈现），诚实级别=fallback；拼写对齐
+        // view_builder 派发表（下划线 canonical）。
+        "carousel" | "carousel_content" | "carousel_item" | "carousel_next"
+        | "carousel_previous" => TagSupport::fallback(
+            &["style", "align", "orientation"],
+            "carousel not implemented — renders as Column",
+        ),
+        "command" | "command_empty" | "command_group" | "command_input"
+        | "command_item" | "command_list" | "command_separator" | "command_shortcut" => {
+            TagSupport::fallback(
+                &["style", "placeholder", "value", "text", "label"],
+                "command palette not implemented — renders as Column",
+            )
+        }
         "navigation" | "breadcrumb" => TagSupport::fallback(
             &["style", "items"],
             "navigation component not implemented — renders as Column",

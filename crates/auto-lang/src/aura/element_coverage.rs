@@ -175,6 +175,14 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("cardfooter", QueueStatus::Covered),
         ("cardheader", QueueStatus::Covered),
         ("cardtitle", QueueStatus::Covered),
+        // PLAN-759 T-01:carousel 族（Plan 717 入 aura.at，围栏登记欠账补齐）
+        // ——D4 裁定退役族：官方 .at 组件实现（widgets-gallery components/
+        // carousel.at）承接，不经 queue 臂。
+        ("carousel", QueueStatus::NotConsumed("D4 退役族——官方 .at 组件实现承接，queue 臂不消费")),
+        ("carousel_content", QueueStatus::NotConsumed("D4 退役族——官方 .at 组件实现承接，queue 臂不消费")),
+        ("carousel_item", QueueStatus::NotConsumed("D4 退役族——官方 .at 组件实现承接，queue 臂不消费")),
+        ("carousel_next", QueueStatus::NotConsumed("D4 退役族——官方 .at 组件实现承接，queue 臂不消费")),
+        ("carousel_previous", QueueStatus::NotConsumed("D4 退役族——官方 .at 组件实现承接，queue 臂不消费")),
         ("category-section", QueueStatus::NotYet("长尾——按需升格（登记即过，未登记即红）")),
         ("chatmessage", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("checkbox", QueueStatus::Covered),
