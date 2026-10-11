@@ -391,13 +391,20 @@ pub(crate) async fn read_body_capped(
     resp: reqwest::Response,
     cap: usize,
 ) -> Result<Vec<u8>, String> {
-    if let Some(len) = resp.content_length() {
+    // PLAN-765 T-02（纪要二 F-2）：按 Content-Length 预留容量——原 Vec::new()
+    // 起步逐 chunk 倍增，292KB 级响应逼近 512KB 高水位并留倍增中间垃圾
+    //（空闲期每 500ms 一次的堆 churn 主源之一）。
+    let content_length = resp.content_length();
+    if let Some(len) = content_length {
         if len > cap as u64 {
             return Err(format!("http response body {len} exceeds budget {cap}"));
         }
     }
+    let mut out: Vec<u8> = match content_length {
+        Some(len) => Vec::with_capacity((len as usize).min(cap)),
+        None => Vec::new(),
+    };
     use futures::StreamExt;
-    let mut out: Vec<u8> = Vec::new();
     let mut stream = resp.bytes_stream();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("http response body read error: {e}"))?;

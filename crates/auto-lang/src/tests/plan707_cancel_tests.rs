@@ -239,12 +239,9 @@ fn plan707_cancel_detached_msg_bridge_unaffected() {
     loop {
         if let Some(done) = http_msg_poll_one() {
             assert_eq!(done.widget, "Store");
-            assert_eq!(done.event, "Handler");
-            assert!(
-                done.payload.contains("\"ok\":true"),
-                "payload={}",
-                done.payload
-            );
+            let (name, payload) = done.split_event();
+            assert_eq!(name, "Handler");
+            assert!(payload.contains("\"ok\":true"), "payload={payload}");
             break;
         }
         assert!(

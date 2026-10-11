@@ -8691,6 +8691,25 @@ pub struct IcedMessage {
 /// name. Format: `{event}\u{1F}{typechar}\u{1F}{value}`.
 pub(crate) const PAYLOAD_SEP: char = '\u{1F}';
 
+/// PLAN-765 T-02（纪要三附注，F-5）：update 通用路径的事件名推导——`.`
+/// 前缀剥离 + 路径装饰 `::` 尾段截取。关键修正：`::` 截取**只作用于首个
+/// [`PAYLOAD_SEP`] 之前的事件名段**——载荷体（HTTP 回填 JSON 的 body 含
+/// 代码文本 `std::process` 等）携带 `::` 时，旧实现按全文 `rfind("::")`
+/// 截断会把 handler 名截成载荷尾段，回填静默丢拍（musk K10"长寿实例
+/// 空渲染/特定会话内容"观察同形）。
+pub(crate) fn derive_event_name(raw: &str) -> String {
+    let name = raw.trim_start_matches('.');
+    let head_end = name.find(PAYLOAD_SEP).unwrap_or(name.len());
+    let head = &name[..head_end];
+    match head.rfind("::") {
+        // 常见路径：事件名段无 `::` 装饰——整串（含载荷后缀）直接接管，
+        // 与旧行为零差异。
+        None => name.to_string(),
+        // 罕见路径：装饰名（可能含载荷）——重组，载荷后缀原样保留。
+        Some(pos) => format!("{}{}", &head[pos + 2..], &name[head_end..]),
+    }
+}
+
 /// PLAN-044 T5/T6：ghost 占位 state 写入（OnEditorFocus 拦截与 __mcp_click
 /// 合成点击共用一条写入路径）。ghost_id = "block-N" 字符串（vue
 /// data-block-id 同源；空串 = 无 ghost）；ghost_height 带 +1e-3 强制分数
@@ -9727,6 +9746,9 @@ enum AppTickKind {
     Event(&'static str, u64),
     /// 每拍轮询一次进程级通道（fn 指针读全局静态，不捕获）。
     Poll(fn() -> Option<IcedMessage>, u64),
+    /// PLAN-765 T-02：HTTP 消息桥回填泵——Poll 同族，但产出映射为
+    /// `DM::HttpBackfill`（update 侧 seq 门控派发，见 DesktopMessage 文档）。
+    PollBackfill(fn() -> Option<IcedMessage>, u64),
     /// Plan 051 C7: timer 块条目——按 (widget, event) 命名空间派发。
     WidgetEvent(String, String, u64),
 }
@@ -9746,6 +9768,7 @@ impl std::hash::Hash for AppTickRecipe {
         match &self.kind {
             AppTickKind::Event(ev, ms) => (*ev, *ms).hash(state),
             AppTickKind::Poll(f, ms) => (*f as usize, *ms).hash(state),
+            AppTickKind::PollBackfill(f, ms) => (*f as usize, *ms).hash(state),
             AppTickKind::WidgetEvent(w, ev, ms) => (w, ev, *ms).hash(state),
         }
     }
@@ -9765,10 +9788,11 @@ impl iced_futures::subscription::Recipe for AppTickRecipe {
         use crate::ui::session::DesktopMessage as DM;
         use iced_futures::futures::stream::StreamExt;
 
-        let (event, poll, ms, widget_event) = match self.kind {
-            AppTickKind::Event(ev, ms) => (Some(ev), None, ms, None),
-            AppTickKind::Poll(f, ms) => (None, Some(f), ms, None),
-            AppTickKind::WidgetEvent(w, ev, ms) => (None, None, ms, Some((w, ev))),
+        let (event, poll, backfill, ms, widget_event) = match self.kind {
+            AppTickKind::Event(ev, ms) => (Some(ev), None, false, ms, None),
+            AppTickKind::Poll(f, ms) => (None, Some(f), false, ms, None),
+            AppTickKind::PollBackfill(f, ms) => (None, Some(f), true, ms, None),
+            AppTickKind::WidgetEvent(w, ev, ms) => (None, None, false, ms, Some((w, ev))),
         };
         let app = self.app;
         let start = tokio::time::Instant::now() + std::time::Duration::from_millis(ms);
@@ -9776,8 +9800,8 @@ impl iced_futures::subscription::Recipe for AppTickRecipe {
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         iced_futures::futures::stream::unfold(
-            (interval, app, event, poll, widget_event),
-            move |(mut iv, app, event, poll, widget_event)| async move {
+            (interval, app, event, poll, backfill, widget_event),
+            move |(mut iv, app, event, poll, backfill, widget_event)| async move {
                 let _ = iv.tick().await;
                 let msg = if let Some(ev) = event {
                     Some(IcedMessage {
@@ -9797,9 +9821,16 @@ impl iced_futures::subscription::Recipe for AppTickRecipe {
                 // 空拍（无事件）以 `Some(None)` 项表示、由流级 filter_map 剔除
                 // —— 若直接 yield `None`，unfold 语义是**流终止**（Poll 变体
                 // 首个空轮询即死，459 实测 MCP 动作全丢）。
+                // PLAN-765：backfill 档产 `DM::HttpBackfill`（seq 门控派发）。
                 Some((
-                    msg.map(|m| DM::App(app, m)),
-                    (iv, app, event, poll, widget_event),
+                    msg.map(|m| {
+                        if backfill {
+                            DM::HttpBackfill(app, m)
+                        } else {
+                            DM::App(app, m)
+                        }
+                    }),
+                    (iv, app, event, poll, backfill, widget_event),
                 ))
             },
         )
@@ -11749,14 +11780,16 @@ fn shell_event_subscription(
 // by_name 忙等 5ms×N 冻结 UI——082 §10-7 实测 20.9s 的根因）。
 fn poll_http_msgs() -> Option<IcedMessage> {
     let done = crate::vm::ffi::stdlib::http_msg_poll_one()?;
-    // PLAN-084 诊断打点（临时）：泵派发侧。
-    eprintln!(
-        "[msg-pump] dispatch widget={} event={}",
-        done.widget, done.event
-    );
+    // PLAN-084 诊断打点（临时）→ PLAN-765 F-6：改 env 门控（缺省关）。
+    if std::env::var("AUTOUI_HTTP_BRIDGE_DIAG").is_ok() {
+        let (name, _) = done.split_event();
+        eprintln!("[msg-pump] dispatch widget={} event={}", done.widget, name);
+    }
+    // PLAN-765 T-02（纪要二 F-3）：入队侧已预编码 `handler␟s␟{json}`——
+    // 此处零拷贝移交（原 format! 再拼一份全文拷贝）。
     Some(IcedMessage {
         widget: done.widget,
-        event: format!("{}\u{1F}s\u{1F}{}", done.event, done.payload),
+        event: done.event,
         input_value: None,
     })
 }
@@ -11766,9 +11799,10 @@ fn http_msg_subscription(
 ) -> iced::Subscription<crate::ui::session::DesktopMessage> {
     // 19ms（≠ shell 17 / mcp 16，见 Plan 062 同拍抖动注；Recipe 身份含
     // 函数指针，去重安全）≈52fps——数据回填延迟人眼无感。
+    // PLAN-765 T-02：PollBackfill 档——产出 DM::HttpBackfill（seq 门控派发）。
     iced_futures::subscription::from_recipe(AppTickRecipe {
         app,
-        kind: AppTickKind::Poll(poll_http_msgs, 19),
+        kind: AppTickKind::PollBackfill(poll_http_msgs, 19),
     })
 }
 
@@ -18801,6 +18835,11 @@ fn run_session(
     // PLAN-575 D1 挂点②：main 装配处（run_session 唯一管线，I3）装全局
     // panic 审计 hook——只追加日志，不改 panic 语义（G3 零行为变更）。
     crate::vm::ffi::stdlib::install_exit_audit_panic_hook();
+    // PLAN-765 T-03（纪要三 F-9）：Windows 原生崩溃审计钩（未处理 SEH
+    // 异常兜底落笔，落笔后 CONTINUE_SEARCH 保 WER 语义——覆盖边界见
+    // stdlib 文档）。
+    #[cfg(windows)]
+    crate::vm::ffi::stdlib::install_native_crash_audit();
     // PLAN-708 T-02（S-02）：生成器默认注册表后台预热——首帧带 preview-card
     // 的页面渲染原本内联承担 OnceLock 首建全量（register_defaults + schema
     // 解析折叠，实测 ~1.27s 单块，T-00 baseline §3.2），违反加载期连续占用
@@ -19494,7 +19533,11 @@ fn run_session(
 
     let update_inner = |state: &mut crate::ui::session::DesktopSession,
                         app_id: crate::ui::session::AppId,
-                        msg: IcedMessage|
+                        msg: IcedMessage,
+                        // PLAN-765 T-02（纪要一 F-4）：true = HTTP 消息桥回填
+                        // 消息（DM::HttpBackfill 归一化而来）——派发走
+                        // on_http_backfill_for 状态突变序号门控。
+                        http_backfill: bool|
      -> iced::Task<IcedMessage> {
         // PLAN-716 组B（供②）: 帧开始时间戳=update 入口到达时刻。门控
         // AUTO_FRAME_BENCH——未设零开销（OnceLock 布尔读+分支），不染
@@ -21522,15 +21565,7 @@ fn run_session(
             return iced::Task::none();
         }
 
-        let event_name = {
-            let name = msg.event.trim_start_matches('.');
-            if let Some(pos) = name.rfind("::") {
-                &name[pos + 2..]
-            } else {
-                name
-            }
-        }
-        .to_string();
+        let event_name = derive_event_name(&msg.event);
 
         // Save input text BEFORE on_with_input runs .at handler (which clears it for AddTodo)
         let saved_input = state
@@ -21636,6 +21671,10 @@ fn run_session(
         let p725_t_s2 = std::time::Instant::now();
         if state.component.is_timer_entry(widget_name, &event_name) {
             state.component.fire_timer(widget_name, &event_name);
+        } else if http_backfill {
+            // PLAN-765 T-02（纪要一 F-4）：HTTP 消息桥回填——seq 门控派发，
+            // handler 零状态写的空回填不置脏（F1 fire_timer 语义延伸）。
+            state.component.on_http_backfill_for(widget_name, &event_name);
         } else {
             state
                 .component
@@ -22822,7 +22861,8 @@ fn run_session(
         //（fn 条目无法捕获闭包环境），state 经参数传入不与之冲突。
         let dispatch_app = |state: &mut crate::ui::session::DesktopSession,
                             app_id: crate::ui::session::AppId,
-                            m: IcedMessage|
+                            m: IcedMessage,
+                            http_backfill: bool|
          -> iced::Task<crate::ui::session::DesktopMessage> {
             // console 打标：update 期间 print/console_log 归属本 App。
             crate::libs::builtin::set_console_current_app(app_id.0);
@@ -22843,7 +22883,7 @@ fn run_session(
                     PANIC_PROBE_CRASHED_APP.store(app_id.0, std::sync::atomic::Ordering::SeqCst);
                     panic!("plan-459 T5 panic probe injected for App {app_id:?}");
                 }
-                update_inner(state, app_id, m)
+                update_inner(state, app_id, m, http_backfill)
             })) {
                 Ok(task) => {
                     // PLAN-740 T-00（交付节奏三轴之二——request_redraw 发出
@@ -22973,7 +23013,7 @@ fn run_session(
                                         event: "Blur".to_string(),
                                         input_value: None,
                                     };
-                                    return dispatch_app(state, app_id, blur);
+                                    return dispatch_app(state, app_id, blur, false);
                                 }
                             }
                         }
@@ -23436,7 +23476,7 @@ fn run_session(
                                     event: "Advance".to_string(),
                                     input_value: None,
                                 };
-                                return update_inner(state, sw, msg).map(move |m| DM::App(sw, m));
+                                return update_inner(state, sw, msg, false).map(move |m| DM::App(sw, m));
                             }
                         }
                         let task = summon_switcher(state);
@@ -23446,7 +23486,7 @@ fn run_session(
                                 event: "Advance".to_string(),
                                 input_value: None,
                             };
-                            let advance = update_inner(state, sw, msg).map(move |m| DM::App(sw, m));
+                            let advance = update_inner(state, sw, msg, false).map(move |m| DM::App(sw, m));
                             return iced::Task::batch([task, advance]);
                         }
                         return task;
@@ -23526,6 +23566,23 @@ fn run_session(
                     }
                 }
                 iced::Task::none()
+            }
+            // PLAN-765 T-02（纪要一 F-4）：HTTP 消息桥回填臂——经
+            // dispatch_app(.., true) 走 on_http_backfill_for seq 门控派发。
+            // dashboard 拦截器/DnD 锚定等 App 臂内务与回填无关，直取通用
+            // 尾（dispatch + bus 排空 + exit/sync + task 并批，与 App 臂同形）。
+            DM::HttpBackfill(app_id, m) => {
+                let task = dispatch_app(state, app_id, m, true);
+                let (exit, mut tasks) = drain_and_execute_desktop_commands(state);
+                if exit {
+                    state.shutdown_broker();
+                    return iced::exit();
+                }
+                if state.desktop.shell_app.is_some() {
+                    sync_shell_windows(state);
+                }
+                tasks.push(task);
+                iced::Task::batch(tasks)
             }
             DM::App(app_id, m) => {
                 // PLAN-024：dashboard 占位卡一键 launch 拦截臂——face 叠合层
@@ -23640,7 +23697,7 @@ fn run_session(
                 // App handler dispatch 内联阻塞至完成（488 步骤 9 定案），
                 // 代际变化即本次 dispatch 发起并完成了一次拖出。
                 let dnd_gen_before = dnd_drag_generation();
-                let task = dispatch_app(state, app_id, m);
+                let task = dispatch_app(state, app_id, m, false);
                 maybe_anchor_dnd_initiator(state, app_id, dnd_gen_before, dnd_drag_generation());
                 // Plan 463 T4：DesktopBus 排空 #2 —— handler 本周期写入的
                 // 命令（按钮 onclick → __desktop_cmd）同周期尾即达，
@@ -24235,7 +24292,7 @@ fn run_session(
                                                 event: "Pick".to_string(),
                                                 input_value: None,
                                             };
-                                            return update_inner(state, sw, pick)
+                                            return update_inner(state, sw, pick, false)
                                                 .map(move |m| DM::App(sw, m));
                                         }
                                     }
@@ -24385,7 +24442,7 @@ fn run_session(
                 }
                 match state.app_of_window(&win) {
                     Some(app_id) => {
-                        let t = dispatch_app(state, app_id, m);
+                        let t = dispatch_app(state, app_id, m, false);
                         match fit_task.take() {
                             Some(f) => iced::Task::batch([t, f]),
                             None => t,
@@ -32196,6 +32253,9 @@ where
             ) {
                 // 014 内存哨兵冻结态:F12 = 退出进程(逃生门)。
                 if crate::ui::mem_guard::is_frozen() {
+                    // PLAN-765 T-03（纪要三 F-8）：逃生门落审计（码 42 可
+                    // 区分;原路径零痕迹）。
+                    crate::vm::ffi::stdlib::exit_audit(42, "mem_guard_f12_escape");
                     std::process::exit(42);
                 }
                 return Some(WrapperMsg::<C>::Debug(DEBUG_TOGGLE_EVENT.to_string()));

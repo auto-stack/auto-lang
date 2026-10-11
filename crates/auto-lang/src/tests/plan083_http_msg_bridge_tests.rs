@@ -69,8 +69,10 @@ fn spawn_completes_into_queue_with_json_payload() {
     );
     let done = poll_with_deadline(5000).expect("completion should arrive in queue");
     assert_eq!(done.widget, "ForgeStore");
-    assert_eq!(done.event, "SessionsLoaded");
-    let v: serde_json::Value = serde_json::from_str(&done.payload).expect("payload is JSON");
+    // PLAN-765：入队侧预编码契约——event 恒为 `handler␟s␟{json}` 单缓冲串。
+    let (name, payload) = done.split_event();
+    assert_eq!(name, "SessionsLoaded");
+    let v: serde_json::Value = serde_json::from_str(payload).expect("payload is JSON");
     assert_eq!(v["ok"], serde_json::json!(true));
     assert_eq!(v["status"], serde_json::json!(200));
     assert_eq!(v["body"], serde_json::json!(r#"{"sessions":[]}"#));
@@ -93,8 +95,9 @@ fn failure_yields_ok_false_and_still_dispatches() {
     );
     let done = poll_with_deadline(15000).expect("failure completion should arrive too");
     assert_eq!(done.widget, "");
-    assert_eq!(done.event, "Root");
-    let v: serde_json::Value = serde_json::from_str(&done.payload).expect("payload is JSON");
+    let (name, payload) = done.split_event();
+    assert_eq!(name, "Root");
+    let v: serde_json::Value = serde_json::from_str(payload).expect("payload is JSON");
     assert_eq!(v["ok"], serde_json::json!(false));
     assert_eq!(v["status"], serde_json::json!(0));
     assert!(v["body"].as_str().is_some(), "error text carried in body");
@@ -193,9 +196,9 @@ mod two_phase_probe {
         // 回填段：模拟渲染层泵（poll_http_msgs 同式拼载荷 → on_with_input_for）。
         let done = poll_with_deadline(5000).expect("completion lands in queue");
         assert_eq!(done.widget, "SpkStore");
-        assert_eq!(done.event, "Loaded");
-        let event = format!("{}\u{1F}s\u{1F}{}", done.event, done.payload);
-        dc.on_with_input_for(&done.widget, &event, None);
+        // PLAN-765：done.event 已是预编码串，零拷贝直投（renderer 泵同式）。
+        assert_eq!(done.split_event().0, "Loaded");
+        dc.on_with_input_for(&done.widget, &done.event, None);
 
         assert_eq!(
             dc.read_state("phase").map(|v| v.as_str().to_string()),

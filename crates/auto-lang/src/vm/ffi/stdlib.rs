@@ -1037,6 +1037,74 @@ fn panic_payload_str(info: &std::panic::PanicHookInfo<'_>) -> String {
         .unwrap_or_else(|| "non-str payload".to_string())
 }
 
+/// PLAN-765 T-03（纪要三 F-9）：Windows 原生崩溃审计钩——
+/// `SetUnhandledExceptionFilter` 兜底落笔，与既有三挂点（vm_process_exit/
+/// panic/main_return + main_err）同册互补。
+///
+/// 覆盖边界（文档化）：
+/// - 覆盖：未经处理的 SEH 异常（access violation 0xC0000005 / 栈溢出
+///   0xC00000FD 等）——此前绕过全部 Rust 挂点，零痕迹死亡无法与外部
+///   终止区分；此后"审计册零行 + 退出码 1" = 外部击杀指纹（四分法完备）。
+/// - 不覆盖：外部 TerminateProcess/taskkill（不可拦截）；`__fastfail`
+///   （刻意绕过 SEH——该家族由 WER 判读）。
+/// - 语义：落笔后返回 `EXCEPTION_CONTINUE_SEARCH`——保留 WER/转储既有
+///   行为，只加观测不加处置；栈溢出场景运行于残栈，尽力而为。
+/// - 限制：后续加载的模块（CRT/第三方）可能覆盖本 filter——best effort。
+#[cfg(windows)]
+pub fn install_native_crash_audit() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| unsafe {
+        native_crash_ffi::set_filter(Some(native_crash_ffi::audit_filter));
+    });
+}
+
+#[cfg(windows)]
+mod native_crash_ffi {
+    // 最小 FFI 面——不引 windows-sys 依赖（本仓 windows crate 为 optional
+    // feature 门控，崩溃钩应无条件可用）。
+    #[repr(C)]
+    pub struct ExceptionRecord {
+        pub exception_code: i32,
+        pub exception_flags: u32,
+        pub exception_record: *mut ExceptionRecord,
+        pub exception_address: *mut core::ffi::c_void,
+        pub number_parameters: u32,
+        pub exception_information: [usize; 15],
+    }
+    #[repr(C)]
+    pub struct ExceptionPointers {
+        pub exception_record: *mut ExceptionRecord,
+        pub context_record: *mut core::ffi::c_void,
+    }
+
+    const EXCEPTION_CONTINUE_SEARCH: i32 = 1;
+
+    extern "system" {
+        fn SetUnhandledExceptionFilter(
+            filter: Option<extern "system" fn(*mut ExceptionPointers) -> i32>,
+        ) -> *mut core::ffi::c_void;
+    }
+
+    pub unsafe fn set_filter(f: Option<extern "system" fn(*mut ExceptionPointers) -> i32>) {
+        SetUnhandledExceptionFilter(f);
+    }
+
+    pub extern "system" fn audit_filter(info: *mut ExceptionPointers) -> i32 {
+        let code = unsafe {
+            if info.is_null() || (*info).exception_record.is_null() {
+                -1
+            } else {
+                (*(*info).exception_record).exception_code
+            }
+        };
+        // 崩溃上下文尽力而为：format!/fs 分配失败仅丢一行审计，不影响
+        // 后续 WER 语义（EXCEPTION_CONTINUE_SEARCH 原样放行）。
+        super::exit_audit(code, "native_crash");
+        EXCEPTION_CONTINUE_SEARCH
+    }
+}
+
 /// 是否请求 backtrace：`RUST_BACKTRACE` 置位且非 "0"（与 std 默认 hook 同口径）。
 fn backtrace_requested() -> bool {
     std::env::var_os("RUST_BACKTRACE")
@@ -8056,10 +8124,21 @@ fn spawn_async_http_handle(method: String, url: String, body: Option<String>, re
 pub struct HttpMsgDone {
     /// 目标 store 名（IcedMessage.widget；空 = 根 handler）。
     pub widget: String,
-    /// 回填 handler 名（载荷由渲染层拼装，此处恒裸名）。
+    /// 已编码回填事件串：`{handler}\u{1F}s\u{1F}{json}`（PLAN-765 T-02 起
+    /// 入队侧单缓冲预编码——事件前缀与 JSON 转义体写进同一块按容量预留的
+    /// 缓冲，渲染层泵零拷贝直投 IcedMessage.event）。JSON 形如
+    /// `{"ok":bool,"status":u16,"body":str}`。
     pub event: String,
-    /// JSON 对象串 {"ok","status","body"}。
-    pub payload: String,
+}
+
+impl HttpMsgDone {
+    /// 拆出 (handler 名, JSON 载荷)——首个 `\u{1F}` 段前 = handler 名。
+    pub fn split_event(&self) -> (&str, &str) {
+        match self.event.split_once('\u{1F}') {
+            Some((name, rest)) => (name, rest.strip_prefix("s\u{1F}").unwrap_or(rest)),
+            None => (self.event.as_str(), ""),
+        }
+    }
 }
 
 fn http_msg_queue() -> &'static std::sync::Mutex<std::collections::VecDeque<HttpMsgDone>> {
@@ -8093,10 +8172,10 @@ fn spawn_async_http_msg_get(url: String, widget: String, event: String) {
         // 30s 超时对齐 get_json 族忙等 deadline——fire-and-forget 无消费侧
         // 兜底，连接悬挂必须由 client 侧收口（超时走 Err 臂→ok:false 入队，
         // poll_inflight 类消费门必然解锁）。
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        // PLAN-765 T-02（纪要二 F-1）：共享连接池客户端——原每请求新建
+        // Client 自带独立 hyper 池，2 拍/s 轮询负载下"新 TCP+池结构用后即弃"
+        // 是空闲期内存残留的主分配源之一。
+        let client = shared_async_http_client().clone();
         let mut builder = client.get(&u);
         for (k, v) in &default_headers {
             builder = builder.header(k.as_str(), v.as_str());
@@ -8113,24 +8192,49 @@ fn spawn_async_http_msg_get(url: String, widget: String, event: String) {
                 (
                     (200..300).contains(&status),
                     status,
-                    String::from_utf8_lossy(&body_bytes).to_string(),
+                    // PLAN-765 T-02：合法 UTF-8 时零拷贝接管（原
+                    // from_utf8_lossy().to_string() 恒全文拷贝一次）。
+                    match String::from_utf8(body_bytes) {
+                        Ok(s) => s,
+                        Err(e) => String::from_utf8_lossy(e.as_bytes()).into_owned(),
+                    },
                 )
             }
             Err(e) => (false, 0u16, e.to_string()),
         };
         let (ok, status, body) = result;
-        let payload = serde_json::json!({ "ok": ok, "status": status, "body": body }).to_string();
+        // PLAN-765 T-02（纪要二 F-3）：载荷单缓冲预编码——事件前缀 +
+        // `␟s␟` + JSON 转义体写进同一块按容量预留的缓冲（原链 = body→
+        // String→json! Value→to_string()→渲染层 format! 再拼，292KB 级
+        // 响应全程 5-6 份全文拷贝）。借值序列化（body 以 &str 引用入场），
+        // 唯一全文写 = 转义落笔；入队零拷贝移交渲染层泵。
+        let mut buf: Vec<u8> = Vec::with_capacity(event.len() + 8 + body.len() + 64);
+        buf.extend_from_slice(event.as_bytes());
+        buf.push(b'\x1f');
+        buf.push(b's');
+        buf.push(b'\x1f');
+        let payload_ref = HttpMsgPayloadRef {
+            ok,
+            status,
+            body: &body,
+        };
+        let _ = serde_json::to_writer(&mut buf, &payload_ref);
+        let event_full = String::from_utf8(buf)
+            .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
         if let Ok(mut q) = http_msg_queue().lock() {
+            // PLAN-084 诊断打点（临时）→ PLAN-765 F-6：改 env 门控
+            // （AUTOUI_HTTP_BRIDGE_DIAG=1）——常态 2 条/s 的 eprintln 既有
+            // stderr 管道 churn，也与 080 在案的"管道关闭打印 panic"族耦合。
+            if http_bridge_diag_enabled() {
+                eprintln!(
+                    "[msg-bridge] queued widget={widget} event={event} qlen={}",
+                    q.len() + 1
+                );
+            }
             q.push_back(HttpMsgDone {
-                widget: widget.clone(),
-                event: event.clone(),
-                payload,
+                widget,
+                event: event_full,
             });
-            // PLAN-084 诊断打点（临时）：桥线程入队侧。
-            eprintln!(
-                "[msg-bridge] queued widget={widget} event={event} qlen={}",
-                q.len()
-            );
         }
         // fire-and-forget：无 live-op 令牌，返回值被 submit 的守卫丢弃。
         Ok(AsyncResult::Body(String::new()))
@@ -8138,6 +8242,22 @@ fn spawn_async_http_msg_get(url: String, widget: String, event: String) {
     // PLAN-707 T-02：detached 显式提交形态——不写 live-op、不登记 abort，
     // `cancel_live_op` 对消息桥零影响（LIVE_OPS 缺席不构成误杀面）。
     let _ = super::async_http::submit_detached_client_job(job);
+}
+
+/// PLAN-765 T-02 F-3：消息桥载荷借值序列化形态（`{"ok","status","body"}`，
+/// 与原 `serde_json::json!` 宏输出同构、字段序按结构体声明——消费侧
+/// JSON.parse 按名取字段，序不参与契约）。
+#[derive(serde::Serialize)]
+struct HttpMsgPayloadRef<'a> {
+    ok: bool,
+    status: u16,
+    body: &'a str,
+}
+
+/// PLAN-765 T-02 F-6：消息桥诊断打点总门（缺省关）。
+fn http_bridge_diag_enabled() -> bool {
+    static E: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *E.get_or_init(|| std::env::var("AUTOUI_HTTP_BRIDGE_DIAG").is_ok())
 }
 
 /// 消息桥目标切分：`"Store.Handler"` → (Store, Handler)；无点/空段 →

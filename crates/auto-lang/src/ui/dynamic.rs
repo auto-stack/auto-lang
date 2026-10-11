@@ -1226,6 +1226,28 @@ impl DynamicComponent {
         true
     }
 
+    /// PLAN-765 T-02（纪要一 F-4）：HTTP 消息桥回填派发——F1 `fire_timer`
+    /// 的空转置脏撤销语义在回填通道的延伸。背景：`call_handler_for` 的
+    /// Ok → `dirty=true` 无条件（含 handler 零状态写的空回填拍），musk
+    /// PollStream 2 拍/s 的 `/page` 回填在 tier1 门后空闲拍零写入，仍每拍
+    /// 触发全链重建（PLAN-765 idle 相位内存残留的主驱动）。此处以状态
+    /// 突变序号画界：seq 未变且原先不脏 → 撤销置脏，视图走缓存分支。
+    /// 普通事件派发语义不动（vmref-push-only handler 兜底警告在案）；
+    /// 回填通道若出现依赖派发置脏的侧通道视觉 handler，可设
+    /// `AUTOUI_MSG_BACKFILL_DIRTY=1` 恢复无条件置脏（逃生门）。
+    pub fn on_http_backfill_for(&mut self, widget: &str, event: &str) {
+        if msg_backfill_dirty_escape() {
+            self.on_with_input_for(widget, event, None);
+            return;
+        }
+        let seq_before = self.bridge.state_mutation_seq();
+        let was_dirty = self.dirty;
+        self.on_with_input_for(widget, event, None);
+        if self.bridge.state_mutation_seq() == seq_before && !was_dirty {
+            self.dirty = false;
+        }
+    }
+
     /// PLAN-033 T-03②（D2=B）：泵侧 VM timer 驱动——timesources 逐条到期
     /// 派发。渲染轨（自开窗）= iced 订阅驱动（renderer.rs:19774-19807）；
     /// 投影臂（native `-q`）经 [`Component::fire_due_timers`] 钩子在泵空拍
@@ -3080,6 +3102,13 @@ pub fn input_payload_consumed(
         Some(map) => map.contains_key(&clean_name),
         None => true,
     }
+}
+
+/// PLAN-765 T-02：回填通道无条件置脏逃生门（`AUTOUI_MSG_BACKFILL_DIRTY=1`
+/// 恢复旧语义——回填 handler 依赖派发置脏的侧通道视觉场景兜底）。
+fn msg_backfill_dirty_escape() -> bool {
+    static E: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *E.get_or_init(|| std::env::var("AUTOUI_MSG_BACKFILL_DIRTY").is_ok())
 }
 
 pub(crate) fn decode_payload(event_name: &str) -> (String, Vec<auto_val::Value>) {

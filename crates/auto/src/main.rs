@@ -1576,6 +1576,9 @@ fn real_main(cli: Cli) -> Result<()> {
             am.run(args).map_err(|e| {
                 if ai_mode {
                     eprintln!("{}", format_error_json(&AutoError::Msg(e.to_string())));
+                    // PLAN-765 T-03（纪要三 F-7）：进程内唯一未审计的静默
+                    // exit(1) 臂补挂——与 main_err 挂点（下方 951 行）同册。
+                    auto_lang::vm::ffi::stdlib::exit_audit(1, "main_err_ai_mode");
                     std::process::exit(1);
                 }
                 miette::miette!("{}", e)

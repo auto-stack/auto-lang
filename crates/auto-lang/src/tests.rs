@@ -281,6 +281,7 @@ mod auto_down_vm_server_probe_tests;
 mod autodown_codegen_debts_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan083_http_msg_bridge_tests;
+mod plan765_active_session_stability_tests;
 // Plan 049 (auto-musk) style-parity: class.rs 支持度探针 + 对拍 dump（手动门,
 // 跨仓 sibling 布局;T1 映射草案逐类断言见模块头注）。
 #[cfg(all(test, feature = "ui-iced"))]

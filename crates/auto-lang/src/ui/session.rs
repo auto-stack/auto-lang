@@ -2862,6 +2862,13 @@ pub struct DesktopSession {
 pub enum DesktopMessage {
     /// 投递给指定 App 的 widget/VM 消息。
     App(AppId, IcedMessage),
+    /// PLAN-765 T-02（纪要一 F-4）：HTTP 消息桥回填（`Http.get_msg` 完成
+    /// 项泵出）。载荷形态同 [`DesktopMessage::App`]（event 恒为
+    /// `{handler}\u{1F}s\u{1F}{json}` 预编码串），区别仅在派发语义：update
+    /// 侧走 `on_http_backfill_for` 状态突变序号门控——handler 零状态写的
+    /// 空回填不置脏（F1 fire_timer 语义在回填通道的延伸），普通事件派发
+    /// 语义不动（vmref-push-only handler 兜底警告在案）。
+    HttpBackfill(AppId, IcedMessage),
     /// 桌面级事件（窗口生命周期、hot reload、shell SSE……T5 按需扩展变体）。
     Desktop(DesktopEvent),
     /// 459：带窗口上下文的业务事件（Resized/mouse/modifiers 等
