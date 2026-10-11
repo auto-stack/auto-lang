@@ -86,7 +86,8 @@ fn canonical_roundtrip_is_semantically_equal() {
             read(&format!("docs/design/strategy/hir-examples/{}", name))
         };
         let first = bind_ok(&src);
-        let canonical = descriptor::write_canonical(&first, auto_ac_prototype::descriptor());
+        let canonical = descriptor::write_canonical(&first, auto_ac_prototype::descriptor())
+            .expect("canonical write of a core bundle under the core descriptor");
         let second = bind_ok(&canonical);
         assert_eq!(first, second, "roundtrip mismatch for {}", name);
     }

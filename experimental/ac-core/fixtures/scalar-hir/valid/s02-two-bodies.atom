@@ -1,0 +1,51 @@
+// s02: two functions with DIFFERENT per-body expression table sizes — the
+// base bundle for the V-07 cross-body reference mutation (b_add carries 6
+// exprs; a mutated b_main referencing e5 must be bounds-rejected, not
+// panicked on).
+hir(schema: "auto.hir.scalar.draft", revision: 1u32, profile: "scalar-i32-draft") {
+    module m_t {
+        types {
+            type t_i32 i32 {}
+            type t_f2 function { params: ["t_i32", "t_i32"]; result: "t_i32" }
+            type t_f0 function { params: []; result: "t_i32" }
+        }
+        declarations {
+            function d_add t_f2 { name: "sf_add"; body: "b_add" }
+            function d_main t_f0 { name: "sf_main"; body: "b_main" }
+        }
+        bodies {
+            body b_add {
+                owner: "d_add"
+                entry: "k0"
+                locals {
+                    local l0 t_i32 { name: "x"; role: param; index: 0u32 }
+                    local l1 t_i32 { name: "y"; role: param; index: 1u32 }
+                }
+                expressions {
+                    expr e0 read_local { type: t_i32; local: l0 }
+                    expr e1 read_local { type: t_i32; local: l1 }
+                    expr e2 binary { type: t_i32; op: sub_i32; overflow: trap; lhs: e0; rhs: e1 }
+                    expr e3 constant { type: t_i32; value: 1i32 }
+                    expr e4 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e2; rhs: e3 }
+                    expr e5 unary { type: t_i32; op: neg_i32; operand: e4 }
+                }
+                blocks {
+                    block k0 { return(value: e5) }
+                }
+            }
+            body b_main {
+                owner: "d_main"
+                entry: "k1"
+                locals {}
+                expressions {
+                    expr e0 constant { type: t_i32; value: 10i32 }
+                    expr e1 constant { type: t_i32; value: 4i32 }
+                    expr e2 call { type: t_i32; callee: d_add; eval_args: [e0, e1]; bindings: [{ param: 0u32, arg: 0u32 }, { param: 1u32, arg: 1u32 }] }
+                }
+                blocks {
+                    block k1 { return(value: e2) }
+                }
+            }
+        }
+    }
+}

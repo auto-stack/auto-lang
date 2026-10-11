@@ -1,9 +1,18 @@
-//! Semantic verifier for the core-i32 profile (PLAN-741).
+//! Semantic verifier for the core-i32 and scalar-i32 profiles (PLAN-741 /
+//! PLAN-767).
 //!
 //! Consumes a bound `hir::Bundle` and produces a `CheckedModule`. The only
 //! way to obtain a `CheckedModule` is to run this verifier — a `checked`
 //! marker inside an input file carries no authority (the binder rejects
 //! unknown fields, so no such marker can even be expressed).
+//!
+//! Profile entries (PLAN-767 §5.1): [`verify`] keeps its historical
+//! compatibility semantics LIMITED to the core domain — a bundle bound under
+//! any other identity is rejected with `verify.domain`. The scalar domain has
+//! its own explicit entry, [`verify_scalar`]. Within the core domain the
+//! verifier also rejects every scalar-only operator and the unary/logical
+//! node kinds (`verify.profile-op`), so programmatic bundle mutation cannot
+//! smuggle the widened shared enums past the old profile.
 //!
 //! Checks (see plan §5.2 and the rejection matrix in
 //! docs/design/strategy/auto-hir-atom-text.md §9):
@@ -11,9 +20,11 @@
 //!   points back at them; intrinsics own no bodies,
 //! - signatures: param index bounds/uniqueness, param local types matching
 //!   the signature, value-only local types (i32/bool),
-//! - result types per operator (add_i32/mul_i32 produce i32, lt_i32 produces
-//!   bool), operand types, call argument/result types, `if` conditions must
-//!   be bool, `return` values must match the function result,
+//! - result types per operator (arithmetic produce i32, comparisons/eq/ne
+//!   produce bool with same-type operands, unary neg i32→i32 / not bool→bool,
+//!   logical and/or bool×bool→bool), operand types, call argument/result
+//!   types, `if` conditions must be bool, `return` values must match the
+//!   function result,
 //! - definite initialization with structured dataflow: `let` initializes,
 //!   `assign` requires an initialized mutable local, if-exit initialization
 //!   is the intersection of reachable branches, loops are treated as
@@ -26,13 +37,15 @@
 //!   a terminator, and every function body has a return path,
 //! - evaluation positions: every expression has exactly one owning reference
 //!   (no sharing, no dead expressions) and the expression graph is acyclic.
+//!   Short-circuit `Logical` RHS is statically owned exactly once even when
+//!   a given run never executes it.
 
 use crate::atom_text::{Diagnostic, Span, Stage};
-use crate::hir::{self, BodyId, ExprId, LocalId, LoopId};
+use crate::hir::{self, BodyId, ExprId, HirDomain, LocalId, LoopId};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// A module that has passed semantic verification. Constructed only by
-/// [`verify`]; the backend consumes nothing else.
+/// [`verify`]/[`verify_scalar`]; the backend consumes nothing else.
 #[derive(Clone, Debug)]
 pub struct CheckedModule {
     bundle: hir::Bundle,
@@ -47,6 +60,11 @@ impl CheckedModule {
         self.bundle
     }
 
+    /// The descriptor identity this module was verified under.
+    pub fn domain(&self) -> HirDomain {
+        self.bundle.domain
+    }
+
     /// Capabilities this module requires (from the document-level
     /// `requires` list). The build path must check them against the
     /// capabilities the target actually provides.
@@ -55,9 +73,36 @@ impl CheckedModule {
     }
 }
 
-/// Verify a bound bundle. Collects all verifier diagnostics.
+/// Verify a bound core-domain bundle (historical entry; compatibility
+/// semantics limited to `core-i32-draft`). Collects all verifier diagnostics.
 pub fn verify(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
-    let mut v = Verifier { diags: Vec::new() };
+    verify_domain(bundle, HirDomain::Core)
+}
+
+/// Verify a bound scalar-domain bundle (`scalar-i32-draft`, PLAN-767). The
+/// explicit new-identity entry; never upgrades or reinterprets a bundle of
+/// another domain.
+pub fn verify_scalar(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {
+    verify_domain(bundle, HirDomain::Scalar)
+}
+
+fn verify_domain(bundle: hir::Bundle, expect: HirDomain) -> Result<CheckedModule, Vec<Diagnostic>> {
+    if bundle.domain != expect {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.domain",
+            format!(
+                "bundle identity `{}` does not match this verifier entry (`{}`); use the entry of the document's own descriptor profile",
+                bundle.domain.as_str(),
+                expect.as_str()
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    let mut v = Verifier {
+        diags: Vec::new(),
+        domain: expect,
+    };
     v.check_bundle(&bundle);
     if v.diags.is_empty() {
         Ok(CheckedModule { bundle })
@@ -78,6 +123,13 @@ fn vt_name(v: ValueType) -> &'static str {
         ValueType::I32 => "i32",
         ValueType::Bool => "bool",
         ValueType::Function => "function",
+    }
+}
+
+fn type_index(u: &hir::TypeUse) -> u32 {
+    match u {
+        hir::TypeUse::Ref(t) => t.0,
+        _ => u32::MAX,
     }
 }
 
@@ -105,12 +157,58 @@ struct TypeMemo {
 
 struct Verifier {
     diags: Vec<Diagnostic>,
+    domain: HirDomain,
 }
 
 impl Verifier {
     fn error(&mut self, code: &str, msg: impl Into<String>, span: Span) {
         self.diags
             .push(Diagnostic::new(Stage::Verify, code, msg, span));
+    }
+
+    /// Core-domain defense (PLAN-767 §5.1): the shared HIR enums were
+    /// widened for the scalar profile; a programmatically mutated core
+    /// bundle must still be rejected at the operator set, not silently
+    /// reinterpreted under the new semantics.
+    fn check_profile_ops(&mut self, body: &hir::Body) {
+        if self.domain != HirDomain::Core {
+            return;
+        }
+        for e in &body.exprs {
+            match &e.kind {
+                hir::ExprKind::Binary { op, .. } if !op.in_core_profile() => {
+                    self.error(
+                        "verify.profile-op",
+                        format!(
+                            "op `{}` is not part of the core-i32-draft profile",
+                            op.as_str()
+                        ),
+                        e.span,
+                    );
+                }
+                hir::ExprKind::Unary { op, .. } => {
+                    self.error(
+                        "verify.profile-op",
+                        format!(
+                            "unary op `{}` is not part of the core-i32-draft profile",
+                            op.as_str()
+                        ),
+                        e.span,
+                    );
+                }
+                hir::ExprKind::Logical { op, .. } => {
+                    self.error(
+                        "verify.profile-op",
+                        format!(
+                            "logical op `{}` is not part of the core-i32-draft profile",
+                            op.as_str()
+                        ),
+                        e.span,
+                    );
+                }
+                _ => {}
+            }
+        }
     }
 
     fn check_bundle(&mut self, bundle: &hir::Bundle) {
@@ -203,6 +301,7 @@ impl Verifier {
         }
 
         for (bi, body) in m.bodies.iter().enumerate() {
+            self.check_profile_ops(body);
             self.check_body(m, BodyId(bi as u32), body, &type_map, &sigs);
         }
     }
@@ -215,6 +314,13 @@ impl Verifier {
         type_map: &BTreeMap<u32, ValueType>,
         sigs: &SigTable,
     ) {
+        // Programmatic bundles may carry ids from another body's tables
+        // (PLAN-767 V-07: cross-body references). The indexing walks below
+        // assume in-range ids — bounds-check everything first and reject in
+        // a controlled way instead of panicking.
+        if !self.check_reference_bounds(m, body) {
+            return;
+        }
         let Some(def) = m.defs.get(body.owner.0 as usize) else {
             return; // binder guarantees resolution; errors already recorded
         };
@@ -244,6 +350,154 @@ impl Verifier {
         };
         self.check_params(body, sig_params, type_map);
         self.check_blocks(body, *fn_result, type_map, sigs);
+    }
+
+    /// Bounds-check every table reference inside one body (plus its type
+    /// uses against the module's type table). Text-bound bundles cannot
+    /// violate these (the binder resolves against the body's own tables);
+    /// mutated bundles can, and must be rejected before any indexing walk.
+    fn check_reference_bounds(&mut self, m: &hir::Module, body: &hir::Body) -> bool {
+        fn type_use_ok(u: &hir::TypeUse, n_types: usize) -> bool {
+            match u {
+                hir::TypeUse::Ref(t) => (t.0 as usize) < n_types,
+                _ => true,
+            }
+        }
+        let n_types = m.types.len();
+        let n_defs = m.defs.len();
+        let n_locals = body.locals.len();
+        let n_places = body.places.len();
+        let n_exprs = body.exprs.len();
+        let n_blocks = body.blocks.len();
+        let n_loops = body.loops.len();
+        let mut diags: Vec<Diagnostic> = Vec::new();
+        let mut bad = |what: &str, idx: u32, len: usize, span: Span| {
+            diags.push(Diagnostic::new(
+                Stage::Verify,
+                "verify.bad-reference",
+                format!(
+                    "{} index `{}` is out of range for this body's tables (length {})",
+                    what, idx, len
+                ),
+                span,
+            ));
+        };
+        if (body.entry.0 as usize) >= n_blocks {
+            bad("block", body.entry.0, n_blocks, body.span);
+        }
+        for l in &body.locals {
+            if !type_use_ok(&l.ty, n_types) {
+                bad("type", type_index(&l.ty), n_types, l.span);
+            }
+        }
+        for p in &body.places {
+            if (p.local.0 as usize) >= n_locals {
+                bad("local", p.local.0, n_locals, p.span);
+            }
+            if !type_use_ok(&p.ty, n_types) {
+                bad("type", type_index(&p.ty), n_types, p.span);
+            }
+        }
+        for e in &body.exprs {
+            if !type_use_ok(&e.ty, n_types) {
+                bad("type", type_index(&e.ty), n_types, e.span);
+            }
+            match &e.kind {
+                hir::ExprKind::ReadLocal { local } => {
+                    if (local.0 as usize) >= n_locals {
+                        bad("local", local.0, n_locals, e.span);
+                    }
+                }
+                hir::ExprKind::Binary { lhs, rhs, .. } => {
+                    for id in [lhs, rhs] {
+                        if (id.0 as usize) >= n_exprs {
+                            bad("expression", id.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::Unary { operand, .. } => {
+                    if (operand.0 as usize) >= n_exprs {
+                        bad("expression", operand.0, n_exprs, e.span);
+                    }
+                }
+                hir::ExprKind::Logical { lhs, rhs, .. } => {
+                    for id in [lhs, rhs] {
+                        if (id.0 as usize) >= n_exprs {
+                            bad("expression", id.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::Call {
+                    callee, eval_args, ..
+                } => {
+                    if (callee.0 as usize) >= n_defs {
+                        bad("declaration", callee.0, n_defs, e.span);
+                    }
+                    for a in eval_args {
+                        if (a.0 as usize) >= n_exprs {
+                            bad("expression", a.0, n_exprs, e.span);
+                        }
+                    }
+                }
+                hir::ExprKind::Constant { .. } => {}
+            }
+        }
+        for bl in &body.blocks {
+            for s in &bl.stmts {
+                match s {
+                    hir::Stmt::Let { local, value } => {
+                        if (local.0 as usize) >= n_locals {
+                            bad("local", local.0, n_locals, bl.span);
+                        }
+                        if (value.0 as usize) >= n_exprs {
+                            bad("expression", value.0, n_exprs, bl.span);
+                        }
+                    }
+                    hir::Stmt::Return { value } => {
+                        if (value.0 as usize) >= n_exprs {
+                            bad("expression", value.0, n_exprs, bl.span);
+                        }
+                    }
+                    hir::Stmt::If { cond, then, els } => {
+                        if (cond.0 as usize) >= n_exprs {
+                            bad("expression", cond.0, n_exprs, bl.span);
+                        }
+                        if (then.0 as usize) >= n_blocks {
+                            bad("block", then.0, n_blocks, bl.span);
+                        }
+                        if let Some(e) = els {
+                            if (e.0 as usize) >= n_blocks {
+                                bad("block", e.0, n_blocks, bl.span);
+                            }
+                        }
+                    }
+                    hir::Stmt::Loop { id, body: b } => {
+                        if (id.0 as usize) >= n_loops {
+                            bad("loop", id.0, n_loops, bl.span);
+                        }
+                        if (b.0 as usize) >= n_blocks {
+                            bad("block", b.0, n_blocks, bl.span);
+                        }
+                    }
+                    hir::Stmt::Assign { place, value } => {
+                        if (place.0 as usize) >= n_places {
+                            bad("place", place.0, n_places, bl.span);
+                        }
+                        if (value.0 as usize) >= n_exprs {
+                            bad("expression", value.0, n_exprs, bl.span);
+                        }
+                    }
+                    hir::Stmt::Break { target } | hir::Stmt::Continue { target } => {
+                        if (target.0 as usize) >= n_loops {
+                            bad("loop", target.0, n_loops, bl.span);
+                        }
+                    }
+                }
+            }
+        }
+        let ok = diags.is_empty();
+        self.diags.extend(diags);
+        ok
     }
 
     fn check_params(
@@ -397,6 +651,17 @@ impl Verifier {
                             stack.push(Visit::Enter(*rhs));
                             stack.push(Visit::Enter(*lhs));
                         }
+                        hir::ExprKind::Unary { operand, .. } => {
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*operand));
+                        }
+                        hir::ExprKind::Logical { lhs, rhs, .. } => {
+                            // both sides are walked statically even though
+                            // the RHS is conditionally executed at runtime
+                            stack.push(Visit::Exit(id));
+                            stack.push(Visit::Enter(*rhs));
+                            stack.push(Visit::Enter(*lhs));
+                        }
                         hir::ExprKind::Call { eval_args, .. } => {
                             stack.push(Visit::Exit(id));
                             for a in eval_args.iter().rev() {
@@ -414,22 +679,23 @@ impl Verifier {
                                 operand_type(tm, *lhs, declared_of(&body.exprs[lhs.0 as usize]));
                             let rt =
                                 operand_type(tm, *rhs, declared_of(&body.exprs[rhs.0 as usize]));
-                            for (role, vt) in [("lhs", lt), ("rhs", rt)] {
-                                if vt != ValueType::I32 {
-                                    self.error(
-                                        "verify.type-mismatch",
-                                        format!(
-                                            "expr `{}`: {} operand of {} must be i32",
-                                            e.id_text,
-                                            role,
-                                            op.as_str()
-                                        ),
-                                        e.span,
-                                    );
-                                }
-                            }
+                            use hir::BinOp::*;
                             match op {
-                                hir::BinOp::AddI32 | hir::BinOp::MulI32 => {
+                                AddI32 | SubI32 | MulI32 | DivI32 | RemI32 => {
+                                    for (role, vt) in [("lhs", lt), ("rhs", rt)] {
+                                        if vt != ValueType::I32 {
+                                            self.error(
+                                                "verify.type-mismatch",
+                                                format!(
+                                                    "expr `{}`: {} operand of {} must be i32",
+                                                    e.id_text,
+                                                    role,
+                                                    op.as_str()
+                                                ),
+                                                e.span,
+                                            );
+                                        }
+                                    }
                                     if declared != ValueType::I32 {
                                         self.error(
                                             "verify.type-mismatch",
@@ -443,12 +709,115 @@ impl Verifier {
                                     }
                                     ValueType::I32
                                 }
-                                hir::BinOp::LtI32 => {
+                                LtI32 | LeI32 | GtI32 | GeI32 => {
+                                    for (role, vt) in [("lhs", lt), ("rhs", rt)] {
+                                        if vt != ValueType::I32 {
+                                            self.error(
+                                                "verify.type-mismatch",
+                                                format!(
+                                                    "expr `{}`: {} operand of {} must be i32",
+                                                    e.id_text,
+                                                    role,
+                                                    op.as_str()
+                                                ),
+                                                e.span,
+                                            );
+                                        }
+                                    }
                                     if declared != ValueType::Bool {
                                         self.error(
                                             "verify.type-mismatch",
                                             format!(
-                                                "expr `{}`: lt_i32 must produce bool",
+                                                "expr `{}`: {} must produce bool",
+                                                e.id_text,
+                                                op.as_str()
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    ValueType::Bool
+                                }
+                                Eq | Ne => {
+                                    if lt != rt
+                                        || !matches!(
+                                            (lt, rt),
+                                            (ValueType::I32, ValueType::I32)
+                                                | (ValueType::Bool, ValueType::Bool)
+                                        )
+                                    {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: {} operands must both be i32 or both be bool (found {} / {})",
+                                                e.id_text,
+                                                op.as_str(),
+                                                vt_name(lt),
+                                                vt_name(rt)
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    if declared != ValueType::Bool {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: {} must produce bool",
+                                                e.id_text,
+                                                op.as_str()
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    ValueType::Bool
+                                }
+                            }
+                        }
+                        hir::ExprKind::Unary { op, operand } => {
+                            let ot = operand_type(
+                                tm,
+                                *operand,
+                                declared_of(&body.exprs[operand.0 as usize]),
+                            );
+                            match op {
+                                hir::UnaryOp::NegI32 => {
+                                    if ot != ValueType::I32 {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: operand of neg_i32 must be i32",
+                                                e.id_text
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    if declared != ValueType::I32 {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: neg_i32 must produce i32",
+                                                e.id_text
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    ValueType::I32
+                                }
+                                hir::UnaryOp::NotBool => {
+                                    if ot != ValueType::Bool {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: operand of not_bool must be bool",
+                                                e.id_text
+                                            ),
+                                            e.span,
+                                        );
+                                    }
+                                    if declared != ValueType::Bool {
+                                        self.error(
+                                            "verify.type-mismatch",
+                                            format!(
+                                                "expr `{}`: not_bool must produce bool",
                                                 e.id_text
                                             ),
                                             e.span,
@@ -457,6 +826,38 @@ impl Verifier {
                                     ValueType::Bool
                                 }
                             }
+                        }
+                        hir::ExprKind::Logical { op, lhs, rhs } => {
+                            let lt =
+                                operand_type(tm, *lhs, declared_of(&body.exprs[lhs.0 as usize]));
+                            let rt =
+                                operand_type(tm, *rhs, declared_of(&body.exprs[rhs.0 as usize]));
+                            for (role, vt) in [("lhs", lt), ("rhs", rt)] {
+                                if vt != ValueType::Bool {
+                                    self.error(
+                                        "verify.type-mismatch",
+                                        format!(
+                                            "expr `{}`: {} operand of logical {} must be bool",
+                                            e.id_text,
+                                            role,
+                                            op.as_str()
+                                        ),
+                                        e.span,
+                                    );
+                                }
+                            }
+                            if declared != ValueType::Bool {
+                                self.error(
+                                    "verify.type-mismatch",
+                                    format!(
+                                        "expr `{}`: logical {} must produce bool",
+                                        e.id_text,
+                                        op.as_str()
+                                    ),
+                                    e.span,
+                                );
+                            }
+                            ValueType::Bool
                         }
                         hir::ExprKind::Call {
                             callee,
@@ -648,6 +1049,13 @@ impl Verifier {
             let mut targets: Vec<u32> = Vec::new();
             match &e.kind {
                 hir::ExprKind::Binary { lhs, rhs, .. } => {
+                    targets.push(lhs.0);
+                    targets.push(rhs.0);
+                }
+                hir::ExprKind::Unary { operand, .. } => {
+                    targets.push(operand.0);
+                }
+                hir::ExprKind::Logical { lhs, rhs, .. } => {
                     targets.push(lhs.0);
                     targets.push(rhs.0);
                 }
@@ -1272,6 +1680,15 @@ impl Verifier {
                     }
                 }
                 hir::ExprKind::Binary { lhs, rhs, .. } => {
+                    stack.push(*rhs);
+                    stack.push(*lhs);
+                }
+                hir::ExprKind::Unary { operand, .. } => {
+                    stack.push(*operand);
+                }
+                hir::ExprKind::Logical { lhs, rhs, .. } => {
+                    // both sides statically — a conditionally executed RHS
+                    // still has to pass the initialization walk
                     stack.push(*rhs);
                     stack.push(*lhs);
                 }

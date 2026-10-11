@@ -649,6 +649,12 @@ impl<'c> FuncEmitter<'c> {
         // not recurse. Ordering is exactly the recursive form's: lhs fully
         // emitted, then rhs, then the node's own instruction (the explicit
         // stack yields operands left-to-right before the Exit step).
+        // PLAN-767: `Logical` nodes add two steps — after the lhs value is
+        // ready the machine opens a conditional rhs block + merge (branch on
+        // the lhs under the operator's polarity), emits the ENTIRE rhs
+        // subtree inside that block only, then merges through a Cranelift
+        // variable. The rhs's potentially trapping code is never on an
+        // unconditional path.
         enum Step {
             Enter(ExprId),
             Binary {
@@ -656,6 +662,28 @@ impl<'c> FuncEmitter<'c> {
                 op: hir::BinOp,
                 lhs: ExprId,
                 rhs: ExprId,
+            },
+            Unary {
+                dest: ExprId,
+                op: hir::UnaryOp,
+                operand: ExprId,
+            },
+            /// lhs value ready: define the result variable with it, branch
+            /// on it (and: rhs|merge, or: merge|rhs), switch to the rhs
+            /// block. `merge`/`var` were created at Enter time.
+            LogicalLhs {
+                op: hir::LogicOp,
+                lhs: ExprId,
+                var: Variable,
+                merge: cranelift_codegen::ir::Block,
+            },
+            /// rhs value ready: define the result variable with it, jump to
+            /// the merge, seal it, switch to it, read the variable.
+            LogicalRhs {
+                dest: ExprId,
+                rhs: ExprId,
+                var: Variable,
+                merge: cranelift_codegen::ir::Block,
             },
             Call(ExprId),
         }
@@ -690,6 +718,32 @@ impl<'c> FuncEmitter<'c> {
                             stack.push(Step::Enter(*rhs));
                             stack.push(Step::Enter(*lhs));
                         }
+                        hir::ExprKind::Unary { op, operand } => {
+                            stack.push(Step::Unary {
+                                dest: id,
+                                op: *op,
+                                operand: *operand,
+                            });
+                            stack.push(Step::Enter(*operand));
+                        }
+                        hir::ExprKind::Logical { op, lhs, rhs } => {
+                            let var = self.fb.declare_var(types::I32);
+                            let merge = self.fb.create_block();
+                            stack.push(Step::LogicalRhs {
+                                dest: id,
+                                rhs: *rhs,
+                                var,
+                                merge,
+                            });
+                            stack.push(Step::Enter(*rhs));
+                            stack.push(Step::LogicalLhs {
+                                op: *op,
+                                lhs: *lhs,
+                                var,
+                                merge,
+                            });
+                            stack.push(Step::Enter(*lhs));
+                        }
                         hir::ExprKind::Call { eval_args, .. } => {
                             stack.push(Step::Call(id));
                             for a in eval_args.iter().rev() {
@@ -709,12 +763,94 @@ impl<'c> FuncEmitter<'c> {
                     };
                     let v = match op {
                         hir::BinOp::AddI32 => self.checked_add(a, b),
+                        hir::BinOp::SubI32 => self.checked_sub(a, b),
                         hir::BinOp::MulI32 => self.checked_mul(a, b),
+                        hir::BinOp::DivI32 => self.guarded_sdiv(a, b),
+                        hir::BinOp::RemI32 => self.guarded_srem(a, b),
                         hir::BinOp::LtI32 => {
                             use cranelift_codegen::ir::condcodes::IntCC;
                             self.icmp_bool(IntCC::SignedLessThan, a, b)
                         }
+                        hir::BinOp::LeI32 => {
+                            use cranelift_codegen::ir::condcodes::IntCC;
+                            self.icmp_bool(IntCC::SignedLessThanOrEqual, a, b)
+                        }
+                        hir::BinOp::GtI32 => {
+                            use cranelift_codegen::ir::condcodes::IntCC;
+                            self.icmp_bool(IntCC::SignedGreaterThan, a, b)
+                        }
+                        hir::BinOp::GeI32 => {
+                            use cranelift_codegen::ir::condcodes::IntCC;
+                            self.icmp_bool(IntCC::SignedGreaterThanOrEqual, a, b)
+                        }
+                        hir::BinOp::Eq => {
+                            use cranelift_codegen::ir::condcodes::IntCC;
+                            self.icmp_bool(IntCC::Equal, a, b)
+                        }
+                        hir::BinOp::Ne => {
+                            use cranelift_codegen::ir::condcodes::IntCC;
+                            self.icmp_bool(IntCC::NotEqual, a, b)
+                        }
                     };
+                    slots.insert(dest.0, Val::V(v));
+                }
+                Step::Unary { dest, op, operand } => {
+                    let a = match slots.remove(&operand.0) {
+                        Some(Val::V(v)) => v,
+                        _ => unreachable!("operand slot filled"),
+                    };
+                    let v = match op {
+                        hir::UnaryOp::NegI32 => self.checked_neg(a),
+                        hir::UnaryOp::NotBool => {
+                            // bools are the canonical i32 0/1 here; `!b = b^1`
+                            let one = self.fb.ins().iconst(types::I32, 1);
+                            self.fb.ins().bxor(a, one)
+                        }
+                    };
+                    slots.insert(dest.0, Val::V(v));
+                }
+                Step::LogicalLhs {
+                    op,
+                    lhs,
+                    var,
+                    merge,
+                } => {
+                    let l = match slots.remove(&lhs.0) {
+                        Some(Val::V(v)) => v,
+                        _ => unreachable!("logical lhs slot filled"),
+                    };
+                    // The lhs is evaluated exactly once, here.
+                    self.fb.def_var(var, l);
+                    let rhs_b = self.fb.create_block();
+                    match op {
+                        hir::LogicOp::And => {
+                            // && evaluates the rhs only when the lhs was true
+                            self.fb.ins().brif(l, rhs_b, &[], merge, &[]);
+                        }
+                        hir::LogicOp::Or => {
+                            // || evaluates the rhs only when the lhs was false
+                            self.fb.ins().brif(l, merge, &[], rhs_b, &[]);
+                        }
+                    }
+                    self.fb.seal_block(rhs_b);
+                    self.fb.switch_to_block(rhs_b);
+                }
+                Step::LogicalRhs {
+                    dest,
+                    rhs,
+                    var,
+                    merge,
+                } => {
+                    let r = match slots.remove(&rhs.0) {
+                        Some(Val::V(v)) => v,
+                        _ => unreachable!("logical rhs slot filled"),
+                    };
+                    self.fb.def_var(var, r);
+                    self.fb.ins().jump(merge, &[]);
+                    // Both predecessors (lhs branch + rhs jump) are known.
+                    self.fb.seal_block(merge);
+                    self.fb.switch_to_block(merge);
+                    let v = self.fb.use_var(var);
                     slots.insert(dest.0, Val::V(v));
                 }
                 Step::Call(id) => {
@@ -818,5 +954,88 @@ impl<'c> FuncEmitter<'c> {
         let ovf = self.icmp_bool(IntCC::NotEqual, r64, back);
         self.branch_to_trap_on(ovf);
         r32
+    }
+
+    /// `a - b` with a pre-target overflow guard. Subtracting a positive
+    /// underflows iff `a < min + b`; subtracting a non-positive overflows
+    /// iff `a > max + b`. Both room terms stay inside the i32 domain for
+    /// their guard's polarity, so the guard arithmetic itself cannot wrap.
+    fn checked_sub(&mut self, a: Value, b: Value) -> Value {
+        use cranelift_codegen::ir::condcodes::IntCC;
+        let diff = self.fb.ins().isub(a, b);
+        let zero = self.fb.ins().iconst(types::I32, 0);
+        let max = self.fb.ins().iconst(types::I32, i32::MAX as i64);
+        let min = self.fb.ins().iconst(types::I32, i32::MIN as i64);
+        let room_pos = self.fb.ins().iadd(max, b);
+        let b_nonpos = self.icmp_bool(IntCC::SignedLessThanOrEqual, b, zero);
+        let a_gt_room = self.icmp_bool(IntCC::SignedGreaterThan, a, room_pos);
+        let ovf_pos = self.fb.ins().band(b_nonpos, a_gt_room);
+        let room_neg = self.fb.ins().iadd(min, b);
+        let b_pos = self.icmp_bool(IntCC::SignedGreaterThan, b, zero);
+        let a_lt_room = self.icmp_bool(IntCC::SignedLessThan, a, room_neg);
+        let ovf_neg = self.fb.ins().band(b_pos, a_lt_room);
+        let ovf = self.fb.ins().bor(ovf_pos, ovf_neg);
+        self.branch_to_trap_on(ovf);
+        diff
+    }
+
+    /// `-a`; MIN is the only value whose negation leaves the i32 domain.
+    fn checked_neg(&mut self, a: Value) -> Value {
+        use cranelift_codegen::ir::condcodes::IntCC;
+        let min = self.fb.ins().iconst(types::I32, i32::MIN as i64);
+        let is_min = self.icmp_bool(IntCC::Equal, a, min);
+        self.branch_to_trap_on(is_min);
+        self.fb.ins().ineg(a)
+    }
+
+    /// `a / b` with explicit guards BEFORE the target instruction (plan
+    /// §5.3): the divisor is sanitized to 1 for the trapping polarities so
+    /// the hardware `idiv` never sees a zero divisor or the MIN/-1
+    /// quotient overflow, then the exact result is selected back and the
+    /// profile's fixed trap rules (b == 0, MIN / -1) branch to the trap70
+    /// path — no OS hardware exception can escape.
+    fn guarded_sdiv(&mut self, a: Value, b: Value) -> Value {
+        use cranelift_codegen::ir::condcodes::IntCC;
+        let zero = self.fb.ins().iconst(types::I32, 0);
+        let one = self.fb.ins().iconst(types::I32, 1);
+        let m1 = self.fb.ins().iconst(types::I32, -1);
+        let min = self.fb.ins().iconst(types::I32, i32::MIN as i64);
+        let bz = self.icmp_bool(IntCC::Equal, b, zero);
+        let safe_bz = self.fb.ins().select(bz, one, b);
+        let bm1 = self.icmp_bool(IntCC::Equal, b, m1);
+        let safe = self.fb.ins().select(bm1, one, safe_bz);
+        let raw = self.fb.ins().sdiv(a, safe);
+        // correct quotient for b == -1 is -a (INEG wraps only on MIN, whose
+        // path traps below before the wrapped value can be observed)
+        let neg = self.fb.ins().ineg(a);
+        let q = self.fb.ins().select(bm1, neg, raw);
+        let a_min = self.icmp_bool(IntCC::Equal, a, min);
+        let m1_min = self.fb.ins().band(bm1, a_min);
+        let bad = self.fb.ins().bor(bz, m1_min);
+        self.branch_to_trap_on(bad);
+        q
+    }
+
+    /// `a % b` with the same pre-target guards. `x % -1 == 0` in exact
+    /// arithmetic, but this profile fixes MIN % -1 as trap70 too (plan
+    /// §5.2), so the sanitized remainder is selected to 0 only for the
+    /// non-MIN `b == -1` runs.
+    fn guarded_srem(&mut self, a: Value, b: Value) -> Value {
+        use cranelift_codegen::ir::condcodes::IntCC;
+        let zero = self.fb.ins().iconst(types::I32, 0);
+        let one = self.fb.ins().iconst(types::I32, 1);
+        let m1 = self.fb.ins().iconst(types::I32, -1);
+        let min = self.fb.ins().iconst(types::I32, i32::MIN as i64);
+        let bz = self.icmp_bool(IntCC::Equal, b, zero);
+        let safe_bz = self.fb.ins().select(bz, one, b);
+        let bm1 = self.icmp_bool(IntCC::Equal, b, m1);
+        let safe = self.fb.ins().select(bm1, one, safe_bz);
+        let raw = self.fb.ins().srem(a, safe);
+        let r = self.fb.ins().select(bm1, zero, raw);
+        let a_min = self.icmp_bool(IntCC::Equal, a, min);
+        let m1_min = self.fb.ins().band(bm1, a_min);
+        let bad = self.fb.ins().bor(bz, m1_min);
+        self.branch_to_trap_on(bad);
+        r
     }
 }

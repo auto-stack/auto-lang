@@ -238,6 +238,21 @@ impl Descriptor {
         self.enums.get(name)
     }
 
+    /// Authoritative domain of this descriptor's identity triple. Only the
+    /// registered scalar triple maps to Scalar; anything else stays Core —
+    /// the conservative direction (an unknown identity never upgrades a
+    /// bundle into the new profile, PLAN-767 §5.1).
+    pub fn domain(&self) -> hir::HirDomain {
+        if self.schema == "auto.hir.scalar.draft"
+            && self.revision == 1
+            && self.profile == "scalar-i32-draft"
+        {
+            hir::HirDomain::Scalar
+        } else {
+            hir::HirDomain::Core
+        }
+    }
+
     fn has_branches_for(&self, tag: &str) -> bool {
         let prefix = format!("{}.", tag);
         self.branches.contains_key(tag) || self.branches.keys().any(|k| k.starts_with(&prefix))
@@ -251,6 +266,54 @@ fn bad_descriptor(n: &SyntaxNode) -> Diagnostic {
         format!("malformed descriptor entry at `{}`", n.tag),
         n.tag_span,
     )
+}
+
+/// The identity triple declared in a document's `hir` header, used by the
+/// lib.rs registry to select a descriptor (PLAN-767 §5.1). Shallow on
+/// purpose: full field/branch validation still belongs to the selected
+/// descriptor's binder.
+pub struct DocumentIdentity {
+    pub schema: String,
+    pub revision: u32,
+    pub profile: String,
+    pub span: Span,
+}
+
+pub fn peek_identity(source: &str) -> Result<DocumentIdentity, Diagnostic> {
+    let root = crate::atom_text::parse(source)?;
+    if root.tag != "hir" {
+        return Err(Diagnostic::new(
+            Stage::Bind,
+            "bind.unknown-root",
+            format!("expected root node `hir`, found `{}`", root.tag),
+            root.tag_span,
+        ));
+    }
+    let mut schema = None;
+    let mut revision = None;
+    let mut profile = None;
+    for f in root.all_fields() {
+        match f.name.as_str() {
+            "schema" => schema = str_value(&f.value),
+            "revision" => revision = int_value(&f.value).and_then(|l| l.to_u32()),
+            "profile" => profile = str_value(&f.value),
+            _ => {}
+        }
+    }
+    match (schema, revision, profile) {
+        (Some(schema), Some(revision), Some(profile)) => Ok(DocumentIdentity {
+            schema,
+            revision,
+            profile,
+            span: root.tag_span,
+        }),
+        _ => Err(Diagnostic::new(
+            Stage::Bind,
+            "bind.descriptor-unknown",
+            "hir header must declare schema, revision and profile".to_string(),
+            root.tag_span,
+        )),
+    }
 }
 
 fn parse_node_spec(n: &SyntaxNode) -> Result<NodeSpec, Diagnostic> {
@@ -325,6 +388,7 @@ pub fn bind(desc: &Descriptor, source: &str) -> Result<hir::Bundle, Vec<Diagnost
     }
     if b.diags.is_empty() {
         Ok(hir::Bundle {
+            domain: desc.domain(),
             requires: b.out_requires,
             modules: b.out_modules,
         })
@@ -1592,8 +1656,16 @@ impl<'d> Binder<'d> {
                 };
                 let op = match op_word.as_str() {
                     "add_i32" => hir::BinOp::AddI32,
+                    "sub_i32" => hir::BinOp::SubI32,
                     "mul_i32" => hir::BinOp::MulI32,
+                    "div_i32" => hir::BinOp::DivI32,
+                    "rem_i32" => hir::BinOp::RemI32,
                     "lt_i32" => hir::BinOp::LtI32,
+                    "le_i32" => hir::BinOp::LeI32,
+                    "gt_i32" => hir::BinOp::GtI32,
+                    "ge_i32" => hir::BinOp::GeI32,
+                    "eq" => hir::BinOp::Eq,
+                    "ne" => hir::BinOp::Ne,
                     _ => return None,
                 };
                 hir::ExprKind::Binary {
@@ -1602,6 +1674,58 @@ impl<'d> Binder<'d> {
                     lhs,
                     rhs,
                 }
+            }
+            "unary" => {
+                let Some((op_word, ospan)) = self.text_ref(&fields, "op") else {
+                    return None;
+                };
+                if !self.check_enum_case("UnaryOp", &op_word, ospan) {
+                    return None;
+                }
+                let op = match op_word.as_str() {
+                    "neg_i32" => hir::UnaryOp::NegI32,
+                    "not_bool" => hir::UnaryOp::NotBool,
+                    _ => return None,
+                };
+                let Some((ot, ospan2)) = self.text_ref(&fields, "operand") else {
+                    return None;
+                };
+                let operand = match self.resolve_in(&ot, ospan2, "ExprRef", &body.exprs, expr_sibs)
+                {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                hir::ExprKind::Unary { op, operand }
+            }
+            "logical" => {
+                let Some((op_word, ospan)) = self.text_ref(&fields, "op") else {
+                    return None;
+                };
+                if !self.check_enum_case("LogicOp", &op_word, ospan) {
+                    return None;
+                }
+                let op = match op_word.as_str() {
+                    "and" => hir::LogicOp::And,
+                    "or" => hir::LogicOp::Or,
+                    _ => return None,
+                };
+                let Some((lhs_t, lhs_span)) = self.text_ref(&fields, "lhs") else {
+                    return None;
+                };
+                let lhs = match self.resolve_in(&lhs_t, lhs_span, "ExprRef", &body.exprs, expr_sibs)
+                {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                let Some((rhs_t, rhs_span)) = self.text_ref(&fields, "rhs") else {
+                    return None;
+                };
+                let rhs = match self.resolve_in(&rhs_t, rhs_span, "ExprRef", &body.exprs, expr_sibs)
+                {
+                    Some(e) => hir::ExprId(e),
+                    None => return None,
+                };
+                hir::ExprKind::Logical { op, lhs, rhs }
             }
             "call" => {
                 let Some((ct, cspan)) = self.text_ref(&fields, "callee") else {
@@ -1980,8 +2104,24 @@ fn int_value(v: &Value) -> Option<IntLit> {
 // ---------------------------------------------------------------------------
 
 /// Write the bundle back in fully-named canonical form. Re-reading the output
-/// yields a semantically equal bundle (see text_binding tests).
-pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> String {
+/// yields a semantically equal bundle (see text_binding tests). The writer
+/// refuses to re-shelve a bundle under a descriptor of a different identity
+/// domain (PLAN-767 §5.1: no identity laundering through the writer).
+pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> Result<String, Diagnostic> {
+    if desc.domain() != bundle.domain {
+        return Err(Diagnostic::new(
+            Stage::Bind,
+            "canonical.identity-conflict",
+            format!(
+                "descriptor identity `{}/{}/{}` does not match bundle domain `{}`",
+                desc.schema,
+                desc.revision,
+                desc.profile,
+                bundle.domain.as_str()
+            ),
+            Span { start: 0, end: 0 },
+        ));
+    }
     let mut w = Writer::new();
     w.line(&format!(
         "hir(schema: {}, revision: {}u32, profile: {}) {{",
@@ -2119,7 +2259,7 @@ pub fn write_canonical(bundle: &hir::Bundle, desc: &Descriptor) -> String {
     }
     w.depth -= 1;
     w.line("}");
-    w.out
+    Ok(w.out)
 }
 
 fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
@@ -2127,6 +2267,8 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
         hir::ExprKind::ReadLocal { .. } => "read_local",
         hir::ExprKind::Constant { .. } => "constant",
         hir::ExprKind::Binary { .. } => "binary",
+        hir::ExprKind::Unary { .. } => "unary",
+        hir::ExprKind::Logical { .. } => "logical",
         hir::ExprKind::Call { .. } => "call",
     };
     let mut body_fields: Vec<String> = vec![format!("type: {}", type_use_text(&e.ty, m))];
@@ -2147,11 +2289,24 @@ fn write_expr(w: &mut Writer, e: &hir::Expr, b: &hir::Body, m: &hir::Module) {
             rhs,
         } => {
             body_fields.push(format!("op: {}", op.as_str()));
-            // overflow policy only exists for arithmetic ops; comparison ops
-            // forbid it at bind time, so the canonical form must not emit it.
-            if !matches!(op, hir::BinOp::LtI32) {
+            // the overflow policy exists only for add/sub/mul; div/rem traps
+            // are inherent and comparisons cannot overflow, so the canonical
+            // form must not emit the field for them.
+            if op.has_overflow_field() {
                 body_fields.push(format!("overflow: {}", overflow_str(*overflow)));
             }
+            body_fields.push(format!("lhs: {}", quote(&b.exprs[lhs.0 as usize].id_text)));
+            body_fields.push(format!("rhs: {}", quote(&b.exprs[rhs.0 as usize].id_text)));
+        }
+        hir::ExprKind::Unary { op, operand } => {
+            body_fields.push(format!("op: {}", op.as_str()));
+            body_fields.push(format!(
+                "operand: {}",
+                quote(&b.exprs[operand.0 as usize].id_text)
+            ));
+        }
+        hir::ExprKind::Logical { op, lhs, rhs } => {
+            body_fields.push(format!("op: {}", op.as_str()));
             body_fields.push(format!("lhs: {}", quote(&b.exprs[lhs.0 as usize].id_text)));
             body_fields.push(format!("rhs: {}", quote(&b.exprs[rhs.0 as usize].id_text)));
         }

@@ -1,4 +1,5 @@
-//! Typed HIR data model for the core-i32 profile (PLAN-741).
+//! Typed HIR data model for the core-i32 and scalar-i32 profiles
+//! (PLAN-741 / PLAN-767).
 //!
 //! `Unchecked*` structures are produced by the descriptor binder
 //! (`crate::descriptor`): every textual reference has been resolved to a
@@ -8,7 +9,9 @@
 //!
 //! Equality on these structures is *semantic*: spans and the
 //! `mutable_explicit` presence bit are excluded, so author-form vs
-//! explicit-form vs canonical-roundtrip binds compare equal.
+//! explicit-form vs canonical-roundtrip binds compare equal. The bundle's
+//! [`HirDomain`] identity DOES participate: bundles bound under different
+//! descriptor identities never compare equal.
 
 use crate::atom_text::Span;
 use std::fmt;
@@ -183,16 +186,77 @@ impl Def {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BinOp {
     AddI32,
+    SubI32,
     MulI32,
+    DivI32,
+    RemI32,
     LtI32,
+    LeI32,
+    GtI32,
+    GeI32,
+    Eq,
+    Ne,
 }
 
 impl BinOp {
     pub fn as_str(&self) -> &'static str {
         match self {
             BinOp::AddI32 => "add_i32",
+            BinOp::SubI32 => "sub_i32",
             BinOp::MulI32 => "mul_i32",
+            BinOp::DivI32 => "div_i32",
+            BinOp::RemI32 => "rem_i32",
             BinOp::LtI32 => "lt_i32",
+            BinOp::LeI32 => "le_i32",
+            BinOp::GtI32 => "gt_i32",
+            BinOp::GeI32 => "ge_i32",
+            BinOp::Eq => "eq",
+            BinOp::Ne => "ne",
+        }
+    }
+
+    /// Arithmetic whose overflow is policy-governed (requires the
+    /// `overflow` field in Atom text and traps on the chosen policy).
+    /// Division/remainder traps are inherent to those ops, and comparisons
+    /// cannot overflow — neither carries the field.
+    pub fn has_overflow_field(&self) -> bool {
+        matches!(self, BinOp::AddI32 | BinOp::SubI32 | BinOp::MulI32)
+    }
+
+    /// True only for the original core-i32-draft operator set; the core
+    /// domain's verifier rejects every other op/node (PLAN-767 §5.1: the
+    /// widened shared enum must not widen the old profile).
+    pub fn in_core_profile(&self) -> bool {
+        matches!(self, BinOp::AddI32 | BinOp::MulI32 | BinOp::LtI32)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum UnaryOp {
+    NegI32,
+    NotBool,
+}
+
+impl UnaryOp {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            UnaryOp::NegI32 => "neg_i32",
+            UnaryOp::NotBool => "not_bool",
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LogicOp {
+    And,
+    Or,
+}
+
+impl LogicOp {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LogicOp::And => "and",
+            LogicOp::Or => "or",
         }
     }
 }
@@ -219,6 +283,19 @@ pub enum ExprKind {
     Binary {
         op: BinOp,
         overflow: OverflowPolicy,
+        lhs: ExprId,
+        rhs: ExprId,
+    },
+    /// Eager unary operation (`-i32` / `!bool`), PLAN-767.
+    Unary {
+        op: UnaryOp,
+        operand: ExprId,
+    },
+    /// Lazy boolean conjunction/disjunction with short-circuit evaluation,
+    /// PLAN-767. Distinct from `Binary` on purpose: mapping `&&`/`||` onto
+    /// an eager two-operand op would evaluate the RHS unconditionally.
+    Logical {
+        op: LogicOp,
         lhs: ExprId,
         rhs: ExprId,
     },
@@ -321,10 +398,43 @@ pub struct Module {
     pub span: Span,
 }
 
+/// Authoritative HIR identity domain the bundle was bound under
+/// (PLAN-767 §5.1). Derived from the descriptor triple — never guessed from
+/// the operator set — and carried from binder through verify, `CheckedModule`
+/// and the canonical writer.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum HirDomain {
+    /// `auto.hir.core.draft / 1 / core-i32-draft` (PLAN-741).
+    Core,
+    /// `auto.hir.scalar.draft / 1 / scalar-i32-draft` (PLAN-767).
+    Scalar,
+}
+
+impl HirDomain {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HirDomain::Core => "core-i32-draft",
+            HirDomain::Scalar => "scalar-i32-draft",
+        }
+    }
+
+    pub fn schema(&self) -> &'static str {
+        match self {
+            HirDomain::Core => "auto.hir.core.draft",
+            HirDomain::Scalar => "auto.hir.scalar.draft",
+        }
+    }
+
+    pub fn revision(&self) -> u32 {
+        1
+    }
+}
+
 /// Root of one parsed document: document-level `requires` capabilities plus
 /// one or more modules.
 #[derive(Clone, Debug)]
 pub struct Bundle {
+    pub domain: HirDomain,
     pub requires: Vec<String>,
     pub modules: Vec<Module>,
 }
@@ -452,7 +562,9 @@ impl Eq for Block {}
 
 impl PartialEq for Bundle {
     fn eq(&self, other: &Self) -> bool {
-        self.requires == other.requires && self.modules == other.modules
+        self.domain == other.domain
+            && self.requires == other.requires
+            && self.modules == other.modules
     }
 }
 impl Eq for Bundle {}
