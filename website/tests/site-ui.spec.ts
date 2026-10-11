@@ -249,7 +249,12 @@ test.describe('v05 release page', () => {
         }))
         expect(positions.timelineEnd).toBeLessThan(positions.imageStart)
         expect(positions.imageStart).toBeLessThan(positions.statsStart)
-        if (vp.width < 768) await page.locator('.section-nav-toggle').click()
+        if (vp.width < 768) {
+          const before = await page.locator('.section-nav').boundingBox()
+          await page.locator('.section-nav-toggle').click()
+          const expanded = await page.locator('.section-nav').boundingBox()
+          expect(expanded!.height, 'opening the directory must not move the content').toBe(before!.height)
+        }
         await page.locator('.section-nav-link[href="#journey"]').click()
         await expect(page).toHaveURL(url + '#journey')
         if (vp.width < 768) await expect(page.locator('.section-nav-toggle')).toHaveAttribute('aria-expanded', 'false')
