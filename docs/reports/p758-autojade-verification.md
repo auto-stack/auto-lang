@@ -44,3 +44,13 @@ Rust 改名仅涉及九个文件的行注释（五个 Rust 文件、四个 .at �
 - P758-OBS1：深色 PNG 无独立的工具链 manifest；对应旧 promo README 和当前对岸 HEAD 不被冒充为这些 PNG 的精确构建身份。全部标记用户提供、2026-10-10、发布准备态，不宣称最终 RC 验收。AutoEdit PLAN-757 的两张 VM 实拍及不合格比较图仍在原工作树，本次不挪用其未合入结果。
 
 规范冻结 `p758-autojade/spec-delta.json` / `reviewed-spec-delta.patch.gz`（解压后 hash 相同） 精确列八个输入/输出 SHA-256。没有改功能目标状态，`touched_goals=[]`；未新增或删减功能承诺。`spec-index.py` 重新生成 INDEX 后内容语义相同，恢复其原始提交字节。知识合入、账本刷新、归档和清理分别记账，不假称原始字符串清零或发布已完成。
+
+## 同期合入后的最终核对（2026-10-11）
+
+主检出随后合入 PLAN-754 的 Playground 宿主、依赖与规范，以及 PLAN-099 两处既有 Rust 修复。工作树同步到 `3e6727d75`，保留全部同期内容；冲突仅为债册末尾新增段，双方条目都保留。规范输入更新到当前主检出，八份增量重新冻结。本轮 website tree 与 `5188b782297190b60b3be66f273bcae165287fec:website` 相同；后续只补文档/证据，不改变已构建页面。
+
+完整 `npm run build` 124.30s 成功；最终四文件检查 61/63 通过（2.6m），其中双语章节顺序/原生定位四项、AutoJade 新旧路由/原图/画廊、五宽度/双主题都通过。搜索在并行运行首次打开时超时，未改断言的隔离复跑通过。另一项 `/playground` 控制台检查隔离复现：PLAN-754 宿主探测同源 `/api/examples` 得到 404，再探测 127.0.0.1:3030 后端连接拒绝；两个宿主组件与当前 master 逐字节等同（换行归一），请求及 SHA 在 `concurrent-baseline-check.json`。这是同期新版静态预览无后端的行为，不由 P758 改动引入；没有放宽错误豁免或新增 workaround。之前 63 个场景都有通过记录，本次当前基面仍有这项明确的既有异常。
+
+重新执行 Rust 门禁：check 成功（2m34s，仍 406 条既有 lib 警告）；t 5231 个中 5213 通过、18 失败、1539 跳过（87.844s）；tu 857 通过、2 失败、2 ignored（0.94s）。日常档 16 个确定失败已在原注释基线复现/登记，state_file 与 plan502 两个负载敏感项隔离复跑 2/2 通过；plan502 也有同日批量收据的 flake 对照。tu 除既有桌面金样失败外，root_resolution 用例读到了另一测试的临时 env 路径；隔离只跑该用例 1/1 通过，未修改生产代码。非行注释行对当前 master 仍全部一致，证明本次没有执行语义差异。全部原始日志及完整 SHA 随附件保存，不宣称当前全档全绿。
+
+P758-OBS3：同期 Playground 探测产生的静态预览控制台检查异常，另列既有集成/检查债务，锚点 `concurrent-baseline-check.json` 与 `website-two-probe.log.gz`。P758-F4 本轮已经修复，保留原生 link import/script/template（和 master 完全相同），最终导航差异只有浮层 CSS。

@@ -1,5 +1,5 @@
 {
-  "comparison": "Every non-line-comment line is unchanged from rebased master cee541da7; LF/CRLF normalized for comparison; concurrent icon size and HTTP changes preserved.",
+  "comparison": "Every non-line-comment line is unchanged from reconciled master 53f81a09dcc26716b2a67b2c3f9922c70008315b; LF/CRLF normalized; concurrent changes preserved.",
   "files": [
     "crates/auto-lang/src/tests/plan739_input_pin_tests.rs",
     "crates/auto-lang/src/ui/aura_view_builder.rs",
@@ -10,5 +10,7 @@
     "crates/auto-lang/test/ui/plan624_cross_state/src/front/p2_app.at",
     "test/ui/plan732_wikilink/src/front/app.at",
     "test/ui/plan739_input_pin/src/front/app.at"
-  ]
+  ],
+  "base": "53f81a09dcc26716b2a67b2c3f9922c70008315b",
+  "implementation_commit": "7f6861efda83e6ec0e81bbbd67151281bf37ed5d"
 }

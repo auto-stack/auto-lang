@@ -1,17 +1,19 @@
 {
-  "pattern": "JadeEdit|jadeedit|jade-edit|jade_edit",
-  "scan": "all tracked text at rebased implementation; self excluded to avoid recursive inventory",
-  "implementation_commit": "e7d04a3993ea7b41115834a0ab37ea1ae6e66351",
+  "pattern": "jade[-_]?edit|(?<!\\w)jade edit(?!\\w)",
+  "flags": "case-insensitive",
+  "scan": "all tracked UTF-8 text at reconciled implementation; self excluded to avoid recursive inventory",
+  "implementation_commit": "7f6861efda83e6ec0e81bbbd67151281bf37ed5d",
+  "base": "53f81a09dcc26716b2a67b2c3f9922c70008315b",
   "remaining": [
     {
       "path": ".autoos/specs.json",
-      "line": 5320,
+      "line": 5332,
       "reason": "derived_ledger_store_writer_unavailable",
       "text": "     \"content\": \"局部 spec 八节：语义消费（attr wikilink 单源、代码域/外链负例、文本域覆盖）；命中区间模型（LinkRegion 单 run 段矩形、LINK_DRAG_SLOP 4px、快照失配零区间）；完整点击门（登记/取消/核对/清除四腿表+零激活族清单）；激活出口与双 Str 载荷（split_wikilink_target 单点归一、事件绑定双形态、Typed 形态、无拦截直达形参）；origin 结构性实例绑定（载荷不携 key、双实例反例强制证据）；验证面（UserInterface 生产事件泵 seam、__mcp_click 只作负例锚、binary 指纹重绑规则）；兼容矩阵（缺省 None/map/cloning/scroll_sync/oninput/onfocusblock/feature 降级/输入期非承诺）；测试索引（C/W/L/O/R/X 组 15 测+六环语料 test/ui/plan732_wikilink）。消费方 jade-edit PLAN-037 契约 C-01..06 对岸对齐。\","
     },
     {
       "path": ".autoos/specs.json",
-      "line": 5436,
+      "line": 5448,
       "reason": "derived_ledger_store_writer_unavailable",
       "text": "     \"title\": \"四主应用介绍契约：AutoEdit/AutoShell/AutoMusk/JadeEdit 双语专题与系统应用分组（PLAN-722）\","
     },
@@ -652,6 +654,12 @@
       "text": "      \"source_path\": \"D:\\\\autostack\\\\jade-edit\\\\docs\\\\releases\\\\v0.1.0-rc\\\\promo-dark\\\\p7-filetree-dark.png\","
     },
     {
+      "path": "docs/reports/p758-autojade-verification.md",
+      "line": 12,
+      "reason": "rename_provenance_or_frozen_review_delta",
+      "text": "| AC-02 / T-01 | EN/ZH 新 `/apps/auto-jade/` 可达；旧 `/apps/jadeedit/` 保留语言、query 与 hash，使用 replace 跳转。四个 AutoJade 用例实际检查首页/v0.5/总览新链接、原图及兼容路径。搜索关闭兼容页索引。 |"
+    },
+    {
       "path": "docs/reports/p758-autojade/ledger-projection-pending.json",
       "line": 15,
       "reason": "rename_provenance_or_frozen_review_delta",
@@ -677,7 +685,7 @@
     },
     {
       "path": "docs/specs/website/project.md",
-      "line": 68,
+      "line": 79,
       "reason": "legacy_route_compatibility",
       "text": "PLAN-758：产品现名 AutoJade，工程/专题标识 auto-jade；双语规范路径 /apps/auto-jade/ 与 /zh/apps/auto-jade/，旧 jadeedit 路由保留同语言兼容跳转。源码仓库实际地址尚未改名，GitHub jade-edit 地址继续可用。用户提供的六张深色第一方手册示例图按实际场景展示，SHOT-07 为主图，SHOT-08 为反链/双链/快速打开/建页确认/文件树画廊，SHOT-09 草稿恢复仍待拍；P4 标签文件名与实际画面不符不入库。图片保留原始字节、原图与键盘放大，来源/宽高/hash/准备态及未独立确认的深色工具链身份在 docs/reports/p758-autojade-capture-catalog.json。快开不替代全文搜索，准备图不代表最终 RC 已通过。"
     },
@@ -694,6 +702,6 @@
       "text": "      await expect(page.locator('a[href*=\"/apps/jadeedit/\"]')).toHaveCount(0)"
     }
   ],
-  "count": 115,
+  "count": 116,
   "unclassified": []
 }

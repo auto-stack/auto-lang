@@ -1,10 +1,10 @@
 {
   "plan": "PLAN-758",
   "revision": 2,
-  "base": "cee541da7a4b1a3410bef8cbdfe2bed0c4c00c51",
-  "implementation_commit": "e7d04a3993ea7b41115834a0ab37ea1ae6e66351",
+  "base": "53f81a09dcc26716b2a67b2c3f9922c70008315b",
+  "implementation_commit": "7f6861efda83e6ec0e81bbbd67151281bf37ed5d",
   "dependency_auto_down": "895f8d0f9355c9f5ec3ce8fca268bdb768395846",
-  "patch_sha256": "e337292b8431368b42d18d09a904f3dcd6d88d7ef760b82bc2fab5981bf51986",
+  "patch_sha256": "042ea5aeb15caea6a8092e4d02f85f185eff16f52ca5fa21796adc35153f2b28",
   "targets": [
     {
       "path": "docs/specs/auto-lang/ui/architecture.md",
@@ -39,16 +39,16 @@
     {
       "path": "docs/specs/website/design/ui-presentation.md",
       "input_sha256": "a0cf669dca1293bc27847a64ddbce2e2c24af0a2394505b089c000c9591adac4",
-      "output_sha256": "e69635a1141ebb308e51ff6dc072cbd16e7520e6924bb2b23aa7855532b0c928"
+      "output_sha256": "0a5ece7849256626497297c6b13a5b677cac36288aa388c936166b17d320b66e"
     },
     {
       "path": "docs/specs/website/project.md",
-      "input_sha256": "243c64993b83e5494c7f38134ad936f7b088225d81079379d1243914859914ac",
-      "output_sha256": "f841265473b7416588174fad3d1a39d09c7844a82d340cde478ec06215ca6233"
+      "input_sha256": "f868a0c4cbd5068f962bb67f9112cf955822b6ffdb76692e6e417fc9a8b803d9",
+      "output_sha256": "5b2298c606c2061bd3037f9d16552c63da8f8880bd3624df29aa71b69a9b910f"
     }
   ],
   "touched_goals": [],
   "goal_rationale": "Product rename, qualified screenshots and presentation order preserve functional goal statuses; no goal ID transitions.",
   "patch_file": "reviewed-spec-delta.patch.gz",
-  "compressed_patch_sha256": "3266bb9aa991488b74f328c85cf9ecfe1997467783a209c81fea0b970ca03363"
+  "compressed_patch_sha256": "b29955b09fe741660661b1b5afa0eecaef1961404b5c5e7a7955c41cb9be4915"
 }

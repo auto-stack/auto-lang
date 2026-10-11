@@ -393,3 +393,5 @@ fastfail 崩溃且审计无行时，优先按栈溢出排查（重建符号 + RU
 - **P758-D1 / publication blocked**：AutoJade 当前规范与网站可合入；derived ledger 的 `P732-1` / `P722-1` 名称和八份规范投影须通过 store writer 更新。当前未注册写入工具，检查的既有服务端口无监听；临时 AutoMusk 服务启动/只读探测被自动审批以 `blocked by policy` 拒绝，未给进一步原因。未手改账本。保留 reviewed Plan 与工作树，待 writer 可用后只续做投影/归档/清理；证据与描述见 [p758 复核](../reports/p758-autojade-verification.md)、[待投影描述](../reports/p758-autojade/ledger-projection-pending.json)。延续 P753-D1 的收尾限制，不抹去旧账本内容。
 - **P758-OBS1 / asset provenance**：用户给的 P4 tags 文件实际是其他面板，未冒充标签图；SHOT-09 恢复仍依合同留空。六张合格深色原图有完整字节/hash，缺深色专属工具链 manifest，因此只标用户提供准备态。补拍要求见 [截图指南](../reports/website-v05-capture-guide.md)。
 - **P758-OBS2 / baseline gate**：注释改名无非注释差异；最后 Rust 日常档 19 红，其中 18 项在原注释基面复现，余一动画项在基线及最终隔离复验均通过；tu 的既有金样红亦在基线复现。不虚报全绿或纳入本次无关修复，逐项日志见 p758 复核附件。
+
+- **P758-OBS3 / concurrent baseline**：同步 PLAN-754 后，静态预览 /playground 主动探测同源 /api/examples 得到 404，fallback 127.0.0.1:3030 未运行产生连接拒绝；原控制台检查隔离复现。两个宿主组件与当前 master 等同，本计划未改变它们或放宽检查。证据：[基面核对](../reports/p758-autojade/concurrent-baseline-check.json)。最终当前网站 61/63，搜索隔离复验通过，余一既有此项；最终 t 5213/5231、18 红（16 已对照、2 flake 隔离绿），tu 857/2 红（原金样 + env 路径用例隔离绿），完整记录在 p758 复核。

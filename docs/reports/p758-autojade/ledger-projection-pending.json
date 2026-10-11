@@ -1,7 +1,7 @@
 {
   "state": "blocked",
   "workspace": "D:/autostack/auto-lang",
-  "ledger_sha256_at_prepare": "c6c0597dedd85a04b7b202f08dc24e1117febebd0649fb8caff5b78d817c2959",
+  "ledger_sha256_at_prepare": "a133434a4fe8056609861c7d514772c8a646dea3cc3e8a5cda09321e4fe0c6cd",
   "affected_legacy_entries": [
     {
       "id": "P732-1",
@@ -52,12 +52,12 @@
     {
       "path": "docs/specs/website/design/ui-presentation.md",
       "input_sha256": "a0cf669dca1293bc27847a64ddbce2e2c24af0a2394505b089c000c9591adac4",
-      "output_sha256": "e69635a1141ebb308e51ff6dc072cbd16e7520e6924bb2b23aa7855532b0c928"
+      "output_sha256": "0a5ece7849256626497297c6b13a5b677cac36288aa388c936166b17d320b66e"
     },
     {
       "path": "docs/specs/website/project.md",
-      "input_sha256": "243c64993b83e5494c7f38134ad936f7b088225d81079379d1243914859914ac",
-      "output_sha256": "f841265473b7416588174fad3d1a39d09c7844a82d340cde478ec06215ca6233"
+      "input_sha256": "f868a0c4cbd5068f962bb67f9112cf955822b6ffdb76692e6e417fc9a8b803d9",
+      "output_sha256": "5b2298c606c2061bd3037f9d16552c63da8f8880bd3624df29aa71b69a9b910f"
     }
   ],
   "reason": "No registered spec writers and no existing listeners on checked ports. Temporary AutoMusk serve/read probe was rejected by automatic approval with blocked by policy; no further reason supplied. No direct ledger writes. Draft descriptors only; application store owns projection schema."
