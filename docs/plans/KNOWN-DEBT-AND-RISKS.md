@@ -422,9 +422,9 @@ schema 三围栏（REG-4 四表清偿）/ ash_stream_leak_probe（门禁分层�
 
 ### PLAN-759 落地后独立核查候选（2026-10-11）
 
-以下候选未清偿，不改变759归档终态；完整证据见 [落地后审核](reports/759-post-landing-review-20261011.md)。
+以下候选登记于[落地后审核](reports/759-post-landing-review-20261011.md)（needs_fix）；D3/D4 已由 `fd55d2d42`（fix-759-review-p2 轻量 worktree 路径）清偿，不改变759归档终态。
 
 | 编号 | 优先级 | 域 | 描述 | 锚点 |
 |---|---|---|---|---|
-| P759-D3 / F-759-R1 | medium | 生产渲染诊断 | 新增command/carousel统一fallback详情与实际Input/Button/Row转换不符；placeholder/value/style被错误报忽略，MCP render check把Fallback计ERROR；canonical与kebab alias详情不一致。生产库探针已复现，需逐子件校准并锁定别名一致性 | ui/render_support.rs:310-319；ui/aura_view_builder.rs:2922；报告F-759-R1 |
-| P759-D4 / F-759-R2 | medium | 测试环境隔离 | photo stub直接设置AUTO_HTTP_BASE、仅正常尾部恢复，没有panic-safe守卫或共享互斥；与stdlib的http_base_url_resolution并行可互相覆盖。nextest隔离下绿；本次裸libtest8轮未撞竞争，不作为隔离完成证据 | tests/plan606_gallery_tests.rs:163-165/308-312；vm/ffi/stdlib.rs:11864-11882；报告F-759-R2 |
+| ~~P759-D3 / F-759-R1~~ 已清偿 `fd55d2d42` | ~~medium~~ | 生产渲染诊断 | **已清偿**：render_support 详情查询折叠 schema canonical（kebab/canonical 三围一致）；command/carousel 族按 view_builder 实际转换臂逐子件校准（command_input=partial 与 input 同口径、command_item=partial 仅 value 忽略、command_empty=fallback 恒渲染 Empty、command_group/shortcut=full、carousel_item/previous/next=full 等）；schema/aura.at 12 行同步；别名一致/ignored 不过报/实际 View 对照三回归测试入 render_support::tests | ui/render_support.rs（get_support+详情表+tests）；schema/aura.at backends.iced；报告F-759-R1 |
+| ~~P759-D4 / F-759-R2~~ 已清偿 `fd55d2d42` | ~~medium~~ | 测试环境隔离 | **已清偿**：stdlib 新增 `HTTP_BASE_TEST_SERIALIZER`+`lock_http_base_for_test`（镜像 lock_storage_for_test 先例）与 `HttpBaseEnvGuard`（RAII panic-safe 恢复，含未设态）；plan606 photo 测试与 stdlib http_base_url_resolution 均改锁+守卫形态；panic 恢复回归测试入仓。全部原有断言（精确 URL/24 张恰一次/Cover/Contain/stub 收据）保留 | vm/ffi/stdlib.rs（锁+守卫+两测试）；tests/plan606_gallery_tests.rs；报告F-759-R2 |
