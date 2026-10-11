@@ -454,3 +454,10 @@ schema 三围栏（REG-4 四表清偿）/ ash_stream_leak_probe（门禁分层�
 |---|---|---|---|---|
 | P763-R1 | low | aavm compile 腿 + a2r goldens（master 预存） | **3 枚 AAVM 红为迁移前基线预存债，非 PLAN-763 目录归并致因**——基线 worktree（716ca62db=分支点）同滤串同红同错误形态实证：①`test_aavm2_compile_corpus`/`test_aavm2_compile_use_corpus` 双 E0433（生成 main.rs 引 `auto_lang::a2r_std::fs::read_text_range` 而临时工程 `[dependencies]` 空、harness 无内联 shim；血统=db4e5954b plan687 增补，2026-09-22）；②`test_aavm2_goldens_check` 参考执行 `STDASSEMBLY.INVALID_BYTECODE: 60`（字节码语义红，与路径无关）。清偿归属 aavm/a2r 域另档：compile 腿需给临时 Cargo.toml 接 auto-lang path 依赖或改发射面；goldens 需定位字节码 60 案。与 aavm 无实用面裁定一致（守护=CI+ta，本债不阻塞合入） | docs/reports/763-baseline-taa.{json,log}；763-final-taa.log；db4e5954b |
 | P763-R2 | low | aavm 自举入口（master 预存） | **`auto <repo>/aavm.at` 单文件直跑 auto_link_E0401 `Undefined symbol: P.next in module typeinfo`**——master 主检出（迁移前源码+master 二进制）同命令逐字节同错实证=预存；与七删 CI 流最近五次全红的审计结论同向。迁移侧有效冒烟=命名空间 scratch（smoke-final aavm-namespace exit 0）；自举形态冒烟仍应走 aavm_build_smoke.sh（合并装载）而非单文件直跑 | docs/reports/763-smoke-recheck.json；763-ci-audit.md |
+
+### PLAN-765 复审登记（2026-10-12）
+
+| 编号 | 优先级 | 域 | 描述 | 锚点 |
+|---|---|---|---|---|
+| P765-D1 | low | VM 宿主内存 | idle 相位 ~1MB/min 线性缓漏未归因（1h 实测 +59.3MB/59.7min,AC-1 门 0.1MB/s 的 6× 余量内,线性不平台）。候选=每响应仍余 3 份全文瞬态(body/转义缓冲/VM Value+池)×2 拍/s 的堆记账漂移、消息批全窗重绘路径。后续杠杆:载荷池化复用/`unconditional-rendering` feature 退役评估(PLAN-708 基线启用项)。判定阈值:长寿实例(≥12h)私有内存超 ~1.2GB 再升级优先级 | docs/reports/765-t01-attribution-memos.md 后记⑥;soak tmp/soak-p765-1h.json(musk worktree,临时) |
+| P765-D2 | info | 跨仓仪器 | musk soak 仪器 `slopeMBPerMin` 单位 bug(样本 t 已为分钟再 ×60,报值实为 MB/hour;基线"30-72MB/min"实为 0.5-1.2MB/hour)——一行修(删 `* 60`),移交 musk PLAN-104 收口径时一并修;musk AC-01 需按真值重判 | docs/reports/765-t01-attribution-memos.md 后记⑤ |
