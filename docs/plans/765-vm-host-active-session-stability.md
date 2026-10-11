@@ -1,20 +1,32 @@
 ---
 plan_id: PLAN-765
-plan_revision: 1
-status: archived
-feature_name: VM 宿主活跃会话稳定专项（空闲内存残留 + 原生层 exit(1)，承接 musk PLAN-104 定罪）
+plan_revision: 2
+status: executing
+feature_name: VM 宿主活跃会话稳定专项（r1：空闲内存残留 + 原生层 exit(1)；r2：瞬态尖峰退出面，承接 musk PLAN-104 T-03 四轮矩阵定罪）
 author: [agent]
 created_at: 2026-10-11
-updated_at: 2026-10-11
+updated_at: 2026-10-12
 supersedes_spec_components: []
 new_spec_components: ["docs/specs/auto-lang/ui/design/vm-host-stability.md"]
 touched_goals: [GOAL-007]
 affects: [auto-lang, a2r-std]
 current_step: 4
-total_steps: 4
+total_steps: 7
 ---
 
 # [PLAN-765] VM 宿主活跃会话稳定专项——空闲内存残留 + 原生层 exit(1)
+
+> **r2 再激活（2026-10-12 用户裁定"计划 765 再次被激活（R2）"）**：r1 已交付
+> 归档（delivered, 4f53653fd）；musk PLAN-104 T-03 四轮 bigpage 矩阵（并行会话,
+> 仪器 `scripts/bigpage-matrix.mjs` + 证据报告 §T-03 勘误节）定谳 r1 修复面之外的
+> **新瞬态尖峰退出面**：①burst 形态（350×5KB/15s 消息分发入 VM 生命期,轮 1-3
+> 死于爆发+列表轮询叠加窗）；②大快照形态（轮 4：合成预启动排除爆发,VM 唯一
+> 负载=一次 309KB autoui_snapshot 全树序列化,快照成功返回数秒内原生 exit(1)、
+> 零错误输出）。温和载荷面（静态大页单拉+静默追加）六实例 35min 零退出=r1
+> 修复实证,与尖峰面分属不同面。musk T-03 因此 blocked on 765-R2。注意：矩阵
+> 仪器 VM spawn env 未设 AUTO_DESKTOP_EXIT_LOG——r1 审计钩在四轮里关闭,
+> "零输出"不能区分"钩未命中"与"钩未开",r2 归因须先补观测。归档终态例外
+> 依用户显式裁定（765-R2 标签连续性,musk 侧阻塞跟踪同号）。
 
 ## 0. 变更摘要
 
@@ -49,6 +61,11 @@ musk 侧已把自身杠杆用尽（回填重建链全跳过），本计划解阻
   与进程存活双证）；原生 exit(1) 路径产出归因纪要（调用点定位 + 触发
   条件 + 防护方式），必要时补挂原生退出钩（文档化其覆盖边界）；
 - AC-3：本仓既有门禁零新增红（lib 全测 + iced 相关对拍/探针面）。
+- **AC-4（r2 瞬态尖峰退出面）**：musk `bigpage-matrix.mjs` 两形态
+  （burst 分发 + 大快照序列化）零原生退出,且死亡若复现须经审计册/
+  WER/退出码三通道之一留痕归因；修复以根因防护落地（非仅观测增强）。
+- **AC-5（r2 消费解阻）**：musk PLAN-104 T-03 一键复跑矩阵转绿解阻
+  （或经其 review 裁定改判）；本仓门禁零新增红（同 AC-3 口径）。
 
 非目标：musk .at 客户端侧任何改动（PLAN-104 已交付）；Vue/web 轨性能；
 静态态（无会话）内存——KD-062 已覆盖且当前平坦。
@@ -138,6 +155,9 @@ T-04 交叉复验：musk soak 仪器 GREEN 重跑（斜率+1h 零退）+ 本仓�
 | V02 | 修复后 musk 仪器 GREEN：`--duration-s 60 --idle-s 45`（扩展 300s） | idle 斜率 ≤0.1MB/s；流式不劣化 |
 | V03 | 轮询负载长跑：仪器连续 ≥1h | 零退出（审计+进程双证） |
 | V04 | 本仓 lib 全测 + musk worktree 三门（gen-only/vm-link-probe/ui-parity） | 零新增红 |
+| V05 | r2 补观测复现：bigpage-matrix 两形态 + AUTO_DESKTOP_EXIT_LOG + WER/退出码 | 死亡留痕可归因（或零死亡） |
+| V06 | r2 修复后定向单测 + 本仓裸 cargo t（+触面档） | 零新增红 |
+| V07 | r2 修复后 bigpage-matrix 两形态复跑 | 零原生退出（AC-4） |
 
 ## 7. 验收标准
 
@@ -205,8 +225,37 @@ T-04 交叉复验：musk soak 仪器 GREEN 重跑（斜率+1h 零退）+ 本仓�
   ×60,报值实为 MB/hour——基线"30-72MB/min"实为 0.5-1.2MB/hour;修法
   一行,移交 musk PLAN-104)。三份归因纪要+规约草稿
   vm-host-stability.md 随 worktree commit 入库。]
+- [ ] T-05 r2 归因（瞬态尖峰退出）：补观测复现——musk `bigpage-matrix.mjs`
+  两形态重跑,VM spawn env 注入 AUTO_DESKTOP_EXIT_LOG（r1 审计钩四轮里
+  未开启）+ WER/Event Log 检索 + 精确退出码采集；依痕定位根因（候选：
+  未挂钩的进程内 exit 路径 / 大分配触发的原生崩溃臂 / burst 分发链上的
+  消息桥错误臂 / 外部终止假象残留）。产出 r2 归因纪要增补（调用点/
+  触发条件/防护落点冻结）。依赖：无（r1 已交付）。验证：V05。关联：AC-4。
+- [ ] T-06 r2 根修：依 T-05 定谳落地防护（错误臂可审计化/分配尖峰根因
+  消除/退出路径收敛）+ 单测。依赖：T-05。验证：V06。关联：AC-4。
+- [ ] T-07 r2 复验与解阻：musk 矩阵一键复跑（两形态零退出）+ 本仓门禁
+  （裸 cargo t + 触面档）+ musk PLAN-104 T-03 解阻交接。依赖：T-06。
+  验证：V05～V07。关联：AC-4, AC-5。
 
 ## 9. 复审记录
+
+### r2 再激活（PLAN-765:r2，2026-10-12）
+
+- stage: work（再激活簿记） ｜ plan_id: PLAN-765 ｜ plan_revision: 1→2 ｜
+  outcome: reactivated（archived → executing,归档终态例外依用户显式裁定
+  "计划 765 再次被激活（R2）"；765-R2 标签与 musk PLAN-104 T-03 阻塞
+  跟踪同号连续）。
+- 依据：musk PLAN-104 复核补记 + 证据报告 §T-03 勘误节（并行会话四轮
+  bigpage 矩阵,commit 8531f78/c04c7fd）——r1 修复面（温和载荷/稳态轮询）
+  实证有效,但**瞬态尖峰载荷触发原生 exit(1)（零错误输出）**为新面：
+  burst 分发（350×5KB/15s）与单次 309KB autoui_snapshot 全树序列化两
+  形态均命中。r1 审计钩在四轮矩阵里未开启（仪器 env 未设
+  AUTO_DESKTOP_EXIT_LOG）——归因先补观测。
+- 范围：T-05 归因（V05）→ T-06 根修（V06）→ T-07 复验解阻（V07）；
+  新增 AC-4/AC-5。r1 全部验收与收据不受影响（其证据在其当时 commit 上
+  有效）；受影响面=r2 复验时以当代码重跑为准。
+- next: T-05 补观测复现（worktree `.wt/lang-765/auto-lang`,branch
+  `plan-765-dev`,基面 master 364356e30）。
 
 ### merge 阶段收据（PLAN-765:r1，2026-10-12）
 
