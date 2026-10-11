@@ -11,7 +11,7 @@ Auto 是围绕 **AutoLang** 构建的语言与应用生态。用 AutoVM 即时�
 **AutoAI** 提供应用共享的模型服务和 Agent 工具。
 
 这些能力连接起编辑、命令自动化、AI 辅助开发和知识管理：AutoEdit、AutoShell、AutoMusk
-与 JadeEdit 分别面向这些工作。本仓库是整个生态的入口，也维护语言实现、UI 框架与工具链。
+与 AutoJade 分别面向这些工作。本仓库是整个生态的入口，也维护语言实现、UI 框架与工具链。
 
 [![AutoOS 深色桌面：应用图标、任务栏，以及时钟、待办和音乐小组件](website/public/desktop-showcase/02-desktop-dark.png)](website/public/desktop-showcase/02-desktop-dark.png)
 
@@ -41,7 +41,7 @@ AutoUI 将这一方式延伸到界面，AutoOS 提供应用共同使用的桌面
 | **AutoEdit** | 浏览项目、编辑代码与文本、搜索文件，比较文件、目录与编辑缓冲区 | [介绍](website/zh/apps/autoedit/index.md) · [auto-edit](https://github.com/auto-stack/auto-edit) |
 | **AutoShell** | 交互命令会话、文件/JSON 结构化管道和多行 AutoScript，提供命令行与 GUI 形态 | [介绍](website/zh/apps/autoshell/index.md) · [使用指南](website/zh/apps/autoshell/guide/index.md) · [auto-shell](https://github.com/auto-stack/auto-shell) |
 | **AutoMusk** | 连接项目对话、工具、Plan、Spec、执行和复审的 Coding Agent 工作台 | [介绍](website/zh/apps/automusk/index.md) · [auto-musk](https://github.com/auto-stack/auto-musk) |
-| **JadeEdit** | AutoDown 文档与本地知识库：编辑、页面链接、反链、搜索和组织 | [介绍](website/zh/apps/jadeedit/index.md) · [jade-edit](https://github.com/auto-stack/jade-edit) |
+| **AutoJade** | AutoDown 文档与本地知识库：编辑、页面链接、反链、搜索和组织 | [介绍](website/zh/apps/auto-jade/index.md) · [auto-jade](https://github.com/auto-stack/jade-edit) |
 
 **AutoDown** 提供文档格式与编辑器基础。[AutoDown 与 Jade Garden](website/zh/apps/autodown/index.md)
 介绍相关的文档和知识工作台，源码位于 [auto-down](https://github.com/auto-stack/auto-down)。

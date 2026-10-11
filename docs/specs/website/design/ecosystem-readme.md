@@ -7,7 +7,7 @@
 README.md and README.cn.md are the bilingual landing pages for the Auto ecosystem.
 Introduce AutoLang, AutoUI, AutoOS, AutoAI, and applications before language detail.
 Keep reciprocal locale links and entry points for learning, sources, UI examples, and release notes.
-AutoEdit, AutoShell, AutoMusk, and JadeEdit are the four main application introductions;
+AutoEdit, AutoShell, AutoMusk, and AutoJade are the four main application introductions;
 AutoDown is their related document/editor foundation. System demos have their own coverage.
 
 The current language introduction lives in docs/language/overview.md and overview.cn.md.

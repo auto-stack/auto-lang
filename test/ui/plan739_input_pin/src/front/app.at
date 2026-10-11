@@ -1,5 +1,5 @@
 // app.at — PLAN-739 金样语料：编辑回声→换页视面跟随（F-037-R1 回归载体）。
-// 形态对齐 jade-edit src/front/app.at:1643-1647 消费面：autodown_editor
+// 形态对齐 auto-jade src/front/app.at:1643-1647 消费面：autodown_editor
 // `oninput: .Edit`（handler 形态，非 state 字段绑定——该形态不入
 // input_state_map，F-037-R1 根因前提）+ content: .doc（state 回写应用）。
 // 换页单口 .GoP2 同 jade TabActivate 投影语义：key 与 content 同帧换装。

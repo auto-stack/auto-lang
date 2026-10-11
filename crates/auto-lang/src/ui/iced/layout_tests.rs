@@ -3969,7 +3969,7 @@ widget App {
 
 // ===== PLAN-748 T-06: jade 供料 iced 渲染器四件定音探针 =====
 //
-// 供料包 jade-edit docs/upstream/2026-10-09-vm-layout-stretch-supply.md
+// 供料包 auto-jade docs/upstream/2026-10-09-vm-layout-stretch-supply.md
 // （证据 exp5..13，exp5=健康基线）。三件布局复现形走完整 .at →
 // build_dynamic_component → View → into_iced 管线（覆盖 aura_view_builder
 // needs_scroll 转写 / axis_fix_col_child / build_row StretchLine /

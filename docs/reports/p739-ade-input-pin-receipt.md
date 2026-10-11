@@ -2,7 +2,7 @@
 
 日期：2026-10-03。产出：master `ef8eac37a`（分支 plan-739-dev
 2d950e975+ef8eac37a，rebase 等价证明 range-diff `1: 4d1621a39 =
-1: 2d950e975`，基面 9fcbdb5de 系）。本件是 jade-edit PLAN-037
+1: 2d950e975`，基面 9fcbdb5de 系）。本件是 auto-jade PLAN-037
 F-037-R1 的对岸供料回执；jade 侧按其探针重跑 P2b/P5 转绿 = 缺陷闭合
 （T-04/T-05 随后在其仓解锁，本仓不冒称已联验）。
 

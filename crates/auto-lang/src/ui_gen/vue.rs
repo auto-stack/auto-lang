@@ -26176,7 +26176,7 @@ widget App {
     /// TWO args (e.g. the editor's `open-wiki-link` (title, blockId)) wires a
     /// bare handler reference, so Vue passes BOTH args to the handler — and
     /// the multi-param handler (gap 37b) keeps both params in scope. Locks
-    /// the jade editor_tab migration off the prop-callback channel.
+    /// the AutoJade editor_tab migration off the prop-callback channel.
     #[test]
     fn test_quoted_component_event_multi_arg_handler() {
         let sfc = gen_sfc_from_widget_src(

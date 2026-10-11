@@ -1,0 +1,14 @@
+{
+  "comparison": "Every non-line-comment line is unchanged from d3fc793f6 base; LF/CRLF normalized for comparison",
+  "files": [
+    "crates/auto-lang/src/tests/plan739_input_pin_tests.rs",
+    "crates/auto-lang/src/ui/aura_view_builder.rs",
+    "crates/auto-lang/src/ui/iced/layout_tests.rs",
+    "crates/auto-lang/src/ui/vm_bridge.rs",
+    "crates/auto-lang/src/ui_gen/vue.rs",
+    "crates/auto-lang/test/ui/plan624_cross_state/src/front/app.at",
+    "crates/auto-lang/test/ui/plan624_cross_state/src/front/p2_app.at",
+    "test/ui/plan732_wikilink/src/front/app.at",
+    "test/ui/plan739_input_pin/src/front/app.at"
+  ]
+}

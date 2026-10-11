@@ -223,24 +223,37 @@ test.describe('viewports', () => {
   })
 })
 
-// ---------- AC-09 v0.5 首图早见 + 章节导航 ----------
+// ---------- AC-09 v0.5 版本成果先见 + 章节导航（PLAN-758 r2） ----------
 
 test.describe('v05 release page', () => {
   for (const vp of [{ width: 390, height: 844 }, { width: 1440, height: 1000 }]) {
     for (const url of ['/v05/', '/zh/v05/']) {
-      test(`hero image top < 1.5 viewport at ${vp.width} (${url})`, async ({ page }) => {
+      test(`release progress precedes imagery at ${vp.width} (${url})`, async ({ page }) => {
         await page.setViewportSize(vp)
         await page.goto(url)
-        const img = page.locator('figure.hero-shot img').first()
-        await expect(img).toBeVisible()
-        const box = await img.boundingBox()
-        expect(box, 'hero image bbox').toBeTruthy()
-        expect(box!.y, 'hero top within 1.5x viewport').toBeLessThan(1.5 * vp.height)
+        const heading = page.locator('#journey h2')
+        await expect(heading).toHaveText(url.startsWith('/zh') ? '五个月，三大步' : 'Five Months, Three Major Steps')
+        const box = await heading.boundingBox()
+        expect(box, 'version progress heading').toBeTruthy()
+        expect(box!.y, 'version progress early in page').toBeLessThan(1.5 * vp.height)
+        await expect(page.locator('#journey .section-desc')).toContainText('AutoUI')
+        await expect(page.locator('#journey .section-desc')).toContainText('AutoOS')
+        await expect(page.locator('#journey .timeline-version')).toHaveText(['v0.3', 'v0.4', 'v0.5'])
+        const order = ['journey', 'highlights', 'desktop', 'autoui', 'flagship', 'ecosystem', 'philosophy', 'roadmap', 'get-started']
+        expect(await page.locator('.release-landing > section[id]').evaluateAll(els => els.map(el => el.id))).toEqual(order)
+        expect(await page.locator('.section-nav-link').evaluateAll(els => els.map(el => el.getAttribute('href')))).toEqual(order.map(id => '#' + id))
+        const positions = await page.evaluate(() => ({
+          timelineEnd: document.querySelector('#journey')!.getBoundingClientRect().bottom,
+          imageStart: document.querySelector('.hero-shot')!.getBoundingClientRect().top,
+          statsStart: document.querySelector('.stats-row')!.getBoundingClientRect().top,
+        }))
+        expect(positions.timelineEnd).toBeLessThan(positions.imageStart)
+        expect(positions.imageStart).toBeLessThan(positions.statsStart)
       })
     }
   }
 
-  test('stats moved to journey: desktop section precedes stats', async ({ page }) => {
+  test('scale figures remain after product details: desktop section precedes stats', async ({ page }) => {
     await page.goto('/v05/')
     const desktopY = await page.locator('#desktop').evaluate((el) => el.getBoundingClientRect().top + window.scrollY)
     const statsY = await page.locator('.stats-row').first().evaluate((el) => el.getBoundingClientRect().top + window.scrollY)

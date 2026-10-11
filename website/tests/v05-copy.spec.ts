@@ -22,8 +22,9 @@ for (const prefix of ['', '/zh']) {
   test(`${prefix || 'en'} release keeps pending scenes distinct from existing evidence`, async ({ page }) => {
     await page.goto(`${prefix}/v05/`)
     const names = await page.locator('#flagship h3').allTextContents()
-    expect(names.map(name => name.replace(/^\S+\s+/, ''))).toEqual(['AutoEdit', 'AutoShell', 'AutoMusk', 'JadeEdit'])
-    for (const id of ['SHOT-01', 'SHOT-04', 'SHOT-07', 'SHOT-10', 'SHOT-11', 'SHOT-12']) {
+    expect(names.map(name => name.replace(/^\S+\s+/, ''))).toEqual(['AutoEdit', 'AutoShell', 'AutoMusk', 'AutoJade'])
+    await expect(page.locator('[data-capture-id="SHOT-07"] .evidence-image img')).toHaveAttribute('src', '/apps/auto-jade/p1-main-dark.png')
+    for (const id of ['SHOT-01', 'SHOT-04', 'SHOT-10', 'SHOT-11', 'SHOT-12']) {
       const slot = page.locator(`[data-capture-id="${id}"]`)
       await expect(slot).toHaveCount(1)
       await expect(slot.locator('img')).toHaveCount(0)

@@ -53,7 +53,7 @@ publication evidence.
 
 All nine distinct external repository links returned HTTP 200 and the matching
 GitHub repository title: auto-ai, auto-down, auto-edit, auto-lang, auto-musk,
-auto-os, auto-shell, books and jade-edit. No homepage fallback counted as a pass.
+auto-os, auto-shell, books and auto-jade. No homepage fallback counted as a pass.
 
 GFM previews used a plain MarkdownIt renderer with tables and GitHub-style layout,
 served locally and inspected through headless Chromium. Four documents × 390px

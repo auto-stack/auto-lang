@@ -23,12 +23,12 @@
 ## 3. 发布展示结构（SD-04）
 
 - v0.5 及后续发布页用 `ReleaseLanding.vue` + `theme/data/release-*.ts` 数据驱动（EN/ZH 同构），页面 md 只保留 frontmatter 与组件调用；Markdown 路由与 metadata 不变。
-- 章节顺序：主视觉（真实桌面主图，eager + 尺寸占位，top < 1.5×视口高）→ 三项亮点（一句话+例子）→ 桌面 → AutoUI 双端（一源两端对照图，不暗示超出验证范围的全等）→ 旗舰应用 → 系统应用/语言工具链/Playground → 理念及历程 → 展望 → 开始使用。
+- 章节顺序（PLAN-758，用户 2026-10-11 要求版本成果前置）：开篇简介 → 版本进展（“五个月，三大步”；先说明 v0.5 的 AutoUI 双端、AutoOS 虚拟桌面与应用生态，再列 v0.3/v0.4/v0.5 时间线）→ 三项亮点 → 桌面（真实主图，eager + 尺寸占位）→ AutoUI 双端（一源两端对照图，不暗示超出验证范围的全等）→ 旗舰应用 → 系统应用/语言工具链/Playground → 理念及研发规模 → 展望 → 开始使用。大图与规模数字不得先于版本成果说明。
 - 理念呈现双层：正文一句话+例子；完整论述进原生 `<details>`（键盘可展开、hash 可定位），重组内容时旧论述逐条保全（映射表先行，见 `docs/reports/p715-website-ui-baseline.md` §6 模板）。
-- 规模统计与数据来源注记（快照日期、Token 来源、无冻结标签声明）放历程区，不放首屏；计数/日期/来源逐字保全。
+- 规模统计与数据来源注记（快照日期、Token 来源、无冻结标签声明）保留在后部理念区，不放开篇版本进展区；计数/日期/来源逐字保全。
 - 章节导航 `SectionNav.vue`：桌面吸顶（top = `--site-nav-height`）横向快捷条、手机可展开目录；当前章节 IntersectionObserver 跟踪 + hash 点击即时反馈；目标章节 `scroll-margin-top` = 顶栏 + 导航条高度，标题不被两层 sticky 遮挡。
 - 无有效实图的应用保留文字、不放假占位图/死链；开始菜单等补图须用来源匹配的入库实图。
-- PLAN-756 用户明确要求先修文本、截图留空：本轮首页/v0.5/产品专题可用有标题、场景和 `SHOT-01..12` 的文字待拍槽。槽不渲染图片、不冒充已完成展示，拍摄合同在 `docs/reports/website-v05-capture-guide.md`；新图验收后替换为 EvidenceImage。现有获准桌面、Shell 和 AutoEdit 专题原图保留。四主应用从 applicationCopy 取数；AutoDown/Jade Garden 作为相关资料，与 JadeEdit 分开。发布状态明示里程碑与待冻结工件，运行/转译/调试明示后端条件。
+- PLAN-756 用户明确要求先修文本、截图留空：本轮首页/v0.5/产品专题可用有标题、场景和 `SHOT-01..12` 的文字待拍槽。槽不渲染图片、不冒充已完成展示，拍摄合同在 `docs/reports/website-v05-capture-guide.md`；新图验收后替换为 EvidenceImage。现有获准桌面、Shell 和 AutoEdit 专题原图保留。四主应用从 applicationCopy 取数；AutoDown/Jade Garden 作为相关资料，与 AutoJade 分开。发布状态明示里程碑与待冻结工件，运行/转译/调试明示后端条件。
 - PLAN-720 桌面截图：本批发布首图使用无展开窗口的深色桌面；桌面选择器先呈现浅/深主题，再看 Launcher、游戏多窗口、编辑器工作布局。作者数据在 `desktop-showcase.ts` 单源维护，中英文同构；OS 总览仅双主题预览并引导到完整专题。caption 明确小组件应用启动并最小化的前提，源 PNG 字节保全、2560×1600 占位、非首图 lazy、原图可访问。主题对照表示截图切换，不宣称操作静态图片会切换实际桌面状态。
 
 ## 4. 测试服务隔离与回归纪律（SD-06）
@@ -42,3 +42,5 @@ PLAN-718 补充（交付契约，规则见 [learning-reading](design/learning-re
 - 新增/重排页面的回归面：`tests/site-ui.spec.ts`（导航/搜索/键盘/断点/画廊/ash 回归/md 缩进代码块泄漏锁）+ `tests/home-demo.spec.ts`（预置/实时/失败/超时/取消/静态降级）+ 既有 `spa-routes` / `playground-notes`；spa-routes 的 gallery 直连等重 SPA 用例标 `test.slow()`（4 worker 并行下 networkidle 需更宽时间窗）。
 - 已知预存项（非回归，测试内注记豁免）：`/playground` 的 hydration mismatch 告警（AutoPlayground 运行时态）；`/ui/a2ui/` 目录 URL 优先命中 VitePress 专题页（sirv extensions 行为，SPA 规范入口为 `/ui/a2ui/index.html`）。
 - mock 只证明网站反馈；示例内容真实性凭仓内源码/金样/a2r 产物另行验证（证据 hash 记录于计划/报告）。
+
+PLAN-758：产品现名 AutoJade，工程/专题标识 auto-jade；双语规范路径 /apps/auto-jade/ 与 /zh/apps/auto-jade/，旧 jadeedit 路由保留同语言兼容跳转。源码仓库实际地址尚未改名，GitHub jade-edit 地址继续可用。用户提供的六张深色第一方手册示例图按实际场景展示，SHOT-07 为主图，SHOT-08 为反链/双链/快速打开/建页确认/文件树画廊，SHOT-09 草稿恢复仍待拍；P4 标签文件名与实际画面不符不入库。图片保留原始字节、原图与键盘放大，来源/宽高/hash/准备态及未独立确认的深色工具链身份在 docs/reports/p758-autojade-capture-catalog.json。快开不替代全文搜索，准备图不代表最终 RC 已通过。

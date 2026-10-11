@@ -735,7 +735,7 @@ demo 轨/app 轨分道扬镳的 enduring 数据源契约（2026-09-20 落地，�
 ## overflow 滚动转写·视口视觉层（PLAN-748）
 
 `overflow-y-auto`（及 `overflow-auto`）col 经 aura_view_builder `needs_scroll`
-转写为 `View::Scrollable` 时的 enduring 视觉契约（2026-10-10 落地，jade-edit
+转写为 `View::Scrollable` 时的 enduring 视觉契约（2026-10-10 落地，auto-jade
 供料件一根修）：
 
 1. **视觉类上移视口**（add）：bg/border/rounded/shadow/ring 族
@@ -758,7 +758,7 @@ demo 轨/app 轨分道扬镳的 enduring 数据源契约（2026-09-20 落地，�
 
 ## autodown_editor 引擎 parity（PLAN-748）
 
-vm 轨 `autodown_editor` 官方件的内建视觉基线（2026-10-10 落地，jade-edit
+vm 轨 `autodown_editor` 官方件的内建视觉基线（2026-10-10 落地，auto-jade
 供料件四）：**内容 wrapper padding 与 auto-down 引擎 CSS 等值**——上下
 16 / 左右 20 逻辑 px，单一真源 = 引擎
 `autodown/packages/engine/src/editor/styles/autodown-editor.css:103`
@@ -1155,7 +1155,7 @@ jade facade 切换实机 P2 面真因）。带参 handler 的泄漏值恰等自�
 ### 派发时序契约（SD-01）
 
 `.at` 单源双轨（vm 解释 / vue 转译 JS）下，store/widget handler 的派发
-时序契约钉死如下（语料：`docs/plans/evidence/p750/`（jade-edit 实机
+时序契约钉死如下（语料：`docs/plans/evidence/p750/`（auto-jade 实机
 A/B/C/D 场景双载体对照）；实证基线 auto-lang master @ ab7a650bd 与
 HEAD 双载体，2026-10-10）：
 
@@ -1164,7 +1164,7 @@ HEAD 双载体，2026-10-10）：
    ——外部事件不会插入同步段中间。
 2. **await 悬窗可重入**：handler 在 await 挂起期间，**同 store 的新事件
    可重入启动新的 handler 调用**（两轨一致——vm 轨 INPUT_TEXT 通道与
-   vue 轨引擎事件同理；jade editor_store 排水循环的身份重查模式即按此
+   vue 轨引擎事件同理；AutoJade editor_store 排水循环的身份重查模式即按此
    模型设计）。宿主不得假定「await 期间无重入」；重入安全性由身份重查
    （按稳定 id 重扫）而非调用互斥达成。
 3. **悬窗内身份分配的单飞责任在宿主**：悬窗内做「分配型」状态变更

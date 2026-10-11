@@ -7,7 +7,7 @@
 1. Logo、Auto: AI × Lang × OS、中英切换与资料入口。
 2. 两段生态概述 + 一张完整 AutoOS 桌面主图。
 3. 四层生态表：AutoLang / AutoUI / AutoOS / AutoAI，职责、当前路径和深入入口。
-4. 四应用表：AutoEdit / AutoShell / AutoMusk / JadeEdit；AutoDown 文档基础单列，
+4. 四应用表：AutoEdit / AutoShell / AutoMusk / AutoJade；AutoDown 文档基础单列，
    系统工具与 Demo 简述，不手工维持全部应用数量。
 5. AutoEdit 与 AutoShell 两张官网共享原图。
 6. v0.5 进展：脚本到发布、多端 UI/桌面、Rust/Python 接入、可检视工具和曲线自举。
@@ -28,7 +28,7 @@ Auto 是围绕 AutoLang 构建的语言与应用生态。用 AutoVM 即时运行
 AutoAI 提供应用共享的模型服务和 Agent 工具。
 
 这些能力连接起编辑、命令自动化、AI 辅助开发和知识管理：AutoEdit、AutoShell、AutoMusk
-与 JadeEdit 分别面向这些工作。本仓库是整个生态的入口，也维护语言实现、UI 框架与工具链。
+与 AutoJade 分别面向这些工作。本仓库是整个生态的入口，也维护语言实现、UI 框架与工具链。
 
 ### English
 
@@ -41,7 +41,7 @@ AutoVM and build programs through Rust transpilation. AutoUI brings shared inter
 to the web and native desktop; AutoOS organizes the desktop and system applications; AutoAI supplies
 shared model services and Agent tools.
 
-AutoEdit, AutoShell, AutoMusk, and JadeEdit put these foundations to work in editing, command
+AutoEdit, AutoShell, AutoMusk, and AutoJade put these foundations to work in editing, command
 automation, AI-assisted development, and knowledge management. This repository is the ecosystem's
 entry point and maintains the language implementation, UI framework, and developer toolchain.
 
@@ -55,8 +55,8 @@ entry point and maintains the language implementation, UI framework, and develop
 | AutoAI | 共享客户端、aaid 模型服务、角色/技能/Agent；工具在应用层执行 | website/ai.md 与 zh 镜像、auto-stack/auto-ai |
 
 四应用用途：AutoEdit（代码、文本与差异比较）、AutoShell（会话、结构化管道与脚本）、
-AutoMusk（Plan/Spec 开发任务与验证）、JadeEdit（文档与本地知识）。
-AutoDown 是文档格式与编辑器基础，不能与 JadeEdit 混成一个名称。
+AutoMusk（Plan/Spec 开发任务与验证）、AutoJade（文档与本地知识）。
+AutoDown 是文档格式与编辑器基础，不能与 AutoJade 混成一个名称。
 各项目采用 Auto/Rust 等不同组合，不写「整个生态全用 Auto 实现」。
 
 ## 共享截图

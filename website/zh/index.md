@@ -12,7 +12,7 @@ import FeatureCard from '../.vitepress/theme/components/FeatureCard.vue'
 import ScreenshotSlot from '../.vitepress/theme/components/ScreenshotSlot.vue'
 import { applicationCopy } from '../.vitepress/theme/data/applications'
 const applications = applicationCopy(true).apps
-const captureIds = { autoedit: 'SHOT-01', automusk: 'SHOT-04', jadeedit: 'SHOT-07' }
+const captureIds = { autoedit: 'SHOT-01', automusk: 'SHOT-04', 'auto-jade': 'SHOT-07' }
 const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
 </script>
 
@@ -57,7 +57,7 @@ const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
       <a :href="'/zh/apps/' + app.key + '/'">了解更多 →</a>
     </div>
   </div>
-  <p class="section-desc">AutoDown 是文档与编辑器基础；Jade Garden 是已有知识库工程，与 JadeEdit 分别介绍。 <a href="/zh/apps/autodown/">查看相关资料 →</a></p>
+  <p class="section-desc">AutoDown 是文档与编辑器基础；Jade Garden 是已有知识库工程，与 AutoJade 分别介绍。 <a href="/zh/apps/autodown/">查看相关资料 →</a></p>
 </div>
 
 <div class="apps-section">

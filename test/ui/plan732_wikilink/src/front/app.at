@@ -1,5 +1,5 @@
 // app.at — PLAN-732 金样语料：autodown 编辑壳正文内链激活供给（六环贯通）。
-// 消费形态与 jade-edit src/front/app.at:1646 同源：autodown_editor 块内
+// 消费形态与 auto-jade src/front/app.at:1646 同源：autodown_editor 块内
 // `on "open-wiki-link": .OpenWikiLink`（完整 kebab 事件名，双参
 // target/target_anchor）。handler 落 state 供测试断言（jade 侧同形收参）。
 widget App {

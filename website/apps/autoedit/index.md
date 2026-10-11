@@ -53,7 +53,7 @@ You can jump from a comparison to the corresponding file, edit, save, and compar
 
 AutoEdit provides a place for people to read, review, and refine text. Longer-term integration includes agent-driven operations and embedding shared editing components in other applications. [AutoMusk](/apps/automusk/) organizes coding-agent tasks; those integration directions do not make AutoEdit a completed agent system.
 
-AutoEdit and [JadeEdit](/apps/jadeedit/) remain separate products. AutoEdit emphasizes code, text, and change review; JadeEdit emphasizes documents and their knowledge relationships. They aim to share components while describing their product capabilities independently.
+AutoEdit and [AutoJade](/apps/auto-jade/) remain separate products. AutoEdit emphasizes code, text, and change review; AutoJade emphasizes documents and their knowledge relationships. They aim to share components while describing their product capabilities independently.
 
 ## Current progress and runtime
 

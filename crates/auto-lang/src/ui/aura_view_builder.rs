@@ -25568,7 +25568,7 @@ mod plan045_memo_tests {
         )
     }
 
-    /// 声明式 menubar：一项 `checked: .show_urls`（读槽），结构同 jade-edit。
+    /// 声明式 menubar：一项 `checked: .show_urls`（读槽），结构同 auto-jade。
     fn menubar_node(memo: bool) -> AuraNode {
         let item = AuraNode::element("menubar-checkbox-item")
             .with_prop("title", Expr::Str("Show URLs".into()))

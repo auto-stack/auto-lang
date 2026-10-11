@@ -11,7 +11,7 @@ AutoVM and build programs through Rust transpilation. **AutoUI** brings shared i
 to the web and native desktop; **AutoOS** organizes the desktop and system applications; **AutoAI**
 supplies shared model services and Agent tools.
 
-AutoEdit, AutoShell, AutoMusk, and JadeEdit put these foundations to work in editing, command
+AutoEdit, AutoShell, AutoMusk, and AutoJade put these foundations to work in editing, command
 automation, AI-assisted development, and knowledge management. This repository is the ecosystem's
 entry point and maintains the language implementation, UI framework, and developer toolchain.
 
@@ -44,7 +44,7 @@ and deeper AI-assisted knowledge work remain longer-term directions. See the [OS
 | **AutoEdit** | Browse projects, edit code and text, search files, and compare files, directories, or editing buffers | [Introduction](website/apps/autoedit/index.md) · [auto-edit](https://github.com/auto-stack/auto-edit) |
 | **AutoShell** | An interactive command session, structured file/JSON pipelines, and multiline AutoScript; CLI and GUI forms | [Introduction](website/apps/autoshell/index.md) · [Usage guide](website/apps/autoshell/guide/index.md) · [auto-shell](https://github.com/auto-stack/auto-shell) |
 | **AutoMusk** | A coding-agent workspace connecting project conversations, tools, Plans, Specs, execution, and review | [Introduction](website/apps/automusk/index.md) · [auto-musk](https://github.com/auto-stack/auto-musk) |
-| **JadeEdit** | AutoDown documents and local knowledge bases: editing, page links, backlinks, search, and organization | [Introduction](website/apps/jadeedit/index.md) · [jade-edit](https://github.com/auto-stack/jade-edit) |
+| **AutoJade** | AutoDown documents and local knowledge bases: editing, page links, backlinks, search, and organization | [Introduction](website/apps/auto-jade/index.md) · [auto-jade](https://github.com/auto-stack/jade-edit) |
 
 **AutoDown** supplies the document format and editing foundations. [AutoDown and Jade Garden](website/apps/autodown/index.md)
 introduces the related document and knowledge workspace; [auto-down](https://github.com/auto-stack/auto-down)

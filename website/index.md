@@ -13,7 +13,7 @@ import FeatureCard from './.vitepress/theme/components/FeatureCard.vue'
 import ScreenshotSlot from './.vitepress/theme/components/ScreenshotSlot.vue'
 import { applicationCopy } from './.vitepress/theme/data/applications'
 const applications = applicationCopy(false).apps
-const captureIds = { autoedit: 'SHOT-01', automusk: 'SHOT-04', jadeedit: 'SHOT-07' }
+const captureIds = { autoedit: 'SHOT-01', automusk: 'SHOT-04', 'auto-jade': 'SHOT-07' }
 const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
 onMounted(() => {
   if (sessionStorage.getItem('auto-lang-checked')) return;
@@ -65,7 +65,7 @@ onMounted(() => {
       <a :href="'/apps/' + app.key + '/'">Learn more →</a>
     </div>
   </div>
-  <p class="section-desc">AutoDown supplies document and editor foundations; Jade Garden is an existing knowledge-base project, described separately from JadeEdit. <a href="/apps/autodown/">Related resources →</a></p>
+  <p class="section-desc">AutoDown supplies document and editor foundations; Jade Garden is an existing knowledge-base project, described separately from AutoJade. <a href="/apps/autodown/">Related resources →</a></p>
 </div>
 
 <div class="apps-section">

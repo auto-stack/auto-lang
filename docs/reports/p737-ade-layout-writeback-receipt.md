@@ -1,4 +1,4 @@
-# PLAN-737 交付回执（jade-edit PLAN-037 T-02 解锁缺陷跨仓修复单）
+# PLAN-737 交付回执（auto-jade PLAN-037 T-02 解锁缺陷跨仓修复单）
 
 日期：2026-10-03。产出：master 59ff4e66f（分支 plan-737-dev
 5d967320e..b88a2e3a2，基面 ccc3a2f05）。本件是缺陷单五项交付的对岸供料

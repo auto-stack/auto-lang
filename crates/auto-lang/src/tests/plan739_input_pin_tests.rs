@@ -1,4 +1,4 @@
-//! PLAN-739：编辑回声→换页视面跟随回归（F-037-R1，jade-edit PLAN-037 探针
+//! PLAN-739：编辑回声→换页视面跟随回归（F-037-R1，auto-jade PLAN-037 探针
 //! P2b/P5 探针面的本仓真实节拍围栏）。
 //!
 //! 缺陷形态（修前）：ADE `oninput` 事件不进 `input_state_map` →

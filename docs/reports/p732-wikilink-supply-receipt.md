@@ -1,4 +1,4 @@
-# PLAN-732 供给回执（jade-edit PLAN-037 T-02 解锁门对接口径）
+# PLAN-732 供给回执（auto-jade PLAN-037 T-02 解锁门对接口径）
 
 日期：2026-10-03。产出：worktree `D:/autostack/.wt/lang-732/auto-lang`（分支
 `plan-732-dev`，基面 master@1cabfeb89）。本件是 jade 契约 §4「合格供给回执

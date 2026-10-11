@@ -2924,7 +2924,7 @@ impl VmBridge {
     /// ≥4M 整数约定形 / `ValueRef` / 不可证净的复合变体）。`Value` 的克隆
     /// 是裸 id 复制、零 RC 份额——状态替换（如 tab 切换的 doc/body 交换）
     /// 释放旧堆对象后，信号命中把悬垂 id 送进渲染（`vmref_to_vec` →
-    /// `get_heap_object`），debug 被 RC canary 判 UAF panic（jade-edit
+    /// `get_heap_object`），debug 被 RC canary 判 UAF panic（auto-jade
     /// vm_matrix [7 tab] 标脏弧 exit=101），release 无 canary 落 id 复用
     /// 静默错读（确认弹层滞留面）。不入网 = 退回每帧重算（pre-706 行为），
     /// 与空集/超预算退档同族。
@@ -4479,7 +4479,7 @@ widget OpProbeOrig {
 
     // ─────────────────────────────────────────────────────────────────
     // PLAN-706 r2 T-10: 信号网堆身份准入守卫（computed_signal_store）。
-    // 回归面 = jade-edit vm_matrix [7 tab] 标脏弧 UAF（缓存 VmRef 悬垂 →
+    // 回归面 = auto-jade vm_matrix [7 tab] 标脏弧 UAF（缓存 VmRef 悬垂 →
     // rc canary panic）/release 确认弹层滞留。此组测试在修复前红：
     // pre-fix store 照收 VmRef，信号表被悬垂 id 污染。
     // ─────────────────────────────────────────────────────────────────

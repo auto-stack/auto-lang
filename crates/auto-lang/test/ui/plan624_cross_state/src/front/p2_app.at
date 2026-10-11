@@ -1,5 +1,5 @@
 // p2_app.at — PLAN-624 red corpus (P2): ?str store field read in a map
-// literal arg from a widget handler. The jade Edit arm crashed here with
+// literal arg from a widget handler. The AutoJade edit arm crashed here with
 // Invalid object ID (0x80000001 sign-extension) — the ?str value encoding
 // crossing the state-object boundary. Isolated root file (own store copy
 // with ?str active_path) so the P2 crash cannot mask the P1 arms.

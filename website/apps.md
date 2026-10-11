@@ -1,7 +1,7 @@
 ---
 layout: home
 title: "Auto applications"
-description: "AutoEdit, AutoShell, AutoMusk, JadeEdit, and system applications and examples."
+description: "AutoEdit, AutoShell, AutoMusk, AutoJade, and system applications and examples."
 ---
 
 <script setup>

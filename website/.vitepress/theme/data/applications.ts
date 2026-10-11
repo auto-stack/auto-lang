@@ -10,7 +10,7 @@ export function applicationCopy(zh: boolean) {
       { key: 'autoedit', name: 'AutoEdit', role: '代码与文本', summary: '轻量文本工作台，用于浏览、编辑和比较文件。以原生桌面体验为主要方向，把代码审阅和小步修改放在前面。', uses: ['项目文件与多标签编辑', '查找、替换与跨文件搜索', '文件、目录与缓冲区差异比较'] },
       { key: 'autoshell', name: 'AutoShell', role: '命令与脚本', summary: '将日常 Shell、按字段处理的数据管道和 AutoScript 放在同一个会话中。既可交互使用，也能从命令行调用。', uses: ['连续的命令会话', '文件与 JSON 的结构化查询', '多行脚本和命令行自动化'] },
       { key: 'automusk', name: 'AutoMusk', role: 'AI 辅助开发', summary: '围绕 Plan 与 Spec 组织开发任务的 Coding Agent。让需求、执行过程、验证结果和项目知识保持可追溯。', uses: ['项目对话与工具调用', '规划、执行、复审与知识沉淀', '模型、角色与技能配置'] },
-      { key: 'jadeedit', name: 'JadeEdit', role: '文档与知识', summary: '面向 AutoDown 文档和本地知识库的编辑器。将写作、页面链接、搜索与目录组织连起来，逐步形成个人知识工作台。', uses: ['文档编辑与多页面浏览', '链接、反链、标签与检索', '页面组织与本地草稿恢复'] },
+      { key: 'auto-jade', name: 'AutoJade', role: '文档与知识', summary: '面向 AutoDown 文档和本地知识库的编辑器。将写作、页面链接、搜索与目录组织连起来，逐步形成个人知识工作台。', uses: ['文档编辑与多页面浏览', '链接、反链、标签与检索', '页面组织与本地草稿恢复'] },
     ],
     relatedTitle: '应用与生态',
     related: [
@@ -32,7 +32,7 @@ export function applicationCopy(zh: boolean) {
       { key: 'autoedit', name: 'AutoEdit', role: 'Code and text', summary: 'A lightweight text workspace for browsing, editing, and comparing files. Native desktop use, code review, and small focused edits guide its development.', uses: ['Project files and multiple editing tabs', 'Find, replace, and search across files', 'File, directory, and buffer comparisons'] },
       { key: 'autoshell', name: 'AutoShell', role: 'Commands and scripts', summary: 'Everyday shell commands, field-based data pipelines, and AutoScript in one session. Use it interactively or call it from the command line.', uses: ['A persistent command session', 'Structured file and JSON queries', 'Multiline scripts and CLI automation'] },
       { key: 'automusk', name: 'AutoMusk', role: 'AI-assisted development', summary: 'A coding agent that organizes development around Plans and Specs, keeping requirements, execution, verification, and project knowledge traceable.', uses: ['Project conversations and tool calls', 'Planning, execution, review, and consolidation', 'Model, role, and skill configuration'] },
-      { key: 'jadeedit', name: 'JadeEdit', role: 'Documents and knowledge', summary: 'An editor for AutoDown documents and local knowledge bases. Writing, page links, search, and directory organization form a developing personal knowledge workspace.', uses: ['Document editing and multiple pages', 'Links, backlinks, tags, and search', 'Page organization and local draft recovery'] },
+      { key: 'auto-jade', name: 'AutoJade', role: 'Documents and knowledge', summary: 'An editor for AutoDown documents and local knowledge bases. Writing, page links, search, and directory organization form a developing personal knowledge workspace.', uses: ['Document editing and multiple pages', 'Links, backlinks, tags, and search', 'Page organization and local draft recovery'] },
     ],
     relatedTitle: 'Applications in the ecosystem',
     related: [

@@ -6,6 +6,7 @@
 
 import { desktopShots } from './desktop-showcase'
 import { applicationCopy } from './applications'
+import { CAPTURE_IMAGES } from './capture-slots'
 
 export interface ReleaseShot {
   src: string
@@ -39,7 +40,7 @@ export interface ReleaseFlagship {
   image?: ReleaseShot
   /** AutoShell 保留原生主图；新候选场景用文字待拍槽。 */
   captureId?: string
-  kind: 'image' | 'autoshell' | 'none' | 'pending'
+  kind: 'image' | 'autoshell' | 'none' | 'capture' | 'pending'
 }
 
 export interface ReleaseCard {
@@ -50,13 +51,13 @@ export interface ReleaseCard {
 
 
 function flagshipItems(zh: boolean): ReleaseFlagship[] {
-  const emoji: Record<string, string> = { autoedit: '📝', autoshell: '🐚', automusk: '🤖', jadeedit: '📄' }
-  const captures: Record<string, string> = { autoedit: 'SHOT-01', automusk: 'SHOT-04', jadeedit: 'SHOT-07' }
+  const emoji: Record<string, string> = { autoedit: '📝', autoshell: '🐚', automusk: '🤖', 'auto-jade': '📄' }
+  const captures: Record<string, string> = { autoedit: 'SHOT-01', automusk: 'SHOT-04', 'auto-jade': 'SHOT-07' }
   return applicationCopy(zh).apps.map(app => ({
     name: app.name, emoji: emoji[app.key], desc: app.summary,
     href: (zh ? '/zh' : '') + '/apps/' + app.key + '/',
     linkLabel: zh ? '了解这个应用 →' : 'Explore this application →',
-    captureId: captures[app.key], kind: app.key === 'autoshell' ? 'autoshell' : 'pending',
+    captureId: captures[app.key], kind: app.key === 'autoshell' ? 'autoshell' : CAPTURE_IMAGES[captures[app.key]] ? 'capture' : 'pending',
   }))
 }
 
@@ -65,7 +66,7 @@ const en = {
     badge: 'v0.5 milestone',
     titlePre: 'Auto',
     title: ': The v0.5 Milestone',
-    description: 'Dynamic dev with static shipping, decoupled frontends, and Language as OS — three ideas have grown into a platform. This time, Auto starts to become itself.',
+    description: 'The core advances in v0.5: AutoUI for Web and desktop, a usable AutoOS virtual desktop, and a growing application ecosystem. Auto is moving from a language and toolchain toward everyday desktop use.',
     primaryText: 'Read the Release Notes',
     primaryLink: '/docs/releases/v0.5',
     secondaryText: 'See the desktop ↓',
@@ -197,7 +198,7 @@ const en = {
   flagship: {
     navLabel: 'Apps',
     title: 'Four Main Applications',
-    desc: 'AutoEdit for code and text, AutoShell for commands and scripts, AutoMusk for AI-assisted development, and JadeEdit for documents and knowledge. Features, prerequisites and readiness are described individually.',
+    desc: 'AutoEdit for code and text, AutoShell for commands and scripts, AutoMusk for AI-assisted development, and AutoJade for documents and knowledge. Features, prerequisites and readiness are described individually.',
     items: flagshipItems(false),
   },
 
@@ -277,14 +278,14 @@ const en = {
   },
 
   philosophy: {
-    navLabel: 'Philosophy & journey',
+    navLabel: 'Ideas',
     title: 'The Ideas Behind v0.5',
     desc: 'Each philosophy in one line above; the full arguments are expandable below — no claim was trimmed in this reorganization.',
-    journeyTitle: 'Five Months, Three Steps',
-    journeyDesc: 'From v0.3 to v0.5 (Apr — Sep 2026), each release took on a new question to answer.',
+    journeyTitle: 'Five Months, Three Major Steps',
+    journeyDesc: 'v0.5 brings three advances together: AutoUI for Web and desktop, a usable AutoOS virtual desktop, and a growing application ecosystem. Here is the path from v0.3 to v0.5 (April — September 2026).',
     leads: [
       'v0.3 answered "is it a language?"; v0.4 answered "can it run real things?". With v0.5, the question is the hardest one yet: "can it become something you open every day?"',
-      'To answer it, the repository reached 578K lines of Rust and 135K lines of Auto (September 7 snapshot, including tests and corpus) — but the line counts are just footnotes. The real change: Auto no longer lives only in compilers and test corpora. It has grown an interface, a desktop, and a whole app ecosystem. Here is the report, in order.',
+      'Auto has grown from a language kernel, runtime, and transpilers into interfaces, a desktop, and real applications. First, the three release steps; then, the v0.5 experience.',
     ],
     stats: [
       { value: '100 Billion', label: 'AI R&D Tokens', description: 'Platform-scale engineering written with deep AI involvement.', color: '#6366f1' },
@@ -329,7 +330,7 @@ const zh = {
     badge: 'v0.5 里程碑',
     titlePre: 'Auto',
     title: '：v0.5 里程碑',
-    description: '动态开发、静态发布；前端解耦、语言即 OS —— 三个理念长成了一个平台。这一次，Auto 开始成为它自己。',
+    description: 'v0.5 的核心变化：AutoUI 支持 Web 与桌面双端，AutoOS 虚拟桌面可用，应用生态逐步成形。Auto 从语言与工具链，走向日常使用的桌面与应用。',
     primaryText: '阅读发布说明',
     primaryLink: '/zh/docs/releases/v0.5',
     secondaryText: '查看桌面实景 ↓',
@@ -461,7 +462,7 @@ const zh = {
   flagship: {
     navLabel: '旗舰应用',
     title: '四个主应用',
-    desc: 'AutoEdit 用于代码与文本，AutoShell 用于命令与脚本，AutoMusk 用于 AI 辅助开发，JadeEdit 用于文档与知识。各应用分别说明功能、运行条件与当前进展。',
+    desc: 'AutoEdit 用于代码与文本，AutoShell 用于命令与脚本，AutoMusk 用于 AI 辅助开发，AutoJade 用于文档与知识。各应用分别说明功能、运行条件与当前进展。',
     items: flagshipItems(true),
   },
 
@@ -541,14 +542,14 @@ const zh = {
   },
 
   philosophy: {
-    navLabel: '理念与历程',
+    navLabel: '理念',
     title: 'v0.5 背后的理念',
     desc: '了解动态开发、层层解耦与 LaOS 的实现思路，并区分当前能力和长期方向。',
-    journeyTitle: '五个月，三步',
-    journeyDesc: '从 v0.3 到 v0.5（2026 年 4 月 — 9 月），每个版本都回答了一个新问题。',
+    journeyTitle: '五个月，三大步',
+    journeyDesc: 'v0.5 的进展集中在三件事：AutoUI 的 Web 与桌面双端、可用的 AutoOS 虚拟桌面，以及逐步成形的应用生态。这是从 v0.3 到 v0.5（2026 年 4 月 — 9 月）走过的三大步。',
     leads: [
       'v0.3 回答了"它是一门语言吗？"；v0.4 回答了"它能跑真东西吗？"。到了 v0.5，问题变成了最难的一个："它能成为你每天打开的东西吗？"',
-      '为回答它，仓库达到 57.8 万行 Rust 与 13.5 万行 Auto（9 月 7 日快照，含测试与语料）—— 但行数只是脚注。真正的变化是：Auto 不再只活在编译器与测试语料里。它长出了界面、桌面与一整个应用生态。以下是按顺序的报告。',
+      'Auto 从语言内核、运行时与转译器，走向界面、桌面和真实应用。下面先看三个版本的变化，再展开 v0.5 的实际体验。',
     ],
     stats: [
       { value: '1000 亿', label: 'AI 研发 Token', description: '深度 AI 参与的平台级工程。', color: '#6366f1' },
@@ -596,6 +597,7 @@ export const RELEASE_V05: Record<'en' | 'zh', ReleaseContent> = { en, zh }
 export function releaseNavSections(zh: boolean) {
   const c = zh ? RELEASE_V05.zh : RELEASE_V05.en
   return [
+    { id: 'journey', label: zh ? '版本进展' : 'Release progress' },
     { id: 'highlights', label: zh ? '亮点' : 'Highlights' },
     { id: 'desktop', label: c.desktop.navLabel },
     { id: 'autoui', label: c.autoui.navLabel },

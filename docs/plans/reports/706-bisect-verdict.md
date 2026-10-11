@@ -1,7 +1,7 @@
 # PLAN-706 r2 T-09 定案报告：vm UI 脏标/确认弹层交互面回归
 
 - 日期：2026-09-30；执行窗：PLAN-706 rev2 work（worktree `D:/autostack/.wt/lang-706/auto-lang`，branch `plan-706-dev` @ master 4dae03122 基）
-- 断言面：消费者仓 jade-edit `tests/vm_matrix.mjs` merged 臂（AUTOUI_MCP_PORT 驱动真 UI，进程内直调）
+- 断言面：消费者仓 auto-jade `tests/vm_matrix.mjs` merged 臂（AUTOUI_MCP_PORT 驱动真 UI，进程内直调）
 - 家族侧最小驱动：`.wt/lang-706/tab-arc.mjs`（组目录，不入 git）——复刻 [7 tab] 弧：开两档 → typeWholeDoc 标脏 → 切走/切回（脏标 TabActivate 投影还原）→ 关闭确认两路（取消留/直接关闭弃改+磁盘零写入）
 
 ## 1. A/B 锚（同 harness 同弧绿红分明）
