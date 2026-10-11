@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-758
-status: execution_done
+status: reviewed
 feature_name: AutoJade 改名与用户提供深色宣传图
 author: [Codex]
 created_at: 2026-10-10
@@ -94,3 +94,11 @@ stage: work | revision: 2 | outcome: pass | code plan-758-dev @ 7f6861efd（5188
 | evidence: 前会话四场景 4/4（7.4s）+ 原生版构建 144.04s；续跑会话独立复验 5/5（9.8s，四定位场景+section-nav hash 直达/点击/无遮挡，dist 10:59 晚于修复提交 10:57 实证产物新鲜）；`git diff master -- SectionNav.vue` 终态仅 CSS 差异（浮层）；并发基线核对 concurrent-baseline-check.json 入库（754 组件字节一致）
 | blockers: P758-D1 store 不可写（投影 pending 清单在案）；无其他
 | next: review
+
+### Review r2 聚焦重审 — pass（2026-10-11）
+
+stage: review | revision: 2 | outcome: pass | reviewed_commit: 7f6861efd（plan-758-dev，worktree D:/autostack/.wt/lang-758/auto-lang，除 playwright 输出目录外 clean）| base_commit: 3e6727d75（分支已由前会话 rebase 至 754 落地后基面；a0a7553dd 为 rebase 前旧基面复审锚，等价性归 merge 档 range-diff 证明）| dependency_revisions: auto-down 895f8d0f9355c9f5ec3ce8fca268bdb768395846
+spec_inputs: 冻结 reviewed-spec-delta.patch.gz + spec-delta.json 在分支内；F4 修复对 ui-presentation.md 的单行修订（原生链接行为）与实现一致，纳入本重审确认。
+acceptance_results: AC-01..05 维持 r2 复审结论（唯一 finding=P758-F4）；F4 修复验证——①代码对勘：SectionNav.vue 终态 vs master 仅 CSS 差异（浮层样式），模板/脚本回原生；②独立复验：四定位场景（390/1440×EN/ZH，含原生点击→URL hash→标题可见断言）+ section-nav hash 直达/点击/无遮挡 5/5（9.8s）；③修复面仅 SectionNav.vue+ui-presentation.md+docs，不触碰 63 场景/构建/cargo 门禁/图片 hash 等冻结证据的有效性；④Rust 面 9 文件（5 .rs+4 .at）过滤注释行后 diff 全空=零可执行改动（重审实测，work r2 的"非行注释行一致"主张独立复核成立）。
+findings: 无新增。P758-D1（store 阻塞）与 P758-OBS1（深色图无工具链 manifest）维持登记。独立性限制：修复与重审同会话；按工件重建结论（diff 过滤实测、e2e 独立复跑、dist 新鲜度时间戳实证）。
+next: merge
