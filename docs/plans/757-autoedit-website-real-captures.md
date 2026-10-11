@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-757
-status: execution_done
+status: reviewed
 feature_name: AutoEdit 自仓工作区实拍
 author: [Codex]
 created_at: 2026-10-10
@@ -95,3 +95,11 @@ tasks: r3 范围修订执行——两图交付 + SHOT-03 留空（P757-D1 缺陷
 evidence: rebase master 57 commits 零跳过（六文件冲突并集解决：capture-slots 并存 SHOT-01/02/07、AppsOverview 双 ScreenshotSlot、测试断言双特性并集、指南合并 756/757/758 三方更新行、KNOWN-DEBT 折叠分支侧更富诊断）；重放伪影（apps-introduction 断言块被挤）发现并修复（f88e7c90f 后 2 fix 提交）；website build 164.41s；apps-introduction + v05-copy 21/21（唯一推算偏差=总览图数 64→62，探针实证静态 64/水合剔除 2 系统性差异后钉 62）；两 PNG sha256 与 p757-autoedit-capture-catalog.json 逐字节一致（452599c4…/f696c8b6…）
 blockers: 无（Category A 零 cargo；store 投影阻塞按 753/756 先例走 §5 回退路径）
 next: review
+
+### Review r3 — pass（2026-10-11）
+
+stage: review | plan_id: PLAN-757 | plan_revision: 3 | outcome: pass | reviewed_commit: 64f820cfd（worktree clean，除 playwright 输出目录）| base_commit: a2a4bb244（master @ r3 立约+债务登记后）| dependency_revisions: auto-edit f9ae2a64361f74ad8565fc5df5c4a9aeb5fc10f2（只读）；auto-down 895f8d0f（detached）
+spec_inputs: SD-01（application-introductions.md AutoEdit 空位→实拍与来源、第三槽待拍）/SD-02（ui-presentation.md 主图共享、功能图真实来源）——已在分支内落地，与代码/指南对勘一致。
+acceptance_results: AC-01 pass（r2 在案：VM 深色官方入口 + CLI/源码身份记录，Rust 画面未入库）；AC-02 pass（r3 口径）——两图自仓真实源码（sha256 与捕获目录逐字节一致：452599c4…/f696c8b6…），比较图功能核查在案（+16/-1、保存重比 +17/-1）而画面因 P757-D1 留空，缺陷已入 KNOWN-DEBT（high，用户指示待修）；AC-03 pass（r3 口径）——两原始 PNG 发布、双语首页/v0.5/总览/专题引用与日期一致（e2e 断言 2026-10-10）、SHOT-03 待拍槽带缺陷说明、九槽保留（captureIds 断言 SHOT-04..12 结构）；AC-04 pass——构建 164.41s + 21/21 定向测试 + 指南/规范更新 + 本复审记录；Category A 零 cargo 合规（分支零 Rust 改动实测）。
+findings: 无新增。rebase 并集解与重放伪影修复（2 提交）已复核：断言语义未放宽（总览图数以探针实证钉 62；槽结构/URL/日期断言全部保留），range-diff 非全等之处=冲突解决本身，如实记录不冒充。独立性限制：实施会话内复审，以工件重建（hash 对拍、dist HTML 槽结构、测试重跑、diff 过滤）。
+next: merge
