@@ -658,96 +658,6 @@
       "text": "      \"title\": \"四主应用介绍契约：AutoEdit/AutoShell/AutoMusk/JadeEdit 双语专题与系统应用分组（PLAN-722）\","
     },
     {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 9,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "-- 日期 / 来源：2026-10-03 / plan-732（jade-edit PLAN-037 的上游供给本体；局部 spec 见 design/autodown-wikilink.md）"
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 22,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "-> 验证面口径。消费方：jade-edit PLAN-037（其契约冻结件 C-01..06 为对岸"
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 35,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "-转写为 `View::Scrollable` 时的 enduring 视觉契约（2026-10-10 落地，jade-edit"
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 44,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "-vm 轨 `autodown_editor` 官方件的内建视觉基线（2026-10-10 落地，jade-edit"
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 53,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "-时序契约钉死如下（语料：`docs/plans/evidence/p750/`（jade-edit 实机"
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 75,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "-| 682 | mcp-snapshot-determinism-and-vue-generator-fixes | ✅（reviewed→archived） | archive/682-mcp-snapshot-determinism-and-vue-generator-fixes.md | MCP 快照投影确定性 + vue 生成器四缺陷上游批（jade-edit PLAN-002 实证供料）：F1 styled_vtree 双态根修——view() MCP 同步块 gate false 丢探针恒写空 computed、属性面全靠 __bounds_collected（仅脏帧）→ 同二进制快照双态/字节基线间歇漂移（jade D-18/F-RV6）；修=同步块接探针按 Plan 309/371 同构 path→VNodeId 填 raw_class/events+set_styled_vtree 拒降级覆盖（非空→空跳过）。F2 :key 绑定表达式直发（generate_shadcn_attrs 顶部单点转发，curated 臂白名单弃 key 旧态根修）+合并期 F-682-M1 补修 layout 臂（row/col）push_passthrough_attrs 透传叠加双 :key（Vue X_DUPLICATE_ATTRIBUTE 拒收）——双漏斗「已含 :key= 则跳过」守卫+shadcn 模式回归钉（关守卫必红双态证）。F3 natives.ts R-tier 先到先得守卫+join('\\n') 真换行。F4 gen-only 全树补扫物化 @/components/ui/*（write-if-missing 幂等，dep leg popover TS2307 根修）。规范增量=空；merge=rebase e1c73a043 两段 range-diff 5/5 全等+tf 终跑见 P682-1；合并后 jade 回执步（三补件撤除+全门对新 exe 复验） |"
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 84,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "-| 748 | vm-cond-eval-and-field-write | ✅（reviewed→archived） | archive/748-vm-cond-eval-and-field-write.md | 双 phase：Phase 1 musk PLAN-101 三断点定音（②续体静态写/③动态 style 证伪=dirty 构建陈旧；①收缩为 P733-R2 子件挂载面——`.store.X` 泛名展平三口径归一根修+p054×2 图标判别器 lucide 名集成员资格根修，musk_vm_track 97/6→102/103 唯余 p053_4 异根改派）；Phase 2 jade-edit 供料四件（件一=overflow 滚动转写视觉类上移视口层 CSS 同构——T-06 定音 StretchLine 无罪、根因在转写；件二/件三 HEAD 证伪+回归锁（release 2747 观测无代码差可归因，观察项交 jade 撤层复验终局销案）；件四=autodown_editor 内建引擎等值 wrapper padding 16/20px）；md: 前缀剥离去敏（409 在案）复确认；P748-D1 plan051 corpus 空洞绿债；AC-14 jade 撤层复验 external-pending；账本 P748-1/2/3 (Plan 748) |"
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 95,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "-/apps (EN/ZH) distinguishes four main products—AutoEdit, AutoShell, AutoMusk, JadeEdit—from system apps and demos. AutoDown and AutoUI retain related resource pages; neither replaces one of the four product entries. AutoEdit and JadeEdit remain separate products with shared foundations."
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 104,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "-Do not claim all-Auto, full runtime parity, unattended coding, completed Milestones, universal performance budgets, or collaboration from project direction alone. AutoMusk distinguishes skill contracts from runtime Relay, and provider/daemon communication from application tool execution. JadeEdit distinguishes single-document draft/reload protection from in-progress multi-document operations."
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 114,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "+PLAN-758：产品现名 AutoJade，工程/专题标识 auto-jade；双语规范路径 /apps/auto-jade/ 与 /zh/apps/auto-jade/，旧 jadeedit 路由保留同语言兼容跳转。源码仓库实际地址尚未改名，GitHub jade-edit 地址继续可用。用户提供的六张深色第一方手册示例图按实际场景展示，SHOT-07 为主图，SHOT-08 为反链/双链/快速打开/建页确认/文件树画廊，SHOT-09 草稿恢复仍待拍；P4 标签文件名与实际画面不符不入库。图片保留原始字节、原图与键盘放大，来源/宽高/hash/准备态及未独立确认的深色工具链身份在 docs/reports/p758-autojade-capture-catalog.json。快开不替代全文搜索，准备图不代表最终 RC 已通过。"
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 123,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "-AutoEdit, AutoShell, AutoMusk, and JadeEdit are the four main application introductions;"
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 144,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "-- PLAN-756 用户明确要求先修文本、截图留空：本轮首页/v0.5/产品专题可用有标题、场景和 `SHOT-01..12` 的文字待拍槽。槽不渲染图片、不冒充已完成展示，拍摄合同在 `docs/reports/website-v05-capture-guide.md`；新图验收后替换为 EvidenceImage。现有获准桌面、Shell 和 AutoEdit 专题原图保留。四主应用从 applicationCopy 取数；AutoDown/Jade Garden 作为相关资料，与 JadeEdit 分开。发布状态明示里程碑与待冻结工件，运行/转译/调试明示后端条件。"
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 154,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "+PLAN-758：产品现名 AutoJade，工程/专题标识 auto-jade；双语规范路径 /apps/auto-jade/ 与 /zh/apps/auto-jade/，旧 jadeedit 路由保留同语言兼容跳转。源码仓库实际地址尚未改名，GitHub jade-edit 地址继续可用。用户提供的六张深色第一方手册示例图按实际场景展示，SHOT-07 为主图，SHOT-08 为反链/双链/快速打开/建页确认/文件树画廊，SHOT-09 草稿恢复仍待拍；P4 标签文件名与实际画面不符不入库。图片保留原始字节、原图与键盘放大，来源/宽高/hash/准备态及未独立确认的深色工具链身份在 docs/reports/p758-autojade-capture-catalog.json。快开不替代全文搜索，准备图不代表最终 RC 已通过。"
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 163,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "-- 首页/v0.5 文案与待拍位置（PLAN-756）：四主应用统一从 applicationCopy 取数，明示里程碑、发行工件待冻结与 Playground 后端条件；28 项介绍与在线体验覆盖分述。用户批准的文字待拍槽按 SHOT-01..12 绑定逐图拍摄合同，保留已批准桌面/Shell/AutoEdit 原图；Musk Kanban/Canvas 和 JadeEdit 新图仍需候选验收。中文共享画廊链接不拼 /zh，快速开始直达运行与构建。"
-    },
-    {
-      "path": "docs/reports/p758-autojade/reviewed-spec-delta.patch",
-      "line": 173,
-      "reason": "rename_provenance_or_frozen_review_delta",
-      "text": "+PLAN-758：产品现名 AutoJade，工程/专题标识 auto-jade；双语规范路径 /apps/auto-jade/ 与 /zh/apps/auto-jade/，旧 jadeedit 路由保留同语言兼容跳转。源码仓库实际地址尚未改名，GitHub jade-edit 地址继续可用。用户提供的六张深色第一方手册示例图按实际场景展示，SHOT-07 为主图，SHOT-08 为反链/双链/快速打开/建页确认/文件树画廊，SHOT-09 草稿恢复仍待拍；P4 标签文件名与实际画面不符不入库。图片保留原始字节、原图与键盘放大，来源/宽高/hash/准备态及未独立确认的深色工具链身份在 docs/reports/p758-autojade-capture-catalog.json。快开不替代全文搜索，准备图不代表最终 RC 已通过。"
-    },
-    {
       "path": "docs/reports/website-v05-capture-guide.md",
       "line": 25,
       "reason": "actual_physical_repository_or_historical_source_path",
@@ -784,6 +694,6 @@
       "text": "      await expect(page.locator('a[href*=\"/apps/jadeedit/\"]')).toHaveCount(0)"
     }
   ],
-  "count": 130,
+  "count": 115,
   "unclassified": []
 }

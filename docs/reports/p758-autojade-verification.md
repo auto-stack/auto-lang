@@ -42,4 +42,4 @@ Rust 改名仅涉及九个文件的行注释（五个 Rust 文件、四个 .at �
 - P758-D1：无法访问 store-mediated 写入器；临时 AutoMusk 服务启动/只读探测被自动审批以 `blocked by policy` 拒绝，未给进一步原因。无进程或写入副作用。旧 ledger 顶层只有 sections，先前加载失败历史保留；未手改、删除或重建账本。`P732-1`、`P722-1` 的改名及八个当前规范投影描述保存在 `p758-autojade/ledger-projection-pending.json`。
 - P758-OBS1：深色 PNG 无独立的工具链 manifest；对应旧 promo README 和当前对岸 HEAD 不被冒充为这些 PNG 的精确构建身份。全部标记用户提供、2026-10-10、发布准备态，不宣称最终 RC 验收。AutoEdit PLAN-757 的两张 VM 实拍及不合格比较图仍在原工作树，本次不挪用其未合入结果。
 
-规范冻结 `p758-autojade/spec-delta.json` / `reviewed-spec-delta.patch` 精确列八个输入/输出 SHA-256。没有改功能目标状态，`touched_goals=[]`；未新增或删减功能承诺。`spec-index.py` 重新生成 INDEX 后内容语义相同，恢复其原始提交字节。知识合入、账本刷新、归档和清理分别记账，不假称原始字符串清零或发布已完成。
+规范冻结 `p758-autojade/spec-delta.json` / `reviewed-spec-delta.patch.gz`（解压后 hash 相同） 精确列八个输入/输出 SHA-256。没有改功能目标状态，`touched_goals=[]`；未新增或删减功能承诺。`spec-index.py` 重新生成 INDEX 后内容语义相同，恢复其原始提交字节。知识合入、账本刷新、归档和清理分别记账，不假称原始字符串清零或发布已完成。

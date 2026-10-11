@@ -48,5 +48,7 @@
     }
   ],
   "touched_goals": [],
-  "goal_rationale": "Product rename, qualified screenshots and presentation order preserve functional goal statuses; no goal ID transitions."
+  "goal_rationale": "Product rename, qualified screenshots and presentation order preserve functional goal statuses; no goal ID transitions.",
+  "patch_file": "reviewed-spec-delta.patch.gz",
+  "compressed_patch_sha256": "3266bb9aa991488b74f328c85cf9ecfe1997467783a209c81fea0b970ca03363"
 }
