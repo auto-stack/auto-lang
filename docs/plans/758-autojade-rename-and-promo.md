@@ -17,7 +17,7 @@ affects: [website, auto-lang/ui]
 # [PLAN-758] autojade-rename-and-promo
 
 ## 0. 变更摘要
-将本仓当前产品引用统一为 AutoJade / auto-jade，并接入用户提供的 AutoJade 深色准备态实拍；按用户 2026-10-11 指示，把 v0.5 的“五个月，三大步”前置，先说明版本进展，再展示产品。
+将本仓当前产品引用统一为 AutoJade / auto-jade，并接入用户提供的 AutoJade 深色准备态实拍；按用户 2026-10-11 指示，把 v0.5 的“六个月，三大步”前置，先说明版本进展，再展示产品。
 
 ## 1. 目标
 更新网站双语首页、v0.5、应用总览/专题、README、当前规范、可维护文档和源码注释中的名称；规范专题 URL 为 /apps/auto-jade/，旧 jadeedit URL 兼容跳转。现有仓库实际地址未改名，不制造不存在的下载/源仓地址。历史冻结证据保留原字节并登记残余理由；derived ledger 只通过应用 store 更新。
@@ -169,3 +169,10 @@ ledger_refreshed: blocked；D:/autostack/auto-lang/.autoos/specs.json 当前只�
 archived: pending；Plan 保持 reviewed，active 路径不移动。
 cleaned: pending；保留 clean D:/autostack/.wt/lang-758/auto-lang 与 plan-758-dev/组内依赖；四批原始验证输出已安全移至组目录，八有效截图和原始日志/hash 已持久入库。临时开发服务 4223 已停止，交付 preview 4218 保持可访问；其他工作树/临时数据不动。
 next: writer 可用后只续做 store-mediated 投影读回、归档、guard 后清理；没有新证据不自动重试被拒动作。批量回归按 merge 技能在 cleaned 后判定，本轮不跑 cargo tf。
+
+### L0 后继文案校正（2026-10-11）
+
+用户明确要求 5 个月改为 6 个月；独立轻量 fix-v05-six-months 工作树完成中英文标题与 4 月至 10 月正文日期、当前 UI 规范和既有测试期望的校正。原 r2/r3 冻结截图与原始要求作为历史不改写；本记录和 docs/reports/v05-six-months-correction.md 是当前标题规范的获准后继复核，原 review 不被冒充为未来编辑的自动覆盖。
+review: pass（源码 af021ed7a6bcf2f8f907e9520cf80bcc099a62e8；build 201.08s、390/1440×EN/ZH 4/4 8.8s；同会话独立重建工件结论）。同步并发主检出新 PLAN-760 仅簿记变化后，两提交 range-diff 全等：af021ed7a→ff8c0bc0d50537d1de61c65711935111e8d8ea4c、2fcefcf19→8625746cf694234cf30bd23559b6501bdb6f7d6e，--ff-only 合入且当时 master HEAD 等于 8625746cf。实际构建/主检出 website tree 均为 7534870417758cf789229b31ea41e9e03b57aa71。
+preview: 成功构建 dist 复制到保留的 758 工作树并重启 4218，真实浏览器标题“六个月，三大步”、正文“2026 年 4 月 — 10 月”且 #journey 标题可见。旧 dist 与原始日志/检查输出保全于 758 组。
+cleaned: fresh Git for Windows wt-guard clean 后移除 fix 工作树/分支，原 fix 组原始证据保全至 D:/autostack/.wt/lang-758/fix-v05-six-months-retained；本 L0 无剩余工作。758 原 store 阻塞仍不变，投影草案增加后继复核引用并更新单目标输出 hash，未直接写账本。批量门禁未到期：同日 02:44Z 收据覆盖 755，距今不足 48h；760 是刚创建的计划簿记，尚未交付，非整五实现落地。Category A 未跑 cargo t/docs_gen/tf。
