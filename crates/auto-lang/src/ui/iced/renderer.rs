@@ -4621,15 +4621,50 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             family: iced::font::Family::Monospace,
                             ..iced::Font::DEFAULT
                         });
-                    if let Some(ref s) = style {
-                        if let Some(fs) = effective_font_size(&IcedStyle::from_style(s)) {
+                    // L0 fix(diff 视图行高抖动/auto-edit 2026-10-11):此臂此前
+                    // 只应用字号——nowrap/宽度/对齐全被忽略,font-mono 长行
+                    // 折行使行高翻倍(diff 行 24px→48px,左右栏折行数不同→纵
+                    // 向错位;折行高度随视口宽度振荡→滚动条高频抖动)。对齐
+                    // 下方 text 构造链:wrap_none→单行+clip,width/align 同参
+                    // (行号列 w-12 text-right 依赖)。
+                    let iced_style = style.as_ref().map(IcedStyle::from_style);
+                    if let Some(ref is) = iced_style {
+                        if let Some(fs) = effective_font_size(is) {
                             rich = rich.size(fs);
                         }
-                    }
-                    let el: iced::Element<'static, M> = rich.into();
-                    if let Some(ref s) = style {
-                        wrap_with_margin(el, &IcedStyle::from_style(s))
+                        let wrap_none = is.wrap_none;
+                        if wrap_none {
+                            rich = rich.wrapping(iced::widget::text::Wrapping::None);
+                        }
+                        if let Some(ref w) = is.width {
+                            rich = rich.width(iced_length(w));
+                        }
+                        if let Some(ref align) = is.text_align {
+                            use crate::ui::style::iced_adapter::IcedTextAlign;
+                            if is.width.is_none() {
+                                rich = rich.width(iced::Length::Fill);
+                            }
+                            match align {
+                                IcedTextAlign::Center => {
+                                    rich = rich.align_x(iced::alignment::Horizontal::Center);
+                                }
+                                IcedTextAlign::Right => {
+                                    rich = rich.align_x(iced::alignment::Horizontal::Right);
+                                }
+                                IcedTextAlign::Left => {}
+                            }
+                        }
+                        let el: iced::Element<'static, M> = if wrap_none {
+                            iced::widget::container(rich)
+                                .width(iced::Length::Fill)
+                                .clip(true)
+                                .into()
+                        } else {
+                            rich.into()
+                        };
+                        wrap_with_margin(el, is)
                     } else {
+                        let el: iced::Element<'static, M> = rich.into();
                         el
                     }
                 } else if selectable {
