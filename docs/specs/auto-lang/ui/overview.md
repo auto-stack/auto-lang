@@ -49,6 +49,47 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
   档 §10 回执预告位在档）。
 - **顺手修复**：703 对齐行走字符中间切片隐患（leaf 比较改字节基）。
 
+## 现状（2026-10-11）——remote-frame 宿主侧远程帧消费元件（PLAN-760）
+
+> `.at` 元件谱新增 **`remote-frame`**（宿主侧远程帧消费面——auto-musk
+> PLAN-102 T-04 VM 轨消费面缺口 J2 的上游交付）。SD-01（元件契约）/SD-02
+>（桌面协议宿主侧元件化路径）。
+
+- **元件契约（SD-01）**：`remote-frame { url, class }`——无子件、无业务
+  事件（v1）；`url` = bridge WS 端点（`ws://127.0.0.1:port/?token=…&app=…`，
+  **订阅名 = url query `app` 参数**，缺省 `remote-frame`——与 web 消费面
+  canvas_embed_web 的 `appName` 同源对齐）；url 变化 = 断旧连建新连（url
+  即身份，迟到帧随旧客户端对象 Drop 丢弃）。**宿主数据叶**
+  （window_thumbnail 同族）：帧不进 VM 状态，iced 渲染臂直读进程级
+  `remote_frame_registry`（`ui/iced/remote_frame_registry.rs`）最新帧槽。
+- **双轨产物**：web = 透传 div 占位（`<div data-remote-frame="1"
+  data-remote-frame-url="…" class="…"/>`——宿主前端 querySelector 接管，
+  本仓不做 JS 渲染器）；VM = `View::RemoteFrame` → canvas
+  `RemoteFramePainter`（draw = 最新 DisplayList 等比 fit+居中直绘
+  （paint_ops_v2 委托）/相位占位灰底文本 connecting…/reconnecting…/
+  connection lost；update = 指针 move/press/release → bounds 局部坐标
+  等比换算远端逻辑域 → `InputMsg` 注册表直发，不经 View 消息面）。
+- **生命周期与重连**：租约法（渲染臂每帧 `note(url)` 续租，2s 落后 =
+  url 退场 → Client Drop → WsEnd Drop（shutdown oneshot + join 读线程
+  确定性回收，transport.rs 既有语义））；EOF/协议错 → 30s 预算内重拨
+  （50ms 节流；ReconnectPolicy 语义内联——首连/重连共路收编），预算尽
+  = `Exhausted` 占位终态；断连清残帧（占位语义）。
+- **帧节奏约束（如实登记）**：帧推进上限 = ServiceTick 400ms 拍 +
+  presentation_keepalive 保活；standalone（`auto run -r vm`）经
+  `remote_frame_tick` 条件拉起（注册表非空时订阅、退场自动回落）。
+  交互手感（逐帧跟手）弱于 shell 原生 remote 窗——embedded 面板的受控
+  取舍，非缺陷；不可接受时另立提频项。
+- **输入回传语义**：坐标 = 元件像素域等比换算（Welcome.rect 逻辑域基，
+  canvas_embed_web.ts `toLogical` 同一算式；draw 的 fit 缩放因子互逆）；
+  `InputMsg::Pointer{Moved,Pressed,Released}{wid, x, y, button,
+  modifiers}` 直投 bridge（rqhost.rs `wire_button` 同映射）。
+- **验收**：单测 8 例（生命周期/租约 Drop 断言/输入直发出站/EOF→重连→
+  预算尽状态机/重连收编回归/订阅名提取/双路径分派/schema 登记）；
+  实机 e2e `scripts/remote_frame_e2e.py`（rqhost bridge + 计数器夹具 +
+  宿主 demo；断言 = 首帧 ≤10s 特征像素/PostMessage 输入闭环（对照臂
+  分层定位 + remote count+1）/kill 桥占位/重启恢复/no-panic）11/11
+  PASS（2026-10-11 三轮）。musk 侧集成归 PLAN-102 T-04 收口。
+
 ## 现状（2026-10-02）——编辑路径帧管线增量更新（PLAN-725）
 
 > auto-edit M4 帧两行 FAIL（type_latency/scroll_fps）清偿本体：编辑路径
