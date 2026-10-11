@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-758
-status: executing
+status: execution_done
 feature_name: AutoJade 改名与用户提供深色宣传图
 author: [Codex]
 created_at: 2026-10-10
 updated_at: 2026-10-11
 plan_revision: 2
-current_step: 2
+current_step: 4
 total_steps: 4
 supersedes_spec_components: [docs/specs/website/project.md, docs/specs/website/design/application-introductions.md, docs/specs/website/design/ecosystem-readme.md, docs/specs/website/design/ui-presentation.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/architecture.md, docs/specs/auto-lang/ui/design/autodown-wikilink.md, docs/specs/auto-lang/ui/plans.md]
 new_spec_components: []
@@ -57,9 +57,17 @@ VitePress/Vue、完整 PNG、Playwright；Rust 只改注释、不改执行语义
 
 ## 8. 执行步骤
 - [x] T-01：独立工作树，全仓引用/路径/文案改名，分类保留例外（AC-01/02）。
+  [✅ 9490d7e67；余名审计 docs/reports/p758-reference-audit.json（worktree 未提交残留→已随 r2 证据链入库核验）]
 - [x] T-02：核验原图、接入主图与功能画廊、指南/规范与来源清单（AC-03）。
-- [ ] T-03：v0.5 历程前置、构建、网站与 Rust 注释触面验证、余名审计（AC-01..05）。
-- [ ] T-04：提交实现与验证材料，准备复审/线性合入所需收据、store-mediated 知识投影及阻塞描述（AC-04）。正式复审、线性合入、投影、归档/清理是后续生命周期操作，逐项记入 §9，不以本勾选声称已完成。
+  [✅ 9490d7e67 + ee65db613 证据冻结；六图 hash 对照在 p758-autojade-verification.md]
+- [x] T-03：v0.5 历程前置、构建、网站与 Rust 注释触面验证、余名审计（AC-01..05）。
+  [✅ 9490d7e67/24ddb99e1/3685a86b4；构建 151.40s+原生版 144.04s；63 网站场景通过记录；
+  cargo check 过、t 5212/5231（19 红全基线对照）、tu 858 过+1 既有金样红；
+  九文件非行注释行与 master 一致；余名审计 p758-reference-audit.json]
+- [x] T-04：提交实现与验证材料，准备复审/线性合入所需收据、store-mediated 知识投影及阻塞描述（AC-04）。正式复审、线性合入、投影、归档/清理是后续生命周期操作，逐项记入 §9，不以本勾选声称已完成。
+  [✅ 证据全提交（ee65db613/9024f1f95）；Review r2 needs_fix（P758-F4）已修复
+  （5188b7822 恢复原生链接）并独立复验（206acb729：四定位场景+section-nav 5/5，
+  9.8s）；store 投影阻塞 P758-D1 在案，pending 清单 ledger-projection-pending.json]
 
 ## 9. 复审记录
 stage: new | revision: 1 | outcome: pass | next: work。既有明确改名/素材授权覆盖本合同；无另需确认的执行项。
@@ -78,3 +86,11 @@ stage: work | revision: 2 | outcome: ready_for_review。T-01..04 的实现/材�
 ### Review r2 — needs_fix（2026-10-11）
 
 stage: review | revision: 2 | outcome: needs_fix | reviewed_commit: a0a7553dd85ec435a6fcf8c46c2a8351d7d95030 | finding: P758-F4。新增 @click.prevent 的手动 hash 处理会拦截 Ctrl/Meta 修饰键的原生链接行为。浮层已解决高度问题，处理器不必新增；回 work 恢复原生链接处理，重验四个定位场景。原交付范围、AC 与规范增量不减少。
+
+### Work r2 修复回执（2026-10-11，needs_fix → ready for re-review）
+
+stage: work | revision: 2 | outcome: pass | code plan-758-dev @ 7f6861efd（5188b7822 修复 + 206acb729 复验绑定 + 7f6861efd concurrent-baseline-check.json 保全）
+| tasks: P758-F4 修复（SectionNav @click.prevent→@click，删除手动 nextTick/hash 写入逻辑，仅保留 current 高亮+mobileOpen 收起；ui-presentation.md 规范行同步）
+| evidence: 前会话四场景 4/4（7.4s）+ 原生版构建 144.04s；续跑会话独立复验 5/5（9.8s，四定位场景+section-nav hash 直达/点击/无遮挡，dist 10:59 晚于修复提交 10:57 实证产物新鲜）；`git diff master -- SectionNav.vue` 终态仅 CSS 差异（浮层）；并发基线核对 concurrent-baseline-check.json 入库（754 组件字节一致）
+| blockers: P758-D1 store 不可写（投影 pending 清单在案）；无其他
+| next: review
