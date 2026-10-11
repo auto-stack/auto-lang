@@ -27,13 +27,13 @@ function releaseStats(zh: boolean) {
 function releaseProducts(zh: boolean) {
   return zh ? [
     { value: '1', label: '套 UI 框架', detail: 'AutoUI' },
-    { value: '2', label: '个桌面环境', detail: '原生桌面 · AutoOS 虚拟桌面' },
+    { value: '2', label: '个桌面环境', detail: '原生桌面 · AutoOS' },
     { value: '3', label: '套适配平台', detail: 'Web · Windows · Linux' },
     { value: '4', label: '个主打应用', detail: 'AutoEdit · AutoShell · AutoMusk · AutoJade' },
     { value: '28', label: '个演示应用', detail: '应用目录中的示例与演示' },
   ] : [
     { value: '1', label: 'UI Framework', detail: 'AutoUI' },
-    { value: '2', label: 'Desktop Environments', detail: 'Native desktop · AutoOS virtual desktop' },
+    { value: '2', label: 'Desktop Environments', detail: 'Native desktop · AutoOS' },
     { value: '3', label: 'Platform Integrations', detail: 'Web · Windows · Linux' },
     { value: '4', label: 'Main Applications', detail: 'AutoEdit · AutoShell · AutoMusk · AutoJade' },
     { value: '28', label: 'Demo Applications', detail: 'Examples and demos in the application directory' },
