@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-765
 plan_revision: 1
-status: execution_done
+status: reviewed
 feature_name: VM 宿主活跃会话稳定专项（空闲内存残留 + 原生层 exit(1)，承接 musk PLAN-104 定罪）
 author: [agent]
 created_at: 2026-10-11
@@ -207,6 +207,47 @@ T-04 交叉复验：musk soak 仪器 GREEN 重跑（斜率+1h 零退）+ 本仓�
   vm-host-stability.md 随 worktree commit 入库。]
 
 ## 9. 复审记录
+
+### review 阶段裁定（PLAN-765:r1，2026-10-12）
+
+- stage: review ｜ plan_id: PLAN-765 ｜ plan_revision: 1 ｜ outcome: **pass**
+  （status → reviewed;next = merge）
+- **独立性声明**：复审与实施同会话——裁定从工件重构而非采信执行摘要：
+  门禁在 HEAD 重跑（裸 `cargo t` 5256/5256 + `cargo tv` 162/162,2026-10-12
+  复审时刻新鲜）、base..HEAD 全 diff 逐行重读（F-1~F-9 逐一在位核验）、
+  soak 斜率从原始样本独立重算（segment 表推翻脚本输出并定谳单位 bug）。
+- reviewed_commit: 9ef5df2cb（HEAD;代码=4588ae0ad,余两提交纯文档）｜
+  base_commit: 83e1ab6eb ｜ dependency: auto-down@895f8d0（detached 只读）
+- spec_inputs: 新 `docs/specs/auto-lang/ui/design/vm-host-stability.md`
+  （草稿随 db345925c 入库,复审对照代码核验:共享 Client pool8/30s ✔、
+  逃生门 env 名 ✔、审计 site 串 native_crash/main_err_ai_mode/
+  mem_guard_f12_escape ✔、四分法表 ✔）;冲突扫描=async-http-result-
+  lifecycle.md（executor/detached 表述仍准确,无过期面）、architecture.md
+  :224/227 bridge 级派发契约未触（门控在 DynamicComponent 层,与 parked
+  恢复泵"完成自置Dirty"、child-emit 写 __emit_msg(→seq bump 不撤脏)正交）
+  ⇒ **supersedes_spec_components=[] 成立**,new_spec_components/touched_goals
+  (GOAL-007,同 PLAN-650 VM 减负家族)核定无误。
+- acceptance_results: **AC-1 pass**（1h idle +59.3MB/59.7min=0.017MB/s ≤
+  0.1MB/s,6× 余量;流式 1.59MB/min 在基线带 [0.67,2.38]MB/min 内;斜率由
+  原始样本独立重算,仪器单位 bug（报值×60）已定谳并在纪要后记⑤留档）｜
+  **AC-2 pass**（1h vm_died=false 全程存活 + AUTO_DESKTOP_EXIT_LOG 审计册
+  零行 + 125 条连续心跳双证;归因纪要含调用点/触发条件/防护与原生钩覆盖
+  边界;外部击杀指纹实测复现吻合）｜ **AC-3 pass**（本仓门禁复审重跑双绿;
+  musk 三门 gen-only EXIT=0/vm-link-probe PASS 108944B/ui-parity catalog
+  PASS;plan484_024 charts 单红=并行负载 flake,隔离与全档复跑双绿,与
+  本 diff 零触面——环境项非回归）。
+- findings: 无阻断项。F-765-R1（nonblocking）idle ~1MB/min 线性缓漏未归因
+  → 登记 **P765-D1**（KNOWN-DEBT）;F-765-R2（external）musk 仪器
+  slopeMBPerMin 单位 bug → **P765-D2** 移交 musk PLAN-104（含 AC-01 真值
+  重判）;F-765-R3（observation）plan484_024 flake 环境项在案。plan484
+  家族与 charts 域不受本 diff 影响。
+- evidence: 纪要+规约草稿（worktree db345925c/9ef5df2cb,merge 后入
+  `docs/reports/765-t01-attribution-memos.md`+`docs/specs/auto-lang/ui/
+  design/vm-host-stability.md`）;门禁命令/结果上文在案;soak 原始 JSON
+  存 musk worktree tmp/（临时,关键聚合值已录入纪要后记——worktree 清理
+  后仍可复算:复现命令在计划 §4）。
+- next: merge（`/auto-plan:merge`;批量回归档到期判定随 merge 收尾走
+  `/auto-plan:regress`）。
 
 ### work 阶段交接（PLAN-765:r1，2026-10-12）
 
