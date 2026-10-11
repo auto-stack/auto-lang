@@ -208,6 +208,16 @@ function SendCmd(rec: any): void {
   __desktop_cmd.value = __desktop_cmd.value + rec;
 }
 
+function ThemeDarkBlank(): void {
+  blank_menu.value = '';
+  SendCmd('set_theme\tdark');
+}
+
+function ThemeLightBlank(): void {
+  blank_menu.value = '';
+  SendCmd('set_theme\tlight');
+}
+
 function ToggleDashboardBlank(): void {
   blank_menu.value = '';
   SendCmd('dashboard_toggle');
@@ -287,7 +297,9 @@ onMounted(() => {
             </div>
             <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="MenuWallpaperBlank" :key="'Button-4'">更换壁纸…</Button>
             <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="OpenSettingsBlank" :key="'Button-5'">显示设置</Button>
-            <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="ResetIconsBlank" :key="'Button-6'">恢复默认图标</Button>
+            <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="ThemeDarkBlank" :key="'Button-6'">深色主题</Button>
+            <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-foreground hover:bg-primary/10" @click="ThemeLightBlank" :key="'Button-7'">浅色主题</Button>
+            <Button variant="ghost" class="w-full h-8 px-2 text-sm text-left rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="ResetIconsBlank" :key="'Button-8'">恢复默认图标</Button>
           </div>
         </template>
 </div>
@@ -297,13 +309,13 @@ onMounted(() => {
           <div class="flex flex-row w-full items-center gap-2">
             <Image class="w-4 h-4 text-muted-foreground" />
             <span class="text-xs text-muted-foreground flex-1 truncate">{{ __wp_dir }}</span>
-            <Button variant="ghost" class="h-7 px-3 text-xs rounded-lg bg-muted text-muted-foreground hover:bg-primary/10" @click="PickerBrowse" :key="'Button-7'">浏览…</Button>
-            <Button variant="ghost" class="h-7 w-7 px-0 rounded-lg text-muted-foreground hover:bg-primary/10" @click="PickerDismiss" :key="'Button-8'">
+            <Button variant="ghost" class="h-7 px-3 text-xs rounded-lg bg-muted text-muted-foreground hover:bg-primary/10" @click="PickerBrowse" :key="'Button-9'">浏览…</Button>
+            <Button variant="ghost" class="h-7 w-7 px-0 rounded-lg text-muted-foreground hover:bg-primary/10" @click="PickerDismiss" :key="'Button-10'">
               <X class="h-4 w-4" />            </Button>
           </div>
           <template v-if="__wp_preview == ''">
             <div class="flex flex-row w-full items-center gap-2">
-              <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('prev')" :key="'Button-9'">
+              <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('prev')" :key="'Button-11'">
                 <ChevronLeft class="h-4 w-4" />              </Button>
               <div class="flex flex-col gap-1" v-for="e in __wp_visible" :key="(((e as any)?.id ?? e))">
                 <div @click="PickerApply(e.path)">
@@ -313,10 +325,10 @@ onMounted(() => {
                 </div>
                 <div class="flex flex-row w-[120px] items-center justify-between">
                   <span class="text-[10px] text-muted-foreground truncate">{{ e.name }}</span>
-                  <Button variant="ghost" class="h-5 px-1 text-[10px] rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="PickerPreview(e.path)" :key="'Button-10-' + (((e as any)?.id ?? e))">预览</Button>
+                  <Button variant="ghost" class="h-5 px-1 text-[10px] rounded-md bg-transparent text-muted-foreground hover:bg-primary/10" @click="PickerPreview(e.path)" :key="'Button-12-' + (((e as any)?.id ?? e))">预览</Button>
                 </div>
               </div>
-              <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('next')" :key="'Button-11'">
+              <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('next')" :key="'Button-13'">
                 <ChevronRight class="h-4 w-4" />              </Button>
             </div>
           </template>
@@ -324,10 +336,10 @@ onMounted(() => {
             <div class="flex flex-col w-full gap-2 items-center">
               <img :src="__wp_preview" alt="preview" class="w-full h-[440px] rounded-lg bg-black/40 object-contain" />
               <div class="flex flex-row items-center gap-2">
-                <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('prev')" :key="'Button-12'">
+                <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('prev')" :key="'Button-14'">
                   <ChevronLeft class="h-4 w-4" />                </Button>
-                <Button variant="ghost" class="h-7 px-3 text-xs rounded-lg bg-muted text-muted-foreground hover:bg-primary/10" @click="PickerBack" :key="'Button-13'">返回</Button>
-                <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('next')" :key="'Button-14'">
+                <Button variant="ghost" class="h-7 px-3 text-xs rounded-lg bg-muted text-muted-foreground hover:bg-primary/10" @click="PickerBack" :key="'Button-15'">返回</Button>
+                <Button variant="ghost" class="h-8 w-8 px-0 rounded-lg hover:bg-primary/10" @click="PickerNav('next')" :key="'Button-16'">
                   <ChevronRight class="h-4 w-4" />                </Button>
               </div>
             </div>
