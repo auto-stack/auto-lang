@@ -74,9 +74,6 @@ stage: new | revision: 1 | outcome: pass | next: work。既有明确改名/素�
 
 stage: new | revision: 2 | outcome: pass | next: work。2026-10-11 用户明确要求“五个月，三大步”放在开头，以版本成果为先；增加 SD-03 / AC-05，不取消原改名与截图任务。T-03 重开页面验证。
 
-## 10. 待澄清事项
-无必需决策；深色 PNG 没有自己的完整工具链 manifest，只标用户提供准备态，不伪造对应 promo 旧批身份。store 可用性按先前 P753-D1 记录核查，若仍失败停止 ledger 写入，继续可落地内容。
-
 ### Work r2（2026-10-11）
 
 stage: work | revision: 2 | outcome: ready_for_review。T-01..04 的实现/材料准备完成。T-04 将 work 准备与未来 review/merge 生命周期分开表述，原线性合入及 store-mediated 收尾义务不减少。未声称投影、归档、清理或全部原始字符串清零。证据：docs/reports/p758-autojade-verification.md；八份规范输入/输出与 patch 冻结在 docs/reports/p758-autojade/spec-delta.json。
@@ -102,3 +99,19 @@ spec_inputs: 冻结 reviewed-spec-delta.patch.gz + spec-delta.json 在分支内�
 acceptance_results: AC-01..05 维持 r2 复审结论（唯一 finding=P758-F4）；F4 修复验证——①代码对勘：SectionNav.vue 终态 vs master 仅 CSS 差异（浮层样式），模板/脚本回原生；②独立复验：四定位场景（390/1440×EN/ZH，含原生点击→URL hash→标题可见断言）+ section-nav hash 直达/点击/无遮挡 5/5（9.8s）；③修复面仅 SectionNav.vue+ui-presentation.md+docs，不触碰 63 场景/构建/cargo 门禁/图片 hash 等冻结证据的有效性；④Rust 面 9 文件（5 .rs+4 .at）过滤注释行后 diff 全空=零可执行改动（重审实测，work r2 的"非行注释行一致"主张独立复核成立）。
 findings: 无新增。P758-D1（store 阻塞）与 P758-OBS1（深色图无工具链 manifest）维持登记。独立性限制：修复与重审同会话；按工件重建结论（diff 过滤实测、e2e 独立复跑、dist 新鲜度时间戳实证）。
 next: merge
+
+### Review r2 — 最终同步基面与证据重绑定（2026-10-11）
+
+stage: review | plan_id: PLAN-758 | plan_revision: 2 | outcome: pass
+reviewed_commit: 6e1d53da58a89c1067d560c9bbbe7ec5bc2a1f1b
+base_commit: 53f81a09dcc26716b2a67b2c3f9922c70008315b
+dependency_revisions: auto-down 895f8d0f9355c9f5ec3ce8fca268bdb768395846；AutoJade 来源仓只读核验身份 28e67b21414a26aac2414d7e3b457f3121ed418d（不冒充深色图构建身份）。
+spec_inputs: docs/reports/p758-autojade/spec-delta.json 八个输入/输出 SHA 全部对当前 canonical 基面/工作树复算一致；reviewed-spec-delta.patch.gz 解压 SHA 042ea5aeb15caea6a8092e4d02f85f185eff16f52ca5fa21796adc35153f2b28，原样等于当前八目标 diff。new_spec_components=[]，touched_goals=[]，功能目标状态未变。
+acceptance_results: AC-01 pass（全跟踪 UTF-8 余名 116 项逐项分类，unclassified=[]，可维护产品引用统一；九源文件非行注释内容对当前 master 全等）；AC-02 pass（新专题及同语言旧路由 query/hash replace、首页/发布/总览实际检查）；AC-03 pass（六原图逐字节再对照；P4 排除、SHOT-09 留空符合合同，原图/画廊/键盘/断点主题检查）；AC-04 pass（最终提交 clean，八规范冻结和投影草案有效，既有门禁红实证分类，明确保留 store 阻塞不假归档）；AC-05 pass（简介→journey→亮点→桌面/应用→理念规模，EN/ZH 四顺序/定位场景复跑通过，实际浏览器标题可见）。T-01..04 材料完成，不代表未来 ledger/归档/清理完成。
+evidence: 完整构建 124.30s；最终当前基面 63 网站场景中 61 pass，搜索隔离 pass，/playground 既有静态无后端探测的 console 检查隔离 fail（两个宿主组件与 master 全等；未放宽豁免）。check 成功且 406 条预存 lib 警告；t 5213/5231 pass、18 fail、1539 skipped、87.844s（16 基线已复现，state_file/plan502 隔离 2/2 pass）；tu 857 pass、2 fail、2 ignored（既有桌面金样 + env 路径用例隔离 1/1 pass）。全部日志/hash、来源/审计/失败基面检查在 docs/reports/p758-autojade/ 及 p758-autojade-verification.md。未运行 tf 或另外 docs_gen。
+rebase_evidence: 3e6727d75..bbe1e3556 → 53f81a09d..6e1d53da5 九提交 range-diff 全等；网站 tree 与实际构建/测试的 5188b7822:website 完全相同，仅后续证据/规范基面冻结更新。更早 754 同步出现的 diff context/debt append 冲突由最终完整重审覆盖，未冒充为全等。
+findings: P758-F1..F4 已按证据处理，F4 脚本与模板回原生（对 master 完全相同），最终导航仅浮层 CSS。P758-D1（store writer 不可达）、OBS1/2/3 如实登记，无交付内容遗漏、未批准延期或 workaround。独立性限制：当前实现会话复审，以真实 diff、原始日志、目标 hash 和运行页面重建结论，不声称另派独立 agent。
+next: merge；publication-only store 阻塞按 merge 技能保留 reviewed 活跃计划/工作树。
+
+## 10. 待澄清事项
+无必需决策；深色 PNG 没有自己的完整工具链 manifest，只标用户提供准备态，不伪造对应 promo 旧批身份。store 可用性按先前 P753-D1 记录核查，若仍失败停止 ledger 写入，继续可落地内容。
