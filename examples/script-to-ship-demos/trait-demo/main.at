@@ -3,7 +3,7 @@
 // Dev:  auto main.at                     (VM 脚本秒级跑,跳过编译)
 // Ship: auto trans --path main.at rust   (a2r 转 Rust 发布)
 //
-// 对应 parity 用例: parity/libs/trait_advanced/ (L1 ✓ 三向一致)
+// 对应 parity 用例: test/parity/libs/trait_advanced/ (L1 ✓ 三向一致)
 // 覆盖特性:
 //   * spec 声明与 type-as 实现 (trait + impl)
 //   * 有界泛型函数 fn max_of<T has Comparable> (Rust: <T: Comparable>)

@@ -79,7 +79,7 @@ client.screenshot("converter_vm_decimal")
 **现成门禁脚本**：BP 消费型应用（bps-gallery 型，侧栏卡片 → 详情）的
 VM 臂点击链有专用 E2E 门禁 `scripts/test_bp_gallery_click.py`
 （PLAN-685 T-03）——起独立端口实例 → 首帧竞态探针（`selected_id` 非
-空即签名）→ 按 `blueprints/` 目录解析卡片并 press ≥3 个跨 kind 条目 →
+空即签名）→ 按 `packages/blueprints/` 目录解析卡片并 press ≥3 个跨 kind 条目 →
 断言 `selected_id == 所点 id` 且详情区渲染该 bp spec/gotchas 正文。
 ```bash
 python .agents/skills/autoui-verifier/scripts/test_bp_gallery_click.py \

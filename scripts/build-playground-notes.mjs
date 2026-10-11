@@ -404,7 +404,7 @@ function collectBooks() {
 
 // ── parity（Rust Cookbook/Python/C consumer 等多语言 parity 语料；Plan 581 T1 后置、582 复审修正落地）──
 //
-// 结构：parity/libs/<family>/<lib>/auto/<lib>.at（库，无 main）+ tests/auto/*.at（多文件 import）；
+// 结构：test/parity/libs/<family>/<lib>/auto/<lib>.at（库，无 main）+ tests/auto/*.at（多文件 import）；
 // python 家族为单文件 tests/auto/<lib>.as（AutoScript，运行需 --features python）。
 // 全部 51 条 standalone=false（lib import 或 FFI 外部依赖），本迭代可浏览、Run 如实报依赖错误。
 
@@ -416,7 +416,7 @@ const PARITY_FAMILIES = [
   { dir: 'framework', id: 'parity-framework', title: 'Framework', order: 504 },
 ]
 
-const PARITY_DIR = path.join(REPO_ROOT, 'parity/libs')
+const PARITY_DIR = path.join(REPO_ROOT, 'test/parity/libs')
 
 function collectParity() {
   const groups = []

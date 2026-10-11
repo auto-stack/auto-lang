@@ -1,0 +1,7 @@
+{
+  "baseline_layout": "scratch/p763-baseline/auto from HEAD",
+  "binary": "D:\\autostack\\.wt\\lang-763\\auto-lang\\target\\debug\\auto.exe",
+  "exit": 1,
+  "stdout": "----------------------\nRunning Auto auto/aavm.at \n----------------------\n",
+  "stderr": "[X9] main Err: auto_link_E0401\n\n  × Undefined symbol: P.next in module typeinfo\n  ╰─▶ Undefined symbol: P.next in module typeinfo\n  [Failed to read contents for label `Undefined symbol: P.next in module typeinfo` (offset: 3692, length: 1): OutOfBounds]\n  help: Use a `use` statement to import 'P.next' from a module, or check for\n        typos\n\nError: auto_link_E0401\n\n  × Undefined symbol: P.next in module typeinfo\n  ╰─▶ Undefined symbol: P.next in module typeinfo\n  [Failed to read contents for label `Undefined symbol: P.next in module typeinfo` (offset: 3692, length: 1): OutOfBounds]\n  help: Use a `use` statement to import 'P.next' from a module, or check for\n        typos\n\n"
+}

@@ -3,9 +3,9 @@
 #
 # 形态:三阶自持链对拍宿主 oracle——
 #   R0 = auto tower1.at                (宿主直跑,oracle)
-#   O1 = auto auto/aavm.at tower1.at   (aavm 编译 corpus 集合)
-#   O2 = auto auto/aavm.at tower2.at   (aavm 编译 tower1(含 corpus))
-#   O3 = auto auto/aavm.at tower3.at   (aavm 编译 tower2(嵌tower1(嵌corpus)))
+#   O1 = auto packages/aavm/aavm.at tower1.at   (aavm 编译 corpus 集合)
+#   O2 = auto packages/aavm/aavm.at tower2.at   (aavm 编译 tower1(含 corpus))
+#   O3 = auto packages/aavm/aavm.at tower3.at   (aavm 编译 tower2(嵌tower1(嵌corpus)))
 # 判据:R0 == O1 == O2 == O3(逐字节);首个分歧位报告。
 # 用法:bash scripts/aavm_tower_check.sh [--keep](--keep 保留中间产物)
 set -u
@@ -44,11 +44,11 @@ run_stage() {
 echo "[tower] R0 (host oracle)..."
 run_stage R0 "$TOWER/tower1.at" || exit 1
 echo "[tower] O1 (stage-1 self-host)..."
-run_stage O1 "$ROOT/auto/aavm.at" "$TOWER/tower1.at" || exit 1
+run_stage O1 "$ROOT/packages/aavm/aavm.at" "$TOWER/tower1.at" || exit 1
 echo "[tower] O2 (stage-2)..."
-run_stage O2 "$ROOT/auto/aavm.at" "$TOWER/tower2.at" || exit 1
+run_stage O2 "$ROOT/packages/aavm/aavm.at" "$TOWER/tower2.at" || exit 1
 echo "[tower] O3 (stage-3)..."
-run_stage O3 "$ROOT/auto/aavm.at" "$TOWER/tower3.at" || exit 1
+run_stage O3 "$ROOT/packages/aavm/aavm.at" "$TOWER/tower3.at" || exit 1
 
 fail=0
 for st in O1 O2 O3; do

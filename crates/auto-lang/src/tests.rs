@@ -111,7 +111,7 @@ mod aavm2_repro_242; // Plan 432 D26: VM 字符串池 RC 回归复现(ignore,修
 mod aavm2_t3; // Plan 532: t3 里程碑档——嵌套塔解释栈零漂移最终验收(大版本升级专用)
 #[cfg(feature = "test-aavm")] // Plan 568: AAVM/AA2R 独立档
 mod aavm_at_mode_tests; // Plan 531: aavm.at a2r 模式入口(位置参数)验收锚
-mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in parity/
+mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in test/parity/
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
 pub(crate) mod heavy_gate;
 mod plan569_py_dispatch_tests; // Plan 569 D2: py 返回值方法分派动态化——codegen 决策核单测（无 pyo3 依赖）// ============================================================

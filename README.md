@@ -130,8 +130,8 @@ See the [language guide](docs/language/overview.md#running-and-building) for the
 | Goal | Start here |
 |---|---|
 | Learn the current language | [Language overview](docs/language/overview.md) · [Hands-on Tour](docs/tour/ch01-hello.md) |
-| Develop a script and ship it | [From Script to Ship](docs/script-to-ship/README.md) · [Parity examples](parity/README.md) |
-| Build an interface | [AutoUI](website/ui/index.md) · [UI projects](examples/ui/README.md) · [Blueprints](blueprints/README.md) |
+| Develop a script and ship it | [From Script to Ship](docs/script-to-ship/README.md) · [Parity examples](test/parity/README.md) |
+| Build an interface | [AutoUI](website/ui/index.md) · [UI projects](examples/ui/README.md) · [Blueprints](packages/blueprints/README.md) |
 | Explore the desktop and apps | [AutoOS](website/autoos/index.md) · [Application catalog](website/apps.md) |
 | Understand shared AI services | [AutoAI](website/ai.md) · [AutoMusk](website/apps/automusk/index.md) |
 | Explore browser examples | [Playground page](website/playground.md) · [Run the website locally](website/README.md#development) |
@@ -143,10 +143,10 @@ those introductions and the shared screenshots into a bilingual documentation si
 ## Repository and contributions
 
 - [`crates/`](crates/): language, AutoVM, transpilers, UI, CLI, LSP, package/build tools, and Playground.
-- [`stdlib/`](stdlib/), [`schema/`](schema/), [`packages/`](packages/), [`blueprints/`](blueprints/): standard libraries, UI contracts, components, and reusable UI blueprints.
-- [`examples/`](examples/) and [`parity/`](parity/): runnable projects and behavior comparisons.
+- [`stdlib/`](stdlib/), [`docs/schema/`](docs/schema/), [`packages/`](packages/), [`packages/blueprints/`](packages/blueprints/): standard libraries, UI contracts, components, and reusable UI blueprints.
+- [`examples/`](examples/) and [`test/parity/`](test/parity/): runnable projects and behavior comparisons.
 - [`docs/`](docs/) and [`website/`](website/): learning material, design knowledge, release notes, and site sources.
-- [`auto/`](auto/): experimental self-hosted toolchain.
+- [`packages/aavm/`](packages/aavm/): experimental self-hosted toolchain.
 
 For development, follow [AGENTS.md](AGENTS.md) and the [Plan/Spec workflow](docs/specs/README.md).
 Work in an isolated worktree and use the checks appropriate to the change.

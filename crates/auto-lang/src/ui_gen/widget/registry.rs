@@ -57,7 +57,7 @@ impl WidgetRegistry {
             .get_or_init(|| {
                 let mut registry = Self::new();
                 registry.register_defaults();
-                // Plan 435 P4-4:vue BackendMapping 以 schema/aura.at 为权威 ——
+                // Plan 435 P4-4:vue BackendMapping 以 docs/schema/aura.at 为权威 ——
                 // overlay 重建(手写 insert 已退役;schema 数据由生成器从本文件
                 // 历史提取并经 carried_vue 保留)。
                 registry.apply_schema_vue_mappings();
@@ -1033,7 +1033,7 @@ impl WidgetRegistry {
         // bubble edited content back to the block's dataSource.save flow.
         //
         // Plan 019 Phase 4: vue 后端重定向 @autodown/engine/AutoDownEditor
-        // —— vue 映射声明在 schema/aura.at（P4-4 overlay 单源，禁手写
+        // —— vue 映射声明在 docs/schema/aura.at（P4-4 overlay 单源，禁手写
         // insert）；props/events 契约对齐 ui_gen/vue.rs autodown_editor 臂
         // （:content/:canEdit/:showActions + @update/@save/@cancel）。
         // ark/jet：编辑降级 TextArea/OutlinedTextField 维持——019 边界：
@@ -1078,7 +1078,7 @@ impl WidgetRegistry {
         // SSE chunk for live rendering.
         //
         // Plan 019 Phase 4: vue 后端重定向 @autodown/engine/MarkdownRender
-        // （vue 映射声明在 schema/aura.at，P4-4 单源；替换 musk-022 时代
+        // （vue 映射声明在 docs/schema/aura.at，P4-4 单源；替换 musk-022 时代
         // markstream-vue 平台挂载路径，存量消费方迁移归 020 musk re-vendor）。
         // Plan 040: spec 主名随 tag 主名翻转 Markdown→Autodown（AutoDown
         // 统一命名，裁定③）；markdown/markdown_editor 降 legacy 别名——
@@ -1176,7 +1176,7 @@ impl WidgetRegistry {
 
     fn register_navigation_widgets(&mut self) {
         // Plan 465 T4 (I4): desktop shell leaves — virtual_window + taskbar.
-        // Registration source = schema/aura.at (vue: mapping to @/wm/* gets
+        // Registration source = docs/schema/aura.at (vue: mapping to @/wm/* gets
         // overlaid from there; iced implementation = ui/iced/virtual_window.rs
         // + renderer shell, 462/463).
         let mut virtual_window =
@@ -1190,7 +1190,7 @@ impl WidgetRegistry {
         self.register(taskbar);
 
         // Plan 497 (I4): window_thumbnail — per-window live thumbnail leaf.
-        // Registration source = schema/aura.at (vue: mapping to @/wm/* gets
+        // Registration source = docs/schema/aura.at (vue: mapping to @/wm/* gets
         // overlaid from there; iced = renderer render arm — snapshot cache
         // image / lucide fallback icon).
         let mut window_thumbnail = WidgetSpec::new("WindowThumbnail", WidgetCategory::Display)
@@ -1485,7 +1485,7 @@ impl WidgetRegistry {
         sidebar_menu_btn.has_children = true;
         self.register(sidebar_menu_btn);
 
-        // Plan 548 T6-T7: sidebar 族补全(23 件)——schema/aura.at 已有
+        // Plan 548 T6-T7: sidebar 族补全(23 件)——docs/schema/aura.at 已有
         // `vue: { component, import: "@/components/ui/sidebar" }` 声明,
         // apply_schema_vue_mappings 会按折叠键把 vue 映射灌进这些 spec;
         // 此处只补 spec 骨架(name/alias/has_children),否则 import 生成
@@ -1660,7 +1660,7 @@ impl WidgetRegistry {
 
         // PLAN-677 T-03: MenuBarCheckboxItem — 视图勾选型菜单项
         // （`menubar-checkbox-item`/`menubar_checkbox_item`），vue 映射随
-        // schema/aura.at overlay（menubar_checkbox_item 行）挂靠。
+        // docs/schema/aura.at overlay（menubar_checkbox_item 行）挂靠。
         let menu_bar_checkbox_item =
             WidgetSpec::new("MenuBarCheckboxItem", WidgetCategory::Navigation)
                 .with_alias("menu-bar-checkbox-item")
@@ -1671,7 +1671,7 @@ impl WidgetRegistry {
         // PLAN-695 T-02: menubar 族补全至 shadcn 16 元素——8 个新/改 spec
         //（7 新件 + label 此前 web:none 无 spec）。别名纪律同 677
         //（menu-bar-* 官方 kebab / menubar_* schema snake / menubar-* DSL
-        // kebab）；vue 映射随 schema/aura.at overlay 灌入
+        // kebab）；vue 映射随 docs/schema/aura.at overlay 灌入
         //（apply_schema_vue_mappings 按折叠键解析）。
         let menu_bar_label = WidgetSpec::new("MenuBarLabel", WidgetCategory::Navigation)
             .with_alias("menu-bar-label")
@@ -2860,7 +2860,7 @@ mod tests {
     }
 
     /// Plan 040 T5: autodown 条目（主名翻转 + StreamingRenderer 换绑）。
-    /// vue 映射来自 schema/aura.at overlay（P4-4 单源）——spec 面（主名/
+    /// vue 映射来自 docs/schema/aura.at overlay（P4-4 单源）——spec 面（主名/
     /// 别名/primary_prop）在此断言，vue 臂（StreamingRenderer@engine）随
     /// overlay 落库一并锁。
     #[test]

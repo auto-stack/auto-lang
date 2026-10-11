@@ -2,7 +2,7 @@
 //!
 //! 手写模板资产（同 shadcn-ui 捆绑惯例）：store.ts（WmStore）、layout.ts
 //! （463 layout.rs 的 TS 直译，I6 对拍共享表）、keyboard.ts（R12 桌面热键）、
-//! VirtualWindow.vue / Taskbar.vue（schema/aura.at `vue:` 映射的 DOM 叶实现）。
+//! VirtualWindow.vue / Taskbar.vue（docs/schema/aura.at `vue:` 映射的 DOM 叶实现）。
 //! `generate_desktop_host` 每次 run 全量覆写（资产是生成物，勿手改产物）。
 //!
 //! Plan 516: 追加 `RemoteWindow.vue` / `remote.ts`（远程窗 wm 叶与会话

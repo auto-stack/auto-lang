@@ -1,0 +1,341 @@
+{
+  "plan_revision": 1,
+  "sources": [
+    {
+      "file": "docs/specs/aavm/design/corpus.md",
+      "before_sha256": "b6070868642dec8be50b918f4965b8af03f062efb4694a336d70d5fc4e259ffd",
+      "after_sha256": "79f3be93e6bb9e7886573d00283678f6d61201e0aee6fed82672f613846188e3",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/aavm/design/divergences.md",
+      "before_sha256": "2a4c050b3f236d807c14bd9f7f39ef9150ac237bcfb3332f70e7841853ff9e74",
+      "after_sha256": "e9c75d0813d644840f7f2aa53905f2365597a3f1488b3bfbb7ffc82188de9168",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/aavm/design/file-mapping.md",
+      "before_sha256": "26174fd9dd580c985a8d68c7804b82601013d86f75d7023144a37b91851ca2f7",
+      "after_sha256": "5a09a02500636ad80550f42903a5fe5f56758880f2a7a1d9a46ac2d5362ec13f",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/aavm/design/idiom-upgrade-prereqs.md",
+      "before_sha256": "fc2742962eed7a6bbc9b5c2e70163cc035c36693cfd18263d790d33c0126202f",
+      "after_sha256": "212ac0ffb2195db94090e0cb2d1bc35759a068f60b8960a7c3ebba146698b26c",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/aavm/design/lib-modularization-map.md",
+      "before_sha256": "69b06077412652a8de2bb9b0303493069553ef23d4d869e4cec1bc6262787dab",
+      "after_sha256": "7293d70576083ae31772d1e88d3d66577bb43e9cec211bbdf89bda634e0a6859",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/aavm/design/m3-typecheck-format.md",
+      "before_sha256": "78ffa620797897891cc5e6ca7b4bf9578b72d44c0f21da90dccd081cd9519853",
+      "after_sha256": "4b80b511bf6cc7e722546495186699159fb11ca7987172402130797fbd632941",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/aavm/design/method-emission-spec.md",
+      "before_sha256": "06ccf9f517e2e33ded33d588caa8927b0074f7c82b14722c312d1037af57f487",
+      "after_sha256": "553985ba3e44bfb2ef29715c6f26be8de9d9cf64b935fbf0a67583d3da8b3197",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/aavm/project.md",
+      "before_sha256": "79f913d0ea673fb85e6db2d50bb6e7aefd354855183db12b0089a57187aca5be",
+      "after_sha256": "964dfdc19859ae397390cc1281b2d712e23d34d8d1534c31ebe61b1caccb4ac3",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/auto-lang/frontend/plans.md",
+      "before_sha256": "31a347ca8a61db77f10ff1abf0fcb9592556447e9e405f2f0c138902206d339b",
+      "after_sha256": "fb9e425919fc6a3b0e7daf6dcc493932044ae10477905c283160184724b92236",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/auto-lang/runtime/design/ffi-bridges.md",
+      "before_sha256": "dcffe30fb39eeaa9c54d64bc060205de9283b5e962ba56c4de4c5e66115a301f",
+      "after_sha256": "f9e59a431fbca82cc8a682950f733d138ff7c05a35d80727cd46f0fb294145ee",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/auto-lang/runtime/overview.md",
+      "before_sha256": "02bf64c2a808564416b5e4639490bf293c4e4f01633bab15bd9796b728ec7b64",
+      "after_sha256": "828007719b7d467e3c2363265b027e8c4fcec67a7f07121f78c1ba9782933f95",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/auto-lang/ui/architecture.md",
+      "before_sha256": "772debe90fd269f145b4334bebc1a64ff9d6ba4c7d487bfe77ae4a10bbdf75e5",
+      "after_sha256": "49f4b7fcd2195db93f5b9996b697dea81881ed6d64b856a1176dec25c135b6fb",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/auto-lang/ui/design/aura-pipeline.md",
+      "before_sha256": "b9ee7350ec4d7df7df49bcaee4d9d8243caaea1340b53b5c6cb91284cabf5534",
+      "after_sha256": "cdc32234c91836ee961be9bf823d9173e7cdf3f4eb4226bfbe7f5132e058fca8",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/auto-lang/ui/design/blueprint-tier.md",
+      "before_sha256": "937f55bc4bd33efb7c36273c4c867548bea63b05a63676bc845cabf20e8d01b2",
+      "after_sha256": "38bdede0b24980468b5f82fccd9eb2d22410dd26ea8ff011a5de48275332ac7d",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/auto-lang/ui/design/chart-components.md",
+      "before_sha256": "d0064b45942ba2d459e8a4ddf67fee052ea765f674da309e2ea77681ff92178d",
+      "after_sha256": "b2e1df4b3a87766888f6d1902a00fe9200dfe78b7a4dfb996b70389271f216c3",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/auto-lang/ui/design/tabs-components.md",
+      "before_sha256": "929a3012236ece53b3dd49bc8202e56ce02b13a21a81775c746be092761cbbe7",
+      "after_sha256": "58bbc907585f551f6b196defd182adb918231235f951e59b95b3f7c4f466e231",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/auto-lang/ui/overview.md",
+      "before_sha256": "5290ca324273a66674b8b4c994c80a1bfb1e23bc5cd22db95c5207f79c3268a7",
+      "after_sha256": "c20b0c622b7d409a0d2ff30de2e062fc7b9d3cc8fe030b11112a585bc91e1299",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/auto-lang/ui/plans.md",
+      "before_sha256": "8ce1752b04846e4877615cbe3eb482a1d9bddee49cef7b55dd9d2d51bf9528f8",
+      "after_sha256": "b22673d467a891ad4443423882b1efa6c3285f33810688dbdc5c81ba9d8cbe2a",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/auto-man/project.md",
+      "before_sha256": "a1dfe050a9de90b7dde1ef11ce84522c5b5eae7b39a29d2d693bb318836189b6",
+      "after_sha256": "9a1573c10c15ad319f453cd44f6cdb659500237e19e1d84015d0e49d89d17bf8",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/blueprint/contract.md",
+      "before_sha256": "150e5bbc72cfc6b7f41a5667448703c4a02e7204c93142bc08e892c5462c8663",
+      "after_sha256": "2fbc2f62a24ab04e78837e1cd5399582b74d7a7329d4a0c4dc6a4859e8b83af6",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/blueprint/project.md",
+      "before_sha256": "afca4cda69964275ffa7211ac2558354b5a8e83d138bb59f7c2a09bd241da39b",
+      "after_sha256": "669e1279e289e14067a6d9bd83a035bb7ffb59506ef1532bd213db6af7d183f4",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/design/repository-layout.md",
+      "before_sha256": "de55aabb45e0294b197902db59341f82be7fbf6378ce594b513632e170716a19",
+      "after_sha256": "3800856129eb9b5bd742fef9ea2aa0c94f0db780ab2a8ba01fc7ae8965dde49b",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/goals.md",
+      "before_sha256": "35203bfa0df159861ce1796616268e3a7f84893eaf762749a10de930f90ac7c7",
+      "after_sha256": "8366d062503533341d4037c0530208bd7bcd5c45aee8208028133f9470cd9ce4",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/overview.md",
+      "before_sha256": "9c421338b599f6b77a000196b41109cc8452a34e0fa5992572535ab59205c2e1",
+      "after_sha256": "6c0bf2a27cc18365eb6c8f2dd506d8984ff07b6c7ab7aa99e6985cf055599af9",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/parity/project.md",
+      "before_sha256": "7566474adac0de5ab79d647f296573e3a328100c464b9339503c4fa1acc0a966",
+      "after_sha256": "139c55e63b9b131067abb5d5b26efb82ef8215873f1df5ec71cccc4a76fe0456",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/plans.md",
+      "before_sha256": "8d9d0d033e8929974d61f5c9eacb2fbf6bd1d8acd58f978333947c78841ad46b",
+      "after_sha256": "c8f24c5fed24cf2d1759fae7ac62297cf275c0580be38c434e8a441298f45072",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/website/project.md",
+      "before_sha256": "840f33f4a52e459258832a09da6fa2d09571513c8a5a7521c57103e0e2b6d36a",
+      "after_sha256": "fbaccff3e5d74370ff16d935d8e1be89d93e3602710052d4e3b47c873f168089",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    },
+    {
+      "file": "docs/specs/widgets/menubar-family.md",
+      "before_sha256": "e16e916e2c62e74fc34d5bb6a127158636d767712caa605ecdcb6c24a008c380",
+      "after_sha256": "63de9616c5a6b05097f105cb465258f7c17b890974762ad194bb8357eab148a8",
+      "operation": "modify",
+      "rule": "physical paths/current Actions state; no language or protocol semantic change",
+      "acceptance": [
+        "AC-01",
+        "AC-02",
+        "AC-03"
+      ]
+    }
+  ]
+}

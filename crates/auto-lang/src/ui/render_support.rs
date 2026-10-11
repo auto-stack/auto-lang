@@ -69,7 +69,7 @@ impl TagSupport {
 
 /// Look up the render support level for an AURA tag.
 ///
-/// Plan 435 P3 数据流翻转:**级别以 schema/aura.at 的 backends.iced 为权威**
+/// Plan 435 P3 数据流翻转:**级别以 docs/schema/aura.at 的 backends.iced 为权威**
 /// (三级折叠解析:精确→别名→折叠键);本文件静态表降级为详情来源
 /// (ignored_props/note,这些不在 schema 里)与 schema 缺失时的回退。
 /// 围栏测试保证静态表与 schema 级别一致(schema 即从本表提取,再生成闭环),

@@ -180,7 +180,7 @@ impl WidgetBlockSchema {
     }
 }
 
-/// 组件层级(Plan 435 P1 起在 schema/aura.at 声明):
+/// 组件层级(Plan 435 P1 起在 docs/schema/aura.at 声明):
 /// - NativeHtml:Web 原生直通(类比 Vue 的 HTML_TAGS 层)
 /// - BuiltinWidget:桌面(iced)有 Rust 实现
 /// - WebComponent:shadcn 家族生成映射
@@ -243,7 +243,7 @@ pub struct VueBackendSpec {
 }
 
 /// 元素侧信息(Plan 435 四新字段)。硬编码 fallback(AuraSchema::new)无 meta;
-/// schema_loader 从 schema/aura.at 填充。
+/// schema_loader 从 docs/schema/aura.at 填充。
 #[derive(Debug, Clone)]
 pub struct ElementMeta {
     pub tier: ElementTier,
@@ -4885,7 +4885,7 @@ impl AuraSchema {
             description: "Transparent hover hit-region (iced mouse_area on_enter/on_exit; vue div @mouseenter/@mouseleave). No visuals, event forwarding only - chart tooltip hit primitive. Plan 496: ondblclick -> mouse_area on_double_click (desktop icon double-click launch primitive; vue @dblclick). Plan 498 M0: onclick -> mouse_area on_click (iced on_press / vue @click; chart legend click-toggle and diagram select shared prerequisite). Plan 499: onmousemove -> logical-coordinate move stream (engine-side screen->logical conversion + <=30Hz throttle on VM arm; handler receives (x, y) float args; coords prop declares the logical extent).",
         });
 
-        // Plan 547: 后端中立图片面(src 媒体票据 URI;详规见 schema/aura.at
+        // Plan 547: 后端中立图片面(src 媒体票据 URI;详规见 docs/schema/aura.at
         // imagesurface 条目与 docs/design/autoui/image-viewer-pipeline.md)。
         elements.insert("imagesurface", ElementDef {
             tag: "imagesurface",
@@ -4908,7 +4908,7 @@ impl AuraSchema {
             description: "Backend-neutral image surface (Plan 547): media ticket URI + interactive transform state; renders published renditions only (vue img + pointer synthesis / iced widget), never does file I/O or decode on the UI thread.",
         });
 
-        // Plan 563: 状态驱动画布(scene 前缀双表契约;详规见 schema/aura.at
+        // Plan 563: 状态驱动画布(scene 前缀双表契约;详规见 docs/schema/aura.at
         // canvas 条目与 043-canvas-paint SPEC.md)。
         // PLAN-661 T-05: 场景契约扩容——图元三表族（nodes/edges/labels）+
         // onhit 命中契约（详规 docs/specs/auto-lang/ui/design/canvas-scene.md）。
@@ -5452,7 +5452,7 @@ impl AuraSchema {
             },
         );
 
-        // PLAN-695: menubar 族补全至 shadcn 16 元素——权威面是 schema/aura.at
+        // PLAN-695: menubar 族补全至 shadcn 16 元素——权威面是 docs/schema/aura.at
         //（运行时 loader 填充 ElementMeta：tier/backends/vue），本硬编码 fallback
         // 照 menubar_checkbox_item 先例不镜像新增件（schema_drift 围栏 rs 维度
         // 会对 fallback-only 新件报孤儿漂移；fallback 仅 schema 加载失败时兜底）。
@@ -6481,7 +6481,7 @@ impl AuraSchema {
     }
 }
 
-/// 折叠键:剥 `-`/`_` + 小写(Plan 435 别名匹配策略,见 schema/aura.at 头注释)。
+/// 折叠键:剥 `-`/`_` + 小写(Plan 435 别名匹配策略,见 docs/schema/aura.at 头注释)。
 fn fold_key(s: &str) -> String {
     s.chars()
         .filter(|c| *c != '-' && *c != '_')

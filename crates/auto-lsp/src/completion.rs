@@ -88,7 +88,7 @@ enum CompletionContext {
     FieldAccess,
     /// Default keyword context
     Keyword,
-    /// Plan 435 P2:view 块内的元素 tag 位(补全 schema/aura.at 声明的组件)
+    /// Plan 435 P2:view 块内的元素 tag 位(补全 docs/schema/aura.at 声明的组件)
     UiElement,
     /// Unknown context
     #[allow(dead_code)]
@@ -189,7 +189,7 @@ fn cursor_in_view_block(before_cursor: &str) -> bool {
     stack.iter().any(|h| h.split_whitespace().next() == Some("view"))
 }
 
-/// Plan 435 P2:schema/aura.at 驱动的 UI 元素补全(330 元素,含 tier/detail)。
+/// Plan 435 P2:docs/schema/aura.at 驱动的 UI 元素补全(330 元素,含 tier/detail)。
 /// 官方/自定义 widget 名由 workspace 补全层补充(与本层不同源)。
 fn ui_element_completions() -> Vec<CompletionItem> {
     use auto_lang::aura::schema::{ElementCategory, ElementTier};

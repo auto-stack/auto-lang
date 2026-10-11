@@ -115,11 +115,11 @@ fn t05_dep_probe_pkg_reaches_kebab_dir() {
         app.join("pac.at"),
         format!(
             "dep bps {{\n    path: \"{}\"\n}}\n",
-            base.join("blueprints").display()
+            base.join("packages/blueprints").display()
         ),
     )
     .unwrap();
-    let pkg = base.join("blueprints/feedback/empty-state/reference");
+    let pkg = base.join("packages/blueprints/feedback/empty-state/reference");
     std::fs::create_dir_all(&pkg).unwrap();
     std::fs::write(pkg.join("error.at"), "// fixture\n").unwrap();
 
@@ -230,7 +230,7 @@ fn t07_data_table_vocabulary_face_locked() {
 // 双轨渲染；640 AC-08 走查"empty-state 全黑"对照转绿。
 // ---------------------------------------------------------------------------
 
-/// tmp 宿主 fixture：pac.at 声明 `dep bps`（指向本仓 blueprints/）+ app.at
+/// tmp 宿主 fixture：pac.at 声明 `dep bps`（指向本仓 packages/blueprints/）+ app.at
 /// 直连 `use bps.<dotted>: <Widget>` + 视图实例化。返回 app.at 路径。
 /// PLAN-657 起 empty-state first_use 等被消费变体带必填回调参数——`props`
 /// 注入实例化面（如 `(on_primary: .Primary)`）；老的无参形态传 ""。
@@ -242,7 +242,7 @@ fn e2e_host(tag: &str, dotted: &str, widget: &str, props: &str) -> PathBuf {
         base.join("pac.at"),
         format!(
             "dep bps {{\n    path: \"{}\"\n}}\n",
-            repo_root().join("blueprints").display()
+            repo_root().join("packages/blueprints").display()
         ),
     )
     .unwrap();
@@ -404,7 +404,7 @@ fn t10_e2e_vue_track_direct_import() {
     let _ = std::fs::remove_dir_all(app.parent().unwrap().parent().unwrap().parent().unwrap());
 
     // bp reference 本体发射面（empty-state first_use 关键文案进 SFC）。
-    let reference = repo_root().join("blueprints/feedback/empty-state/reference/first_use.at");
+    let reference = repo_root().join("packages/blueprints/feedback/empty-state/reference/first_use.at");
     let bp = crate::ui_gen::generate_component_from_file(
         &reference,
         crate::ui_gen::ComponentGenOptions::default(),

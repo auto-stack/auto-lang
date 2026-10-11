@@ -99,7 +99,7 @@ tempfile = "3.14"
 debug = "line-tables-only"
 
 # PLAN-043 走查（2026-09-25）：iced_widget 本地补丁——container.rs 布局
-# 空窗容错（P041-D1 竞态族 unwrap 崩桌面的宿主侧根治），见 patches/README.md。
+# 空窗容错（P041-D1 竞态族 unwrap 崩桌面的宿主侧根治），见 crates/patches/README.md。
 # 升级 iced 版本时需重审本补丁。
 [patch.crates-io]
-iced_widget = { path = "patches/iced_widget" }
+iced_widget = { path = "crates/patches/iced_widget" }

@@ -115,11 +115,11 @@ pub struct WidgetValidator {
 impl WidgetValidator {
     /// Create a new validator with the default schema
     pub fn new() -> Result<Self, ValidationError> {
-        // Plan 435 P2:schema/aura.at 为主数据源;加载失败回落硬编码 fallback
+        // Plan 435 P2:docs/schema/aura.at 为主数据源;加载失败回落硬编码 fallback
         // (AuraSchema::new,192 元素、无 meta),并打日志 —— 不因 schema 损坏阻塞构建。
         let schema = crate::aura::load_default_schema().unwrap_or_else(|e| {
             eprintln!(
-                "[warn] schema/aura.at load failed, falling back to builtin schema: {}",
+                "[warn] docs/schema/aura.at load failed, falling back to builtin schema: {}",
                 e
             );
             crate::aura::schema::AuraSchema::new()

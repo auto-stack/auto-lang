@@ -4,7 +4,7 @@
 // 颜色/线宽/eraser + undo/清空/storage 存取。经典 Paint 的流线模式地基
 // (031-paint 像素模式的姊妹形态,正式升级另立 plan)。
 //
-// 场景数据契约(schema/aura.at canvas 条目):
+// 场景数据契约(docs/schema/aura.at canvas 条目):
 //   .strokes_pts  = ["x1,y1|x2,y2|...", ...]   每笔画点列(| 分隔)
 //   .strokes_meta = ["#rrggbb,width,eraser", ...]  颜色,线宽,eraser 位
 //

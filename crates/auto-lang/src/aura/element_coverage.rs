@@ -1,12 +1,12 @@
 // Plan 507 T2 —— 元素级覆盖登记（单一事实源）。
 //
-// `schema/aura.at` 全量 element ↔ queue 臂（RenderQueue/命令帧）状态表：
+// `docs/schema/aura.at` 全量 element ↔ queue 臂（RenderQueue/命令帧）状态表：
 // **covered** = 投影器有臂且 auto 探测可上 queue；**not-yet** = queue 臂
 // 目标未实现（理由随行，auto 降级 independent + 观测行——禁止静默错绘）；
 // **not-consumed** = web_component（shadcn 长尾）不由 queue 臂消费，升格
 // 需显式登记。
 //
-// 本表属 `aura` 域（描述 schema/aura.at 元素；无 feature 门——日常档
+// 本表属 `aura` 域（描述 docs/schema/aura.at 元素；无 feature 门——日常档
 // 漂移围栏可读）。漂移闸门（`tests/schema_drift.rs::
 // queue_coverage_drift_fence`）：aura.at element 集与本表**双向**同步
 // ——新增未登记即红；本表现状与 `Coverage::target_set()`

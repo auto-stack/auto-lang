@@ -1,0 +1,15 @@
+{
+  "auto_musk": {
+    "files": [
+      "backend/crates/musk/src/canvas/bp_tools.rs"
+    ],
+    "old_path": "auto-lang/blueprints",
+    "effect": "optional env injection no longer resolves old path; command still starts auto bp and relies on new CLI defaults. Fresh main release required before cleanup. Direct directory helper has legacy diagnostic semantics; external source not changed."
+  },
+  "auto_os": {
+    "files": [
+      "ui-gallery/src/front/registry.at"
+    ],
+    "effect": "generated stored source/pac_text contains historical paths; source regeneration belongs to gallery owner, not performed in unrelated checkout."
+  }
+}

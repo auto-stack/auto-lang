@@ -5,7 +5,7 @@
 // 四能力合一样板——上游布局裁定（R-3）：坐标由 .at 侧循环+三角函数
 // 算好写入三表，渲染端只收绝对坐标。
 //
-// 场景数据契约（schema/aura.at canvas 条目 + design/canvas-scene.md）：
+// 场景数据契约（docs/schema/aura.at canvas 条目 + design/canvas-scene.md）：
 //   .graph_nodes  = ["id,x,y,shape,color[,r|w,h]", ...]   circle 用 r / rect 用 w,h
 //   .graph_edges  = ["x1,y1,x2,y2[,color[,width]]", ...]  线段（绝对坐标）
 //   .graph_labels = ["x,y,text[,color[,size]]", ...]

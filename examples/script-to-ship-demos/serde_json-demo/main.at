@@ -3,7 +3,7 @@
 // Dev:  auto main.at              (VM 脚本秒级跑，跳过编译)
 // Ship: auto trans --path main.at rust   (a2r 转 Rust 发布)
 //
-// 对应 parity 用例: parity/libs/serde_json/ (L1 ✓ 56/56 三向一致)
+// 对应 parity 用例: test/parity/libs/serde_json/ (L1 ✓ 56/56 三向一致)
 // 对标 Rust serde_json: 这里演示 JSON 括号平衡校验与嵌套深度计算,
 // 是 JSON 解析器的基础结构检查。
 

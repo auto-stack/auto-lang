@@ -20,20 +20,20 @@ auto trans --path main.at rust   # 生成 main.a2r.rs
 
 ### 行为一致性
 
-每个 demo 对应的 parity 用例（`parity/libs/<name>/`）已通过三向验证：
-AutoVM、a2r 转译 Rust、原生 Rust 输出 100% 一致。详见 [parity 仪表盘](../../parity/docs/parity-dashboard.html)。
+每个 demo 对应的 parity 用例（`test/parity/libs/<name>/`）已通过三向验证：
+AutoVM、a2r 转译 Rust、原生 Rust 输出 100% 一致。详见 [parity 仪表盘](../../test/parity/docs/parity-dashboard.html)。
 
 ## Demos
 
 | Demo | 领域 | 对标 Rust 生态 | parity 库 |
 |------|------|---------------|-----------|
-| [`serde_json-demo`](serde_json-demo/) | JSON 序列化/解析 | serde_json | `parity/libs/serde_json/` (L1 ✓ 56/56) |
-| [`regex-demo`](regex-demo/) | 正则匹配 | regex | `parity/libs/regex/` (L1 ✓ 45/45) |
-| [`cli-demo`](cli-demo/) | 文本统计 (wc 风格) | std 纯 Rust 输出 | `parity/libs/cli_app/` (L1 ✓ 32/32) |
-| [`trait-demo`](trait-demo/) | spec/trait + 有界泛型 `<T has Spec>` | trait + 泛型 | `parity/libs/trait_advanced/` (L1 ✓ 18/18) |
-| [`generators-demo`](generators-demo/) | yield 生成器 / 惰性序列 | 迭代器/Stream | `parity/libs/generators/` (L1 ✓ 6/6) |
-| [`http-client-demo`](http-client-demo/) | 同步 HTTP 客户端 | ureq/http | `parity/libs/http_client_sync/` (L1 ✓ 5/5) |
-| [`async-demo`](async-demo/) | async/await 串行组合 | tokio Future | `parity/libs/tokio/` (L1 ✓ 13/13) |
+| [`serde_json-demo`](serde_json-demo/) | JSON 序列化/解析 | serde_json | `test/parity/libs/serde_json/` (L1 ✓ 56/56) |
+| [`regex-demo`](regex-demo/) | 正则匹配 | regex | `test/parity/libs/regex/` (L1 ✓ 45/45) |
+| [`cli-demo`](cli-demo/) | 文本统计 (wc 风格) | std 纯 Rust 输出 | `test/parity/libs/cli_app/` (L1 ✓ 32/32) |
+| [`trait-demo`](trait-demo/) | spec/trait + 有界泛型 `<T has Spec>` | trait + 泛型 | `test/parity/libs/trait_advanced/` (L1 ✓ 18/18) |
+| [`generators-demo`](generators-demo/) | yield 生成器 / 惰性序列 | 迭代器/Stream | `test/parity/libs/generators/` (L1 ✓ 6/6) |
+| [`http-client-demo`](http-client-demo/) | 同步 HTTP 客户端 | ureq/http | `test/parity/libs/http_client_sync/` (L1 ✓ 5/5) |
+| [`async-demo`](async-demo/) | async/await 串行组合 | tokio Future | `test/parity/libs/tokio/` (L1 ✓ 13/13) |
 
 ## 三段式叙事
 

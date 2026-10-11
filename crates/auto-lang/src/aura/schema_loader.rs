@@ -1,4 +1,4 @@
-//! AURA Schema Loader - Parses schema/aura.at to build in-memory schema
+//! AURA Schema Loader - Parses docs/schema/aura.at to build in-memory schema
 //!
 //! This module loads the AutoLang-based schema file and converts it to
 //! the Rust schema structures used for validation.
@@ -835,7 +835,7 @@ impl Default for SchemaLoader {
 /// Load the default AURA schema from the embedded schema file
 pub fn load_default_schema() -> Result<AuraSchema, SchemaLoadError> {
     let mut loader = SchemaLoader::new();
-    loader.load(include_str!("../../../../schema/aura.at"))
+    loader.load(include_str!("../../../../docs/schema/aura.at"))
 }
 
 /// Plan 435 P3:进程级缓存的默认 schema(load_default_schema 会 Box::leak 构建
@@ -975,7 +975,7 @@ widget_blocks {
 
     #[test]
     fn test_new_elements() {
-        // Plan 435 P1:schema/aura.at 由生产代码提取生成(330 元素)。
+        // Plan 435 P1:docs/schema/aura.at 由生产代码提取生成(330 元素)。
         // props 断言只对 rs 声明过的元素(rs 是唯一带类型 props 的来源);
         // select/slider/table 家族等未在 rs 声明的元素此刻 props 为空 —— P2 补。
         let schema = load_default_schema().expect("Failed to load schema");

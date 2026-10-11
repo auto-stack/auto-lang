@@ -6,7 +6,7 @@
 //
 // What this file does NOT verify: AutoVM-vs-a2r behavioral parity. Three-way
 // parity (AutoVM vs a2r-transpiled Rust vs native Rust) is handled by the
-// separate `parity/` workspace (see parity/docs/parity-guide.md and Plan 347).
+// separate `test/parity/` workspace (see test/parity/docs/parity-guide.md and Plan 347).
 //
 // Strategy:
 // 1. Run input.at through AutoVM → capture stdout

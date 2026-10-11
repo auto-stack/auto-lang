@@ -1,0 +1,33 @@
+{
+  "introduced_broken_links": [],
+  "inherited_broken_links": [
+    {
+      "file": "docs/guides/ffi-usage-guide.md",
+      "target": "../plans/081-phase5-complete.md"
+    },
+    {
+      "file": "docs/guides/ffi-usage-guide.md",
+      "target": "../plans/081-autovm-default-mode.md"
+    },
+    {
+      "file": "docs/specs/aavm/project.md",
+      "target": "../../plans/523-aavm-a2r-midlang-coverage.md"
+    },
+    {
+      "file": "docs/specs/aavm/project.md",
+      "target": "../../plans/525-aavm-oop-batch.md"
+    },
+    {
+      "file": "docs/specs/aavm/project.md",
+      "target": "../../plans/532-aavm-tower-selfhost.md"
+    },
+    {
+      "file": "docs/specs/auto-lang/ui/overview.md",
+      "target": "../../design/autoui/sidebar-family-and-nav-retirement.md"
+    },
+    {
+      "file": "examples/bps-gallery/README.md",
+      "target": "../../docs/plans/676-gallery-shell-bp.md"
+    }
+  ]
+}

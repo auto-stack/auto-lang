@@ -123,8 +123,8 @@ Vue 开发还需要项目对应的 Node.js/包管理器依赖；原生 UI 使用
 | 目标 | 入口 |
 |---|---|
 | 了解当前语言 | [语言概览](docs/language/overview.cn.md) · [动手巡礼](docs/tour/ch01-hello.md) |
-| 从脚本走向发布 | [从脚本到发布](docs/script-to-ship/README.cn.md) · [行为对拍示例](parity/README.md) |
-| 构建界面 | [AutoUI](website/zh/ui/index.md) · [UI 项目](examples/ui/README.md) · [Blueprint](blueprints/README.md) |
+| 从脚本走向发布 | [从脚本到发布](docs/script-to-ship/README.cn.md) · [行为对拍示例](test/parity/README.md) |
+| 构建界面 | [AutoUI](website/zh/ui/index.md) · [UI 项目](examples/ui/README.md) · [Blueprint](packages/blueprints/README.md) |
 | 探索桌面与应用 | [AutoOS](website/zh/autoos/index.md) · [应用目录](website/zh/apps.md) |
 | 了解共享 AI 能力 | [AutoAI](website/zh/ai.md) · [AutoMusk](website/zh/apps/automusk/index.md) |
 | 浏览器示例 | [Playground 页面](website/zh/playground.md) · [本地启动网站](website/README.md#development) |
@@ -136,10 +136,10 @@ Vue 开发还需要项目对应的 Node.js/包管理器依赖；原生 UI 使用
 ## 仓库与贡献
 
 - [`crates/`](crates/)：语言、AutoVM、转译器、UI、CLI、LSP、包管理/构建工具和 Playground。
-- [`stdlib/`](stdlib/)、[`schema/`](schema/)、[`packages/`](packages/)、[`blueprints/`](blueprints/)：标准库、UI 契约、组件与可复用 UI 蓝图。
-- [`examples/`](examples/) 与 [`parity/`](parity/)：可运行项目与行为对拍。
+- [`stdlib/`](stdlib/)、[`docs/schema/`](docs/schema/)、[`packages/`](packages/)、[`packages/blueprints/`](packages/blueprints/)：标准库、UI 契约、组件与可复用 UI 蓝图。
+- [`examples/`](examples/) 与 [`test/parity/`](test/parity/)：可运行项目与行为对拍。
 - [`docs/`](docs/) 与 [`website/`](website/)：学习资料、设计知识、发布说明与网站源码。
-- [`auto/`](auto/)：实验性自举工具链。
+- [`packages/aavm/`](packages/aavm/)：实验性自举工具链。
 
 参与开发请遵循 [AGENTS.md](AGENTS.md) 与 [Plan/Spec 流程](docs/specs/README.md)，
 在独立 worktree 中工作，并按改动范围选择验证门禁。

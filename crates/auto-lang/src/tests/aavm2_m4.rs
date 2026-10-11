@@ -3,7 +3,7 @@
 // 语料:test/vm/aavm2/corpus_m4/*.at(fn-only 程序:wrapper/let/assign/if/
 // while/for-range/fn 调用/字符串/逻辑/多局部)。
 // 判据:两侧反汇编文本逐行相等 —— Rust 侧:execute 管线编译段(parse→
-// codegen 脚本 wrapper→HALT)+ 单模块链接 + 反汇编;AAVM 侧:auto/lib/
+// codegen 脚本 wrapper→HALT)+ 单模块链接 + 反汇编;AAVM 侧:packages/aavm/lib/
 // {token,lexer,parser,typeinfo,codegen}.at 的 codegen_dump(source)。
 // 规范化(计划允许的元数据差异):①load.str 操作数显示池内容(Rust {:?}
 // 转义;corpus 限 ASCII 简单串);②fn 末尾/作用域尾的槽释放组

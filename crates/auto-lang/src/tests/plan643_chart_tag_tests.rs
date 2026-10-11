@@ -45,7 +45,7 @@ fn materialize_with_charts_fixture(track: &str) -> PathBuf {
         std::fs::copy(entry.path(), &target)
             .unwrap_or_else(|e| panic!("copy {}: {e}", name.to_string_lossy()));
     }
-    let reference = repo_root().join("blueprints/dashboard/overview/reference/with_charts.at");
+    let reference = repo_root().join("packages/blueprints/dashboard/overview/reference/with_charts.at");
     let dest = scratch.join("with_charts.at");
     std::fs::copy(&reference, &dest).expect("copy reference into scratch");
     dest

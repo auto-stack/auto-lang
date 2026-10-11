@@ -13,5 +13,5 @@ desktop: "false"
 // 验证：本目录跑 `auto build --gen-only -r vue`（无 --lenient）→
 // gen/front/vue 下 `pnpm install && pnpm build` 绿。
 dep bps {
-    path: "../../../../../blueprints"
+    path: "../../../../../packages/blueprints"
 }

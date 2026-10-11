@@ -1,0 +1,620 @@
+mod aavm;
+mod freshness;
+mod compare;
+mod deps;
+mod report;
+mod runner;
+mod tap;
+
+use clap::{Parser, Subcommand};
+use compare::{ComparisonReport, TestCaseComparison};
+use runner::{lib_has_mock_server, resolve_lib_dir, MockServer, RunConfig};
+use std::path::PathBuf;
+
+/// Three-way parity checker: AutoVM vs a2r vs native Rust.
+#[derive(Parser)]
+#[command(name = "auto-parity", version, about)]
+struct Cli {
+    /// Path to the parity workspace root (default: auto-detect ./parity).
+    #[arg(long, env = "PARITY_ROOT")]
+    root: Option<PathBuf>,
+
+    /// Path to the auto binary (default: "auto").
+    #[arg(long, env = "AUTO_BINARY", default_value = "auto")]
+    auto_binary: String,
+
+    /// Plan 524: skip the stale-auto-binary freshness gate (mtime 对账).
+    /// 陈旧产物会伪装回归假红（P511-5/P517-2）——默认硬失败，确认无碍再逃生。
+    #[arg(long)]
+    allow_stale: bool,
+
+    /// Explicit Python interpreter for oracle/a2py subprocesses (Plan 461).
+    /// Overrides the python3/python PATH probe — needed when the PATH
+    /// `python3` is a different installation without the required
+    /// site-packages (e.g. the Microsoft Store stub on Windows).
+    #[arg(long, env = "PARITY_PYTHON")]
+    python_binary: Option<String>,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Run parity check for a specific library.
+    Run {
+        /// Library name (e.g. "base64", "_dummy").
+        library: String,
+    },
+    /// Run parity check for all libraries in a phase.
+    Phase {
+        /// Phase name (p0, p1, p2, p3, p4).
+        phase: String,
+    },
+    /// Run parity check for all libraries.
+    All,
+    /// List discovered libraries.
+    List,
+    /// Generate a static HTML dashboard of parity results.
+    Report {
+        /// Path to write the HTML dashboard to.
+        #[arg(short, long, default_value = "docs/parity-dashboard.html")]
+        output: PathBuf,
+    },
+    /// Plan 433 C1: AAVM 四向对比矩阵(①reference ②aavm_rust ③aavm_vm ④golden)。
+    Aavm {
+        /// 可选:同时写独立 HTML 矩阵页(相对 parity root)。
+        #[arg(long)]
+        html: Option<PathBuf>,
+    },
+}
+
+fn main() {
+    let cli = Cli::parse();
+    let root = cli.root.unwrap_or_else(detect_parity_root);
+
+    if let Some(py) = cli.python_binary.as_deref() {
+        runner::set_python_binary(py);
+    }
+
+    if !root.is_dir() {
+        eprintln!("Error: parity root not found: {}", root.display());
+        std::process::exit(1);
+    }
+
+    // Plan 524: auto.exe 新鲜度闸门（P517-2 根治）——启动时 mtime 对账
+    // crates/ 树最新源，陈旧硬失败（伪装回归假红先于一切结论），--allow-stale
+    // 逃生；相对路径在此统一解析为绝对路径（报错含绝对路径与 cwd）。
+    let repo_root = {
+        let canonical = std::fs::canonicalize(&root).unwrap_or_else(|_| root.clone());
+        canonical
+            .ancestors()
+            .find(|dir| dir.join("crates/auto-lang/Cargo.toml").is_file())
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| canonical.join("../.."))
+    };
+    let auto_binary = match freshness::check_freshness(&cli.auto_binary, &repo_root, cli.allow_stale)
+    {
+        Ok(resolved) => resolved,
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Async libraries (P4) need sorted output because their completion order
+    // is non-deterministic. We also default sort_results to false and turn it
+    // on per-library inside run_library.
+    let base_config = RunConfig {
+        parity_root: root.clone(),
+        auto_binary: auto_binary.clone(),
+        library: String::new(),
+        sort_results: false,
+    };
+
+    match cli.command {
+        Command::Run { library } => {
+            run_library(&base_config.with_library(&library));
+        }
+        Command::Phase { phase } => {
+            let libs = discover_libraries_by_phase(&root, &phase);
+            if libs.is_empty() {
+                eprintln!("No libraries found for phase {}", phase);
+                std::process::exit(1);
+            }
+            for lib in libs {
+                run_library(&base_config.with_library(&lib));
+            }
+        }
+        Command::All => {
+            let libs = discover_all_libraries(&root);
+            if libs.is_empty() {
+                eprintln!("No libraries found under {}", root.join("libs").display());
+                std::process::exit(1);
+            }
+            for lib in libs {
+                run_library(&base_config.with_library(&lib));
+            }
+        }
+        Command::List => {
+            let libs = discover_all_libraries(&root);
+            for lib in libs {
+                println!("{}", lib);
+            }
+        }
+        Command::Aavm { html } => {
+            // repo_root 与解析后的 auto_binary 已在 Plan 524 启动闸门算好
+            let cfg = aavm::AavmConfig {
+                repo_root,
+                auto_binary,
+            };
+            match aavm::run_matrix(&cfg) {
+                Ok(report) => {
+                    println!("{}", aavm::format_matrix(&report));
+                    if let Some(html_rel) = html {
+                        let out_path = root.join(html_rel);
+                        match aavm::write_html(&report, &out_path) {
+                            Ok(()) => println!("HTML matrix written to {}", out_path.display()),
+                            Err(e) => eprintln!("html write error: {}", e),
+                        }
+                    }
+                    if !report.all_green() {
+                        std::process::exit(1);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("aavm matrix error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        Command::Report { output } => {
+            // Verified phases included in the dashboard. P1/P2 are the Plan
+            // 347 core; D1/D2 are Plan 358 additions; P4's tokio is L1 (reqwest
+            // is auto-skipped if absent). P3 (sha2/rusqlite) stays L3 roadmap.
+            // D5/D6 are Plan 368 consumer-mode parity (Auto as library consumer);
+            // D6 libs need a live mock server (Layer 2 HTTP).
+            let phases = ["p1", "p2", "d1", "d2", "d4", "d5", "d6", "p4"];
+            let mut reports = Vec::new();
+            for phase in &phases {
+                let libs = discover_libraries_by_phase(&root, phase);
+                for lib in libs {
+                    let mut cfg = base_config.clone();
+                    cfg.library = lib;
+                    cfg.sort_results = is_async_library(&cfg.library);
+                    match build_comparison_report(&cfg) {
+                        Ok(r) => reports.push(r),
+                        Err(e) => eprintln!("Warning: {} report failed: {}", cfg.library, e),
+                    }
+                }
+            }
+            let kd = root.join("docs/known-divergences.md");
+            match report::generate_dashboard(&reports, &kd, &output) {
+                Ok(()) => {
+                    println!("Dashboard written to {}", output.display());
+                }
+                Err(e) => {
+                    eprintln!("report error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+}
+
+/// Walk current directory and its parents looking for a `test/parity/` directory.
+/// Falls back to `"test/parity"` (relative) if nothing is found.
+fn detect_parity_root() -> PathBuf {
+    let mut dir = match std::env::current_dir() {
+        Ok(d) => d,
+        Err(_) => return PathBuf::from("test/parity"),
+    };
+    loop {
+        let candidate = dir.join("test").join("parity");
+        if candidate.is_dir() {
+            return candidate;
+        }
+        if !dir.pop() {
+            return PathBuf::from("test/parity");
+        }
+    }
+}
+
+/// Run a parity check for a single library: invoke all three backends, build
+/// a per-test comparison, and print the report.
+fn run_library(config: &RunConfig) {
+    // PLAN-594 D5: real-crate dep corpora (libs/dep/<crate>_real) fetch and
+    // build third-party crates — require explicit network opt-in. Without the
+    // gate the library is skipped with a one-line hint (mirrors the a2r-leg
+    // env-gating convention from PLAN-592).
+    if is_dep_category_library(config) && !net_gate_enabled() {
+        eprintln!(
+            "[dep-parity] {} skipped (set AUTO_LANG_PARITY_NET=1)",
+            config.library
+        );
+        return;
+    }
+    // Async libraries have non-deterministic completion order; sort TAP
+    // output by test name before comparison.
+    let mut config = config.clone();
+    config.sort_results = is_async_library(&config.library);
+
+    println!();
+    println!("{}", "=".repeat(60));
+    let mode = detect_parity_mode(&config);
+    let mode_label = match mode {
+        ParityMode::Python => " [Python parity]",
+        ParityMode::Rust => "",
+    };
+    println!("Checking library: {}{}", config.library, mode_label);
+    println!("{}", "=".repeat(60));
+
+    match build_comparison_report(&config) {
+        Ok(report) => {
+            let text = report::format_report(&report);
+            println!("{}", text);
+        }
+        Err(e) => {
+            eprintln!("Failed to build report for {}: {}", config.library, e);
+        }
+    }
+}
+
+/// Whether a library's tests are async and therefore need sorted TAP output.
+///
+/// Async libraries (P4: reqwest, tokio) have non-deterministic completion
+/// order, so their results must be sorted by test name before comparison.
+fn is_async_library(library: &str) -> bool {
+    matches!(library, "reqwest" | "tokio" | "tokio_stream")
+}
+
+/// PLAN-594: true when the library lives under the `libs/dep/` category
+/// (real-crate corpora; leaf names carry a `_real` suffix so they never
+/// shadow the flat replica libs — resolve_lib_dir matches by leaf name).
+fn is_dep_category_library(config: &RunConfig) -> bool {
+    config
+        .lib_dir()
+        .parent()
+        .and_then(|p| p.file_name())
+        .map_or(false, |c| c == "dep")
+}
+
+/// PLAN-594: the network gate for dep-category libraries. Building the VM
+/// methods pack and the a2r/oracle test crates may download third-party
+/// crates (first run only; afterwards `~/.cargo` cache serves offline).
+fn net_gate_enabled() -> bool {
+    std::env::var("AUTO_LANG_PARITY_NET").is_ok_and(|v| v == "1")
+}
+
+/// Run all three backends for a single library and build the per-test
+/// `ComparisonReport` (without printing). Backend errors are logged to stderr
+/// and treated as an empty result set for that backend, so the comparison
+/// still surfaces the missing cases as divergences rather than crashing.
+fn build_comparison_report(config: &RunConfig) -> Result<ComparisonReport, String> {
+    // Plan 368 FU-4: if this lib has a mock-server/ dir, spawn it now so all
+    // three backend runs can hit it; it's killed automatically when `_mock`
+    // goes out of scope (after the three runs below).
+    let _mock = MockServer::start_for(&config.lib_dir());
+    if lib_has_mock_server(&config.lib_dir()) {
+        eprintln!("mock-server: started for {} (will be killed after the run)", config.library);
+    }
+
+    // Detect the parity mode (Rust vs Python) from the library's on-disk test
+    // layout. The mode determines which backends are dispatched and how their
+    // results map into the three-way comparison slots (vm/a2r/rust).
+    let mode = detect_parity_mode(config);
+
+    // Run the appropriate backends. Log + swallow per-backend failures so a
+    // single broken backend doesn't abort an aggregate `report` run; the
+    // missing results show up as divergences in the comparison.
+    let (vm_results, a2r_results, rust_results) = match mode {
+        ParityMode::Rust => {
+            let vm = runner::run_vm(config).unwrap_or_else(|e| {
+                eprintln!("VM backend error for {}: {}", config.library, e);
+                Vec::new()
+            });
+            let a2r = runner::run_a2r(config).unwrap_or_else(|e| {
+                eprintln!("a2r backend error for {}: {}", config.library, e);
+                Vec::new()
+            });
+            let rust = runner::run_rust(config).unwrap_or_else(|e| {
+                eprintln!("Rust backend error for {}: {}", config.library, e);
+                Vec::new()
+            });
+            (vm, a2r, rust)
+        }
+        ParityMode::Python => {
+            // Python parity mapping (Plan 369):
+            //   vm slot   -> AutoVM (run_vm)
+            //   a2r slot  -> a2py (run_a2py) — the transpiler slot
+            //   rust slot -> Python oracle (run_python_oracle) — the oracle slot
+            let vm = runner::run_vm(config).unwrap_or_else(|e| {
+                eprintln!("VM backend error for {}: {}", config.library, e);
+                Vec::new()
+            });
+            let a2py = runner::run_a2py(config).unwrap_or_else(|e| {
+                eprintln!("a2py backend error for {}: {}", config.library, e);
+                Vec::new()
+            });
+            let oracle = runner::run_python_oracle(config).unwrap_or_else(|e| {
+                eprintln!("Python oracle backend error for {}: {}", config.library, e);
+                Vec::new()
+            });
+            (vm, a2py, oracle)
+        }
+    };
+
+    // Build per-test comparison across all backends.
+    let vm_map = tap::tap_map_from_results(&vm_results);
+    let a2r_map = tap::tap_map_from_results(&a2r_results);
+    let rust_map = tap::tap_map_from_results(&rust_results);
+
+    let all_names: std::collections::BTreeSet<String> = vm_map
+        .keys()
+        .chain(a2r_map.keys())
+        .chain(rust_map.keys())
+        .cloned()
+        .collect();
+
+    let cases: Vec<TestCaseComparison> = all_names
+        .iter()
+        .map(|name| TestCaseComparison {
+            name: name.clone(),
+            vm: vm_map.get(name).cloned(),
+            a2r: a2r_map.get(name).cloned(),
+            rust: rust_map.get(name).cloned(),
+        })
+        .collect();
+
+    Ok(ComparisonReport {
+        library: config.library.clone(),
+        cases,
+    })
+}
+
+/// Which parity variant a library exercises.
+///
+/// - `Rust`: the original three-way parity (AutoVM vs a2r vs native Rust).
+///   Used when the library has a `tests/rust/` directory.
+/// - `Python`: three-way parity against a Python oracle (AutoVM vs a2py vs
+///   native Python). Used when the library has a `tests/python/` directory
+///   instead of (or in addition to) `tests/rust/`. Plan 369.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParityMode {
+    Rust,
+    Python,
+}
+
+/// Detect the parity mode for a library by inspecting its test layout.
+///
+/// A `tests/python/` directory selects Python parity; otherwise the default is
+/// the original Rust parity. If both directories exist, Python wins (the
+/// library was explicitly migrated to Python oracle parity).
+fn detect_parity_mode(config: &RunConfig) -> ParityMode {
+    if config.lib_dir().join("tests").join("python").is_dir() {
+        ParityMode::Python
+    } else {
+        ParityMode::Rust
+    }
+}
+
+/// Discover all libraries under `<root>/libs/`, skipping `_dummy` (a
+/// framework smoke test, not a real library under test).
+///
+/// Plan 460 categorized layout: libraries live at `libs/<category>/<name>/`;
+/// every first-level directory under `libs/` is a category and discovery
+/// scans one level deeper. The legacy flat layout (`libs/<name>/auto/`) is
+/// still picked up with a stderr warning so an unmigrated library is never
+/// silently dropped from `list`/`all`.
+fn discover_all_libraries(root: &PathBuf) -> Vec<String> {
+    let libs_dir = root.join("libs");
+    let mut libs = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&libs_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            if path.join("auto").is_dir() {
+                // Legacy flat layout — still discoverable, but nag.
+                if let Some(name) = entry.file_name().to_str() {
+                    if name != "_dummy" {
+                        eprintln!(
+                            "warning: library '{name}' sits directly under libs/; \
+                             move it into a category dir (libs/<category>/{name}/)"
+                        );
+                        libs.push(name.to_string());
+                    }
+                }
+                continue;
+            }
+            if let Ok(children) = std::fs::read_dir(&path) {
+                for child in children.flatten() {
+                    if child.path().is_dir() {
+                        if let Some(name) = child.file_name().to_str() {
+                            if name != "_dummy" {
+                                libs.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    libs.sort();
+    libs
+}
+
+/// Return the library list for a given phase.
+///
+/// Phase mapping (Plans 347/358/367/368/369; names are leaf names in the
+/// Plan 460 categorized layout `libs/<category>/<name>/`):
+/// - p0: `_dummy` (framework smoke test)
+/// - p1: `base64`, `url`
+/// - p2: `serde_json`, `regex`
+/// - p3: `sha2`, `rusqlite`
+/// - p4: `tokio`, `tokio_stream` (`reqwest` dropped — never landed on disk)
+/// - p5: `py_math`, `py_random` (Plan 369 Python parity)
+/// - p6: `py_datetime`, `py_struct`, `py_uuid` (Plan 369 Python parity)
+/// - p7: remaining Python stdlib libs (Plan 369 follow-ups), so the phase
+///       view covers every Python-parity library on disk
+/// - p8: `py_numpy`, `py_pandas`, `py_matplotlib`, `py_torch` (Plan 461
+///       Python sci-compute parity)
+fn discover_libraries_by_phase(root: &PathBuf, phase: &str) -> Vec<String> {
+    let phase_map: &[(&str, &[&str])] = &[
+        ("p0", &["_dummy"]),
+        ("p1", &["base64", "url"]),
+        ("p2", &["serde_json", "regex"]),
+        ("p3", &["sha2", "rusqlite"]),
+        ("p4", &["tokio", "tokio_stream"]),
+        // Plan 358 additions:
+        ("d1", &["cli_app"]),
+        ("d2", &["trait_advanced", "generators"]),
+        ("d4", &["string_utils"]),
+        // Plan 367 (consumer-mode parity): Layer 1 consumer apps. Each calls
+        // `auto.<module>` stdlib and is compared three-way with a native Rust
+        // oracle that calls the same underlying crate directly.
+        ("d5", &["c_fs_app", "c_env_app", "c_process_app", "c_text_app", "c_json_app"]),
+        // Plan 368 FU-4 (Layer 2): HTTP consumer apps. Need a live mock server
+        // (parity runner auto-spawns libs/<category>/<name>/mock-server/ via MockServer).
+        ("d6", &["http_client_sync", "c_http_get", "c_wget", "c_crawler"]),
+        // PLAN-594 (real-crate dep parity): AutoVM loads real crates.io
+        // libraries via `dep crate(version) + use.rs` and is compared
+        // three-way against the transpiled (a2r) and native Rust forms.
+        // Network-gated: AUTO_LANG_PARITY_NET=1 required (see run_library).
+        // PLAN-596 T-09: base64_real joined (was the plan's all-red sample —
+        // the a2r emitter emitted `STANDARD::encode` for the const receiver,
+        // fixed by DIV-DEP-13's dot-call lowering; see libs/dep/base64_real).
+        ("p10", &["serde_json_real", "regex_real", "url_real", "semver_real", "base64_real"]),
+        // PLAN-591 (non-whitelist pack-face survey): uuid is NOT in
+        // BUILTIN_OPAQUE_CRATES, so its type face goes through the real
+        // compiled methods pack (594's five libs all ride native_catalog for
+        // type faces). Network-gated like p10.
+        ("p11", &["uuid_real"]),
+        // PLAN-602 (py class derivation factory): custom nn.Module/Dataset
+        // subclasses with Auto callback methods through the py_subclass
+        // exec factory. Seeded torch CPU; no network gating (torch env only,
+        // same as p8/p9).
+        ("p12", &["py_torch_subclass"]),
+        // Plan 369 (Python parity): three-way parity against a Python oracle
+        // (AutoVM vs a2py vs native Python). The mode is auto-detected from the
+        // library's `tests/python/` directory by `detect_parity_mode`.
+        ("p5", &["py_math", "py_random"]),
+        ("p6", &["py_datetime", "py_struct", "py_uuid"]),
+        (
+            "p7",
+            &[
+                "py_configparser",
+                "py_hashlib",
+                "py_json",
+                "py_list",
+                "py_os",
+                "py_re",
+                "py_string",
+                "py_sys",
+                // Plan 567 T20（W3 注解预言机）。
+                "py_anno",
+            ],
+        ),
+        // Plan 461 (Python sci-compute parity): numpy/pandas/matplotlib/torch
+        // through `use.py` + the PyO3 bridge. torch adds ~10s import time per
+        // backend run; matplotlib asserts file artifacts under
+        // libs/python/py_matplotlib/py_matplotlib_tmp/ (gitignored).
+        ("p8", &["py_numpy", "py_pandas", "py_matplotlib", "py_torch"]),
+        // Plan 539 W1/W2 (torch idiom parity): inference idioms (dunder ops,
+        // matmul/getitem/slice/call0/with/kwargs/May) then the training-loop
+        // suite (seeded MLP).
+        ("p9", &["py_torch_infer", "py_torch_train"]),
+    ];
+
+    for (p, libs) in phase_map {
+        if *p == phase {
+            // Filter to libraries that actually exist on disk so a missing
+            // library does not crash the run.
+            return libs
+                .iter()
+                .filter_map(|s| {
+                    if resolve_lib_dir(root, s).is_some() {
+                        Some(s.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+        }
+    }
+    Vec::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_phase_lookup_returns_known_phases() {
+        let tmp = tempfile_dir();
+        // No libs exist on disk -> the filter drops everything.
+        assert!(discover_libraries_by_phase(&tmp, "p0").is_empty());
+        assert!(discover_libraries_by_phase(&tmp, "p1").is_empty());
+
+        // Unknown phase -> empty.
+        assert!(discover_libraries_by_phase(&tmp, "px").is_empty());
+    }
+
+    #[test]
+    fn test_phase_lookup_picks_up_existing_lib() {
+        let tmp = tempfile_dir();
+        let libs = tmp.join("libs");
+        std::fs::create_dir_all(libs.join("framework").join("_dummy")).unwrap();
+        std::fs::create_dir_all(libs.join("rust").join("base64")).unwrap();
+        let p0 = discover_libraries_by_phase(&tmp, "p0");
+        assert_eq!(p0, vec!["_dummy".to_string()]);
+        let p1 = discover_libraries_by_phase(&tmp, "p1");
+        assert_eq!(p1, vec!["base64".to_string()]);
+    }
+
+    #[test]
+    fn test_discover_all_libraries_skips_dummy() {
+        let tmp = tempfile_dir();
+        let libs = tmp.join("libs");
+        std::fs::create_dir_all(libs.join("framework").join("_dummy")).unwrap();
+        std::fs::create_dir_all(libs.join("rust").join("base64")).unwrap();
+        std::fs::create_dir_all(libs.join("rust").join("url")).unwrap();
+        std::fs::create_dir_all(libs.join("python").join("py_math")).unwrap();
+        let found = discover_all_libraries(&tmp);
+        assert_eq!(
+            found,
+            vec![
+                "base64".to_string(),
+                "py_math".to_string(),
+                "url".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_discover_all_libraries_includes_legacy_flat_lib() {
+        let tmp = tempfile_dir();
+        let libs = tmp.join("libs");
+        std::fs::create_dir_all(libs.join("rust").join("base64")).unwrap();
+        // Un-migrated flat lib: has auto/ directly under libs/<name>/.
+        std::fs::create_dir_all(libs.join("old_lib").join("auto")).unwrap();
+        let found = discover_all_libraries(&tmp);
+        assert_eq!(found, vec!["base64".to_string(), "old_lib".to_string()]);
+    }
+
+    fn tempfile_dir() -> PathBuf {
+        // Use a unique subdirectory under the system temp dir.
+        let mut p = std::env::temp_dir();
+        p.push(format!(
+            "auto-parity-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+}

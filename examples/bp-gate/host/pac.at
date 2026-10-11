@@ -17,5 +17,5 @@ title: "BP Gate Host"
 title_zh: "蓝图门宿主"
 
 dep bps {
-    path: "../../../blueprints"
+    path: "../../../packages/blueprints"
 }

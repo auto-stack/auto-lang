@@ -73,7 +73,7 @@ onMounted(() => {
   <p class="section-desc">The same Auto source runs on AutoVM instantly and transpiles to idiomatic Rust. Behavior agreement is enforced by a three-way parity harness (AutoVM = a2r-transpiled Rust = native Rust), not claimed.</p>
   <div class="cta-actions">
     <a href="/script-as-rust" class="cta-btn cta-primary">How Auto Scripts Ship as Rust</a>
-    <a href="https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html" class="cta-btn cta-secondary">Parity Dashboard (the evidence)</a>
+    <a href="https://github.com/zhaopuming/auto-lang/blob/master/test/parity/docs/parity-dashboard.html" class="cta-btn cta-secondary">Parity Dashboard (the evidence)</a>
   </div>
 </div>
 

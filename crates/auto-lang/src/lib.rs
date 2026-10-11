@@ -2214,40 +2214,40 @@ pub fn test_file(path: &str) -> AutoResult<test_runner::TestResult> {
 /// Auto library files to prepend for AAVM bootstrap tests.
 /// Single source of truth — vm_file_tests.rs reuses this list (plan-429 A3).
 pub(crate) const AUTO_LIB_FILES: &[&str] = &[
-    // plan-431 E1:AAVM v1 归档路径(v2 由 432 写入 auto/lib/,runner 见 AUTO_LIB_FILES_V2)
-    "auto/lib-legacy/pos.at",
-    "auto/lib-legacy/token.at",
-    "auto/lib-legacy/error.at",
-    "auto/lib-legacy/lexer.at",
-    "auto/lib-legacy/ast.at",
-    "auto/lib-legacy/parser.at",
-    "auto/lib-legacy/typeinfer.at",
-    "auto/lib-legacy/codegen.at",
-    "auto/lib-legacy/vm.at",
-    "auto/lib-legacy/a2r.at",
-    "auto/lib-legacy/generics.at",
-    "auto/lib-legacy/eval.at",
+    // plan-431 E1:AAVM v1 归档路径(v2 由 432 写入 packages/aavm/lib/,runner 见 AUTO_LIB_FILES_V2)
+    "packages/aavm/lib-legacy/pos.at",
+    "packages/aavm/lib-legacy/token.at",
+    "packages/aavm/lib-legacy/error.at",
+    "packages/aavm/lib-legacy/lexer.at",
+    "packages/aavm/lib-legacy/ast.at",
+    "packages/aavm/lib-legacy/parser.at",
+    "packages/aavm/lib-legacy/typeinfer.at",
+    "packages/aavm/lib-legacy/codegen.at",
+    "packages/aavm/lib-legacy/vm.at",
+    "packages/aavm/lib-legacy/a2r.at",
+    "packages/aavm/lib-legacy/generics.at",
+    "packages/aavm/lib-legacy/eval.at",
 ];
 
-/// Plan 431 E2:AAVM v2(auto/lib/,纯 Rust 模式)前置拼接清单——单一事实源。
+/// Plan 431 E2:AAVM v2(packages/aavm/lib/,纯 Rust 模式)前置拼接清单——单一事实源。
 /// v2 文件由 plan-432 按依赖 topo 序逐个写入,写一个登记一个
 /// (token → lexer → ast → parser → typeinfo → opcode → codegen → engine)。
 pub(crate) const AUTO_LIB_FILES_V2: &[&str] = &[
     // plan-432 S1/S2: token → lexer → parser(依赖序,见 docs/specs/aavm/file-mapping.md)
-    "auto/lib/token.at",
-    "auto/lib/lexer.at",
-    "auto/lib/parser.at",
-    "auto/lib/typeinfo.at",
-    "auto/lib/codegen.at",
-    "auto/lib/engine.at",
+    "packages/aavm/lib/token.at",
+    "packages/aavm/lib/lexer.at",
+    "packages/aavm/lib/parser.at",
+    "packages/aavm/lib/typeinfo.at",
+    "packages/aavm/lib/codegen.at",
+    "packages/aavm/lib/engine.at",
     // plan-434: AA2R(Auto 版 a2r 核心子集;含 434 扩展后的 parser/lexer 见 D38)
-    "auto/lib/a2r.at",
+    "packages/aavm/lib/a2r.at",
 ];
 
 /// Plan 517 W2 双轨剥离:读 AUTO_LIB_FILES_V2 拼接并剥除 `use auto.lib.*`
 /// 行(拼接消费面专用——行为与模块化前逐字节等价:符号同居一程序;真 use
 /// 解析只走 auto.exe 直跑/auto build 模块路径。剥离规则单一事实源,
-/// parity/gen-aavm2-unit.py 镜像之)。
+/// scripts/gen-aavm2-unit.py 镜像之)。
 pub(crate) fn aavm2_lib_source(project_root: &std::path::Path) -> AutoResult<String> {
     let mut out = String::new();
     for file in AUTO_LIB_FILES_V2 {
@@ -2263,7 +2263,7 @@ pub(crate) fn aavm2_lib_source(project_root: &std::path::Path) -> AutoResult<Str
     Ok(out)
 }
 
-/// Read and concatenate all auto/lib/*.at files for bootstrap tests.
+/// Read and concatenate all packages/aavm/lib/*.at files for bootstrap tests.
 fn read_auto_lib(project_root: &std::path::Path) -> AutoResult<String> {
     let mut lib_code = String::new();
     for file in AUTO_LIB_FILES {
@@ -2282,7 +2282,7 @@ fn read_auto_lib(project_root: &std::path::Path) -> AutoResult<String> {
 // stays the pub(crate) manifest above.
 static BOOTSTRAP_LIB: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
 
-/// Concatenated `auto/lib-legacy/*.at` bootstrap lib (~188KB, dependency
+/// Concatenated `packages/aavm/lib-legacy/*.at` bootstrap lib (~188KB, dependency
 /// order per AUTO_LIB_FILES). `None` when no manifest file resolves (caller
 /// treats prepend_lib as unavailable). Result is cached after first call.
 pub fn bootstrap_lib_source() -> Option<&'static str> {
@@ -2302,7 +2302,7 @@ pub fn bootstrap_lib_source() -> Option<&'static str> {
 fn find_project_root(from: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut dir = from;
     loop {
-        if dir.join("auto").is_dir() || dir.join("Cargo.toml").is_file() {
+        if dir.join("packages/aavm").is_dir() || dir.join("Cargo.toml").is_file() {
             return Some(dir.to_path_buf());
         }
         dir = dir.parent()?;
@@ -3262,7 +3262,7 @@ fn pac_dep_version_violation(content: &str, dep_name: &str) -> Option<String> {
 /// PLAN-649 SD-01 (contract Q5): candidate path forms for a dotted use
 /// module — the literal dot→separator conversion first, then hyphen variants
 /// of underscore segments. bp packages are kebab-case on disk
-/// (`blueprints/feedback/empty-state/`) while use paths are written with
+/// (`packages/blueprints/feedback/empty-state/`) while use paths are written with
 /// underscores (`bps.feedback.empty_state.reference.error`); literal-first
 /// keeps co-existing `foo_bar/` vs `foo-bar/` resolution deterministic.
 /// Variant combinations enumerate per eligible segment in segment order and
@@ -3339,6 +3339,9 @@ fn resolve_module_path(base_dir: &std::path::Path, module: &str) -> Option<std::
     };
     // Direct resolution relative to base_dir.
     if let Some(p) = probe(base_dir) {
+        return Some(p);
+    }
+    if let Some(p) = crate::util::find_aavm_module(&module.replace('.', "/"), base_dir) {
         return Some(p);
     }
     // Plan 327 Phase B: fall back to the parent directory so a sibling layout

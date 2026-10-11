@@ -16569,7 +16569,7 @@ fn execute_launch_app(state: &mut crate::ui::session::DesktopSession, name: &str
     // 两者待各自根修（债 P041-D1）后摘围栏。
     // PLAN-043 走查（2026-09-24）：围栏实验性放行 017 复测——桌面即崩
     // （iced_widget container.rs:291 unwrap，与 PLAN-041 三次复现同点）。
-    // **2026-09-25 根治**：iced_widget 本地补丁（patches/iced_widget，
+    // **2026-09-25 根治**：iced_widget 本地补丁（crates/patches/iced_widget，
     // [patch.crates-io] 挂载）把 container.rs 布局空窗 unwrap 全族改良性
     // 降级——017 摘围栏放行（auto-term 无本补丁独立实证，暂留围栏观察）。
     // **2026-09-25 续**：auto-term 亦摘围栏实验——其 Init 已被
@@ -18041,7 +18041,7 @@ fn boot_entry_matches(src_norm: &str, entry_norm: &str) -> bool {
 
 /// Plan 463 T5：WM → shell 状态注入（T1 报告 §3 反方向，`window_width`
 /// 同型约定）。Plan 472 T3 升级为**投影协议 v1**（合同
-/// `schema/projection-protocol-v1.md`）：`__wm_wins` 条目增
+/// `docs/schema/projection-protocol-v1.md`）：`__wm_wins` 条目增
 /// workspace/app/icon 字段、新增 `__wm_workspaces` 分区投影、指纹段扩为
 /// "逐窗;|meta|逐分区;"。窗口列表为**跨分区全集**（dock 运行指示消费），
 /// 虚拟窗层绘制自过滤。指纹未变则跳过写（防每帧 churn），写后置 shell

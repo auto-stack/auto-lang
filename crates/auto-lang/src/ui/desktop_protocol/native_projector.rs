@@ -5615,7 +5615,7 @@ mod tests {
     #[test]
     fn native_queue_golden_003_shape() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("test/parity/native");
-        std::fs::create_dir_all(&dir).expect("mkdir parity/native");
+        std::fs::create_dir_all(&dir).expect("mkdir test/parity/native");
         let mut p = proj_center_off(
             Converter {
                 celsius: 0.0,

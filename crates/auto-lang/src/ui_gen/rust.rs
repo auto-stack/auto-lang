@@ -7199,7 +7199,7 @@ impl RustGenerator {
     /// E.g., EditorPanel(note: .notes[.active_id]) →
     ///   EditorPanel::new(self.notes[self.active_id as usize]).view().map_msg(|m| AppMsg::EditorPanel(m))
     /// PLAN-533 T3: 模态对话框家族 tag 角色。归一化（剥 `-`/`_` + 小写，
-    /// 与 schema/aura.at 头部同规则）后匹配 alert-dialog 与 dialog 两族
+    /// 与 docs/schema/aura.at 头部同规则）后匹配 alert-dialog 与 dialog 两族
     /// （alert-dialog-action ≡ alert_dialog_action ≡ AlertDialogAction）。
     fn modal_dialog_tag_role(tag: &str) -> Option<&'static str> {
         let norm: String = tag

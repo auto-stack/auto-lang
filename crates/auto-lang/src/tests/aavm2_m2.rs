@@ -4,7 +4,7 @@
 //       + test/vm/aavm2/corpus_m1/*.at(全程序,M2 语料同源复用);
 // 判据:两侧 dump(Code 的 Display S-expr,见 docs/specs/aavm/m2-ast-dump-format.md)
 //       逐字符相等。Rust 侧:Parser::from(code).parse() 后 format!("{}", code);
-//       AAVM 侧:auto/lib/{token,lexer,parser}.at 的 parse_dump(source)。
+//       AAVM 侧:packages/aavm/lib/{token,lexer,parser}.at 的 parse_dump(source)。
 // Plan 565 L1:语料走 once-compiled runner(编译一次+File.read_text 注入,
 //       见 aavm2_corpus_runner.rs);判据断言原样保留在本闸门。
 

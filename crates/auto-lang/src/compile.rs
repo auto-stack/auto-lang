@@ -1467,6 +1467,18 @@ impl CompileSession {
             }
         }
 
+        if found_path.is_none() {
+            found_path = self
+                .source_dirs
+                .iter()
+                .find_map(|dir| crate::util::find_aavm_module(&module_path, dir));
+            if found_path.is_none() {
+                if let Ok(cwd) = std::env::current_dir() {
+                    found_path = crate::util::find_aavm_module(&module_path, &cwd);
+                }
+            }
+        }
+
         let root_path = found_path.ok_or_else(|| {
             AutoError::Msg(format!(
                 "Module not found: {} (module_path={}, parent_dirs={:?})",

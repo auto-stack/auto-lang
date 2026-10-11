@@ -42,7 +42,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_vm_mcp import AutoUiMcpClient, pick_free_port  # noqa: E402
 
 # Cards to click: (kind, name) — ≥3 bp ids across ≥2 kinds (T-03 contract).
-# Resolve existence against blueprints/ so the gate fails loudly if a bp
+# Resolve existence against packages/blueprints/ so the gate fails loudly if a bp
 # is renamed (blueprint drift = gate drift, by design).
 DEFAULT_CARDS = [
     ("dashboard", "overview"),
@@ -54,9 +54,9 @@ CARD_BTN_RE = re.compile(r'button #(\S+) "([^"\n]+)\n([^"]*)"')
 
 
 def discover_bps(app_dir: str) -> dict:
-    """bp id -> {spec heading, gotchas marker} from blueprints/<kind>/<name>/."""
+    """bp id -> {spec heading, gotchas marker} from packages/blueprints/<kind>/<name>/."""
     bps = {}
-    root = os.path.normpath(os.path.join(app_dir, "..", "..", "blueprints"))
+    root = os.path.normpath(os.path.join(app_dir, "..", "..", "packages", "blueprints"))
     if not os.path.isdir(root):
         return bps
     for kind in sorted(os.listdir(root)):
@@ -209,7 +209,7 @@ def main():
     for kind, name in DEFAULT_CARDS:
         bp_id = f"{kind}/{name}"
         if bp_id not in all_bps:
-            print(f"[-] blueprint {bp_id} missing under blueprints/ — rename drift", file=sys.stderr)
+            print(f"[-] blueprint {bp_id} missing under packages/blueprints/ — rename drift", file=sys.stderr)
             sys.exit(2)
         cards.append(bp_id)
     kinds_covered = {bp.split("/")[0] for bp in cards}

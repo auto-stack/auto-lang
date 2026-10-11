@@ -117,6 +117,44 @@ pub fn find_module_file(module_path: &str, extensions: &[&str]) -> AutoResult<Pa
     .into())
 }
 
+/// Resolve the experimental AAVM package without changing its `auto.lib.*`
+/// namespace. Local source directories take priority over the checkout fallback.
+pub(crate) fn find_aavm_module(module_path: &str, base_dir: &Path) -> Option<PathBuf> {
+    let relative = module_path.strip_prefix("auto/lib/")?;
+    for dir in base_dir.ancestors() {
+        let candidate = dir
+            .join("packages/aavm/lib")
+            .join(relative)
+            .with_extension("at");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod aavm_package_resolution_tests {
+    use super::*;
+
+    #[test]
+    fn nested_source_uses_its_own_checkout_and_preserves_namespace() {
+        let outer = tempfile::tempdir().unwrap();
+        let checkout = outer.path().join("inner");
+        let source_dir = checkout.join("packages/aavm/lib");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("token.at");
+        std::fs::write(&source, "// local token module").unwrap();
+        let outer_lib = outer.path().join("packages/aavm/lib");
+        std::fs::create_dir_all(&outer_lib).unwrap();
+        std::fs::write(outer_lib.join("token.at"), "// outer token module").unwrap();
+        assert_eq!(find_aavm_module("auto/lib/token", &source_dir), Some(source));
+        assert!(find_aavm_module("auto/lib/missing", &source_dir).is_none());
+        assert!(find_aavm_module("auto/io", &source_dir).is_none());
+        assert!(find_aavm_module("bps/form/login", &source_dir).is_none());
+    }
+}
+
 /// Get the file name from a path.
 pub fn file_name(path: &str) -> &str {
     if let Some(pos) = path.rfind('/') {

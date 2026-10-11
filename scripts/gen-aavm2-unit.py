@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Plan 511 L3:aavm2 99_unit 聚合生成器(D5 定案——聚合方案)。
 
-将 auto/lib 六文件(AUTO_LIB_FILES_V2 依赖序)与 scripts/aavm2_unit_cases/
+将 packages/aavm/lib 六文件(AUTO_LIB_FILES_V2 依赖序)与 scripts/aavm2_unit_cases/
 的 #[test] 片段聚合为单文件 test/vm/aavm2/99_unit/all_unit.at,
 `auto test test/vm/aavm2/99_unit` 直跑(仓库根执行;模块用例用相对路径)。
 
@@ -13,12 +13,12 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 LIB_FILES = [
-    "auto/lib/token.at",
-    "auto/lib/lexer.at",
-    "auto/lib/parser.at",
-    "auto/lib/typeinfo.at",
-    "auto/lib/codegen.at",
-    "auto/lib/engine.at",
+    "packages/aavm/lib/token.at",
+    "packages/aavm/lib/lexer.at",
+    "packages/aavm/lib/parser.at",
+    "packages/aavm/lib/typeinfo.at",
+    "packages/aavm/lib/codegen.at",
+    "packages/aavm/lib/engine.at",
 ]
 CASES_DIR = ROOT / "scripts" / "aavm2_unit_cases"
 OUT = ROOT / "crates/auto-lang/test/vm/aavm2/99_unit/all_unit.at"

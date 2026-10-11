@@ -3746,7 +3746,7 @@ impl RustTrans {
                         // Plan 514 W2 (P511-1 根因②): 优先级括号——嵌套二元
                         // 在低优先级算子下方时必须括号化，否则 `(a || b) && c`
                         // 发射为 `a || b && c`（Rust && 更紧）语义反转
-                        // （auto/lib/codegen.at 全局注册条件实证，b27/b29/b30）。
+                        // （packages/aavm/lib/codegen.at 全局注册条件实证，b27/b29/b30）。
                         // 规则镜像 a2r.at ar_paren_if：lhs.prec < op.prec 加括号，
                         // rhs.prec <= op.prec 加括号。
                         let lhs_paren = matches!(lhs.as_ref(),

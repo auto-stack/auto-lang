@@ -1,4 +1,4 @@
-//! [`BlueprintRegistry`] — scans `blueprints/` and indexes blueprint packages (Plan 342).
+//! [`BlueprintRegistry`] — scans `packages/blueprints/` and indexes blueprint packages (Plan 342).
 
 use std::collections::HashMap;
 use std::fs;
@@ -11,7 +11,7 @@ use crate::ui_gen::WidgetRegistry;
 #[derive(Debug, Clone)]
 pub struct BlueprintPackage {
     pub spec: BlueprintSpec,
-    /// `<repo>/blueprints/<kind>/<name>` directory.
+    /// `<repo>/packages/blueprints/<kind>/<name>` directory.
     pub dir: PathBuf,
     /// variant -> `<dir>/reference/<variant>.at` (validated to exist).
     pub references: HashMap<String, PathBuf>,
@@ -172,7 +172,7 @@ impl BlueprintRegistry {
 /// PLAN-645 T-01: runtime blueprints-root resolution, three-tier order:
 /// 1. `AUTO_BLUEPRINTS_ROOT` env — used as-is (must point at the blueprints
 ///    library dir itself).
-/// 2. Walk up from `cwd` for the nearest dir with a `blueprints/` subdir —
+/// 2. Walk up from `cwd` for the nearest dir with a `packages/blueprints/` subdir —
 ///    the `<repo>/blueprints` layout shared by git checkouts, worktrees
 ///    (`.git` file, not dir), and plain fixture dirs.
 /// 3. Compile-time `CARGO_MANIFEST_DIR` ancestors (`crates/auto-lang` →
@@ -185,7 +185,7 @@ pub fn resolve_blueprints_root(cwd: &Path) -> PathBuf {
         }
     }
     for dir in cwd.ancestors() {
-        let candidate = dir.join("blueprints");
+        let candidate = dir.join("packages/blueprints");
         if candidate.is_dir() {
             return candidate;
         }
@@ -193,8 +193,8 @@ pub fn resolve_blueprints_root(cwd: &Path) -> PathBuf {
     let compile_time = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(2) // crates/auto-lang -> crates -> <repo>
-        .map(|repo| repo.join("blueprints"))
-        .unwrap_or_else(|| PathBuf::from("blueprints"));
+        .map(|repo| repo.join("packages/blueprints"))
+        .unwrap_or_else(|| PathBuf::from("packages/blueprints"));
     compile_time
 }
 
@@ -402,7 +402,7 @@ mod scan_tests {
     }
 }
 
-/// PLAN-645 T-01: with_defaults 三级解析根（env → cwd 向上找 blueprints/ →
+/// PLAN-645 T-01: with_defaults 三级解析根（env → cwd 向上找 packages/blueprints/ →
 /// 编译期兜底）。env 断言依赖进程级环境变量——nextest 每测试独立进程天然
 /// 隔离；bare cargo test（tu 档）单进程并行下,本模块全部测试持
 /// [`lock_blueprints_root_for_test`] 串行,EnvGuard 保 panic 后恢复窗口前值。
@@ -447,7 +447,7 @@ mod root_resolution_tests {
         let _ser = lock_blueprints_root_for_test();
         let tmp = std::env::temp_dir().join(format!("plan645-walk-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
-        let lib = tmp.join("repo").join("blueprints");
+        let lib = tmp.join("repo").join("packages/blueprints");
         std::fs::create_dir_all(&lib).unwrap();
         std::fs::create_dir_all(tmp.join("repo").join("src").join("front").join("pages")).unwrap();
         let cwd = tmp.join("repo").join("src").join("front").join("pages");
@@ -464,7 +464,7 @@ mod root_resolution_tests {
             .ancestors()
             .nth(2)
             .unwrap()
-            .join("blueprints");
+            .join("packages/blueprints");
         assert_eq!(resolve_blueprints_root(&tmp), expected);
     }
 

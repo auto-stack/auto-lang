@@ -183,7 +183,7 @@ fn t03_corpus_references_generate_and_palette_zero_drift() {
         "feedback/empty-state/reference/no_result.at",
     ];
     for rel in references {
-        let path = repo_root().join("blueprints").join(rel);
+        let path = repo_root().join("packages/blueprints").join(rel);
         let result = crate::ui_gen::generate_component_from_file(
             &path,
             crate::ui_gen::ComponentGenOptions::default(),

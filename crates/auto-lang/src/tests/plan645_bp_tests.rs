@@ -1,6 +1,6 @@
 //! PLAN-645: bps 扫描 fn 转译（DEBTS 070 第二行偿还）+ 组合形态回归样本。
 //!
-//! 语料 = `blueprints/navigation/filetree/reference/default.at`（组合形态
+//! 语料 = `packages/blueprints/navigation/filetree/reference/default.at`（组合形态
 //! FileTree，bare 导入包内支撑件 tree_util/tree_icon）+ 消费方夹具
 //! `examples/capability-tests/047-bp-compose`（pac.at dep bps + bps 限定
 //! use 导入）。断言点 = plan522 式 helper 转译的 bp 面：
@@ -39,7 +39,7 @@ fn generate(path: &PathBuf) -> crate::ui_gen::GeneratedComponent {
 /// AC-01 正断言：bp reference 的跨文件 fn 导入内联进 SFC（SFC 自包含）。
 #[test]
 fn t02_bp_reference_cross_file_fns_inlined_into_sfc() {
-    let Some(reference_at) = repo_file("blueprints/navigation/filetree/reference/default.at")
+    let Some(reference_at) = repo_file("packages/blueprints/navigation/filetree/reference/default.at")
     else {
         eprintln!("[SKIP] filetree reference fixture not found");
         return;
@@ -75,7 +75,7 @@ fn t02_bp_reference_cross_file_fns_inlined_into_sfc() {
 /// AC-01 负断言：未导入符号不入 SFC（仅被引符号闭包——Q-1 默认裁定）。
 #[test]
 fn t02_unimported_helpers_not_pulled() {
-    let Some(reference_at) = repo_file("blueprints/navigation/filetree/reference/default.at")
+    let Some(reference_at) = repo_file("packages/blueprints/navigation/filetree/reference/default.at")
     else {
         eprintln!("[SKIP] filetree reference fixture not found");
         return;

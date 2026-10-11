@@ -24,6 +24,6 @@ cd gen/front/vue
 pnpm install && pnpm build          # vue-tsc + vite 双绿
 ```
 
-依赖：`dep bps` 指仓根 `blueprints/`（tree_util 为 canonical bp）。生成物
+依赖：`dep bps` 指仓根 `packages/blueprints/`（tree_util 为 canonical bp）。生成物
 （`gen/`、`deps/`）已 gitignore。bps 依赖语料自带的 S001 INFO（reference
 语料的既有 schema 漂移）为容忍面，不属本 fixture 验证口径。

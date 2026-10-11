@@ -1,7 +1,7 @@
 //! Plan 435 P4 —— 统一组件注册表(ComponentRegistry)。
 //!
 //! 三源组件的统一之家:
-//! - `Builtin`:schema/aura.at 声明的内置组件(tier: native_html/builtin_widget/
+//! - `Builtin`:docs/schema/aura.at 声明的内置组件(tier: native_html/builtin_widget/
 //!   web_component);
 //! - `Local`:项目内 `.at` widget(含跨文件子组件);
 //! - `Package`:第三方/官方 `.at` 组件包(`use { package: x from "dir" }`)。
@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 /// 组件来源。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ComponentSource {
-    /// schema/aura.at 内置(native_html / builtin_widget / web_component)
+    /// docs/schema/aura.at 内置(native_html / builtin_widget / web_component)
     Builtin,
     /// 项目内 .at widget(同级/跨文件子组件)
     Local,

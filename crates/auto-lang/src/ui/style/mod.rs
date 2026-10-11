@@ -621,7 +621,7 @@ mod tests {
     // PLAN-688 T-01(a):sidebar-shell D1 组合语法回归锚——label 面
     // `hidden lg:flex`(lg 断点 display 覆盖 Hidden)+ 宽度级联 `w-14 lg:w-56`
     // (命中断点的响应类按声明序进 base,后声明胜)。SD-01 登记"交互态 BP"
-    // 惯例的机制底座,消费者=blueprints/navigation/sidebar-shell。
+    // 惯例的机制底座,消费者=packages/blueprints/navigation/sidebar-shell。
     #[test]
     fn test_lg_hidden_override_and_width_cascade() {
         use crate::ui::style::theme;

@@ -65,7 +65,7 @@ const icons = ['🌐', '🦀', '🐍', '🎨', '🤖', '💻']
   <p class="section-desc">同一份 Auto 源码在 AutoVM 上秒级运行，也可转译为地道的 Rust。行为一致性由三向 parity 体系（AutoVM = a2r 转译 Rust = 原生 Rust）强制验证，而非口头承诺。</p>
   <div class="cta-actions">
     <a href="/zh/script-as-rust" class="cta-btn cta-primary">Auto 如何作为 Rust 脚本层</a>
-    <a href="https://github.com/zhaopuming/auto-lang/blob/master/parity/docs/parity-dashboard.html" class="cta-btn cta-secondary">Parity 仪表盘（一致性证据）</a>
+    <a href="https://github.com/zhaopuming/auto-lang/blob/master/test/parity/docs/parity-dashboard.html" class="cta-btn cta-secondary">Parity 仪表盘（一致性证据）</a>
   </div>
 </div>
 

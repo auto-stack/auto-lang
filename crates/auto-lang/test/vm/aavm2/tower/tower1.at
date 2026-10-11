@@ -1,6 +1,6 @@
 // tower1.at —— P532 W2 一阶自持语料(附录 B 形态)
 //
-// 形态 A 塔顶第 1 阶:本文件经 `auto auto/aavm.at <本文件>` 运行时,
+// 形态 A 塔顶第 1 阶:本文件经 `auto packages/aavm/aavm.at <本文件>` 运行时,
 // 宿主解释的 aavm(auto/lib,Auto 写的编译器)编译本文件并执行——
 // 本文件读 corpus 代表集逐件 ev_run 编译+执行,输出 O1。
 // 宿主 oracle:同一文件 `auto <本文件>` 直跑 = R0(宿主为规范)。

@@ -5,7 +5,7 @@
 #![cfg(feature = "ui-iced")]
 //!
 //! 语料 = `examples/capability-tests/046-bp-import`：pac.at 声明
-//! `dep bps { path: "../../../blueprints" }`，app.at 经
+//! `dep bps { path: "../../../packages/blueprints" }`，app.at 经
 //! `use bps.form.login.reference.minimal: LoginForm` 导入共享 bp 参考实现。
 //! 断言点 = bp 渲染结构进入双轨产物：
 //! - VM 轨：`build_dynamic_component` 编译宿主 + `view_template()` 结构含

@@ -2934,8 +2934,8 @@ mod cli_passthrough_tests {
     /// Plan 524/W0 形态 B 实测矩阵的入库面：透传成立 + 子命令/全局旗标零破坏。
     #[test]
     fn passthrough_positional_args_land_in_script_args() {
-        let c = parse(&["auto/aavm.at", "crates/x/b07_fib.at"]).expect("直达形态");
-        assert_eq!(c.file.as_deref(), Some("auto/aavm.at"));
+        let c = parse(&["packages/aavm/aavm.at", "crates/x/b07_fib.at"]).expect("直达形态");
+        assert_eq!(c.file.as_deref(), Some("packages/aavm/aavm.at"));
         assert_eq!(c.script_args, ["crates/x/b07_fib.at"]);
     }
 

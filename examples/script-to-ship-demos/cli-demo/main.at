@@ -3,7 +3,7 @@
 // Dev:  auto main.at              (VM 脚本秒级跑，跳过编译)
 // Ship: auto trans --path main.at rust   (a2r 转 Rust 发布)
 //
-// 对应 parity 用例: parity/libs/cli_app/ (L1 ✓ 32/32 三向一致)
+// 对应 parity 用例: test/parity/libs/cli_app/ (L1 ✓ 32/32 三向一致)
 
 /// 统计行数: 空串=0; 末尾换行不额外计行; 否则 count('\n')+1
 fn count_lines(s str) int {

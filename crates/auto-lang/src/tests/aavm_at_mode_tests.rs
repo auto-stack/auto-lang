@@ -1,6 +1,6 @@
 //! Plan 531 W0b/W2: aavm.at a2r 模式入口红证 + 回归锚。
 //!
-//! 形态:auto/aavm.at(位置参数入口)经主 a2r 平铺 merge 转译 + 原生 shim
+//! 形态:packages/aavm/aavm.at(位置参数入口)经主 a2r 平铺 merge 转译 + 原生 shim
 //! 后 cargo build,产物即"转译版 aavm"。两条验收(计划口径):
 //! - b07_fib 位置参数直达 55(P523-2①:argv.get 解包修复前 E0308 红);
 //! - b34_struct_basic 运行 10/20(P523-2②:转译版 struct 字段表修复前
@@ -16,13 +16,13 @@ fn aavm_at_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
-        .join("auto")
+        .join("packages/aavm")
 }
 
 /// 剥除 use 行的临时目录(stripped lib + aavm.at)——merge 输入。
 /// 镜像 vm_file_tests::build_aavm_rust_bin 的剥离规则。
 fn stripped_merge_dir() -> PathBuf {
-    let root = aavm_at_dir().parent().unwrap().to_path_buf();
+    let root = aavm_at_dir().parent().unwrap().parent().unwrap().to_path_buf();
     let stripped =
         std::env::temp_dir().join(format!("p531-aavm-at-stripped-p{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&stripped);

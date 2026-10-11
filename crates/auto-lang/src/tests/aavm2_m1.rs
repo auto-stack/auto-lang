@@ -3,7 +3,7 @@
 // 语料:test/vm/aavm2/corpus_m1/*.at(原始源码文件,非用例);
 // 判据:两侧 dump(kind|esc_text|line|at|len)逐行相等。
 // Rust 侧:crate::lexer 逐 token,kind 用 Debug 名,文本转义(\\ \n \t \r);
-// AAVM 侧:auto/lib/{token,lexer}.at 的 lex_dump(同一格式约定,见 lexer.at 头)。
+// AAVM 侧:packages/aavm/lib/{token,lexer}.at 的 lex_dump(同一格式约定,见 lexer.at 头)。
 // Plan 565 L1:语料走 once-compiled runner(编译一次+File.read_text 注入,
 //       见 aavm2_corpus_runner.rs);判据断言原样保留在本闸门。
 

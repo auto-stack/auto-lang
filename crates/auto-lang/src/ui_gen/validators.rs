@@ -999,7 +999,7 @@ impl SchemaResolveScope {
 /// 一样是 DSL 级通用属性,不属于组件 prop 契约。
 const UNIVERSAL_PROPS: &[&str] = &["class", "style", "id", "key", "if", "for", "ref"];
 
-/// Plan 435 P2:用 schema/aura.at 校验 widget 的 view 树。
+/// Plan 435 P2:用 docs/schema/aura.at 校验 widget 的 view 树。
 /// - 未知 tag(schema 未声明、非本地 widget/子件/ext 组件)→ Warning + 拼写建议
 /// - 已知元素(声明过 props)上出现未声明 prop → Info
 /// advisory:仅 --strict(`auto build --strict`)下 Warning 及以上会阻断。
@@ -1060,7 +1060,7 @@ fn walk_node(
                                     ),
                                 )
                                 .with_hint(format!(
-                                    "查 schema/aura.at 的 `{}` 定义;确属新 prop 请更新 schema(SCHEMA_DRIFT_GENERATE_AT=1)",
+                                    "查 docs/schema/aura.at 的 `{}` 定义;确属新 prop 请更新 schema(SCHEMA_DRIFT_GENERATE_AT=1)",
                                     _canon
                                 )),
                             );
@@ -1088,7 +1088,7 @@ fn walk_node(
                     ),
                 );
                 if let Some(s) = suggestion {
-                    w = w.with_hint(format!("did you mean `<{}>`? (schema/aura.at)", s));
+                    w = w.with_hint(format!("did you mean `<{}>`? (docs/schema/aura.at)", s));
                 }
                 out.push(w);
             }

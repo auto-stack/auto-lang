@@ -2,7 +2,7 @@
 //
 // 语料:test/vm/aavm2/corpus_m3/*.at —— 可执行程序,`print(EXPR.type)` 查询。
 // 判据:Rust 侧 run_with_capture 的 stdout(真 VM + infer_expr_type)与
-// AAVM 侧 auto/lib/{token,lexer,parser,typeinfo}.at 的 typecheck_dump(source)
+// AAVM 侧 packages/aavm/lib/{token,lexer,parser,typeinfo}.at 的 typecheck_dump(source)
 // 逐行相等。格式规格:docs/specs/aavm/m3-typecheck-format.md。
 // Plan 565 L1:AAVM 侧语料走 once-compiled runner(编译一次+File.read_text
 //       注入,见 aavm2_corpus_runner.rs);判据断言原样保留在本闸门

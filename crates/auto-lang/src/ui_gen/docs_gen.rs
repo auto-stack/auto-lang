@@ -1,6 +1,6 @@
 //! Plan 435 P5 / P8-1(D13)—— schema 驱动的组件文档生成器(库侧)。
 //!
-//! 从 schema/aura.at 生成两份产物:
+//! 从 docs/schema/aura.at 生成两份产物:
 //! - `generate_core_reference()`:核心组件参考 Markdown
 //!   (tier ∈ {builtin_widget, native_html};tier/后端徽章 + props 表 + 别名/家族);
 //! - `generate_kitchen_sink()`:kitchen-sink demo 页 `.at`
@@ -277,6 +277,8 @@ pub fn generate_kitchen_sink() -> String {
     elems.sort_by(|a, b| a.canonical.cmp(&b.canonical));
 
     let mut at = String::new();
+    // Preserve the historical generator label consumed by auto-os golden assets.
+    // The active declaration source is now docs/schema/aura.at (PLAN-763).
     at.push_str("// Plan 435 P5b —— kitchen-sink demo 页(schema/aura.at 生成,**勿手改**)\n");
     at.push_str("// 再生成:auto docs gen(测试内等价 KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen)\n");
     at.push_str("// 覆盖:builtin_widget 层含可字面化 props 的全部元素(当前 ");

@@ -16,7 +16,7 @@ use std::sync::OnceLock;
 // =============================================================================
 // Plan 229b Phase 1.2: AAVM (Auto AutoVM) Test Runner
 // =============================================================================
-// Tests the self-hosted compiler code (auto/lib-legacy/*.at for v1; auto/lib/*.at for v2)
+// Tests the self-hosted compiler code (packages/aavm/lib-legacy/*.at for v1; packages/aavm/lib/*.at for v2)
 // cases and running through the AutoVM. Future: transpile via a2r → compile → run.
 //
 // Test cases reuse the same format as VM file tests (.at + .expected.out).
@@ -30,7 +30,7 @@ const AUTO_LIB_FILES: &[&str] = crate::AUTO_LIB_FILES;
 /// Cached auto/lib code. Loaded once per test process.
 static AUTO_LIB_CACHE: OnceLock<String> = OnceLock::new();
 
-/// Read and concatenate all auto/lib-legacy/*.at files (cached)
+/// Read and concatenate all packages/aavm/lib-legacy/*.at files (cached)
 fn read_auto_lib() -> AutoResult<&'static str> {
     let lib_code = AUTO_LIB_CACHE.get_or_init(|| {
         let d = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

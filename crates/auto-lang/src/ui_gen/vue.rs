@@ -6692,7 +6692,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
     /// MenubarMenu（trigger 文本 + content 项列），项为勾选槽 + 标题 +
     /// 右对齐快捷键；enabled_if/checked_if 经 convert_condition 转译为
     /// 模板表达式（`.store.x > 0` → `store.x > 0`，与 view if 条件同一
-    /// 翻译器）。分隔线用 MenubarSeparator（schema/aura.at 的 vue 行）。
+    /// 翻译器）。分隔线用 MenubarSeparator（docs/schema/aura.at 的 vue 行）。
     fn generate_actions_menubar_html(
         &mut self,
         props: &HashMap<String, AuraPropValue>,
@@ -23213,7 +23213,7 @@ widget W {
 
     #[test]
     fn test_shadcn_registry() {
-        // Plan 435 P4-5a:活链路(schema/aura.at → overlay → WidgetRegistry)。
+        // Plan 435 P4-5a:活链路(docs/schema/aura.at → overlay → WidgetRegistry)。
         // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
         // 活链路从未使用 —— 负断言存档。
         let registry = super::WidgetRegistry::with_defaults();
@@ -23886,7 +23886,7 @@ widget W {
 
     #[test]
     fn test_shadcn_registry_phase3_components() {
-        // Plan 435 P4-5a:活链路(schema/aura.at → overlay → WidgetRegistry)。
+        // Plan 435 P4-5a:活链路(docs/schema/aura.at → overlay → WidgetRegistry)。
         // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
         // 活链路从未使用 —— 负断言存档。
         let registry = super::WidgetRegistry::with_defaults();
@@ -24130,7 +24130,7 @@ widget OverlayDemo {
 
     #[test]
     fn test_shadcn_registry_phase4_components() {
-        // Plan 435 P4-5a:活链路(schema/aura.at → overlay → WidgetRegistry)。
+        // Plan 435 P4-5a:活链路(docs/schema/aura.at → overlay → WidgetRegistry)。
         // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
         // 活链路从未使用 —— 负断言存档。
         let registry = super::WidgetRegistry::with_defaults();
@@ -24215,7 +24215,7 @@ widget OverlayDemo {
 
     #[test]
     fn test_shadcn_registry_phase5_components() {
-        // Plan 435 P4-5a:活链路(schema/aura.at → overlay → WidgetRegistry)。
+        // Plan 435 P4-5a:活链路(docs/schema/aura.at → overlay → WidgetRegistry)。
         // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
         // 活链路从未使用 —— 负断言存档。
         let registry = super::WidgetRegistry::with_defaults();
@@ -24301,7 +24301,7 @@ widget W {
 
     #[test]
     fn test_shadcn_registry_phase6_components() {
-        // Plan 435 P4-5a:活链路(schema/aura.at → overlay → WidgetRegistry)。
+        // Plan 435 P4-5a:活链路(docs/schema/aura.at → overlay → WidgetRegistry)。
         // 旧 ShadcnRegistry(死表,仅测试引用)已删除;其独有映射是死数据,
         // 活链路从未使用 —— 负断言存档。
         let registry = super::WidgetRegistry::with_defaults();
@@ -32177,14 +32177,14 @@ widget NullProbe {
     }
 
     /// Plan 465 T4 (I4): desktop virtual_window/taskbar leaves resolve to the
-    /// @/wm/* components registered in schema/aura.at (`vue:` mapping).
+    /// @/wm/* components registered in docs/schema/aura.at (`vue:` mapping).
     #[test]
     fn test_a2vue_virtual_window() {
         test_a2vue_shadcn("virtual_window").expect("a2vue virtual_window golden mismatch");
     }
 
     /// Plan 497 T7 (I4): window_thumbnail leaf resolves to @/wm/WindowThumbnail
-    /// (schema/aura.at `vue:` mapping) with wid/fallback_icon passthrough.
+    /// (docs/schema/aura.at `vue:` mapping) with wid/fallback_icon passthrough.
     /// Vue side is the v1 placeholder component (icon + border) — real web
     /// thumbnails are a follow-up enhancement (plan 497 待澄清①).
     #[test]
