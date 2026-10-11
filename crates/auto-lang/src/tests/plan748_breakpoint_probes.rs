@@ -26,11 +26,30 @@ fn p748_compile(code: &str) -> crate::vm::engine::AutoVM {
 }
 
 /// 起 1 回合本地 HTTP 服务器（plan705/749 同款骨架）。
+/// PLAN-759 T-02 有界化：accept 轮询 + read/write 超时全程带截止时间——
+/// 发送链回归（请求永不到达）时不再无限阻塞测试线程（F-05）。
 fn p748_spawn_server(body: &'static str) -> (std::thread::JoinHandle<()>, u16) {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
     let port = listener.local_addr().unwrap().port();
+    listener.set_nonblocking(true).expect("nonblocking listener");
     let server = std::thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((s, _)) => break s,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "p748 server: accept 10s 无连接（发送链回归？）"
+                    );
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                Err(e) => panic!("p748 server: accept 失败: {e}"),
+            }
+        };
+        stream.set_nonblocking(false).expect("blocking stream");
+        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+        let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(5)));
         let mut buf = [0u8; 4096];
         let _ = std::io::Read::read(&mut stream, &mut buf);
         let resp = format!(
@@ -227,7 +246,12 @@ store SelStore {
 }
 "#;
 
-fn build_p748_t00() -> crate::ui::dynamic::DynamicComponent {
+/// PLAN-759 T-02：TempDir 随返回值持有至测试结束（替代 `mem::forget`
+/// 测试资源泄漏——F-05 顺手项），生命周期与组件同界。
+fn build_p748_t00() -> (
+    crate::ui::dynamic::DynamicComponent,
+    tempfile::TempDir,
+) {
     let dir = tempfile::TempDir::new().unwrap();
     let base = dir.path();
     for (rel, src) in [("host.at", P748_T00_HOST), ("sel_store.at", P748_T00_STORE)] {
@@ -237,8 +261,7 @@ fn build_p748_t00() -> crate::ui::dynamic::DynamicComponent {
     let host_src = std::fs::read_to_string(&host_path).unwrap();
     let comp = crate::build_dynamic_component(&host_src, Some(&host_path.to_string_lossy()))
         .expect("p748 fixture component builds");
-    std::mem::forget(dir);
-    comp
+    (comp, dir)
 }
 
 fn p748_view_debug(comp: &mut crate::ui::dynamic::DynamicComponent) -> String {
@@ -253,7 +276,7 @@ fn p748_view_debug(comp: &mut crate::ui::dynamic::DynamicComponent) -> String {
 /// 断点①：根件上下文条件矩阵（裸 binding 对照/成员访问主格/store 混合）。
 #[test]
 fn p748_t00_condition_matrix_root() {
-    let mut comp = build_p748_t00();
+    let (mut comp, _dir) = build_p748_t00();
     let debug = p748_view_debug(&mut comp);
     eprintln!(
         "[t00-①root] {}",
@@ -282,7 +305,7 @@ fn p748_t00_condition_matrix_root() {
 /// 断点③：动态 style 字段引用产出 vs 静态串对照。
 #[test]
 fn p748_t00_style_faces() {
-    let mut comp = build_p748_t00();
+    let (mut comp, _dir) = build_p748_t00();
     let debug = p748_view_debug(&mut comp);
     eprintln!(
         "[t00-③style] {}",
@@ -319,18 +342,30 @@ fn p748_t00_style_faces() {
 /// §10① 原形态：Init 内 await Http → resume → `item.x = v` RuntimeError；
 /// 动态键同 receiver 通过）。fn 段已绿（上组探针），本组升级到 comp
 /// harness 的 handler 派发链。arm: static / dynamic / noawait。
+/// PLAN-759 T-02：①整链截止时间（派发前建立，覆盖 派发→server 应答→
+/// join→泵——F-05：server 侧自身有界，join 不再无保护）；②join 后补泵
+/// （生产 = iced `__parked_resume_tick`/帧泵；in-proc harness 无事件循环，
+/// 748 T-00 定音的 harness 边界由此补齐，与 plan370_test_support 同机制）；
+/// ③noawait 臂不启动服务器；④TempDir 作用域持有（替代 mem::forget 泄漏）。
 fn p748_store_handler_write_face(write_arm: &str) -> String {
-    let (server, port) = p748_spawn_server("{\"ok\":true,\"v\":9}");
+    let chain_deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+    let await_arm = write_arm != "noawait";
+    let (server, port) = if await_arm {
+        let (s, p) = p748_spawn_server("{\"ok\":true,\"v\":9}");
+        (Some(s), p)
+    } else {
+        (None, 0)
+    };
     let (write_stmt, expect) = match write_arm {
         "static" => ("item.x = 5", "W:5"),
         "dynamic" => ("item[\"x\"] = 6", "W:6"),
         "noawait" => ("item.x = 7", "W:7"),
         _ => unreachable!(),
     };
-    let await_stmt = if write_arm == "noawait" {
-        String::new()
-    } else {
+    let await_stmt = if await_arm {
         format!("let payload = Http.post_json(\"http://127.0.0.1:{port}/seed\", \"\")")
+    } else {
+        String::new()
     };
     let host = r#"
 use w_store: WStore
@@ -374,19 +409,50 @@ store WStore {{
     let host_src = std::fs::read_to_string(&host_path).unwrap();
     let mut comp = crate::build_dynamic_component(&host_src, Some(&host_path.to_string_lossy()))
         .expect("p748 store-handler fixture builds");
-    std::mem::forget(dir);
 
     let _ = comp.view_with_debug_gated(false);
     comp.drive_scheduler_to_quiescence(15_000);
     let _ = comp.view_with_debug_gated(false);
     comp.drive_scheduler_to_quiescence(15_000);
-    if write_arm != "noawait" {
-        server.join().expect("server thread");
+    if let Some(s) = server {
+        assert!(
+            std::time::Instant::now() < chain_deadline,
+            "p748 handler-{write_arm}: 派发两轮即超整链预算（server 应答前）——\
+             parked={} io={} marker={:?}",
+            comp.has_parked_tasks(),
+            comp.has_parked_io_tasks(),
+            comp.read_state("marker")
+        );
+        s.join().expect("server thread");
     }
 
-    let marker = match comp.read_state("marker") {
+    let read_marker = |comp: &crate::ui::dynamic::DynamicComponent| match comp.read_state("marker")
+    {
         Ok(auto_val::Value::Str(s)) => s.as_str().to_string(),
         other => format!("<marker not str: {other:?}>"),
+    };
+    let marker = if await_arm {
+        // join 后泵：server 已应答，I/O 凭据就绪，drive 内 resume_ready_parked
+        // 即续体执行点（生产同语义经 __parked_resume_tick 订阅驱动）。
+        let mut marker = read_marker(&comp);
+        while marker == "unset" {
+            comp.drive_scheduler_to_quiescence(1_000);
+            marker = read_marker(&comp);
+            if marker != "unset" {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < chain_deadline,
+                "p748 handler-{write_arm}: parked 续体整链预算内未恢复——\
+                 parked={} io={} marker={marker:?}（expect {expect}）",
+                comp.has_parked_tasks(),
+                comp.has_parked_io_tasks()
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        marker
+    } else {
+        read_marker(&comp)
     };
     eprintln!("[t00-②handler-{write_arm}] marker = {marker:?} (expect {expect})");
     marker
