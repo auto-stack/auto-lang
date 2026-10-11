@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-758
-status: reviewed
+completion_kind: delivered
+status: archived
 feature_name: AutoJade 改名与用户提供深色宣传图
 author: [Codex]
 created_at: 2026-10-10
@@ -176,3 +177,10 @@ next: writer 可用后只续做 store-mediated 投影读回、归档、guard 后
 review: pass（源码 af021ed7a6bcf2f8f907e9520cf80bcc099a62e8；build 201.08s、390/1440×EN/ZH 4/4 8.8s；同会话独立重建工件结论）。同步并发主检出新 PLAN-760 仅簿记变化后，两提交 range-diff 全等：af021ed7a→ff8c0bc0d50537d1de61c65711935111e8d8ea4c、2fcefcf19→8625746cf694234cf30bd23559b6501bdb6f7d6e，--ff-only 合入且当时 master HEAD 等于 8625746cf。实际构建/主检出 website tree 均为 7534870417758cf789229b31ea41e9e03b57aa71。
 preview: 成功构建 dist 复制到保留的 758 工作树并重启 4218，真实浏览器标题“六个月，三大步”、正文“2026 年 4 月 — 10 月”且 #journey 标题可见。旧 dist 与原始日志/检查输出保全于 758 组。
 cleaned: fresh Git for Windows wt-guard clean 后移除 fix 工作树/分支，原 fix 组原始证据保全至 D:/autostack/.wt/lang-758/fix-v05-six-months-retained；本 L0 无剩余工作。758 原 store 阻塞仍不变，投影草案增加后继复核引用并更新单目标输出 hash，未直接写账本。批量门禁未到期：同日 02:44Z 收据覆盖 755，距今不足 48h；760 是刚创建的计划簿记，尚未交付，非整五实现落地。Category A 未跑 cargo t/docs_gen/tf。
+
+### Recovery receipt — 投影回填 + 归档 + 清理（2026-10-11）
+
+- ledger_refreshed（补完成，r2/r3 两轮 blocked 的收尾）：经 README §5 手工回退路径（753/754/755/756/757 先例）——P722-1 标题/内容更名（JadeEdit→AutoJade，含出处行）；新增 P758-1（更名与深色准备态实拍契约）/P758-2（v0.5 开篇前置契约）/P758-3（审计收据）；website + auto-lang/ui 双模块 plans.md 758 行；INDEX 再生。账本格式对齐属主会话的 indent=2（首轮误写 indent=1 产生 18K 行噪音 diff，amend 修正后净 diff 41+/2-）。读回校验：831 条目、P758-1/2/3 + 更名后 P722-1 全部在册。P758-D1 的 store 本体修复仍开放（见 KNOWN-DEBT 注记）。
+- archived：git mv → docs/plans/archive/758-autojade-rename-and-promo.md，status: archived，completion_kind: delivered。
+- cleaned：见下方回填。
+- 附注：交付 preview :4218 已于 757 清理会话中终止（当时按持有目录误判为 757 遗留进程；757 真实持有者为 :4199）。预览可由 lang-758 dist 一条命令重启，不影响任何入库内容；本回收据如实记录。
