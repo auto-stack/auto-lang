@@ -14,6 +14,7 @@
 
 use crate::ui::desktop_protocol::message::{DrawList, DrawOp, Rgba8};
 use crate::ui::desktop_protocol::stage3::PixelsSurface;
+use crate::ui::iced::renderer::INTER_FONT;
 use crate::ui::session::{DesktopMessage, DesktopSession, Wid};
 
 pub(crate) fn to_color(c: Rgba8) -> iced::Color {
@@ -32,6 +33,26 @@ fn css_weight_to_iced(w: u16) -> iced::font::Weight {
         800 => iced::font::Weight::ExtraBold,
         900 => iced::font::Weight::Black,
         _ => iced::font::Weight::Normal,
+    }
+}
+
+/// TextStyled/Text 线载荷 → 宿主重放字体（PLAN-102 F-RF-3 修复）。
+///
+/// 必须钉 app 字体栈 family（Inter——Plan 411 内嵌三字重）：iced 默认
+/// generic family + 非常规字重（如按钮 Medium=500）在 cosmic 系统匹配下
+/// 会乱选字面（实机 = 重放文本碎片化乱码）。w=400 恰整值等于
+/// `Font::DEFAULT` 被 `default_font` 替换兜住，其余字重不会——与
+/// `renderer::font_weight_to_iced` 钉 Inter 同律（app 内带字重文本先例）。
+fn wire_font(weight: u16, italic: bool) -> iced::Font {
+    iced::Font {
+        family: INTER_FONT.family,
+        weight: css_weight_to_iced(weight),
+        style: if italic {
+            iced::font::Style::Italic
+        } else {
+            iced::font::Style::Normal
+        },
+        ..Default::default()
     }
 }
 
@@ -512,15 +533,7 @@ where
                     color: to_color(*color),
                     size: (*size).into(),
                     line_height: iced::widget::text::LineHeight::Absolute((*line_height).into()),
-                    font: iced::Font {
-                        weight: css_weight_to_iced(*weight),
-                        style: if *italic {
-                            iced::font::Style::Italic
-                        } else {
-                            iced::font::Style::Normal
-                        },
-                        ..Default::default()
-                    },
+                    font: wire_font(*weight, *italic),
                     ..Default::default()
                 });
                 i += 1;
@@ -773,15 +786,7 @@ where
                     color: to_color(*color),
                     size: (*size).into(),
                     line_height: iced::widget::text::LineHeight::Absolute((*line_height).into()),
-                    font: iced::Font {
-                        weight: css_weight_to_iced(*weight),
-                        style: if *italic {
-                            iced::font::Style::Italic
-                        } else {
-                            iced::font::Style::Normal
-                        },
-                        ..Default::default()
-                    },
+                    font: wire_font(*weight, *italic),
                     ..Default::default()
                 });
                 i += 1;
@@ -877,6 +882,24 @@ pub fn broker_client_content(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// PLAN-102 F-RF-3：重放字体钉 Inter family——generic family + Medium
+    /// 实机乱选字面（碎片化乱码）的回归护栏；字重/斜体映射同刻度。
+    #[test]
+    fn frf3_wire_font_pins_inter_family() {
+        for w in [400u16, 500, 600, 700] {
+            let f = wire_font(w, false);
+            assert_eq!(
+                f.family,
+                INTER_FONT.family,
+                "w={w} 须钉 app 字体栈 family（Inter）"
+            );
+        }
+        assert_eq!(wire_font(500, false).weight, iced::font::Weight::Medium);
+        assert_eq!(wire_font(700, false).weight, iced::font::Weight::Bold);
+        assert_eq!(wire_font(400, true).style, iced::font::Style::Italic);
+        assert_eq!(wire_font(400, false).style, iced::font::Style::Normal);
+    }
 
     /// 1×1 PNG（合法编码字节——from_bytes 不即解码，宿主渲染器按 Handle
     /// 身份懒解码；单测断言解析/缓存/降级分派，真栅格归 e2e 截图腿）。

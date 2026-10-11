@@ -326,6 +326,7 @@ impl<S: FrameSource> AppEndpoint<S> {
         self.last_slot = slot;
         self.next_frame_id += 1;
         let payload = self.session.render_frame_v2();
+        super::message::rf_textdump("prod", &payload);
         Ok(ProtocolMsg::Frame(super::message::FrameMsg::FrameReadyV2 {
             wid: self.wid.expect("Active 即有 wid"),
             frame_id: self.next_frame_id,

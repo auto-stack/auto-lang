@@ -339,8 +339,51 @@ pub struct FontBlob {
 // 帧载荷 v2（PLAN-683 SD-01 DisplayList v2——方案 2 远程 Renderer wire 载体）
 // ---------------------------------------------------------------------------
 
+/// 诊断仪器（PLAN-102 乱码取证，不入线协议）：AUTO_RF_TEXTDUMP=1 时
+/// stderr 转储 DisplayList 的 op 计数 + 全部 TextStyled 原语定位/内容
+/// （每进程限 8 帧，宿主/生产双端同函数对比定罪）。
+pub fn rf_textdump(tag: &str, list: &DisplayList) {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static DUMPS: AtomicU32 = AtomicU32::new(0);
+    if !std::env::var("AUTO_RF_TEXTDUMP").map_or(false, |v| v == "1") {
+        return;
+    }
+    if DUMPS.fetch_add(1, Ordering::Relaxed) >= 8 {
+        return;
+    }
+    let (mut q, mut t, mut s, mut sp, mut tr, mut trp, mut im) = (0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32);
+    for op in &list.ops {
+        match op {
+            DisplayOp::Quad { .. } => q += 1,
+            DisplayOp::TextStyled { .. } => t += 1,
+            DisplayOp::Scissor { .. } => s += 1,
+            DisplayOp::ScissorPop => sp += 1,
+            DisplayOp::Transform { .. } => tr += 1,
+            DisplayOp::TransformPop => trp += 1,
+            DisplayOp::Image { .. } => im += 1,
+        }
+    }
+    eprintln!(
+        "[rf-dump:{tag}] ops={} quad={q} text={t} scissor={s}/{sp} transform={tr}/{trp} image={im} clear={:?}",
+        list.ops.len(),
+        list.clear
+    );
+    for (n, op) in list.ops.iter().enumerate() {
+        if let DisplayOp::TextStyled {
+            x, y, size, line_height, color, weight, italic, text,
+        } = op
+        {
+            let head: String = text.chars().take(24).collect();
+            eprintln!(
+                "[rf-dump:{tag}] #{n} x={x:.1} y={y:.1} sz={size:.1} lh={line_height:.1} w={weight} it={italic} rgb={:02x}{:02x}{:02x} len={} {:?}",
+                color.r, color.g, color.b, text.len(), head
+            );
+        }
+    }
+}
+
 /// 帧载荷 v2：v1 DrawList 原语超集（追加式——载荷种类 tag **2**；v1=1 冻结
-/// 不动，旧端拒收 tag 2 与仓内同版发布纪律同 v1 QuadR tag 7 先例）。
+/// 不动，旧端拒收 tag 2 与仓内双端同版发布纪律同 v1 QuadR tag 7 先例）。
 /// v1→v2 逐 op 直搬映射：Quad→Quad(fill=Color,radius=0,border/shadow=None)、
 /// QuadR→Quad(radius 填角)、Text/TextStyled/Scissor/ScissorPop/Image 同形。
 #[derive(Debug, Clone, PartialEq, Default)]

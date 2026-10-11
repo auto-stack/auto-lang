@@ -372,6 +372,7 @@ fn apply_msg(client: &mut Client, msg: &ProtocolMsg) {
             client.phase = Phase::Live;
         }
         ProtocolMsg::Frame(FrameMsg::FrameReadyV2 { payload, .. }) => {
+            crate::ui::desktop_protocol::message::rf_textdump("host", payload);
             client.latest = Some(Arc::new(payload.clone()));
         }
         // v1 FrameReady：降格端帧（老宿主）——remote-frame 只消费 v2
