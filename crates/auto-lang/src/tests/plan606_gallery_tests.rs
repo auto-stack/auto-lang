@@ -1,4 +1,9 @@
 //! Plan 606: Photo Gallery thumbnail and fit verification tests.
+//! PLAN-759 T-06 重构：029 语料自 PLAN-043（231cca2fd）起 Init 经
+//! `Http.get_json("/api/photos/scan")` 拉后端 photo_service——本测试内起
+//! in-process photo stub（std TcpListener，back_proxy.rs 响应 schema 同形）
+//! 并经 `AUTO_HTTP_BASE` 锚定，断言精确 URL 映射（origin/app/id），不再
+//! 依赖机器后端在场的旧「thumbnails/ 路径 + OpenPhoto(Int)」契约。
 
 #[cfg(test)]
 mod plan606_gallery_tests {
@@ -40,13 +45,134 @@ mod plan606_gallery_tests {
         }
     }
 
+    /// in-process photo_service stub（std-only；back_proxy.rs:1020-1060 响应
+    /// schema 同形）。OS 分配端口；accept 非阻塞轮询 + read 超时有界；
+    /// stop 旗标翻转后线程自行退出（join 不悬挂）。请求计数供断言「stub
+    /// 侧真实收到 scan」。
+    struct PhotoStub {
+        port: u16,
+        scan_hits: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        handle: Option<std::thread::JoinHandle<()>>,
+    }
+
+    impl PhotoStub {
+        fn start() -> PhotoStub {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("stub bind");
+            let port = listener.local_addr().unwrap().port();
+            listener
+                .set_nonblocking(true)
+                .expect("stub nonblocking listener");
+            let scan_hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let (scan_hits2, stop2) = (scan_hits.clone(), stop.clone());
+            let handle = std::thread::spawn(move || {
+                let ids: Vec<String> = (1..=24).map(|i| format!("p{i:02}")).collect();
+                let base = format!("http://127.0.0.1:{port}");
+                let entries: Vec<String> = ids
+                    .iter()
+                    .map(|id| {
+                        format!(
+                            "{{\"id\":\"{id}\",\"index\":0,\"title\":\"photo {id}\",\"name\":\"{id}.jpg\",\
+                             \"rel_dir\":\"\",\"relative_path\":\"{id}.jpg\",\"extension\":\"jpg\",\
+                             \"bytes\":1024,\"size_str\":\"1.0 KB\",\"width\":400,\"height\":300,\
+                             \"date\":\"2026-01-01\",\"sort_key\":0,\
+                             \"thumb_url\":\"{base}/apps/029-photo-gallery/api/photos/thumb/{id}\",\
+                             \"full_url\":\"{base}/apps/029-photo-gallery/api/photos/full/{id}\"}}"
+                        )
+                    })
+                    .collect();
+                let scan_body = format!(
+                    "{{\"root_missing\":false,\"entries\":[{}],\"dirs\":[]}}",
+                    entries.join(",")
+                );
+                let png = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+                while !stop2.load(std::sync::atomic::Ordering::Relaxed) {
+                    let (mut stream, _) = match listener.accept() {
+                        Ok(s) => s,
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(std::time::Duration::from_millis(2));
+                            continue;
+                        }
+                        Err(_) => break,
+                    };
+                    stream.set_nonblocking(false).ok();
+                    stream
+                        .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                        .ok();
+                    let mut buf = [0u8; 4096];
+                    let _ = std::io::Read::read(&mut stream, &mut buf);
+                    let req = String::from_utf8_lossy(&buf).to_string();
+                    let path = req.split_whitespace().nth(1).unwrap_or("").to_string();
+                    let (body, ctype) = if path.starts_with("/api/photos/scan") {
+                        scan_hits2.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        (scan_body.clone().into_bytes(), "application/json")
+                    } else if path.contains("/api/photos/thumb/")
+                        || path.contains("/api/photos/full/")
+                    {
+                        (png.clone(), "image/png")
+                    } else {
+                        (b"{\"error\":\"not found\"}".to_vec(), "application/json")
+                    };
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    );
+                    let _ = std::io::Write::write_all(&mut stream, resp.as_bytes());
+                    let _ = std::io::Write::write_all(&mut stream, &body);
+                }
+            });
+            PhotoStub {
+                port,
+                scan_hits,
+                stop,
+                handle: Some(handle),
+            }
+        }
+
+        fn base(&self) -> String {
+            format!("http://127.0.0.1:{}", self.port)
+        }
+
+        fn thumb_url(&self, id: &str) -> String {
+            format!("{}/apps/029-photo-gallery/api/photos/thumb/{id}", self.base())
+        }
+
+        fn full_url(&self, id: &str) -> String {
+            format!("{}/apps/029-photo-gallery/api/photos/full/{id}", self.base())
+        }
+    }
+
+    impl Drop for PhotoStub {
+        fn drop(&mut self) {
+            self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            if let Some(h) = self.handle.take() {
+                let _ = h.join();
+            }
+        }
+    }
+
     #[test]
     fn test_029_photo_gallery_thumbnails_render_with_resolved_src_and_cover_fit() {
+        // AUTO_HTTP_BASE 锚定 stub（请求期解析，stdlib resolve_http_base_url）。
+        // 须在 build_example_component **之前**：fire_init 同步派发 Init，
+        // Http.get_json 首调即提交 job 并读 env——晚置 env 时请求带未解析
+        // 相对 URL 立败（load_error 形态，PLAN-759 T-06 实测定谳）。
+        // 隔离形态：日常档 nextest 一测一进程（天然隔离）；裸 libtest 并行
+        // 形态下本测试独占该 env 的窗口=build→断言完，结束即恢复原值。
+        let stub = PhotoStub::start();
+        let prev_base = std::env::var("AUTO_HTTP_BASE").ok();
+        std::env::set_var("AUTO_HTTP_BASE", stub.base());
+
         let mut dc = match crate::plan370_test_support::build_example_component("029-photo-gallery")
         {
             Some(dc) => dc,
             None => {
                 eprintln!("[SKIP] 029-photo-gallery app.at not located");
+                match prev_base {
+                    Some(v) => std::env::set_var("AUTO_HTTP_BASE", v),
+                    None => std::env::remove_var("AUTO_HTTP_BASE"),
+                }
                 return;
             }
         };
@@ -64,6 +190,12 @@ mod plan606_gallery_tests {
                     >= 24
             },
             "029 thumbnails",
+        );
+
+        // stub 侧真实收到 scan 请求（非缓存/非空态巧合）。
+        assert!(
+            stub.scan_hits.load(std::sync::atomic::Ordering::Relaxed) >= 1,
+            "photo stub 须收到 /api/photos/scan 请求"
         );
 
         // Render initial grid view
@@ -85,24 +217,18 @@ mod plan606_gallery_tests {
             thumbnails.len()
         );
 
+        // 精确 URL 映射（PLAN-759 T-06/F-06）：每张 src 逐字等于
+        // {base}/apps/029-photo-gallery/api/photos/thumb/{id}，id ∈ stub 集，
+        // 且 24 个 id 各出现一次（非子串包含）。
+        let mut got_urls: std::collections::BTreeSet<String> =
+            thumbnails.iter().map(|(src, _)| src.clone()).collect();
         for (i, (src, style)) in thumbnails.iter().enumerate() {
+            let expected: Vec<String> =
+                (1..=24).map(|n| stub.thumb_url(&format!("p{n:02}"))).collect();
             assert!(
-                !src.is_empty(),
-                "Thumbnail {} src should NOT be empty (Plan 606 bugfix)",
-                i
+                expected.contains(src),
+                "Thumbnail {i} src must be the exact stub thumb URL ({src})"
             );
-            // PLAN-668 R-16 (P642-D11 contract update): corpus has evolved to
-            // "path reference + render-side inlining" (Plan 617/628) -- view-layer
-            // src = resolved thumbnail file path (data-URL inlining is the
-            // renderer's job). Path may target the main checkout's corpus when
-            // run from a worktree (P642-D5), so no root anchor.
-            assert!(
-                src.contains("thumbnails") && src.ends_with(".jpg"),
-                "Thumbnail {} src should be resolved thumbnail path (path-ref contract): {}",
-                i,
-                src
-            );
-
             let s = style
                 .as_ref()
                 .unwrap_or_else(|| panic!("Thumbnail {} should have style", i));
@@ -116,13 +242,34 @@ mod plan606_gallery_tests {
                 i
             );
         }
+        assert_eq!(got_urls.len(), 24, "24 个缩略图 URL 须互不相同");
+        for n in 1..=24 {
+            assert!(
+                got_urls.remove(&stub.thumb_url(&format!("p{n:02}"))),
+                "thumb URL p{n:02} 缺席"
+            );
+        }
+        assert!(got_urls.is_empty(), "不得有 stub 集外的 thumb URL");
 
-        // Test opening a photo viewer: OpenPhoto(1)
+        // Test opening a photo viewer: OpenPhoto(<str id>) —— PLAN-043 起签名
+        // 为 str（旧 Int(1) 形态已过时）。
         dc.on(DynamicMessage::Typed {
             widget_name: "App".to_string(),
             event_name: "OpenPhoto".to_string(),
-            args: vec![auto_val::Value::Int(1)],
+            args: vec![auto_val::Value::str("p07")],
         });
+        crate::plan370_test_support::drive_parked_segments(
+            &mut dc,
+            |dc| {
+                let mut imgs = Vec::new();
+                collect_images(&dc.view(), &mut imgs);
+                imgs.iter()
+                    .filter(|(src, _)| !src.starts_with("lucide:"))
+                    .count()
+                    == 1
+            },
+            "029 viewer",
+        );
 
         let view_mode = dc.view();
         let mut all_viewer_images = Vec::new();
@@ -140,13 +287,11 @@ mod plan606_gallery_tests {
             viewer_photos.len()
         );
         let (full_src, full_style) = &viewer_photos[0];
-        // PLAN-668 R-16：全图同"path 引用 + 渲染端内嵌"契约——src = 解析后
-        // 的原图路径（语料引用用户图片目录，环境相关不锚根），区别于缩略
-        // 图（thumbnails/ 段）即可。
-        assert!(
-            !full_src.is_empty() && !full_src.contains("thumbnails"),
-            "Full image should be the resolved original photo path: {}",
-            full_src
+        // 全图 URL 与所选同一 id 精确一致（origin/app/id 映射）。
+        assert_eq!(
+            full_src,
+            &stub.full_url("p07"),
+            "Full image src must be the exact stub full URL for the selected id"
         );
         let s = full_style.as_ref().expect("Full image should have style");
         let has_contain = s.classes.iter().any(|c| {
@@ -159,5 +304,12 @@ mod plan606_gallery_tests {
             has_contain,
             "Full image should have StyleClass::ObjectFit(Contain) from fit: 'contain'"
         );
+
+        // env 恢复（裸 libtest 并行形态的窗口收缩）。
+        match prev_base {
+            Some(v) => std::env::set_var("AUTO_HTTP_BASE", v),
+            None => std::env::remove_var("AUTO_HTTP_BASE"),
+        }
+        drop(stub);
     }
 }
