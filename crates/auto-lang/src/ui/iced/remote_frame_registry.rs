@@ -383,6 +383,9 @@ fn apply_msg(client: &mut Client, msg: &ProtocolMsg) {
 
 /// 输入直发（canvas update 臂；ProtocolMsg::Input(InputMsg) 同 rqhost 收尾）。
 pub fn send_input(url: &str, msg: &ProtocolMsg) {
+    if std::env::var("AUTO_RF_DEBUG").map_or(false, |v| v == "1") {
+        eprintln!("[rf-input] {} {:?}", key_strip_ns(url), msg);
+    }
     let key = namespaced(url);
     let mut reg = REGISTRY.lock().unwrap();
     if let Some(client) = reg.get_mut(&key) {
@@ -453,6 +456,12 @@ impl<M> canvas::Program<M> for RemoteFramePainter<M> {
             return None;
         };
         let (x, y) = Self::to_remote((local.x, local.y), &bounds, &live);
+        if std::env::var("AUTO_RF_DEBUG").map_or(false, |v| v == "1") {
+            eprintln!(
+                "[rf-upd] local=({:.1},{:.1}) bounds=({:.1},{:.1} {:.1}x{:.1}) live=({:.1},{:.1}) remote=({:.1},{:.1})",
+                local.x, local.y, bounds.x, bounds.y, bounds.width, bounds.height, live.w, live.h, x, y
+            );
+        }
         let wire = |input: crate::ui::desktop_protocol::message::InputMsg| {
             send_input(&self.url, &ProtocolMsg::Input(input));
         };
