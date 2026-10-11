@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-759
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed                # drafting → executing → execution_done → reviewed → archived
 feature_name: daily-red-family-clearance
 plan_revision: 2               # r2: 按 2026-10-11 草案审核 F-01~F-08 修订
 author: []
@@ -8,8 +8,8 @@ created_at: 2026-10-11
 updated_at: 2026-10-11
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
-new_spec_components: []
+supersedes_spec_components: [docs/specs/auto-lang/vm/design/vm-fn-call-semantics.md#已知边界③（p053_4 异根表述→三分支契约定谳）]
+new_spec_components: [docs/specs/auto-lang/ui/overview.md#PLAN-759 注记（壁纸测试态隔离规约+P759-D1 债务登记）]
 touched_goals: []             # goals.md 无逐红族治理条目，本计划不映射 GOAL-NNN（理由见规范增量节）
 
 affects: [auto-lang/ui, auto-lang/vm]   # schema/aura.at 经 include_str! 编入产品且被 ui_gen 消费；p053_4 边界在 vm fn-call 语义 spec
@@ -404,6 +404,19 @@ CPU-slice Parked(CpuRunnable)，片预算耗尽，测试驱动轮次内未续完
 - evidence: 全档轮1 5232/5232 绿 0 failed（109s）+轮2 5232/5232 绿 0 failed（104.6s，前台复跑）——AC-01 双轮达成；逐族 scoped 绿见各任务行；`cargo tu` 858/859（唯一红=在案预存 a2vue 金样）；ash 集成门禁真跑 23.7s 绿
 - blockers: 无阻断。移交两项（非阻断）：①auto-os plan-759-dev（b5a2333）合流 main 后主检出/CI 的 kitchen_sink 围栏方绿（worktree 侧兄弟解析已绿）——归属=待澄清#1 默认移交用户；②P759-D1（壁纸硬编码目录）/P759-D2（rs 扫描器单行化）两债在册待独立裁定
 - next: review（/auto-plan:review）
+
+
+### 2026-10-11 独立复审（work 收口后；实施会话内工件重构式复审——未获独立会话授权的局限已声明）
+
+- stage: review | plan_id: PLAN-759 | plan_revision: 2 | outcome: **pass**
+- reviewed_commit: `6b33d13779741dc411854b1b2a3367b2d17256a8`（plan-759-dev @ .wt/lang-759/auto-lang，8 提交链，worktree 零脏）
+- base_commit: `00d785e40`（master，状态翻 executing 提交）
+- dependency_revisions: auto-os `.wt/lang-759/auto-os` plan-759-dev @`b5a233323f3d`（单文件金样提交，**待合流 main**）；auto-term @`7a0d0e8b` detached（DLL 构建收据）；auto-down @`895f8d0f` detached（只读）
+- spec_inputs: docs/specs/auto-lang/vm/design/vm-fn-call-semantics.md（边界③ diff 已核对 codegen.rs:9427-9458 三分支+stdlib D7 文案）；docs/specs/auto-lang/ui/overview.md（新注记已核对 wallpapers_dir_or_default 解析链）
+- acceptance_results: **AC-01 pass**（全档双轮 5232/5232 绿 0 failed@最终 HEAD：轮2 前台 104.6s（后于末提交）；ash=可见 #[ignore] 计入 skipped）；**AC-02 pass**（复审重跑 scoped 电池 26/26@HEAD：12 族+族内邻居；R1 双臂/photo stub 收据断言/plan502 族 8/8+双全档轮）；**AC-03 pass**（账本 diff 仅 3 行内联改写+追加节，历史收据原文保留）；**AC-04 pass**（auto-os b5a2333 单文件提交核验+auto-term worktree 构建+集成门禁 23.7s 真跑收据；UPDATE panic 未计绿——清 env 后重跑为绿证据）；**AC-05 pass**（diff 清点=申报面精确吻合：产品数据四处 aura.at/render_support/element_coverage/baseline fixture+测试七处+spec 两处，零产品逻辑变更；消费端 cargo tv 162/162+cargo tu 857/859）
+- findings: F-R1[P2 非阻断·合流序]：auto-lang 合入后主检出 kitchen_sink 围栏在 auto-os b5a2333 合流前为红（解析序 env→兄弟→主检出兜底）——建议 auto-os 分支先于/随本计划合流，或在 merge 收据登记暂态已知红；F-R2[P3 计划外·预存]：`ui_gen::bp::registry::root_resolution_tests::walks_up_from_cwd_to_nearest_blueprints_dir` 裸 libtest 单进程下 EnvGuard 全局 env 跨测试竞态 flake（4 跑 ok/FAIL/ok/ok 复现；本计划 ui_gen 零 diff；PLAN-645 反模式族=AGENTS tu 档注记前车）——建议入 KNOWN-DEBT；F-R3[P3 非阻断]：plan606 保留语料缺席 SKIP 守卫（既有模式，语料在场）
+- evidence: 复审命令与结果摘录——scoped 电池 `cargo t --no-fail-fast <12 族滤串>` 26/26；`cargo tv` 162/162；`cargo tu` 857 passed/2 failed（a2vue=在案预存 4f123a50e+walks_up=F-R2 flake，复跑 4 次定谳）；全档轮2 5232/5232（0.459s scoped/104.6s full）；auto-os `show --stat b5a2333`=单文件 94+/111-
+- next: **merge**（/auto-plan:merge；F-R1 合流序在 merge 步处置）
 
 ## 待澄清事项
 
