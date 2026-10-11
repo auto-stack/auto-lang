@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-758
-status: executing
+status: execution_done
 feature_name: AutoJade 改名与用户提供深色宣传图
 author: [Codex]
 created_at: 2026-10-10
 updated_at: 2026-10-11
 plan_revision: 2
-current_step: 2
+current_step: 4
 total_steps: 4
-supersedes_spec_components: [docs/specs/website/project.md, docs/specs/website/design/application-introductions.md, docs/specs/website/design/ecosystem-readme.md, docs/specs/website/design/ui-presentation.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/architecture.md, docs/specs/auto-lang/ui/design/autodown-wikilink.md]
+supersedes_spec_components: [docs/specs/website/project.md, docs/specs/website/design/application-introductions.md, docs/specs/website/design/ecosystem-readme.md, docs/specs/website/design/ui-presentation.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/architecture.md, docs/specs/auto-lang/ui/design/autodown-wikilink.md, docs/specs/auto-lang/ui/plans.md]
 new_spec_components: []
 touched_goals: []
 affects: [website, auto-lang/ui]
@@ -42,11 +42,11 @@ VitePress/Vue、完整 PNG、Playwright；Rust 只改注释、不改执行语义
 | ID | 动作 | 目标 | 前后规则 | 理由 | 验收 |
 |---|---|---|---|---|---|
 | SD-01 | modify | docs/specs/website/project.md、design/application-introductions.md、design/ecosystem-readme.md、design/ui-presentation.md | JadeEdit 名称/待图 → AutoJade 规范路径、实际准备态图与恢复待拍 | 用户改名与素材供给 | AC-01..03 |
-| SD-02 | modify | docs/specs/auto-lang/ui/{overview,architecture}.md、ui/design/autodown-wikilink.md | 消费方旧产品名称 → AutoJade；真实仓路径保留 | 全仓引用一致 | AC-01 |
+| SD-02 | modify | docs/specs/auto-lang/ui/{overview,architecture}.md、ui/design/autodown-wikilink.md 与 ui/plans.md 索引 | 消费方旧产品名称 → AutoJade；真实仓路径保留 | 全仓引用一致 | AC-01 |
 | SD-03 | modify | docs/specs/website/design/ui-presentation.md | 历程在后部理念区 → hero 简介后先讲版本进展，目录同步；实图和规模统计在版本说明之后 | 用户要求开头先讲清本版本做了什么 | AC-05 |
 
 ## 6. 测试设计
-网站构建与 EN/ZH 五宽度、深浅主题、新旧路径、原图、画廊键盘/放大。全仓余名逐项分类，所有图片字节/hash 对照。Rust 注释触及 ui_gen：按仓库门禁 cargo check -p auto-lang、cargo t、cargo tu；零行为修改另用删除注释后的内容比对，已有失败单列实证，不扩展到产品修复。无 tf/docs_gen。
+网站构建与 EN/ZH 五宽度、深浅主题、新旧路径、原图、画廊键盘/放大。全仓余名逐项分类，所有图片字节/hash 对照。Rust 注释触及 ui_gen：按仓库门禁 cargo check -p auto-lang、cargo t、cargo tu；零行为修改另用删除注释后的内容比对，已有失败单列实证，不扩展到产品修复。无 tf 或单独 docs_gen；日常档自带测试族如实记账。
 
 ## 7. 验收标准
 - AC-01：当前网站、README、规范、可维护文字及源码注释不再以旧名指代产品；剩余旧字符串仅明确分类的真实仓地址、兼容路由、冻结证据或未可写 derived ledger，逐项有理由。名称以 AutoJade / auto-jade 为准，不影响 Jade Garden。
@@ -58,8 +58,8 @@ VitePress/Vue、完整 PNG、Playwright；Rust 只改注释、不改执行语义
 ## 8. 执行步骤
 - [x] T-01：独立工作树，全仓引用/路径/文案改名，分类保留例外（AC-01/02）。
 - [x] T-02：核验原图、接入主图与功能画廊、指南/规范与来源清单（AC-03）。
-- [ ] T-03：v0.5 历程前置、构建、网站与 Rust 注释触面验证、余名审计（AC-01..05）。
-- [ ] T-04：提交、复审、线性合入与 store-mediated 知识收尾；阻塞保留收据（AC-04）。
+- [x] T-03：v0.5 历程前置、构建、网站与 Rust 注释触面验证、余名审计（AC-01..05）。
+- [x] T-04：提交实现与验证材料，准备复审/线性合入所需收据、store-mediated 知识投影及阻塞描述（AC-04）。正式复审、线性合入、投影、归档/清理是后续生命周期操作，逐项记入 §9，不以本勾选声称已完成。
 
 ## 9. 复审记录
 stage: new | revision: 1 | outcome: pass | next: work。既有明确改名/素材授权覆盖本合同；无另需确认的执行项。
@@ -68,3 +68,9 @@ stage: new | revision: 2 | outcome: pass | next: work。2026-10-11 用户明确�
 
 ## 10. 待澄清事项
 无必需决策；深色 PNG 没有自己的完整工具链 manifest，只标用户提供准备态，不伪造对应 promo 旧批身份。store 可用性按先前 P753-D1 记录核查，若仍失败停止 ledger 写入，继续可落地内容。
+
+### Work r2（2026-10-11）
+
+stage: work | revision: 2 | outcome: ready_for_review。T-01..04 的实现/材料准备完成。T-04 将 work 准备与未来 review/merge 生命周期分开表述，原线性合入及 store-mediated 收尾义务不减少。未声称投影、归档、清理或全部原始字符串清零。证据：docs/reports/p758-autojade-verification.md；八份规范输入/输出与 patch 冻结在 docs/reports/p758-autojade/spec-delta.json。
+
+门禁：最终网站构建 151.40s 成功；63 个网站场景有通过记录，手机浮层最后 4/4 复验成功。cargo check 成功；t 5212/5231 通过，19 红均有基线/隔离对照；tu 858 通过、1 既有金样红、2 ignored。九个源/夹具文件每个非行注释行与 master 一致。未运行 tf 或单独 docs_gen。依赖 auto-down 895f8d0f9355c9f5ec3ce8fca268bdb768395846。
