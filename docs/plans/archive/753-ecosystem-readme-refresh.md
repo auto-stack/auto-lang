@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-753
-status: reviewed
+status: archived
 feature_name: ecosystem-readme-refresh
 author: [codex]
 created_at: 2026-10-10
-updated_at: 2026-10-10
+updated_at: 2026-10-11
 
 plan_revision: 1
 approval_status: approved
@@ -15,7 +15,7 @@ new_spec_components: [docs/specs/website/design/ecosystem-readme.md]
 touched_goals: [GOAL-014]
 
 affects: [website, auto-lang]
-current_step: 4
+current_step: 5
 total_steps: 5
 ---
 
@@ -158,7 +158,7 @@ os-ai-introduction.ts=82a30a079252edd0a14a1b77570e5b52e570ac75bea0392913190262f1
   必要时更新 learning-navigation.mjs；核对当前语料/CLI并记录旧内容去向。
 - [x] **T-04**（T-02/03 后；AC-01..05）：完成 §6 验证，写
   docs/plans/reports/753-readme-verification.md；证据附真实渲染截图与未通过项处理。
-- [ ] **T-05**（T-04 后；AC-06）：显式 /auto-plan:review 独立于实施结论逐项复验，
+- [x] **T-05**（T-04 后；AC-06）：显式 /auto-plan:review 独立于实施结论逐项复验，
   扫描遗漏/延后/workaround；通过后 /auto-plan:merge 沉淀 SD-01/02、账本与 spec-index、
   reviewed→archived，按到期规则处理批量门禁；guard-clean 后清理双仓组/分支并留 recovery receipt。
 
@@ -262,3 +262,10 @@ os-ai-introduction.ts=82a30a079252edd0a14a1b77570e5b52e570ac75bea0392913190262f1
 - 合入收尾的前置风险 P753-D1：当前 store 读取现有 runtime Specs 账本 HTTP 500；
   原数据未写入/删除。T-05 中投影/归档/cleanup 尚未完成，不能将报告解释成完整交付收据。
   复审将独立判断文档与 SD-01/02；若其通过，只能合入可验内容并保留 publication 阻塞。
+
+### Recovery receipt — 投影回填 + 归档 + 清理（2026-10-11）
+
+- ledger_refreshed（补完成）：经 README §5 手工回退路径（754/755 先例；同期 758 r2 收据证 store writer 仍拒达）upsert designs P753-1（ecosystem-readme.md 新契约目标，账本原无该文件条目）/ reviews P753-2 / reports P753-3；python 解析读回校验 ID 在册；原账本 sections 结构与无关条目保全。
+- archived：git mv → docs/plans/archive/753-ecosystem-readme-refresh.md，status: archived，T-05 勾选，current_step 5/5。
+- cleaned：wt-guard clean（auto-lang + auto-down 双仓）→ worktree 移除 → plan-753-dev 删除 → 组目录清理（详见下方回填行）。
+- P753-D1 更新：两计划投影阻塞已经回退路径清偿；store 本体加载失败（缺 document metadata）与写入器不可达仍开放为独立债务。
