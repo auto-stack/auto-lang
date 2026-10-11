@@ -1445,6 +1445,22 @@
      ],
      "status": "published",
      "created": "2026-10-12"
+    },
+    {
+     "id": "P766-Report",
+     "title": "PLAN-766 AutoMusk 两图交付与部署",
+     "file": "docs/plans/archive/766-automusk-website-real-captures.md",
+     "content": "用户原图 SHOT-04/05 接入双语共享位置；生产 release 20261012-38ef90ade、保留备份并验证；源/hash 与范围见 canonical Specs 和 p766 来源/验证清单。",
+     "related": [
+      "PLAN-766"
+     ],
+     "tags": [
+      "plan-766",
+      "reviewed-commit:730c33f1d7f5f68631abdff67085a5104d6e1116"
+     ],
+     "status": "published",
+     "created": "2026-10-12",
+     "last_modified": "2026-10-12"
     }
    ]
   },
@@ -5846,6 +5862,42 @@
      ],
      "status": "published",
      "created": "2026-10-12"
+    },
+    {
+     "id": "P766-1",
+     "title": "AutoMusk 网站实拍契约（PLAN-766 SD-01）",
+     "file": "docs/specs/website/design/application-introductions.md",
+     "content": "AutoMusk SHOT-04 会话主图共用双语首页/v0.5/应用总览/专题，SHOT-05 同一密码生成器 PLAN-001 计划页（0/5）。原始 2560×1600 PNG、原图链接与键盘放大保留；SHOT-06 待拍，截图运行身份未知，不冒领执行/复审或候选验收。",
+     "related": [
+      "PLAN-766"
+     ],
+     "tags": [
+      "website",
+      "plan-766",
+      "source-sha256:84cf49ed3db68f2f8b13a52c0d65d36fbcb71852dc32d246bc488233a24a1d38",
+      "commit:730c33f1d7f5f68631abdff67085a5104d6e1116"
+     ],
+     "status": "published",
+     "created": "2026-10-12",
+     "last_modified": "2026-10-12"
+    },
+    {
+     "id": "P766-2",
+     "title": "AutoMusk 网站实拍契约（PLAN-766 SD-02）",
+     "file": "docs/specs/website/project.md",
+     "content": "AutoMusk 两张用户原图已成为网站共享主图与计划页；来源/hash 见 docs/reports/p766-automusk-capture-catalog.json。现行态由对应 canonical 文件维护。",
+     "related": [
+      "PLAN-766"
+     ],
+     "tags": [
+      "website",
+      "plan-766",
+      "source-sha256:91d3b669bd979d86430c1f5ea0d531606faec4c3265018901989592e08647b04",
+      "commit:730c33f1d7f5f68631abdff67085a5104d6e1116"
+     ],
+     "status": "published",
+     "created": "2026-10-12",
+     "last_modified": "2026-10-12"
     }
    ]
   },
@@ -9339,6 +9391,22 @@
      ],
      "status": "published",
      "created": "2026-10-12"
+    },
+    {
+     "id": "P766-R",
+     "title": "PLAN-766 r2 AutoMusk 网站实拍复审",
+     "file": "docs/reports/p766-review.md",
+     "content": "AC-01/02/03 全通过：构建、23 本地检查、6 线上检查、原图/键盘放大与五宽度双主题；同会话证据重建，独立上下文限制已明示。",
+     "related": [
+      "PLAN-766"
+     ],
+     "tags": [
+      "plan-766",
+      "reviewed-commit:730c33f1d7f5f68631abdff67085a5104d6e1116"
+     ],
+     "status": "published",
+     "created": "2026-10-12",
+     "last_modified": "2026-10-12"
     }
    ]
   }
