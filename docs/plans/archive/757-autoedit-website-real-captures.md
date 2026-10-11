@@ -114,7 +114,7 @@ stage: merge | plan_id: PLAN-757 | plan_revision: 3 | outcome: pass | delivery_c
 | landed | 二次 rebase master（14 commits 纯 docs/plans 实证，网站面零变化）range-diff 6/6 全等（64f820cfd→bef72060c）；主检出 `--ff-only` 落地，master tip=bef72060c；两张 PNG create 入库；master 侧增量纯 docs 无需重建冒烟（分支构建 164.41s 在案） |
 | ledger_refreshed | §5 手工回退路径（753/754/755/756 先例）：P757-1/2（designs）+ P757-3（reviews）；website plans.md 757 行；INDEX 再生；读回校验随批 |
 | archived | git mv → docs/plans/archive/757-autoedit-website-real-captures.md，status: archived，delivered |
-| cleaned | 见下方回填 |
+| cleaned | 三仓 guard：auto-lang/auto-down clean；auto-edit 拦截 2 处项目自身依赖 junction（deps/bps、deps/stylekit，按闸门指引 rmdir 仅删链接）后 clean。auto-lang worktree 移除+prune（目录残留因 757 会话遗留 preview :4199/:4218 进程握句柄——识别创建时间 10-10 18:27/相对路径 cwd 实证后终止）→ rm -rf 清空；plan-757-dev 删除（was bef72060c，全量并入）；auto-down/auto-edit 经属主仓移除+prune（auto-edit 有拍摄会话未跟踪 scratch，证据已入本仓 docs/reports/p757-capture/ 后清除）；组目录 `.wt/lang-757/`（含 capture-session/exe/log 会话工件）rm -rf 移除；worktree inventory lang-757 零条目 |
 
 **落地≠部署观察项**：远端网站（112.74.45.241）未重建/部署本批素材（v0.5 收口 R-03/R-04 管辖）；零 Rust 改动，无二进制陈旧项。
 
