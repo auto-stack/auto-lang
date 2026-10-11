@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-765
 plan_revision: 2
-status: executing
+status: execution_done
 feature_name: VM 宿主活跃会话稳定专项（r1：空闲内存残留 + 原生层 exit(1)；r2：瞬态尖峰退出面，承接 musk PLAN-104 T-03 四轮矩阵定罪）
 author: [agent]
 created_at: 2026-10-11
@@ -10,7 +10,7 @@ supersedes_spec_components: []
 new_spec_components: ["docs/specs/auto-lang/ui/design/vm-host-stability.md"]
 touched_goals: [GOAL-007]
 affects: [auto-lang, a2r-std]
-current_step: 4
+current_step: 7
 total_steps: 7
 ---
 
@@ -225,19 +225,88 @@ T-04 交叉复验：musk soak 仪器 GREEN 重跑（斜率+1h 零退）+ 本仓�
   ×60,报值实为 MB/hour——基线"30-72MB/min"实为 0.5-1.2MB/hour;修法
   一行,移交 musk PLAN-104)。三份归因纪要+规约草稿
   vm-host-stability.md 随 worktree commit 入库。]
-- [ ] T-05 r2 归因（瞬态尖峰退出）：补观测复现——musk `bigpage-matrix.mjs`
+- [x] T-05 r2 归因（瞬态尖峰退出）：补观测复现——musk `bigpage-matrix.mjs`
   两形态重跑,VM spawn env 注入 AUTO_DESKTOP_EXIT_LOG（r1 审计钩四轮里
   未开启）+ WER/Event Log 检索 + 精确退出码采集；依痕定位根因（候选：
   未挂钩的进程内 exit 路径 / 大分配触发的原生崩溃臂 / burst 分发链上的
   消息桥错误臂 / 外部终止假象残留）。产出 r2 归因纪要增补（调用点/
   触发条件/防护落点冻结）。依赖：无（r1 已交付）。验证：V05。关联：AC-4。
-- [ ] T-06 r2 根修：依 T-05 定谳落地防护（错误臂可审计化/分配尖峰根因
+  [✅ 已完成 2026-10-12：**定谳=矩阵仪器 finally-taskkill 假象,非产品缺陷**
+  （纪要后记⑦全链证据）。关键发现链：①审计册有默认落点
+  %LOCALAPPDATA%/auto-desktop/exit-audit.log（musk 四轮未设 env 也应有痕）
+  ——该册四轮时段零条目 ⇒ panic/main_err/native_crash(F-9)/vm_process_exit/
+  mem_guard 五面未命中；②WER 零记录（10-12 00:36 WER 簇=10-11 12:03 BSOD
+  延迟重报,机器未重启）⇒ 非原生崩溃；③复跑两轮+判别台四臂（snap 只快照
+  180s 存活/click 捕获错误继续观察 185s 存活/burst 合成入 VM 生命期 5s+
+  列表轮询叠加窗 181s 存活/nosnap）——两种"尖峰载荷"形态 VM 全程存活；
+  ④机制：仪器 try/finally 无 catch,click isError（本构建要求 value:"x,y"
+  的已知怪癖）抛错 → finally killTree（taskkill /F 恰码 1）→ "VM EXITED
+  code=1" 先于错误栈打印（node ESM finally-先于-rejection 顺序,微实验
+  钉死）；idle=51（500ms/拍×25.5s）与 click 时刻精确吻合。与 r1 soak
+  假象/musk K14 构成三例同族——本机"负载相关静默必退"呈报至今零例
+  进程内真实退出。附带真发现：观测缺口——依赖直调 ExitProcess(1) 零痕
+  （与外部击杀不可区分）。]
+- [x] T-06 r2 根修：依 T-05 定谳落地防护（错误臂可审计化/分配尖峰根因
   消除/退出路径收敛）+ 单测。依赖：T-05。验证：V06。关联：AC-4。
-- [ ] T-07 r2 复验与解阻：musk 矩阵一键复跑（两形态零退出）+ 本仓门禁
+  [✅ 已完成 2026-10-12：产品面零缺陷（无需防护修复）；根修=观测缺口闭合
+  **F-10 ExitProcess IAT 追踪钩**（stdlib.rs,run_session 装配,env
+  P765_EXIT_TRACE=1 门控）——自身模块 IAT 槽替换 ExitProcess/
+  TerminateProcess,落调用栈偏移（release 配 line-tables 可符号化）后
+  确定性自终止（TerminateProcess(自身),避开 LdrShutdownProcess detach
+  竞态——cdb 实证转调真 ExitProcess 会间歇 0xC0000005 于 CRT onexit
+  free,基线 30/0 不可复现=本钩审计 I/O 扰动开窗;自终止版 50/50 零异常,
+  退出码精确保持）。规约四分法表增补 exitproc_trace 行 + 外部击杀假象
+  高发警示。单测:p765_iat 探针对（审计行含 frames 偏移 + 退出码 9 保持,
+  子进程模式）。PE 解析防御性（SizeOfImage 界内校验/无 INT 描述子跳过/
+  GetProcAddress 动态解析回退）。]
+- [x] T-07 r2 复验与解阻：musk 矩阵一键复跑（两形态零退出）+ 本仓门禁
   （裸 cargo t + 触面档）+ musk PLAN-104 T-03 解阻交接。依赖：T-06。
   验证：V05～V07。关联：AC-4, AC-5。
+  [✅ 已完成 2026-10-12：**V05/V07**=两形态零退出由判别台闭（snap 180s/
+  burst 181s/click 185s 全存活,三臂 IAT 钩开启且审计册零行=全程零进程内
+  exit;末尾 code=1 均为判别台自身收尾击杀,符合 F-10 外部击杀文档化边界）
+  ——musk 侧正式复跑待其仪器修复（纪要后记⑦交接节：click 补 value +
+  收尾击杀标记区分,两行修）后一键执行,解阻材料齐备。**V06**=exit_audit
+  9/9（含 p765_iat 双测）+ plan765 9/9 + plan707/musk_vm_track 135/135 +
+  全量 5256/5258（2 红均环境项双证:ffi_dual_019 在 t05 目录基线 stash
+  复现红+规范目录今晨绿;clipboard_files_set_get_roundtrip 隔离绿=剪贴板
+  机器独占资源并发 flake;规范 target 目录因本会话僵尸镜像句柄锁定,门禁
+  在 CARGO_TARGET_DIR=target-t05 出,会话收尾自动解锁）。musk T-03 解阻
+  交接=纪要后记⑦"musk T-03 解阻交接"节（含仪器修复方案与结案陈词
+  支撑链）。]
 
 ## 9. 复审记录
+
+### work 阶段交接（PLAN-765:r2，2026-10-12）
+
+- stage: work ｜ plan_id: PLAN-765 ｜ plan_revision: 2 ｜ outcome: **pass**
+  （T-05/T-06/T-07 全勾,可入 review）
+- code_commit: worktree `D:/autostack/.wt/lang-765/auto-lang` branch
+  `plan-765-dev`（基面 b58bf1835=master）——5c3a9b5f0（F-10 IAT 追踪钩 +
+  归因纪要后记⑦ + 规约四分法增补,4 文件 +455/-1）。依赖只读兄弟：
+  `.wt/lang-765/auto-down` @895f8d0（detached）。
+- task_ids: T-05/T-06/T-07 全勾 ｜ evidence: 纪要后记⑦（三通道零痕核查/
+  五臂判别台/node ESM 微实验/cdb detach 竞态取证）;exit_audit 9/9（含
+  p765_iat 双测）+ IAT 子进程 50/50 压测 + plan765 9/9 + plan707/
+  musk_vm_track 135/135;全量 5256/5258（CARGO_TARGET_DIR=target-t05,
+  2 红均环境项双证：ffi_dual_019 t05 基线复现红+规范目录绿、clipboard
+  隔离绿剪贴板并发 flake）;探针产物在 worktree tmp/（临时,关键结论已
+  全文录入纪要）。
+- **r2 核心定谳**：musk 呈报的"瞬态尖峰退出面"（burst 分发/大快照两形态
+  原生 exit(1)）= **bigpage-matrix 仪器 finally-taskkill 假象**（click
+  isError → 无 catch 抛错 → 收尾击杀,"VM EXITED code=1" 先于错误栈打印
+  被误读为进程自退）——与 r1 soak 假象、musk K14 三例同族;本机"负载
+  相关静默必退"呈报至今零例进程内真实退出。两形态载荷（309-573KB 快照
+  ×20+/350 条 5s 爆发+列表轮询叠加）实测 VM 全程存活、审计册零行。
+- **r2 交付**：F-10 ExitProcess IAT 追踪钩（env P765_EXIT_TRACE=1 门控,
+  常驻诊断件）——闭合"依赖直调 ExitProcess 零痕"观测缺口（r1 四分法
+  的盲区）,确定性自终止设计（避开 LdrShutdownProcess detach 竞态,cdb
+  实证 + 50/50 压测）。
+- blockers: 无阻断。移交 musk PLAN-104（其 T-03 收口动作,纪要后记⑦交接
+  节）：①bigpage-matrix.mjs click 补 `value:"x,y"`;②收尾击杀与真实死亡
+  区分（finally 前置 cleaningUp 标记）——修后一键复跑闭 T-03。
+- next: review（`/auto-plan:review`）。spec 增量=既有 vm-host-stability.md
+  原地扩展（四分法表 + 假象警示）,new_spec_components 无新增文件。
 
 ### r2 再激活（PLAN-765:r2，2026-10-12）
 

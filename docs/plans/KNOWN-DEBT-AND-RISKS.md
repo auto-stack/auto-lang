@@ -460,4 +460,5 @@ schema 三围栏（REG-4 四表清偿）/ ash_stream_leak_probe（门禁分层�
 | 编号 | 优先级 | 域 | 描述 | 锚点 |
 |---|---|---|---|---|
 | P765-D1 | low | VM 宿主内存 | idle 相位 ~1MB/min 线性缓漏未归因（1h 实测 +59.3MB/59.7min,AC-1 门 0.1MB/s 的 6× 余量内,线性不平台）。候选=每响应仍余 3 份全文瞬态(body/转义缓冲/VM Value+池)×2 拍/s 的堆记账漂移、消息批全窗重绘路径。后续杠杆:载荷池化复用/`unconditional-rendering` feature 退役评估(PLAN-708 基线启用项)。判定阈值:长寿实例(≥12h)私有内存超 ~1.2GB 再升级优先级 | docs/reports/765-t01-attribution-memos.md 后记⑥;soak tmp/soak-p765-1h.json(musk worktree,临时) |
-| P765-D2 | info | 跨仓仪器 | musk soak 仪器 `slopeMBPerMin` 单位 bug(样本 t 已为分钟再 ×60,报值实为 MB/hour;基线"30-72MB/min"实为 0.5-1.2MB/hour)——一行修(删 `* 60`),移交 musk PLAN-104 收口径时一并修;musk AC-01 需按真值重判 | docs/reports/765-t01-attribution-memos.md 后记⑤ |
+| P765-D2 | info | 跨仓仪器 | ~~musk soak 仪器 slopeMBPerMin 单位 bug~~ **已修(musk plan-104-dev 9794aa1/0e06161,2026-10-12 核验)**;AC-01 已按真值重判 pass(idle 0.717MB/min 对门 8.4× 余量) | docs/reports/765-t01-attribution-memos.md 后记⑤;musk 104 evidence §T-03 |
+| P765-D3 | info | 跨仓仪器 | bigpage-matrix.mjs 收尾击杀假象(try/finally 无 catch:click isError 抛错→finally taskkill→"VM EXITED code=1" 先于错误栈打印,被误读为进程自退;musk T-03 因此曾 blocked on 765-R2)。**765-R2 已定谳为假象非产品缺陷**(纪要后记⑦);修复归 musk 侧(click 补 value+收尾击杀标记,两行修,交接文案在案) | docs/reports/765-t01-attribution-memos.md 后记⑦ |
