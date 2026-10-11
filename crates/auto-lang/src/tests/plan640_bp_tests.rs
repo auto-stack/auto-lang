@@ -61,6 +61,9 @@ fn repo_root() -> PathBuf {
 /// extension_points/acceptance non-empty).
 #[test]
 fn t01_tier0_catalog_scans_with_full_contracts() {
+    // with_defaults() 读 AUTO_BLUEPRINTS_ROOT,须与 root_resolution 的 setter
+    // 窗口互斥(bare cargo test 单进程面)。
+    let _bp_ser = crate::ui_gen::bp::registry::lock_blueprints_root_for_test();
     let reg = BlueprintRegistry::with_defaults();
     for key in TIER0_KEYS {
         let (kind, name) = key.split_once('/').unwrap();
