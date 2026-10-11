@@ -5314,6 +5314,37 @@ impl AuraSchema {
             },
         );
 
+        // PLAN-760: 宿主侧远程帧消费 leaf——bridge WS 端点订阅 DisplayList v2,
+        // iced 渲染臂直绘(注册表最新帧),帧不进 VM 状态;web 臂 = 透传 div
+        // 占位(data-remote-frame 标记,宿主前端接管)。
+        elements.insert(
+            "remote-frame",
+            ElementDef {
+                tag: "remote-frame",
+                category: ElementCategory::Display,
+                props: vec![
+                    PropDef {
+                        name: "url",
+                        type_: PropType::String,
+                        required: false,
+                        default: None,
+                        description:
+                            "Bridge WS endpoint (ws://127.0.0.1:port/?token=...); change = drop old connection, dial new",
+                    },
+                    PropDef {
+                        name: "class",
+                        type_: PropType::Union(vec![PropType::String, PropType::StyleBinding]),
+                        required: false,
+                        default: None,
+                        description: "Chrome classes (w-/h- define the frame fit box)",
+                    },
+                ],
+                allows_children: false,
+                description:
+                    "Host-side remote frame consumer (PLAN-760): subscribes DisplayList v2 frames from a desktop-protocol bridge (rqhost --bridge-ws) and renders them via the iced canvas element; local pointer/char input is forwarded as protocol InputMsg. Host data leaf - frames never flow through VM state. Web arm = passthrough div placeholder (data-remote-frame marker; host frontend adopts).",
+            },
+        );
+
         elements.insert(
             "menubar_content",
             ElementDef {

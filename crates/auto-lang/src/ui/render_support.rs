@@ -115,6 +115,9 @@ fn get_support_details(tag: &str) -> TagSupport {
         // PLAN-012 W3: workspace_preview —— iced 渲染臂(宿主合成 tile 直绘),
         // Full(P6-3 同 window_thumbnail)。
         "workspace_preview" => TagSupport::full(),
+        // PLAN-760: remote-frame —— iced 渲染臂(注册表最新 DisplayList →
+        // displaylist_element + mouse_area 输入包装),Full(P6-3 同上)。
+        "remote-frame" => TagSupport::full(),
         "center" => TagSupport::full(),
         "container" | "div" => TagSupport::full(),
 

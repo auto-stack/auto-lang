@@ -1115,6 +1115,20 @@ pub enum View<M: Clone + Debug> {
         style: Option<Style>,
     },
 
+    /// PLAN-760: host-side remote frame consumer leaf — subscribes
+    /// DisplayList v2 frames from a desktop-protocol bridge (rqhost
+    /// `--bridge-ws`) over the `url` WS endpoint and renders them via the
+    /// iced canvas element; local pointer/char input is forwarded as
+    /// protocol `InputMsg`. Host data leaf (`WindowThumbnail` family):
+    /// frames never flow through VM state — the iced render arm reads the
+    /// process-level `remote_frame_registry` latest-frame slot directly.
+    /// url change = drop old client, dial new (identity is the url string).
+    /// **convert_view_messages 显式臂随行**——PLAN-002 A1 教训。
+    RemoteFrame {
+        url: String,
+        style: Option<Style>,
+    },
+
     /// CSS-Grid-like layout: `cols` equal-width columns. Decomposed into a
     /// column-of-rows at render time by the shared generic `build_grid`
     /// (Plan 319). This is the SINGLE source of truth for grid
@@ -2895,6 +2909,9 @@ impl<M: Clone + Debug> View<M> {
                 fallback_icon,
                 style,
             },
+            // PLAN-760：宿主数据叶透传（无消息回调——输入走渲染臂注册表
+            // 直发，不经 View 消息面）。
+            View::RemoteFrame { url, style } => View::RemoteFrame { url, style },
             // on_seek 是「值 → 消息」的构造器，map 只换消息类型，故按同一
             // 回调重建（PointerMoveHandler 的闭包对 M 泛型，需包一层）。
             View::ProgressBar {

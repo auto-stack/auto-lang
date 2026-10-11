@@ -647,6 +647,15 @@ impl SnapshotBuilder {
                 children: vec![],
             },
 
+            // PLAN-760: 远程帧消费(宿主数据资产;检视面披露 url)。
+            View::RemoteFrame { url, .. } => UiNode {
+                id,
+                kind: "RemoteFrame".to_string(),
+                props: vec![("url".to_string(), url.clone())],
+                actions: vec![],
+                children: vec![],
+            },
+
             View::Row {
                 children,
                 spacing,

@@ -7224,6 +7224,24 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
+            // PLAN-760: 宿主侧远程帧消费 leaf 渲染。T-02 阶段 = 灰底
+            // 占位（无帧形态的稳定中间态）；T-03 接 remote_frame_registry
+            // 最新 DisplayList → displaylist_element + mouse_area 输入包装。
+            AbstractView::RemoteFrame { url: _, style: _ } => {
+                iced::widget::container(
+                    iced::widget::text("connecting…").size(12),
+                )
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .center(iced::Length::Fill)
+                .style(|_theme| iced::widget::container::Style {
+                    background: Some(iced::Background::Color(iced::Color::from_rgb(
+                        0.12, 0.12, 0.14,
+                    ))),
+                    ..Default::default()
+                })
+                .into()
+            }
             // PLAN-012 W3：整桌面等比预览渲染臂——宿主合成（SD-02）。
             // 分层 = 壁纸基色底（#hex 直铺 / None → 主色占位）→ 该分区
             // 逐窗 snapshot tile（Contain 等比贴盒居中；SWR 续帧 + miss
@@ -9454,6 +9472,10 @@ fn convert_view_messages(view: AbstractView<DynamicMessage>) -> AbstractView<Ice
             fallback_icon,
             style,
         },
+
+        // PLAN-760：宿主数据叶透传臂——显式（A1 fence 同坑防线；无消息
+        // 回调，输入经渲染臂注册表直发不经 View 消息面）。
+        AbstractView::RemoteFrame { url, style } => AbstractView::RemoteFrame { url, style },
 
         // OS-013 T3: terminal 显式臂——PLAN-009 P1 只接了 at-gen 直渲染
         // (Component → into_iced)与检视占位,VM 动态应用经本转换落
@@ -29112,6 +29134,7 @@ fn extract_view_style<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> Opt
         AbstractView::ImageSurface { style, .. } => style.as_ref(),
         AbstractView::WindowThumbnail { style, .. } => style.as_ref(),
         AbstractView::WorkspacePreview { style, .. } => style.as_ref(),
+        AbstractView::RemoteFrame { style, .. } => style.as_ref(),
         AbstractView::Radio { style, .. } => style.as_ref(),
         AbstractView::Select { style, .. } => style.as_ref(),
         AbstractView::Tabs { style, .. } => style.as_ref(),
@@ -29223,6 +29246,7 @@ fn view_kind<M: Clone + std::fmt::Debug>(view: &AbstractView<M>) -> &'static str
         AbstractView::ImageSurface { .. } => "image_surface",
         AbstractView::WindowThumbnail { .. } => "window_thumbnail",
         AbstractView::WorkspacePreview { .. } => "workspace_preview",
+        AbstractView::RemoteFrame { .. } => "remote-frame",
         AbstractView::Radio { .. } => "radio",
         AbstractView::Select { .. } => "select",
         AbstractView::Tabs { .. } => "tabs",

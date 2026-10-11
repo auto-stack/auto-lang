@@ -856,6 +856,30 @@ pub fn default_schema_cached() -> Option<&'static AuraSchema> {
 mod tests {
     use super::*;
 
+    /// PLAN-760 T-02：remote-frame 元件 schema 登记——aura.at 声明可加载，
+    /// url/class props 在册、allows_children false、backends 双轨
+    ///（web component / iced full——与 render_support 静态臂一致）。
+    #[test]
+    fn remote_frame_element_registered() {
+        let schema = load_default_schema().expect("Failed to load schema");
+        let el = schema.get_element("remote-frame").expect("remote-frame element");
+        assert!(
+            el.get_prop("url").is_some(),
+            "url prop 应在册（bridge WS 端点）"
+        );
+        assert!(
+            el.get_prop("class").is_some(),
+            "class 泛化 prop 应在册"
+        );
+        assert!(!el.allows_children, "remote-frame 为无子 leaf");
+        let meta = schema
+            .meta
+            .get("remote-frame")
+            .expect("remote-frame meta（backends/vue 行）");
+        assert_eq!(meta.backends.iced, "full", "iced 轨 full（渲染臂直绘）");
+        assert_eq!(meta.backends.web, "component", "web 轨 component（div 透传）");
+    }
+
     #[test]
     fn test_load_schema() {
         let schema = load_default_schema().expect("Failed to load schema");

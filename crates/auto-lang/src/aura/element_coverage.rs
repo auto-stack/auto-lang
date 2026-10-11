@@ -397,6 +397,10 @@ pub fn element_table() -> &'static [(&'static str, QueueStatus)] {
         ("radioitem", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("range", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("range_calendar", QueueStatus::NotYet("长尾——按需升格（登记即过，未登记即红）")),
+        // PLAN-760：宿主侧远程帧消费面——iced 渲染臂直接消费注册表最新
+        // DisplayList（displaylist_element），帧不进 VM 状态、不经 queue
+        // 投影器；queue 臂不消费（同 window_thumbnail 宿主数据叶先例）。
+        ("remote-frame", QueueStatus::NotYet("宿主数据叶——remote_frame_registry 最新帧直绘（PLAN-760），queue 投影臂不消费")),
         ("rect", QueueStatus::NotYet("chart/diagram SVG/canvas 独立渲染面（499 已对表：canvas/svgdoc 自有管线）——queue 臂永久 not-yet（T7 裁定）")),
         ("resizable", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),
         ("resizable_handle", QueueStatus::NotConsumed("shadcn web 长尾——queue 臂不消费，升格需显式登记")),

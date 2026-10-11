@@ -592,6 +592,15 @@ where
                 selectable: false,
             },
         ),
+
+        // PLAN-760: 远程帧同宿主资产文本占位（帧在宿主注册表）。
+        View::RemoteFrame { .. } => (
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "[RemoteFrame]".to_string(),
+                selectable: false,
+            },
+        ),
     }
 }
 

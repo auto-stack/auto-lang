@@ -2598,6 +2598,11 @@ impl<'a> AuraViewBuilder<'a> {
             // PLAN-012 W3: 整桌面等比预览 leaf（tracked/untracked 双臂镜像，
             // window_thumbnail 同款 D-GAP 纪律；SD-02 DSL 合同面）。
             "workspace_preview" => self.convert_workspace_preview(props, bindings),
+            // PLAN-760: 宿主侧远程帧消费 leaf（tracked/untracked 双臂镜像，
+            // window_thumbnail 同款 D-GAP 纪律；url 即身份）。
+            "remote-frame" | "remote_frame" | "remoteframe" => {
+                self.convert_remote_frame(props, bindings)
+            }
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style。scroll → 可滚动 column;其余 → container。
             "scroll" | "scrollable" => self
@@ -4724,6 +4729,11 @@ impl<'a> AuraViewBuilder<'a> {
             // PLAN-012 W3: 整桌面等比预览 leaf（tracked/untracked 双臂镜像，
             // window_thumbnail 同款 D-GAP 纪律；SD-02 DSL 合同面）。
             "workspace_preview" => self.convert_workspace_preview(props, bindings),
+            // PLAN-760: 宿主侧远程帧消费 leaf（tracked/untracked 双臂镜像，
+            // window_thumbnail 同款 D-GAP 纪律；url 即身份）。
+            "remote-frame" | "remote_frame" | "remoteframe" => {
+                self.convert_remote_frame(props, bindings)
+            }
 
             // Command palette preview components are also web imports. Give
             // the gallery's static sample VM-native controls before placeholder
@@ -9140,6 +9150,22 @@ impl<'a> AuraViewBuilder<'a> {
             fallback_icon,
             style,
         }
+    }
+
+    /// PLAN-760：宿主侧远程帧消费 leaf（window_thumbnail 同型——宿主数据
+    /// 面 `iced::remote_frame_registry`，帧不进 VM 状态）。props: url（bridge
+    /// WS 端点，url 即身份）；class/style 经 extract_style_with 统一入
+    /// Style（Chrome classes 同 window_thumbnail 先例）。
+    fn convert_remote_frame(
+        &self,
+        props: &HashMap<String, AuraPropValue>,
+        bindings: &Bindings,
+    ) -> View<DynamicMessage> {
+        let url = self
+            .extract_string_with(props, "url", bindings)
+            .unwrap_or_default();
+        let style = self.extract_style_with(props, bindings);
+        View::RemoteFrame { url, style }
     }
 
     fn convert_image_or_icon(
@@ -16556,6 +16582,46 @@ mod tests {
         ));
         let comments_only = mk(vec![Stmt::Comment("a".into()), Stmt::EmptyLine(2)]);
         assert!(first_meaningful_stmt(&comments_only).is_none());
+    }
+
+    /// PLAN-760 T-02：remote-frame 宿主数据 leaf——untracked/tracked 双路径
+    /// 分派 + props 直通（url 字面量、class→Style）+ 别名归一。
+    #[test]
+    fn remote_frame_leaf_dispatch_both_paths() {
+        let widget = make_test_widget("App", vec![]);
+        let bridge = VmBridge::new(&widget).unwrap();
+        let builder = AuraViewBuilder::new(&bridge, "App");
+        let mk = |tag: &str| {
+            AuraNode::element(tag)
+                .with_prop("url", Expr::Str("ws://127.0.0.1:17800/?token=t".into()))
+                .with_prop("class", Expr::Str("w-full h-full".into()))
+        };
+        let bindings = Bindings::new();
+
+        let check = |v: &View<DynamicMessage>| match v {
+            View::RemoteFrame { url, style } => {
+                assert_eq!(url, "ws://127.0.0.1:17800/?token=t");
+                assert!(style.is_some(), "class w-full h-full 应入 Style");
+            }
+            _ => panic!("期望 View::RemoteFrame（tag 分派未命中 remote-frame 臂）"),
+        };
+
+        // untracked 路径（convert_node_with → convert_element）。
+        check(&builder.convert_node_with(&mk("remote-frame"), &bindings));
+        // tracked 路径（convert_node_tracked_ctx → convert_element_tracked_ctx）。
+        let mut path = Vec::new();
+        let mut id_map = crate::ui::debug_id_map::DebugIdMap::default();
+        let mut probe = crate::ui::debug::BuildProbe::default();
+        check(&builder.convert_node_tracked_ctx(
+            &mk("remote-frame"),
+            &mut path,
+            &mut id_map,
+            &mut probe,
+            &bindings,
+        ));
+        // 别名形态归一（remote_frame / remoteframe 同臂）。
+        check(&builder.convert_node_with(&mk("remote_frame"), &bindings));
+        check(&builder.convert_node_with(&mk("remoteframe"), &bindings));
     }
 
     /// Helper: create a minimal AuraWidget for testing.

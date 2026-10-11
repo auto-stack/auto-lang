@@ -703,6 +703,7 @@ pub fn native_kind_of<M: Clone + std::fmt::Debug>(view: &crate::ui::view::View<M
         View::Video { .. } => "video",
         View::WindowThumbnail { .. } => "windowthumbnail",
         View::WorkspacePreview { .. } => "workspacepreview",
+        View::RemoteFrame { .. } => "remoteframe",
         View::Grid { .. } => "grid",
         View::Overlay { .. } => "overlay",
         View::Popover { .. } => "popover",
@@ -756,6 +757,7 @@ fn scan_native_node<M: Clone + std::fmt::Debug>(
         | View::Video { style, .. }
         | View::WindowThumbnail { style, .. }
         | View::WorkspacePreview { style, .. }
+        | View::RemoteFrame { style, .. }
         | View::Grid { style, .. }
         | View::MouseArea { style, .. }
         | View::Canvas { style, .. }

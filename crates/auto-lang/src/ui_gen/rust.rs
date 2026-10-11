@@ -5423,6 +5423,37 @@ impl RustGenerator {
                     );
                 }
 
+                // PLAN-760: 宿主侧远程帧消费 leaf codegen（window_thumbnail
+                // 同族直发既有 View 变体；解释侧同构 = aura_view_builder
+                // convert_remote_frame）。url 字面量或动态表达式；无
+                // fallback prop；style 直传（None = 缺省）。
+                if tag == "remote-frame" || tag == "remote_frame" || tag == "remoteframe" {
+                    let url_expr = match props.get("url") {
+                        Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
+                            format!("\"{s}\".to_string()")
+                        }
+                        Some(AuraPropValue::Expr(e)) => {
+                            let e = self.ast_expr_to_rust(e);
+                            if e.starts_with("self.") {
+                                format!("{e}.clone()")
+                            } else {
+                                e
+                            }
+                        }
+                        _ => "String::new()".to_string(),
+                    };
+                    let user_style = user_style_str(props);
+                    let style_expr = if user_style.is_empty() {
+                        "None".to_string()
+                    } else {
+                        format!(
+                            "auto_lang::ui::style::Style::parse(\"{}\").ok()",
+                            user_style
+                        )
+                    };
+                    return format!("View::RemoteFrame {{ url: {url_expr}, style: {style_expr} }}");
+                }
+
                 // icon → View::image("lucide:{name}")（VM 同型：PLAN-018
                 // 前缀 iconfile:/hicon:/lucide: 透传，裸名补 lucide:）；
                 // 尺寸契约 = 显式 w-/h- 类 > size prop（精确 px，任意值

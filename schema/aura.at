@@ -1650,6 +1650,21 @@ element workspace_preview {
     description: "Whole-desktop proportional preview (host-composited tiles, PLAN-012 W3)"
 }
 
+element remote-frame {
+    tag: "remote-frame"
+    category: "display"
+    tier: "builtin_widget"
+    aliases: ["remoteframe", "remote_frame"]
+    backends: { web: "component", iced: "full", gpui: "unknown" }
+    vue: { component: "div" }
+    props: [
+        { name: "url", type: "string", description: "Bridge WS endpoint (ws://127.0.0.1:port/?token=...); change = drop old connection, dial new" }
+        { name: "class", type: "union:string,class_binding", description: "Chrome classes (w-/h- define the frame fit box)" }
+    ]
+    allows_children: false
+    description: "Host-side remote frame consumer (PLAN-760): subscribes DisplayList v2 frames from a desktop-protocol bridge (rqhost --bridge-ws) and renders them via the iced canvas element; local pointer/char input is forwarded as protocol InputMsg. Host data leaf - frames never flow through VM state. Web arm = passthrough div placeholder (data-remote-frame marker; host frontend adopts)."
+}
+
 
 // ============ tier: native_html ============
 
