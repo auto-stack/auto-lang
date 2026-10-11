@@ -298,8 +298,11 @@ T-04 交叉复验：musk soak 仪器 GREEN 重跑（斜率+1h 零退）+ 本仓�
 - **archived**：`git mv` → `docs/plans/archive/765-vm-host-active-session-
   stability.md`,status: archived,completion_kind: delivered（r2 终态;
   r1 收据在册同文件）。
-- **cleaned**：待执行（wt-guard 两 worktree → 移除 lang-765 组）——完成后
-  本行更新。
+- **cleaned**：wt-guard 双 clean → 两 worktree 已注销（git worktree list 零
+  lang-765 项）+ 分支 plan-765-dev 已删（尖端=10b9485ad 已落地）+ 组内内容
+  已清。**残余项**：组目录壳 `.wt/lang-765/` 因本会话早前被杀后台任务的
+  僵尸测试进程镜像句柄暂处 busy（文件内容已删,目录待句柄释放后 rmdir,
+  会话收尾自解;与 F-765-R5 同源）。无任何代码/元数据残留风险。
 - **制品面**：主检出 release auto.exe 重建（见下）——生产消费面=musk 侧
   VM 宿主/代码生成门禁二进制;web bundle 无涉（r2 零 website/vue 改动）。
 - **批量回归到期判定**：765 % 5 == 0 且 r2 代码落地晚于收据
