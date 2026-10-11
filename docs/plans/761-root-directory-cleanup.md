@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-761
-status: drafting
+status: execution_done
 feature_name: root-directory-cleanup
 author: [Codex]
 created_at: 2026-10-11
 updated_at: 2026-10-11
-plan_revision: 1
-current_step: 0
-total_steps: 4
-supersedes_spec_components: [docs/specs/overview.md]
+plan_revision: 2
+current_step: 3
+total_steps: 3
+supersedes_spec_components: [docs/specs/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/plans.md, docs/specs/auto-lang/trans/overview.md, docs/specs/auto-lang/trans/design/test-convention.md, docs/specs/stdlib/design/http-service-deployment.md]
 new_spec_components: [docs/specs/design/repository-layout.md, docs/specs/plans.md]
 touched_goals: [GOAL-016, GOAL-018]
 affects: [repository-layout]
@@ -56,6 +56,7 @@ Git worktree、Python/PowerShell 路径与资产核查、Rust check/nextest、Au
 | SD-01 | modify | docs/specs/overview.md | test/tests、tools/deploy 分散 → test/scripts 单入口 | 地图与代码一致 | AC-01,AC-03 |
 | SD-02 | add | docs/specs/design/repository-layout.md | 已交付路径、本地配置、证据保存规则 | 持久维护约束 | AC-02,AC-03,AC-04 |
 | SD-03 | add | docs/specs/plans.md | 根级布局索引 | 可追溯 | AC-04 |
+| SD-04 | modify | docs/specs/auto-lang/{ui/overview.md,ui/plans.md,trans/overview.md,trans/design/test-convention.md}, docs/specs/stdlib/design/http-service-deployment.md | 实际工具/runner/部署路径 → 新位置；保持语义 | 当前入口可执行 | AC-03 |
 
 ## 6. 测试设计
 
@@ -70,10 +71,10 @@ Git worktree、Python/PowerShell 路径与资产核查、Rust check/nextest、Au
 
 ## 8. 执行步骤
 
-- [ ] T-01（AC-01/02）：lang-761 worktree 清理/搬迁/ignore/共享技能；记录映射和哈希。
-- [ ] T-02（依赖T-01；AC-03）：修 Rust Plan446 定位、MJS/tools 目录计算、runner/部署说明/安全文档；语法与无副作用验证。
-- [ ] T-03（依赖T-02；AC-01/02/03）：check/t/tv、实际夹具加载、资产/根树复核；提交实现，同会话独立复审角色从工件重建证据并记录限制。
-- [ ] T-04（依赖T-03；AC-04）：canonical Specs/索引/派生账本、线性合入、归档、guard 清理及批量回归到期判定。
+- [x] T-01（AC-01/02）：lang-761 worktree 清理/搬迁/ignore/共享技能；记录映射和哈希。
+- [x] T-02（依赖T-01；AC-03）：修 Rust Plan446 定位、MJS/tools 目录计算、runner/部署说明/安全文档；语法与无副作用验证。
+- [x] T-03（依赖T-02；AC-01/02/03）：check/t/tv、实际夹具加载、资产/根树复核；提交实现，同会话独立复审角色从工件重建证据并记录限制。
+流程收尾 M-01（复审之后；AC-04）：canonical Specs/派生账本、线性合入、归档、guard 清理及批量回归到期判定；属于 merge 生命周期，最终在合入收据核对，不计实现任务。
 
 ## 9. 复审记录
 
@@ -82,3 +83,17 @@ Git worktree、Python/PowerShell 路径与资产核查、Rust check/nextest、Au
 ## 10. 待澄清事项
 
 无。Node 锁统一为条件性选项，本次保持三个根入口。账本接口可达性实施中核查；不可达时准确保留待办，不伪造成功。
+
+
+### work 进展（2026-10-11）
+
+- worktree D:/autostack/.wt/lang-761/auto-lang，branch plan-761-dev，base b25729f5a；只读兄弟 auto-down@895f8d0。实现提交 28ddc73b1。
+- T-01/T-02：64 资产搬迁；44 原字节、20 路径/安全说明调整；Git tree 30 项；截图/风险台账保持字节一致。映射 docs/reports/root-layout-761.json。Python/Node/Bash/PowerShell 语法、5 MCP --check、Vue bps 和代理 fixture 路径解析、Tailwind 再生8861类金样相等、fstr dry-run/截图差分工具 smoke、native-fixture cargo check 均通过。
+- auto debug CLI 使用新 test/auto/field_access.at，7/7通过（0.051s）。cargo check -p auto-lang通过，406存量告警；native-fixture 1存量 unnecessary unsafe 告警。未新增 Rust声明/逻辑，仅 fixture 路径及注释变化。
+- 首轮 cargo t：CARGO_TARGET_DIR 环境设置被嵌套oracle构建继承，5测产物落共享目录导致预期原路径缺失；已移除环境覆盖，改外层 cargo --config build.target-dir 后 --no-fail-fast 重跑，属于验证环境纠正。
+- 账本：现有825条六段旧版兼容JSON（无project/version/section_type），隔离 musk store GET /api/specs 返回500。未发送写入请求，未更改现有账本；已停自建隔离服务。依用户提供AGENTS §4及本仓docs/specs/README §5的手工回退/兼容upsert要求执行最小投影，保留旧schema和全部无关条目，禁止为本计划迁整个账本。此repo约定覆盖通用技能的store-only格式假设，合入收据记录逐项完整性验证。
+
+- r2 合同澄清：将原T-04从实现任务中拆为后置M-01合入生命周期，避免复审/合入循环；目标、验收、全部收尾要求保持，沿用户原授权执行；补齐SD-04实际canonical路径触面。
+- stage: work | PLAN-761:r2 | outcome: pass | code_commit: a48cd5b5336d7bcc4f33c7e4f08328c558acf88c | T-01/02/03 complete | next: review。
+- 最终日常档：5243 run，5242pass/1known flake/1541skipped，107.061s；Plan484 isolated两次1/1pass。tv 162/162pass，2.135s。Plan446 explicit ignored跑出Init歧义（非SKIP）；原b25729导出的22文件重放同错误，证实历史语料兼容问题；7用例Auto字段测试通过。
+- 额外CLI runner尝试暴露filter只过滤报告，不能作为通过证据；VM整族30s超时停止，未改变其runner/语料语义。P761-D1/D2在worktree的KNOWN-DEBT追加；没有将这些非目标问题改成计划验收门槛。
