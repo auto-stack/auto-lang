@@ -115,10 +115,10 @@ Git worktree、Python/PowerShell 路径与资产核查、Rust check/nextest、Au
 
 - stage: merge | outcome: pass（批量回归到期移交后置）| delivery_commit:24affbb4a9a16857ae9303543498999558042216。
 - landed: master由75cc18531 fast-forward到delivery，实际HEAD相等；无merge commit。最终rebase range-diff四项均“=”：a0aad3da0→b6247cc0c，02fb7e4c1→9b515b581，35f77e41c→1b693117e，a1d753161→24affbb4a。前序28ddc73b1→27791bb71→a0aad3da0、a48cd5b53→62eb5435e→02fb7e4c1，均已验证patch等价。canonical delta SHA256保持55B3531451AC18FF7655A53B8FB4639840A7707812C9F50F43F18F28F2D1FC4A。
-- ledger_refreshed: 主检出.autoos/specs.json，829条；825旧项及原字节保留，新增4项原子块；目标ID/源commit/文件SHA256和账本before/after见docs/reports/761-ledger-projection.json。read-back与全部来源SHA256一致；依本仓README §5执行兼容投影，不转换旧schema。
+- ledger_refreshed: 主检出.autoos/specs.json，829条；825旧项及原字节保留，仅追加4项；目标ID/源commit/文件SHA256和账本before/after见docs/reports/761-ledger-projection.json。read-back与全部来源SHA256一致；依本仓README §5执行兼容投影，不转换旧schema。
 - AC-01/02：master Git树30项；六份本机设置由scratch/root-cleanup-761恢复，SHA256均等于合入前；759报告文件原字节不变；KNOWN-DEBT旧WIP补丁正文相等，临时stash已安全恢复并删除。其他会话本地输出未删除，临时忽略仅影响Git展示。
 - AC-03：64资产映射、blueprints/代理/当前引用检查均通过；未改生产逻辑，仅测试夹具定位与代码注释。
 - archived: docs/plans/archive/761-root-directory-cleanup.md，completion_kind=delivered，状态终态archived；canonical Spec及review/projection指向archive一致。
-- cleaned: 待主检出提交归档后立即执行，两工作树已有guard clean，branch全部提交已落地。
+- cleaned: 2026-10-11，归档commit=d42992167；验证branch全祖先已落地，两worktree各自fresh wt-guard clean后移除；plan-761-dev已删除，lang-761空组已删除；git worktree list / show-ref / 文件系统三重回读确认无残留。
 - 生产产物观察：release auto.exe修改时间为2026-10-10T18:44:06.418489+08:00；本计划未改变运行时逻辑，现有release不需为资产搬迁重启。debug门禁在共享target复编；未触auto-down代码、前端生成器/发布bundle。本次未执行部署或远程push。
 - 批量回归：上一收据覆盖755；760整五计划此后落地，故DUE。按auto-plan-regress主检出单实例tf/tt/tb，结果与最终收据另记；当前无cargo/nextest重型进程。
