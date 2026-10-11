@@ -158,3 +158,14 @@ acceptance_results: AC-01/02 pass（继承 cf33ace79 已落地路径/改名，r3
 evidence: docs/reports/p758-release-summary-r3/verification.md + artifact-manifest.json，最终 build 145.37s + 20/20（47.4s）。构建/测试的 8f73dd56b59af4ab54f6f9d9ef4fcdc23defe470:website 与复审 a7db58631:website 完全相同（tree 7a61ef8d9a057fdb7ecb0cd0339c41818b25e21c）；8f 后只增加证据/债务描述，不重复运行同代码门禁。r3 无 Rust/Auto 可执行改动，按 Category A 不跑 cargo t/docs_gen/tf。
 findings: 无新增未满足验收、未批准延期或 workaround；手机定位失败已通过减少摘要间距/缩短状态说明实修，无放宽测试。P758-D1 publication-only（writer 未注册/先前 serve 探测被自动审批 blocked by policy）继续保留。独立性限制：实现与复审同会话，按真实 diff、已有断言、原始失败/通过日志、完整 SHA、图片字节与页面重建结论，不声称独立 agent。
 next: merge；仅投影/归档/清理仍阻塞。
+
+### Merge r3 — canonical 已落地，投影保留阻塞（2026-10-11）
+
+stage: merge | plan_id: PLAN-758 | plan_revision: 3 | outcome: blocked | checkpoint_key: PLAN-758:r3
+prepared: reviewed a7db58631eb12e9103a515b243ad1958de5b0298，base ada443b9cd753f233317c5045e47cea29f4fc643；三目标冻结规范 patch/输入/输出、九投影来源与全部图/日志 hash 复算；clean 工作树及 Git for Windows wt-guard clean。
+landed: 主检出 97345cbee5309a0e33ac400e3a8c872d5d7103be --ff-only→ b3a91b93b9939e2eb9025f041358f2ae72d96403；合入后 master HEAD 等于 delivery，九 canonical 输出 LF 规范化 SHA 再次全同，website tree=7a61ef8d9a057fdb7ecb0cd0339c41818b25e21c 与实际 145.37s 构建/20 个通过检查同值。preview 4218 已在成功重建后重启，真实浏览器显示完整 4+5 数字、作者日期/口径及正确章节顺序；不是外网部署。
+rebase_mapping: ada443b9c..a7db58631 → 97345cbee..b3a91b93b 六提交 range-diff 全等：71e726ad6→5d9f222e9、a2dc3e67d→7fac1dd7a、a70cb82ff→fef404481、80b68e393→ab98ad9ad、8f73dd56b→22c28d090、a7db58631→b3a91b93b。更早 22b4753a1..7d731372a → ada443b9c..80b68e393 四提交 range-diff 亦全等；并发账本/其他计划/索引等改动由 master 保留，不被本次覆盖。
+ledger_refreshed: blocked；D:/autostack/auto-lang/.autoos/specs.json 当前只读 hash=ea2ecf90cd5572bf8c8cead0c8bf5ccd84b40b26aca7beab07890f74e58c6f35 与 r3 prepare 快照同值。仍无注册 write_spec/update_spec；先前 AutoMusk 临时服务启动及探测被自动审批以 blocked by policy 拒绝，无进一步原因。遵循 store-mediated 约束，未直接改该文件，pending 描述更新为 r3 九目标，不冒充写入完成。
+archived: pending；Plan 保持 reviewed，active 路径不移动。
+cleaned: pending；保留 clean D:/autostack/.wt/lang-758/auto-lang 与 plan-758-dev/组内依赖；四批原始验证输出已安全移至组目录，八有效截图和原始日志/hash 已持久入库。临时开发服务 4223 已停止，交付 preview 4218 保持可访问；其他工作树/临时数据不动。
+next: writer 可用后只续做 store-mediated 投影读回、归档、guard 后清理；没有新证据不自动重试被拒动作。批量回归按 merge 技能在 cleaned 后判定，本轮不跑 cargo tf。
