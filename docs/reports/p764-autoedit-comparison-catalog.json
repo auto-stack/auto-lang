@@ -1,0 +1,20 @@
+{
+  "plan": "PLAN-764",
+  "captureId": "SHOT-03",
+  "source": "C:/Users/zhaop/Pictures/PixPin/PixPin_2026-10-11_16-23-31.png",
+  "destination": "website/public/v05/candidate/autoedit-comparison.png",
+  "providedDate": "2026-10-11",
+  "captureDate": "2026-10-11 (source filename)",
+  "width": 3840,
+  "height": 2419,
+  "bytes": 1003230,
+  "sha256": "f1fed8656c2f44f15c1a46bf8488af3561d985ec558518874acdcc061fed3d1c",
+  "theme": "dark",
+  "backend": "not independently verified for this user-provided image",
+  "buildCommit": null,
+  "toolchainCommit": null,
+  "visibleScene": "AutoEdit own-source workspace; side-by-side status-before.at and status-after.at; +16/-1; hunk 1/1; change navigation and Edit A/B controls",
+  "processing": "None: byte-for-byte copy, no crop, resize or redraw",
+  "previousDiagnostic": "docs/reports/media/p757-autoedit-diff-layout.png",
+  "acceptanceBoundary": "Image presentation only; does not establish product defect closure or runtime parity"
+}

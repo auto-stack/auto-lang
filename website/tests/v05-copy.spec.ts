@@ -21,11 +21,11 @@ test('both Chinese docs gallery entrances resolve to the shared application', as
 for (const prefix of ['', '/zh']) {
   test(`${prefix || 'en'} AutoEdit captures load original pixels and retain keyboard zoom`, async ({ page }) => {
     await page.goto(`${prefix}/apps/autoedit/`)
-    for (const id of ['SHOT-01', 'SHOT-02']) {
+    for (const id of ['SHOT-01', 'SHOT-02', 'SHOT-03']) {
       const slot = page.locator(`[data-capture-id="${id}"]`)
       const trigger = slot.locator('.evidence-image')
       await trigger.scrollIntoViewIfNeeded()
-      await expect.poll(() => trigger.locator('img').evaluate((img: HTMLImageElement) => [img.naturalWidth, img.naturalHeight])).toEqual([2560, 1600])
+      await expect.poll(() => trigger.locator('img').evaluate((img: HTMLImageElement) => [img.naturalWidth, img.naturalHeight])).toEqual(id === 'SHOT-03' ? [3840, 2419] : [2560, 1600])
       await trigger.focus()
       await page.keyboard.press('Enter')
       const dialog = slot.locator('dialog[open]')
@@ -43,7 +43,7 @@ for (const prefix of ['', '/zh']) {
       await expect(dialog).not.toBeAttached()
       await expect(trigger).toBeFocused()
     }
-    await expect(page.locator('[data-capture-id="SHOT-03"] img')).toHaveCount(0)
+    await expect(page.locator('[data-capture-id="SHOT-03"]')).toContainText('2026-10-11')
   })
 
   test(`${prefix || 'en'} release keeps pending scenes distinct from existing evidence`, async ({ page }) => {
