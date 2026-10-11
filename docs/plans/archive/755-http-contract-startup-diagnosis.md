@@ -385,3 +385,13 @@ gate 可达性 | 处置`。gate 可达 = 该 id 会被 `stdlib/auto/http.at` 某
 - `auto` CLI release 二进制未因本计划重建（本计划改动 VM native 契约面 + 测试基建；旧 release
   二进制不含 755 修复，构建日期早于 2026-10-10）。web bundle（gen/front/vue/dist）与 daemon
   类产物不受本计划触面影响。后续需要时 `cargo build --release` 重建。
+
+### 归档后独立核查 R4（2026-10-11）
+
+- stage: review；plan_id: PLAN-755；plan_revision: 1；outcome: **pass（已知 R2 修复/blueprints 恢复事实/串行 HTTP 复验范围）**；archived 终态保持，不重新签署整库批量门禁。
+- reviewed_commit=`cee541da7a4b1a3410bef8cbdfe2bed0c4c00c51`；base=应对报告被测 `d8fba471b`，crates/stdlib/.cargo/.config/blueprints/Cargo.toml 零差异；fix=`5672e8e2d0c56f412301a99d54e5c7206fcb3d11`（与 `e121debf8` range-diff 全等）；dependency auto-down=`895f8d0f9355c9f5ec3ce8fca268bdb768395846`。配置、lock、规范哈希见独立 baseline。
+- 独立性：本会话发现并提交过 R2 needs_fix，未实施 755 修复/合入/恢复 blueprints；落地后从实际工件和隔离运行重建结论，源码未修改。
+- 复验：同二进制串行 `plan755 OR http_e2e` **106 run / 105 pass / 1 fail / 0 timeout，265.241s**；拆分守卫 4/4、HTTP 102/101/1 在册 back_proxy 红/0 timeout。原上传/重定向及 quoted_boundary 均过；真实 panic spawn/channel 负向冻结过。上轮四文件格式同款命令 exit 0，R2-01/02 闭合，R2-03 分类纠正保留。
+- 恢复事实：主检出 blueprints 68 tracked 文件均存在，逐文件 Git 内容哈希与 HEAD 相同。执行者恢复前后日常数字保留历史，本轮未重复全库日常档；不能用该删除来推翻上轮真实 R2 缺陷。应对报告的并行 th 不直接等同串行验收，本次已补齐独立串行证据。
+- evidence：[落地核查报告](../reports/755-landed-independent-check.md)、baseline、串行测试完整执行段与格式日志，均主检出持久保存。
+- next：无需新代码修复计划，P751-D1 销案结论保留；批量回归收据仍覆盖 740，755 落地触发 DUE，按 regress 前置重核后补执行，本轮不代跑 tf。独立核查工作树保存证据后守卫清理。

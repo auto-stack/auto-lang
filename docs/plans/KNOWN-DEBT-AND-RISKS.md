@@ -374,6 +374,8 @@ fastfail 崩溃且审计无行时，优先按栈溢出排查（重建符号 + RU
 
 契约守卫及上传/重定向原反例独立 2/2 + 2/2 通过，主要 HTTP 修复事实保留；整项退回 executing，P751-D1 保留闭合候选，尚不销案。详细证据：[755-review-r2.md](reports/755-review-r2.md)。
 
+2026-10-11 落地后独立闭合更新（覆盖上述 R2 的历史待修路由）：P755-R2-01/02 已由 `5672e8e2d`（原 `e121debf8`，range-diff 全等）修复，三助手共享字符串 panic 转发核心；本会话在 clean `cee541da7` 隔离树复跑守卫 4/4、四文件格式 exit 0、完整串行 HTTP 102/101/1 在册 back_proxy 红/0 超时（合并守卫共 106 run，265.241s）。P755-R2-03 元数据纠正保留，755 archived 不回退。blueprints 68 文件恢复后逐文件 Git 哈希与 HEAD 一致；恢复前额外日常红不同于原 R2 实现缺陷。P751-D1 已销案结论得到串行复验支持；批量回归仍 DUE（旧收据覆盖 740），另按 regress 补执行。证据：[755-landed-independent-check.md](reports/755-landed-independent-check.md)。
+
 ### P753（2026-10-10，README 计划知识投影前置阻塞）
 
 | id | 级别 | 领域 | 内容 | 锚点 |

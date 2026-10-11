@@ -1,0 +1,98 @@
+{
+  "stage": "review",
+  "plan_id": "PLAN-755",
+  "plan_revision": 1,
+  "outcome": "pass",
+  "scope": "known R2 repair, restored blueprint state, serial HTTP; not a fresh full daily/batch gate",
+  "reviewed_commit": "cee541da7a4b1a3410bef8cbdfe2bed0c4c00c51",
+  "base_commit": "d8fba471b4073578e2fd1247e806209bd6c2cec1",
+  "fix_commit": "5672e8e2d0c56f412301a99d54e5c7206fcb3d11",
+  "dependency_revisions": {
+    "auto-down": "895f8d0f9355c9f5ec3ce8fca268bdb768395846"
+  },
+  "root_cargo_lock_sha256": "900e2976e70c4bc89779c3fd502275537a6a5da57e7da2a6b72befcb3b623bf1",
+  "cargo_target_dir": "D:/autostack/auto-lang/target",
+  "cargo_build_jobs": 2,
+  "spec_inputs": {
+    "docs/specs/stdlib/design/assembly-manifest.md": "9c802df4673706a3dea3a33d230a98f6d834f0cc3779d2c21db940ab5267df96"
+  },
+  "test_configuration": {
+    ".cargo/config.toml": "13cb02bef7ce0ad685135e36b667ccbe54ab1a04ba6d743de1a3c5f41d239003",
+    ".config/nextest.toml": "0fbea4b493e2437105d5cd68c616549b1a39aaad6ae4b2f85fd83adf4782d5a2"
+  },
+  "ancestry_verified": true,
+  "repair_range_diff": "1:  e121debf8 = 1:  5672e8e2d fix(http-e2e): forward panic payloads via shared outcome reporter + fmt (Plan 755 R2)",
+  "code_diff_from_report_base": [],
+  "tests": {
+    "command": "cargo nextest run -p auto-lang --lib --features test-http-e2e --jobs 1 --no-fail-fast plan755 http_e2e",
+    "total_run": 106,
+    "total_pass": 105,
+    "total_fail": 1,
+    "timeout": 0,
+    "seconds": 265.241,
+    "exit": 100,
+    "guards": {
+      "run": 4,
+      "pass": 4
+    },
+    "http": {
+      "run": 102,
+      "pass": 101,
+      "fail": 1,
+      "timeout": 0
+    },
+    "known_red": "back_proxy corpora :id literal, 400 != 200",
+    "quoted_boundary_serial_pass": true
+  },
+  "format_exit": 0,
+  "blueprints": {
+    "main_head_at_confirmation": "cee541da7a4b1a3410bef8cbdfe2bed0c4c00c51",
+    "tracked_files": 68,
+    "missing": [],
+    "different_from_head": []
+  },
+  "source_unmodified": true,
+  "worktree_clean_end": true,
+  "cleanup": {
+    "auto_lang_guard": "clean",
+    "auto_down_guard": "clean",
+    "both_worktrees_removed": true,
+    "empty_group_removed": true,
+    "durable_evidence_saved_before_removal": true
+  },
+  "not_rerun": [
+    "daily full t",
+    "tv",
+    "tf",
+    "tt",
+    "tb",
+    "taa",
+    "tu",
+    "docs_gen"
+  ],
+  "history_only": {
+    "daily_after_restore_reported": [
+      5231,
+      5218,
+      13
+    ],
+    "source_report": "755-external-audit-response.md (executor artifact, left untracked)",
+    "source_report_sha256": "89c3bfdb0dbbdd4e7c71b47f06ba22011621de2c110da3b791a27091f703eda7"
+  },
+  "batch_regression": {
+    "due": true,
+    "last_covered_plan": 740,
+    "receipt_sha256": "7ef740dff2edd062f4a296bf8e7398b5010a2d0476b651a639e9f00e2c4166ac",
+    "not_executed_this_turn": true
+  },
+  "evidence": [
+    {
+      "path": "755-landed-independent-tests.txt",
+      "sha256": "fc82e026248079f2a7739ede96642f56818e867756c5a9f64141ad7a29dc94b6"
+    },
+    {
+      "path": "755-landed-independent-format.txt",
+      "sha256": "fa889cdafd701e9268fb7d38d15f06add675ae81b6b48005d5bf75b739bb6ca6"
+    }
+  ]
+}

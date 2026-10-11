@@ -1,0 +1,2 @@
+Clean reviewed source; rustfmt --edition 2021 --check --config skip_children=true native.rs plan755_http_contract_tests.rs plan730_http_upload_tests.rs http_server.rs
+Observed exit: 0; no formatting diff emitted.

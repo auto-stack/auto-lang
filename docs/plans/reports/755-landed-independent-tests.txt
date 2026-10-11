@@ -1,0 +1,138 @@
+Test execution output; preceding compiler warnings omitted.
+────────────
+ Nextest run ID 6192ce85-a9a0-4ee3-a948-c6a027c1e9b2 with nextest profile: default
+    Starting 106 tests across 1 binary (6751 tests skipped)
+        PASS [   0.136s] (  1/106) auto-lang back_proxy_tests::http_e2e_back_proxy_bad_path_param_is_400
+        PASS [   0.108s] (  2/106) auto-lang back_proxy_tests::http_e2e_back_proxy_file_endpoint_rejected_501
+        PASS [   0.141s] (  3/106) auto-lang back_proxy_tests::http_e2e_back_proxy_json_routes_and_session_state
+        PASS [   0.142s] (  4/106) auto-lang back_proxy_tests::http_e2e_back_proxy_lazy_sessions_load_on_demand
+        PASS [   0.092s] (  5/106) auto-lang back_proxy_tests::http_e2e_back_proxy_media_uri_byte_fidelity
+        PASS [   0.127s] (  6/106) auto-lang back_proxy_tests::http_e2e_back_proxy_missing_param_is_400
+        PASS [   0.077s] (  7/106) auto-lang back_proxy_tests::http_e2e_back_proxy_native_media_no_root_honest_empty
+        PASS [   0.093s] (  8/106) auto-lang back_proxy_tests::http_e2e_back_proxy_native_media_routes
+        PASS [   0.140s] (  9/106) auto-lang back_proxy_tests::http_e2e_back_proxy_not_found_faces
+        PASS [   0.655s] ( 10/106) auto-lang back_proxy_tests::http_e2e_back_proxy_panic_isolation_and_restart
+        PASS [   0.123s] ( 11/106) auto-lang back_proxy_tests::http_e2e_back_proxy_path_param_typed_binding
+        PASS [   0.140s] ( 12/106) auto-lang back_proxy_tests::http_e2e_back_proxy_real_017_crud_probe
+        PASS [   0.139s] ( 13/106) auto-lang back_proxy_tests::http_e2e_back_proxy_real_017_sse_stream
+        PASS [   0.108s] ( 14/106) auto-lang back_proxy_tests::http_e2e_back_proxy_real_020_status_route
+        PASS [   0.125s] ( 15/106) auto-lang back_proxy_tests::http_e2e_back_proxy_real_031_native_ns_session
+        FAIL [   0.154s] ( 16/106) auto-lang back_proxy_tests::http_e2e_back_proxy_real_routes_corpora_data_face
+  stdout ───
+
+    running 1 test
+    test back_proxy_tests::http_e2e_back_proxy_real_routes_corpora_data_face ... FAILED
+
+    failures:
+
+    failures:
+        back_proxy_tests::http_e2e_back_proxy_real_routes_corpora_data_face
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 6866 filtered out; finished in 0.07s
+
+  stderr ───
+    [back-proxy:018-book-reader] REQ GET /api/books
+    [back-proxy:018-book-reader] REQ GET /api/books/1
+    [back-proxy:018-book-reader] REQ GET /api/books/:id/chapters
+
+    thread 'back_proxy_tests::http_e2e_back_proxy_real_routes_corpora_data_face' (4468) panicked at crates\auto-lang\src\tests\back_proxy_tests.rs:589:5:
+    assertion `left == right` failed: 018 chapters of book 1: {"error":"back-proxy:018-book-reader: invalid value for param `id` (expected int): \":id\" — GET /api/books/:id/chapters"}
+      left: 400
+     right: 200
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        PASS [   0.178s] ( 17/106) auto-lang back_proxy_tests::http_e2e_back_proxy_runtime_add_remove_and_join_exit
+        PASS [   0.091s] ( 18/106) auto-lang back_proxy_tests::http_e2e_back_proxy_runtime_native_media_add_remove
+        PASS [   0.141s] ( 19/106) auto-lang back_proxy_tests::http_e2e_back_proxy_upload_endpoint_rejected_501
+        PASS [   2.622s] ( 20/106) auto-lang plan707_stream_e2e_tests::http_e2e_plan707_relay_downstream_disconnect_cancels_upstream
+        PASS [   2.613s] ( 21/106) auto-lang plan707_stream_e2e_tests::http_e2e_plan707_relay_frames_timed_single_termination
+        PASS [   0.119s] ( 22/106) auto-lang plan707_stream_e2e_tests::http_e2e_plan707_stream_explicit_close_two_rounds_baseline
+        PASS [   8.838s] ( 23/106) auto-lang tests::plan724_http_client_tests::e2e::http_e2e_plan724_async_client_matrix
+        PASS [   2.160s] ( 24/106) auto-lang tests::plan724_http_client_tests::e2e::http_e2e_plan724_qualified_facade_kernel
+        PASS [   7.658s] ( 25/106) auto-lang tests::plan724_http_client_tests::e2e::http_e2e_plan724_sync_client_matrix
+        SLOW [> 60.000s] (───────) auto-lang tests::plan727_http_transfer_tests::e2e::http_e2e_plan727_async_transfer_matrix
+        PASS [  77.895s] ( 26/106) auto-lang tests::plan727_http_transfer_tests::e2e::http_e2e_plan727_async_transfer_matrix
+        PASS [  31.028s] ( 27/106) auto-lang tests::plan727_http_transfer_tests::e2e::http_e2e_plan727_builder_multipart_wire
+        PASS [   2.387s] ( 28/106) auto-lang tests::plan727_http_transfer_tests::e2e::http_e2e_plan727_missing_preserves_target
+        PASS [   2.493s] ( 29/106) auto-lang tests::plan727_http_transfer_tests::e2e::http_e2e_plan727_sync_transfer_matrix
+        PASS [   0.636s] ( 30/106) auto-lang tests::plan729_http_server_file_tests::http_e2e::http_e2e_plan729_vm_basic_get_head
+        PASS [   0.638s] ( 31/106) auto-lang tests::plan729_http_server_file_tests::http_e2e::http_e2e_plan729_vm_conditional_matrix
+        PASS [   1.376s] ( 32/106) auto-lang tests::plan729_http_server_file_tests::http_e2e::http_e2e_plan729_vm_large_12mib
+        PASS [   0.619s] ( 33/106) auto-lang tests::plan729_http_server_file_tests::http_e2e::http_e2e_plan729_vm_method_and_int_guard
+        PASS [   0.638s] ( 34/106) auto-lang tests::plan729_http_server_file_tests::http_e2e::http_e2e_plan729_vm_path_security
+        PASS [   0.624s] ( 35/106) auto-lang tests::plan729_http_server_file_tests::http_e2e::http_e2e_plan729_vm_range_matrix
+        PASS [   0.652s] ( 36/106) auto-lang tests::plan729_http_server_file_tests::lifecycle::http_e2e_plan729_client729_server_interop
+        PASS [  16.466s] ( 37/106) auto-lang tests::plan729_http_server_file_tests::lifecycle::http_e2e_plan729_quota_saturation_503_then_recover
+        PASS [   1.131s] ( 38/106) auto-lang tests::plan729_http_server_file_tests::lifecycle::http_e2e_plan729_slow_client_disconnect_reclaims
+        PASS [   0.609s] ( 39/106) auto-lang tests::plan729_http_server_file_tests::r1_fixes::http_e2e_plan729_auth_middleware_no_open
+        PASS [   0.823s] ( 40/106) auto-lang tests::plan729_http_server_file_tests::r1_fixes::http_e2e_plan729_health_under_slow_downloads
+        PASS [   0.613s] ( 41/106) auto-lang tests::plan729_http_server_file_tests::r1_fixes::http_e2e_plan729_vm_async_file_handler
+        PASS [   0.621s] ( 42/106) auto-lang tests::plan729_http_server_file_tests::r1_fixes::http_e2e_plan729_vm_download_name_and_bad_options
+        PASS [   0.615s] ( 43/106) auto-lang tests::plan729_http_server_file_tests::r1_fixes::http_e2e_plan729_vm_half_close_response
+        PASS [   0.626s] ( 44/106) auto-lang tests::plan729_http_server_file_tests::r1_fixes::http_e2e_plan729_vm_path_replacement_pinned
+        PASS [   1.074s] ( 45/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_client730_server_interop
+        PASS [   0.619s] ( 46/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_legacy_bind_failure_cleans
+        PASS [   0.624s] ( 47/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_legacy_middleware_reject_no_write
+        PASS [   0.596s] ( 48/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_legacy_write_failure_500
+        PASS [   0.623s] ( 49/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_auth_before_storage
+        PASS [   0.639s] ( 50/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_chunked_upload
+        PASS [   0.591s] ( 51/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_disconnect_cleans_staging
+        PASS [   1.777s] ( 52/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_multipart_upload_commit_download
+        PASS [   0.627s] ( 53/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_plain_endpoint_untouched
+        PASS [   2.537s] ( 54/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_quota_and_health_under_load
+        PASS [   0.622s] ( 55/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_quoted_boundary_wire
+        PASS [   0.660s] ( 56/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_raw_upload_and_business_reject
+        PASS [  38.133s] ( 57/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_slow_upload_survives_handler_deadline
+        PASS [   0.920s] ( 58/106) auto-lang tests::plan730_http_upload_tests::http_e2e::http_e2e_plan730_vm_wire_caps_and_malformed
+        PASS [   0.602s] ( 59/106) auto-lang tests::plan734_api_contract_tests::http_e2e::http_e2e_plan734_vm_error_field_is_data
+        PASS [   0.605s] ( 60/106) auto-lang tests::plan734_api_contract_tests::http_e2e::http_e2e_plan734_vm_i64_wire
+        PASS [   0.596s] ( 61/106) auto-lang tests::plan734_api_contract_tests::http_e2e::http_e2e_plan734_vm_param_validation
+        PASS [   0.603s] ( 62/106) auto-lang tests::plan734_api_contract_tests::http_e2e::http_e2e_plan734_vm_plain_int_not_hijacked
+        PASS [   2.805s] ( 63/106) auto-lang tests::plan736_http_service_tests::http_e2e_plan736_file_body_drain_window_and_rebind
+        PASS [   0.090s] ( 64/106) auto-lang tests::plan755_http_contract_tests::plan755_http_contracts_survive_cffi_merge
+        PASS [   0.091s] ( 65/106) auto-lang tests::plan755_http_contract_tests::plan755_http_public_face_contract_coverage
+        PASS [   0.711s] ( 66/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_a_redirect_302_with_location
+        PASS [   0.927s] ( 67/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_b1_realworld_token_auth
+        PASS [   0.619s] ( 68/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_b6_multipart_upload_field_and_file
+        PASS [   0.941s] ( 69/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_b6_request_id_generated_and_echoed
+        PASS [   0.591s] ( 70/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_b6_request_id_incoming_passthrough
+        PASS [   0.904s] ( 71/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_concurrent_sse
+        PASS [   0.594s] ( 72/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_host_forward_app_config_daemon
+        PASS [   0.909s] ( 73/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_host_forward_relay_runs
+        PASS [   0.591s] ( 74/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_int_path_param_handler
+        PASS [   0.914s] ( 75/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_musk_response_constructors
+        PASS [   0.912s] ( 76/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_notes_crud
+        PASS [   0.593s] ( 77/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_notes_list_generic
+        PASS [   0.745s] ( 78/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan696_body_split_across_tcp_writes
+        PASS [   0.590s] ( 79/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan696_invalid_content_length_rejected
+        PASS [   0.591s] ( 80/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan696_over_limit_body_rejected
+        PASS [   0.608s] ( 81/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan696_real_015_notes_crud_parity
+        PASS [   0.596s] ( 82/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan696_real_017_chat_crud_parity
+        PASS [   0.626s] ( 83/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan696_real_023_auth_parity
+        PASS [   0.594s] ( 84/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan696_short_body_rejected
+        PASS [   3.115s] ( 85/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan696_slow_sse_does_not_block_health
+        PASS [   3.812s] ( 86/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan696_sse_disconnect_cancels_generator
+        PASS [   0.603s] ( 87/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan699_chunked_request_body_accepted
+        PASS [   0.591s] ( 88/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan699_injected_shutdown_releases_port
+        PASS [   0.600s] ( 89/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan699_keepalive_two_requests_one_connection
+        PASS [   0.595s] ( 90/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan699_oversized_headers_431
+        PASS [  10.608s] ( 91/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_plan699_slow_headers_timeout_close
+        PASS [   0.090s] ( 92/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_ports_unique
+        PASS [   1.630s] ( 93/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_sse_chain
+        PASS [   0.592s] ( 94/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_sse_generator_handler
+        PASS [   0.620s] ( 95/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_sse_indirect_generator
+        PASS [   0.595s] ( 96/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_sse_named_event_frames
+        PASS [   0.604s] ( 97/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_struct_handler_returns_json
+        PASS [   0.622s] ( 98/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_value_accessors
+        PASS [   0.589s] ( 99/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::e2e_zz_rate_limit_429_after_quota
+        PASS [   0.604s] (100/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::http_e2e_api_missing_param_400
+        PASS [   0.593s] (101/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::http_e2e_api_post_body_by_name
+        PASS [   0.592s] (102/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::http_e2e_api_query_by_name
+        PASS [   0.599s] (103/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::http_e2e_api_raw_body_single_param
+        PASS [   0.595s] (104/106) auto-lang vm::ffi::http_server::plan326_tests::http_e2e::http_e2e_api_typed_query_int
+        PASS [   0.076s] (105/106) auto-lang vm::ffi::http_server::plan755_outcome_reporter_tests::panic_payload_is_forwarded_through_real_spawn_path
+        PASS [   0.093s] (106/106) auto-lang vm::ffi::http_server::plan755_outcome_reporter_tests::panic_payload_text_covers_string_static_and_foreign
+────────────
+     Summary [ 265.241s] 106 tests run: 105 passed (1 slow), 1 failed, 6751 skipped
+        FAIL [   0.154s] ( 16/106) auto-lang back_proxy_tests::http_e2e_back_proxy_real_routes_corpora_data_face
+error: test run failed
