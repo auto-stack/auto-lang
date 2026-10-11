@@ -35123,6 +35123,15 @@ mod tests {
         use crate::ui::layout::LayoutMode;
         use crate::ui::session::{DesktopCommand, DesktopSession};
         let mut ds = DesktopSession::__test_session();
+        // PLAN-759 T-05：壁纸机器态隔离——空临时目录存活至测试结束，挡掉
+        // env/stella 探测两级（712 T-13/T-14 后 #hex 不再短路目录回退，
+        // 本机有 D:\Down\stella-os\wallpapers 时档②主题默认图会盖掉
+        // SetWallpaper 的 #hex 断言——机器相关红）。断言保持逐字精确。
+        let _wall_dir = tempfile::TempDir::new().expect("wallpapers 隔离目录");
+        ds.desktop.config.wallpapers_dir = _wall_dir
+            .path()
+            .to_string_lossy()
+            .to_string();
         ds.open_desktop(iced::window::Id::unique());
         let samples: Vec<(&str, DesktopCommand)> = vec![
             ("shell", DesktopCommand::SetLayout(LayoutMode::Grid)),
@@ -37942,6 +37951,14 @@ mod tests {
     fn desktop_surface_merge_dedupe_and_injection() {
         let _guard = t2_isolate_storage("d496-t2b");
         let mut ds = t3_session_with_shell();
+        // PLAN-759 T-05：壁纸机器态隔离（同 desktop_bus_inbox 测试注记）——
+        // 空目录挡主题默认图/目录首图两级，#hex 直传恢复确定性；断言保持
+        // `bg-[#243b55]` 逐字精确（不设「或任意图片存在」宽松放行）。
+        let _wall_dir = tempfile::TempDir::new().expect("wallpapers 隔离目录");
+        ds.desktop.config.wallpapers_dir = _wall_dir
+            .path()
+            .to_string_lossy()
+            .to_string();
         // 真 desktop.at 装载（z 槽面）。
         let comp = crate::ui::shell::build_desktop_surface_component().expect("desktop.at 装载");
         ds.desktop.desktop_app = Some(ds.allocate_app(comp));
