@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-758
-status: execution_done
+status: reviewed
 feature_name: AutoJade 改名与用户提供深色宣传图
 author: [Codex]
 created_at: 2026-10-10
@@ -146,3 +146,15 @@ stage: work | plan_id: PLAN-758 | plan_revision: 3 | outcome: ready_for_review
 implementation_commit: 8f73dd56b59af4ab54f6f9d9ef4fcdc23defe470；证据提交 a7db58631（完整 SHA 由复审绑定）。T-03/04/05 完成；开篇宣传、四投入/五成果、平台定义、双语 AutoOS 专题、当前后部旧数字均已同步。来源标注作者 2026-10-11 生态累计口径。
 verification: 最终干净网站目录 build 145.37s 成功；现有 20 个触面场景全部通过（47.4s，18 网站/UI + 2 AutoOS 专题）。初期手机定位失败与构建期间移动旧输出导致的失败均保留原日志，未放宽断言。八份手机/桌面开篇与历程图、17 工件 hash、三当前规范冻结差异及九目标投影草案在 docs/reports/p758-release-summary-r3/verification.md。源码不触及 crates/test/auto，Category A 未运行 cargo t/docs_gen/tf；spec-index 再生内容无差异。六 AutoJade 图与作者源再次逐字节相同。
 next: review；P758-D1 仍为 store writer 不可用的 publication-only 收尾阻塞，无新的页面交付遗漏。
+
+### Review r3 — pass（2026-10-11）
+
+stage: review | plan_id: PLAN-758 | plan_revision: 3 | outcome: pass
+reviewed_commit: a7db58631eb12e9103a515b243ad1958de5b0298
+base_commit: ada443b9cd753f233317c5045e47cea29f4fc643
+dependency_revisions: auto-down 895f8d0f9355c9f5ec3ce8fca268bdb768395846
+spec_inputs: docs/reports/p758-release-summary-r3/spec-delta.json 三 canonical 输入/输出、原样 patch 解压/压缩 SHA 当场复算全部相同；九累计投影输入/输出与 ledger 快照再次核对；supersedes_spec_components 九个精确 docs/specs 路径，new_spec_components=[]、touched_goals=[]（本轮不改变功能目标状态）。r2 冻结证据保留不改写。
+acceptance_results: AC-01/02 pass（继承 cf33ace79 已落地路径/改名，r3 未修改这些代码；开篇应用使用 AutoJade）；AC-03 pass（六原图逐字节/hash 再核对相同，P4/SHOT-09 合同未变，画廊场景重跑通过）；AC-04 pass（实现/证据全部提交，工作树 clean，wt-guard clean，失败历史和 store 阻塞准确记录）；AC-05 pass（四 EN/ZH×390/1440 早期历程/顺序/原生导航定位场景均通过；本轮明确用户授权的数字概要置于 hero）；AC-06 pass（四投入值与五成果值及名称、作者累计/日期来源、后部单源统计、两桌面/三平台段落与批准文本相符；二专题 SSR/语言切换检查、五宽度双主题双语、主题切换/减少动态效果均通过，实际页面与八 PNG 审读）。
+evidence: docs/reports/p758-release-summary-r3/verification.md + artifact-manifest.json，最终 build 145.37s + 20/20（47.4s）。构建/测试的 8f73dd56b59af4ab54f6f9d9ef4fcdc23defe470:website 与复审 a7db58631:website 完全相同（tree 7a61ef8d9a057fdb7ecb0cd0339c41818b25e21c）；8f 后只增加证据/债务描述，不重复运行同代码门禁。r3 无 Rust/Auto 可执行改动，按 Category A 不跑 cargo t/docs_gen/tf。
+findings: 无新增未满足验收、未批准延期或 workaround；手机定位失败已通过减少摘要间距/缩短状态说明实修，无放宽测试。P758-D1 publication-only（writer 未注册/先前 serve 探测被自动审批 blocked by policy）继续保留。独立性限制：实现与复审同会话，按真实 diff、已有断言、原始失败/通过日志、完整 SHA、图片字节与页面重建结论，不声称独立 agent。
+next: merge；仅投影/归档/清理仍阻塞。
