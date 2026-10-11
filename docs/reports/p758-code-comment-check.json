@@ -1,5 +1,5 @@
 {
-  "comparison": "Every non-line-comment line is unchanged from d3fc793f6 base; LF/CRLF normalized for comparison",
+  "comparison": "Every non-line-comment line is unchanged from rebased master cee541da7; LF/CRLF normalized for comparison; concurrent icon size and HTTP changes preserved.",
   "files": [
     "crates/auto-lang/src/tests/plan739_input_pin_tests.rs",
     "crates/auto-lang/src/ui/aura_view_builder.rs",

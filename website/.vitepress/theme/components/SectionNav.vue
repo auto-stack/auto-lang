@@ -4,7 +4,7 @@
 // 当前章节高亮（scroll 位置跟踪 + hash 点击即时反馈）；链接为原生 hash，
 // 刷新/直达可用；目标章节 scroll-margin-top 由调用方页面统一定义，
 // 保证标题不被「顶栏+本条」两层 sticky 遮挡。
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 export interface SectionNavItem {
   id: string
@@ -37,9 +37,17 @@ function observeSections() {
   }
 }
 
-function onHashClick(id: string) {
+async function onHashClick(id: string) {
   current.value = id
   mobileOpen.value = false
+  // The expanded mobile list changes page height. Collapse it before the
+  // browser measures the anchor, so the heading stays below the sticky bars.
+  await nextTick()
+  if (window.location.hash === '#' + id) {
+    document.getElementById(id)?.scrollIntoView({ block: 'start' })
+  } else {
+    window.location.hash = id
+  }
 }
 
 function onHashchange() {
@@ -84,7 +92,7 @@ onBeforeUnmount(() => {
         class="section-nav-link"
         :class="{ current: current === item.id }"
         :aria-current="current === item.id ? 'location' : undefined"
-        @click="onHashClick(item.id)"
+        @click.prevent="onHashClick(item.id)"
       >{{ item.label }}</a>
     </div>
   </nav>

@@ -228,7 +228,7 @@ test.describe('viewports', () => {
 test.describe('v05 release page', () => {
   for (const vp of [{ width: 390, height: 844 }, { width: 1440, height: 1000 }]) {
     for (const url of ['/v05/', '/zh/v05/']) {
-      test(`release progress precedes imagery at ${vp.width} (${url})`, async ({ page }) => {
+      test(`release progress precedes imagery at ${vp.width} (${url})`, async ({ page }, testInfo) => {
         await page.setViewportSize(vp)
         await page.goto(url)
         const heading = page.locator('#journey h2')
@@ -249,6 +249,12 @@ test.describe('v05 release page', () => {
         }))
         expect(positions.timelineEnd).toBeLessThan(positions.imageStart)
         expect(positions.imageStart).toBeLessThan(positions.statsStart)
+        if (vp.width < 768) await page.locator('.section-nav-toggle').click()
+        await page.locator('.section-nav-link[href="#journey"]').click()
+        await expect(page).toHaveURL(url + '#journey')
+        if (vp.width < 768) await expect(page.locator('.section-nav-toggle')).toHaveAttribute('aria-expanded', 'false')
+        await expect(heading).toBeInViewport()
+        await page.screenshot({ path: testInfo.outputPath('release-progress.png') })
       })
     }
   }
