@@ -1,0 +1,31 @@
+{
+  "plan": "PLAN-758",
+  "revision": 3,
+  "base": "ada443b9cd753f233317c5045e47cea29f4fc643",
+  "implementation_commit": "8f73dd56b59af4ab54f6f9d9ef4fcdc23defe470",
+  "build_source_commit": "8f73dd56b59af4ab54f6f9d9ef4fcdc23defe470",
+  "website_tree": "7a61ef8d9a057fdb7ecb0cd0339c41818b25e21c",
+  "dependency_auto_down": "895f8d0f9355c9f5ec3ce8fca268bdb768395846",
+  "hash_normalization": "Spec text SHA256 after CRLF to LF; patch and binary/log hashes raw bytes",
+  "patch_sha256": "4b5d2d3c14d1f7e6cd739dd74f96057abcbc226eaebd1b0087b5120fa2f2ec62",
+  "compressed_patch_sha256": "ee679d601c84ebd5b7ade8c2f4c9af83f7b0157f1b7ea4df38369d6d8c17bbfe",
+  "targets": [
+    {
+      "path": "docs/specs/website/design/ui-presentation.md",
+      "input_sha256": "0a5ece7849256626497297c6b13a5b677cac36288aa388c936166b17d320b66e",
+      "output_sha256": "eac0d50509bdddc7f873dbc53c5207d724f667d4fcd681c0aaef0aac90624733"
+    },
+    {
+      "path": "docs/specs/website/project.md",
+      "input_sha256": "5b2298c606c2061bd3037f9d16552c63da8f8880bd3624df29aa71b69a9b910f",
+      "output_sha256": "840f33f4a52e459258832a09da6fa2d09571513c8a5a7521c57103e0e2b6d36a"
+    },
+    {
+      "path": "docs/specs/website/design/os-ai-introduction.md",
+      "input_sha256": "93e021ec16ac2fed2e78876eb5aeccba9d563d2ad6ee37a02a0972256ed46fae",
+      "output_sha256": "b013f042a0141ddf2af2949dd53def78d5c9f3b807c06122c2d3360ac0558d1d"
+    }
+  ],
+  "touched_goals": [],
+  "previous_revision_delta": "docs/reports/p758-autojade/spec-delta.json"
+}

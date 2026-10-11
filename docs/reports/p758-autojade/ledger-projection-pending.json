@@ -1,7 +1,7 @@
 {
   "state": "blocked",
   "workspace": "D:/autostack/auto-lang",
-  "ledger_sha256_at_prepare": "a133434a4fe8056609861c7d514772c8a646dea3cc3e8a5cda09321e4fe0c6cd",
+  "ledger_sha256_at_prepare": "ea2ecf90cd5572bf8c8cead0c8bf5ccd84b40b26aca7beab07890f74e58c6f35",
   "affected_legacy_entries": [
     {
       "id": "P732-1",
@@ -21,44 +21,54 @@
   "canonical_targets": [
     {
       "path": "docs/specs/auto-lang/ui/architecture.md",
-      "input_sha256": "a08876d435c10617e02483c49fd0f3090dd7d0dfc088f5f74503e3a494a3c07c",
+      "input_sha256": "772debe90fd269f145b4334bebc1a64ff9d6ba4c7d487bfe77ae4a10bbdf75e5",
       "output_sha256": "772debe90fd269f145b4334bebc1a64ff9d6ba4c7d487bfe77ae4a10bbdf75e5"
     },
     {
       "path": "docs/specs/auto-lang/ui/design/autodown-wikilink.md",
-      "input_sha256": "8bf534bccb162b23a3ece0caf5696d0e54714b288dd01ddb6bed4b8fbcf282ae",
+      "input_sha256": "4adb16a11ee0a7a73b465c12c7c273130b941940f89b1deda0ad7f3ee5fba88c",
       "output_sha256": "4adb16a11ee0a7a73b465c12c7c273130b941940f89b1deda0ad7f3ee5fba88c"
     },
     {
       "path": "docs/specs/auto-lang/ui/overview.md",
-      "input_sha256": "a69c88ed67df45086267ea9a1e630bbb79038d5d7966b1fe2e58e45d49a5bcf2",
+      "input_sha256": "3b49d0167afa90be7c577bef38949d20b84e5bc80a5c95c4b5f68141894531a8",
       "output_sha256": "3b49d0167afa90be7c577bef38949d20b84e5bc80a5c95c4b5f68141894531a8"
     },
     {
       "path": "docs/specs/auto-lang/ui/plans.md",
-      "input_sha256": "38e1a0e7e02f45967d680b323c11d3ecd60f8bd3bbfcaac6e581168241464213",
+      "input_sha256": "0b97691fccc8cfa564aecf2105c9e465d5fd2ecd3982be7b7fe14f25a2dc1081",
       "output_sha256": "0b97691fccc8cfa564aecf2105c9e465d5fd2ecd3982be7b7fe14f25a2dc1081"
     },
     {
       "path": "docs/specs/website/design/application-introductions.md",
-      "input_sha256": "80e4457de969d004852222ce9ce3b147c1481c63f40a9cb5a112607284efbb1e",
+      "input_sha256": "6a90d8c3029b1edf2ab03ec3e648188f0cf2082fb92f1531db396eb1768675e6",
       "output_sha256": "6a90d8c3029b1edf2ab03ec3e648188f0cf2082fb92f1531db396eb1768675e6"
     },
     {
       "path": "docs/specs/website/design/ecosystem-readme.md",
-      "input_sha256": "895310da8b5aeb39289d4641811b42e8ad017aa6bc30c89e048f61e79ea6cfda",
+      "input_sha256": "2522a72474f44e5ef224d3fa15ebcfb2c834e1814e8688253d37f1732c6af147",
       "output_sha256": "2522a72474f44e5ef224d3fa15ebcfb2c834e1814e8688253d37f1732c6af147"
     },
     {
       "path": "docs/specs/website/design/ui-presentation.md",
-      "input_sha256": "a0cf669dca1293bc27847a64ddbce2e2c24af0a2394505b089c000c9591adac4",
-      "output_sha256": "0a5ece7849256626497297c6b13a5b677cac36288aa388c936166b17d320b66e"
+      "input_sha256": "0a5ece7849256626497297c6b13a5b677cac36288aa388c936166b17d320b66e",
+      "output_sha256": "eac0d50509bdddc7f873dbc53c5207d724f667d4fcd681c0aaef0aac90624733"
     },
     {
       "path": "docs/specs/website/project.md",
-      "input_sha256": "f868a0c4cbd5068f962bb67f9112cf955822b6ffdb76692e6e417fc9a8b803d9",
-      "output_sha256": "5b2298c606c2061bd3037f9d16552c63da8f8880bd3624df29aa71b69a9b910f"
+      "input_sha256": "5b2298c606c2061bd3037f9d16552c63da8f8880bd3624df29aa71b69a9b910f",
+      "output_sha256": "840f33f4a52e459258832a09da6fa2d09571513c8a5a7521c57103e0e2b6d36a"
+    },
+    {
+      "path": "docs/specs/website/design/os-ai-introduction.md",
+      "input_sha256": "93e021ec16ac2fed2e78876eb5aeccba9d563d2ad6ee37a02a0972256ed46fae",
+      "output_sha256": "b013f042a0141ddf2af2949dd53def78d5c9f3b807c06122c2d3360ac0558d1d"
     }
   ],
-  "reason": "No registered spec writers and no existing listeners on checked ports. Temporary AutoMusk serve/read probe was rejected by automatic approval with blocked by policy; no further reason supplied. No direct ledger writes. Draft descriptors only; application store owns projection schema."
+  "reason": "No registered spec writers and no existing listeners on checked ports. Temporary AutoMusk serve/read probe was rejected by automatic approval with blocked by policy; no further reason supplied. No direct ledger writes. Draft descriptors only; application store owns projection schema.",
+  "revision": 3,
+  "previous_landed_revision": 2,
+  "canonical_base": "ada443b9cd753f233317c5045e47cea29f4fc643",
+  "hash_normalization": "Spec text SHA256 after CRLF to LF; patch and binary/log hashes raw bytes",
+  "reviewed_delta": "docs/reports/p758-release-summary-r3/spec-delta.json"
 }

@@ -1,0 +1,32 @@
+[
+  {
+    "file": "p1-main-dark.png",
+    "equal": true,
+    "sha_matches": true
+  },
+  {
+    "file": "p2-backlinks-dark.png",
+    "equal": true,
+    "sha_matches": true
+  },
+  {
+    "file": "p3-wikilink-dark.png",
+    "equal": true,
+    "sha_matches": true
+  },
+  {
+    "file": "p5-quick-open-dark.png",
+    "equal": true,
+    "sha_matches": true
+  },
+  {
+    "file": "p6-dangling-create-dark.png",
+    "equal": true,
+    "sha_matches": true
+  },
+  {
+    "file": "p7-filetree-dark.png",
+    "equal": true,
+    "sha_matches": true
+  }
+]
