@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-765
 plan_revision: 1
-status: reviewed
+status: archived
 feature_name: VM 宿主活跃会话稳定专项（空闲内存残留 + 原生层 exit(1)，承接 musk PLAN-104 定罪）
 author: [agent]
 created_at: 2026-10-11
@@ -208,6 +208,32 @@ T-04 交叉复验：musk soak 仪器 GREEN 重跑（斜率+1h 零退）+ 本仓�
 
 ## 9. 复审记录
 
+### merge 阶段收据（PLAN-765:r1，2026-10-12）
+
+- stage: merge ｜ outcome: **delivered**（五检查点齐）
+- **prepared**：reviewed 9ef5df2cb（rebase 后 0b654af37,range-diff 三提交
+  全等,映射 4588ae0ad→e20b6c128/db345925c→9650c966a/9ef5df2cb→0b654af37）
+  + 纯文档后代（规约回写/账本/索引）→ delivery_commit=**4f53653fd**;
+  实现与依赖未变（auto-down@895f8d0 detached）。
+- **landed**：master `git merge --ff-only plan-765-dev` 尖=4f53653fd,
+  无合并提交;canonical spec 落位
+  `docs/specs/auto-lang/ui/design/vm-host-stability.md` +
+  `docs/reports/765-t01-attribution-memos.md`。
+- **ledger_refreshed**：`.autoos/specs.json` 追加 P765-1（designs,182 项）/
+  P765-2（reviews,218 项）/P765-3（reports,131 项）——只增不改,回读计数
+  校验通过;`python scripts/spec-index.py` 再生 INDEX（幂等,26 projects,
+  无 diff——新 design 文档在既有 project 组内）。
+- **archived**：`git mv` → `docs/plans/archive/765-vm-host-active-session-stability.md`,
+  status: archived,completion_kind: delivered。
+- **cleaned**：wt-guard（两 worktree 均 clean）→ 移除
+  `.wt/lang-765/auto-lang` + `.wt/lang-765/auto-down` + 分支 plan-765-dev +
+  组目录。
+- **制品面**：主检出 release auto.exe 已随 merge 重建（生产消费面 =
+  musk 侧 VM 宿主/代码生成门禁二进制）;web bundle 无涉（本计划零
+  website/vue 改动）。
+- **批量回归到期**：765 % 5 == 0 → **到期** → `/auto-plan:regress`
+  主检出单实例（收据刷新 `.last-batch-regression.json`）。
+
 ### review 阶段裁定（PLAN-765:r1，2026-10-12）
 
 - stage: review ｜ plan_id: PLAN-765 ｜ plan_revision: 1 ｜ outcome: **pass**
@@ -300,3 +326,15 @@ T-04 交叉复验：musk soak 仪器 GREEN 重跑（斜率+1h 零退）+ 本仓�
   `slopeMBPerMin` 单位 bug（详见纪要后记⑤）；②"AC-01 idle 斜率"按
   修正口径（真 MB/min）重判——五轮基线与 p765 各轮真值均已在纪要
   后记列明。
+
+## 11. spec-sync 回写记录（merge 沉淀，2026-10-12）
+
+- 规约新册：`docs/specs/auto-lang/ui/design/vm-host-stability.md`（消息桥
+  生命周期契约/回填 seq 门控语义/事件名推导载荷安全/退出审计四分法/
+  测量口径注记）。
+- 模块回写：`docs/specs/auto-lang/ui/overview.md` 增"VM 宿主活跃会话稳定域
+  （PLAN-765）"节（衔接 697/650 域）；`docs/specs/auto-lang/ui/plans.md`
+  追加 765 行；`docs/specs/goals.md` GOAL-007 追加 765 括注。
+- 账本：`.autoos/specs.json` P765-1（designs）/P765-2（reviews）/P765-3
+  （reports）;INDEX 再生幂等。
+- 交付提交：4f53653fd（ff-only 落 master）。
