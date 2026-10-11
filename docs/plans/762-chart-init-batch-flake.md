@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-762
-status: drafting
+status: execution_done
 feature_name: chart-init-batch-flake
 author: [Codex]
 created_at: 2026-10-11
 updated_at: 2026-10-11
 plan_revision: 1
-current_step: 0
+current_step: 3
 total_steps: 3
 supersedes_spec_components: [docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md]
 new_spec_components: []
@@ -62,14 +62,23 @@ Rust/nextest、现有 Init/CPU scheduler 诊断、Git 版本对照。
 
 ## 8. 执行步骤
 
-- [ ] T-01（AC-01）：专用 worktree 固定跨仓版本/feature，诊断并新增 docs/plans/reports/762-chart-init-attribution.md，裁定 harness/生产/资产边界。
-- [ ] T-02（依赖T-01；AC-02）：证据支持时修 plan437_child_init_tests.rs 完成态驱动/诊断，维持 marker，补机制验证；如需改生产 helper 先修订确认。
-- [ ] T-03（依赖T-02；AC-03）：所列门禁、SD-01、独立复审；merge/归档为后续生命周期。
+- [x] T-01（AC-01）：专用 worktree 固定跨仓版本/feature，诊断并新增 docs/plans/reports/762-chart-init-attribution.md，裁定 harness/生产/资产边界。
+  [✅ 已完成] 归因报告 docs/plans/reports/762-chart-init-attribution.md（worktree plan-762-dev）：钉版 auto-lang 11031c556 / auto-os 0532b8fbc（gallery app.at blob c111cb60，clean）；跨仓漂移与代码差异候选由 761 同检出构造排除；机制=helper `progressed` 判据不计"片让出未完成"（`cpu.slices_run` 缺位），多片 Init 早退，签名与 761 实录逐点吻合；负载对照：隔离基线绿、24×CPU 旋 15/15 绿、6×内存 hog+全 tt 档 gallery 绿（唯一红=plan738 探针 120s 超时，本实验加压环境伪红）——自然红不复现，如实记负证据，AC-01 落确定性机制复现（T-02 钉子）。裁定=**harness 边界**（生产调度语义/帧泵/资产清白）。
+- [x] T-02（依赖T-01；AC-02）：证据支持时修 plan437_child_init_tests.rs 完成态驱动/诊断，维持 marker，补机制验证；如需改生产 helper 先修订确认。
+  [✅ 已完成] 证据裁定 harness 边界 → 仅改 `crates/auto-lang/src/tests/plan437_child_init_tests.rs`（生产 helper/调度语义/预算零改动）：① 四路由测试单次 drive 换 `drive_to_completion`（完成态=无排队 demand/无在途 CPU/无 I/O 凭据，30s 有界截止时间，超时红带 pending_init/cpu_cont/parked_total 诊断，循环内重建视图登记后续 demand——plan502/PLAN-759 T-08 同 precedent），四 marker 原样不放宽；② 新增机制钉子 `child_init_multi_slice_early_exit_and_completion_driving`：250k 自旋（实测 ~16.7 指令/迭代 ≈ 4.2M 步，>2×1M 片帽必跨 ≥3 片、<10M 护栏）确定性复现单调用早退（前半断言在途=红门）+ 完成态驱动收敛且 `M 250040 260` 自旋计数几何落地。验证：plan437 三测绿（0.102/0.577/3.661s）；修复后 24×CPU 旋 15/15 绿（同负载无回归）。生产 helper 修复按约定不越权——D-762-1 债务登记（见归因报告裁定节）。
+- [x] T-03（依赖T-02；AC-03）：所列门禁、SD-01、独立复审；merge/归档为后续生命周期。
+  [✅ 门禁+SD-01+work 阶自审完成；独立复审由 /auto-plan:review 阶段承接（状态机 execution_done→reviewed），复审证据届时追加 §9] 门禁（worktree plan-762-dev@f5bc037a1）：`cargo check -p auto-lang` ✓（32.55s）；`cargo t` 首跑 1 瞬态红（名称未被 summary 滤器捕获，非 plan437 域）→ 立即全量复跑 **5244/5244 绿**（77.475s）；`cargo tv` **162/162 绿**（2.142s）；`cargo tt` **5615/5615 绿**（141.587s，1 slow；含新机制钉子与四路由完成态驱动）；tf 留批量档未在本 worktree 运行（§6 约定）。自审：四 marker 原样零放宽、零新增 skip（gallery 缺源 skip 为预存）、零生产调度/预算改动（diff 仅测试文件+文档）、plan437 文件零新增编译告警。SD-01 已落 `docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md` §1.5（测试载体完成态驱动契约，随分支合入发布）。
 
 ## 9. 复审记录
 
 stage: new | PLAN-762:r1 | outcome: blocked for execution authorization | 分诊草案 | next: 用户另行启动修复；原 PLAN-761 已交付。
 
+stage: work | PLAN-762:r1 | 2026-10-11 用户授权"实施修复"（§10 待澄清的修复执行授权落地），drafting→executing。worktree `D:/autostack/.wt/lang-762/auto-lang` branch `plan-762-dev`，基面 master 11031c556（含 RUST_MIN_STACK=16MB 默认栈，§6 约束保持）。
+
+stage: work | PLAN-762:r1 | outcome: pass | code_commit: plan-762-dev@f5bc037a1（3 文件：plan437_child_init_tests.rs / reports/762-chart-init-attribution.md / specs vm-loading-responsiveness.md） | task_ids: T-01,T-02,T-03 | evidence: 归因=helper `progressed` 判据不计片让出（harness 边界，生产帧泵/资产清白，报告含钉版+负载对照+确定性复现）；修复=四路由完成态+30s 截止时间驱动（marker 原样）+ 多片机制钉子（250k 自旋≈4.2M 步实测，早退确定性复现+收敛验证）；门禁 check ✓ / t 复跑 5244/5244 ✓ / tv 162/162 ✓ / tt 5615/5615 ✓；修复后 24×CPU 旋 15/15 无回归 | blockers: 无执行阻塞；生产 helper `drive_scheduler_to_quiescence` 判据修复须另行授权（计划约定"先修订确认"），已登记 KNOWN-DEBT D-762-1（16 调用点暴露面+修复方向） | next: review（/auto-plan:review，execution_done→reviewed；复审时核 D-762-1 登记与机制钉子前半断言的契约指向）
+
 ## 10. 待澄清事项
 
 新增修复范围需用户另行授权；真实原因由 T-01 确认，当前不预设环境 flake 或生产缺陷。
+
+（2026-10-11 更新）修复执行授权已落地（"实施修复"），本计划面内的测试修复已交付；**仍待澄清**：生产 helper `drive_scheduler_to_quiescence` 判据修复（D-762-1，16 调用点共享暴露面）是否另立计划授权——按本计划 §8 T-02 约定"如需改生产 helper 先修订确认"，未越权实施。
