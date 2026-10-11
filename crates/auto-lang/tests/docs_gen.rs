@@ -81,6 +81,12 @@ const DOC_EXCLUDE: &[&str] = &[
     // 不设独立页)。契约与用法文档化于 Design 25 §2 S3 + plan 497 +
     // schema/aura.at element 描述。
     "windowthumbnail",
+    // PLAN-760:宿主侧远程帧消费 leaf(bridge WS 端点订阅 DisplayList v2,
+    // iced canvas 直绘;gallery 页无在跑 bridge 呈现不了,不设独立页)。
+    // 契约文档化于 docs/specs/auto-lang/ui/overview.md「现状(2026-10-11)
+    // ——remote-frame」节(SD-01)+ docs/components/core.md 生成条目 +
+    // examples/ui/remote-frame-e2e 双工程。
+    "remoteframe",
     // Plan 563:状态驱动画布(引擎原语,能力样板轨道——不设 gallery 页);
     // 场景数据契约与双端映射规约文档化于
     // examples/capability-tests/043-canvas-paint/SPEC.md + schema 描述。

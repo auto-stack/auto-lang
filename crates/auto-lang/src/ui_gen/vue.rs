@@ -10446,7 +10446,7 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             "div" => "div".to_string(),
             // PLAN-760: remote-frame 宿主占位 div（shadcn 模式经 carried_vue
             // component "div" 同路;此 fallback 保非 shadcn 形态）。
-            "remote-frame" | "remote_frame" | "remoteframe" => "div".to_string(),
+            "remote-frame" => "div".to_string(),
             "+" => {
                 if self_closing {
                     "span".to_string()
@@ -16557,7 +16557,8 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             // 同族）querySelector `[data-remote-frame]` 接管;url 经
             // data-remote-frame-url 携带（字面量直发;动态绑定走
             // :data-remote-frame-url）。本仓 web 臂不做 JS 渲染器。
-            "remote-frame" | "remote_frame" | "remoteframe" => {
+            //（本表 match 的是 normalized_tag：连字符已转下划线。）
+            "remote_frame" => {
                 attrs.push("data-remote-frame=\"1\"".to_string());
                 if let Some(value) = props.get("url") {
                     match value {

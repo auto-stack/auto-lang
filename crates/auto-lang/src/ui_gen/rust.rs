@@ -5427,7 +5427,7 @@ impl RustGenerator {
                 // 同族直发既有 View 变体；解释侧同构 = aura_view_builder
                 // convert_remote_frame）。url 字面量或动态表达式；无
                 // fallback prop；style 直传（None = 缺省）。
-                if tag == "remote-frame" || tag == "remote_frame" || tag == "remoteframe" {
+                if tag == "remote-frame" {
                     let url_expr = match props.get("url") {
                         Some(AuraPropValue::Expr(crate::ast::Expr::Str(s))) => {
                             format!("\"{s}\".to_string()")

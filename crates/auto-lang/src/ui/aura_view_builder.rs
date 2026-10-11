@@ -2600,9 +2600,7 @@ impl<'a> AuraViewBuilder<'a> {
             "workspace_preview" => self.convert_workspace_preview(props, bindings),
             // PLAN-760: 宿主侧远程帧消费 leaf（tracked/untracked 双臂镜像，
             // window_thumbnail 同款 D-GAP 纪律；url 即身份）。
-            "remote-frame" | "remote_frame" | "remoteframe" => {
-                self.convert_remote_frame(props, bindings)
-            }
+            "remote-frame" => self.convert_remote_frame(props, bindings),
             // Plan 409 §10 续 3: HTML 语义/布局标签(scroll/aside/main/header...),
             // 之前落 fallback 丢 style。scroll → 可滚动 column;其余 → container。
             "scroll" | "scrollable" => self
@@ -4731,9 +4729,7 @@ impl<'a> AuraViewBuilder<'a> {
             "workspace_preview" => self.convert_workspace_preview(props, bindings),
             // PLAN-760: 宿主侧远程帧消费 leaf（tracked/untracked 双臂镜像，
             // window_thumbnail 同款 D-GAP 纪律；url 即身份）。
-            "remote-frame" | "remote_frame" | "remoteframe" => {
-                self.convert_remote_frame(props, bindings)
-            }
+            "remote-frame" => self.convert_remote_frame(props, bindings),
 
             // Command palette preview components are also web imports. Give
             // the gallery's static sample VM-native controls before placeholder
@@ -16619,9 +16615,6 @@ mod tests {
             &mut probe,
             &bindings,
         ));
-        // 别名形态归一（remote_frame / remoteframe 同臂）。
-        check(&builder.convert_node_with(&mk("remote_frame"), &bindings));
-        check(&builder.convert_node_with(&mk("remoteframe"), &bindings));
     }
 
     /// Helper: create a minimal AuraWidget for testing.

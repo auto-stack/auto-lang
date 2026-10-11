@@ -5317,9 +5317,7 @@ impl AuraSchema {
         // PLAN-760: 宿主侧远程帧消费 leaf——bridge WS 端点订阅 DisplayList v2,
         // iced 渲染臂直绘(注册表最新帧),帧不进 VM 状态;web 臂 = 透传 div
         // 占位(data-remote-frame 标记,宿主前端接管)。
-        elements.insert(
-            "remote-frame",
-            ElementDef {
+        elements.insert("remote-frame", ElementDef {
                 tag: "remote-frame",
                 category: ElementCategory::Display,
                 props: vec![
