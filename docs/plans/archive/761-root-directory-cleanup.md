@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-761
-status: reviewed
+status: archived
 feature_name: root-directory-cleanup
 author: [Codex]
 created_at: 2026-10-11
@@ -11,6 +11,7 @@ total_steps: 3
 supersedes_spec_components: [docs/specs/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/plans.md, docs/specs/auto-lang/trans/overview.md, docs/specs/auto-lang/trans/design/test-convention.md, docs/specs/stdlib/design/http-service-deployment.md]
 new_spec_components: [docs/specs/design/repository-layout.md, docs/specs/plans.md]
 touched_goals: [GOAL-016, GOAL-018]
+completion_kind: delivered
 affects: [repository-layout]
 ---
 
@@ -109,3 +110,15 @@ Git worktree、Python/PowerShell 路径与资产核查、Rust check/nextest、Au
 - prepared: reviewed=62eb5435ecf3e2c5675cb9dd47557a419b621232（等价02fb7e4c1）；delivery=a1d7531616f045d6fad200ce4a4bf67e78d682eb；canonical SD-01..04保持复审SHA256不变。后继仅复审报告/派生账本。账本六段825旧项及原字节全部保留，仅追加4项/68行；829项验证，投影收据docs/reports/761-ledger-projection.json。
 - 目标项：designs/repo-layout、tests/repo-layout-verification、reviews/PLAN-761-review、reports/PLAN-761-deposit；来源版本/哈希见投影收据。隔离store旧schema加载500未写入，依本仓README §5兼容回退，无无关schema迁移。
 - 主检出已有759复审报告/台账WIP及其他会话本地临时输出，均保留；仅重叠台账暂存后逐字节补丁回放。本机六配置合入后恢复并核对SHA256。
+
+### merge 收据（PLAN-761:r2）
+
+- stage: merge | outcome: pass（批量回归到期移交后置）| delivery_commit:24affbb4a9a16857ae9303543498999558042216。
+- landed: master由75cc18531 fast-forward到delivery，实际HEAD相等；无merge commit。最终rebase range-diff四项均“=”：a0aad3da0→b6247cc0c，02fb7e4c1→9b515b581，35f77e41c→1b693117e，a1d753161→24affbb4a。前序28ddc73b1→27791bb71→a0aad3da0、a48cd5b53→62eb5435e→02fb7e4c1，均已验证patch等价。canonical delta SHA256保持55B3531451AC18FF7655A53B8FB4639840A7707812C9F50F43F18F28F2D1FC4A。
+- ledger_refreshed: 主检出.autoos/specs.json，829条；825旧项及原字节保留，新增4项原子块；目标ID/源commit/文件SHA256和账本before/after见docs/reports/761-ledger-projection.json。read-back与全部来源SHA256一致；依本仓README §5执行兼容投影，不转换旧schema。
+- AC-01/02：master Git树30项；六份本机设置由scratch/root-cleanup-761恢复，SHA256均等于合入前；759报告文件原字节不变；KNOWN-DEBT旧WIP补丁正文相等，临时stash已安全恢复并删除。其他会话本地输出未删除，临时忽略仅影响Git展示。
+- AC-03：64资产映射、blueprints/代理/当前引用检查均通过；未改生产逻辑，仅测试夹具定位与代码注释。
+- archived: docs/plans/archive/761-root-directory-cleanup.md，completion_kind=delivered，状态终态archived；canonical Spec及review/projection指向archive一致。
+- cleaned: 待主检出提交归档后立即执行，两工作树已有guard clean，branch全部提交已落地。
+- 生产产物观察：release auto.exe修改时间为2026-10-10T18:44:06.418489+08:00；本计划未改变运行时逻辑，现有release不需为资产搬迁重启。debug门禁在共享target复编；未触auto-down代码、前端生成器/发布bundle。本次未执行部署或远程push。
+- 批量回归：上一收据覆盖755；760整五计划此后落地，故DUE。按auto-plan-regress主检出单实例tf/tt/tb，结果与最终收据另记；当前无cargo/nextest重型进程。
