@@ -56,12 +56,22 @@
 | main_err | `main_err` / `main_err_ai_mode` | main 返回 Err / ai_mode exit(1) |
 | mem_guard 逃生 | `mem_guard_f12_escape` | 冻结态 F12 exit(42) |
 | **原生崩溃** | `native_crash` | 未处理 SEH 异常(`SetUnhandledExceptionFilter`,落笔后 CONTINUE_SEARCH 保 WER 语义) |
+| **进程内直调 exit(诊断,env 门控)** | `exitproc_trace\|ExitProcess(N) frames=[+..]` | 依赖代码直调 `ExitProcess`/`TerminateProcess`(r2 F-10,`P765_EXIT_TRACE=1` 时 IAT 槽替换;ExitProcess 臂落栈偏移后确定性自终止——TerminateProcess(自身),规避 LdrShutdownProcess detach 竞态,退出码精确保持;TerminateProcess 臂落笔后转调原函数) |
 
 **外部击杀指纹(判读矩阵第 4 类的完备化)**:审计册**零行 + 退出码 1**
 (Windows TerminateProcess/taskkill 强杀退出码恒 1)⇒ 外部终止,进程内
 无未覆盖静默退出路径。native_crash 钩覆盖边界:不覆盖外部
 TerminateProcess(不可拦截)与 `__fastfail`(刻意绕过 SEH);栈溢出场景
-尽力而为;后续加载模块可能覆盖 filter(best effort)。
+尽力而为;后续加载模块可能覆盖 filter(best effort)。r2 F-10 补注:依赖
+直调 `ExitProcess(1)` 原属此指纹盲区(零行+码 1 但非外部)——IAT 追踪钩
+开启后可区分;钩自身不覆盖外部击杀(GetProcAddress 动态解析的调用同样
+不经 IAT,文档化边界)。**外部击杀假象高发警示(r2 定谳)**:驱动方仪器
+try/finally 无 catch 结构中,工具调用抛错 → finally killTree →
+"VM EXITED code=1" 先于错误栈打印(node ESM finally-先于-rejection 顺序)
+——读作进程自退是误判;判真死亡须以"击杀标记与错误分离"或采样时间线
+为准(soak 系 JSON `vm_died`、矩阵系收尾标记)。本机 VM 宿主"负载相关
+静默必退"呈报至今三例(soak 五轮/bigpage 四轮/手动 UAT)全部定谳为
+仪器或驱动方击杀假象,零例进程内真实退出。
 
 ## 5. 测量口径注记(soak 仪器判读)
 

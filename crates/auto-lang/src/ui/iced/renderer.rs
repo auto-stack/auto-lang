@@ -18840,6 +18840,13 @@ fn run_session(
     // stdlib 文档）。
     #[cfg(windows)]
     crate::vm::ffi::stdlib::install_native_crash_audit();
+    // PLAN-765 r2 T-05 诊断：ExitProcess IAT 追踪钩（env 门控）——四审计面
+    // +WER 全零痕的静默码 1 死亡复现后，唯一未覆盖进程内路径=依赖直调
+    // ExitProcess。见 stdlib::install_exit_process_trace 文档。
+    #[cfg(windows)]
+    if std::env::var("P765_EXIT_TRACE").map_or(false, |v| v == "1") {
+        crate::vm::ffi::stdlib::install_exit_process_trace();
+    }
     // PLAN-708 T-02（S-02）：生成器默认注册表后台预热——首帧带 preview-card
     // 的页面渲染原本内联承担 OnceLock 首建全量（register_defaults + schema
     // 解析折叠，实测 ~1.27s 单块，T-00 baseline §3.2），违反加载期连续占用

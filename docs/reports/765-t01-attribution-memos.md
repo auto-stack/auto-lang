@@ -211,3 +211,90 @@ F-1~F-9 落地后的 soak 复测(musk worktree + 本仓 release auto,同仪器�
    主导)。**退出面:vm_died=false 全程 60min 存活 + 审计册零行 +
    125 条连续心跳(62.5min)——外部击杀指纹之外的退出路径零发生**,
    收尾"VM EXITED code=1"再次为仪器清理(在 `written` 之后)。
+
+## 后记⑦：r2 瞬态尖峰退出面归因——矩阵仪器 finally-taskkill 假象（2026-10-12，T-05）
+
+### 呈报与复现背景
+
+musk PLAN-104 T-03 四轮 bigpage 矩阵（2026-10-12 00:53–01:02，并行会话）呈报
+"r1 修复面之外存在瞬态尖峰退出面"：①burst 形态（350×5KB/15s 消息分发入 VM
+生命期，轮 1-3 死于爆发+列表轮询叠加窗）；②大快照形态（轮 4：合成预启动，
+VM 唯一负载=一次 309KB autoui_snapshot 全树序列化，快照成功返回数秒内原生
+exit(1)、零错误输出）。四轮全部使用 post-r1 release auto.exe（43a816b47，
+00:49 构建——含 F-1~F-9 全部审计面）。
+
+### 三通道零痕核查（复现前静态取证）
+
+- **默认审计册**（`%LOCALAPPDATA%/auto-desktop/exit-audit.log`，AUTO_DESKTOP_EXIT_LOG
+  未设时 r1 审计面的缺省落点——musk 四轮从未检查过该文件）：最后一条停在
+  2026-10-11 22:05，四轮死亡时段（00:53–01:02）零条目 ⇒ panic(101)/main_err/
+  native_crash(F-9 SEH)/vm_process_exit/mem_guard 五面全部未命中；
+- **WER**：Application 日志与 ReportArchive 中 auto.exe 的 AppCrash 记录最近
+  一次为 10-01（c0000409 fastfail 家族=PLAN-747 已修的 panic-in-panic），四轮
+  时段零记录 ⇒ 非原生崩溃（若为 SEH，F-9 已装 + WER 应双痕）；10-12 00:36 的
+  WER 簇经参数比对为 10-11 12:03 一次 BSOD（bugcheck 0x7E/c0000005）的延迟
+  重报，机器在四轮时段无重启（System 日志 Kernel-Power 41 仅一条）；
+- **vm.log**：四轮共用追加文件含 4 份启动 banner、仅一段连续 idle=1..51 的
+  [POLL] 序列（轮 1-3 零 [POLL]），末尾干净截断零错误。
+
+### 复现与因子判别（五臂实验，2026-10-12 01:57–02:25）
+
+复现环境与四轮同构（musk worktree release musk.exe + release auto.exe +
+同载荷 350 轮 261KB 页 + 同 spawn env）。判别台 = bigpage-matrix 的最小变体
+（`p765-probe.mjs`，四臂 snap/nosnap/click/burst，错误捕获不触发收尾击杀，
+全程被动观察；burst 臂把合成移入 VM 生命期且密度加严至 350 条/5s）：
+
+| 臂 | 载荷 | 结果 |
+|---|---|---|
+| 原仪器复跑（run1/run2） | 快照+click | "VM EXITED code=1"（见下=收尾击杀） |
+| snap（只快照不点击） | 309KB 快照 ×20+，8s 节奏 | **存活 180s** |
+| click（点击但捕获错误继续观察） | click isError 后继续快照 | **存活 185s**（IAT 构建，审计册零行） |
+| burst（合成入 VM 生命期 5s+列表轮询叠加） | 252 条 [POLL] 全窗 | **存活 181s** |
+| run2（AUTOUI_MCP_DISABLE=1） | 心跳关闭 | 与 run1 同点收尾击杀（心跳非必要条件） |
+
+**结论：两种"尖峰载荷"形态下 VM 全程存活，零原生退出。**
+
+### 定谳：仪器 finally-taskkill 假象（r1 后记④/⑤同族，新位置复发）
+
+bigpage-matrix.mjs 为 try/**finally 无 catch** 结构。每轮固定链路：
+快照找到 entry → `autoui_action click`（本构建 click 要求 `value:"x,y"`，
+musk 注释在案的已知怪癖）→ isError 抛出 → **finally 先执行**（killTree 砍
+VM——`taskkill /T /F` 退出码恰为 1）→ `vm.on("exit")` 打出 "VM EXITED
+code=1" → **此后**模块拒绝才打印错误栈。node ESM 顺序微实验钉死：finally
+的输出先于未捕获拒绝的栈打印——控制台里 "VM EXITED code=1" 出现在 Error
+trace 之前，正是收尾击杀而非进程自退的直接读据。
+
+时间线复核全吻合：[POLL] 500ms/拍，idle=1..51 ≈ 25.5s 轮询窗 = VM 起后
+~3s 开拍至 click 时刻（mcp-up+8s 首轮迭代即找到 entry——snap 臂实证
+"has BIGPAGE: true" 从首个循环快照起恒真）；run1/run2 死点相同（idle=51）
+because 击杀时机由仪器流程（click 抛错点）决定，与 VM 状态无关。轮 1-3
+（旧形态合成在 VM 生命期内）的"死于爆发+列表轮询叠加窗"同构：击杀同样
+发生在流程尾（click 抛错或 entry 检索超时后），爆发只是背景噪声。"快照
+成功返回数秒内原生退出"实为"click 失败后收尾击杀"（8s 间隔在体感上读作
+"数秒"）。与 r1 后记④ soak 仪器收尾假象、musk K14（taskkill 宿主自毁）
+构成三例同族——**本机 VM 宿主的"负载相关静默必退"至今全部定谳为仪器/
+驱动方击杀假象，无一例进程内真实退出**。
+
+### r2 交付：F-10 ExitProcess IAT 追踪钩（观测面真缺口闭合）
+
+归因过程中确认一个**真实的观测缺口**（非缺陷但属四分法边界）：依赖代码
+直调 `ExitProcess(1)`（不经本仓任何审计 site、非 SEH）将零痕死亡——与外部
+击杀不可区分。r2 落地 `install_exit_process_trace`（stdlib.rs，紧邻
+native_crash_ffi；run_session 装配，env `P765_EXIT_TRACE=1` 门控）：遍历自身
+模块 IAT，将 kernel32 的 ExitProcess/TerminateProcess 槽替换为追踪 trampoline
+——落笔调用栈（模块基址相对偏移，release 构建配 line-tables 可符号化）后
+转调原函数，只加观测不改语义。覆盖边界：外部 TerminateProcess（taskkill）
+不经本进程 IAT，不在覆盖面（文档化）。单测：p765_iat_probe_child（子进程
+装钩后裸 `std::process::exit(9)`）+ p765_iat_trace_writes_audit_and_preserves_
+exit_code（审计行含 exitproc_trace/ExitProcess(9)/frames 偏移 + 退出码 9
+原样保持）。防御性：PE 解析按 SizeOfImage 界内校验、无 INT 描述子跳过。
+
+### musk T-03 解阻交接（仪器修复，非本仓面）
+
+bigpage-matrix.mjs 两处修复即可闭 T-03：①click 补 `value:"x,y"`（配
+include_bounds 快照取部件局部坐标——其注释③已勘明）；②收尾击杀与真实死亡
+区分：finally 的 killTree 前置 `cleaningUp=true` 标记，`vm.on("exit")` 里
+`cleaningUp ? "CLEANUP KILL" : "VM EXITED"`——消除 "VM EXITED code=1"
+的误读源。修复后矩阵按本轮口径复跑（两形态预期零退出）。附带：本纪要
+后记⑦证据链（三通道零痕核查 + 五臂判别 + 微实验）可直接支撑其 T-03
+"退出面=仪器假象"的结案陈词。
