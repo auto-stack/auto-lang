@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-754
-status: executing               # drafting → executing → execution_done → reviewed → archived
+status: execution_done       # drafting → executing → execution_done → reviewed → archived
 feature_name: pg-unify
 author: [agent]
 created_at: 2026-10-10
-updated_at: 2026-10-10
+updated_at: 2026-10-11
 plan_revision: 2
 
 supersedes_spec_components: []
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []
 
 affects: [playground-vue, auto-playground, website]
-current_step: 5
+current_step: 6
 total_steps: 6
 ---
 
@@ -146,24 +146,42 @@ website VitePress 页 props 接线；验证＝vue-tsc + dist 构建 + e2e（stan
 
 ## 8. 执行步骤
 
-- [ ] T-0 website 依赖入册：dedupe 契约包审计（highlight.js/@codemirror/*/
+- [x] T-0 website 依赖入册：dedupe 契约包审计（highlight.js/@codemirror/*/
   vue/lucide-vue-next/@lezer/highlight）全部入 website/package.json 依赖 +
   lockfile。验证：删除根 node_modules 后 npm ci && npm run build 过。
-- [ ] T-1 usePlaygroundFull apiBase 参数化 + PlaygroundIDEApp 组件新建
+  [✅ 已完成：提交 5e679444f（@lezer/highlight 入册；highlight.js 并发会话入册）]
+- [x] T-1 usePlaygroundFull apiBase 参数化 + PlaygroundIDEApp 组件新建
   （聚合 App.vue 全部宿主逻辑）。文件：packages/auto-playground-vue。
   验证：vue-tsc + 导出登记 index.ts。AC-02
-- [ ] T-2 standalone App.vue 瘦壳化（换用 PlaygroundIDEApp）。文件：
+  [✅ 已完成：提交 9a18386ad；T-05 复验 vue-tsc -b 两包 exit=0]
+- [x] T-2 standalone App.vue 瘦壳化（换用 PlaygroundIDEApp）。文件：
   crates/auto-playground/frontend/src/App.vue。验证：既有 e2e 全量绿 +
   新 unify spec ①②③。AC-02, AC-04
-- [ ] T-3 website 接线：PlaygroundIDEPage.vue + playground.md/zh 换用 +
+  [✅ 已完成：提交 9a18386ad；e2e 29 绿 + unify.spec 3/3（p754-unify-report.md）]
+- [x] T-3 website 接线：PlaygroundIDEPage.vue + playground.md/zh 换用 +
   apiBase 探测。验证：npm run build + preview 截图（AC-01/AC-03 走查）。
-- [ ] T-4 验收档：scratch/playground-check/p754-unify-report.md（截图 +
+  [✅ 已完成：提交 8e55088c5（JSON 探针防 SPA 回退假阳 + 先探测后渲染门控）]
+- [x] T-4 验收档：scratch/playground-check/p754-unify-report.md（截图 +
   e2e 实录 + 双端对照）。AC-01, AC-03
-- [ ] T-5 复审门禁：cargo t 红集对拍、vue-tsc、spec 预埋（merge 档落库）。
+  [✅ 已完成：AC-01..04 逐项实证 + 排障记录在档（worktree @8e55088c5）]
+- [x] T-5 复审门禁：cargo t 红集对拍、vue-tsc、spec 预埋（merge 档落库）。
   AC-04, AC-05
+  [✅ 已完成 2026-10-11（本回执）；vue-tsc 两包 exit=0；红集对拍见 §9 回执；
+  spec 预埋提交 52587c295（SD-01 playground-vue/project.md + SD-02/03
+  website/project.md，PLAN-754 备注块）]
 
 ## 9. 复审记录
 
+- 2026-10-11 `stage: work | PLAN-754 | r2 | outcome: pass | code plan-754-dev @ 52587c295
+  | tasks T-05 完成（T-0..T-04 前回执在案，本次证据复核）| evidence：vue-tsc -b 两包
+  exit=0（auto-playground-vue + frontend）；cargo t --no-fail-fast 红集对拍——worktree
+  5225 run/14 红 vs master 基线 5231 run/12 红：12 红恒等（musk_p053_4/plan606_029/
+  schema_drift+queue_coverage+kitchen_sink 三件套/ash_leak/projector/iced×2/p748×2/
+  plan502_m3 全预存族）；Δ2=plan730_raw_receive（隔离复跑绿，固定端口上传族环境红
+  738-r8 在册）+ plan707_client_manual_next（merge-base 预存红，master 已由 PLAN-755
+  3cefa2c8e 补 stream close 契约修复，合并后继承 master 侧消失）；另 state_file lock
+  负载 flake 隔离复跑绿；零红可归因于 754（零 Rust 改动，diff 仅 .vue/.ts/.md/.json）
+  | blockers: 无 | next: review`
 - 2026-10-10 `stage: work | PLAN-754 | r2 | outcome: pass | code plan-754-dev @ 8e55088c5
   | tasks T-0..T-04 完成（T-05 门禁留 review/merge 档）| evidence：p754-unify-report.md
   （双端截图/e2e 29 绿/探测排障实录）| blockers: 无 | next: review`
