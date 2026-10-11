@@ -8,6 +8,38 @@ import { desktopShots } from './desktop-showcase'
 import { applicationCopy } from './applications'
 import { CAPTURE_IMAGES } from './capture-slots'
 
+// PLAN-758 r3: author-provided cumulative ecosystem figures, updated 2026-10-11.
+// Both opening summary and later scale cards use this one source.
+function releaseStats(zh: boolean) {
+  return zh ? [
+    { value: '1500 亿', label: '研发 Token', description: 'Auto 语言生态累计研发投入，作者提供。', color: '#6366f1' },
+    { value: '100 万', label: '行 Rust 代码', description: '语言、运行时、渲染与生态基础设施。', color: '#14b8a6' },
+    { value: '40 万', label: '行 Auto 代码', description: '自举库、应用、示例与语料。', color: '#ec4899' },
+    { value: '1w+', label: '次提交', description: '生态累计开发提交，作者提供。', color: '#8b5cf6' },
+  ] : [
+    { value: '150 Billion', label: 'R&D Tokens', description: 'Cumulative Auto ecosystem R&D investment, provided by the author.', color: '#6366f1' },
+    { value: '1 Million', label: 'Lines of Rust', description: 'Language, runtime, rendering, and ecosystem infrastructure.', color: '#14b8a6' },
+    { value: '400K', label: 'Lines of Auto', description: 'Bootstrap libraries, applications, examples, and corpus.', color: '#ec4899' },
+    { value: '10K+', label: 'Commits', description: 'Cumulative ecosystem development commits, provided by the author.', color: '#8b5cf6' },
+  ]
+}
+
+function releaseProducts(zh: boolean) {
+  return zh ? [
+    { value: '1', label: '套 UI 框架', detail: 'AutoUI' },
+    { value: '2', label: '个桌面环境', detail: '原生桌面 · AutoOS 虚拟桌面' },
+    { value: '3', label: '套适配平台', detail: 'Web · Windows · Linux' },
+    { value: '4', label: '个主打应用', detail: 'AutoEdit · AutoShell · AutoMusk · AutoJade' },
+    { value: '28', label: '个演示应用', detail: '应用目录中的示例与演示' },
+  ] : [
+    { value: '1', label: 'UI Framework', detail: 'AutoUI' },
+    { value: '2', label: 'Desktop Environments', detail: 'Native desktop · AutoOS virtual desktop' },
+    { value: '3', label: 'Platform Integrations', detail: 'Web · Windows · Linux' },
+    { value: '4', label: 'Main Applications', detail: 'AutoEdit · AutoShell · AutoMusk · AutoJade' },
+    { value: '28', label: 'Demo Applications', detail: 'Examples and demos in the application directory' },
+  ]
+}
+
 export interface ReleaseShot {
   src: string
   label: string
@@ -66,7 +98,8 @@ const en = {
     badge: 'v0.5 milestone',
     titlePre: 'Auto',
     title: ': The v0.5 Milestone',
-    description: 'The core advances in v0.5: AutoUI for Web and desktop, a usable AutoOS virtual desktop, and a growing application ecosystem. Auto is moving from a language and toolchain toward everyday desktop use.',
+    description: 'v0.5 is the biggest update in the history of the Auto language ecosystem — a key milestone in Auto’s journey from a language to an ecosystem!',
+    effortTitle: 'R&D Investment', productsTitle: 'Ecosystem Results', products: releaseProducts(false),
     primaryText: 'Read the Release Notes',
     primaryLink: '/docs/releases/v0.5',
     secondaryText: 'See the desktop ↓',
@@ -152,7 +185,7 @@ const en = {
     navLabel: 'Desktop',
     kicker: 'AutoOS · Headline',
     title: 'The AutoOS Virtual Desktop',
-    desc: 'A virtual compositor inside a single OS window fits AutoUI apps into a cross-platform desktop — available on Windows today, with Linux desktop environments and HarmonyOS on the roadmap.',
+    desc: 'A virtual compositor inside a single OS window fits AutoUI apps into a cross-platform desktop — running on Windows and Linux today; HarmonyOS integration remains on the roadmap.',
     narrative: 'This time, the first thing we want to show you isn\'t a language feature — it\'s a desktop you can use. The window manager itself is an AutoUI app: virtual-window behavior is implemented in Auto above the host window; dragging, focus, and the taskbar are all ordinary Auto code. Both light and dark themes are in place, and apps are progressively integrated, with varying maturity.',
     points: [
       'WM-as-App — the chrome, dragging, focus, and taskbar of virtual windows are all written as ordinary AutoUI apps; a shared contract supports consistency across renderers.',
@@ -287,13 +320,8 @@ const en = {
       'v0.3 answered "is it a language?"; v0.4 answered "can it run real things?". With v0.5, the question is the hardest one yet: "can it become something you open every day?"',
       'Auto has grown from a language kernel, runtime, and transpilers into interfaces, a desktop, and real applications. First, the three release steps; then, the v0.5 experience.',
     ],
-    stats: [
-      { value: '100 Billion', label: 'AI R&D Tokens', description: 'Platform-scale engineering written with deep AI involvement.', color: '#6366f1' },
-      { value: '5,700+', label: 'Commits', description: 'September 7, 2026 snapshot: 5,711 commits since v0.3.', color: '#8b5cf6' },
-      { value: '578K+', label: 'Lines of Rust', description: 'Compiler, AutoVM, the iced desktop shell, and system services.', color: '#14b8a6' },
-      { value: '135K+', label: 'Lines of Auto', description: 'Bootstrap libraries, apps, and corpus — the platform\'s own language is growing.', color: '#ec4899' },
-    ],
-    statsNote: 'Scale figures are a September 7, 2026 repository snapshot including tests and corpus; token usage is author-provided. September 30 audit: 8,033 commits from v0.3 to 14e444f02; no frozen v0.5 tag yet.',
+    stats: releaseStats(false),
+    statsNote: 'Scale figures are author-provided cumulative Auto ecosystem totals, updated October 11, 2026. Product capabilities and runtime requirements are described below.',
     timeline: [
       { version: 'v0.3', title: 'The language kernel stood up', text: 'Type system, ownership and borrowing, pattern matching — the foundation of a language was laid.' },
       { version: 'v0.4', title: 'Runtime and transpilers', text: 'AutoVM and a2r expanded their supported paths, while AI-agent infrastructure started supporting real application workflows.' },
@@ -330,7 +358,8 @@ const zh = {
     badge: 'v0.5 里程碑',
     titlePre: 'Auto',
     title: '：v0.5 里程碑',
-    description: 'v0.5 的核心变化：AutoUI 支持 Web 与桌面双端，AutoOS 虚拟桌面可用，应用生态逐步成形。Auto 从语言与工具链，走向日常使用的桌面与应用。',
+    description: 'v0.5 是 Auto 语言生态有史以来的最大更新，也是 Auto 从语言跨向生态的关键里程碑！',
+    effortTitle: '研发投入', productsTitle: '生态成果', products: releaseProducts(true),
     primaryText: '阅读发布说明',
     primaryLink: '/zh/docs/releases/v0.5',
     secondaryText: '查看桌面实景 ↓',
@@ -416,7 +445,7 @@ const zh = {
     navLabel: '桌面',
     kicker: 'AutoOS · 头牌',
     title: 'AutoOS 虚拟桌面',
-    desc: '单一 OS 窗口内的虚拟合成器，让 AutoUI 应用装进跨平台桌面 —— Windows 上今日可用，Linux 桌面环境与鸿蒙在路线图上。',
+    desc: '单一 OS 窗口内的虚拟合成器，让 AutoUI 应用装进跨平台桌面 —— 可在 Windows 与 Linux 上运行；鸿蒙集成仍在路线图上。',
     narrative: '这一次，我们想给你看的第一样东西不是语言特性 —— 是一个能用的桌面。窗口管理器本身是一个 AutoUI 应用：虚拟窗口的行为用 Auto 实现在宿主窗口之上；拖拽、焦点与任务栏都是普通 Auto 代码。深浅两主题都已就位，应用在逐步接入，成熟度不一。',
     points: [
       'WM-as-App —— 虚拟窗口的边框、拖拽、焦点与任务栏都是普通 AutoUI 应用；共享契约支撑渲染器间的一致性。',
@@ -551,13 +580,8 @@ const zh = {
       'v0.3 回答了"它是一门语言吗？"；v0.4 回答了"它能跑真东西吗？"。到了 v0.5，问题变成了最难的一个："它能成为你每天打开的东西吗？"',
       'Auto 从语言内核、运行时与转译器，走向界面、桌面和真实应用。下面先看三个版本的变化，再展开 v0.5 的实际体验。',
     ],
-    stats: [
-      { value: '1000 亿', label: 'AI 研发 Token', description: '深度 AI 参与的平台级工程。', color: '#6366f1' },
-      { value: '5,700+', label: '提交数', description: '2026-09-07 快照：v0.3 以来 5,711 次提交。', color: '#8b5cf6' },
-      { value: '57.8 万+', label: 'Rust 行数', description: '编译器、AutoVM、iced 桌面 Shell 与系统服务。', color: '#14b8a6' },
-      { value: '13.5 万+', label: 'Auto 行数', description: '自举库、应用与语料 —— 平台自己的语言在长大。', color: '#ec4899' },
-    ],
-    statsNote: '规模数字为 2026 年 9 月 7 日仓库快照，含测试与语料；Token 用量为作者提供。9 月 30 日审计：v0.3 至 14e444f02 共 8,033 次提交；尚无冻结的 v0.5 标签。',
+    stats: releaseStats(true),
+    statsNote: '规模数据由作者于 2026-10-11 提供，按 Auto 语言生态累计口径；各产品能力与运行条件见下文。',
     timeline: [
       { version: 'v0.3', title: '语言内核立住', text: '类型系统、所有权与借用、模式匹配 —— 一门语言的地基完成。' },
       { version: 'v0.4', title: '运行时与转译器', text: 'AutoVM 与 a2r 扩展已支持路径，AI Agent 基础设施开始支撑真实应用工作流。' },

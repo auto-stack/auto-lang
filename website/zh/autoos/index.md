@@ -15,7 +15,7 @@ import EvidenceImage from '../../.vitepress/theme/components/EvidenceImage.vue'
 
 ## 窗口、工作区与启动
 
-虚拟桌面是当前 **OS over OS** 的形态：AutoOS 应用在宿主系统中的桌面环境里运行，与宿主桌面并行。内核、驱动与系统服务继续由宿主提供。
+AutoUI 应用既可在 Windows/Linux 原生桌面上直接运行，也可在 Windows/Linux 宿主中的 AutoOS 虚拟桌面里运行。虚拟桌面是当前 **OS over OS** 的形态：AutoOS 应用在宿主系统中的桌面环境里运行，与宿主桌面并行。内核、驱动与系统服务继续由宿主提供。
 
 桌面外壳本身使用 AutoUI，组织虚拟窗口、焦点、拖拽、缩放、工作区、任务栏、启动器与通知。应用窗口与桌面表面共享窗口语义，渲染与宿主接入则有各自的职责。
 
@@ -45,6 +45,6 @@ Kanban 展示了数据驱动的看板及其 Web、桌面形态。下面保留的
 
 `auto-lang` 负责语言、UI 框架、执行与渲染契约；`auto-os` 负责桌面表面、应用组装与产品集成。底层执行与系统设施目前结合 Auto 源码、生成代码、Rust 基础设施与既有生态。
 
-宿主应用与系统服务按平台接入。共享 UI 定义以布局、交互和主题一致为目标，平台适配与文本渲染仍会有差异。Linux 合成宿主已有早期工作，完整独立发行版、OpenHarmony 集成和自有内核仍是未来方向。
+宿主应用与系统服务按平台接入。共享 UI 定义以布局、交互和主题一致为目标，平台适配与文本渲染仍会有差异。Windows/Linux 虚拟桌面使用已有宿主系统；完整独立发行版、OpenHarmony 集成和自有内核仍是未来方向。
 
 [了解 OS 的组成与运行形态](/zh/os) · [阅读 AutoOS 历史与展望](/zh/articles/autoos-history) · [了解桌面运行路径](/zh/ui-desktop) · [返回 v0.5](/zh/v05/)

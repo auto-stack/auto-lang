@@ -38,3 +38,7 @@ AI 按应用/用户界面、Agent 工具、共享客户端、aaid 模型服务�
 Category A：网站 build 与 scoped website e2e，不跑 Cargo/docs_gen。十二路由覆盖正文、入口、双语切换、目录/SSR/search；五宽度（360/390/768/1024/1440）两主题几何，390/1440 的 48 份真实页面图供人工审读。介绍导航目标至少 44px，表格允许局部滚动，不允许页面级横向溢出。截图前确认实际 URL、locale、非 404 正文，解码可见图片。
 
 来源公开访问核验用 `website/scripts/p719-check-sources.mjs`；几何/图像收据用 `website/scripts/p719-shot.cjs`。证据见 `docs/reports/p719-os-ai-introduction.md`、`p719-public-sources.json` 与截图 manifest。
+
+## 桌面与适配平台口径（PLAN-758 r3，2026-10-11 用户确认）
+
+AutoUI 应用可在 Windows/Linux 上直接原生运行，也可在 Windows/Linux 宿主上的 AutoOS 虚拟桌面中运行。这是两个桌面环境的产品口径；Web、Windows、Linux 为三个适配平台。虚拟桌面继续复用宿主内核/驱动/服务，与独立发行版、OpenHarmony 集成或自有内核的未来路线分别表述。网站当前平台文案同步该口径；截图与自动验证的证据边界仍按各自实际载体标注。

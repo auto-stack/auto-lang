@@ -44,6 +44,26 @@ const t = computed(() => zh.value ? {
       <div class="badge">{{ c.hero.badge }}</div>
       <h1 class="title"><span class="accent">{{ c.hero.titlePre }}</span>{{ c.hero.title }}</h1>
       <p class="description">{{ c.hero.description }}</p>
+      <div class="release-summary">
+        <div class="summary-group summary-effort">
+          <h2>{{ c.hero.effortTitle }}</h2>
+          <ul>
+            <li v-for="stat in c.philosophy.stats" :key="stat.label">
+              <strong>{{ stat.value }}</strong><span>{{ stat.label }}</span>
+            </li>
+          </ul>
+        </div>
+        <div class="summary-group summary-products">
+          <h2>{{ c.hero.productsTitle }}</h2>
+          <ul>
+            <li v-for="product in c.hero.products" :key="product.label">
+              <div><strong>{{ product.value }}</strong><span>{{ product.label }}</span></div>
+              <small>{{ product.detail }}</small>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <p class="summary-source">{{ c.philosophy.statsNote }}</p>
       <p class="section-desc">{{ c.hero.status }}</p>
       <div class="actions">
         <a :href="c.hero.primaryLink" class="btn btn-primary">{{ c.hero.primaryText }}</a>
@@ -323,6 +343,22 @@ const t = computed(() => zh.value ? {
   margin: 2.5rem auto 0;
   max-width: 1080px;
   text-align: left;
+}
+
+.release-summary { max-width: 1120px; margin: 1.8rem auto 0; display: grid; gap: 1rem; }
+.summary-group { padding: 1rem 1.1rem; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card) / 0.6); }
+.summary-group h2 { margin: 0 0 0.8rem; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.08em; color: hsl(var(--muted-foreground)); }
+.summary-group ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem 2rem; }
+.summary-group li { min-width: 0; }
+.summary-group strong { font-size: clamp(1.25rem, 2.2vw, 1.8rem); font-weight: 750; color: var(--vp-c-brand-1); }
+.summary-group span { margin-left: 0.4rem; font-size: 0.9rem; }
+.summary-group small { display: block; max-width: 240px; margin: 0.3rem auto 0; font-size: 0.7rem; line-height: 1.5; color: hsl(var(--muted-foreground)); }
+.summary-source { max-width: 960px; margin: 0.8rem auto 1.25rem; font-size: 0.75rem; line-height: 1.6; color: hsl(var(--muted-foreground)); }
+@media (max-width: 640px) {
+  .rel-hero { padding: 2.5rem 1.25rem 2rem; }
+  .summary-group ul { gap: 0.8rem 1.2rem; }
+  .summary-group li { flex: 1 1 40%; }
+  .summary-group span { font-size: 0.8rem; }
 }
 
 /* highlights */

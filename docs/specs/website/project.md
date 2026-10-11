@@ -77,3 +77,5 @@ graph LR
 > **Plan 715（2026-09-30，archived）**：全站 UI 刷新——navigation.ts 单源双语导航/当前位置/共享 SPA 例外；VitePress local search 接线（合成热键法+CodeMirror 捕获守卫）；全站设计令牌与断点矩阵（360/390/768/1024/1440 无溢出）；HomeDemo 轻量三视图（预置/实时/降级诚实契约）；v0.5 发布页 ReleaseLanding 数据驱动重建（产品前置/理念 details 展开/统计后移/launcher 实图换 TODO 占位）；EvidenceImage/ScreenshotGallery/AppLandingLayout 统一图片与骨架；e2e 64 例 + 五断点×双语×深浅截图矩阵；site-ui/home-demo 双测试族。证据：docs/reports/p715-website-ui-{baseline,review}.md。
 
 PLAN-758：产品现名 AutoJade，工程/专题标识 auto-jade；双语规范路径 /apps/auto-jade/ 与 /zh/apps/auto-jade/，旧 jadeedit 路由保留同语言兼容跳转。源码仓库实际地址尚未改名，GitHub jade-edit 地址继续可用。用户提供的六张深色第一方手册示例图按实际场景展示，SHOT-07 为主图，SHOT-08 为反链/双链/快速打开/建页确认/文件树画廊，SHOT-09 草稿恢复仍待拍；P4 标签文件名与实际画面不符不入库。图片保留原始字节、原图与键盘放大，来源/宽高/hash/准备态及未独立确认的深色工具链身份在 docs/reports/p758-autojade-capture-catalog.json。快开不替代全文搜索，准备图不代表最终 RC 已通过。
+
+> **PLAN-758 r3（2026-10-11）**：v0.5 开篇采用作者批准的最大更新/语言跨向生态里程碑宣传句，投入（1500 亿 Token、100 万 Rust 行、40 万 Auto 行、1w+ 提交）与成果（1 UI 框架、2 桌面环境、3 平台、4 主应用、28 演示）两组概要。当前数据以作者 2026-10-11 生态累计口径为准，开篇/后部规模单源，历史审计快照保留原身份；2 桌面指 Windows/Linux 原生应用桌面和 AutoOS 虚拟桌面，3 平台指 Web/Windows/Linux，保持个别产品运行条件及独立系统路线说明。

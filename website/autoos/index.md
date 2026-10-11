@@ -15,7 +15,7 @@ import EvidenceImage from '../.vitepress/theme/components/EvidenceImage.vue'
 
 ## Windows, workspaces, and launch
 
-The virtual desktop is the current **OS over OS** form: AutoOS applications run inside a desktop hosted by the existing system, alongside its desktop. The host continues to provide the kernel, drivers, and system services.
+AutoUI applications can run directly on Windows/Linux native desktops or inside an AutoOS virtual desktop hosted on Windows/Linux. The virtual desktop is the current **OS over OS** form: AutoOS applications run inside a desktop hosted by the existing system, alongside its desktop. The host continues to provide the kernel, drivers, and system services.
 
 The desktop shell itself uses AutoUI. It organizes virtual windows, focus, dragging, resizing, workspaces, the taskbar, launcher, and notifications. Application windows and desktop surfaces share window semantics; rendering and host integration have separate responsibilities.
 
@@ -45,6 +45,6 @@ Kanban illustrates a data-driven board with Web and desktop views. The following
 
 `auto-lang` owns the language, UI framework, execution, and rendering contracts. `auto-os` owns desktop surfaces, application assembly, and product integration. Underlying execution and system facilities currently combine Auto sources, generated code, Rust infrastructure, and existing ecosystems.
 
-Host applications and services are connected per platform. Shared UI definitions aim for consistent layout, interactions, and themes; platform adapters and text rendering can differ. Early Linux composition-host work exists, while complete independent distributions, OpenHarmony integration, and an AutoOS kernel remain future directions.
+Host applications and services are connected per platform. Shared UI definitions aim for consistent layout, interactions, and themes; platform adapters and text rendering can differ. The Windows/Linux virtual desktop uses the existing host system; complete independent distributions, OpenHarmony integration, and an AutoOS kernel remain future directions.
 
 [Read the OS architecture and operating forms](/os) · [Read the AutoOS history and outlook](/articles/autoos-history) · [Explore desktop execution paths](/ui-desktop) · [Back to v0.5](/v05/)
