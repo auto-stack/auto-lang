@@ -397,3 +397,12 @@ fastfail 崩溃且审计无行时，优先按栈溢出排查（重建符号 + RU
 - **P758-OBS2 / baseline gate**：注释改名无非注释差异；最后 Rust 日常档 19 红，其中 18 项在原注释基面复现，余一动画项在基线及最终隔离复验均通过；tu 的既有金样红亦在基线复现。不虚报全绿或纳入本次无关修复，逐项日志见 p758 复核附件。
 
 - **P758-OBS3 / concurrent baseline**：同步 PLAN-754 后，静态预览 /playground 主动探测同源 /api/examples 得到 404，fallback 127.0.0.1:3030 未运行产生连接拒绝；原控制台检查隔离复现。两个宿主组件与当前 master 等同，本计划未改变它们或放宽检查。证据：[基面核对](../reports/p758-autojade/concurrent-baseline-check.json)。最终当前网站 61/63，搜索隔离复验通过，余一既有此项；最终 t 5213/5231、18 红（16 已对照、2 flake 隔离绿），tu 857/2 红（原金样 + env 路径用例隔离绿），完整记录在 p758 复核。
+
+### PLAN-757（2026-10-11，r3 用户裁定留空合入；产品缺陷待修）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P757-D1 | high（用户指示需修改） | AutoEdit VM/iced 比较视图布局 | 双文件比较视图上方空白编辑区挤压差异正文，真实画面不适合宣传（问题图 `docs/reports/p757-capture/media/p757-autoedit-diff-layout.png`，+16/-1 一个 hunk 的真实差异被压缩）。功能本身已核查可用（保存后自动重比 +17/-1 两个 hunk 在案）。**SHOT-03 宣传图因此留空**，布局修复后按拍摄合同重拍（指南行"待布局修复后重拍"）。 | PLAN-757 §9/§10；docs/reports/website-v05-capture-guide.md SHOT-03 行 |
+| P757-D2 | low | AutoEdit 原生查找输入焦点 | 原生键盘输入查找词时焦点可能同时落入代码区（本次经应用 MCP 输入规避）；产品侧待修 | PLAN-757 r2 复审 findings；p757-autoedit-verification.md |
+| P757-D3 | low | AutoEdit 同步搜索阻塞 | 跨文件搜索同步阻塞窗口直至完成，大仓长尾体验差；拍摄时须等待完成 | 同上 |
+| P757-D4 | low | website 首次搜索索引加载 | VitePress local search 首次加载索引长尾，并行负载下 e2e 偶发超时（新端口单 worker 复跑 19.6s 过） | 同上 |
