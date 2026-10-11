@@ -1353,6 +1353,18 @@
      ],
      "status": "published",
      "created": "2026-10-10"
+    },
+    {
+     "id": "P755-4",
+     "title": "PLAN-755 外部审计打回应对收据（落地态无罪 + blueprints WIP 处置）",
+     "content": "2026-10-11 用户转述外部审计打回。双会话闭合：①执行会话重建审计视图——守卫 4/4、两原反例 2/2、并行 th 102/100/2（back_proxy 在册红+quoted_boundary 已录 flake，隔离 PASS）；日常档 32 红逐项归因=13 在册基线+18 主检出未提交 blueprints/ 删除（68 文件，另一任务 WIP，Plan 758 在案登记禁止重置；直接 Os NotFound+间接 041-auto-edit 零副本依赖 tree_util.at 致 Undefined symbol）+1 并行 flake；用户裁定废弃物→git checkout -- blueprints/ 恢复，复验 31/31 受影响族+全档 5231/5218/13 全在册。②审计会话 R4 归档后独立核查 pass（0f27d0cd0）：clean 树串行 plan755 OR http_e2e 106/105/1 在册红/0 超时（265.241s）、四文件 fmt exit 0、blueprints 恢复逐文件哈希与 HEAD 一致；755 archived 终态保持不回退，P751-D1销案结论维持。本轮零代码变更（工作树复原至 HEAD，簿记类收尾）。",
+     "file": "docs/plans/reports/755-external-audit-response.md",
+     "related": [
+      "PLAN-755",
+      "PLAN-751"
+     ],
+     "status": "published",
+     "created": "2026-10-11"
     }
    ]
   },

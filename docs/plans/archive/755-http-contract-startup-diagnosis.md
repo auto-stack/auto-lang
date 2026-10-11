@@ -395,3 +395,28 @@ gate 可达性 | 处置`。gate 可达 = 该 id 会被 `stdlib/auto/http.at` 某
 - 恢复事实：主检出 blueprints 68 tracked 文件均存在，逐文件 Git 内容哈希与 HEAD 相同。执行者恢复前后日常数字保留历史，本轮未重复全库日常档；不能用该删除来推翻上轮真实 R2 缺陷。应对报告的并行 th 不直接等同串行验收，本次已补齐独立串行证据。
 - evidence：[落地核查报告](../reports/755-landed-independent-check.md)、baseline、串行测试完整执行段与格式日志，均主检出持久保存。
 - next：无需新代码修复计划，P751-D1 销案结论保留；批量回归收据仍覆盖 740，755 落地触发 DUE，按 regress 前置重核后补执行，本轮不代跑 tf。独立核查工作树保存证据后守卫清理。
+
+### 归档后审计闭合收尾（PLAN-755:r1，2026-10-11，/auto-plan:merge 恢复路径）
+
+- stage: merge；outcome: **pass（归档后 verified no-op + 审计闭合沉淀；archived 终态保持）**。
+- 触发：用户 2026-10-11 裁定审计实质即门禁红、blueprints 删除判废弃物恢复（执行会话已
+  执行并复验），并指示走 merge 收尾归档。
+- 依据（对 R4 独立核查与执行会话应对报告的双重采信，关键数字各自独立实测）：
+  - 执行会话（[755-external-audit-response.md](../reports/755-external-audit-response.md)）：
+    守卫 4/4、两原反例 2/2、并行 th 102/100/2（在册红+已录 flake，隔离 PASS）；日常档
+    32 红全归因（13 在册 + 18 blueprints 未提交删除致红 + 1 flake）→ 用户裁定恢复 →
+    受影响族 31/31 + 全档 5231/5218/13 全在册。
+  - 审计会话 R4（`0f27d0cd0`）：串行 106/105/1 在册红/0 超时、fmt exit 0、blueprints
+    68 文件逐文件哈希与 HEAD 一致。
+- ledger_refreshed：workspace `D:/autostack/auto-lang`，`.autoos/specs.json` 离线投影
+  upsert **P755-4**（reports，外部审计打回应对收据；脚本
+  `scripts/p755_audit_ledger.py`，回读核验 published，总条目 809）；INDEX 再生无 diff。
+  store 中介写入不可达（musk 后端未运行），按 README §5 手工回退路径（先例
+  p736/p748/750/751/752 及本计划原合并轮）。
+- archived：维持 `docs/plans/archive/755-http-contract-startup-diagnosis.md` 终态
+  （completion_kind delivered，2026-10-10 §11 收据不变）；本轮零代码变更——工作树经
+  blueprints 恢复后与 HEAD 一致，无新 delivery commit，簿记类提交独立落账。
+- cleaned：本轮无 worktree/分支（原合并轮已清）；无需 wt-guard。
+- landing ≠ deployment 观测：沿用 §11 既有登记（release 二进制未重建），本轮无新增触面。
+- 批量回归 DUE：收据覆盖 740（2026-10-08），741–755 落地窗口到期 → 移交
+  /auto-plan:regress 主检出单实例补执行（与 R4 next 一致）。
