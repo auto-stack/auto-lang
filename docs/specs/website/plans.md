@@ -16,3 +16,4 @@
 | 756 | website-v05-copy-and-capture-slots | ✅（reviewed→archived） | archive/ | 双语首页/v0.5 四主应用、发布与后端条件/入口修正；12 项文字待拍槽与逐图拍摄合同（website-v05-capture-guide.md），已批准原图保留；SD-01/02 待拍槽契约（后由 PLAN-757/758 实拍逐步替换）|
 | 754 | pg-unify | ✅（reviewed→archived） | archive/ | /playground（EN/ZH）换 PlaygroundIDEPage——apiBase 探测（JSON 探针防 SPA 回退假阳+2500ms 超时）同源→127.0.0.1:3030 fallback、先探测后渲染门控、backendDown 降级提示；Explorer+Card 降级书页内嵌；dedupe 契约包入册规则（@lezer/highlight 补齐）|
 | 753 | ecosystem-readme-refresh | ✅（reviewed→archived） | archive/ | 双语 README 生态主入口重写——四层生态+四主应用+学习入口，长语法下沉 docs/language/overview 双语子页；根页直引 website/public 原图（同字节无副本）；产品状态以现势 Spec 为准不虚标成熟度；新规范 design/ecosystem-readme.md（SD-01）|
+| 757 | autoedit-website-real-captures | ✅（reviewed→archived） | archive/ | AutoEdit 自仓 VM 深色实拍——工作台/跨文件搜索两原图接入双语首页·v0.5·总览·专题（hash 与捕获目录一致，源码 f9ae2a64）；比较图 SHOT-03 因 VM 布局缺陷（P757-D1 在案待修）留空待重拍；e2e 21/21+构建 164s；SD-01/02 实拍接入契约 |

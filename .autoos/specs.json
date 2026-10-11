@@ -5657,6 +5657,30 @@
      ],
      "status": "published",
      "created": "2026-10-11"
+    },
+    {
+     "id": "P757-1",
+     "title": "AutoEdit 实拍接入与来源契约（PLAN-757 SD-01，r3 两图+留空）",
+     "content": "契约=docs/specs/website/design/application-introductions.md（PLAN-757 节）：AutoEdit 介绍位使用自仓真实实拍——工作台（SHOT-01 autoedit-workspace.png）与跨文件搜索（SHOT-02 autoedit-search.png）为 VM/Iced 深色 2560×1600 原图（sha256 与 docs/reports/p757-autoedit-capture-catalog.json 逐字节一致，源码版本 f9ae2a64）；比较位（SHOT-03）因 VM 比较视图布局缺陷（P757-D1，KNOWN-DEBT 在案）保留待拍槽，布局修复后按拍摄合同重拍；不使用 Rust 版画面或历史图冒充。",
+     "file": "docs/specs/website/design/application-introductions.md",
+     "related": [
+      "PLAN-757",
+      "PLAN-756"
+     ],
+     "status": "published",
+     "created": "2026-10-11"
+    },
+    {
+     "id": "P757-2",
+     "title": "实拍主图共享与真实来源规则（PLAN-757 SD-02）",
+     "content": "契约=docs/specs/website/design/ui-presentation.md（PLAN-757 节）：AutoEdit 主图（SHOT-01）共享首页/发布/总览/专题；功能图（SHOT-02 搜索）来自实际文件与真实结果核对，不得摆拍或重绘；SHOT-03 保留空位并注明缺陷与重拍条件。与 PLAN-756 待拍槽契约（P756-1）衔接：实拍完成的槽转 EvidenceImage 实图，未完成槽保持文字待拍。",
+     "file": "docs/specs/website/design/ui-presentation.md",
+     "related": [
+      "PLAN-757",
+      "PLAN-756"
+     ],
+     "status": "published",
+     "created": "2026-10-11"
     }
    ]
   },
@@ -9032,6 +9056,18 @@
      "content": "review pass @e51640821（AC-01..05：build 156.77s/v05-copy 5/5/截图清单 12/12 匹配/git diff --check 过；P756-D1/D2 nonblocking 范围外）；delivery 0cc62c923（rebase 映射 e51640821→c61d182bd、a8edba796→0cc62c923，range-diff 全等，ff-only 落地）；2026-10-10 merge blocked（ledger only：无 spec writer，GET 127.0.0.1:8080 拒连）；2026-10-11 经 README §5 手工回退路径（754/755 先例）回填投影 P756-1/2/3 并归档/清理，收据见计划。",
      "file": "docs/plans/archive/756-website-v05-copy-and-capture-slots.md",
      "related": [
+      "PLAN-756"
+     ],
+     "status": "published",
+     "created": "2026-10-11"
+    },
+    {
+     "id": "P757-3",
+     "title": "PLAN-757 审计收据（r1/r2 → r3 用户裁定留空合入 → merge delivered）",
+     "content": "r1 Rust 试拍弃用（栈溢出+样式缺陷，用户纠正为 VM 深色）；r2 review needs_fix（P757-R1-01 比较布局缺陷致 SHOT-03 不合格）；2026-10-11 用户裁定 r3：比较图留空合入、缺陷在案待修（P757-D1 high）。r3 执行：两图交付（PNG hash 对拍一致）+rebase 对账（57+14 commits，六文件冲突并集解决，range-diff 全等映射 64f820cfd→bef72060c）+定向 21/21（apps-introduction+v05-copy，总览 62 图/槽结构探针实证）+构建 164.41s。Category A 零 cargo 合规。债务 P757-D1..D4 入 KNOWN-DEBT。",
+     "file": "docs/plans/archive/757-autoedit-website-real-captures.md",
+     "related": [
+      "PLAN-757",
       "PLAN-756"
      ],
      "status": "published",
