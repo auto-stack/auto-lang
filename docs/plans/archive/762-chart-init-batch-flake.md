@@ -84,7 +84,7 @@ stage: merge | PLAN-762:r1 | outcome: pass | 2026-10-11 | checkpoints:
 - landed: rebase master（master 期间落地 PLAN-763 账本重写 4b19d1bf5，specs.json 冲突按"master 规范化版为基幂等重放三 upsert"解决，序列化对齐 indent=1 后 diff 收敛 31 行）；映射 f5bc037a1→fd5a1754d（range-diff `=` patch 全等，复审证据携带）、932a5e9e8→d9ebd1812（冲突解决重写，非 review 绑定件）；`git merge --ff-only plan-762-dev`，master tip=d9ebd181231ad44f1f1276f8bd9976cfd003114d，无合并提交；落地后主检出验证：spec §1.5 契约在库、账本三件在库、报告在库、scoped 冒烟 cargo t plan437 3/3 绿
 - ledger_refreshed: .autoos/specs.json（本仓 Git 跟踪形态，经 worktree+git 落地）：designs/P708-1 追加 762 契约+tags；reviews/P762-1；reports/P762-2（related PLAN-762/761，status published）；JSON 回读校验通过
 - archived: docs/plans/archive/762-chart-init-batch-flake.md（git mv），status: archived，completion_kind: delivered
-- cleaned: 见下方回填
+- cleaned: wt-guard 双 clean（auto-lang + auto-down 兄弟，reparse point 扫描空）；`git worktree remove` 双仓、`git branch -d plan-762-dev`（was d9ebd1812，--merged 验证全并入）、组目录 `D:/autostack/.wt/lang-762` rmdir 移除；worktree list 复核仅余主检出与他会话组
 | production_artifacts: 纯测试文件+文档 diff（零非测试 Rust 代码）——release 二进制/web bundle 零影响，无需重建（主检出 auto.exe 语义不变） | batch_regression_due: 否——收据 last_covered_plan_id=761（2026-10-11T07:41Z <48h），其后落地 762/763 均非 5 倍数计划，整五触发未达 | blockers: 无 | next: cleaned 回填后终态
 
 ## 10. 待澄清事项
