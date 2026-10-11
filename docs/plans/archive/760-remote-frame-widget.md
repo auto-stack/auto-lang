@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-760
-status: reviewed         # drafting → executing → execution_done → reviewed → archived
+status: archived         # drafting → executing → execution_done → reviewed → archived
 feature_name: remote-frame .at 元件（宿主侧远程帧消费面）
 author: [agent]
 created_at: 2026-10-11
@@ -374,6 +374,36 @@ findings：
 复审限制声明：本复审在执行会话内进行——结论自工件重建（净 diff
 master..HEAD 27 文件 +1874/-133 逐段审读、四轮 e2e 收据、门禁输出），
 未另起独立会话。| next: merge`
+
+2026-10-11 merge 收据（`PLAN-760:r2`）：
+- prepared：reviewed 基线 aca5a5bba（rev 2 pass）+ F-1 格式修复 30fad6fa1；
+  spec delta = ui/overview.md「现状（2026-10-11）——remote-frame」节（e9dac7f5f→
+  rebase 004a05dac）。
+- landed：rebase 线性化（7 提交重放零冲突；`git range-diff` patch 等价——
+  aca5a5bba=30f0a19b9 `=`）；wt-guard clean → `git merge --ff-only plan-760-dev`
+  → **master tip = 64fa9bcd0（delivery commit，无 merge commit）**；rebase
+  hash 映射：77a8f5ebd→675f0b3d9 / 6c80f64ca→86bb6f48a / 6a85f0170→72a7c6026 /
+  0b61b9ad3→8e4653dbb / e9dac7f5f→004a05dac / aca5a5bba→30f0a19b9 /
+  30fad6fa1→64fa9bcd0。落地后 smoke：remote_frame 8 例 + schema_drift 双栅栏绿。
+- ledger_refreshed：`.autoos/specs.json` designs 节 upsert **P760-1**（file=
+  docs/specs/auto-lang/ui/overview.md，related PLAN-760/102/683）+
+  ui/plans.md 760 行 + `python scripts/spec-index.py` INDEX 再生（26 projects
+  持平——P760-1 file 指向已有文件）；提交 e4021700f。主检出他 会话 WIP
+  （KNOWN-DEBT/759 报告追加）未触碰。
+- archived：本文件 git mv → docs/plans/archive/，status: archived，
+  completion_kind: delivered。
+- cleaned：wt-guard × 2（auto-lang + auto-down 兄弟）双 clean → worktree 双
+  移除 + 分支 plan-760-dev 删除（was 64fa9bcd0）+ 组目录 .wt/lang-760 移除
+  （rmdir 空）；worktree list 零 lang-760 残留。
+- 生产工件观察项（Landing ≠ deployment）：`target/release/auto.exe` =
+  Oct 10 18:44 构建，**落后 delivery 64fa9bcd0**（remote-frame 未入 release
+  二进制——e2e/开发用 debug 构建；消费节奏归 PLAN-102 musk 集成，届时随
+  其 release 重建收口）。依赖仓（auto-down@895f8d0）无 release 面变更；
+  web bundle 无涉（remote-frame web 臂为生成器代码非部署产物）。
+- 批量回归到期判定（fix-test-tiering）：收据 last_covered_plan_id=755
+  （2026-10-11T02:44Z）→ **760 整五落地 = 到期**——交接 `/auto-plan:regress`
+  主检出单实例跑 tf/tt/tb（画廊围栏暖缓存预期 ~82s 量级；本计划增量面已由
+  裸 cargo t 5243/5243 与双栅栏绿覆盖,批量档增量 = tf 全池/ui_gen 全集）。
 
 实现层偏差登记（相对合同 §2/§5，语义等价或增强）：
 1. View::RemoteFrame 字段 {url, style}（无独立 class——extract_style_with 统
