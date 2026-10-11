@@ -959,6 +959,10 @@ pub(crate) mod tests {
 
     const COUNTER_SRC: &str = "widget SpawnCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" { onclick: () => {.count += 1} }\n        text `count: ${.count}`\n    }\n}\n";
 
+    /// PLAN-759 T-04：显式 default variant（PLAN-571 UA 基线含 border 类）
+    /// ——描边投影覆盖（5-Quad）用源形态。
+    const COUNTER_SRC_VARIANT: &str = "widget SpawnCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" (variant: \"default\") { onclick: () => {.count += 1} }\n        text `count: ${.count}`\n    }\n}\n";
+
     /// 确定性文本形态（clear + 算子序列；坐标/颜色全精度锁）——parity
     /// 金样共用序列化（001 + 507 矩阵）。
     pub(crate) fn drawlist_to_text(frame: &DrawList) -> String {
@@ -1036,26 +1040,35 @@ pub(crate) mod tests {
 
     /// PLAN-033 T-04 测试迁移（D5）：VM 源计数器经 RqProjector 装配的
     /// 布局/命中对账（AppProjector 版语义平移——几何按 native 布局重录）。
+    /// PLAN-759 T-04 双形态之一：显式 `variant: "default"`（PLAN-571 UA
+    /// 基线，含 border 类）保「底盒 + 四边描边」5-Quad 投影覆盖——裸按钮
+    /// 自 PLAN-080 T-03（b4c2dc38b）起缺省 chromeless 无描边，另由
+    /// `projector_bare_button_chromeless_single_quad` 锁 1-Quad 契约。
     #[test]
     fn projector_counter_layout_and_hits() {
-        let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
+        let component =
+            crate::build_dynamic_component(COUNTER_SRC_VARIANT, None).expect("build");
         let mut p = crate::ui::desktop_protocol::native_projector::RqProjector::new(
             component, 480.0, 320.0,
         );
+        // PLAN-678 同款：几何钉测试钉预居中坐标——variant 档按钮内宽收缩会
+        // 触发根缺省居中，关掉保 MARGIN 基准。
+        p.proj_autocenter_off();
         let frame = p.render_frame();
 
         assert_eq!(frame.clear, Some(bg()));
-        // native 重录：按钮 = 底盒 Quad + 四边描边 Quad（5 面）——AppProjector
-        // 块流的单 Quad 形退役；按钮盒 = 最大面积 Quad。
+        // native 重录：按钮 = 底盒（default 档 rounded-md → QuadR）+ 四边
+        // 描边 Quad = 5 面——AppProjector 块流的单 Quad 形退役；按钮盒 =
+        // 最大面积面。
         let quads: Vec<&WRect> = frame
             .ops
             .iter()
             .filter_map(|op| match op {
-                DrawOp::Quad { rect, .. } => Some(rect),
+                DrawOp::Quad { rect, .. } | DrawOp::QuadR { rect, .. } => Some(rect),
                 _ => None,
             })
             .collect();
-        assert_eq!(quads.len(), 5, "按钮 = 底盒 + 四边描边");
+        assert_eq!(quads.len(), 5, "variant=default：按钮 = 底盒 + 四边描边");
         let texts: Vec<&str> = frame
             .ops
             .iter()
@@ -1094,6 +1107,32 @@ pub(crate) mod tests {
         assert_eq!(
             regions[0].1, "button:__evt_onclick_1",
             "内联 lambda 的解析 handler"
+        );
+    }
+
+    /// PLAN-759 T-04 双形态之二：裸按钮（无 variant）自 PLAN-080 T-03
+    /// （b4c2dc38b）起缺省 chromeless——投影帧只有底盒 1 Quad，零描边。
+    /// 与 `projector_counter_layout_and_hits`（variant=default 5-Quad）互为
+    /// 双向锁，防两种缺省语义再漂。
+    #[test]
+    fn projector_bare_button_chromeless_single_quad() {
+        let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
+        let mut p = crate::ui::desktop_protocol::native_projector::RqProjector::new(
+            component, 480.0, 320.0,
+        );
+        let frame = p.render_frame();
+        let quads: Vec<&WRect> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, .. } | DrawOp::QuadR { rect, .. } => Some(rect),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            quads.len(),
+            1,
+            "PLAN-080 T-03：裸按钮 chromeless——底盒 1 面、无四边描边"
         );
     }
 
