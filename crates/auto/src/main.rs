@@ -487,6 +487,13 @@ enum Commands {
             help = "Well-known pipe override (default: autodesk-rqhost; $AUTO_RQHOST_WELLKNOWN also honored)"
         )]
         pipe: Option<String>,
+        #[arg(
+            long,
+            help = "PLAN-102 D-1: windowless bridge host — serve adopted apps' frames/InputMsg over a loopback WebSocket (with --bridge-token) instead of native OS windows"
+        )]
+        bridge_ws: Option<u16>,
+        #[arg(long, requires = "bridge_ws", help = "Static token guarding the bridge WS endpoint (loopback + token; no token = no listener)")]
+        bridge_token: Option<String>,
     },
     #[command(about = "Build and run the executable/dev-server", alias = "r")]
     Run {
@@ -1161,12 +1168,25 @@ fn real_main(cli: Cli) -> Result<()> {
         }
         // PLAN-031：rqhost daemon——阻塞直至末窗退出（锁管道被占 =
         // 第二实例干净退出码 0）。
-        Some(Commands::Rqhost { pipe }) => {
+        Some(Commands::Rqhost { pipe, bridge_ws, bridge_token }) => {
             let wellknown =
                 pipe.unwrap_or_else(|| auto_lang::ui::desktop_protocol::rqhost::wellknown_pipe());
             if !ai_mode {
                 init_logger();
                 println_logo();
+            }
+            // PLAN-102 D-1：bridge 宿主分岔（去窗 + WS 桥）。
+            if let Some(port) = bridge_ws {
+                let token = bridge_token.as_deref().unwrap_or_default().to_string();
+                auto_lang::ui::desktop_protocol::rqhost::run_bridge(&wellknown, port, &token)
+                    .map_err(|e| {
+                        if ai_mode {
+                            eprintln!("{}", format_error_json(&AutoError::Msg(e)));
+                            std::process::exit(1);
+                        }
+                        miette::miette!("{e}")
+                    })?;
+                return Ok(());
             }
             auto_lang::ui::desktop_protocol::rqhost::run_daemon(&wellknown).map_err(|e| {
                 if ai_mode {
