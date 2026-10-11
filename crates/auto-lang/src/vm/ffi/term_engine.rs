@@ -1218,13 +1218,22 @@ mod ash_leak_probe {
     use super::*;
     use std::time::Duration;
 
+    /// PLAN-759 T-07 门禁分层：本探针依赖跨仓 auto-term 的
+    /// `autoterm_core.dll` 二进制——日常档以**可见 ignored** 分层（缺 DLL
+    /// 的机器/auto-term 侧 clean 后不再恒红，也绝不静默 return 冒充通过）；
+    /// 集成门禁**真跑**（显式请求时 DLL 缺席=红，force-check）：
+    /// ```text
+    /// # 构建（auto-term 专用 worktree/独立 target，勿绑主检出）：
+    /// git -C D:/autostack/auto-term worktree add --detach D:/autostack/.wt/<grp>/auto-term
+    /// cargo build --manifest-path D:/autostack/.wt/<grp>/auto-term/Cargo.toml -p autoterm-core
+    /// # 集成门禁（显式跑 ignored）：
+    /// AUTOTERM_ENGINE_DLL=D:/autostack/.wt/<grp>/auto-term/target/debug/autoterm_core.dll \
+    ///   cargo nextest run -p auto-lang --lib ash_stream_leak_probe --run-ignored only
+    /// ```
+    /// （engine_spawn 解析序：env `AUTOTERM_ENGINE_DLL` → 宿主 exe 同目录。）
     #[test]
+    #[ignore = "integration: 需 auto-term 侧 autoterm_core.dll——设 AUTOTERM_ENGINE_DLL 指向其构建产物(auto-term 仓 cargo build -p autoterm-core)后 --run-ignored only 显式跑"]
     fn ash_stream_leak_probe() {
-        // DLL 定位:组内布局(auto-term 仓 target)。
-        std::env::set_var(
-            "AUTOTERM_ENGINE_DLL",
-            r"D:\autostack\auto-term\target\debug\autoterm_core.dll",
-        );
         let core = crate::ui::terminal::terminal("leak-probe", 100, 30);
         let handle = engine_spawn(100, 30);
         assert!(

@@ -268,7 +268,27 @@ description: \"e2e fixture\"
         dc.fire_init();
         dc.set_route("/");
         let _ = dc.view_with_debug_gated(true);
-        dc.drive_scheduler_to_quiescence(10_000);
+        // PLAN-759 T-08（P733-R1 清偿）：完成态驱动——全量并行档下
+        // handler_FlowDiagram_Init 被 CPU-slice Parked(CpuRunnable)，单轮
+        // drive 在片预算耗尽且无 I/O 进展时早退，续体留到下一帧才跑完
+        // （几何断言落 x=108 旧值）。改为带截止时间循环驱动至 Init
+        // demand/CPU 续体收敛；**几何断言保持原值不放宽**（不以重试成功
+        // 掩盖失败——超时即红并带现场）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            dc.drive_scheduler_to_quiescence(10_000);
+            let busy = dc.has_pending_init_work()
+                || dc.has_cpu_continuations()
+                || dc.has_parked_io_tasks();
+            if !busy {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "plan502 {dir}: Init/CPU 续体 10s 未收敛（负载泵循环超时）"
+            );
+            let _ = dc.view_with_debug_gated(true);
+        }
         let (view, _, _) = dc.view_with_debug_gated(true);
         format!("{:?}", view)
     };
