@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-762
-status: execution_done
+status: reviewed
 feature_name: chart-init-batch-flake
 author: [Codex]
 created_at: 2026-10-11
@@ -10,7 +10,7 @@ current_step: 3
 total_steps: 3
 supersedes_spec_components: [docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md]
 new_spec_components: []
-touched_goals: [GOAL-009]
+touched_goals: [GOAL-007, GOAL-016]
 affects: [auto-lang/ui]
 ---
 
@@ -76,6 +76,8 @@ stage: new | PLAN-762:r1 | outcome: blocked for execution authorization | 分诊
 stage: work | PLAN-762:r1 | 2026-10-11 用户授权"实施修复"（§10 待澄清的修复执行授权落地），drafting→executing。worktree `D:/autostack/.wt/lang-762/auto-lang` branch `plan-762-dev`，基面 master 11031c556（含 RUST_MIN_STACK=16MB 默认栈，§6 约束保持）。
 
 stage: work | PLAN-762:r1 | outcome: pass | code_commit: plan-762-dev@f5bc037a1（3 文件：plan437_child_init_tests.rs / reports/762-chart-init-attribution.md / specs vm-loading-responsiveness.md） | task_ids: T-01,T-02,T-03 | evidence: 归因=helper `progressed` 判据不计片让出（harness 边界，生产帧泵/资产清白，报告含钉版+负载对照+确定性复现）；修复=四路由完成态+30s 截止时间驱动（marker 原样）+ 多片机制钉子（250k 自旋≈4.2M 步实测，早退确定性复现+收敛验证）；门禁 check ✓ / t 复跑 5244/5244 ✓ / tv 162/162 ✓ / tt 5615/5615 ✓；修复后 24×CPU 旋 15/15 无回归 | blockers: 无执行阻塞；生产 helper `drive_scheduler_to_quiescence` 判据修复须另行授权（计划约定"先修订确认"），已登记 KNOWN-DEBT D-762-1（16 调用点暴露面+修复方向） | next: review（/auto-plan:review，execution_done→reviewed；复审时核 D-762-1 登记与机制钉子前半断言的契约指向）
+
+stage: review | PLAN-762:r1 | outcome: pass | reviewed_commit: f5bc037a1c8e3ffe05c49aa1537db78e08b302a6 | base_commit: 11031c5566dfbfbaf7659dad03eeb6253f8af962 | dependency_revisions: auto-down detached@895f8d0（组内兄弟）；auto-os 0532b8fbc（gallery 解析终位，app.at blob c111cb60228b） | spec_inputs: docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md（11031c556 版为基，f5bc037a1 版为审后稿）；docs/specs/goals.md（touched_goals 核验） | acceptance_results: AC-01 pass（归因报告在库@f5bc037a1：钉版+构造排除+负载负证据如实+机制主张对提交工件复核——dynamic.rs:1556-1578 progressed 无 slices_run 属实）；AC-02 pass（diff 审计：全 diff 唯一删除行=四路由单次驱动调用，marker 数组零改动；drive_to_completion 终态谓词=!(pending_init∪cpu_cont∪parked_io)+30s 截止+四元诊断；机制钉子确定性复现早退并验证收敛）；AC-03 pass（check ✓ / 复审 fresh cargo t 静默窗口 5244/5244 ✓ 96.98s / tv 162/162 ✓ / tt 5615/5615 ✓ 复用同 commit 同配置证据；tf 未在 worktree 运行合规；零新增 skip/ignore（扫描空）/零生产代码与预算改动（diff stat=1 测试文件+2 文档）/rustfmt --check ✓/plan437 零新增告警） | findings: F-762-R1（元数据，已当场修正）touched_goals [GOAL-009]→[GOAL-007,GOAL-016]——goals.md 中 GOAL-009=虚拟桌面/桌面 Shell 与本计划无涉，GOAL-007=AutoUI 双端语义（PLAN-708 同规范源流先例）、GOAL-016=门禁收敛/测试基建；F-762-R2（非阻塞观察）本 worktree cargo t 在机器负载窗口两见瞬态红（其一定名 state_file::tests::lock_serializes_critical_sections，0.583s 红后隔离 6/6 绿含该测 0.377s），与 plan437 diff 零代码关联、非预存红族登记项——转批量档观测，若再现建议独立分诊（镜像 761 情形）；F-762-R3（计划内留置，登记合规）D-762-1 helper 判据修复按约定未越权，KNOWN-DEBT 在册 | evidence: 归因报告+机制钉子+规范增量均提交于 f5bc037a1（耐久工件）；门禁数字摘录于本记录（/tmp 日志非耐久不引用）；独立性限制：复审与实施同会话，裁定自工件重建（diff 审计/提交源码复核/门禁重跑），未采信执行者自述 | next: merge（/auto-plan:merge；规范增量与账本随合并发布，D-762-1 保持挂账）
 
 ## 10. 待澄清事项
 
