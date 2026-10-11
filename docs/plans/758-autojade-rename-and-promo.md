@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-758
-status: drafting
+status: executing
 feature_name: AutoJade 改名与用户提供深色宣传图
 author: [Codex]
 created_at: 2026-10-10
-updated_at: 2026-10-10
-plan_revision: 1
-current_step: 0
+updated_at: 2026-10-11
+plan_revision: 2
+current_step: 2
 total_steps: 4
 supersedes_spec_components: [docs/specs/website/project.md, docs/specs/website/design/application-introductions.md, docs/specs/website/design/ecosystem-readme.md, docs/specs/website/design/ui-presentation.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/architecture.md, docs/specs/auto-lang/ui/design/autodown-wikilink.md]
 new_spec_components: []
@@ -17,7 +17,7 @@ affects: [website, auto-lang/ui]
 # [PLAN-758] autojade-rename-and-promo
 
 ## 0. 变更摘要
-将本仓当前产品引用统一为 AutoJade / auto-jade，并接入用户提供的 AutoJade 深色准备态实拍。
+将本仓当前产品引用统一为 AutoJade / auto-jade，并接入用户提供的 AutoJade 深色准备态实拍；按用户 2026-10-11 指示，把 v0.5 的“五个月，三大步”前置，先说明版本进展，再展示产品。
 
 ## 1. 目标
 更新网站双语首页、v0.5、应用总览/专题、README、当前规范、可维护文档和源码注释中的名称；规范专题 URL 为 /apps/auto-jade/，旧 jadeedit URL 兼容跳转。现有仓库实际地址未改名，不制造不存在的下载/源仓地址。历史冻结证据保留原字节并登记残余理由；derived ledger 只通过应用 store 更新。
@@ -43,6 +43,7 @@ VitePress/Vue、完整 PNG、Playwright；Rust 只改注释、不改执行语义
 |---|---|---|---|---|---|
 | SD-01 | modify | docs/specs/website/project.md、design/application-introductions.md、design/ecosystem-readme.md、design/ui-presentation.md | JadeEdit 名称/待图 → AutoJade 规范路径、实际准备态图与恢复待拍 | 用户改名与素材供给 | AC-01..03 |
 | SD-02 | modify | docs/specs/auto-lang/ui/{overview,architecture}.md、ui/design/autodown-wikilink.md | 消费方旧产品名称 → AutoJade；真实仓路径保留 | 全仓引用一致 | AC-01 |
+| SD-03 | modify | docs/specs/website/design/ui-presentation.md | 历程在后部理念区 → hero 简介后先讲版本进展，目录同步；实图和规模统计在版本说明之后 | 用户要求开头先讲清本版本做了什么 | AC-05 |
 
 ## 6. 测试设计
 网站构建与 EN/ZH 五宽度、深浅主题、新旧路径、原图、画廊键盘/放大。全仓余名逐项分类，所有图片字节/hash 对照。Rust 注释触及 ui_gen：按仓库门禁 cargo check -p auto-lang、cargo t、cargo tu；零行为修改另用删除注释后的内容比对，已有失败单列实证，不扩展到产品修复。无 tf/docs_gen。
@@ -52,15 +53,18 @@ VitePress/Vue、完整 PNG、Playwright；Rust 只改注释、不改执行语义
 - AC-02：新双语规范路径可达，旧 jadeedit 路径跳转相同语言新页，导航/首页/v0.5/搜索引用一致；现有物理仓链接继续可用。
 - AC-03：六张图与用户源文件 hash 一致，按实际内容命名并说明准备态，P4 不冒充标签图，SHOT-09 保留；原图/键盘画廊及移动深浅主题可用。
 - AC-04：构建/触面检查与复审记录完成，改动提交且无他人 WIP；知识增量准确，store 不可写时清楚登记而非手改账本或假归档。
+- AC-05：双语 v0.5 页面开头为简介、版本进展、三项亮点，再展开桌面/应用；版本进展先于大图与规模统计，导航顺序与章节一致，原理念详情及数据来源保留。
 
 ## 8. 执行步骤
-- [ ] T-01：独立工作树，全仓引用/路径/文案改名，分类保留例外（AC-01/02）。
-- [ ] T-02：核验原图、接入主图与功能画廊、指南/规范与来源清单（AC-03）。
-- [ ] T-03：构建、网站与 Rust 注释触面验证、余名审计（AC-01..04）。
+- [x] T-01：独立工作树，全仓引用/路径/文案改名，分类保留例外（AC-01/02）。
+- [x] T-02：核验原图、接入主图与功能画廊、指南/规范与来源清单（AC-03）。
+- [ ] T-03：v0.5 历程前置、构建、网站与 Rust 注释触面验证、余名审计（AC-01..05）。
 - [ ] T-04：提交、复审、线性合入与 store-mediated 知识收尾；阻塞保留收据（AC-04）。
 
 ## 9. 复审记录
 stage: new | revision: 1 | outcome: pass | next: work。既有明确改名/素材授权覆盖本合同；无另需确认的执行项。
+
+stage: new | revision: 2 | outcome: pass | next: work。2026-10-11 用户明确要求“五个月，三大步”放在开头，以版本成果为先；增加 SD-03 / AC-05，不取消原改名与截图任务。T-03 重开页面验证。
 
 ## 10. 待澄清事项
 无必需决策；深色 PNG 没有自己的完整工具链 manifest，只标用户提供准备态，不伪造对应 promo 旧批身份。store 可用性按先前 P753-D1 记录核查，若仍失败停止 ledger 写入，继续可落地内容。
