@@ -1,4 +1,4 @@
-# ac-core — PLAN-741 AC 首个闭环原型（PLAN-745 扩展源码 profile）
+# ac-core — PLAN-741 AC 首个闭环原型(745 源码 profile / 767 标量扩面)
 
 独立 Cargo workspace:Schema-bound Atom HIR 文本 → 类型化绑定 → 语义校验 →
 Cranelift native lowering → Windows x64 COFF 对象 → rust-lld 链接 → 运行 PE。
@@ -7,8 +7,17 @@ PLAN-745 在同一管线上新增**显式源码 profile** `auto.source.core-i32.
 Auto 源码计算子集(.at)→ span 化前端 → 词法/类型解析 → 生成 Atom 文本(带
 源 span 映射)→ 复用既有 binder/verifier → 同一 Checked→native→事务发布路径。
 这是计算核心 profile 的第二条纵向实现:**"Auto 源码子集 → 原生执行"**,
-仍不是完整 Auto 源码编译器,也不是 AAC 自举完成。范围、非目标与验收见
-[docs/plans/745-ac-source-checked-hir-native.md](../../docs/plans/745-ac-source-checked-hir-native.md)。
+仍不是完整 Auto 源码编译器,也不是 AAC 自举完成。
+
+PLAN-767 再增**标量扩面 profile** `auto.source.scalar-i32.draft`(HIR 身份
+`auto.hir.scalar.draft / 1 / scalar-i32-draft`,descriptor
+`schema/scalar-i32.atom`):整数减/除/余(向零截断,除数 0、MIN/-1、MIN%-1
+运行期 trap70)、全序比较、同类 eq/ne、一元 `-`/`!`、布尔 `&&/||` 短路
+(HIR 以 lazy `Logical` 节点与 eager `Binary` 分离表示)与**条件 for**
+`for <bool> { ... }`(每轮重判;本 profile 拒绝 while)。身份从 binder 经
+verify(分域入口 `verify`/`verify_scalar`)、Checked、canonical writer 到
+构建收据全程随行;旧 core 域的接受/拒绝集合零改动。范围与验收见
+[docs/plans/767-ac-scalar-ops-short-circuit.md](../../docs/plans/767-ac-scalar-ops-short-circuit.md)。
 
 ## 流水线
 
@@ -16,24 +25,27 @@ Auto 源码计算子集(.at)→ span 化前端 → 词法/类型解析 → 生�
 [HIR 模式:check/build]
 .atom 文本
   → atom_text.rs        分词/解析,带字节 span 的语法树
-  → descriptor.rs       core-i32-draft descriptor 绑定(schema/core-i32.atom)
-  → hir.rs              类型化 ID + Unchecked HIR
-  → verify.rs           语义校验 → CheckedModule(唯一构造路径;块包含图
-                        可达/无环结构门先于数据流走查)
-  → native.rs           Cranelift lowering(溢出 trap = ExitProcess(70))
+  → descriptor.rs       按文档头三重身份选注册 descriptor(core/scalar)绑定
+  → hir.rs              类型化 ID + Unchecked HIR + HirDomain 身份
+  → verify.rs           语义校验(verify=core 域/verify_scalar=scalar 域;
+                        profile-op/引用边界门先于索引走查)→ CheckedModule
+  → native.rs           Cranelift lowering(算术/取负溢出、除/余护栏走
+                        trap70=ExitProcess(70);短路用分支+变量合流)
   → link.rs             rust-lld COFF 链接(暂存+备份+发布,失败回滚 + 收据;
                         全子进程硬截止覆盖等待与输出收集,Job Object 管控进程树)
   → Windows PE
 
-[源码模式:check-source/build-source,PLAN-745]
-.at 源码 + 显式 --source-profile auto.source.core-i32.draft
+[源码模式:check-source/build-source,745/767]
+.at 源码 + 显式 --source-profile core|scalar
   → source/lexer.rs     UTF-8/ASCII 标识符/行敏感 token(排除面 token 化)
-  → source/parser.rs    语句型语法(优先级 * > + > <、有符号字面量域检查)
+  → source/parser.rs    语句型语法(core:+ <* <;scalar:||<&&<==!=<关系<+-<* / %
+                        + 一元链右结合 + 条件 for;迭代优先级攀爬机)
   → source/resolve.rs   签名预登记/块作用域/参数映射(bind 级 source.* 诊断)
   → source/typecheck.rs 精确类型检查(verify 级 source.type-mismatch)
-  → source/adapter.rs   生成 Atom 文本 + span 再锚(while→loop/if 降低、
-                        bool=0<1/0<0、return 后死代码独立块、stray break
-                        phantom loop、条目序 span 投影 + UTF8 边界后验)
+  → source/adapter.rs   生成 Atom 文本 + span 再锚(循环→loop/if 降低、
+                        bool=0<1/0<0、&&/||→Logical、-x/!x→Unary、return 后
+                        死代码独立块、stray break phantom loop、条目序 span
+                        投影 + UTF8 边界后验)
   → 同上 descriptor/verify/native/link(无旁路、无回退)
 ```
 
@@ -65,7 +77,7 @@ cargo run --locked -- build `
 构建产物(.obj/.exe/.ac-link.txt 收据)放在 `--output` 所指目录;
 失败的构建不会覆盖既有成功制品(发布阶段失败自动回滚)。
 
-源码模式(PLAN-745;profile 必须显式给出,不按扩展名猜模式;入口是
+源码模式(745/767;profile 必须显式给出,不按扩展名猜模式;入口是
 **源码函数名**,零参数、返回 int/i32):
 
 ```powershell
@@ -81,22 +93,30 @@ cargo run --locked -- build-source fixtures/source/valid/p15-named-eval-order-x2
   --entry main --output target/ac-artifacts/p15.exe `
   --capability hir.test.trace.v1 `
   --support-lib test-support/target/debug/ac_trace_support.lib
+
+# 标量扩面 profile(767):减/除/余、比较、eq/ne、一元、短路与条件 for
+cargo run --locked -- check-source fixtures/scalar-source/valid/p-gcd-euclid.at `
+  --source-profile auto.source.scalar-i32.draft
+cargo run --locked -- build-source fixtures/scalar-source/valid/p-gcd-euclid.at `
+  --source-profile auto.source.scalar-i32.draft `
+  --entry main --output target/ac-artifacts/gcd.exe
 ```
 
 ## 一键验证
 
 ```powershell
-# HIR 模式回归(741)
-powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/verify-ac-741.ps1
+# HIR 模式回归(741;-SkipMainGates 跳过主仓 root 档)
+powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/verify-ac-741.ps1 -SkipMainGates
 # 源码 profile 全语料(745:74 例串行,正例真实构建+运行,60s/例硬截止)
 powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/verify-ac-source-745.ps1
+# 标量扩面 profile 全语料(767:11 源码 + 15 HIR 正例真实运行 + 19 负例 +
+# CLI 隔离与收据身份;受控执行器与 741/745 同源)
+powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/verify-ac-scalar-767.ps1
 ```
 
-后者覆盖 ac-core 门禁(check/fmt/all-targets 零 warning)、四个 source 测试族
-与完整 case 表;前者覆盖 §6 全部命令:定向测试族(text_binding / hir_verify /
-native_execution / cli / trace_execution)、CLI 实机构建运行、fmt 与 all-targets
-零 warning 检查,以及主仓最终门禁(`cargo check -p auto-lang`、`cargo t`、
-`cargo tv`)。所有子进程有截止时间。
+三脚本均覆盖 ac-core 门禁(check/fmt/all-targets 零 warning)与各自 case 表;
+741 另含主仓最终门禁(`cargo check -p auto-lang`、`cargo t`、`cargo tv`,
+本仓 Category A/B 分级下按需以 -SkipMainGates 跳过)。所有子进程有截止时间。
 
 ## 测试族
 
@@ -113,17 +133,28 @@ native_execution / cli / trace_execution)、CLI 实机构建运行、fmt 与 all
 | source_native | 745:21+7 正例真实 PE 构建+运行(退出码/stderr oracle、60s 硬截止、三制品断言)+1001 层深块 native |
 | source_cli | 745:0/1/2 分级、profile 必填、entry 按名、失败零制品、未闭合调用输入不入制品(SENTINEL)、trace 无库链接失败、旧 check 仍仅 HIR |
 | deep_regression | 745:任意深度合法链/括号/调用/块(2 万层)全阶段无递归通过;未闭合任意深度受控拒绝 |
+| scalar_hir | 767:双身份隔离(bind_document 分派/域门 verify/writer 换壳拒)、V-07 程序化变异门(错类型/共享/自环/二环/跨 body)、canonical 往返、4096 逻辑深链 |
+| scalar_source | 767:11+19 源码正反例、core 面在 token 级拒新语法、深输入(16384 项逻辑链/2 万层 !/4096 嵌套调用)到 Checked |
+| scalar_native | 767:HIR PE(除余六行表、七 trap 行 exit70+精确 stderr、短路六极性)+ 源码 PE(gcd/计数/is_digit/条件 for/CRLF/全上下文 trace)+ CLI 隔离 + 收据身份与 SENTINEL 事务保持 |
 
 ## 边界(勿过度宣称)
 
-- HIR 与源码两模式都只接受 `auto.hir.core.draft / revision 1 / core-i32-draft`
-  身份;未知 tag/case/字段/能力一律拒绝。
-- 类型只有精确 i32/bool;运算 add_i32/mul_i32/lt_i32;加/乘必须声明
-  `overflow: trap`。
+- HIR 与源码两模式接受**已注册身份**:core 域 `auto.hir.core.draft / 1 /
+  core-i32-draft` 与 scalar 域 `auto.hir.scalar.draft / 1 /
+  scalar-i32-draft`(各自 descriptor);未知 tag/case/字段/能力/三重身份一律
+  受控拒绝,不猜测、不回退、不换壳。
+- 类型只有精确 i32/bool。core 域运算 add_i32/mul_i32/lt_i32(加/乘声明
+  `overflow: trap`);scalar 域另有 sub/div/rem(除/余护栏:0、MIN/-1、
+  MIN%-1 → trap70,不逃硬件异常)、le/gt/ge、同类 eq/ne、一元 neg_i32/
+  not_bool 与 lazy Logical and/or(短路,与 eager Binary 分离表示)。
 - 源码 profile `auto.source.core-i32.draft` 内 int/i32 = 精确有符号 32 位
   (越界 source.literal-range 拒绝);这是**有限域规则,不是全语言 int 宽度
   冻结**——旧 VM/AST/trans 表面宽度并存(见
   [docs/reports/745-source-core-i32/numeric-boundary.md](../../docs/reports/745-source-core-i32/numeric-boundary.md))。
+- scalar 源码 profile 的循环写法是条件 `for <bool> { ... }`(每轮重判、
+  continue 回条件);`while` 在该 profile 报 source.unsupported,core
+  profile 的 while 原样、其 for 拒绝。MIN%-1 的 trap70 是本 profile 的
+  固定测试语义,不推导全语言/生产异常 ABI。
 - 源码子集不含 char/str/聚合/泛型/方法/模块引用;char 一律
   source.unsupported(char↔int 映射在宿主表面间不一致,保持 open)。
 - 关键字不可作名字:profile 自身的 15 个关键字与生产词法器的完整 Auto
