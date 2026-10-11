@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-765
 plan_revision: 2
-status: execution_done
+status: reviewed
 feature_name: VM 宿主活跃会话稳定专项（r1：空闲内存残留 + 原生层 exit(1)；r2：瞬态尖峰退出面，承接 musk PLAN-104 T-03 四轮矩阵定罪）
 author: [agent]
 created_at: 2026-10-11
@@ -276,6 +276,48 @@ T-04 交叉复验：musk soak 仪器 GREEN 重跑（斜率+1h 零退）+ 本仓�
   支撑链）。]
 
 ## 9. 复审记录
+
+### review 阶段裁定（PLAN-765:r2，2026-10-12）
+
+- stage: review ｜ plan_id: PLAN-765 ｜ plan_revision: 2 ｜ outcome: **pass**
+  （status → reviewed;next = merge）
+- **独立性声明**：复审与实施同会话——裁定从工件重构而非采信执行摘要：
+  base..HEAD 全 diff 逐行重读（含 fmt 后终版）、门禁在 HEAD 重跑、归因
+  关键主张逐条对照原始产物复核（默认审计册行数时点/WER 参数比对/判别台
+  四臂原始输出/微实验输出/cdb 栈帧）。
+- reviewed_commit: 99f6997eb（终版;中间版 5c3a9b5f0→1b79873ae[fmt 修正]
+  →99f6997eb[文档陈旧表述修正],末两步仅空白/注释/文档零语义差）｜
+  base_commit: b58bf1835（master）｜ dependency: auto-down@895f8d0
+  （detached 只读,同 r1）。
+- spec_inputs: `docs/specs/auto-lang/ui/design/vm-host-stability.md` 原地
+  扩展（r2 复审对照代码核验:exitproc_trace site 串 ✔、env 名
+  P765_EXIT_TRACE ✔、ExitProcess 臂自终止/TerminateProcess 臂转调的
+  分臂表述 ✔[复审修正两处中间设计残留文字]、外部击杀假象警示与三例
+  同族定谳 ✔）。supersedes_spec_components=[]（r1 判定维持——F-10 为
+  增量观测件,不改既有契约）;new_spec_components 沿 r1 同文件;touched_goals
+  GOAL-007 不变。
+- acceptance_results: **AC-1/AC-2 pass**（r1 判定沿承;r2 diff 不触 F-1~F-9
+  语义——fmt/注释级差异,当前代码门禁不劣化）｜ **AC-3 pass**（全量
+  5257/5258[1b79873ae]+tv 162/162+定向 113/113;唯一红 ffi_dual_019 双证
+  环境项:t05 目录 stash 基线复现红+规范目录当晨绿;终版 99f6997eb 后
+  exit_audit 9/9 复验——门禁后改动均为空白/文档级）｜ **AC-4 pass**
+  （两形态零退出:判别台 snap 180s/burst 181s/click 185s 全存活且审计册
+  零行=零进程内 exit;归因通道完备:F-10 闭合依赖直调盲区+单测双验+
+  50/50 压测;"根因防护"经 T-05 定谳修正为仪器假象——产品面无缺陷,
+  修在 musk 仪器[交接在案],investigation-first 预期路径非范围缩减）｜
+  **AC-5 pass**（本仓门禁零新增红+解阻交接齐备;musk 侧已并行落地仪器
+  修复[click value+cleaningUp 标记,其 worktree 在案未提交]——正式复跑
+  为其流程收尾）。
+- findings: 无阻断项。F-765-R4（external,nonblocking）musk bigpage 仪器
+  修复+正式复跑待其收口（其 worktree 已见修复实现）;F-765-R5
+  （observation）本会话早前被杀后台任务遗留僵尸测试进程镜像句柄锁规范
+  target 目录——门禁以 CARGO_TARGET_DIR=target-t05 出证,会话收尾自解,
+  不入债务册。
+- evidence: 纪要后记⑦（全链归因文书,随 99f6997eb 入库）;判别台
+  `p765-probe.mjs` 产物在 worktree tmp/（临时,方法论与结论全文录入纪要,
+  worktree 清理后可依纪要 §复现命令重建）;musk worktree bigpage 修复
+  diff 在案（其所有权）;审计册/WER/日志检索命令与关键行摘录已在纪要。
+- next: merge（`/auto-plan:merge`）。
 
 ### work 阶段交接（PLAN-765:r2，2026-10-12）
 
