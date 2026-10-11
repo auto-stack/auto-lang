@@ -29,6 +29,7 @@ const href = (path: string) => (zh.value ? '/zh' : '') + path
         <article v-for="(app, index) in c.apps" :key="app.key" class="main-app-card">
           <ScreenshotSlot v-if="app.key === 'auto-jade'" capture-id="SHOT-07" loading="eager" />
           <ScreenshotSlot v-else-if="app.key === 'autoedit'" capture-id="SHOT-01" loading="eager" />
+          <ScreenshotSlot v-else-if="app.key === 'automusk'" capture-id="SHOT-04" loading="eager" />
           <EvidenceImage v-else-if="app.key === 'autoshell'"
             src="/apps/autoshell/ash-01.png"
             :alt="app.name + (zh ? '原生主界面' : ' native main interface')"

@@ -23,7 +23,7 @@ The practical goal is continuity: requirements, decisions, code changes, and ver
 
 Choose a working directory, ask the agent to read and explain the project, then discuss a specific change. Messages, tool events, Plan progress, confirmation gates, and reports make activity visible. People inspect the results and remain involved where decisions are needed.
 
-A representative walkthrough follows one small project: understand it, request a change, check the Plan, execute, and inspect review and results. This introduction explains that sequence; captures will follow it when the application is ready.
+The two captures follow the same local password-generator example. The conversation shows directory reads and tool activity writing and editing the Plan file; the Plan page presents PLAN-001’s goals, design and 0/5 progress.
 
 ## What Plans and Specs record
 

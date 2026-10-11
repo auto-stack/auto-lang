@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 const topics = ['autoedit', 'autoshell', 'automusk', 'auto-jade']
 const widths = [360, 390, 768, 1024, 1440]
-const captureIds: Record<string, string[]> = { overview: ['SHOT-01', 'SHOT-07'], autoedit: ['SHOT-01', 'SHOT-02', 'SHOT-03'], automusk: ['SHOT-04', 'SHOT-05', 'SHOT-06'], 'auto-jade': ['SHOT-07', 'SHOT-08', 'SHOT-09'] }
+const captureIds: Record<string, string[]> = { overview: ['SHOT-01', 'SHOT-04', 'SHOT-07'], autoedit: ['SHOT-01', 'SHOT-02', 'SHOT-03'], automusk: ['SHOT-04', 'SHOT-05', 'SHOT-06'], 'auto-jade': ['SHOT-07', 'SHOT-08', 'SHOT-09'] }
 
 for (const prefix of ['', '/zh']) {
   const zh = !!prefix
@@ -23,11 +23,11 @@ for (const prefix of ['', '/zh']) {
       const content = page.locator(topic === 'overview' ? '.apps-overview' : '.vp-doc')
       await expect(content.locator('h1')).toHaveCount(1)
       await expect(content.locator('iframe')).toHaveCount(0)
-      const imageCount = topic === 'overview' ? 62 : topic === 'autoedit' ? 6 : topic === 'auto-jade' ? 4 : topic === 'autoshell' ? 2 : 0
+      const imageCount = topic === 'overview' ? 64 : topic === 'autoedit' ? 6 : topic === 'auto-jade' || topic === 'automusk' ? 4 : topic === 'autoshell' ? 2 : 0
       await expect(content.locator('img')).toHaveCount(imageCount)
       const slots = content.locator('[data-capture-id]')
       expect(await slots.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-capture-id')))).toEqual(captureIds[topic] || [])
-      await expect(slots.locator('img')).toHaveCount(topic === 'autoedit' ? 6 : topic === 'overview' || topic === 'auto-jade' ? 4 : 0)
+      await expect(slots.locator('img')).toHaveCount(topic === 'autoedit' || topic === 'overview' ? 6 : topic === 'auto-jade' || topic === 'automusk' ? 4 : 0)
       expect((await content.innerText()).length).toBeGreaterThan(600)
       expect(await content.innerText()).not.toMatch(/TODO|Screenshot slot|100% Auto/)
       const links = await content.locator('a').evaluateAll(nodes => nodes.map(node => node.getAttribute('href')!).filter(href => href.startsWith('/')))

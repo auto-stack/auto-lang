@@ -1,0 +1,34 @@
+{
+  "plan": "PLAN-766",
+  "plan_revision": 2,
+  "diff_base": "c7fc18d56a76210f645bb9646940dcbaddf261d4",
+  "category": "A: website/assets/docs only; no cargo or docs_gen",
+  "build": {
+    "command": "AUTO_BOOK_ROOT=D:/autostack/book npm run build",
+    "exit": 0,
+    "seconds": 152.67,
+    "log_sha256": "6ddea4f1172818f75eb90647363fb3fad6bea2ccd727f4774bbf3cc8409252f1",
+    "warnings": "Existing Auto syntax fallback, stale browsers data and chunk-size notices"
+  },
+  "tests": {
+    "command": "CI=1 AUTO_WEBSITE_TEST_PORT=4266 npx playwright test tests/apps-introduction.spec.ts tests/v05-copy.spec.ts --workers=2",
+    "passed": 23,
+    "failed": 0,
+    "log_sha256": "b9dbe46c06b6c4fdfed719acfbb81f9cc9c5c2a18abcd0a05c569e9abe364c74",
+    "coverage": "EN/ZH SSR/routes/link anchors/outline/locale; home/release/overview/detail main image; original pixels, Enter zoom, original popup, Esc/focus; five widths 360/390/768/1024/1440 x both themes; no business API/errors"
+  },
+  "visual": {
+    "command": "adapted existing p715-shot + shot-common helpers on port4267",
+    "shots": 8,
+    "landing_failures": 0,
+    "overflow_rows": 0,
+    "reviewed_samples": [
+      "ZH 1440 dark workspace",
+      "ZH 390 light Plan"
+    ],
+    "report_sha256": "a8027463295da9b853ec7d4ac122b78fc521a26b7ca4c3344cc4e7e7bfe75fe3"
+  },
+  "asset_verification": "User source equals copied public PNG bytes; dimensions 2560x1600; hashes in p766-automusk-capture-catalog.json",
+  "spec_delta_sha256": "99bc99e10ce8d25d8b38f434fb5658a14d270b26ef4a1218ea475fc15dac1608",
+  "limitations": "Exact screenshot runtime/build identity unknown; draft Plan image is not execution/review acceptance; SHOT-06 stays pending"
+}

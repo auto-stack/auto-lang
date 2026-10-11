@@ -26,6 +26,8 @@
 
 ## 模块架构
 
+PLAN-766：AutoMusk 会话主图 SHOT-04 共享于双语首页、v0.5、应用总览与专题；计划页 SHOT-05 展示同一密码生成器示例的 PLAN-001（0/5），不代表执行/复审已完成。两张用户提供的原始 2560×1600 PNG 保留原图/键盘放大，来源与 hash 见 docs/reports/p766-automusk-capture-catalog.json；SHOT-06 仍待拍。
+
 仓库落地页（PLAN-753）：README.md / README.cn.md 概述 AutoLang、AutoUI、AutoOS、AutoAI
 及四主应用，直接共享 website/public 的桌面、AutoEdit 与 AutoShell 原图；当前语言介绍位于
 docs/language/overview.md / overview.cn.md，生成 EN/ZH 同路径概览并由学习入口取数。

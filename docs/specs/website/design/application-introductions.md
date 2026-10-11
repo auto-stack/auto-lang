@@ -26,6 +26,8 @@ PLAN-757 adds the user-authorized VM/Iced dark AutoEdit capture path. Qualified 
 
 ## Verification
 
+PLAN-766 fills AutoMusk SHOT-04/05 with the two user-provided 2026-10-11 PixPin captures (provided 2026-10-12). SHOT-04 is shared by both locales’ home, v0.5, overview and detail; SHOT-05 shows the same password-generator example’s PLAN-001 page at 0/5 progress. Preserve the original 2560×1600 PNG bytes and EvidenceImage keyboard/original-image access. The Plan page is planning evidence, not completed execution or review. Exact runtime backend/build identity remains unconfirmed; source paths, hashes and visible scenes are recorded in docs/reports/p766-automusk-capture-catalog.json. SHOT-06 Kanban/Canvas remains pending.
+
 Build and verify SSR, routes, local links, outline/locale behavior, approved image hashes and loading, absence of unready-product images/iframes/backend requests, original guide interactions, and EN/ZH at five widths in both themes. Demo introductions stay in the overview, with native disclosures and shareable anchors; only the four main products retain standalone detail topics. Legacy demo URLs redirect to the overview. Demo images follow [the capture catalog contract](demo-capture-catalog.md). Prepared Spec changes belong to the plan worktree until landing. Category A does not trigger Cargo tests or docs_gen.
 
 PLAN-758：产品现名 AutoJade，工程/专题标识 auto-jade；双语规范路径 /apps/auto-jade/ 与 /zh/apps/auto-jade/，旧 jadeedit 路由保留同语言兼容跳转。源码仓库实际地址尚未改名，GitHub jade-edit 地址继续可用。用户提供的六张深色第一方手册示例图按实际场景展示，SHOT-07 为主图，SHOT-08 为反链/双链/快速打开/建页确认/文件树画廊，SHOT-09 草稿恢复仍待拍；P4 标签文件名与实际画面不符不入库。图片保留原始字节、原图与键盘放大，来源/宽高/hash/准备态及未独立确认的深色工具链身份在 docs/reports/p758-autojade-capture-catalog.json。快开不替代全文搜索，准备图不代表最终 RC 已通过。
