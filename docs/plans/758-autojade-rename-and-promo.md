@@ -1,13 +1,13 @@
 ---
 plan_id: PLAN-758
-status: reviewed
+status: executing
 feature_name: AutoJade 改名与用户提供深色宣传图
 author: [Codex]
 created_at: 2026-10-10
 updated_at: 2026-10-11
-plan_revision: 2
-current_step: 4
-total_steps: 4
+plan_revision: 3
+current_step: 2
+total_steps: 5
 supersedes_spec_components: [docs/specs/website/project.md, docs/specs/website/design/application-introductions.md, docs/specs/website/design/ecosystem-readme.md, docs/specs/website/design/ui-presentation.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/architecture.md, docs/specs/auto-lang/ui/design/autodown-wikilink.md, docs/specs/auto-lang/ui/plans.md]
 new_spec_components: []
 touched_goals: []
@@ -45,6 +45,8 @@ VitePress/Vue、完整 PNG、Playwright；Rust 只改注释、不改执行语义
 | SD-02 | modify | docs/specs/auto-lang/ui/{overview,architecture}.md、ui/design/autodown-wikilink.md 与 ui/plans.md 索引 | 消费方旧产品名称 → AutoJade；真实仓路径保留 | 全仓引用一致 | AC-01 |
 | SD-03 | modify | docs/specs/website/design/ui-presentation.md | 历程在后部理念区 → hero 简介后先讲版本进展，目录同步；实图和规模统计在版本说明之后 | 用户要求开头先讲清本版本做了什么 | AC-05 |
 
+| SD-04 | modify | docs/specs/website/design/ui-presentation.md、docs/specs/website/project.md | 开篇只有简述、旧 9 月规模 → 最大更新/生态里程碑宣传句，投入与成果两组概要；采用作者 2026-10-11 生态累计口径 | 用户新文案与数字更新 | AC-06 |
+
 ## 6. 测试设计
 网站构建与 EN/ZH 五宽度、深浅主题、新旧路径、原图、画廊键盘/放大。全仓余名逐项分类，所有图片字节/hash 对照。Rust 注释触及 ui_gen：按仓库门禁 cargo check -p auto-lang、cargo t、cargo tu；零行为修改另用删除注释后的内容比对，已有失败单列实证，不扩展到产品修复。无 tf 或单独 docs_gen；日常档自带测试族如实记账。
 
@@ -55,19 +57,23 @@ VitePress/Vue、完整 PNG、Playwright；Rust 只改注释、不改执行语义
 - AC-04：构建/触面检查与复审记录完成，改动提交且无他人 WIP；知识增量准确，store 不可写时清楚登记而非手改账本或假归档。
 - AC-05：双语 v0.5 页面开头为简介、版本进展、三项亮点，再展开桌面/应用；版本进展先于大图与规模统计，导航顺序与章节一致，原理念详情及数据来源保留。
 
+- AC-06：EN/ZH v0.5 开篇以作者批准的“有史以来最大更新、语言跨向生态里程碑”为宣传句；投入依次为 1500 亿 token、100 万行 Rust、40 万行 Auto、1w+ 提交；成果为 1 UI 框架、2 桌面环境、3 适配平台、4 主打应用、28 演示应用。后部规模数字与同源摘要一致，来源日期为 2026-10-11 作者提供生态累计数据，不冒充独立代码计量；旧有日期绑定发布审计保留其历史身份。各产品运行条件仍在正文。断点/双语/深浅及原章节顺序定位验证有效。
+
 ## 8. 执行步骤
 - [x] T-01：独立工作树，全仓引用/路径/文案改名，分类保留例外（AC-01/02）。
   [✅ 9490d7e67；余名审计 docs/reports/p758-reference-audit.json（worktree 未提交残留→已随 r2 证据链入库核验）]
 - [x] T-02：核验原图、接入主图与功能画廊、指南/规范与来源清单（AC-03）。
   [✅ 9490d7e67 + ee65db613 证据冻结；六图 hash 对照在 p758-autojade-verification.md]
-- [x] T-03：v0.5 历程前置、构建、网站与 Rust 注释触面验证、余名审计（AC-01..05）。
+- [ ] T-03：v0.5 历程前置、构建、网站与 Rust 注释触面验证、余名审计（AC-01..05）。
   [✅ 9490d7e67/24ddb99e1/3685a86b4；构建 151.40s+原生版 144.04s；63 网站场景通过记录；
   cargo check 过、t 5212/5231（19 红全基线对照）、tu 858 过+1 既有金样红；
   九文件非行注释行与 master 一致；余名审计 p758-reference-audit.json]
-- [x] T-04：提交实现与验证材料，准备复审/线性合入所需收据、store-mediated 知识投影及阻塞描述（AC-04）。正式复审、线性合入、投影、归档/清理是后续生命周期操作，逐项记入 §9，不以本勾选声称已完成。
+- [ ] T-04：提交实现与验证材料，准备复审/线性合入所需收据、store-mediated 知识投影及阻塞描述（AC-04）。正式复审、线性合入、投影、归档/清理是后续生命周期操作，逐项记入 §9，不以本勾选声称已完成。
   [✅ 证据全提交（ee65db613/9024f1f95）；Review r2 needs_fix（P758-F4）已修复
   （5188b7822 恢复原生链接）并独立复验（206acb729：四定位场景+section-nav 5/5，
   9.8s）；store 投影阻塞 P758-D1 在案，pending 清单 ledger-projection-pending.json]
+
+- [ ] T-05：开篇宣传句、双组数字摘要、后部规模与日期来源统一更新，中英文同源结构；只在名称得到解释后补桌面/平台枚举（AC-06）。
 
 ## 9. 复审记录
 stage: new | revision: 1 | outcome: pass | next: work。既有明确改名/素材授权覆盖本合同；无另需确认的执行项。
@@ -124,6 +130,10 @@ ledger_refreshed: blocked，workspace D:/autostack/auto-lang/.autoos/specs.json�
 archived: pending，不移动计划；status 保持 reviewed，当前 active 路径 docs/plans/758-autojade-rename-and-promo.md。
 cleaned: pending，保留 clean 工作树 D:/autostack/.wt/lang-758/auto-lang / plan-758-dev 及组内依赖；不得跳过 projection 先归档/清理。既有其他会话的 PLAN-759 编辑及临时文件未纳入本提交。
 next: writer 可用后只续做 store-mediated 投影、读回校验、归档及 guard 后清理。当前请求的页面顺序、产品引用与已验收素材已落地；P758-D1 为 publication-only 收尾阻塞。批量回归按 merge 技能在 cleaned 后判定，不在此工作树运行；同日现存批量收据覆盖至 755（new_reds=[]）。
+
+### New r3 — 开篇投入与成果摘要（2026-10-11）
+
+stage: new | plan_id: PLAN-758 | plan_revision: 3 | outcome: pass | next: work。用户直接给定宣传句与四项投入、五项成果及要求数据更新；“样式”按上下文笔误修为“也是”。继承原范围/截图/改名要求，增加 SD-04 / AC-06 / T-05，重开受开篇高度影响的 T-03 及证据准备 T-04；r2 已合入成果和 receipt 保留为历史，旧复审不覆盖本次新摘要。当前 base ee3cd1e15ccb5a9f6eb2d76ebbe3e8e39af51e28，复用既有 clean 工作树和 plan-758-dev。产品数量采用用户批准文本，已并行询问 2 桌面/3 平台的名称，其他文案与投入数据可先执行。范围为网站/Vue/CSS/规范，未改 Rust，按 Category A 仅网站目标验证，严禁重复 cargo t/docs_gen。writer 不可达仅阻塞投影/归档，独立页面编辑继续。
 
 ## 10. 待澄清事项
 无必需决策；深色 PNG 没有自己的完整工具链 manifest，只标用户提供准备态，不伪造对应 promo 旧批身份。store 可用性按先前 P753-D1 记录核查，若仍失败停止 ledger 写入，继续可落地内容。
