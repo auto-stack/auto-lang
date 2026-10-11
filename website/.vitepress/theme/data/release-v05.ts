@@ -98,7 +98,7 @@ const en = {
     badge: 'v0.5 milestone',
     titlePre: 'Auto',
     title: ': The v0.5 Milestone',
-    description: 'v0.5 is the biggest update in the history of the Auto language ecosystem — a key milestone in Auto’s journey from a language to an ecosystem!',
+    description: 'v0.5 is Auto’s biggest ecosystem update ever — a key milestone from language to ecosystem!',
     effortTitle: 'R&D Investment', productsTitle: 'Ecosystem Results', products: releaseProducts(false),
     primaryText: 'Read the Release Notes',
     primaryLink: '/docs/releases/v0.5',
@@ -321,7 +321,7 @@ const en = {
       'Auto has grown from a language kernel, runtime, and transpilers into interfaces, a desktop, and real applications. First, the three release steps; then, the v0.5 experience.',
     ],
     stats: releaseStats(false),
-    statsNote: 'Scale figures are author-provided cumulative Auto ecosystem totals, updated October 11, 2026. Product capabilities and runtime requirements are described below.',
+    statsNote: 'Author-provided cumulative Auto ecosystem totals · October 11, 2026. See product capabilities and requirements below.',
     timeline: [
       { version: 'v0.3', title: 'The language kernel stood up', text: 'Type system, ownership and borrowing, pattern matching — the foundation of a language was laid.' },
       { version: 'v0.4', title: 'Runtime and transpilers', text: 'AutoVM and a2r expanded their supported paths, while AI-agent infrastructure started supporting real application workflows.' },
