@@ -53,7 +53,7 @@ a2r.at        → token, lexer, parser（25 符号）, typeinfo（t_is_type_prop
 ## 3. use 语句形态（点路径 stdlib 根解析）
 
 宿主实证形态：`use auto.greet_mod: greet, add`（test/vm/17_modules/001_use_fn，
-`auto/` 为 stdlib 根）。lib 文件位于 `auto/lib/`，故各文件头部形如：
+`auto/` 为 stdlib 根）。lib 文件位于 `packages/aavm/lib/`，故各文件头部形如：
 
 ```auto
 // lexer.at
@@ -91,15 +91,15 @@ use auto.lib.parser: Op, P, expr_pratt, ... (29 符号 → 定向或通配 use a
 ## 5. 目标形态
 
 ```text
-auto/lib/            七模块 DAG（token ← lexer ← parser ← {typeinfo ← codegen ← engine}, a2r）
-auto/aavm.at         生成的 CLI 入口：聚合 lib 前置剥离版 或
+packages/aavm/lib/            七模块 DAG（token ← lexer ← parser ← {typeinfo ← codegen ← engine}, a2r）
+packages/aavm/aavm.at         生成的 CLI 入口：聚合 lib 前置剥离版 或
                      use auto.lib.engine 形态（W3 执行期按 4.3 实测定）；
                      fn main: auto.process.args → ev_run_files(path) → print
                      无参时内置 corpus 冒烟
 ```
 
 lib 由此成为 aavm 自身 `use` 能力的第一个真实多模块程序（自举本味），
-`auto run auto/aavm.at <目标.at>` 即上一问缺的"单文件启动入口"。
+`auto run packages/aavm/aavm.at <目标.at>` 即上一问缺的"单文件启动入口"。
 
 ---
 
@@ -152,7 +152,7 @@ lib 由此成为 aavm 自身 `use` 能力的第一个真实多模块程序（自
    a2r_std 名映射+std_used / items {a,b} / 通配 * / bare；点路径 X.Y 的
    X 命中导入名 → X::Y（imports 集）；`::{..}` 组形态与 use.rs 族 fail
    拒绝（v2 子集规范）。语料 g18。
-4. **CLI 入口形态定案**（auto/aavm.at，真模块版）：CLI 直跑无位置参数
+4. **CLI 入口形态定案**（packages/aavm/aavm.at，真模块版）：CLI 直跑无位置参数
    透传（clap 拒）、`process.args()` 返回值异常（argc=76，观察项）、
    `IO.read_line` 空行/EOF 同返空串 → **行数协议 stdin**（首行行数前置
    消歧）+ `parse_int`；多文件/ev_run_files 路径参数形态待 CLI 透传
@@ -173,6 +173,6 @@ lib 由此成为 aavm 自身 `use` 能力的第一个真实多模块程序（自
    `Vec<String>`；`run_file_with_args` 写 `SCRIPT_ARGS` 进程级全局）。
 3. **aavm.at 位置参数直达形态**（本文件上文预写形态落地）：有参 →
    `ev_run_files(args[1])` 多文件主入口；无参 → 行数协议 stdin（保留）→
-   无 stdin → 冒烟。`auto auto/aavm.at <主文件.at>` 一条命令直达
+   无 stdin → 冒烟。`auto packages/aavm/aavm.at <主文件.at>` 一条命令直达
    （b07→55/corpus_use 六用例实测）。§基线坑 6 的"parity 增二进制新鲜度
    校验"债候选同步清偿（parity 启动闸门，见 specs/parity）。

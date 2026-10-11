@@ -1,17 +1,17 @@
 # 仓库布局与资产归位
 
-> Current-state：PLAN-761，2026-10-11；根 Git 树 30 项。
+> Current-state：PLAN-763，2026-10-11；根 Git 树 24 项。
 
 ## 根目录职责
 
-根目录保留源码/发布入口（auto、blueprints、crates、docs、examples、packages、parity、patches、schema、stdlib、website）、test/scripts、仓库与工具约定配置、Cargo/Node 入口、双语 README 和 LICENSE。AGENTS.md、CLAUDE.md 保持工具自动发现位置。
+根目录保留源码/发布入口（crates、docs、examples、packages、stdlib、website）、test/scripts、仓库与工具约定配置、Cargo/Node 入口、双语 README 和 LICENSE。AGENTS.md、CLAUDE.md 保持工具自动发现位置。
 
 根 item 数按 **Git 树**统计；本机缓存/配置/未跟踪临时文件不代表 GitHub 上的目录行数。为了少一项不能删除测试覆盖、验收证据或破坏配置自动发现。
 
 ## 测试与辅助入口
 
 - `test/runners/{a2c,a2r,a2ts,vm}_tests.at`：从仓根运行的语言级套件入口；golden 仍在 `crates/auto-lang/test/`。
-- `test/auto/`：Auto 语言单测；`test/ui/vue-gen-gap/`：Vue 生成夹具，其 pac 相对路径直接指向根 blueprints。
+- `test/auto/`：Auto 语言单测；`test/ui/vue-gen-gap/`：Vue 生成夹具，其 pac 相对路径直接指向 packages/blueprints。
 - `test/fixtures/plan446/{b3check,j2check}/`：保留历史回归语料；Rust J1 repro 与脚本引用实际新路径，缺件不可作为通过。
 - `scripts/repro/p446/`：MCP 复现脚本；AUTO_BIN 和 P446_CORPUS_ROOT 可覆盖运行对象，`--check` 验证路径而不拉起窗口。
 - `scripts/tools/`：维护工具；native-fixture 继续为独立 Cargo workspace，不并入根 workspace。
@@ -30,3 +30,17 @@ PLAN-761 前的 `tests/`、`tmp-corpus/`、`tools/`、`deploy/` 是上述路径�
 - 根 package.json 及两个现有锁文件仍保留；包管理器统一另行明确，目录整理不取消 npm 快捷命令。
 
 来源：[PLAN-761](../../plans/archive/761-root-directory-cleanup.md)、[原检查报告](../../reports/root-directory-audit-20261011.md)。
+
+## 包、测试、协议与补丁（PLAN-763）
+
+| 现行路径 | 职责 | 原根目录 |
+|---|---|---|
+| packages/aavm/ | 实验性自举编译器、VM 与封存 v1；逻辑命名空间 auto.lib 不变 | auto/ |
+| packages/blueprints/ | 可复用 bps 包库、目录与参考实现；示例是消费方 | blueprints/ |
+| test/parity/ | 三后端行为对拍，独立 Cargo workspace | parity/ |
+| docs/schema/ | 活跃的机器声明源 aura.at 与投影协议；编译时仍加载 | schema/ |
+| crates/patches/ | iced_widget 0.14.2 的本地补丁完整源码；Cargo override 保持启用 | patches/ |
+
+八个旧 GitHub Actions 定义经来源/运行记录审计删除；七个构建/测试流最近各五次均失败，部署流零次运行。当前仓库不提供 Actions 自动部署或 CI。本地 cargo t/tv/tt/tb/tu/taa 与手动发布脚本继续维护。添加新流程需要明确维护责任、依赖检出与实际验证，不能默认启用发布。历史 workflow 和源文件可从 Git 恢复，审计见 docs/reports/763-ci-audit.json。
+
+共享 .agents、.autoos、.cargo、.config 仍在约定位置；本机点目录不计入 GitHub 根树。stdlib/auto 是生产标准库，packages/aavm 是实验包，两者不混合。冻结历史路径无需批量改写。

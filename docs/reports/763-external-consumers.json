@@ -4,7 +4,8 @@
       "backend/crates/musk/src/canvas/bp_tools.rs"
     ],
     "old_path": "auto-lang/blueprints",
-    "effect": "optional env injection no longer resolves old path; command still starts auto bp and relies on new CLI defaults. Fresh main release required before cleanup. Direct directory helper has legacy diagnostic semantics; external source not changed."
+    "effect": "optional env injection no longer resolves old path; command still starts auto bp and relies on new CLI defaults. Fresh main release required before cleanup. Direct directory helper has legacy diagnostic semantics; external source not changed.",
+    "foreign_cwd_cli_fallback_verified": true
   },
   "auto_os": {
     "files": [

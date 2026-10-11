@@ -47,7 +47,7 @@
 
 ## Vue 轨契约
 
-- **schema**（`schema/aura.at` + `aura/schema.rs` 双源）：tabs root props
+- **schema**（`docs/schema/aura.at` + `aura/schema.rs` 双源）：tabs root props
   `value`（state_ref → v-model）/`active`/`defaultvalue`/`variant`
   (`oneof:default,enclosed`)/`onselect`；iced 级别 `partial`（五表漂移围栏
   对账）。

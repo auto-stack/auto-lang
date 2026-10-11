@@ -1,7 +1,7 @@
 # parity
 
 > **Status**: active
-> 路径：`parity/`  | 技术栈：Rust（独立 cargo workspace）
+> 路径：`test/parity/`  | 技术栈：Rust（独立 cargo workspace）
 
 三方一致性检查器（AutoVM vs a2r vs 原生 Rust）+ 20+ 个三方库移植样例，独立 cargo workspace。
 
@@ -33,7 +33,7 @@
   url/semver 语料各增 `display_to_str` 三轨断言（p10 4/4×2）；登记面
   扩至 DIV-DEP-8..19（18=212 wrapper CString 兜底假绿、19=a2r 回调实参
   不装箱豁免）。phase p10
-  （`AUTO_LANG_PARITY_NET=1` 门控，parity-ci 独立 job + 产物缓存）；
+  （`AUTO_LANG_PARITY_NET=1` 门控，本地显式执行；PLAN-763 已删除旧 parity-ci job）；
   命中率数据（25 面/绿 8/32%，591 T2 最高杠杆/T3 次之/by-value-self 零命中）
   回填 591（reports/p594-dep-skip-hit-rate.md，文末 P596 回填节为复测实测行：
   base64 0%→50%、url 50%→67%、semver 40%→60%）。

@@ -1,0 +1,26 @@
+{
+  "command": [
+    "cargo",
+    "t",
+    "--no-fail-fast"
+  ],
+  "exit": 100,
+  "seconds": 139.21,
+  "log_sha256": "d4c9316c037a1af670ce82ca3d29a7e4c75ffcc9a991c0426453b4bb0a1a635f",
+  "tail": [
+    "        PASS [   8.849s] (5237/5244) auto-lang ui::vm_bridge::tests::plan423_p5_runaway_guard_halts_unbounded_growth",
+    "        PASS [   2.604s] (5238/5244) auto-lang vm::tests_rc_lifecycle::churn_returns_to_baseline",
+    "        PASS [  48.183s] (5239/5244) auto-lang tests::plan738_stdlib_assembly_tests::t03_assembly_wiring::trans_entries_declare_assembly_target",
+    "        PASS [  47.615s] (5240/5244) auto-lang tests::plan738_stdlib_assembly_tests::t12_manifest_identity::triangle_consumers_share_assembly_identity_not_receipt_identity",
+    "        PASS [  30.473s] (5241/5244) auto-lang ui::desktop_protocol::stage3::tests::stage3_multi_app_stress_n3",
+    "        PASS [  30.566s] (5242/5244) auto-lang ui::desktop_protocol::stage3::tests::stage3_multi_app_stress_n5",
+    "        SLOW [> 60.000s] (─────────) auto-lang tests::plan738_assembly_probe_tests::p4_rust_emission_rejects_missing_net_provider",
+    "        PASS [  23.733s] (5243/5244) auto-lang::schema_drift schema_drift_fence",
+    "        PASS [  89.986s] (5244/5244) auto-lang tests::plan738_assembly_probe_tests::p4_rust_emission_rejects_missing_net_provider",
+    "────────────",
+    "     Summary [ 111.484s] 5244 tests run: 5242 passed (1 slow), 2 failed, 1542 skipped",
+    "        FAIL [   0.528s] (1944/5244) auto-lang tests::plan484_chart_component_tests::plan484_smoke::plan484_024_charts_streaming_recompute",
+    "        FAIL [   3.517s] (2111/5244) auto-lang tests::plan437_child_init_tests::plan437_child_init::gallery_chart_components_render_geometry",
+    "error: test run failed"
+  ]
+}

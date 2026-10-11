@@ -84,7 +84,7 @@ i18n/{lang}.json 是应用内内容文案机制，与 app 元数据名称无关�
 
 ## pac.at opens 文件关联键（PLAN-016）
 
-桌面互操作动词 `open_with`（协议 v1.7，schema/projection-protocol-v1.md
+桌面互操作动词 `open_with`（协议 v1.7，docs/schema/projection-protocol-v1.md
 §6）的关联声明面。app 在 pac.at 平铺声明可打开的扩展名集合：
 
 ```

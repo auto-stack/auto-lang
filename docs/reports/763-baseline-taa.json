@@ -1,0 +1,41 @@
+{
+ "purpose": "Plan 763 T-03 失败归因：3 个 AAVM 红项与迁移前基线逐项对照，不以「看起来与移动无关」作证据",
+ "baseline": {
+  "commit": "716ca62dbd3574c8615c7959c5183788ab626607",
+  "role": "plan-763-dev 分支点（git merge-base master plan-763-dev）= 迁移前最后提交",
+  "worktree": "D:/autostack/.wt/lang-763/auto-lang-baseline（临时，detached；对照后移除）",
+  "command": "cargo taa -E 'test(test_aavm2_goldens_check) | test(test_aavm2_compile)' --no-fail-fast",
+  "raw_log": "763-baseline-taa.log",
+  "log_sha256": "9878fbd57af6b7c15a20ee466d6160d7cb8b69b3160e539fb3b551290558c614",
+  "summary": "3 tests run: 0 passed, 3 failed, 6899 skipped"
+ },
+ "migrated_run": {
+  "commit": "212f222fb（plan-763-dev，迁移提交）",
+  "source": "docs/reports/763-final-taa.log（裸 cargo taa 全档）"
+ },
+ "comparison": [
+  {
+   "test": "tests::aavm2_a2r::test_aavm2_goldens_check",
+   "migrated": "FAIL aavm2_a2r.rs:366:56 rust reference run: Msg(\"RuntimeError(\\\"STDASSEMBLY.INVALID_BYTECODE: 60\\\")\")\" 2.404s",
+   "baseline": "FAIL 同文件:行:列 同消息 1.525s",
+   "verdict": "预存红（基线同红同形态）"
+  },
+  {
+   "test": "tests::aavm_runner_tests::test_aavm2_compile_corpus",
+   "migrated": "FAIL aavm_runner_tests.rs:441:5 AAVM-Rust cargo build failed: E0433 auto_lang 未解析（生成 main.rs 引用 auto_lang::a2r_std::fs::read_text_range）54.437s",
+   "baseline": "FAIL 同断点同 E0433 同符号 22.005s",
+   "verdict": "预存红（基线同红同形态）"
+  },
+  {
+   "test": "tests::aavm_runner_tests::test_aavm2_compile_use_corpus",
+   "migrated": "FAIL 同 E0433 形态 63.132s",
+   "baseline": "FAIL 同 E0433 形态 18.172s",
+   "verdict": "预存红（基线同红同形态）"
+  }
+ ],
+ "root_cause_notes": {
+  "compile_leg_e0433": "db4e5954b（2026-09-22，plan687 增补，716ca62db 祖先）使合并产物 main.rs 经 auto_lang::a2r_std::fs 限定路径解析；临时工程 Cargo.toml [dependencies] 为空且 harness 无内联 auto_lang shim → 该腿自彼时起红。迁移提交未触碰发射器/harness 语义（rust-change-scope: aavm_runner_tests.rs 仅 path/diagnostic update）。",
+  "goldens_invalid_bytecode": "run_with_capture 参考执行报 STDASSEMBLY.INVALID_BYTECODE: 60，与路径/文件映射无关的字节码语义红；基线同错实证预存。"
+ },
+ "conclusion": "3/3 AAVM 红项基线同红同错误形态 → 迁移零致因。taa 其余 2 红（plan730_commit_target_matrix、ffi_dual_019_dep_layout_invariants）为已登记项（KNOWN-DEBT P735-R1 / REG-2）。预存债登记见 KNOWN-DEBT-AND-RISKS.md P763-R1。"
+}

@@ -6,8 +6,8 @@
 |---|---|---|---|
 | lexer | `test/vm/` + `test/a2r/` 全部 `.at` 源文件做 tokenize 输入 | token 流对比 | 序列化格式:`(kind, lexeme, line, col)` 行式 dump,Rust 侧 debug 打印即可(无稳定性承诺);对比 runner 挂 432 基建 |
 | parser | 同上语料 | AST dump 对比 | 复用 `.expected.rust_ast` 思路(99_bootstrap Phase 2 机制) |
-| 执行 | `99_bootstrap` 038-053 求值类 + `test/vm/` 行为用例子集 | stdout diff(`.expected.out` 断言语料回收,`auto/lib-legacy/` 归档保留) | |
-| 终局 | `parity/libs/` 非 UI 库(如 string_utils) | a2r 编译产物运行 diff | 433 四向对比主战场;骨架已就位(test_aavm2_compile) |
+| 执行 | `99_bootstrap` 038-053 求值类 + `test/vm/` 行为用例子集 | stdout diff(`.expected.out` 断言语料回收,`packages/aavm/lib-legacy/` 归档保留) | |
+| 终局 | `test/parity/libs/` 非 UI 库(如 string_utils) | a2r 编译产物运行 diff | 433 四向对比主战场;骨架已就位(test_aavm2_compile) |
 
 ## 2. 性能预算（D2，依据 429-B2）
 

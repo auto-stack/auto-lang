@@ -12,7 +12,7 @@ graph TD
   subgraph AURA IR
     EXTRACT["aura/extract.rs<br/>view/state/handler 三元提取"]
     TYPES["aura/types.rs<br/>AuraWidget/AuraRoute/LogicPayload/AuraApp"]
-    SCHEMA["aura/schema.rs + schema_loader.rs<br/>+ schema/aura.at 校验"]
+    SCHEMA["aura/schema.rs + schema_loader.rs<br/>+ docs/schema/aura.at 校验"]
   end
 
   subgraph 代码生成["ui_gen/（AOT codegen）"]
@@ -38,7 +38,7 @@ graph TD
 
   A2UI["a2ui/<br/>A2UIMessage JSON 协议"]
   API["api/ #[api] 契约<br/>typescript/tauri/axum"]
-  EXT["外部：schema/aura.at · stdlib/aura/widgets · blueprints/ · packages/widgets · examples/ui"]
+  EXT["外部：docs/schema/aura.at · stdlib/aura/widgets · packages/blueprints/ · packages/widgets · examples/ui"]
 
   DIALECT --> PARSER --> EXTRACT --> TYPES
   SCHEMA --> EXTRACT
@@ -96,7 +96,7 @@ graph TD
 - 日期 / 来源：docs/design/blueprints/blueprints-first-class.md §2
 - 决策：blueprint 不是预烘焙组件库，而是"自然语言 spec + 结构化 frontmatter + 每 variant 一份 reference `.at` + gotchas"；`auto bp add` 由 AI 按 spec 现场生成定制 `.at`，消费者拥有输出源码、可改可 eject。
 - 备选：A. 黑盒高配置组件（pros：复用即所得；cons：变体空间高维，props 爆炸——低代码地狱）；B. 纯示例代码（pros：零维护；cons：不算复用）；C. Skill 模型（pros：订制走 NL、验收靠 acceptance 清单；cons：生成可复现性需 reference 锚定 + 编译回路收敛）。
-- 后果：`ui_gen/bp/registry.rs:BlueprintRegistry` + 顶层 `blueprints/`（form/data-display/editor/navigation）已按包格式落地；Phase B 生成器 CLI 已落地（plan-343）；PLAN-639 升级三通道分级消费（L1 import/bind 主通道）+ 契约六问（docs/specs/blueprint/contract.md）。
+- 后果：`ui_gen/bp/registry.rs:BlueprintRegistry` + 顶层 `packages/blueprints/`（form/data-display/editor/navigation）已按包格式落地；Phase B 生成器 CLI 已落地（plan-343）；PLAN-639 升级三通道分级消费（L1 import/bind 主通道）+ 契约六问（docs/specs/blueprint/contract.md）。
 - 状态：active
 
 ### ADR-07: blueprint kind 词汇表圈住订制自由，eject 为天花板
@@ -113,11 +113,11 @@ graph TD
 - 后果：M1=015-notes 扩展（plan-338→354/357/360 系列）；widget 库扩容（plan-337 TODO-A）与 app 生成是同一攀登的两条腿。
 - 状态：active
 
-### ADR-09: 组件契约单源 schema/aura.at，数据流翻转
+### ADR-09: 组件契约单源 docs/schema/aura.at，数据流翻转
 - 日期 / 来源：plan-435（2026-08）
 - 决策：散落 8 处的组件定义收敛为一份 `.at` schema（扩展 aliases/tier/backends/deprecated 字段）+ 统一注册表；schema 管契约、Rust 管行为，render_support/vue import 映射从 schema 派生，CI 拦截漂移。canonical=kebab-case，变体进 aliases。
 - 备选：A. Rust 硬编码为源（cons：漂移实证 8 处）；B. schema 单源派生（pros：一处改处处生效；cons：派生链需维护）。
-- 后果：`schema/aura.at` 成为 widget/chart 契约唯一源；462 要求 virtual_window 经此登记（I4，随桌面线收尾合入）。
+- 后果：`docs/schema/aura.at` 成为 widget/chart 契约唯一源；462 要求 virtual_window 经此登记（I4，随桌面线收尾合入）。
 - 状态：active
 
 ### ADR-10: DSL 现代化——widget 单轨 + setup 三相位 + msg 简写
@@ -179,7 +179,7 @@ graph TD
 
 ### ADR-18: chart 族发射 = schema 声明驱动（契约单源）
 - 日期 / 来源：plan-437 Phase 1（2026-08-28，435 统一声明体系首批示范）
-- 决策：chart 族（area/bar/line/donut/chart/charttooltip/chartlegend 七元素）的 props 契约全量落库 schema/aura.at（唯一契约源），registry overlay（apply_schema_vue_mappings）把声明填进 vue BackendMapping.props，vue.rs 四个硬编码 match 臂（~130 行）退役，收敛为 emit_chart_family_attrs 遍历声明发射（按声明名排序保序）；值级转换保留为转换层特例（curve-type 字符串→CurveType 枚举、custom-tooltip 组件引用恒绑定）。
+- 决策：chart 族（area/bar/line/donut/chart/charttooltip/chartlegend 七元素）的 props 契约全量落库 docs/schema/aura.at（唯一契约源），registry overlay（apply_schema_vue_mappings）把声明填进 vue BackendMapping.props，vue.rs 四个硬编码 match 臂（~130 行）退役，收敛为 emit_chart_family_attrs 遍历声明发射（按声明名排序保序）；值级转换保留为转换层特例（curve-type 字符串→CurveType 枚举、custom-tooltip 组件引用恒绑定）。
 - 备选：继续硬编码臂 + 契约注释（cons：435 审计的"实现比声明多"典型样本，声明与发射漂移无围栏）。
 - 后果：契约测试锁声明→发射全链（cap_chart_family_props_contract_in_registry）；奇偶校验证明新旧臂输出仅属性序差异；后续 chart 属性扩展只改 schema。
 - 状态：active

@@ -4,7 +4,7 @@
 
 ## 契约
 
-- **schema**：15 元素全量注册（`schema/aura.at` 权威面；`iced: component` 如实注记，root `menubar` 为 builtin_widget 其余 web_component）。schema.rs 硬编码 fallback 照 menubar_checkbox_item 先例不镜像新增件（围栏 rs 维度防孤儿）。
+- **schema**：15 元素全量注册（`docs/schema/aura.at` 权威面；`iced: component` 如实注记，root `menubar` 为 builtin_widget 其余 web_component）。schema.rs 硬编码 fallback 照 menubar_checkbox_item 先例不镜像新增件（围栏 rs 维度防孤儿）。
 - **vue 臂**：全 kind 发射 reka-ui 标准件（`@/components/ui/menubar`，16 资产在库；**烘焙偏离上游 2026-10-02**：trigger/sub-trigger 补 `hover:bg-accent hover:text-accent-foreground`，item/checkbox/radio/sub-trigger 补 `data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground`——上游 trigger 无 hover、item 仅 `focus:` 钩子，桌面惯例悬停应有反馈且 data-highlighted 比 focus 稳，见 SNAPSHOT.md baked patch）。radio-group `value` → `:model-value` 单向绑定（回写走 radio-item onclick，与 checkbox `:checked` 同源语义）；item 的 shortcut prop 与独立 `menubar-shortcut` 子件均发射 `MenubarShortcut`（muted token——硬编码 zinc span 已退役）；静态 `disabled` bool → `disabled` 属性。
 - **registry**：15 spec 别名纪律（`menu-bar-*` 官方 kebab / `menubar_*` schema snake / `menubar-*` DSL kebab）；vue 映射自 schema overlay 按折叠键灌入。
 - **VM 臂（双解释态同源）**：

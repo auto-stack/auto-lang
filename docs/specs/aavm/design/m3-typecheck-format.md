@@ -28,7 +28,7 @@ infer/stmt.rs 的 check_body 仅 a2r 调用且结果被丢弃;ParamChecker 零�
   函数调用经 let 绑定。初始化式覆盖:字面量、字面量二元运算、调用、
   数组字面量、标识符。
 - Rust 侧:`run_with_capture(语料)` 的 stdout(真 VM + 真 infer_expr_type)。
-- AAVM 侧:`auto/lib/typeinfo.at` 的 `typecheck_dump(source) -> str`——
+- AAVM 侧:`packages/aavm/lib/typeinfo.at` 的 `typecheck_dump(source) -> str`——
   复用 lexer.at 的 tokenize 与 parser.at 的底层游标/类型解析助手
   (p_kind/p_next/parse_type/infix 表),自带:
   - **TFnSig 注册表**(fn 名→返回类型 Display 串;参数类型经 p_bind 入作用域)

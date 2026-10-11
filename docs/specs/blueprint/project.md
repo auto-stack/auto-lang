@@ -1,7 +1,7 @@
 # blueprint
 
 > **Status**: active
-> 路径：`blueprints/`  | 技术栈：Markdown spec（TOML frontmatter）+ .at 参考实现
+> 路径：`packages/blueprints/`  | 技术栈：Markdown spec（TOML frontmatter）+ .at 参考实现
 
 AutoUI **Blueprint**（原 Block，PLAN-639 更名；代码缩写 `bp`）——三层
 Widget / Blueprint / App 的中间层（Design 17）："Skill 级" UI 单元包：自然语言
@@ -10,7 +10,7 @@ spec + 参考实现 + gotchas，供 agent 组装 widgets。契约六问见
 
 ## 目标与范围
 
-- 每个 blueprint 是一个包：`blueprints/<kind>/<name>/` 下 `spec.md`（TOML
+- 每个 blueprint 是一个包：`packages/blueprints/<kind>/<name>/` 下 `spec.md`（TOML
   frontmatter + NL 正文）+ `reference/<v>.at`（每变体一个参考实现）+ `gotchas.md`
   （反例 {wrong, why, right}）。
 - **三通道分级消费**（PLAN-639 SD-02）：
@@ -20,7 +20,7 @@ spec + 参考实现 + gotchas，供 agent 组装 widgets。契约六问见
     （eject 语义保留，头注登记来源）；
   - **L3 agent generation**：agent 读 spec 生成，`auto bp check` + `auto build`
     循环校验；结构性变体走提升评审（`promotions:`）。
-- **版本面（PLAN-647 终版裁定，P639-D3 核销）**：`blueprints/` = 单版本滚动
+- **版本面（PLAN-647 终版裁定，P639-D3 核销）**：`packages/blueprints/` = 单版本滚动
   权威源（升版=全体消费方下次构建重构建；跨仓对齐走 git 层，bp 层禁自造
   pin/lock，锁面触发条件见 contract Q5⑤）；pac.at `version` 仅展示元数据
   非约束面；spec frontmatter 顶层与 pac.at `dep` 声明的版本类键均显式报错
@@ -44,7 +44,7 @@ spec + 参考实现 + gotchas，供 agent 组装 widgets。契约六问见
 
 ## 官方默认集判定标准（PLAN-640）
 
-官方默认集（Tier 0，`blueprints/` 磁盘目录）是策展集不是杂物间——新包入集
+官方默认集（Tier 0，`packages/blueprints/` 磁盘目录）是策展集不是杂物间——新包入集
 须**五条全过**，防止官方集膨胀退化：
 
 1. **跨 app 出现频率**：该区块在 ≥2 个真实应用形态中出现，或为业界 Block
@@ -157,7 +157,7 @@ sidebar 壳承载导航（content slot 注入主区）、主区按 app model `ac
   VM 臂点击链属 E2E 应验面——宿主收到载荷断言（如 `selected_id == 所点
   id`）且详情区渲染该 bp 正文；双臂验收不得只盖 vue 构建（PLAN-676 漏网
   教训）。门禁 = `.agents/skills/autoui-verifier/scripts/
-  test_bp_gallery_click.py`（按 blueprints/ 目录解析卡片，改名漂移即门禁红；
+  test_bp_gallery_click.py`（按 packages/blueprints/ 目录解析卡片，改名漂移即门禁红；
   首帧 no-op press 有界重试，值错误仍立即红）。
 - **结构化文档展示**：spec/gotchas 型 markdown 内容双臂消费 autodown
   渲染件（`markdown (content:, final: true)` tag——VM 臂 autodown-core

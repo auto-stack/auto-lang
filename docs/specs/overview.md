@@ -51,10 +51,10 @@
 
 | 资源 | 职责 | 状态 |
 |---|---|---|
-| [parity/](parity/project.md) | 独立 workspace：三后端行为一致性验证（30+ 库语料） | active |
+| [test/parity/](parity/project.md) | 独立 workspace：三后端行为一致性验证（30+ 库语料） | active |
 | [auto-cosmic](auto-cosmic/project.md) | COSMIC 桌面复刻实验（4 子 crate，Linux 向）+ **Smithay 合成宿主线**（509 起：host-smithay crate，smithay 0.7.0 路线 B——桌面协议宿主消费帧，宿主无 iced；骨架+shell 首帧已落地） | active（509 线内） |
 | examples/ | 51 项示例（ui 应用轨道 0xx 系列/godot/http/charts gallery…） | active |
-| schema/ | `aura.at`——AURA 内置组件唯一声明源（Plan 435） | active |
+| docs/schema/ | `aura.at`——AURA 内置组件唯一声明源（Plan 435） | active |
 | test/ | 特性 fixture、fixtures/plan446 历史语料、auto 语言单测与 runners/*.at 总入口（PLAN-761 归并） | active |
 | scripts/tools/ scripts/deploy/ | fstr/Tailwind/截图差分/shadcn 工具及 native-fixture；HTTP/Playground 部署模板（PLAN-761 归并） | 辅助 |
 
@@ -65,7 +65,7 @@
 - `crates/auto-lang-macros`：auto-macros 的逐字废弃副本，无人依赖。
 - `crates/ac-examples`：无 Cargo.toml 的遗留目录（仅 2 个 .at 测试脚本）。
 - 根 `auto-shell/`：仅剩 Cargo.lock（crate 已迁独立仓 D:/autostack/auto-shell）。
-- `auto/lib-legacy/`：自举库旧版封存。
+- `packages/aavm/lib-legacy/`：自举库旧版封存。
 - `crates/Cargo.lock`：多余（workspace lock 应只在根）。
 
 ---
@@ -87,7 +87,7 @@
 ## 活跃开发线（2026-09-07 快照）
 
 1. **AAVM/self-host**：PLAN-532 已折返归档（2026-09-06，塔顶自举终点，GOAL-017 达成）；
-   Rust compiler 仍是 canonical reference，`auto/lib/` 为 active experimental
+   Rust compiler 仍是 canonical reference，`packages/aavm/lib/` 为 active experimental
    implementation（知识沉淀在 [aavm/project.md](aavm/project.md)）。
 2. **VM/AutoUI reactive runtime**：PLAN-536 已折返归档（2026-09-05，反应性修复批）；
    桌面基础、launcher、virtual desktop 和多轮 parity/UX 计划已落地。

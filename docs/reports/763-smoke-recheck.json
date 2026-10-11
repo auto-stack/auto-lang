@@ -1,0 +1,24 @@
+{
+ "purpose": "Plan 763 T-03 冒烟收口：smoke-final 遗留 2 红 + aavm-smoke 首跑红 + catalog 同步性复核",
+ "bp_gen_from_project_cwd": [
+  {
+   "name": "bp-admin-gen-recheck",
+   "command": "worktree CLI（target/debug/auto.exe，迁移代码 16:18 构建）于 examples/bp-admin 项目 cwd 执行 auto build --gen-only；deps/bps 为实体拷贝（规避 worktree 红线 junction）",
+   "exit": 0,
+   "note": "copy_local 先做 from.is_dir() 检查（pac.rs:1471）再短路于 target 已存在——本跑完整走 ../../packages/blueprints 新路径解析；Generation complete (29 component(s))"
+  },
+  {
+   "name": "bps-gallery-gen-recheck",
+   "command": "同上，于 examples/bps-gallery 项目 cwd",
+   "exit": 0,
+   "note": "零 Local dep dir 报错；Generation complete"
+  }
+ ],
+ "smoke_final_red_attribution": "bp-admin-gen / bps-gallery-gen 两红为调用 cwd 工件：dep 相对路径按进程 cwd 解析（AutoPath::new 无 absolutize，pac.rs:1469-1472），非项目 cwd 调用时 ../../packages/blueprints 必然失配。项目 cwd 复跑双绿（上表）实证路径语义迁移前后一致且新路径正确。",
+ "aavm_smoke_attribution": "首跑 aavm-smoke（auto packages/aavm/aavm.at）红=预存：master 主检出（迁移前源码+master 二进制）跑 auto auto/aavm.at 报逐字节相同错误 auto_link_E0401 Undefined symbol: P.next in module typeinfo。与 aavm 自举无实用面、七个已删 CI 流最近五次全红的审计结论一致。smoke-final 的 aavm-namespace（scratch p763-token.at）为迁移相关的有效命名空间冒烟（exit 0）。",
+ "catalog_sync_recheck": {
+  "command": "worktree CLI 于 examples/bps-gallery 执行 auto bp list --format at，与 committed src/front/registry.at diff",
+  "diff_lines": 0,
+  "note": "763-smoke.json 首跑 catalog_in_sync=false 为再生前时序；再生产物（5 行 sidebar-nav 缓存引用空行差异，见 763-catalog-regeneration.json）已随 212f222fb 入库，现零差异"
+ }
+}
