@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-763
 plan_revision: 1
-status: drafting
+status: executing
 feature_name: consolidate-root-packages
 created_at: 2026-10-11
 updated_at: 2026-10-11
@@ -9,7 +9,7 @@ supersedes_spec_components: [docs/specs/design/repository-layout.md]
 new_spec_components: []
 touched_goals: []
 affects: [aavm, blueprint, parity, website]
-current_step: 0
+current_step: 2
 total_steps: 5
 ---
 
@@ -44,8 +44,8 @@ auto/ → packages/aavm/；blueprints/ → packages/blueprints/；parity/ → te
 - AC-05：线性合入、归档、guard 清理专属工作树；保护其他会话及本机缓存。
 
 ## 执行步骤
-- [ ] T-01：冻结八工作流来源与 GitHub 记录，形成 docs/reports/763-ci-audit.json。
-- [ ] T-02：迁移五目录，同步消费者，形成资产映射核验。
+- [x] T-01：冻结八工作流来源与 GitHub 记录，形成 docs/reports/763-ci-audit.json。
+- [x] T-02：迁移五目录，同步消费者，形成资产映射核验。
 - [ ] T-03：完成作用域验证与冒烟，保存结果和失败归因。
 - [ ] T-04：提交实现，以 auto-plan:review 从产物重建验收结论（同会话复审，明确限制），审定 Spec delta。
 - [ ] T-05：auto-plan:merge 完成规范/账本、ff-only 合入、归档与 guard 清理。
@@ -55,3 +55,5 @@ auto/ → packages/aavm/；blueprints/ → packages/blueprints/；parity/ → te
 
 ## 待澄清事项
 无；已有授权。先审计仓外消费者，保护其他会话检出。
+
+执行基面 716ca62db；专属工作树 lang-763/auto-lang，auto-down detached@895f8d0。八流程审计与396资产迁移记录在开发工作树 docs/reports/763-*。
