@@ -1,10 +1,10 @@
 ---
 plan_id: PLAN-756
-status: reviewed
+status: archived
 feature_name: website-v05-copy-and-capture-slots
 author: [agent]
 created_at: 2026-10-10
-updated_at: 2026-10-10
+updated_at: 2026-10-11
 plan_revision: 1
 current_step: 4
 total_steps: 4
@@ -83,3 +83,9 @@ Canonical paths: docs/specs/website/design/ui-presentation.md, docs/specs/websit
 Integration smoke: main/worktree capture source, guide and canonical Spec bytes equal; source IDs match 12 guide rows; shared localeHref remains correct; git diff --check passed. Production observation: website/.vitepress/dist/index.html on main last written 2026-10-10 17:12:01 before landing; not rebuilt/deployed by this task. Verified bundle is in plan worktree. Rust/backend binaries untouched and Category A prohibits Cargo/docs_gen. No claim of public deployment, frozen artifacts, screenshot completion or W-02 acceptance.
 
 Before landing guard: wt-guard clean (zero reparse point); worktree Git clean. Current main foreign blueprints deletions and Plan 755 WIP preserved. No cleanup/archive until store-mediated projection readback succeeds. Per auto-plan-merge/SKILL.md: “If no store-mediated writer is reachable, record blocked; keep the Plan active.”
+
+### Recovery receipt — 投影回填 + 归档 + 清理（2026-10-11）
+
+- ledger_refreshed（补完成）：经 README §5 手工回退路径（754/755 先例；store writer 仍拒达，见本计划 §11 blocked 收据）upsert designs P756-1（ui-presentation.md 待拍槽契约，与 P715-1/P720-2 并列）/ P756-2（application-introductions.md 四主应用统一，与 P722-1 并列）/ reviews P756-3；python 解析读回校验；原 sections 结构与无关条目保全。
+- archived：git mv → docs/plans/archive/756-website-v05-copy-and-capture-slots.md，status: archived。
+- cleaned：wt-guard clean → worktree/分支/组目录清理（详见下方回填行）。
