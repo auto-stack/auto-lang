@@ -26,8 +26,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::ui::desktop_protocol::message::{FrameMsg, HandshakeMsg, ProtocolMsg};
-use crate::ui::desktop_protocol::PROTOCOL_VERSION;
 use crate::ui::desktop_protocol::transport::Transport;
+use crate::ui::desktop_protocol::PROTOCOL_VERSION;
 
 /// 重连总预算（毫秒）——ReconnectPolicy 语义（client_runtime.rs:427）。
 pub const RECONNECT_BUDGET_MS: u32 = 30_000;
@@ -78,8 +78,18 @@ struct Client {
     /// 当前端点（None = 连接中/重连排队/预算尽）。
     end: Option<Box<dyn Transport + Send>>,
     /// connect 线程结果槽（Connecting 态 Some；线程写终值后自然退出）。
-    connect_slot:
-        Option<Arc<Mutex<Option<Result<Box<dyn Transport + Send>, crate::ui::desktop_protocol::transport::TransportError>>>>>,
+    connect_slot: Option<
+        Arc<
+            Mutex<
+                Option<
+                    Result<
+                        Box<dyn Transport + Send>,
+                        crate::ui::desktop_protocol::transport::TransportError,
+                    >,
+                >,
+            >,
+        >,
+    >,
     phase: Phase,
     live: Option<LiveInfo>,
     latest: Option<Arc<crate::ui::desktop_protocol::message::DisplayList>>,
@@ -185,10 +195,7 @@ pub fn note(url: &str) -> RemoteFrameSnapshot {
         .entry(key)
         .or_insert_with(|| Client::new(app_name_of(url)));
     client.last_seen = Instant::now();
-    if client.phase == Phase::Connecting
-        && client.connect_slot.is_none()
-        && client.end.is_none()
-    {
+    if client.phase == Phase::Connecting && client.connect_slot.is_none() && client.end.is_none() {
         client.connect_slot = Some(spawn_connect(url.to_string()));
     }
     client.snapshot()
@@ -216,7 +223,16 @@ pub fn snapshot(url: &str) -> RemoteFrameSnapshot {
 /// 后台连接线程（ws::connect 阻塞循环的渲染线程隔离；写完结果自然退出）。
 fn spawn_connect(
     url: String,
-) -> Arc<Mutex<Option<Result<Box<dyn Transport + Send>, crate::ui::desktop_protocol::transport::TransportError>>>> {
+) -> Arc<
+    Mutex<
+        Option<
+            Result<
+                Box<dyn Transport + Send>,
+                crate::ui::desktop_protocol::transport::TransportError,
+            >,
+        >,
+    >,
+> {
     let slot: Arc<
         Mutex<
             Option<
@@ -257,7 +273,9 @@ pub fn pump() {
     }
     let urls: Vec<String> = reg.keys().cloned().collect();
     for key in urls {
-        let Some(client) = reg.get_mut(&key) else { continue };
+        let Some(client) = reg.get_mut(&key) else {
+            continue;
+        };
         // ② connect 结果收编（首连 Connecting 与重拨 Reconnecting 共路——
         // 拨号线程只写结果槽，收编统一在此；slot 空档 = 线程在跑）。
         if matches!(client.phase, Phase::Connecting | Phase::Reconnecting) {
@@ -274,10 +292,11 @@ pub fn pump() {
                         // 拨号失败：保持/进入重连节流（预算从首次断连起算）。
                         client.connect_slot = None;
                         client.phase = Phase::Reconnecting;
-                        client
-                            .budget_deadline
-                            .get_or_insert_with(|| now + Duration::from_millis(RECONNECT_BUDGET_MS as u64));
-                        client.next_dial = Some(now + Duration::from_millis(RECONNECT_INTERVAL_MS as u64));
+                        client.budget_deadline.get_or_insert_with(|| {
+                            now + Duration::from_millis(RECONNECT_BUDGET_MS as u64)
+                        });
+                        client.next_dial =
+                            Some(now + Duration::from_millis(RECONNECT_INTERVAL_MS as u64));
                     }
                     None => {} // 线程仍在跑（CONNECT_TIMEOUT 内会出结果）。
                 }
@@ -396,8 +415,16 @@ impl<M> RemoteFramePainter<M> {
     /// bounds 局部像素 → 远端逻辑域（等比换算——canvas_embed_web.ts
     /// toLogical 同一算式语义；draw 的 fit 缩放因子互逆）。
     fn to_remote(local: (f32, f32), bounds: &Rectangle, live: &LiveInfo) -> (f32, f32) {
-        let sx = if bounds.width > 0.0 { live.w / bounds.width } else { 1.0 };
-        let sy = if bounds.height > 0.0 { live.h / bounds.height } else { 1.0 };
+        let sx = if bounds.width > 0.0 {
+            live.w / bounds.width
+        } else {
+            1.0
+        };
+        let sy = if bounds.height > 0.0 {
+            live.h / bounds.height
+        } else {
+            1.0
+        };
         (local.0 * sx, local.1 * sy)
     }
 }
@@ -427,29 +454,35 @@ impl<M> canvas::Program<M> for RemoteFramePainter<M> {
         };
         match event {
             CanvasEvent::Mouse(MouseEvent::CursorMoved { .. }) => {
-                wire(crate::ui::desktop_protocol::message::InputMsg::PointerMoved {
-                    wid: live.wid,
-                    x,
-                    y,
-                });
+                wire(
+                    crate::ui::desktop_protocol::message::InputMsg::PointerMoved {
+                        wid: live.wid,
+                        x,
+                        y,
+                    },
+                );
             }
             CanvasEvent::Mouse(MouseEvent::ButtonPressed(button)) => {
-                wire(crate::ui::desktop_protocol::message::InputMsg::PointerPressed {
-                    wid: live.wid,
-                    button: wire_button(*button),
-                    x,
-                    y,
-                    modifiers: 0,
-                });
+                wire(
+                    crate::ui::desktop_protocol::message::InputMsg::PointerPressed {
+                        wid: live.wid,
+                        button: wire_button(*button),
+                        x,
+                        y,
+                        modifiers: 0,
+                    },
+                );
             }
             CanvasEvent::Mouse(MouseEvent::ButtonReleased(button)) => {
-                wire(crate::ui::desktop_protocol::message::InputMsg::PointerReleased {
-                    wid: live.wid,
-                    button: wire_button(*button),
-                    x,
-                    y,
-                    modifiers: 0,
-                });
+                wire(
+                    crate::ui::desktop_protocol::message::InputMsg::PointerReleased {
+                        wid: live.wid,
+                        button: wire_button(*button),
+                        x,
+                        y,
+                        modifiers: 0,
+                    },
+                );
             }
             _ => {}
         }
@@ -623,7 +656,9 @@ pub(crate) mod test_support {
 
     impl Drop for MockTransport {
         fn drop(&mut self) {
-            self.0.drops.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.0
+                .drops
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
     }
 
@@ -655,8 +690,7 @@ pub(crate) mod test_support {
     pub fn age_lease(url: &str) {
         let mut reg = REGISTRY.lock().unwrap();
         if let Some(c) = reg.get_mut(&namespaced(url)) {
-            c.last_seen =
-                Instant::now() - Duration::from_millis((ATTACH_LEASE_MS + 100) as u64);
+            c.last_seen = Instant::now() - Duration::from_millis((ATTACH_LEASE_MS + 100) as u64);
         }
     }
 }
@@ -665,9 +699,7 @@ pub(crate) mod test_support {
 mod tests {
     use super::test_support::*;
     use super::*;
-    use crate::ui::desktop_protocol::message::{
-        DisplayList, InputMsg, MouseButton, WRect,
-    };
+    use crate::ui::desktop_protocol::message::{DisplayList, InputMsg, MouseButton, WRect};
 
     /// 注册表族测试串行锁——pump() 遍历全局表，并行测试的 pump 会交叉
     /// 消费彼此的 inbox（Welcome 抢跑相位断言）；持锁到测试结束。
@@ -751,7 +783,11 @@ mod tests {
             "租约到期应 Drop 端点（AC-04 close 断言）"
         );
         assert!(
-            REGISTRY.lock().unwrap().keys().all(|k| !k.contains("19860")),
+            REGISTRY
+                .lock()
+                .unwrap()
+                .keys()
+                .all(|k| !k.contains("19860")),
             "退场 url 应出册"
         );
         restore();
