@@ -422,7 +422,7 @@ schema 三围栏（REG-4 四表清偿）/ ash_stream_leak_probe（门禁分层�
 
 ### PLAN-759 落地后独立核查候选（2026-10-11）
 
-以下候选登记于[落地后审核](reports/759-post-landing-review-20261011.md)（needs_fix）；D3/D4 已由 `fd55d2d42`（fix-759-review-p2 轻量 worktree 路径）清偿，不改变759归档终态。
+以下候选登记于[落地后审核](reports/759-post-landing-review-20261011.md)（原判定 needs_fix）；D3/D4 已由 `fd55d2d42`（fix-759-review-p2 轻量 worktree 路径）清偿，并于2026-10-11完成独立复审（`35be7f1e0`，两项修正 pass，日常5236/5236、tv162/162、裸libtest三线程4轮均绿；tu唯一余红为既有desktop金样，完整证据见同报告末节），不改变759归档终态。
 
 | 编号 | 优先级 | 域 | 描述 | 锚点 |
 |---|---|---|---|---|

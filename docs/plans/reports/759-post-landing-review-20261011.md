@@ -81,3 +81,48 @@ next：在新的独立修复worktree处理F-759-R1/R2，保留759 archived终态
 ## 审核环境清理
 
 Git Bash 执行 `D:/autostack/wt-guard.sh` 对四个审核worktree均输出clean，随后逐仓 `git worktree remove` 成功；没有删除其他会话的检出。剩余 `.wt/review-759` 只有本次日志与渲染探针产物。自动审批拒绝其目录/文件清理（返回 `blocked by policy`，无具体原因），因此保留该目录，不改用其他途径绕过拦截。关键证据已在本报告摘录，探针源码也已存为 `reports/assets/759-post-landing/render_probe.rs`。
+
+## F-759-R1/R2 修正后的独立复审（2026-10-11）
+
+**outcome: pass（本轮两项 P2 修正范围）。** F-759-R1/R2 均已修正，未发现新的阻断问题；原报告和原 Plan 的 archived 状态保留。此结论不表示仓库所有档位零红，亦不覆盖尚未合入的 PLAN-760 实现。
+
+### 冻结输入
+
+- stage: review；plan_id: PLAN-759；plan_revision: 2（归档不重开）。
+- reviewed_commit: `35be7f1e0bbbe1831f068201d7269e6626e0ab3d`；修正提交 `fd55d2d4288b64b49fc6eee8705979aee4e14563`；diff base `fd55d2d42^`。祖先检查成功，修正已落地；从上一审核 HEAD 到本轮 HEAD 的实现变化仅为本次四文件修正。
+- 独立 detached 审核检出：`D:/autostack/.wt/review-759-r2/auto-lang`；源码 clean。全部构建与测试在此进行，未触碰主检出临时文件或其他会话的实现。
+- dependencies：auto-down `895f8d0f9355c9f5ec3ce8fca268bdb768395846`；auto-os `b5a233323f3dd5c0e7d023a74f5c8bc34d6546e5`。auto-os 当前主分支 `0532b8fbc0170deb6efa970196d337c26ebe51c6` 已先行带入 PLAN-760 的 remote-frame 金样，而本轮 auto-lang HEAD 尚不含该实现，故审核固定为759配套版本，并通过组内兄弟解析；未设置 AUTO_OS_ROOT。
+- Plan SHA256：`D48EA00FBC82B35CA59B6575002019815C2B72DFF79F385B05B72DE1FDF4B424`；UI Spec SHA256：`BC138E9447A12D6C8EB0826728D112ED7505EE3AACEF73FBCCEA3580684D8B00`；VM Spec SHA256：`FA2A470E05182F8835C60FC138986FA6CEDE8D121012545A97FEC445E72F2732`。规范文本与上一核查相同，未发布新规范/ledger。
+- 本轮 schema/aura.at SHA256：`90653CFC463513FB87ACFA603731CF0FE34D38D1B9C1D951D06288B20DCF12A5`；规范相关数据变化为12项 iced 能力级别校准，审核实际转换实现与围栏一致性。
+
+### 复现结果
+
+| 验证 | 本轮结果 |
+|---|---|
+| `cargo t --no-fail-fast` | **5236/5236 passed**，99.418s，1540 skipped；较上一轮新增4个回归测试全部执行 |
+| `cargo tv` | **162/162 passed**，2.284s |
+| `cargo tu` | **858 passed / 1 failed / 2 ignored**，1.06s；唯一失败为此前已有的 `ui_gen::vue::tests::test_a2vue_desktop_surface_asset` desktop金样；root_resolution本轮通过 |
+| 原生产库 render_probe 再跑 | canonical/kebab 的 level/ignored/note 一致；实际 Input 的 Search/hello/style 仍落位，原误报不再出现 |
+| 裸 libtest：`plan606_gallery http_base --test-threads=3` | **4轮，各3/3 passed**；含photo实际stub、URL解析、panic恢复；`RUST_MIN_STACK=33554432` |
+| 修正 diff 空白检查 | `git diff fd55d2d42^ fd55d2d42 --check`通过；构建仍有仓内既有警告，未宣称整个仓库零警告 |
+
+生产探针的关键输出：
+
+```text
+SUPPORT command_input: Partial; ignored=["type", "maxlength", "min", "max", "step", "pattern"]
+SUPPORT command-input: Partial; ignored=["type", "maxlength", "min", "max", "step", "pattern"]
+SUPPORT command_item: Partial; ignored=["value"]
+SUPPORT command-item: Partial; ignored=["value"]
+ACTUAL_VIEW Column { children: [Input { placeholder: "Search", value: "hello", ... style: Some(...) }], ... }
+```
+
+### 问题收口与覆盖边界
+
+- **F-759-R1 / P759-D3：pass。** get_support先按schema归一，再取详情；command/carousel各子件按真实Input/Button/Column/Row/Empty转换校准，schema同步。保留缺失的高阶交互说明，未修改渲染器产品逻辑。三个新增回归测试执行通过，原生产库探针也独立确认修正。
+- **F-759-R2 / P759-D4：pass。** photo与stdlib URL测试共用HTTP_BASE_TEST_SERIALIZER，RAII守卫在锁释放前恢复环境；查明auto-lang库内该env的测试修改者均遵守此锁。panic恢复测试和三线程同进程复跑通过。photo原精确URL/24张恰一次/所选ID全图/Cover/Contain/stub收据断言均保留。
+- **非阻断补强项：** `http_base_env_guard_restores_after_panic`在父线程持锁、子线程仅持env守卫，因此只验证env守卫的panic恢复，未实际让锁poison；其注释中的“poisoned后可接管”不能当作已实测的覆盖。实现使用 `poisoned.into_inner()`，源码处理合理。后续可补真实持锁panic与原env未设两种专门用例。
+- 原AC-02的环境隔离缺口、AC-05的新增诊断误报现已关闭。未重跑此前已验证且本轮零改动的auto-term DLL集成门禁（实现及依赖未变，复用上一轮20k循环实跑证据）；未运行批量tf。
+
+next：本轮P2修正无需进一步实现修复；保留既有desktop金样及扫描器等范围外债务。本报告提供独立复审证据，不执行合并、不修改归档计划状态。
+
+本轮三个审核worktree均经Git Bash的wt-guard输出clean后成功移除；组根的门禁日志与生产探针产物保留为辅助证据，关键可复核结果已摘录至本报告，不依赖临时目录存续。
