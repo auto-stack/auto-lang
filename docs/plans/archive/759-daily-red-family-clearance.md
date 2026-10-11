@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-759
-status: reviewed                # drafting → executing → execution_done → reviewed → archived
+status: archived               # drafting → executing → execution_done → reviewed → archived（终态）
 feature_name: daily-red-family-clearance
 plan_revision: 2               # r2: 按 2026-10-11 草案审核 F-01~F-08 修订
 author: []
@@ -417,6 +417,18 @@ CPU-slice Parked(CpuRunnable)，片预算耗尽，测试驱动轮次内未续完
 - findings: F-R1[P2 非阻断·合流序]：auto-lang 合入后主检出 kitchen_sink 围栏在 auto-os b5a2333 合流前为红（解析序 env→兄弟→主检出兜底）——建议 auto-os 分支先于/随本计划合流，或在 merge 收据登记暂态已知红；F-R2[P3 计划外·预存]：`ui_gen::bp::registry::root_resolution_tests::walks_up_from_cwd_to_nearest_blueprints_dir` 裸 libtest 单进程下 EnvGuard 全局 env 跨测试竞态 flake（4 跑 ok/FAIL/ok/ok 复现；本计划 ui_gen 零 diff；PLAN-645 反模式族=AGENTS tu 档注记前车）——建议入 KNOWN-DEBT；F-R3[P3 非阻断]：plan606 保留语料缺席 SKIP 守卫（既有模式，语料在场）
 - evidence: 复审命令与结果摘录——scoped 电池 `cargo t --no-fail-fast <12 族滤串>` 26/26；`cargo tv` 162/162；`cargo tu` 857 passed/2 failed（a2vue=在案预存 4f123a50e+walks_up=F-R2 flake，复跑 4 次定谳）；全档轮2 5232/5232（0.459s scoped/104.6s full）；auto-os `show --stat b5a2333`=单文件 94+/111-
 - next: **merge**（/auto-plan:merge；F-R1 合流序在 merge 步处置）
+
+
+### 2026-10-11 合并收据（PLAN-759:r2，completion_kind: delivered）
+
+- stage: merge | plan_id: PLAN-759 | plan_revision: 2 | outcome: pass
+- **prepared**：reviewed 基线 afee09bcd（reviewed_commit 6b33d1377+全 SHA 链）、冻结 spec delta（vm-fn-call-semantics 边界③+ui/overview 注记）、交付提交与依赖版本齐
+- **landed**：master 并行推进（757/758/PLAN-102）→ worktree `git rebase master` 干净，`git range-diff` 8/8 全等（旧→新映射：986cc9392→c279a6490 / aa85ffe66→a78e0d46b / 753733205→fa49911c0 / f939d1a98→cf1448dfb / 5448cbfd1→5820d35f3 / aea4ac5f9→fe04a3fac / d5a507db3→fd87fa528 / 6b33d1377→e905607ff）；重基后全档 5231/5232+1 在案 flake（plan484_024 streaming，755 T-06 登记，scoped 复跑绿）+12 目标族全绿；主检出 `git merge --ff-only plan-759-dev` → **master=e905607ff**；F-R1 序置=auto-os main 先行 FF 至 b5a2333，主检出三围栏烟测 3/3 绿（kitchen_sink 随之转绿）
+- **ledger_refreshed**：README §5 手工回退路径（753/756/757 先例）——.autoos/specs.json upsert P759-1（designs·merged #[api] 三分支契约）/P759-2（designs·壁纸测试态隔离规约）/P759-3（reports·清偿收据）+vm/ui plans.md 759 行+INDEX 再生（26 projects）；提交 3a54a3561
+- **archived**：git mv → docs/plans/archive/759-daily-red-family-clearance.md，status: archived（本提交）
+- **cleaned**：见下方 cleaned 回填行
+- 批量回归到期检查：759%5=4 非到期号；收据 last_covered_plan_id=755@2026-10-11T02:44Z（<48h，当日多次合并在窗口内不计龄）——**未到期**，下次到期判定随后续 merge 收尾例行
+- 生产工件观察项（merge skill 第 5 条）：本计划为测试/schema 数据面清偿（零产品逻辑变更；aura.at 别名/级别与 render 臂属数据追平）——现存 release 二进制/auto.exe 不含本轮数据追平，**无需重建**（无正在修复的生产缺陷；carousel/command 的 iced 降级呈现语义与现役二进制实际行为一致）
 
 ## 待澄清事项
 
