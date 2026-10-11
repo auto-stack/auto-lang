@@ -239,7 +239,7 @@ website VitePress 页 props 接线；验证＝vue-tsc + dist 构建 + e2e（stan
 | landed | worktree rebase master 零冲突；range-diff 四提交全等（5e679444f→52fe4ff01 / 9a18386ad→a0009d270 / 8e55088c5→623a5e5fb / 52587c295→3a4f9e4eb）；主检出 `git merge --ff-only plan-754-dev`，master tip=3a4f9e4eb（其后为簿记提交）；两 project.md 的 PLAN-754 节在 main 实证；website `npm run build` 冒烟 129.07s exit 0 |
 | ledger_refreshed | `.autoos/specs.json` upsert P754-1/P754-2（designs）+ P754-3（reviews）@0bfe62d18（README §5 手工回退路径，store 常态不可用，P755 先例）；playground-vue/website/auto-playground 三模块 plans.md 754 行；`python scripts/spec-index.py` INDEX 再生（26 projects） |
 | archived | `git mv docs/plans/754-pg-unify.md docs/plans/archive/`，status: archived，completion_kind: delivered |
-| cleaned | wt-guard clean → worktree `D:/autostack/.wt/lang-754/auto-lang` 移除 → 分支 plan-754-dev 删除 → 组目录 `.wt/lang-754/` 移除（见下方回填） |
+| cleaned | auto-lang 侧：wt-guard 二次拦截 npm junction（frontend/node_modules/auto-playground-vue，按闸门指引 rmdir 仅删链接）后 clean → git worktree remove（目录残留因 T-04 遗留进程占句柄：vitepress preview :4273×2/node+esbuild/auto-playground.exe :3030/僵尸任务壳，逐一终止后清空）→ rm -rf 残目录 → branch -d plan-754-dev（was 3a4f9e4eb，全量并入）→ worktree prune；auto-down 兄弟：wt-guard clean → worktree remove；组目录 `.wt/lang-754/` rmdir 移除；终态 worktree inventory lang-754 零条目 |
 
 **落地≠部署观察项**（skill §5）：本合并后生产面陈旧工件——①远端网站（112.74.45.241，nginx 同源反代）部署的静态包未重建（其基线早于本合并）；②auto-playground 本地后端二进制若内嵌 frontend dist 亦为旧版（零 Rust 改动、无运行实例在案，无重启需求）。均属 v0.5 发布收口（v05-release-closeout R-03/R-04）管辖，不在本计划范围。
 
