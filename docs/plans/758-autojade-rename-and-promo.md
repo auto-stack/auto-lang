@@ -8,7 +8,7 @@ updated_at: 2026-10-11
 plan_revision: 3
 current_step: 2
 total_steps: 5
-supersedes_spec_components: [docs/specs/website/project.md, docs/specs/website/design/application-introductions.md, docs/specs/website/design/ecosystem-readme.md, docs/specs/website/design/ui-presentation.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/architecture.md, docs/specs/auto-lang/ui/design/autodown-wikilink.md, docs/specs/auto-lang/ui/plans.md]
+supersedes_spec_components: [docs/specs/website/project.md, docs/specs/website/design/application-introductions.md, docs/specs/website/design/ecosystem-readme.md, docs/specs/website/design/ui-presentation.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/architecture.md, docs/specs/auto-lang/ui/design/autodown-wikilink.md, docs/specs/auto-lang/ui/plans.md, docs/specs/website/design/os-ai-introduction.md]
 new_spec_components: []
 touched_goals: []
 affects: [website, auto-lang/ui]
@@ -45,7 +45,7 @@ VitePress/Vue、完整 PNG、Playwright；Rust 只改注释、不改执行语义
 | SD-02 | modify | docs/specs/auto-lang/ui/{overview,architecture}.md、ui/design/autodown-wikilink.md 与 ui/plans.md 索引 | 消费方旧产品名称 → AutoJade；真实仓路径保留 | 全仓引用一致 | AC-01 |
 | SD-03 | modify | docs/specs/website/design/ui-presentation.md | 历程在后部理念区 → hero 简介后先讲版本进展，目录同步；实图和规模统计在版本说明之后 | 用户要求开头先讲清本版本做了什么 | AC-05 |
 
-| SD-04 | modify | docs/specs/website/design/ui-presentation.md、docs/specs/website/project.md | 开篇只有简述、旧 9 月规模 → 最大更新/生态里程碑宣传句，投入与成果两组概要；采用作者 2026-10-11 生态累计口径 | 用户新文案与数字更新 | AC-06 |
+| SD-04 | modify | docs/specs/website/design/ui-presentation.md、docs/specs/website/project.md、docs/specs/website/design/os-ai-introduction.md | 开篇只有简述、旧 9 月规模 → 最大更新/生态里程碑宣传句，投入与成果两组概要；采用作者 2026-10-11 生态累计口径 | 用户新文案与数字更新 | AC-06 |
 
 ## 6. 测试设计
 网站构建与 EN/ZH 五宽度、深浅主题、新旧路径、原图、画廊键盘/放大。全仓余名逐项分类，所有图片字节/hash 对照。Rust 注释触及 ui_gen：按仓库门禁 cargo check -p auto-lang、cargo t、cargo tu；零行为修改另用删除注释后的内容比对，已有失败单列实证，不扩展到产品修复。无 tf 或单独 docs_gen；日常档自带测试族如实记账。
@@ -73,7 +73,7 @@ VitePress/Vue、完整 PNG、Playwright；Rust 只改注释、不改执行语义
   （5188b7822 恢复原生链接）并独立复验（206acb729：四定位场景+section-nav 5/5，
   9.8s）；store 投影阻塞 P758-D1 在案，pending 清单 ledger-projection-pending.json]
 
-- [ ] T-05：开篇宣传句、双组数字摘要、后部规模与日期来源统一更新，中英文同源结构；只在名称得到解释后补桌面/平台枚举（AC-06）。
+- [ ] T-05：开篇宣传句、双组数字摘要、后部规模与日期来源统一更新，中英文同源结构；按用户确认补桌面/平台枚举及同步 AutoOS 专题旧平台描述（AC-06）。
 
 ## 9. 复审记录
 stage: new | revision: 1 | outcome: pass | next: work。既有明确改名/素材授权覆盖本合同；无另需确认的执行项。
@@ -134,6 +134,8 @@ next: writer 可用后只续做 store-mediated 投影、读回校验、归档及
 ### New r3 — 开篇投入与成果摘要（2026-10-11）
 
 stage: new | plan_id: PLAN-758 | plan_revision: 3 | outcome: pass | next: work。用户直接给定宣传句与四项投入、五项成果及要求数据更新；“样式”按上下文笔误修为“也是”。继承原范围/截图/改名要求，增加 SD-04 / AC-06 / T-05，重开受开篇高度影响的 T-03 及证据准备 T-04；r2 已合入成果和 receipt 保留为历史，旧复审不覆盖本次新摘要。当前 base ee3cd1e15ccb5a9f6eb2d76ebbe3e8e39af51e28，复用既有 clean 工作树和 plan-758-dev。产品数量采用用户批准文本，已并行询问 2 桌面/3 平台的名称，其他文案与投入数据可先执行。范围为网站/Vue/CSS/规范，未改 Rust，按 Category A 仅网站目标验证，严禁重复 cargo t/docs_gen。writer 不可达仅阻塞投影/归档，独立页面编辑继续。
+
+用户 r3 澄清（2026-10-11）：2 桌面分别为 Windows/Linux 原生应用桌面与 Windows/Linux 宿主上的 AutoOS 虚拟桌面；3 平台为 Web、Windows、Linux。这是作者明确现状/产品口径授权，非待推测功能。SD-04 还同步双语 AutoOS 专题及 os-ai-introduction.md 的桌面口径，修正发布正文“Linux 桌面在路线图”的旧表述；独立系统/OpenHarmony/自有内核仍维持未来说明。AC-06 数字与命名范围不变，未另造构建/平台实机验收。
 
 ## 10. 待澄清事项
 无必需决策；深色 PNG 没有自己的完整工具链 manifest，只标用户提供准备态，不伪造对应 promo 旧批身份。store 可用性按先前 P753-D1 记录核查，若仍失败停止 ledger 写入，继续可落地内容。
