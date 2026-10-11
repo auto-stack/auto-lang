@@ -691,23 +691,17 @@ mod musk_vm_track_p053_1_widget_computed {
     }
 }
 
-/// P-053-4: merged 模式下 #[api] no-op 显式告警。
+/// P-053-4 → PLAN-759 T-03 双臂重锁：merged 模式 #[api] 调用现行契约
+/// （PLAN-633 `4d5f8de13` 守卫 + PLAN-734 D7 `beec5b94f` 硬错误语义）。
+/// 旧断言「恒发 CALL_NAT 3142」是 PLAN-633 之前的语义：实现体已随
+/// imports 扁平编译进模块（exports 在场）时守卫放行直调（分支②）；
+/// 仅实现体缺席（分支③）才发 3142 桩。旧测试名 emits_warn_opcode 双重
+/// 过时（D7 后 3142 是可定位 RuntimeError，非 warn no-op）。
 #[cfg(all(test, feature = "ui-iced"))]
-mod musk_vm_track_p053_4_merged_api_warning {
+mod musk_vm_track_p053_4_merged_api_call {
     use crate::parser::Parser;
 
-    #[test]
-    fn merged_mode_api_call_emits_warn_opcode() {
-        let src = concat!(
-            "#[api(method = \"GET\", path = \"/api/chats/sessions\")]\n",
-            "fn chats_list_sessions() SessionListResponse { return None }\n",
-            "widget App {\n",
-            "    model { var count int = 0 }\n",
-            "    msg Msg { Fetch }\n",
-            "    on { .Fetch -> { let r = chats_list_sessions(); } }\n",
-            "    view { text \"app\" }\n",
-            "}\n",
-        );
+    fn parse_src(src: &str) -> (Vec<crate::ast::WidgetDecl>, Vec<crate::ast::Stmt>) {
         let session = crate::session::CompilerSession::ui();
         let mut parser = Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
@@ -720,25 +714,184 @@ mod musk_vm_track_p053_4_merged_api_warning {
                 _ => {}
             }
         }
+        (decls, import_stmts)
+    }
+
+    const IMPL_SRC: &str = concat!(
+        "#[api(method = \"GET\", path = \"/api/chats/sessions\")]\n",
+        "fn chats_list_sessions() str { return \"OK:impl\" }\n",
+        "widget App {\n",
+        "    model { var fetched str = \"none\" }\n",
+        "    msg Msg { Fetch }\n",
+        "    on { .Fetch -> { let r = chats_list_sessions(); .fetched = r } }\n",
+        "    view { text \"app\" }\n",
+        "}\n",
+    );
+
+    fn has_warn_stub_3142(code: &[u8]) -> bool {
+        code.windows(4).any(|w| {
+            w[0] == crate::vm::opcode::OpCode::CALL_NAT as u8
+                && u16::from_le_bytes([w[1], w[2]]) == 3142
+        })
+    }
+
+    /// 臂 A（分支②）：有实现 → exports 在场、不发 3142 桩、模块内直调
+    /// 且**执行落账**（派发 Fetch 后 store 读回实现体返回值——F-04：
+    /// 仅字节码形态不足以锁真实调用结果）。
+    #[test]
+    fn merged_mode_api_impl_direct_call_lands_result() {
+        // 分支①隔离：测试进程 host 桥须为空（auto.host.call 改写不参与）。
+        assert!(
+            !crate::vm::host_bridge::has_host_calls(),
+            "测试进程 host 桥须为空（PLAN-060 M3 分支①隔离）"
+        );
+        let (decls, import_stmts) = parse_src(IMPL_SRC);
         let root_widget = crate::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+
+        // 模块级：实现体随 imports 编入 → 导出在场，守卫放行直调。
         let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
             &root_widget,
             &[],
-            import_stmts,
+            import_stmts.clone(),
             &std::collections::HashMap::new(),
             false, // merged mode (api_over_http = false)
         )
         .expect("synthesize");
-
-        // Bytecode must contain CALL_NAT 3142 (auto.vm.warn_api_noop)
-        let has_warn_call = module.code.windows(4).any(|w| {
-            w[0] == crate::vm::opcode::OpCode::CALL_NAT as u8
-                && u16::from_le_bytes([w[1], w[2]]) == 3142
-        });
         assert!(
-            has_warn_call,
-            "merged mode #[api] call must emit CALL_NAT 3142"
+            module.exports.contains_key("chats_list_sessions"),
+            "PLAN-633:实现体随 imports 编入，导出须在场（直调前提）"
         );
+        assert!(
+            !has_warn_stub_3142(&module.code),
+            "有实现时不得发 3142 桩（PLAN-633 exports 守卫）"
+        );
+
+        // 行为级：派发 Fetch → 直调执行 → .fetched 落账实现体返回值。
+        use crate::ui::component::Component;
+        let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
+            &decls[0],
+            &decls[1..],
+            &root_widget,
+            crate::ui::widget_registry::WidgetRegistry::new(),
+            import_stmts,
+            &std::collections::HashMap::new(),
+            false, // merged（与生产 split=false 形态同 api_over_http）
+        )
+        .expect("component");
+        comp.on(crate::ui::interpreter::DynamicMessage::Typed {
+            widget_name: "App".to_string(),
+            event_name: "Fetch".to_string(),
+            args: vec![],
+        });
+        for _ in 0..8 {
+            let _ = comp.view_with_debug_gated(false);
+            comp.drive_scheduler_to_quiescence(10_000);
+        }
+        match comp.read_state("fetched") {
+            Ok(auto_val::Value::Str(s)) => assert_eq!(
+                s.as_str(),
+                "OK:impl",
+                "直调须执行实现体并落账返回值（PLAN-633 分支②契约）"
+            ),
+            other => panic!("fetched 读取异常: {other:?}"),
+        }
+    }
+
+    /// 臂 B（分支③）：实现体缺席 → 发射 CALL_NAT 3142 桩；native 3142
+    /// 执行 = 可定位 RuntimeError（PLAN-734 D7），非静默 no-op。
+    /// 发射形态用低层 Codegen fixture：api_funcs 注册而实现体不装载——
+    /// synthesize 路径表达不出该状态（api_funcs 与 exports 同源于
+    /// import_stmts，一荣俱荣；F-04 定音不能以直接调 native 冒充发射链）。
+    #[test]
+    fn merged_mode_api_missing_impl_emits_3142_and_errors() {
+        let mut codegen = crate::vm::codegen::Codegen::new();
+        codegen.api_over_http = false;
+        // 裸名 → 跨模块限定名（synthesize 的 import_scope 同职责）：常规
+        // 调用臂经此解析到 dep 模块符号；本模块 exports 仍缺席 → 守卫发桩。
+        codegen.import_scope.insert(
+            "chats_list_sessions".to_string(),
+            "p759_dep.chats_list_sessions".to_string(),
+        );
+        codegen.api_funcs.insert(
+            "chats_list_sessions".to_string(),
+            crate::vm::codegen::ApiCallInfo {
+                fn_name: "chats_list_sessions".to_string(),
+                method: "GET".to_string(),
+                path: "/api/chats/sessions".to_string(),
+                params: vec![],
+                ret_type: crate::ast::Type::StrSlice,
+            },
+        );
+        let caller = "fn p759_missing_impl_probe() { let r = chats_list_sessions() }\n";
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(caller).with_session(session);
+        let ast = parser.parse().expect("parse caller");
+        let fn_stmt = ast
+            .stmts
+            .into_iter()
+            .find(|s| matches!(s, crate::ast::Stmt::Fn(_)))
+            .expect("caller fn");
+        codegen
+            .compile_stmt(&fn_stmt)
+            .expect("compile caller（3142 桩发射后回落常规调用编译）");
+        let module = codegen.finish("p759_missing_impl".to_string());
+        assert!(
+            !module.exports.contains_key("chats_list_sessions"),
+            "实现体未装载（分支③前提）"
+        );
+        assert!(
+            has_warn_stub_3142(&module.code),
+            "缺实现须发 CALL_NAT 3142 桩（PLAN-633 守卫的缺席臂=PLAN-053 P-053-4 原语义）"
+        );
+
+        // native 语义（PLAN-734 D7）：执行该模块——命中 3142 桩 → 可定位
+        // RuntimeError（带 AUTO_VM_MERGE/AUTO_BACKEND 行动指引），非静默
+        // no-op。「实现体缺席」的生产形态 = 实现体在**另一模块**（本模块
+        // exports 缺席 → 守卫发桩；跨模块符号经 linker 解析 → 运行期先命中
+        // 桩错误）。单模块无符号形态实测 LinkError（装载期即失败），非
+        // D7 目标场景。auto.vm.* 非脚本命名空间，无法经源码直调。
+        use crate::vm::loader::Linker;
+        use crate::vm::virt_memory::VirtualFlash;
+        let dep_src = "fn chats_list_sessions() str { return \"stub\" }\n";
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = Parser::from(dep_src).with_session(session);
+        let dep_ast = parser.parse().expect("parse dep");
+        let dep_fn = dep_ast
+            .stmts
+            .into_iter()
+            .find(|s| matches!(s, crate::ast::Stmt::Fn(_)))
+            .expect("dep fn");
+        let mut dep_codegen = crate::vm::codegen::Codegen::new();
+        dep_codegen.compile_stmt(&dep_fn).expect("compile dep");
+        let dep_module = dep_codegen.finish("p759_dep".to_string());
+
+        let strings = module.strings.clone();
+        let object_keys = module.object_keys.clone();
+        let object_types = module.object_types.clone();
+        let mut linker = Linker::new();
+        linker.add_module(dep_module);
+        linker.add_entry_module(module);
+        let (linked_code, global_symbols) = linker.link().expect("link（跨模块符号解析）");
+        let flash = VirtualFlash::from_vec_with_metadata(
+            linked_code,
+            global_symbols,
+            object_keys,
+            object_types,
+        );
+        let (mut vm, _) = crate::vm::engine::AutoVM::new_with_capture(flash, 8192);
+        vm.load_strings(strings);
+        let mut task = crate::vm::task::AutoTask::new(0, 65536, 0);
+        let outcome = vm.call_fn_by_name_segment(&mut task, "p759_missing_impl_probe", 0);
+        match outcome {
+            crate::vm::engine::SegmentOutcome::Completed(Err(e)) => {
+                let msg = format!("{e:?}");
+                assert!(
+                    msg.contains("has no implementation"),
+                    "3142 须为带行动指引的硬错误（PLAN-734 D7）: {msg}"
+                );
+            }
+            other => panic!("缺实现调用须 RuntimeError，得到 {other:?}"),
+        }
     }
 }
 
