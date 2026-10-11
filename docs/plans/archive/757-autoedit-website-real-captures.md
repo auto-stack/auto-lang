@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-757
-status: reviewed
+status: archived
 feature_name: AutoEdit 自仓工作区实拍
 author: [Codex]
 created_at: 2026-10-10
@@ -103,3 +103,19 @@ spec_inputs: SD-01（application-introductions.md AutoEdit 空位→实拍与来
 acceptance_results: AC-01 pass（r2 在案：VM 深色官方入口 + CLI/源码身份记录，Rust 画面未入库）；AC-02 pass（r3 口径）——两图自仓真实源码（sha256 与捕获目录逐字节一致：452599c4…/f696c8b6…），比较图功能核查在案（+16/-1、保存重比 +17/-1）而画面因 P757-D1 留空，缺陷已入 KNOWN-DEBT（high，用户指示待修）；AC-03 pass（r3 口径）——两原始 PNG 发布、双语首页/v0.5/总览/专题引用与日期一致（e2e 断言 2026-10-10）、SHOT-03 待拍槽带缺陷说明、九槽保留（captureIds 断言 SHOT-04..12 结构）；AC-04 pass——构建 164.41s + 21/21 定向测试 + 指南/规范更新 + 本复审记录；Category A 零 cargo 合规（分支零 Rust 改动实测）。
 findings: 无新增。rebase 并集解与重放伪影修复（2 提交）已复核：断言语义未放宽（总览图数以探针实证钉 62；槽结构/URL/日期断言全部保留），range-diff 非全等之处=冲突解决本身，如实记录不冒充。独立性限制：实施会话内复审，以工件重建（hash 对拍、dist HTML 槽结构、测试重跑、diff 过滤）。
 next: merge
+
+### Merge r3 — delivered（2026-10-11）
+
+stage: merge | plan_id: PLAN-757 | plan_revision: 3 | outcome: pass | delivery_commit: bef72060c
+
+| checkpoint | 证据 |
+|---|---|
+| prepared | reviewed 64f820cfd（r3 pass）；SD-01/02 已随实现提交在分支；依赖只读（auto-edit f9ae2a64/auto-down 895f8d0f）；worktree clean |
+| landed | 二次 rebase master（14 commits 纯 docs/plans 实证，网站面零变化）range-diff 6/6 全等（64f820cfd→bef72060c）；主检出 `--ff-only` 落地，master tip=bef72060c；两张 PNG create 入库；master 侧增量纯 docs 无需重建冒烟（分支构建 164.41s 在案） |
+| ledger_refreshed | §5 手工回退路径（753/754/755/756 先例）：P757-1/2（designs）+ P757-3（reviews）；website plans.md 757 行；INDEX 再生；读回校验随批 |
+| archived | git mv → docs/plans/archive/757-autoedit-website-real-captures.md，status: archived，delivered |
+| cleaned | 见下方回填 |
+
+**落地≠部署观察项**：远端网站（112.74.45.241）未重建/部署本批素材（v0.5 收口 R-03/R-04 管辖）；零 Rust 改动，无二进制陈旧项。
+
+**批量回归判定**：收据覆盖至 755（2026-10-11），757 非触发条件，不到期。
