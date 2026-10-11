@@ -249,7 +249,7 @@
 | widgets | active | 8 | [widgets/project.md](widgets/project.md) |
 | forge-ui | active | 4 | [forge-ui/project.md](forge-ui/project.md) |
 | lab-ui | active | 5 | [lab-ui/project.md](lab-ui/project.md) |
-| playground-vue | active | 5 | [playground-vue/project.md](playground-vue/project.md) |
+| playground-vue | active | 6 | [playground-vue/project.md](playground-vue/project.md) |
 | website | active | 8 | [website/project.md](website/project.md) |
 | blueprint | active | 16 | [blueprint/project.md](blueprint/project.md) |
 | autoui-skill | active | 2 | [autoui-skill/project.md](autoui-skill/project.md) |
@@ -313,6 +313,7 @@
 |---|---|---|
 | SnippetRunner / PlaygroundCard | 分层入口（Plan 581）：拼图层（autorun/内联输出/单动作位）与卡片层（toolbar 四开关/输出 tabs/调试面板，#output 插槽+defineExpose 驱动内嵌 Runner） | active |
 | AutoPlayground / AutoPlaygroundFull | 兼容别名（@deprecated 薄包装）/ IDE 层入口（index.ts 导出） | active |
+| PlaygroundIDEApp | 双端同形宿主（Plan 754）：NotesSidebar + AutoPlaygroundFull 聚合，apiBase/manifestBase props，`?note=` 深链，组运行契约内聚 | active |
 | components | 编辑器/控制台/字节码/调试/回放/文件树等面板 | active |
 | composables | usePlayground / useDebugger / useReplayPlayer 等 | active |
 | lang | CodeMirror 6 语言支持（auto / abt）、暗色模式 | active |

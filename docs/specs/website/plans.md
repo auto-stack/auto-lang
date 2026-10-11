@@ -14,3 +14,4 @@
 | 722 | website-apps-introduction | ✅（reviewed→archived） | [archive](../../plans/archive/722-website-apps-introduction.md) | 四主应用中英概览和独立阅读页；AutoShell原证据迁入guide保留交互；28候选用途与后台边界冻结，后续723补实图并合并概览 |
 | 723 | website-demo-introductions | ✅（reviewed→archived） | [archive](../../plans/archive/723-website-demo-introductions.md) | r2在双语Apps概览接入六类28真实图卡片和就地操作/条件/版本/源码，58旧路由兼容深链；AutoEdit/Shell批准主图，Musk/Jade等待素材；70项回归通过 |
 | 756 | website-v05-copy-and-capture-slots | reviewed（待投影验证后归档） | [Plan](../../plans/756-website-v05-copy-and-capture-slots.md) | 双语首页/v0.5 四主应用、发布与后端条件/入口修正；12 项文字待拍槽与逐图拍摄合同，已批准原图保留 |
+| 754 | pg-unify | ✅（reviewed→archived） | archive/ | /playground（EN/ZH）换 PlaygroundIDEPage——apiBase 探测（JSON 探针防 SPA 回退假阳+2500ms 超时）同源→127.0.0.1:3030 fallback、先探测后渲染门控、backendDown 降级提示；Explorer+Card 降级书页内嵌；dedupe 契约包入册规则（@lezer/highlight 补齐）|
