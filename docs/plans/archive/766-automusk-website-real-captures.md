@@ -86,4 +86,5 @@ PLAN-766:r2 completion_kind: delivered。
 - archived：docs/plans/archive/766-automusk-website-real-captures.md，delivered。
 - production：20261012-38ef90ade；线上6/6、IP/HTTPS 精确文件校验通过；备份 /home/visus/auto-website-backup-20261012-38ef90ade。
 - batch due-check：共享收据 last_covered_plan_id=761，前序 PLAN-765 已由其会话落地。本任务 Category A 按仓库明确禁止 Cargo/docs_gen，仅目标验证；不在资产交付中重复启动前序 Rust 批量维护。
-- cleanup：待守卫后移除 lang-766，仅本计划工作树/分支。
+- cleaned：wt-guard clean（无 reparse point），lang-766 工作树、plan-766-dev 分支与空组目录均已移除；已验证所有提交是 master 祖先。
+- stage: merge | PLAN-766 r2 | outcome: pass | completion_kind: delivered；规范、兼容账本、归档、部署与清理已核实。
