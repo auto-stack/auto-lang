@@ -52,7 +52,7 @@
     {
       "path": "docs/specs/website/design/ui-presentation.md",
       "input_sha256": "0a5ece7849256626497297c6b13a5b677cac36288aa388c936166b17d320b66e",
-      "output_sha256": "eac0d50509bdddc7f873dbc53c5207d724f667d4fcd681c0aaef0aac90624733"
+      "output_sha256": "1e2817dce9cee1b593122d8d433f238943529adba53643aa55b38d568e6cd92d"
     },
     {
       "path": "docs/specs/website/project.md",
@@ -70,5 +70,7 @@
   "previous_landed_revision": 2,
   "canonical_base": "ada443b9cd753f233317c5045e47cea29f4fc643",
   "hash_normalization": "Spec text SHA256 after CRLF to LF; patch and binary/log hashes raw bytes",
-  "reviewed_delta": "docs/reports/p758-release-summary-r3/spec-delta.json"
+  "reviewed_delta": "docs/reports/p758-release-summary-r3/spec-delta.json",
+  "additional_title_correction_review": "docs/reports/v05-six-months-correction.md",
+  "additional_title_correction_commit": "af021ed7a6bcf2f8f907e9520cf80bcc099a62e8"
 }
