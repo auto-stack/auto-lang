@@ -428,3 +428,10 @@ schema 三围栏（REG-4 四表清偿）/ ash_stream_leak_probe（门禁分层�
 |---|---|---|---|---|
 | ~~P759-D3 / F-759-R1~~ 已清偿 `fd55d2d42` | ~~medium~~ | 生产渲染诊断 | **已清偿**：render_support 详情查询折叠 schema canonical（kebab/canonical 三围一致）；command/carousel 族按 view_builder 实际转换臂逐子件校准（command_input=partial 与 input 同口径、command_item=partial 仅 value 忽略、command_empty=fallback 恒渲染 Empty、command_group/shortcut=full、carousel_item/previous/next=full 等）；schema/aura.at 12 行同步；别名一致/ignored 不过报/实际 View 对照三回归测试入 render_support::tests | ui/render_support.rs（get_support+详情表+tests）；schema/aura.at backends.iced；报告F-759-R1 |
 | ~~P759-D4 / F-759-R2~~ 已清偿 `fd55d2d42` | ~~medium~~ | 测试环境隔离 | **已清偿**：stdlib 新增 `HTTP_BASE_TEST_SERIALIZER`+`lock_http_base_for_test`（镜像 lock_storage_for_test 先例）与 `HttpBaseEnvGuard`（RAII panic-safe 恢复，含未设态）；plan606 photo 测试与 stdlib http_base_url_resolution 均改锁+守卫形态；panic 恢复回归测试入仓。全部原有断言（精确 URL/24 张恰一次/Cover/Contain/stub 收据）保留 | vm/ffi/stdlib.rs（锁+守卫+两测试）；tests/plan606_gallery_tests.rs；报告F-759-R2 |
+
+### PLAN-761 根目录整理的范围外候选（2026-10-11）
+
+| 编号 | 优先级 | 域 | 描述 | 锚点 |
+|---|---|---|---|---|
+| P761-D1 | medium | CLI test filter | `auto test --filter` 在 `test_file` 执行全部测试之后才过滤显示；a2ts runner 内部已有 FAILED 仍可显示 0 passed/0 failed 并返回0，VM runner即使使用不匹配过滤器也继续执行到超时。原有实现，本次仅迁移runner；不能把过滤后的退出0当套件验证通过。应将过滤条件传入执行层并保留实际失败退出码 | crates/auto/src/main.rs Test 分支（test_file→遍历reports→filter顺序）；reports/761-root-directory-review.md |
+| P761-D2 | low | 历史 Plan446 repro | 原字节保留的 b3check 语料在当前引擎报 `Init` 同时匹配 Theme/Modules（multi-store disambiguation）；新路径确已加载且没有SKIP，显式ignored旧复现仍不兼容当前严格规则。保留原始历史导出，不在目录美化中改其业务语义；后续若恢复常规使用，另做版本化修复夹具 | test/fixtures/plan446/b3check/auto；tests/plan446_j1_repro_tests.rs；reports/761-root-directory-review.md |
