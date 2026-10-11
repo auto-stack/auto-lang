@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-758
-status: execution_done
+status: executing
 feature_name: AutoJade 改名与用户提供深色宣传图
 author: [Codex]
 created_at: 2026-10-10
 updated_at: 2026-10-11
 plan_revision: 2
-current_step: 4
+current_step: 2
 total_steps: 4
 supersedes_spec_components: [docs/specs/website/project.md, docs/specs/website/design/application-introductions.md, docs/specs/website/design/ecosystem-readme.md, docs/specs/website/design/ui-presentation.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/architecture.md, docs/specs/auto-lang/ui/design/autodown-wikilink.md, docs/specs/auto-lang/ui/plans.md]
 new_spec_components: []
@@ -58,8 +58,8 @@ VitePress/Vue、完整 PNG、Playwright；Rust 只改注释、不改执行语义
 ## 8. 执行步骤
 - [x] T-01：独立工作树，全仓引用/路径/文案改名，分类保留例外（AC-01/02）。
 - [x] T-02：核验原图、接入主图与功能画廊、指南/规范与来源清单（AC-03）。
-- [x] T-03：v0.5 历程前置、构建、网站与 Rust 注释触面验证、余名审计（AC-01..05）。
-- [x] T-04：提交实现与验证材料，准备复审/线性合入所需收据、store-mediated 知识投影及阻塞描述（AC-04）。正式复审、线性合入、投影、归档/清理是后续生命周期操作，逐项记入 §9，不以本勾选声称已完成。
+- [ ] T-03：v0.5 历程前置、构建、网站与 Rust 注释触面验证、余名审计（AC-01..05）。
+- [ ] T-04：提交实现与验证材料，准备复审/线性合入所需收据、store-mediated 知识投影及阻塞描述（AC-04）。正式复审、线性合入、投影、归档/清理是后续生命周期操作，逐项记入 §9，不以本勾选声称已完成。
 
 ## 9. 复审记录
 stage: new | revision: 1 | outcome: pass | next: work。既有明确改名/素材授权覆盖本合同；无另需确认的执行项。
@@ -74,3 +74,7 @@ stage: new | revision: 2 | outcome: pass | next: work。2026-10-11 用户明确�
 stage: work | revision: 2 | outcome: ready_for_review。T-01..04 的实现/材料准备完成。T-04 将 work 准备与未来 review/merge 生命周期分开表述，原线性合入及 store-mediated 收尾义务不减少。未声称投影、归档、清理或全部原始字符串清零。证据：docs/reports/p758-autojade-verification.md；八份规范输入/输出与 patch 冻结在 docs/reports/p758-autojade/spec-delta.json。
 
 门禁：最终网站构建 151.40s 成功；63 个网站场景有通过记录，手机浮层最后 4/4 复验成功。cargo check 成功；t 5212/5231 通过，19 红均有基线/隔离对照；tu 858 通过、1 既有金样红、2 ignored。九个源/夹具文件每个非行注释行与 master 一致。未运行 tf 或单独 docs_gen。依赖 auto-down 895f8d0f9355c9f5ec3ce8fca268bdb768395846。
+
+### Review r2 — needs_fix（2026-10-11）
+
+stage: review | revision: 2 | outcome: needs_fix | reviewed_commit: a0a7553dd85ec435a6fcf8c46c2a8351d7d95030 | finding: P758-F4。新增 @click.prevent 的手动 hash 处理会拦截 Ctrl/Meta 修饰键的原生链接行为。浮层已解决高度问题，处理器不必新增；回 work 恢复原生链接处理，重验四个定位场景。原交付范围、AC 与规范增量不减少。
