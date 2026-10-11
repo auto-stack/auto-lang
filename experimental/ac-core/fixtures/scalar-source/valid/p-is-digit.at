@@ -1,0 +1,12 @@
+// V-11: lexer is_digit rewritten as i32 code-point range checks — NOT the
+// original lexer compiled (char/str are still open work packages). Both
+// interval boundaries and both sides are asserted.
+fn is_digit(c int) bool {
+    return c >= 48 && c <= 57
+}
+
+fn main() int {
+    let ok = is_digit(48) && is_digit(57) && !is_digit(47) && !is_digit(58)
+    if ok { return 0 }
+    return 1
+}

@@ -26,6 +26,9 @@ pub enum Kw {
     Return,
     True,
     False,
+    // Conditional loop head: consumed by the scalar-i32 source profile
+    // (PLAN-767 §5.2.1); the core profile rejects it as unsupported.
+    For,
     // Type words are keywords: they cannot be used as names.
     Int,
     I32,
@@ -47,6 +50,7 @@ impl Kw {
             Kw::Return => "return",
             Kw::True => "true",
             Kw::False => "false",
+            Kw::For => "for",
             Kw::Int => "int",
             Kw::I32 => "i32",
             Kw::Bool => "bool",
@@ -147,17 +151,18 @@ impl RawKind {
     }
 }
 
-/// Full-language keywords that this profile does not use (mirrors the
-/// production lexer's `Token::all_keywords()` set plus `with`; the subset
-/// the profile actually consumes stays in [`Kw`]). They lex as their own
-/// token kind so "recognized but excluded" (source.unsupported) stays
-/// distinguishable from genuinely bad tokens (source.lex) and bad grammar
-/// (source.syntax). A keyword can never be used as a name.
+/// Full-language keywords that this profile family does not use (mirrors
+/// the production lexer's `Token::all_keywords()` set plus `with`; the
+/// subset the profiles actually consume stays in [`Kw`] — `for` moved there
+/// in PLAN-767). They lex as their own token kind so "recognized but
+/// excluded" (source.unsupported) stays distinguishable from genuinely bad
+/// tokens (source.lex) and bad grammar (source.syntax). A keyword can never
+/// be used as a name.
 pub const RESERVED_KEYWORDS: &[&str] = &[
-    "alias", "as", "await", "catch", "const", "copy", "dep", "enum", "ext", "for", "go", "has",
-    "hold", "impl", "in", "is", "link", "mod", "move", "mut", "nil", "null", "outlet", "pac",
-    "reply", "routes", "shared", "spawn", "spec", "static", "super", "super2", "super3", "super4",
-    "tag", "take", "task", "to", "try", "type", "union", "use", "view", "with", "yield",
+    "alias", "as", "await", "catch", "const", "copy", "dep", "enum", "ext", "go", "has", "hold",
+    "impl", "in", "is", "link", "mod", "move", "mut", "nil", "null", "outlet", "pac", "reply",
+    "routes", "shared", "spawn", "spec", "static", "super", "super2", "super3", "super4", "tag",
+    "take", "task", "to", "try", "type", "union", "use", "view", "with", "yield",
 ];
 
 pub fn is_reserved_keyword(name: &str) -> bool {
@@ -204,6 +209,7 @@ pub fn keyword_of(name: &str) -> Option<Kw> {
         "return" => Kw::Return,
         "true" => Kw::True,
         "false" => Kw::False,
+        "for" => Kw::For,
         "int" => Kw::Int,
         "i32" => Kw::I32,
         "bool" => Kw::Bool,

@@ -12,8 +12,8 @@
 //! Diagnostics use stage `bind` with `source.*` codes. Values get exact
 //! types here ([`VT`]); mismatch *checking* is [`super::typecheck`].
 
-use super::ast::{self, Arg, BinOp, Expr, ExprKind, FnItem, Stmt, TypeWord};
-use super::{trace_intrinsic, TRACE_CAPABILITY};
+use super::ast::{self, Arg, BinOp, Expr, ExprKind, FnItem, Stmt, TypeWord, UnaryOp};
+use super::{trace_intrinsic, SourceProfile, TRACE_CAPABILITY};
 use crate::atom_text::{Diagnostic, Span, Stage};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -38,6 +38,23 @@ pub fn vt_of_word(w: TypeWord) -> VT {
     match w {
         TypeWord::Int | TypeWord::I32 => VT::I32,
         TypeWord::Bool => VT::Bool,
+    }
+}
+
+/// Result value type of a surface binary operator (PLAN-767 §5.2):
+/// arithmetic produces i32; comparisons, equality and the logical
+/// operators produce bool.
+pub fn bin_op_vt(op: BinOp) -> VT {
+    match op {
+        BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => VT::I32,
+        BinOp::Lt
+        | BinOp::Le
+        | BinOp::Gt
+        | BinOp::Ge
+        | BinOp::Eq
+        | BinOp::Ne
+        | BinOp::And
+        | BinOp::Or => VT::Bool,
     }
 }
 
@@ -88,6 +105,10 @@ pub enum RExprKind {
         lhs: Box<ResolvedExpr>,
         rhs: Box<ResolvedExpr>,
     },
+    Unary {
+        op: UnaryOp,
+        operand: Box<ResolvedExpr>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -109,13 +130,18 @@ impl Drop for ResolvedExpr {
                 kind: RExprKind::IntLit(0),
             }
         }
-        let detach = |node: &mut ResolvedExpr, stack: &mut Vec<ResolvedExpr>| {
-            if let RExprKind::Binary { lhs, rhs, .. } = &mut node.kind {
+        let detach = |node: &mut ResolvedExpr, stack: &mut Vec<ResolvedExpr>| match &mut node.kind {
+            RExprKind::Binary { lhs, rhs, .. } => {
                 let l = std::mem::replace(lhs.as_mut(), dummy());
                 let r = std::mem::replace(rhs.as_mut(), dummy());
                 stack.push(l);
                 stack.push(r);
             }
+            RExprKind::Unary { operand, .. } => {
+                let o = std::mem::replace(operand.as_mut(), dummy());
+                stack.push(o);
+            }
+            _ => {}
         };
         let mut stack: Vec<ResolvedExpr> = Vec::new();
         detach(self, &mut stack);
@@ -260,6 +286,17 @@ impl Clone for FnSig {
 pub fn resolve(
     program: &ast::Program,
     capabilities: &[String],
+) -> Result<ResolvedProgram, Vec<Diagnostic>> {
+    resolve_with(program, capabilities, SourceProfile::Core)
+}
+
+/// Resolve with an explicit profile surface (PLAN-767): identical name
+/// resolution on both surfaces — the profile only gated which operators
+/// the parser accepted; value types are computed per operator here.
+pub fn resolve_with(
+    program: &ast::Program,
+    capabilities: &[String],
+    _surface: SourceProfile,
 ) -> Result<ResolvedProgram, Vec<Diagnostic>> {
     let trace_enabled = capabilities.iter().any(|c| c == TRACE_CAPABILITY);
     let mut diags = Vec::new();
@@ -770,6 +807,7 @@ impl<'a> FnResolver<'a> {
             // operator chains are unbounded in length and must not recurse
             // (R3-QA-02).
             ExprKind::Binary { .. } => unreachable!("handled by expr_iterative"),
+            ExprKind::Unary { .. } => unreachable!("handled by expr_iterative"),
         }
     }
 
@@ -805,6 +843,13 @@ impl<'a> FnResolver<'a> {
                 span: Span,
                 lslot: usize,
                 rslot: usize,
+                dest: usize,
+            },
+            /// Operand slot is filled; apply the unary op into `dest`.
+            UnaryOut {
+                op: UnaryOp,
+                span: Span,
+                oslot: usize,
                 dest: usize,
             },
         }
@@ -883,6 +928,19 @@ impl<'a> FnResolver<'a> {
                             node: lhs,
                             slot: lslot,
                         });
+                    } else if let ExprKind::Unary { op, operand } = &node.kind {
+                        let oslot = out.len();
+                        out.push(dummy_resolved());
+                        stack.push(Task::UnaryOut {
+                            op: *op,
+                            span: node.span,
+                            oslot,
+                            dest: slot,
+                        });
+                        stack.push(Task::Visit {
+                            node: operand,
+                            slot: oslot,
+                        });
                     } else {
                         out[slot] = self.expr(node);
                     }
@@ -916,10 +974,7 @@ impl<'a> FnResolver<'a> {
                 } => {
                     let l = std::mem::replace(&mut out[lslot], dummy_resolved());
                     let r = std::mem::replace(&mut out[rslot], dummy_resolved());
-                    let vt = match op {
-                        BinOp::Add | BinOp::Mul => VT::I32,
-                        BinOp::Lt => VT::Bool,
-                    };
+                    let vt = bin_op_vt(op);
                     out[dest] = ResolvedExpr {
                         span,
                         vt,
@@ -927,6 +982,26 @@ impl<'a> FnResolver<'a> {
                             op,
                             lhs: Box::new(l),
                             rhs: Box::new(r),
+                        },
+                    };
+                }
+                Task::UnaryOut {
+                    op,
+                    span,
+                    oslot,
+                    dest,
+                } => {
+                    let o = std::mem::replace(&mut out[oslot], dummy_resolved());
+                    let vt = match op {
+                        UnaryOp::Neg => VT::I32,
+                        UnaryOp::Not => VT::Bool,
+                    };
+                    out[dest] = ResolvedExpr {
+                        span,
+                        vt,
+                        kind: RExprKind::Unary {
+                            op,
+                            operand: Box::new(o),
                         },
                     };
                 }

@@ -1,13 +1,18 @@
-//! Exact type checking for the `auto.source.core-i32.draft` profile
-//! (PLAN-745 T-03).
+//! Exact type checking for the `auto.source.core-i32.draft` and
+//! `auto.source.scalar-i32.draft` profiles (PLAN-745 T-03, PLAN-767 T-03).
 //!
 //! Runs over the resolver output (names resolved, value types inferred) and
 //! enforces the profile's exact-type rules with stage `verify` /
 //! `source.type-mismatch` diagnostics:
 //!
-//! - `+`/`*` take two i32 operands and produce i32; `<` takes two i32
-//!   operands and produces bool (no implicit bool/int conversion),
-//! - `if`/`while` conditions must be bool,
+//! - arithmetic (`+ - * / %`) take two i32 operands and produce i32,
+//! - relational (`< > <= >=`) take two i32 operands and produce bool,
+//! - `== !=` take two operands of the SAME type (both i32 or both bool)
+//!   and produce bool — mixed types are rejected, no implicit conversion,
+//! - `&& ||` take two bool operands and produce bool,
+//! - unary `-` takes i32 and produces i32; unary `!` takes bool and
+//!   produces bool,
+//! - `if`/`while`/`for` conditions must be bool,
 //! - `return` values must match the function result type,
 //! - call arguments must match the bound formal's type (through the
 //!   named-argument map, not by position),
@@ -18,12 +23,24 @@
 //! checked here: the emitted HIR goes through the existing semantic
 //! verifier (`crate::verify`), whose conservative rules own those rejections.
 
+use super::ast::{BinOp, UnaryOp};
 use super::resolve::{
     param_position, RBlock, RExprKind, RStmt, ResolvedExpr, ResolvedFn, ResolvedProgram, VT,
 };
+use super::SourceProfile;
 use crate::atom_text::{Diagnostic, Span, Stage};
 
 pub fn typecheck(program: &ResolvedProgram) -> Result<(), Vec<Diagnostic>> {
+    typecheck_with(program, SourceProfile::Core)
+}
+
+/// Typecheck with an explicit profile surface. The core surface cannot
+/// reach scalar-only nodes (the parser rejected them), so the walk is
+/// shared; only documentation of the checked rules differs.
+pub fn typecheck_with(
+    program: &ResolvedProgram,
+    _surface: SourceProfile,
+) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for f in &program.fns {
         check_block(&f.body, program, f, &mut diags);
@@ -152,15 +169,63 @@ fn check_expr(
                     }
                 }
             }
-            RExprKind::Binary { lhs, rhs, .. } => {
+            RExprKind::Binary { op, lhs, rhs, .. } => {
                 // push rhs first so lhs is checked first (LIFO)
                 stack.push(rhs.as_ref());
                 stack.push(lhs.as_ref());
-                if lhs.vt != VT::I32 {
-                    mismatch(diags, VT::I32, lhs.vt, lhs.span);
+                match op {
+                    BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => {
+                        for (role, v) in [("lhs", lhs), ("rhs", rhs)] {
+                            if v.vt != VT::I32 {
+                                mismatch(diags, VT::I32, v.vt, v.span);
+                                let _ = role;
+                            }
+                        }
+                    }
+                    BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
+                        for v in [lhs.as_ref(), rhs.as_ref()] {
+                            if v.vt != VT::I32 {
+                                mismatch(diags, VT::I32, v.vt, v.span);
+                            }
+                        }
+                    }
+                    BinOp::Eq | BinOp::Ne => {
+                        if lhs.vt != rhs.vt {
+                            diags.push(Diagnostic::new(
+                                Stage::Verify,
+                                "source.type-mismatch",
+                                format!(
+                                    "both operands of `{}` must have the same type ({} vs {})",
+                                    op.as_str(),
+                                    lhs.vt.as_str(),
+                                    rhs.vt.as_str()
+                                ),
+                                lhs.span.join(rhs.span),
+                            ));
+                        }
+                    }
+                    BinOp::And | BinOp::Or => {
+                        for v in [lhs.as_ref(), rhs.as_ref()] {
+                            if v.vt != VT::Bool {
+                                mismatch(diags, VT::Bool, v.vt, v.span);
+                            }
+                        }
+                    }
                 }
-                if rhs.vt != VT::I32 {
-                    mismatch(diags, VT::I32, rhs.vt, rhs.span);
+            }
+            RExprKind::Unary { op, operand } => {
+                stack.push(operand.as_ref());
+                match op {
+                    UnaryOp::Neg => {
+                        if operand.vt != VT::I32 {
+                            mismatch(diags, VT::I32, operand.vt, operand.span);
+                        }
+                    }
+                    UnaryOp::Not => {
+                        if operand.vt != VT::Bool {
+                            mismatch(diags, VT::Bool, operand.vt, operand.span);
+                        }
+                    }
                 }
             }
         }

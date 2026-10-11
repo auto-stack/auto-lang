@@ -1,10 +1,18 @@
-//! Source-subset AST for the `auto.source.core-i32.draft` profile
-//! (PLAN-745 T-02).
+//! Source-subset AST for the `auto.source.core-i32.draft` and
+//! `auto.source.scalar-i32.draft` profiles (PLAN-745 T-02, PLAN-767 T-03).
 //!
 //! Every node carries a byte [`Span`] into the original `.at` source.
 //! This is a statement-oriented surface: expressions only appear where a
 //! value is consumed (initializers, assignments, returns, conditions, call
 //! arguments); there are no expression statements.
+//!
+//! The operator set is the union of both profiles; which operators a given
+//! parse accepts is decided by the parser's profile (the core surface
+//! rejects every scalar-only operator and node at the offending token).
+//! `&&`/`||` parse into [`BinOp::And`]/[`BinOp::Or`] surface nodes — the
+//! eager/lazy distinction materializes in the HIR adapter
+//! (`ExprKind::Logical`), never by making the RHS an unconditional operand
+//! of an eager binary op.
 
 use crate::atom_text::Span;
 
@@ -56,8 +64,54 @@ pub struct Program {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BinOp {
     Add,
+    Sub,
     Mul,
+    Div,
+    Rem,
     Lt,
+    Le,
+    Gt,
+    Ge,
+    Eq,
+    Ne,
+    And,
+    Or,
+}
+
+impl BinOp {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Rem => "%",
+            BinOp::Lt => "<",
+            BinOp::Le => "<=",
+            BinOp::Gt => ">",
+            BinOp::Ge => ">=",
+            BinOp::Eq => "==",
+            BinOp::Ne => "!=",
+            BinOp::And => "&&",
+            BinOp::Or => "||",
+        }
+    }
+}
+
+/// Unary operators (PLAN-767): `-` on i32, `!` on bool.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum UnaryOp {
+    Neg,
+    Not,
+}
+
+impl UnaryOp {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            UnaryOp::Neg => "-",
+            UnaryOp::Not => "!",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -85,6 +139,10 @@ pub enum ExprKind {
         op: BinOp,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
+    },
+    Unary {
+        op: UnaryOp,
+        operand: Box<Expr>,
     },
 }
 
@@ -166,6 +224,10 @@ impl Drop for Expr {
                     let r = std::mem::replace(rhs.as_mut(), dummy());
                     stack.push(l);
                     stack.push(r);
+                }
+                ExprKind::Unary { operand, .. } => {
+                    let o = std::mem::replace(operand.as_mut(), dummy());
+                    stack.push(o);
                 }
                 // nested calls carry inline argument expressions; drain
                 // them so no level drops recursively

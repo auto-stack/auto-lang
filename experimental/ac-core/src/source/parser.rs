@@ -1,7 +1,7 @@
-//! Source-subset parser for the `auto.source.core-i32.draft` profile
-//! (PLAN-745 T-02).
+//! Source-subset parsers for the core-i32 (PLAN-745) and scalar-i32
+//! (PLAN-767) source profiles.
 //!
-//! Recursive descent over [`super::lexer`] tokens. Grammar (plan §5.2):
+//! Recursive descent over [`super::lexer`] tokens. Core grammar (plan §5.2):
 //!
 //! ```text
 //! Program  := FnItem (sep FnItem)* sep? EOF        // at least one item
@@ -18,11 +18,20 @@
 //! args     := arg ("," arg)* ; arg := Expr | Ident ":" Expr
 //! ```
 //!
+//! Scalar surface additions (PLAN-767 §5.2/§5.2.1): binary `|| < && <
+//! == != < relational < + - < * / %` (same level left-associative),
+//! right-associative unary `- !` in primary position, and the conditional
+//! loop `for Expr Block` reusing the while's per-round condition semantics
+//! (`while` itself is rejected on the scalar surface). Precedence low→high:
+//! `||`(1) `&&`(2) `== !=`(3) `< > <= >=`(4) `+ -`(5) `* / %`(6), unary,
+//! call/group. Unary frames apply the moment a complete primary value is
+//! available, so `-a*b` is `(-a)*b` and `!(a&&b)` negates the group.
+//!
 //! Statements are separated by `;` and/or a newline; an unbracketed
 //! expression never continues across a newline (inside parentheses and
 //! argument lists newlines are whitespace). A `-` immediately before digits
 //! (whitespace allowed) is one signed literal, range-checked against the
-//! exact i32 domain.
+//! exact i32 domain; `a-1` in operator position is binary subtraction.
 //!
 //! Both walks are ITERATIVE on explicit stacks (R5/R6): expressions via the
 //! precedence-climbing frame machine, statement blocks via an open-block
@@ -35,6 +44,7 @@
 
 use super::ast::*;
 use super::lexer::{Kw, Tok, Token, P};
+use super::SourceProfile;
 use crate::atom_text::{Diagnostic, Span, Stage};
 
 /// Full-language top-level starter words that this profile rejects with
@@ -49,12 +59,20 @@ const I32_MIN_MAG: u128 = 2147483648;
 const I32_MAX: u128 = 2147483647;
 
 pub fn parse_program(src: &str) -> Result<Program, Diagnostic> {
+    parse_program_with(src, SourceProfile::Core)
+}
+
+/// Parse with an explicit profile surface (PLAN-767): the scalar surface
+/// accepts the new operators, unary ops and the conditional `for` loop;
+/// the core surface keeps its historical accept/reject sets.
+pub fn parse_program_with(src: &str, profile: SourceProfile) -> Result<Program, Diagnostic> {
     let toks = super::lexer::tokenize(src)?;
     let mut p = Parser {
         src,
         toks,
         pos: 0,
         last_line: 1,
+        surface: profile,
     };
     p.items()
 }
@@ -62,7 +80,15 @@ pub fn parse_program(src: &str) -> Result<Program, Diagnostic> {
 // Expression-parser frame types (module scope; PLAN-745 R5-QA-01).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum OpFrame {
-    Bin(u8),
+    /// Pending binary operator (left-associative), carrying the operator
+    /// itself plus its precedence level.
+    Bin {
+        op: BinOp,
+        prec: u8,
+    },
+    /// Pending unary operator; applied as soon as a complete primary value
+    /// is available (unary binds tighter than every binary operator).
+    Unary(UnaryOp),
     Paren,
 }
 
@@ -121,6 +147,8 @@ struct Parser<'s> {
     pos: usize,
     /// Line of the most recently consumed token.
     last_line: usize,
+    /// Which operator/loop surface this parse accepts.
+    surface: SourceProfile,
 }
 
 impl<'s> Parser<'s> {
@@ -537,6 +565,16 @@ impl<'s> Parser<'s> {
                 });
                 Ok(())
             }
+            Some(Tok::Kw(Kw::While)) if self.surface.is_scalar() => {
+                // PLAN-767 §5.2.1: the scalar profile spells conditional
+                // loops `for cond { ... }`; `while` is rejected at the
+                // keyword token.
+                let t = self.peek().unwrap();
+                Err(self.unsupported(
+                    "`while` is not part of this source profile; conditional loops use `for <condition> { ... }`",
+                    t.span,
+                ))
+            }
             Some(Tok::Kw(Kw::While)) => {
                 let kw = self.bump();
                 let cond = self.expr(false)?;
@@ -547,6 +585,26 @@ impl<'s> Parser<'s> {
                     cont: BlockCont::WhileBody { kw: kw.span, cond },
                 });
                 Ok(())
+            }
+            Some(Tok::Kw(Kw::For)) if self.surface.is_scalar() => {
+                // Conditional for (PLAN-767 §5.2.1): reuses the while's
+                // AST shape — the condition is re-evaluated before every
+                // entry into the body, `continue` re-tests it, `break`
+                // leaves the nearest loop. The HIR lowering is identical.
+                let kw = self.bump();
+                let cond = self.expr(false)?;
+                let lb = self.expect_punct(P::LBrace, "`{`")?;
+                stack.push(OpenBlock {
+                    lb,
+                    stmts: Vec::new(),
+                    cont: BlockCont::WhileBody { kw: kw.span, cond },
+                });
+                Ok(())
+            }
+            Some(Tok::Kw(Kw::For)) => {
+                // core surface: recognized keyword, excluded profile member
+                let t = self.peek().unwrap();
+                Err(self.unsupported("`for` is not part of this source profile", t.span))
             }
             Some(Tok::Kw(Kw::Loop)) => {
                 let kw = self.bump();
@@ -723,80 +781,126 @@ impl<'s> Parser<'s> {
     // -- expressions --------------------------------------------------------
     //
     // Fully ITERATIVE precedence-climbing parser (R5-QA-01): every nesting
-    // form — binary operators, parenthesized groups, call argument lists —
-    // runs on explicit value/operator stacks, so expression nesting of ANY
-    // shape or depth (consecutive or interleaved, complete or unclosed)
-    // parses without recursion and without a nesting limit.
+    // form — binary operators, unary chains, parenthesized groups, call
+    // argument lists — runs on explicit value/operator stacks, so
+    // expression nesting of ANY shape or depth (consecutive or interleaved,
+    // complete or unclosed) parses without recursion and without a nesting
+    // limit.
     //
     // Frames:
-    //   Bin(prec)        pending binary operator (left-associative)
+    //   Bin{op,prec}     pending binary operator (left-associative)
+    //   Unary(op)        pending unary operator (applied at value completion)
     //   Paren            opened by `(`
     //   Call{callee,..}  opened by `ident (`
     // Line discipline (R1/R2-QA-01): outside ALL frames (the unbracketed
     // top level) an operator must share the line of the previously
     // consumed token, and a primary following an operator must share the
-    // operator's line; inside any frame newlines are whitespace. This keeps
-    // `1 +\n 2`, `f\n(3)`, `-\n 2` rejected while `f(\n 2\n) + 3`,
+    // operator's line; inside any bracket frame newlines are whitespace.
+    // This keeps `1 +\n 2`, `f\n(3)`, `-\n 2` rejected while `f(\n 2\n) + 3`,
     // `(1 +\n 2) + 3` and `((1+\n2)*3)` pass (D01..D05, G02, H01).
 
-    /// Operators that exist in the wider language but are outside the
-    /// profile; in operator position they are `source.unsupported`.
+    /// Operators that exist in the wider language but are outside BOTH
+    /// profiles; in operator position they are `source.unsupported`.
     fn unsupported_op(p: P) -> bool {
-        matches!(
-            p,
-            P::Minus
-                | P::Slash
-                | P::Percent
-                | P::Gt
-                | P::EqEq
-                | P::NotEq
-                | P::LeEq
-                | P::GeEq
-                | P::AmpAmp
-                | P::PipePipe
-                | P::Bang
-                | P::Dot
-        )
+        matches!(p, P::Dot)
     }
 
-    fn prec_of(p: P) -> Option<u8> {
+    /// Precedence of a binary operator on the SCALAR surface (higher binds
+    /// tighter). `None` for tokens that are not binary operators here.
+    fn scalar_prec_of(p: P) -> Option<(BinOp, u8)> {
         match p {
-            P::Plus => Some(2),
-            P::Star => Some(3),
-            P::Lt => Some(1),
+            P::PipePipe => Some((BinOp::Or, 1)),
+            P::AmpAmp => Some((BinOp::And, 2)),
+            P::EqEq => Some((BinOp::Eq, 3)),
+            P::NotEq => Some((BinOp::Ne, 3)),
+            P::Lt => Some((BinOp::Lt, 4)),
+            P::Gt => Some((BinOp::Gt, 4)),
+            P::LeEq => Some((BinOp::Le, 4)),
+            P::GeEq => Some((BinOp::Ge, 4)),
+            P::Plus => Some((BinOp::Add, 5)),
+            P::Minus => Some((BinOp::Sub, 5)),
+            P::Star => Some((BinOp::Mul, 6)),
+            P::Slash => Some((BinOp::Div, 6)),
+            P::Percent => Some((BinOp::Rem, 6)),
             _ => None,
         }
     }
 
+    /// Precedence on the CORE surface: `+ * <` only.
+    fn core_prec_of(p: P) -> Option<(BinOp, u8)> {
+        match p {
+            P::Plus => Some((BinOp::Add, 2)),
+            P::Star => Some((BinOp::Mul, 3)),
+            P::Lt => Some((BinOp::Lt, 1)),
+            _ => None,
+        }
+    }
+
+    fn prec_of(&self, p: P) -> Option<(BinOp, u8)> {
+        if self.surface.is_scalar() {
+            Self::scalar_prec_of(p)
+        } else {
+            Self::core_prec_of(p)
+        }
+    }
+
+    /// Is this punct a binary operator on a surface OTHER than ours? Used
+    /// to give the `source.unsupported` (not plain syntax) rejection when
+    /// the core surface meets scalar-only operators.
+    fn op_of_other_surface(&self, p: P) -> bool {
+        if self.surface.is_scalar() {
+            false
+        } else {
+            Self::scalar_prec_of(p).is_some() && Self::core_prec_of(p).is_none()
+        }
+    }
+
     /// True when the top of `frames` is a bracket context (parens/call) —
-    /// i.e. newlines are whitespace and line checks are off.
+    /// i.e. newlines are whitespace and line checks are off. Unary frames
+    /// are operators, not brackets.
     fn in_bracket(frames: &[Frame]) -> bool {
         frames
             .iter()
-            .any(|f| !matches!(f, Frame::Op(OpFrame::Bin(_))))
+            .any(|f| matches!(f, Frame::Op(OpFrame::Paren)) || matches!(f, Frame::Call(_)))
+    }
+
+    /// True when a primary that is about to be parsed must share the line
+    /// of the last consumed token (an operator is pending at the
+    /// unbracketed top level).
+    fn anchored(frames: &[Frame]) -> bool {
+        !Self::in_bracket(frames)
+            && frames.last().is_some_and(|f| {
+                matches!(
+                    f,
+                    Frame::Op(OpFrame::Bin { .. }) | Frame::Op(OpFrame::Unary(_))
+                )
+            })
+    }
+
+    /// Pop and apply all pending unary frames on top of the stack (they
+    /// bind tighter than any binary operator). Called whenever a complete
+    /// value is available: entering the operator/close loop.
+    fn apply_unaries(frames: &mut Vec<Frame>, vals: &mut Vec<Expr>) {
+        while matches!(frames.last(), Some(Frame::Op(OpFrame::Unary(_)))) {
+            let Some(Frame::Op(OpFrame::Unary(op))) = frames.pop() else {
+                unreachable!("guarded by the while condition")
+            };
+            let operand = vals.pop().expect("unary operand");
+            let span = operand.span;
+            vals.push(Expr {
+                span,
+                kind: ExprKind::Unary {
+                    op,
+                    operand: Box::new(operand),
+                },
+            });
+        }
     }
 
     /// Pop and apply pending binary operators with precedence >= `min`.
     fn reduce_ops(frames: &mut Vec<Frame>, vals: &mut Vec<Expr>) {
-        while let Some(Frame::Op(OpFrame::Bin(_))) = frames.last() {
-            let Frame::Op(OpFrame::Bin(prec)) = frames.pop().unwrap() else {
-                unreachable!()
-            };
-            let rhs = vals.pop().expect("bin rhs");
-            let lhs = vals.pop().expect("bin lhs");
-            let op = match prec {
-                1 => BinOp::Lt,
-                2 => BinOp::Add,
-                _ => BinOp::Mul,
-            };
-            vals.push(Expr {
-                span: lhs.span.join(rhs.span),
-                kind: ExprKind::Binary {
-                    op,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                },
-            });
+        while let Some(Frame::Op(OpFrame::Bin { .. })) = frames.last() {
+            Self::reduce_once(frames, vals);
         }
     }
 
@@ -810,7 +914,7 @@ impl<'s> Parser<'s> {
         // apply pending operators above the call frame's mark
         while frames
             .last()
-            .is_some_and(|f| matches!(f, Frame::Op(OpFrame::Bin(_))))
+            .is_some_and(|f| matches!(f, Frame::Op(OpFrame::Bin { .. })))
         {
             Self::reduce_ops(frames, vals);
         }
@@ -854,10 +958,7 @@ impl<'s> Parser<'s> {
         // the line of the previously consumed token (operator), if any
         'outer: loop {
             // ---- primary ----
-            let anchored = !Self::in_bracket(&frames)
-                && frames
-                    .last()
-                    .is_some_and(|f| matches!(f, Frame::Op(OpFrame::Bin(_))));
+            let anchored = Self::anchored(&frames);
             if anchored {
                 if let Some(t) = self.peek() {
                     if t.line != self.last_line {
@@ -948,6 +1049,15 @@ impl<'s> Parser<'s> {
                                     kind: ExprKind::IntLit((mag as i128 * -1) as i32),
                                 });
                             }
+                            _ if self.surface.is_scalar() => {
+                                // general unary minus: `-x`, `-(expr)`,
+                                // `--x` chains (right-associative via the
+                                // pending-unary frame discipline)
+                                self.pos += 1;
+                                self.last_line = line;
+                                frames.push(Frame::Op(OpFrame::Unary(UnaryOp::Neg)));
+                                continue 'outer;
+                            }
                             Some(Token {
                                 tok:
                                     Tok::Ident(_)
@@ -982,8 +1092,22 @@ impl<'s> Parser<'s> {
                         });
                     }
                     Tok::Punct(P::Bang) => {
+                        if self.surface.is_scalar() {
+                            self.pos += 1;
+                            self.last_line = line;
+                            frames.push(Frame::Op(OpFrame::Unary(UnaryOp::Not)));
+                            continue 'outer;
+                        }
                         return Err(
                             self.unsupported("unary `!` is not part of this source profile", span)
+                        );
+                    }
+                    Tok::Punct(P::Plus) if self.surface.is_scalar() => {
+                        // unary `+` stays excluded on the scalar surface;
+                        // the core surface keeps its historical plain
+                        // syntax rejection for a leading `+`
+                        return Err(
+                            self.unsupported("unary `+` is not part of this source profile", span)
                         );
                     }
                     Tok::Reserved(word) => {
@@ -1080,6 +1204,10 @@ impl<'s> Parser<'s> {
 
             // ---- operator / close loop ----
             loop {
+                // A complete value is on top of `vals`: every pending unary
+                // frame applies now, before any binary operator or closing
+                // bracket can claim the value (unary binds tightest).
+                Self::apply_unaries(&mut frames, &mut vals);
                 let Some(tok) = self.peek().cloned() else {
                     // EOF: reduce the current argument's operators first —
                     // with a Bin on top the pre-reduce checks used to skip
@@ -1103,7 +1231,7 @@ impl<'s> Parser<'s> {
                     break 'outer;
                 };
                 match tok.tok {
-                    Tok::Punct(p) if Self::prec_of(p).is_some() => {
+                    Tok::Punct(p) if self.prec_of(p).is_some() => {
                         let in_br = Self::in_bracket(&frames);
                         if !in_br && tok.line != self.last_line {
                             // operator starts a new line: the expression
@@ -1111,8 +1239,8 @@ impl<'s> Parser<'s> {
                             Self::reduce_ops(&mut frames, &mut vals);
                             break 'outer;
                         }
-                        let my = Self::prec_of(p).unwrap();
-                        while let Some(Frame::Op(OpFrame::Bin(top))) = frames.last() {
+                        let (op, my) = self.prec_of(p).unwrap();
+                        while let Some(Frame::Op(OpFrame::Bin { prec: top, .. })) = frames.last() {
                             if *top >= my {
                                 Self::reduce_once(&mut frames, &mut vals);
                             } else {
@@ -1121,8 +1249,26 @@ impl<'s> Parser<'s> {
                         }
                         self.pos += 1;
                         self.last_line = tok.line;
-                        frames.push(Frame::Op(OpFrame::Bin(my)));
+                        frames.push(Frame::Op(OpFrame::Bin { op, prec: my }));
                         continue 'outer; // parse RHS primary
+                    }
+                    Tok::Punct(other) if Self::unsupported_op(other) => {
+                        return Err(self.unsupported(
+                            format!(
+                                "operator `{}` is not part of this source profile",
+                                other.as_str()
+                            ),
+                            tok.span,
+                        ));
+                    }
+                    Tok::Punct(other) if self.op_of_other_surface(other) => {
+                        return Err(self.unsupported(
+                            format!(
+                                "operator `{}` is not part of this source profile",
+                                other.as_str()
+                            ),
+                            tok.span,
+                        ));
                     }
                     Tok::Punct(P::LParen) => {
                         // `(` in operator position after a complete value
@@ -1132,7 +1278,7 @@ impl<'s> Parser<'s> {
                     Tok::Punct(P::RParen) => {
                         // pending binary operators bind tighter than the
                         // closing bracket — apply them first
-                        while let Some(Frame::Op(OpFrame::Bin(_))) = frames.last() {
+                        while let Some(Frame::Op(OpFrame::Bin { .. })) = frames.last() {
                             Self::reduce_once(&mut frames, &mut vals);
                         }
                         match frames.last() {
@@ -1198,15 +1344,6 @@ impl<'s> Parser<'s> {
                         }
                         return Err(self.syntax("expected operator, found `,`"));
                     }
-                    Tok::Punct(other) if Self::unsupported_op(other) => {
-                        return Err(self.unsupported(
-                            format!(
-                                "operator `{}` is not part of this source profile",
-                                other.as_str()
-                            ),
-                            tok.span,
-                        ));
-                    }
                     _ => {
                         // not an operator: the expression ends (the statement
                         // layer handles separators). Reduce first; any frame
@@ -1259,16 +1396,11 @@ impl<'s> Parser<'s> {
 
     /// Pop one pending binary operator and apply it (left-associative).
     fn reduce_once(frames: &mut Vec<Frame>, vals: &mut Vec<Expr>) {
-        let Some(Frame::Op(OpFrame::Bin(prec))) = frames.pop() else {
+        let Some(Frame::Op(OpFrame::Bin { op, .. })) = frames.pop() else {
             return;
         };
         let rhs = vals.pop().expect("bin rhs");
         let lhs = vals.pop().expect("bin lhs");
-        let op = match prec {
-            1 => BinOp::Lt,
-            2 => BinOp::Add,
-            _ => BinOp::Mul,
-        };
         vals.push(Expr {
             span: lhs.span.join(rhs.span),
             kind: ExprKind::Binary {

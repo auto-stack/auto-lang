@@ -29,12 +29,12 @@
 //! other generated position. Missing coverage is a controlled internal
 //! diagnostic — never a panic, never a fabricated source error.
 
-use super::ast::BinOp;
+use super::ast::{BinOp, UnaryOp};
 use super::resolve::{
     param_position, RBlock, RExprKind, RStmt, ResolvedExpr, ResolvedFn, ResolvedProgram, VT,
 };
 use super::typecheck;
-use super::{SOURCE_PROFILE, TRACE_CAPABILITY};
+use super::{SourceProfile, SOURCE_PROFILE, TRACE_CAPABILITY};
 use crate::atom_text::{Diagnostic, Span, Stage};
 use crate::verify::CheckedModule;
 use std::collections::BTreeMap;
@@ -59,7 +59,7 @@ pub fn compile_source(
     module_path: &str,
     capabilities: &[String],
 ) -> Result<CompiledSource, Vec<Diagnostic>> {
-    let parts = compile_parts(src, module_path, capabilities)?;
+    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::Core)?;
     let checked = crate::verify::verify(parts.bundle)?;
     Ok(CompiledSource {
         profile: SOURCE_PROFILE,
@@ -69,25 +69,49 @@ pub fn compile_source(
     })
 }
 
-/// Successful compilation up to (but not including) verification: the
-/// span-projected bundle plus the adapter receipt data. This is the seam
-/// the §6 mutation matrix exercises — a tampered bundle must go back
-/// through the real verifier and can never reuse Checked credentials.
-/// Production callers use [`compile_source`], which always verifies.
-pub fn compile_parts(
+/// Compile under the scalar-i32 source profile (PLAN-767): parse/resolve/
+/// typecheck on the scalar surface, bind against the scalar descriptor and
+/// verify through the scalar entry. Receipt data mirrors [`compile_source`]
+/// with the scalar profile identity.
+pub fn compile_scalar_source(
     src: &str,
     module_path: &str,
     capabilities: &[String],
-) -> Result<SourceParts, Vec<Diagnostic>> {
-    let program = super::parse_program(src).map_err(|d| vec![d])?;
-    let resolved = super::resolve::resolve(&program, capabilities)?;
-    typecheck::typecheck(&resolved)?;
+) -> Result<CompiledSource, Vec<Diagnostic>> {
+    let parts = compile_parts_with(src, module_path, capabilities, SourceProfile::Scalar)?;
+    let checked = crate::verify::verify_scalar(parts.bundle)?;
+    Ok(CompiledSource {
+        profile: super::SCALAR_SOURCE_PROFILE,
+        input_hash: parts.input_hash,
+        atom_text: parts.atom_text,
+        checked,
+    })
+}
 
-    let mut em = Emitter::new(&resolved, src.len());
+/// Compile up to (but not including) verification under the explicit
+/// profile: the span-projected bundle plus the adapter receipt data. This
+/// is the seam the §6 mutation matrix exercises — a tampered bundle must
+/// go back through the real verifier of ITS domain and can never reuse
+/// Checked credentials.
+pub fn compile_parts_with(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    let program = super::parse_program_with(src, profile).map_err(|d| vec![d])?;
+    let resolved = super::resolve_with(&program, capabilities, profile)?;
+    typecheck::typecheck_with(&resolved, profile)?;
+
+    let mut em = Emitter::new(&resolved, src.len(), profile);
     em.plan_module();
     let atom_text = em.render(module_path);
 
-    let mut bundle = match crate::descriptor::bind(crate::descriptor(), &atom_text) {
+    let descriptor = match profile.hir_domain() {
+        crate::hir::HirDomain::Core => crate::descriptor(),
+        crate::hir::HirDomain::Scalar => crate::scalar_descriptor(),
+    };
+    let mut bundle = match crate::descriptor::bind(descriptor, &atom_text) {
         Ok(b) => b,
         Err(ds) => {
             let detail: Vec<String> = ds.iter().map(|d| d.render("atom", &atom_text)).collect();
@@ -104,11 +128,21 @@ pub fn compile_parts(
     };
     em.reanchor_spans(&mut bundle, src).map_err(|d| vec![d])?;
     Ok(SourceParts {
-        profile: SOURCE_PROFILE,
+        profile: profile.as_str(),
         input_hash: fnv1a_hex(src.as_bytes()),
         atom_text,
         bundle,
     })
+}
+
+/// Unverified core-profile compilation output (see [`compile_parts_with`]);
+/// the 745-era mutation-matrix test seam.
+pub fn compile_parts(
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    compile_parts_with(src, module_path, capabilities, SourceProfile::Core)
 }
 
 /// Unverified compilation output (see [`compile_parts`]).
@@ -149,6 +183,10 @@ enum EKind {
     Const(i32),
     Read(usize),
     Bin(BinOp, usize, usize),
+    /// Lazy boolean short-circuit (PLAN-767): `&&`/`||` surface Binary
+    /// nodes lower to the HIR `Logical` kind — never to an eager binary.
+    Logical(crate::hir::LogicOp, usize, usize),
+    Unary(crate::hir::UnaryOp, usize),
     Call {
         callee_fn: Option<usize>,
         callee_intrinsic: Option<&'static str>,
@@ -745,6 +783,13 @@ impl PlanCtx<'_> {
                 rslot: usize,
                 dest: usize,
             },
+            /// operand slot planned; build the unary node
+            UnaryOut {
+                op: UnaryOp,
+                span: Span,
+                oslot: usize,
+                dest: usize,
+            },
         }
         // slot -> planned expr table index
         let mut slot_idx: Vec<usize> = vec![usize::MAX];
@@ -796,6 +841,19 @@ impl PlanCtx<'_> {
                             node: lhs,
                             slot: lslot,
                         });
+                    } else if let RExprKind::Unary { op, operand } = &node.kind {
+                        let oslot = slot_idx.len();
+                        slot_idx.push(usize::MAX);
+                        stack.push(Task::UnaryOut {
+                            op: *op,
+                            span: node.span,
+                            oslot,
+                            dest: slot,
+                        });
+                        stack.push(Task::Plan {
+                            node: operand,
+                            slot: oslot,
+                        });
                     } else {
                         slot_idx[slot] = self.plan_leaf(plan, f, node);
                     }
@@ -841,12 +899,47 @@ impl PlanCtx<'_> {
                 } => {
                     let l = slot_idx[lslot];
                     let r = slot_idx[rslot];
-                    let vt = match op {
-                        BinOp::Add | BinOp::Mul => VT::I32,
-                        BinOp::Lt => VT::Bool,
+                    match op {
+                        BinOp::And => {
+                            plan.exprs.push(ENode {
+                                kind: EKind::Logical(crate::hir::LogicOp::And, l, r),
+                                vt: VT::Bool,
+                                span,
+                            });
+                            slot_idx[dest] = plan.exprs.len() - 1;
+                        }
+                        BinOp::Or => {
+                            plan.exprs.push(ENode {
+                                kind: EKind::Logical(crate::hir::LogicOp::Or, l, r),
+                                vt: VT::Bool,
+                                span,
+                            });
+                            slot_idx[dest] = plan.exprs.len() - 1;
+                        }
+                        _ => {
+                            let vt = super::resolve::bin_op_vt(op);
+                            plan.exprs.push(ENode {
+                                kind: EKind::Bin(op, l, r),
+                                vt,
+                                span,
+                            });
+                            slot_idx[dest] = plan.exprs.len() - 1;
+                        }
+                    }
+                }
+                Task::UnaryOut {
+                    op,
+                    span,
+                    oslot,
+                    dest,
+                } => {
+                    let o = slot_idx[oslot];
+                    let (hop, vt) = match op {
+                        UnaryOp::Neg => (crate::hir::UnaryOp::NegI32, VT::I32),
+                        UnaryOp::Not => (crate::hir::UnaryOp::NotBool, VT::Bool),
                     };
                     plan.exprs.push(ENode {
-                        kind: EKind::Bin(op, l, r),
+                        kind: EKind::Unary(hop, o),
                         vt,
                         span,
                     });
@@ -860,7 +953,9 @@ impl PlanCtx<'_> {
     /// Plan a non-binary leaf (called only from the iterative walk).
     fn plan_leaf(&mut self, plan: &mut FnPlan, f: &ResolvedFn, e: &ResolvedExpr) -> usize {
         match &e.kind {
-            RExprKind::Binary { .. } => unreachable!("binary handled by plan_expr walk"),
+            RExprKind::Binary { .. } | RExprKind::Unary { .. } => {
+                unreachable!("binary/unary handled by plan_expr walk")
+            }
             RExprKind::IntLit(v) => {
                 plan.exprs.push(ENode {
                     kind: EKind::Const(*v),
@@ -1099,6 +1194,7 @@ struct BodySpans {
 struct Emitter<'p> {
     program: &'p ResolvedProgram,
     src_len: usize,
+    profile: SourceProfile,
     plans: Vec<FnPlan>,
     intrinsic_first_use: BTreeMap<&'static str, Span>,
     /// Filled by [`Emitter::render`]: token-level fallback map.
@@ -1107,10 +1203,11 @@ struct Emitter<'p> {
 }
 
 impl<'p> Emitter<'p> {
-    fn new(program: &'p ResolvedProgram, src_len: usize) -> Self {
+    fn new(program: &'p ResolvedProgram, src_len: usize, profile: SourceProfile) -> Self {
         Emitter {
             program,
             src_len,
+            profile,
             plans: Vec::new(),
             intrinsic_first_use: BTreeMap::new(),
             frags: Vec::new(),
@@ -1187,8 +1284,18 @@ impl<'p> Emitter<'p> {
 
         let use_intrinsics: Vec<&'static str> = self.intrinsic_first_use.keys().copied().collect();
 
+        // The generated document carries the profile's HIR identity triple;
+        // the binder stamps the matching domain and the domain-gated verify
+        // entry owns the rest (PLAN-767 §5.1).
+        let (schema, profile_word) = match self.profile.hir_domain() {
+            crate::hir::HirDomain::Core => ("auto.hir.core.draft", "core-i32-draft"),
+            crate::hir::HirDomain::Scalar => ("auto.hir.scalar.draft", "scalar-i32-draft"),
+        };
         frag!(
-            "hir(schema: \"auto.hir.core.draft\", revision: 1u32, profile: \"core-i32-draft\")",
+            &format!(
+                "hir(schema: \"{}\", revision: 1u32, profile: \"{}\")",
+                schema, profile_word
+            ),
             program_span
         );
         t.push(' ');
@@ -1388,14 +1495,29 @@ impl<'p> Emitter<'p> {
                             format!("expr e{} read_local {{ type: {}; local: l{} }}", ei, ty, l)
                         }
                         EKind::Bin(op, l, r) => {
-                            let (ops, overflow) = match op {
-                                BinOp::Add => ("add_i32", "; overflow: trap"),
-                                BinOp::Mul => ("mul_i32", "; overflow: trap"),
-                                BinOp::Lt => ("lt_i32", ""),
-                            };
+                            let (ops, overflow) = bin_op_atom(*op);
                             format!(
                                 "expr e{} binary {{ type: {}; op: {}{}; lhs: e{}; rhs: e{} }}",
                                 ei, ty, ops, overflow, l, r
+                            )
+                        }
+                        EKind::Logical(op, l, r) => {
+                            format!(
+                                "expr e{} logical {{ type: {}; op: {}; lhs: e{}; rhs: e{} }}",
+                                ei,
+                                ty,
+                                op.as_str(),
+                                l,
+                                r
+                            )
+                        }
+                        EKind::Unary(op, o) => {
+                            format!(
+                                "expr e{} unary {{ type: {}; op: {}; operand: e{} }}",
+                                ei,
+                                ty,
+                                op.as_str(),
+                                o
                             )
                         }
                         EKind::Call {
@@ -1588,6 +1710,27 @@ impl<'p> Emitter<'p> {
 
 fn intrinsic_type_id(sym: &str) -> String {
     format!("t_i_{}", sym.rsplit('.').next().unwrap_or("x"))
+}
+
+/// Atom-text encoding of a surface binary operator: the descriptor word
+/// plus the `overflow: trap` attribute for the arithmetic whose overflow
+/// is policy-governed (div/rem traps are inherent; comparisons cannot
+/// overflow).
+fn bin_op_atom(op: BinOp) -> (&'static str, &'static str) {
+    match op {
+        BinOp::Add => ("add_i32", "; overflow: trap"),
+        BinOp::Sub => ("sub_i32", "; overflow: trap"),
+        BinOp::Mul => ("mul_i32", "; overflow: trap"),
+        BinOp::Div => ("div_i32", ""),
+        BinOp::Rem => ("rem_i32", ""),
+        BinOp::Lt => ("lt_i32", ""),
+        BinOp::Le => ("le_i32", ""),
+        BinOp::Gt => ("gt_i32", ""),
+        BinOp::Ge => ("ge_i32", ""),
+        BinOp::Eq => ("eq", ""),
+        BinOp::Ne => ("ne", ""),
+        BinOp::And | BinOp::Or => unreachable!("logical ops lower to EKind::Logical"),
+    }
 }
 
 fn intrinsic_def_id(sym: &str) -> String {
