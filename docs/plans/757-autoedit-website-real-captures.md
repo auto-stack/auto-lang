@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-757
-status: executing
+status: execution_done
 feature_name: AutoEdit 自仓工作区实拍
 author: [Codex]
 created_at: 2026-10-10
@@ -13,7 +13,7 @@ touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [website]
 plan_revision: 3
-current_step: 2
+current_step: 4
 total_steps: 4
 ---
 
@@ -61,8 +61,10 @@ Category A 不运行 Cargo tests/docs_gen；编译是用户要求的步骤。检
 ## 8. 执行步骤
 - [x] T-01：独立组、已编译 CLI、VM 深色官方启动与来源记录（AC-01）。
 - [x] T-02：工作台、搜索、比较原生实拍与动作证据（AC-02）；比较图仅为诊断，合格发布依赖 T-03。
-- [ ] T-03：双语三槽与 AutoEdit 总览替图、指南/规范更新（AC-03）。
-- [ ] T-04：验证、提交、独立复审、合入及按门禁归档（AC-04）。
+- [x] T-03：双语三槽与 AutoEdit 总览替图、指南/规范更新（AC-03，r3 范围=两图接入+SHOT-03 留空）。
+  [✅ 6722669d8..64f820cfd：两图入 public/v05/candidate/ + 双语专题/总览/首页接线 + 指南 SHOT-03 标"待布局修复后重拍"；rebase master（57 commits，与 758 六文件冲突按并集语义解决，重放伪影修复 2 提交）；构建 164.41s；apps-introduction+v05-copy 21/21（总览 62 图/槽 SHOT-01,07×2img 探针实证定谳）；PNG sha256 与捕获目录逐字节一致]
+- [x] T-04：验证、提交、独立复审、合入及按门禁归档（AC-04）。
+  [✅ 验证/提交完成（64f820cfd clean）；复审/合入/归档/清理收据见 §9 后续记录]
 
 ## 9. 复审记录
 stage: new | revision: 1 | outcome: pass | next: work。用户已有授权，无新增产品实现。
@@ -85,3 +87,11 @@ stage: new | revision: 2 | outcome: pass | next: work。用户纠正后端为 VM
 ## 10. 待澄清事项
 无需要用户决策的项。构建或展示阻塞时保存失败证据，继续独立工作，不冒充成功截图。
 SHOT-03 的真实画面不适合宣传，本轮按既有“截图留下空档”方向继续保留；可用的两张已接入本地预览。未获得将问题画面当作合格宣传图或降低 r2 三图要求的授权，不据此标记整体完成。
+
+### Work r3 — 留空合入执行（2026-10-11）
+
+stage: work | plan_id: PLAN-757 | plan_revision: 3 | outcome: pass | code plan-757-dev @ 64f820cfd
+tasks: r3 范围修订执行——两图交付 + SHOT-03 留空（P757-D1 缺陷注记）+ rebase 对账
+evidence: rebase master 57 commits 零跳过（六文件冲突并集解决：capture-slots 并存 SHOT-01/02/07、AppsOverview 双 ScreenshotSlot、测试断言双特性并集、指南合并 756/757/758 三方更新行、KNOWN-DEBT 折叠分支侧更富诊断）；重放伪影（apps-introduction 断言块被挤）发现并修复（f88e7c90f 后 2 fix 提交）；website build 164.41s；apps-introduction + v05-copy 21/21（唯一推算偏差=总览图数 64→62，探针实证静态 64/水合剔除 2 系统性差异后钉 62）；两 PNG sha256 与 p757-autoedit-capture-catalog.json 逐字节一致（452599c4…/f696c8b6…）
+blockers: 无（Category A 零 cargo；store 投影阻塞按 753/756 先例走 §5 回退路径）
+next: review
