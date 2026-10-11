@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-759
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: executing              # drafting → executing → execution_done → reviewed → archived
 feature_name: daily-red-family-clearance
 plan_revision: 2               # r2: 按 2026-10-11 草案审核 F-01~F-08 修订
 author: []
