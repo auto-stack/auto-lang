@@ -103,3 +103,9 @@ Git worktree、Python/PowerShell 路径与资产核查、Rust check/nextest、Au
 - stage: review | outcome: pass | reviewed_commit: 62eb5435ecf3e2c5675cb9dd47557a419b621232 | base: ef778ae31 | auto-down:895f8d0f9355c9f5ec3ce8fca268bdb768395846 | spec_delta_sha256:55B3531451AC18FF7655A53B8FB4639840A7707812C9F50F43F18F28F2D1FC4A | next: merge。
 - 同会话独立复核角色，直接重算Git对象与路径引用，限制明示。AC01/03和SD01..04 pass；AC02主检出本机副本恢复、AC04发布/归档后置项由merge复核。无阻断发现；P761-D1/D2在KNOWN-DEBT登记。持久证据：docs/plans/reports/761-root-directory-review.md。
 - canonical delta与代码一致，44/20对象比对及两组guard clean。56fa096c2为仅添加复审报告的descendant，未改变代码/规范内容。
+
+### merge prepared（r2）
+
+- prepared: reviewed=62eb5435ecf3e2c5675cb9dd47557a419b621232（等价02fb7e4c1）；delivery=a1d7531616f045d6fad200ce4a4bf67e78d682eb；canonical SD-01..04保持复审SHA256不变。后继仅复审报告/派生账本。账本六段825旧项及原字节全部保留，仅追加4项/68行；829项验证，投影收据docs/reports/761-ledger-projection.json。
+- 目标项：designs/repo-layout、tests/repo-layout-verification、reviews/PLAN-761-review、reports/PLAN-761-deposit；来源版本/哈希见投影收据。隔离store旧schema加载500未写入，依本仓README §5兼容回退，无无关schema迁移。
+- 主检出已有759复审报告/台账WIP及其他会话本地临时输出，均保留；仅重叠台账暂存后逐字节补丁回放。本机六配置合入后恢复并核对SHA256。
