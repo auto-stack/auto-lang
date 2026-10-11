@@ -1,0 +1,52 @@
+{
+  "plan": "PLAN-758",
+  "revision": 2,
+  "base": "cee541da7a4b1a3410bef8cbdfe2bed0c4c00c51",
+  "implementation_commit": "e7d04a3993ea7b41115834a0ab37ea1ae6e66351",
+  "dependency_auto_down": "895f8d0f9355c9f5ec3ce8fca268bdb768395846",
+  "patch_sha256": "e337292b8431368b42d18d09a904f3dcd6d88d7ef760b82bc2fab5981bf51986",
+  "targets": [
+    {
+      "path": "docs/specs/auto-lang/ui/architecture.md",
+      "input_sha256": "a08876d435c10617e02483c49fd0f3090dd7d0dfc088f5f74503e3a494a3c07c",
+      "output_sha256": "772debe90fd269f145b4334bebc1a64ff9d6ba4c7d487bfe77ae4a10bbdf75e5"
+    },
+    {
+      "path": "docs/specs/auto-lang/ui/design/autodown-wikilink.md",
+      "input_sha256": "8bf534bccb162b23a3ece0caf5696d0e54714b288dd01ddb6bed4b8fbcf282ae",
+      "output_sha256": "4adb16a11ee0a7a73b465c12c7c273130b941940f89b1deda0ad7f3ee5fba88c"
+    },
+    {
+      "path": "docs/specs/auto-lang/ui/overview.md",
+      "input_sha256": "a69c88ed67df45086267ea9a1e630bbb79038d5d7966b1fe2e58e45d49a5bcf2",
+      "output_sha256": "3b49d0167afa90be7c577bef38949d20b84e5bc80a5c95c4b5f68141894531a8"
+    },
+    {
+      "path": "docs/specs/auto-lang/ui/plans.md",
+      "input_sha256": "38e1a0e7e02f45967d680b323c11d3ecd60f8bd3bbfcaac6e581168241464213",
+      "output_sha256": "0b97691fccc8cfa564aecf2105c9e465d5fd2ecd3982be7b7fe14f25a2dc1081"
+    },
+    {
+      "path": "docs/specs/website/design/application-introductions.md",
+      "input_sha256": "80e4457de969d004852222ce9ce3b147c1481c63f40a9cb5a112607284efbb1e",
+      "output_sha256": "6a90d8c3029b1edf2ab03ec3e648188f0cf2082fb92f1531db396eb1768675e6"
+    },
+    {
+      "path": "docs/specs/website/design/ecosystem-readme.md",
+      "input_sha256": "895310da8b5aeb39289d4641811b42e8ad017aa6bc30c89e048f61e79ea6cfda",
+      "output_sha256": "2522a72474f44e5ef224d3fa15ebcfb2c834e1814e8688253d37f1732c6af147"
+    },
+    {
+      "path": "docs/specs/website/design/ui-presentation.md",
+      "input_sha256": "a0cf669dca1293bc27847a64ddbce2e2c24af0a2394505b089c000c9591adac4",
+      "output_sha256": "e69635a1141ebb308e51ff6dc072cbd16e7520e6924bb2b23aa7855532b0c928"
+    },
+    {
+      "path": "docs/specs/website/project.md",
+      "input_sha256": "243c64993b83e5494c7f38134ad936f7b088225d81079379d1243914859914ac",
+      "output_sha256": "f841265473b7416588174fad3d1a39d09c7844a82d340cde478ec06215ca6233"
+    }
+  ],
+  "touched_goals": [],
+  "goal_rationale": "Product rename, qualified screenshots and presentation order preserve functional goal statuses; no goal ID transitions."
+}
