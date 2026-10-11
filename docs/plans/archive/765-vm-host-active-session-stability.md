@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-765
 plan_revision: 2
-status: reviewed
+status: archived
 feature_name: VM 宿主活跃会话稳定专项（r1：空闲内存残留 + 原生层 exit(1)；r2：瞬态尖峰退出面，承接 musk PLAN-104 T-03 四轮矩阵定罪）
 author: [agent]
 created_at: 2026-10-11
@@ -12,6 +12,7 @@ touched_goals: [GOAL-007]
 affects: [auto-lang, a2r-std]
 current_step: 7
 total_steps: 7
+completion_kind: delivered
 ---
 
 # [PLAN-765] VM 宿主活跃会话稳定专项——空闲内存残留 + 原生层 exit(1)
@@ -276,6 +277,34 @@ T-04 交叉复验：musk soak 仪器 GREEN 重跑（斜率+1h 零退）+ 本仓�
   支撑链）。]
 
 ## 9. 复审记录
+
+### merge 阶段收据（PLAN-765:r2，2026-10-12）
+
+- stage: merge ｜ outcome: **delivered**（五检查点齐）
+- **prepared**：reviewed 99f6997eb（含规约 vm-host-stability.md r2 扩展——r1
+  同文件原地更新,F-10 exitproc_trace 分臂表述经复审修正）+ 纯文档后代
+  （账本 P765-1 原位更新/P765-4 reviews/P765-5 reports + ui overview/plans/
+  goals r2 回写;specs.json 按原 1-space 格式投影,+26/-1 最小 diff;INDEX
+  再生幂等零内容差）→ delivery_commit=**10b9485ad**;实现与依赖未变
+  （auto-down@895f8d0 detached 只读,同 r1）。
+- **landed**：rebase 后 range-diff 全等（99f6997eb=6df1383b4;映射
+  99f6997eb→6df1383b4/4afdc68c2→10b9485ad）,master `git merge --ff-only
+  plan-765-dev` 尖=10b9485ad,无合并提交;canonical 落位=规约原文件 r2
+  扩展 + 纪要后记⑦ + 账本三投影。
+- **ledger_refreshed**：`.autoos/specs.json` P765-1（designs,content 追加
+  ⑧F-10/⑨假象警示）原位更新 + P765-4（reviews,220 项）/P765-5（reports,
+  133 项）新增——只增不改其余,回读计数校验通过;`python scripts/spec-index.py`
+  再生 INDEX（幂等,26 projects,零内容差——无新 spec 文件）。
+- **archived**：`git mv` → `docs/plans/archive/765-vm-host-active-session-
+  stability.md`,status: archived,completion_kind: delivered（r2 终态;
+  r1 收据在册同文件）。
+- **cleaned**：待执行（wt-guard 两 worktree → 移除 lang-765 组）——完成后
+  本行更新。
+- **制品面**：主检出 release auto.exe 重建（见下）——生产消费面=musk 侧
+  VM 宿主/代码生成门禁二进制;web bundle 无涉（r2 零 website/vue 改动）。
+- **批量回归到期判定**：765 % 5 == 0 且 r2 代码落地晚于收据
+  （.last-batch-regression.json last_covered_plan_id=766 未覆盖 r2 代码
+  10b9485ad）→ **到期** → `/auto-plan:regress` 主检出单实例。
 
 ### review 阶段裁定（PLAN-765:r2，2026-10-12）
 
