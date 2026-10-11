@@ -15,3 +15,4 @@
 | 723 | website-demo-introductions | ✅（reviewed→archived） | [archive](../../plans/archive/723-website-demo-introductions.md) | r2在双语Apps概览接入六类28真实图卡片和就地操作/条件/版本/源码，58旧路由兼容深链；AutoEdit/Shell批准主图，Musk/Jade等待素材；70项回归通过 |
 | 756 | website-v05-copy-and-capture-slots | reviewed（待投影验证后归档） | [Plan](../../plans/756-website-v05-copy-and-capture-slots.md) | 双语首页/v0.5 四主应用、发布与后端条件/入口修正；12 项文字待拍槽与逐图拍摄合同，已批准原图保留 |
 | 754 | pg-unify | ✅（reviewed→archived） | archive/ | /playground（EN/ZH）换 PlaygroundIDEPage——apiBase 探测（JSON 探针防 SPA 回退假阳+2500ms 超时）同源→127.0.0.1:3030 fallback、先探测后渲染门控、backendDown 降级提示；Explorer+Card 降级书页内嵌；dedupe 契约包入册规则（@lezer/highlight 补齐）|
+| 753 | ecosystem-readme-refresh | ✅（reviewed→archived） | archive/ | 双语 README 生态主入口重写——四层生态+四主应用+学习入口，长语法下沉 docs/language/overview 双语子页；根页直引 website/public 原图（同字节无副本）；产品状态以现势 Spec 为准不虚标成熟度；新规范 design/ecosystem-readme.md（SD-01）|

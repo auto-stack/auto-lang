@@ -1365,6 +1365,17 @@
      ],
      "status": "published",
      "created": "2026-10-11"
+    },
+    {
+     "id": "P753-3",
+     "title": "PLAN-753 README 双语重写验证报告",
+     "content": "GFM 双语×390/1280 八视图；226 引用重验（204 本地/仓内零缺失+9 外仓正文核验）；8 例独立示例精确输出断言；website build 133.04s（EN/ZH 概览路由与 hub 卡片实际 DOM）；三张原图 hash 与网站同字节。",
+     "file": "docs/plans/reports/753-readme-verification.md",
+     "related": [
+      "PLAN-753"
+     ],
+     "status": "published",
+     "created": "2026-10-11"
     }
    ]
   },
@@ -5611,6 +5622,17 @@
      ],
      "status": "published",
      "created": "2026-10-11"
+    },
+    {
+     "id": "P753-1",
+     "title": "README 双语生态入口与语言概览分层（PLAN-753 SD-01）",
+     "content": "契约=docs/specs/website/design/ecosystem-readme.md：README.md/README.cn.md 为 Auto 生态主入口——四层生态（AutoLang/AutoUI/AutoOS/AutoAI）+四主应用+学习/源码入口（根页 150-220 行级）；长篇语言语法下沉 docs/language/overview{,.cn}.md（站点映射 /docs/language/overview 双语路由）；语言介绍以当前源码/语料/CLI 为准，旧 evaluator/GPUI/planned 表述移除；根页图片直引 website/public 原图（同字节无副本，alt/来源/捕获日期本地化）；产品状态以现势 Spec/产品数据为准，不宣称统一成熟度/自有内核/无人值守，历史图不作未冻结发行候选证明；外链以仓内真实入口优先，不以 HTTP 200 判定专题可用。",
+     "file": "docs/specs/website/design/ecosystem-readme.md",
+     "related": [
+      "PLAN-753"
+     ],
+     "status": "published",
+     "created": "2026-10-11"
     }
    ]
   },
@@ -8965,6 +8987,17 @@
       "PLAN-754",
       "PLAN-755",
       "PLAN-752"
+     ],
+     "status": "published",
+     "created": "2026-10-11"
+    },
+    {
+     "id": "P753-2",
+     "title": "PLAN-753 审计收据（review pass → merge landed（投影 blocked）→ 回填归档）",
+     "content": "r1 review pass @884aeed8a（AC-01..05 pass；AC-06 生命周期部分）；delivery ba9ff44e8（range-diff 全等，ff-only 落地 f55c0f664→ba9ff44e8）；2026-10-10 merge blocked（publication-only：store GET /api/specs 500——账本缺 document metadata 无法加载，未手改原数据）；2026-10-11 经 README §5 手工回退路径（754/755 先例）回填投影 P753-1/2/3 并归档/清理，收据见计划 §9 recovery receipt。",
+     "file": "docs/plans/archive/753-ecosystem-readme-refresh.md",
+     "related": [
+      "PLAN-753"
      ],
      "status": "published",
      "created": "2026-10-11"
