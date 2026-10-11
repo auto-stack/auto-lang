@@ -4654,7 +4654,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 IcedTextAlign::Left => {}
                             }
                         }
-                        let el: iced::Element<'static, M> = if wrap_none {
+                        // truncate/fill 意图才套 Fill+clip 容器（独占行宽截
+                        // 断语义）；纯 whitespace-nowrap=仅禁折行保自然宽——
+                        // 否则并排 diff 行内多段 shrink-0 文本齐抢 Fill 被
+                        // 裁成等宽截断（L0 fix 2026-10-11 二阶）。
+                        let fill_clip = is.truncate_flag
+                            || matches!(is.width, Some(crate::ui::style::iced_adapter::IcedSize::Full));
+                        let el: iced::Element<'static, M> = if fill_clip {
                             iced::widget::container(rich)
                                 .width(iced::Length::Fill)
                                 .clip(true)
