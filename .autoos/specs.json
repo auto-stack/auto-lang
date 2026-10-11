@@ -1432,6 +1432,19 @@
      ],
      "status": "published",
      "created": "2026-10-11"
+    },
+    {
+     "id": "P765-3",
+     "title": "PLAN-765 三面归因纪要（帧循环分配剖面/HTTP 缓冲生命周期/exit(1) 调用点）",
+     "content": "musk PLAN-104 五轮 soak 证据重审的两个反转:①\"VM 2-4min 必退 code=1\"=仪器 finally taskkill 假象(五轮 JSON 全部 vm_died=false,AUDIT 轮零记录因零死亡而无证明力);②\"idle 30-72MB/min\"=斜率单位 bug(真值 0.5-1.2MB/hour)。真实退出面=手动 UAT supervisor 14 次自退(码 0/1 混杂/静默/负载相关)+PLAN-080 §10-9 同指纹历史,主嫌=外部终止(全进程冻结后强杀);进程内静默 exit(1) 唯一未覆盖臂=ai_mode(已补挂)。内存面主定谳=非 timer 回填无条件置脏(dynamic.rs call_handler Ok 臂)+每请求新建 Client+载荷 5-6 份全文拷贝(≈3.6MB/s 瞬态)。附带定罪:事件名推导 rfind(\"::\") 作用于含载荷串截坏 handler 名(musk K10 同形)。修复后:45s 窗 +0.6MB 末段平坦;1h 真趋势 1.0MB/min 线性不平台(缓漏 P765-D1)。",
+     "file": "docs/reports/765-t01-attribution-memos.md",
+     "related": [
+      "PLAN-765",
+      "PLAN-104",
+      "PLAN-080"
+     ],
+     "status": "published",
+     "created": "2026-10-12"
     }
    ]
   },
@@ -5820,6 +5833,19 @@
      ],
      "status": "published",
      "created": "2026-10-11"
+    },
+    {
+     "id": "P765-1",
+     "title": "VM 宿主活跃会话稳定域契约（消息桥生命周期/回填门控/退出审计四分法）",
+     "content": "Http.get_msg 轮询消费方契约:①共享连接池 Client(禁每请求新建,hyper 池用后即弃=空闲期私有内存棘轮主源);②read_body_capped 按 Content-Length 预留;③载荷单缓冲预编码 {handler}\u001fs\u001f{json} 入队侧产出、渲染层泵零拷贝直投(原链 292KB 级响应 5-6 份全文拷贝);④DesktopMessage::HttpBackfill 专用通道 seq 门控派发——handler 零状态写不置脏(F1 fire_timer 延伸,普通事件语义不动,逃生门 AUTOUI_MSG_BACKFILL_DIRTY);⑤derive_event_name 的 :: 截断只作用首个 \u001f 前事件名段(载荷 body 含 std::process 等文本不再截坏 handler 名=musk K10 空渲染族);⑥退出审计四分法:三挂点+main_err(_ai_mode)/mem_guard_f12_escape/native_crash 钩(SetUnhandledExceptionFilter,CONTINUE_SEARCH 保 WER),外部击杀指纹=审计册零行+退出码 1;⑦测量口径:±1MB 堆锯齿在 45s 窗最小二乘虚高一个量级,判 idle 泄漏用绝对增量+≥300s 窗;仪器 finally taskkill 产生的 code=1 是清理假象(判真死亡看 vm_died 与采样时间线)。",
+     "file": "docs/specs/auto-lang/ui/design/vm-host-stability.md",
+     "related": [
+      "PLAN-765",
+      "PLAN-650",
+      "PLAN-062"
+     ],
+     "status": "published",
+     "created": "2026-10-12"
     }
    ]
   },
@@ -9301,6 +9327,18 @@
      ],
      "status": "published",
      "created": "2026-10-11"
+    },
+    {
+     "id": "P765-2",
+     "title": "PLAN-765 复审收据（r1 pass，工件重构）",
+     "content": "r1 pass @0b654af37(rebase 后;原 9ef5df2cb,range-diff 三提交全等映射 4588ae0ad→e20b6c128/db345925c→9650c966a/9ef5df2cb→0b654af37),基 83e1ab6eb,依赖 auto-down@895f8d0。AC-1 pass(1h idle +59.3MB/59.7min=0.017MB/s,6× 余量;流式在基线带内;斜率由原始样本独立重算并定谳 musk 仪器 slopeMBPerMin 单位 bug——对分钟 t 再×60,报值实为 MB/hour);AC-2 pass(vm_died=false 全程 60min+审计册零行+125 心跳双证;外部击杀指纹实测吻合);AC-3 pass(复审重跑裸 cargo t 5256/5256+tv 162/162;musk 三门 gen-only/probe/parity PASS;plan484_024 charts 单红=并行 flake 隔离/复跑双绿零触面)。独立性限制:复审与实施同会话,裁定自工件重建(门禁重跑/全 diff 重读/斜率重算)。findings:F-765-R1 idle ~1MB/min 线性缓漏→P765-D1;F-765-R2 musk 仪器单位 bug→P765-D2 移交;F-765-R3 plan484 flake 观测项。",
+     "file": "docs/plans/archive/765-vm-host-active-session-stability.md",
+     "related": [
+      "PLAN-765",
+      "PLAN-104"
+     ],
+     "status": "published",
+     "created": "2026-10-12"
     }
    ]
   }

@@ -884,6 +884,26 @@ inproc VM App（ui_desktop 宿主 `launch_app`）拉起零宿主退出是桌面�
   MCP 双探逐秒盯存活）+ Windows 事件日志三查（Application 1000/1001/
   1002 + System 41/1001/6008 + WER 桶）；cdb 托管形态见上节（F1）。
 
+## VM 宿主活跃会话稳定域（PLAN-765）
+
+承接 697 死亡判位表与 650 空转减负域,活跃会话(客户端轮询打开态)两面
+契约,全文见 [vm-host-stability](design/vm-host-stability.md):
+
+- **HTTP 消息桥生命周期**(`Http.get_msg` 轮询消费方):共享连接池 Client
+  (禁每请求新建)+ 响应体按 CL 预留 + 载荷单缓冲预编码
+  (`{handler}\u{1F}s\u{1F}{json}` 入队侧产出,泵零拷贝直投)+ 诊断
+  eprintln env 门控(`AUTOUI_HTTP_BRIDGE_DIAG`)。
+- **回填派发 seq 门控**:`DesktopMessage::HttpBackfill` 专用通道,handler
+  零状态写的空回填不置脏(F1 fire_timer 语义延伸;普通事件派发语义不动;
+  逃生门 `AUTOUI_MSG_BACKFILL_DIRTY=1`)。事件名推导 `::` 截断只作用首个
+  \u{1F} 前的事件名段——载荷 body 内 `std::process` 等文本不再截坏
+  handler 名(musk K10 空渲染族)。
+- **退出审计四分法**:697 三挂点 + main_err/main_err_ai_mode/
+  mem_guard_f12_escape + **native_crash 钩**(SetUnhandledExceptionFilter,
+  落笔后 CONTINUE_SEARCH 保 WER)。**外部击杀指纹 = 审计册零行 + 退出码
+  1**(Windows 强杀恒 1)。musk soak 仪器的"VM 必退 code=1"定谳为收尾
+  taskkill 假象;斜率报值实为 MB/hour(单位 bug,musk 侧修)。
+
 ## 桌面端点跨仓配对契约（PLAN-698 SD-04）
 
 auto-os 桌面 shell（ui_desktop 宿主装载的特权 .at App）所在进程=**真实
