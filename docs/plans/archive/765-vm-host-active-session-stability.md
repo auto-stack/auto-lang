@@ -305,9 +305,12 @@ T-04 交叉复验：musk soak 仪器 GREEN 重跑（斜率+1h 零退）+ 本仓�
   会话收尾自解;与 F-765-R5 同源）。无任何代码/元数据残留风险。
 - **制品面**：主检出 release auto.exe 重建（见下）——生产消费面=musk 侧
   VM 宿主/代码生成门禁二进制;web bundle 无涉（r2 零 website/vue 改动）。
-- **批量回归到期判定**：765 % 5 == 0 且 r2 代码落地晚于收据
-  （.last-batch-regression.json last_covered_plan_id=766 未覆盖 r2 代码
-  10b9485ad）→ **到期** → `/auto-plan:regress` 主检出单实例。
+- **批量回归（已执行,2026-10-12 04:00）**：到期成立（765 % 5 == 0,r2 代码
+  落地晚于上份收据窗）→ 主检出单实例三腿=tf 6279/6281（首跑 fail-fast
+  ffi_dual_019=昨夜同形;全量 2 红=负载 flake 双双定向绿[state_file F-762-R2
+  在册 + ffi_dual_019 两配置隔离绿,今日 t05 基线 stash 亦复现=预存负载
+  flake 非 r2 面]）+ tt 5629/5629 + tb 5313/5313;**零新增红**;收据刷新
+  至 2a53775fa（verdict=green-with-flakes）。
 
 ### review 阶段裁定（PLAN-765:r2，2026-10-12）
 
