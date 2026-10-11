@@ -1,7 +1,7 @@
 ---
 plan_id: PLAN-763
 plan_revision: 1
-status: reviewed
+status: archived
 feature_name: consolidate-root-packages
 created_at: 2026-10-11
 updated_at: 2026-10-11
@@ -9,7 +9,7 @@ supersedes_spec_components: ["docs/specs/aavm/design/corpus.md", "docs/specs/aav
 new_spec_components: []
 touched_goals: [GOAL-016]
 affects: [aavm, blueprint, parity, website]
-current_step: 4
+current_step: 5
 total_steps: 5
 ---
 
@@ -48,7 +48,7 @@ auto/ → packages/aavm/；blueprints/ → packages/blueprints/；parity/ → te
 - [x] T-02：迁移五目录，同步消费者，形成资产映射核验。
 - [x] T-03：完成作用域验证与冒烟，保存结果和失败归因（taa 5 红全分诊：P735-R1/REG-2 已登记 2 枚 + AAVM 3 枚经基线 716ca62db 同滤串对照同红同形态=预存，763-baseline-taa.{json,log}；bp 冒烟 2 红为调用 cwd 工件、项目 cwd 复跑双绿，763-smoke-recheck.json；预存债登记 KNOWN-DEBT P763-R1/R2）。
 - [x] T-04：提交实现，以 auto-plan:review 从产物重建验收结论（同会话复审，明确限制），审定 Spec delta。（212f222fb+62a7cf47a；outcome pass，见复审记录）
-- [ ] T-05：auto-plan:merge 完成规范/账本、ff-only 合入、归档与 guard 清理。
+- [x] T-05：auto-plan:merge 完成规范/账本、ff-only 合入、归档与 guard 清理。（delivery 1202d2062，见合并收据）
 
 ## 复审记录
 待执行（T-04）。基面 4aa461d1c0765436ab974817ee4ad7ebb8ba719c；外部依赖在工作树创建后记录。
@@ -61,3 +61,11 @@ stage: review | PLAN-763 | r1 | outcome: pass（同会话复审，明确限制�
 无；已有授权。先审计仓外消费者，保护其他会话检出。
 
 执行基面 716ca62db；专属工作树 lang-763/auto-lang，auto-down detached@895f8d0。八流程审计与396资产迁移记录在开发工作树 docs/reports/763-*。
+
+stage: merge | PLAN-763 | r1 | outcome: pass | completion_kind: delivered | prepared: 62a7cf47a（reviewed，工作树 clean）+31 份 spec 投影在支（763-spec-delta.json 冻结） | landed: master=plan-763-dev=1202d2062（git merge --ff-only 零 merge 提交；rebase 旧→新映射 212f222fb→4707b9742、62a7cf47a→1202d2062，git range-diff 双 = 等价证明；落地 diff rename 检出 100%） | ledger_refreshed: .autoos/specs.json 兼容期手工投影（README §5 通道，758 先例）——designs/repo-layout 同目标更新（24 项现状+PLAN-763:r1+source-sha256+commit:1202d2062）+ 新增 reports/PLAN-763-deposit、tests/repo-consolidation-verification、reviews/PLAN-763-review（832→835 项，无关条目全保留）；索引再生 scripts/spec-index.py 26 projects 零漂移 | archived: docs/plans/archive/763-consolidate-root-packages.md（status: archived，T-05 勾选，本收据） | cleaned: 待清理步回填 | tf 到期检查: 不到期——763%5=3 非 ÷5；收据 2026-10-11T07:41Z（<48h）covered 761，其后仅 L0 fix-nowrap-shrink 与本计划落地，无 ÷5 计划 | 生产工件: 主检出 target/debug/auto.exe（PATH 消费面）重建回执待回填
+
+### spec-sync 回写记录
+- docs/specs/design/repository-layout.md：Current-state 30→24 项、五归位表、CI 审计与维护规则（PLAN-763 节）。
+- 31 份模块 spec 投影（aavm/auto-lang/auto-man/blueprint/parity/website/widgets/plans/goals/overview/INDEX，清单见 763-spec-delta.json）。
+- KNOWN-DEBT-AND-RISKS.md：P763-R1（aavm compile 腿双 E0433 + goldens INVALID_BYTECODE 预存，基线实证）/ P763-R2（aavm.at 单文件直跑 master 同错）。
+- goals.md GOAL-016 行同步（CI 删除后未启用 Actions）。
