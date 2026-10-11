@@ -1,12 +1,12 @@
 {
   "plan_id": "PLAN-767",
-  "plan_revision": 1,
+  "plan_revision": 2,
   "stage": "new",
   "captured_at": "2026-10-12",
   "repository": "D:/autostack/auto-lang",
   "branch": "v0.6-dev",
-  "base_commit": "c64b71353e740bf84246de8bd612f692cba04db1",
-  "observation": "Static planning snapshot; no builds, native tests, implementation or worktree creation performed.",
+  "base_commit": "a9225e8de6e13cc0bd0c519e7c4b380c7276ebfa",
+  "observation": "Revision 2 planning snapshot: conditional for syntax correction. No builds, native tests, implementation or worktree creation performed. Original revision 1 snapshot preserved in inputs-r1.json.",
   "inputs": [
     {
       "path": "AGENTS.md",
@@ -175,6 +175,10 @@
     {
       "path": "scripts/verify-ac-source-745.ps1",
       "sha256": "78da15574b5567fac004387082f072dcf7aa413ccde3c980cbe1a952e8dbb0dc"
+    },
+    {
+      "path": "website/docs/tutorials/for-loop-guide.md",
+      "sha256": "bd69f46e783efa2b3fc6c0a3c341602380403b0869520a091724a74ee50804ff"
     }
   ],
   "skill_inputs": [

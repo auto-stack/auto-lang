@@ -2,7 +2,7 @@
 plan_id: PLAN-767
 status: drafting
 feature_name: AC 标量计算扩面：精确整数运算与布尔短路
-plan_revision: 1
+plan_revision: 2
 author: [Codex]
 created_at: 2026-10-12
 updated_at: 2026-10-12
@@ -25,7 +25,9 @@ affects: [auto-ac, auto-hir, auto-acc]
 
 在 745 已交付的源码 → Checked HIR → Windows x64 PE 管线上，新增一个显式选择的
 scalar-i32 profile，补齐 ACC 常用的整数减/除/余、相等/全序比较、一般取负及布尔
-`&& / || / !`。旧 core-i32 profile 保持原支持/拒绝和数值语义。
+`&& / || / !`，并支持 Auto 的条件循环 `for 条件 { ... }`。
+旧 core-i32 profile 保持原支持/拒绝和数值语义，包括其历史 while 写法；
+新 scalar-i32 源码 profile 使用条件 for，不引入 while 作为对外语法。
 
 这是 743「编译器所需类型/运行时首批」候选②的**标量子合同**，不是交付整个候选②。
 成果是可用于扫描器/解析器条件判断的原生计算底座；字符串、字符、List、聚合能力仍有
@@ -40,7 +42,7 @@ scalar-i32 profile，补齐 ACC 常用的整数减/除/余、相等/全序比较
 4. 保留 741/745 的真实 CLI、命名实参顺序、来源映射、深输入、事务与进程生命周期行为。
 
 非目标：裁定全语言 int 宽度、i64/uint/float/unit 扩面、char/str/List、record/enum、
-用户泛型、for/use/全局变量、生产 ABI/DLL/热重载、ACC 主体迁移/桥、通用优化 pass、
+用户泛型、范围/集合遍历 for、带初始化/更新子句的 for、use/全局变量、生产 ABI/DLL/热重载、ACC 主体迁移/桥、通用优化 pass、
 自主 SSA/机器码后端、性能或发行承诺。原生目标仍为 Windows x64。
 
 ## 2. 架构方案
@@ -99,6 +101,12 @@ str/char/List 和整数/布尔运算，适合拆成独立实施合同，不能�
 当前 `hir.rs::BinOp` 只有 AddI32/MulI32/LtI32，source AST 同样仅三种二元操作，
 `main.rs` 只接受一个 SOURCE_PROFILE。因此先建立比较/短路与严格 profile 扩面机制，
 再引入需要所有权和字符索引决策的堆数据，是一个可独立复审的有界切口。
+
+循环语法依据 [for 教程](../../website/docs/tutorials/for-loop-guide.md) 的条件循环形式
+`for condition { ... }`。主 parser 的 `for_stmt` 已有 `Iter::Cond`；旧
+`while_stmt` 也降至此形式，但兼容实现不是新源码 profile 的语法依据。
+745 原型只接 while、排除 for 是已交付 profile 的局限，本计划补条件 for，
+不接旧 AST，不把范围循环、集合遍历和初始化/更新子句一起纳入。
 
 [str/char 语义冲突](../reports/745-source-core-i32/numeric-boundary.md)依然存在：
 VM builtin 的 char_at 返回 str、auto-lib 的表面返回 int、Value 保存 Unicode char。
@@ -182,6 +190,20 @@ VM builtin 的 char_at 返回 str、auto-lib 的表面返回 int、Value 保存 
 `-x`、`-(expr)`新增支持；一元`+`仍排除。`a-1`不得误读为相邻负literal。
 换行/CRLF、参数逗号、括号收口规则继承745，不因多操作符丢弃帧或尾部输入。
 
+### 5.2.1 条件 for（revision 2）
+
+新源码 profile 接受 `for <bool表达式> { ... }`，包括 `for y != 0 { ... }`。
+条件在每轮进入循环体前求值；初值false执行零次；continue回到条件检查，
+break离开最近循环。嵌套循环、条件中的函数调用和短路都遵守同一规则。
+条件必须bool；缺条件、缺闭合、`for item in xs`、范围/初始化/更新形态显式拒绝。
+新profile的while报text/source.unsupported；旧profile的while仍按745原合同接受，
+旧profile的for仍拒绝，不能通过共享lexer/parser扩大旧profile语法面。
+
+source AST内部可复用既有条件循环结构；公共HIR仍降为loop及条件分支，
+不因源码关键字改变而新增低层控制流模型。合成节点span指回for关键字/原条件；
+条件不可hoist，continue不能跳过重新判断。本规则适用于所有新profile正向源码语料，
+已有745旧profile语料保持原输入及预期。
+
 ### 5.3 HIR、verify 与 native
 
 公共 HIR 保留精确类型、源 span、eager/lazy区分。拟新增 unary 和逻辑短路节点，
@@ -206,9 +228,9 @@ MIN/-1和0不能逃成OS硬件异常；跳转既有trap70路径。
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | add | docs/specs/auto-ac/source-scalar-i32.md | 仅core-i32源码→新增显式scalar-i32运算/优先级/trap/短路/拒绝域 | 定义新profile而非改写旧语义 | AC-01..04,06 |
+| SD-01 | add | docs/specs/auto-ac/source-scalar-i32.md | 仅core-i32源码→新增显式scalar-i32运算/优先级/trap/短路/条件for与拒绝域 | 定义新profile而非改写旧语义 | AC-01..04,06 |
 | SD-02 | modify | docs/specs/auto-hir/project.md | 单descriptor/三op→双身份域、unary/lazy运算及verify边界 | 共享公共HIR、隔离CLIF与身份越权 | AC-01,04,05 |
-| SD-03 | modify | docs/specs/auto-hir/stage-contract.md | S0–S6仅core-i32已实现→追加新域与身份随行、条件求值规则 | 区分阶段事实与pass目标态 | AC-01,03..05 |
+| SD-03 | modify | docs/specs/auto-hir/stage-contract.md | S0–S6仅core-i32已实现→追加新域与身份随行、条件求值和for到loop降级规则 | 区分阶段事实与pass目标态 | AC-01,03..05 |
 | SD-04 | modify | docs/specs/auto-ac/project.md | 单源码profile→显式双profile、收据身份及旧行为兼容 | 消费者/CLI契约可核查 | AC-01,06,07 |
 | SD-05 | modify | docs/specs/auto-acc/project.md | MD-409/410仍required→追加本profile运算证据，完整语言/字符/主体/代际仍open | 不以原型运算冒充ACC或全语言实现 | AC-07,08 |
 
@@ -230,13 +252,14 @@ check-source/build-source或直接HIR bind/verify/build入口；正向native必�
 | V-02 | AC-02 signed运算 | -7/3、7/-3、-7%3、7%-3、-7/-3、-7%-3 | 分别-2/-2/-1/1/2/-1，源码包装成退出0自断言，HIR和运行证据同源 | i32，不能拿PE负exit低字节当值oracle |
 | V-03 | AC-02/03 trap时序 | MAX+1、MIN-1、MIN取负、MIN/-1、MIN%-1、1/0、1%0；先调用mark_a再求值 | build成功；exit70、前驱stderr精确a；对比未执行分支无trap | 普通运行期域，非comptime |
 | V-04 | AC-03 短路 | false&&rhs、true||rhs、true&&rhs、false||rhs；rhs有mark_b或除零 | 跳过两项exit0/无b/无trap；执行两项精确一次b或trap70 | RHS实际bool函数，类型合法 |
-| V-05 | AC-03 左侧唯一及嵌套 | lhs标a、rhs标b；组合于return/let/assign/while/call/named arg，循环至少两轮 | 按真值路径精确a或ab；每轮重算，命名绑定不重排trace；bool返回/传参仍0/1 | 不只顶层if路径 |
+| V-05 | AC-03 左侧唯一及嵌套 | lhs标a、rhs标b；组合于return/let/assign/条件for/call/named arg，循环至少两轮 | 按真值路径精确a或ab；每轮重算，命名绑定不重排trace；bool返回/传参仍0/1 | 不只顶层if路径 |
 | V-06 | AC-02/04 比较与拒绝 | MIN/MAX/负数全序，bool四组eq/ne、优先级；混合bool/int、!1、-true、true||unknown()、false&&(1+2) | 正向exit0；反向bind/verify的源码原token诊断，未执行RHS也查名/类型 | 静态合法性≠运行期执行 |
 | V-07 | AC-05 可信门 | 真实bound Bundle变异成错类型unary/lazy、旧身份新增op、共享Expr、自环/双环/跨body引用 | 本进程verify受控拒绝，无Checked/native产物；输出后重verify不能沿用旧凭证 | 不只文本parser负例 |
 | V-08 | AC-04/06 parser帧 | a-1/负literal、二元实参逗号、跨行/CRLF、缺操作数/缺右括号、混合优先级 | 正向实际PE正确；畸形source.syntax，不掉调用/尾部、不panic | 新操作符与745原帧规则 |
 | V-09 | AC-06 深输入 | 16384项逻辑链、20000层!、4096层逻辑/调用混合及缺闭合反例；保留745深块族 | 合法到Checked（含Drop），畸形受控拒绝；小型混合1000层至少一例真实PE正确 | 不承诺任意规模性能/无限内存 |
 | V-10 | AC-01/06 工具事务 | 新profile成功收据；旧成功三件SENTINEL后新source/HIR拒绝、故障注入link/publish | 身份/hash同事务；失败保持exe/obj/收据原hash，执行器全出口回收、沿用显式残留诊断 | 继承741/745，不重造事务执行器 |
 | V-11 | AC-07 代表计算 | Euclid gcd(48,18)=6；十进制计数12345=5；lexer is_digit的i32码点比较改写 | 源码→PE退出0，固定独立值断言/区间正反边界；明确非原lexer编译 | char/str/enum/List仍缺 |
+| V-12 | AC-01/04/06 条件for | 新profile的for y != 0、初值false、嵌套break/continue、带trace短路条件；旧/新profile分别输入for/while，非bool条件、未闭合、for-in/初始化子句 | gcd结果6、零次不执行body、continue每轮重验条件/trace次数精确；新for接受/while拒绝，旧while接受/for拒绝；畸形及排除形态受控拒绝且原token定位正确 | 条件循环，不覆盖迭代器/范围/三段式for |
 
 运算oracle来自§5.2固定规则、精确整数数学与真值表；旧VM宽度/溢出行为不作为本profile
 权威。已有test-support负责trace；支撑库不得替Auto函数做运算/解释HIR。
@@ -279,12 +302,12 @@ T-06），以及已有 `scripts/verify-ac-741.ps1` / `scripts/verify-ac-source-7
 
 | ID | owner_stage | 可观察验收与验证方法 |
 |---|---|---|
-| AC-01 | work | 双profile显式身份、绑定/Checked/canonical/native边界成立；旧支持/拒绝保留；V-01/10与741/745门禁通过 |
+| AC-01 | work | 双profile显式身份、绑定/Checked/canonical/native边界成立；旧支持/拒绝保留，包括旧while与新for隔离；V-01/10/12与741/745门禁通过 |
 | AC-02 | work | §5.2整数运算/全序/eq-ne/优先级及数值边界经源码和直接HIR实际PE验证；V-02/03/06/08/11通过 |
 | AC-03 | work | 短路在所有声明表达式上下文保持效果/调用次序、左侧一次、RHS条件执行及运行期trap；V-03..05精确trace通过 |
-| AC-04 | work | 名字/类型/语法/来源映射在新域成立，包括未执行RHS静态拒绝；V-06/08每项有阶段/code/原token断言 |
+| AC-04 | work | 名字/类型/语法/来源映射在新域成立，包括未执行RHS静态拒绝、条件for的bool条件/收口；V-06/08/12每项有阶段/code/原token断言 |
 | AC-05 | work | 新运算直接HIR及程序化Bundle同受verify、归属/无环/旧域限制，未验不进后端；V-01/07与roundtrip通过 |
-| AC-06 | work | 深输入/旧调用帧/事务/进程回收不退化，V-08..10及旧永久反例通过；完整原型测试/locked all-targets零warning/fmt成功 |
+| AC-06 | work | 深输入/旧调用帧/事务/进程回收不退化，条件for的零次/每轮条件/break/continue正确；V-08..10/12及旧永久反例通过；完整原型测试/locked all-targets零warning/fmt成功 |
 | AC-07 | work | case清单/真实PE/运行收据与输入和工具链绑定，一键门禁实际执行；SD01..05冻结提案有据，盘点严格门新鲜；不宣称char/str/List/ACC代际 |
 | AC-08 | review | 独立上下文核查AC01..07、SD与遗漏/延期/workaround/债务；绑定revision、HEAD、依赖及输入hash，合同内缺陷清零才pass |
 | AC-09 | merge | 获合入授权后实际沉淀SD/模块导航/ledger/index、到期批回归、归档9/9、guard clean再清同一树/分支/空组；最终身份/链接/计数与清理收据验证 |
@@ -298,11 +321,11 @@ T-06），以及已有 `scripts/verify-ac-741.ps1` / `scripts/verify-ac-source-7
 
 | 状态 | Task | owner_stage | 依赖 | 路径/操作、独立成果与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 用户批准r1；741/743/745落地 | 确认同一树/branch/base/inputs、零生产diff；新增docs/reports/767-scalar-i32/design.md：节点字段、profile随行API/注册选择、旧verify兼容、writer身份冲突和诊断码及case清单。静态preflight逐项§5/矩阵，禁止改可观察规则；HEAD/hash记录 | 01..07 |
+| [ ] | T-01 | work | 用户批准当前r2实施；741/743/745落地 | 确认同一树/branch/base/inputs、零生产diff；新增docs/reports/767-scalar-i32/design.md：节点字段、profile随行API/注册选择、旧verify兼容、writer身份冲突和诊断码及case清单。静态preflight逐项§5/矩阵，禁止改可观察规则；HEAD/hash记录 | 01..07 |
 | [ ] | T-02 | work | T-01 | src/hir.rs、descriptor.rs、verify.rs、lib.rs及新增schema/scalar-i32.atom、tests/scalar_hir.rs、fixtures/scalar-hir/：双profile+新op/节点+真verify，roundtrip与V01/07/类型正反例；locked all-targets与scalar_hir通过 | 01,04,05 |
-| [ ] | T-03 | work | T-02 | src/source/{lexer,ast,parser,resolve,typecheck,adapter,mod}.rs：显式profile、运算/优先级、迭代帧和span投影；新增tests/scalar_source.rs、fixtures/scalar-source/。V06/08/09通过；所有新源码仍经Atom bind/verify | 01,02,04..06 |
+| [ ] | T-03 | work | T-02 | src/source/{lexer,ast,parser,resolve,typecheck,adapter,mod}.rs：显式profile、条件for解析/逐轮降级、运算/优先级、迭代帧和span投影；新增tests/scalar_source.rs、fixtures/scalar-source/。V06/08/09/12通过；所有新源码仍经Atom bind/verify | 01,02,04..06 |
 | [ ] | T-04 | work | T-02 | src/native.rs：eager算术/比较/unary、div/rem护栏、lazy CFG与规范bool；新增tests/scalar_native.rs的真实HIR PE及trace。V02..05/07正反控制通过，不复用宿主算术作被测执行 | 02,03,05,06 |
-| [ ] | T-05 | work | T-03/04 | src/main.rs、source/adapter.rs与既有source_cli/source_native/common：双profile分派、shared finish_build和身份收据，V01/05/08/10/11真实源码PE，事务SENTINEL与全表达式上下文trace通过 | 01..06 |
+| [ ] | T-05 | work | T-03/04 | src/main.rs、source/adapter.rs与既有source_cli/source_native/common：双profile分派、shared finish_build和身份收据，V01/05/08/10/11/12真实源码PE，事务SENTINEL与全表达式上下文trace通过 | 01..06 |
 | [ ] | T-06 | work | T-05 | 新增scripts/verify-ac-scalar-767.ps1及case manifest、docs/reports/767-scalar-i32/verification.md；复用既有受控runner并串行运行新旧profile/永久反例；完整原型test/fmt/check，按§6隔离root档、盘点严格门与证据包 | 01..07 |
 | [ ] | T-07 | work | T-06 | experimental/ac-core/README.md更新；新增docs/reports/767-scalar-i32/proposed-spec-delta.md冻结SD01..05、profile边界和下一工作包；不发布canonical/ledger。inputs/case/二进制/收据hash绑定；SD与AC覆盖核查 | 07 |
 | [ ] | T-08 | review | T-01..07完成，writes暂停 | /auto-plan:review：同一树独立上下文逐条验收，真实HIR变异/短路副作用/除法护栏/新旧隔离反例；审遗漏/债务/SD与baseline稳定性。pass才reviewed；失败回同树work | 08 |
@@ -326,9 +349,18 @@ closeout实际完成后archived 9/9。不得预勾复审/清理或把T-01设计�
 
 2026-10-12，用户要求因v0.5分支计划号已推进至766，将本草案由746改号为767；文档、附件及未来worktree/branch/script/report引用同步迁移，取号器至少推进至768。仅身份簿记调整，合同内容与plan_revision=1保持。
 
+2026-10-12，stage: new，PLAN-767 revision2，用户纠正Auto条件循环语法后修订。
+
+- outcome: pass（修订草案preflight；未实施）。
+- authorization: 用户明确纠正应使用`for y != 0 { ... }`，据此修订计划语法/验收；没有新增执行授权。
+- changed IDs: T-03/05、AC-01/04/06、SD-01/03及关联V-05/11，新增V-12；T-01按当前r2接入。
+- current contract: §5.2.1支持新profile的条件for，保留旧profile历史while行为；原「for全部排除」被细分为范围/集合/初始化/更新for排除。
+- evidence: 教程条件for与parser的Iter::Cond静态核对；旧r1取证保留于[inputs-r1.json](attachments/767/inputs-r1.json)，当前修订取证见inputs.json。
+- next: 用户确认当前r2实施后进入work；仍drafting 0/9。前述r1pass为历史，不自动作为r2验收证据。
+
 ## 10. 待澄清事项
 
-1. 执行前需确认本新r1合同：先补标量与短路，再推进文本运行时。这是本轮建议的
+1. 执行前需确认当前r2合同：补标量、短路与条件for，再推进文本运行时。这是本轮建议的
    有界切分；并非用户已批准实现。审批依据为仓库AGENTS §1 L1「present for confirmation before executing」。
 2. 本profile明确MIN%-1也trap70；这是新域的测试语义，不推导全语言/生产异常ABI。
    若用户要求不同规则，应在执行前修订§5.2/V03，而非由后端硬件偶然决定。
