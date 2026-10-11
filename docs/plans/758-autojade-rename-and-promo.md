@@ -113,5 +113,17 @@ rebase_evidence: 3e6727d75..bbe1e3556 → 53f81a09d..6e1d53da5 九提交 range-d
 findings: P758-F1..F4 已按证据处理，F4 脚本与模板回原生（对 master 完全相同），最终导航仅浮层 CSS。P758-D1（store writer 不可达）、OBS1/2/3 如实登记，无交付内容遗漏、未批准延期或 workaround。独立性限制：当前实现会话复审，以真实 diff、原始日志、目标 hash 和运行页面重建结论，不声称另派独立 agent。
 next: merge；publication-only store 阻塞按 merge 技能保留 reviewed 活跃计划/工作树。
 
+
+### Merge r2 — canonical 已落地，知识投影阻塞（2026-10-11）
+
+stage: merge | plan_id: PLAN-758 | plan_revision: 2 | outcome: blocked | checkpoint_key: PLAN-758:r2
+prepared: reviewed 6e1d53da58a89c1067d560c9bbbe7ec5bc2a1f1b；八 canonical Spec 差异、输入/输出、投影草案均精确复算；所有实现/证据已提交，工作树 clean。Git for Windows wt-guard 当前输出 clean（无 reparse point）。
+landed: 4858260642157b866abd5636333835700debddb8 --ff-only→ cf33ace7900be5fa1a4cabb06af9fc9e325ee374，主检出 HEAD 在合入后等于 delivery；逐项复查八规范 SHA、六 PNG 原始字节及 website tree 与已构建/测试 tree 同值。当前页面预览 http://127.0.0.1:4218/zh/v05/#journey 使用该精确 tree 的 124.30s 构建，已重启读取新产物，真实浏览器标题可见；不是外网部署。
+rebase_mapping: 53f81a09d..6e1d53da5 → 485826064..cf33ace79 九提交 range-diff 全等：0f03afc51→5176c0733、ba1d33e00→1b31a5ff4、258e0e82e→4023a1e8c、3c8eba7d9→468258e8a、c0dd9978e→760249c14、2deb00e8b→7765440fe、5074e29de→140b6e45b、0dba73187→263aa274e、6e1d53da5→cf33ace79。仅主检出计划簿记增量，代码/依赖/规范合同不变。
+ledger_refreshed: blocked，workspace D:/autostack/auto-lang/.autoos/specs.json；受影响旧项 P732-1/P722-1 与八规范目标在 ledger-projection-pending.json。没有可达注册 spec writer；此前临时 AutoMusk 服务启动/只读探测被自动审批拒绝（blocked by policy，无进一步原因）。未直接写 ledger；当前 hash 与 prepared 快照一致：a133434a4fe8056609861c7d514772c8a646dea3cc3e8a5cda09321e4fe0c6cd。
+archived: pending，不移动计划；status 保持 reviewed，当前 active 路径 docs/plans/758-autojade-rename-and-promo.md。
+cleaned: pending，保留 clean 工作树 D:/autostack/.wt/lang-758/auto-lang / plan-758-dev 及组内依赖；不得跳过 projection 先归档/清理。既有其他会话的 PLAN-759 编辑及临时文件未纳入本提交。
+next: writer 可用后只续做 store-mediated 投影、读回校验、归档及 guard 后清理。当前请求的页面顺序、产品引用与已验收素材已落地；P758-D1 为 publication-only 收尾阻塞。批量回归按 merge 技能在 cleaned 后判定，不在此工作树运行；同日现存批量收据覆盖至 755（new_reds=[]）。
+
 ## 10. 待澄清事项
 无必需决策；深色 PNG 没有自己的完整工具链 manifest，只标用户提供准备态，不伪造对应 promo 旧批身份。store 可用性按先前 P753-D1 记录核查，若仍失败停止 ledger 写入，继续可落地内容。
