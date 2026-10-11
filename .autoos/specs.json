@@ -1420,6 +1420,18 @@
      "related": [
       "PLAN-763"
      ]
+    },
+    {
+     "id": "P762-2",
+     "title": "PLAN-762 图表初始化批量失败归因（761 tt 单发红分诊）",
+     "content": "钉版 auto-lang 11031c556 / auto-os 0532b8fbc（gallery app.at blob c111cb60，clean）；跨仓资产漂移与代码差异候选由 761 同检出构造排除。机制=drive_scheduler_to_quiescence 的 progressed 不计片让出→多片 Init 单调用早退（harness 边界；生产帧泵/调度语义/资产清白）。负载对照如实记负证据：24×CPU 旋 15/15 绿、6×内存 hog+全 tt 档 gallery 绿——自然红不复现，AC-01 落确定性复现（250k 自旋≈4.2M 步>2×1M 片帽，指令帽绑定与负载无关）。处置：四路由完成态+30s 截止驱动（marker 原样）+ 机制钉子；D-762-1 helper 本体修复留置待授权。",
+     "file": "docs/plans/reports/762-chart-init-attribution.md",
+     "related": [
+      "PLAN-762",
+      "PLAN-761"
+     ],
+     "status": "published",
+     "created": "2026-10-11"
     }
    ]
   },
@@ -4984,14 +4996,15 @@
     {
      "id": "P708-1",
      "title": "VM 渲染加载响应性契约：memo 三态门/宿主 epoch/Degrade 诊断（708 S 档）+ CPU 可续跑片/Init demand 登记簿/帧通知泵/骨架占位（711 M 档）",
-     "content": "PLAN-708 S 档 + PLAN-711 M 档交付（auto-lang ui 域，canonical=ui/architecture.md ADR-19/24/26 + vm/architecture.md ADR-23 + 本设计文档）：【S 档】memo 三态门（env=0 强制关>1 强制开>prop；outlet 缺省 on）+宿主 UI epoch+Degrade 诊断+WidgetRegistry 进程级缓存（冷构建 365ms/27ms/1ms/2ms，原始 10-30s 消除）。【711 M 档】①CPU 可续跑片：DriveBudget 双档（片 4ms 墙钟/1M 指令天花板/64 步查钟；10M 跨片累计护栏挂 AutoTask），预算耗尽 slice 档=Runnable（栈完整可续跑）、legacy 档=真错误——静默假成功缺陷除名；②Init demand 登记簿：渲染期只登记（判定≠完成），同代际去重/身份变化=新代际+一次取消（凭据映射清理），props 快照重播种（统一根态交错等价），派发泵 FIFO 依赖序+五态观察；③帧通知泵：listen_raw 条件订阅+8ms 轮次有界泵（就绪集 FIFO 快照本轮不重拾），tick 泵退回纯 I/O；④骨架/失败占位（Loading…/可诊断错误，不无限 Loading）；⑤computed 残面：outlet 扫描穿入 MemoBlock/Conditional（DataTable memo 生效）、memo_slots_fp 不可展开槽标记回退+dyn_deps 防护（FileTree 破恒 FILL）。实测：711-runtime.md（泵占用 4160 轮 p50=p95=max=4ms≪50ms 门禁；长 CPU 20 样本；两病灶页 HIT 序列）。未实施（proposed 保持）：§7 worker 线程边界（另立 Plan；通道语义已单执行者先行验证）。",
+     "content": "PLAN-708 S 档 + PLAN-711 M 档交付（auto-lang ui 域，canonical=ui/architecture.md ADR-19/24/26 + vm/architecture.md ADR-23 + 本设计文档）：【S 档】memo 三态门（env=0 强制关>1 强制开>prop；outlet 缺省 on）+宿主 UI epoch+Degrade 诊断+WidgetRegistry 进程级缓存（冷构建 365ms/27ms/1ms/2ms，原始 10-30s 消除）。【711 M 档】①CPU 可续跑片：DriveBudget 双档（片 4ms 墙钟/1M 指令天花板/64 步查钟；10M 跨片累计护栏挂 AutoTask），预算耗尽 slice 档=Runnable（栈完整可续跑）、legacy 档=真错误——静默假成功缺陷除名；②Init demand 登记簿：渲染期只登记（判定≠完成），同代际去重/身份变化=新代际+一次取消（凭据映射清理），props 快照重播种（统一根态交错等价），派发泵 FIFO 依赖序+五态观察；③帧通知泵：listen_raw 条件订阅+8ms 轮次有界泵（就绪集 FIFO 快照本轮不重拾），tick 泵退回纯 I/O；④骨架/失败占位（Loading…/可诊断错误，不无限 Loading）；⑤computed 残面：outlet 扫描穿入 MemoBlock/Conditional（DataTable memo 生效）、memo_slots_fp 不可展开槽标记回退+dyn_deps 防护（FileTree 破恒 FILL）。实测：711-runtime.md（泵占用 4160 轮 p50=p95=max=4ms≪50ms 门禁；长 CPU 20 样本；两病灶页 HIT 序列）。未实施（proposed 保持）：§7 worker 线程边界（另立 Plan；通道语义已单执行者先行验证）。【PLAN-762 T 档，2026-10-11】测试载体完成态驱动契约：drive_scheduler_to_quiescence 的 progressed 判据只认派发/完成、不计\"续跑片让出未完成\"（cpu.slices_run 缺位）——多片 Init 单调用不保证收敛（761 tt 批量档 gallery 四路由 flake 在案）。测试载体必须完成态+有界截止时间循环驱动（无排队 demand/在途 CPU/I/O 凭据才放行断言；超时红带 pending/CPU/I/O 诊断；precedent plan502/PLAN-759 T-08），续体在途不提前验收、不以单轮无 completed 推断完成；生产帧泵（poll_frame_pump）不受影响（每帧重入天然推进让出片）。机制钉子 plan437_child_init_tests::child_init_multi_slice_early_exit_and_completion_driving；归因 reports/762-chart-init-attribution.md；helper 判据本体修复挂 KNOWN-DEBT D-762-1（须另行授权）。",
      "tags": [
       "PLAN-708",
       "r3",
       "ui",
       "memo",
       "ADR-26",
-      "a39ef6827"
+      "a39ef6827",
+      "PLAN-762"
      ],
      "file": "docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md"
     },
@@ -9276,6 +9289,18 @@
      "related": [
       "PLAN-763"
      ]
+    },
+    {
+     "id": "P762-1",
+     "title": "PLAN-762 复审收据（r1 pass，工件复核）",
+     "content": "r1 pass @f5bc037a1c8e3ffe05c49aa1537db78e08b302a6（基 11031c556，依赖 auto-down@895f8d0 / auto-os@0532b8fbc）：AC-01..03 全过——归因主张对提交源码复核（dynamic.rs progressed 无 slices_run 属实）；diff 审计全 diff 唯一删除行=四路由单次驱动调用、marker 零放宽；门禁 fresh cargo t 5244/5244（静默窗口 96.98s）+ tv 162/162 + tt 5615/5615 + rustfmt 零漂移 + 零新增 skip/ignore/预算改动。findings：F-762-R1 touched_goals 修正 GOAL-009→[GOAL-007,GOAL-016]（goals.md 定义核对，当场修正）；F-762-R2 state_file::lock_serializes_critical_sections 并行负载瞬态红（隔离 6/6 绿，与 plan437 diff 零关联、非预存登记项）转批量档观测；F-762-R3 D-762-1 helper 判据修复按计划约定留置（KNOWN-DEBT 在册）。独立性限制：复审与实施同会话，裁定自工件重建（diff/提交源码/门禁重跑），未采信执行者自述。",
+     "file": "docs/plans/archive/762-chart-init-batch-flake.md",
+     "related": [
+      "PLAN-762",
+      "PLAN-761"
+     ],
+     "status": "published",
+     "created": "2026-10-11"
     }
    ]
   }
