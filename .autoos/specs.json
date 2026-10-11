@@ -1376,6 +1376,17 @@
      ],
      "status": "published",
      "created": "2026-10-11"
+    },
+    {
+     "id": "P759-3",
+     "title": "PLAN-759 日常档 12 红族清偿收据",
+     "content": "8 根因簇全清：全档双轮 5232/5232 绿 0 failed（ash=可见 #[ignore] 分层+集成门禁 23.7s 真跑）；plan606 10.2s→0.18s；p748 生而红双臂转绿；账本销案 P733-R1/P733-R2③/REG-4、新债 P759-D1/D2；跨仓收据 auto-os b5a2333（金样重采样，FF 合流 main）+auto-term worktree DLL 构建；F-R2 walks_up EnvGuard 竞态 flake 复审发现（建议入债）。",
+     "file": "docs/plans/archive/759-daily-red-family-clearance.md",
+     "related": [
+      "PLAN-759"
+     ],
+     "status": "published",
+     "created": "2026-10-11"
     }
    ]
   },
@@ -5678,6 +5689,31 @@
      "related": [
       "PLAN-757",
       "PLAN-756"
+     ],
+     "status": "published",
+     "created": "2026-10-11"
+    },
+    {
+     "id": "P759-1",
+     "title": "merged #[api] 三分支派发契约（PLAN-759 边界③定谳）",
+     "content": "merged 模式（api_over_http=false）下 #[api] 裸调用三分支：①host 桥注册→auto.host.call 改写；②实现体随 imports 编入本模块（exports 在场）→守卫放行模块内直调（PLAN-633 4d5f8de13，防 no-op null 与真调用栈序纠缠吞返回值）；③实现体缺席（跨模块/未装载）→发 CALL_NAT 3142 桩，native 语义=带 AUTO_VM_MERGE/AUTO_BACKEND 行动指引的 RuntimeError（PLAN-734 D7）。双臂测试锁定（直调落账+缺实现报错）；P733-R2③ 随 PLAN-759 销案。",
+     "file": "docs/specs/auto-lang/vm/design/vm-fn-call-semantics.md",
+     "related": [
+      "PLAN-759",
+      "PLAN-633",
+      "PLAN-734"
+     ],
+     "status": "published",
+     "created": "2026-10-11"
+    },
+    {
+     "id": "P759-2",
+     "title": "壁纸测试态隔离规约（712 T-13/T-14 优先级语义的测试侧契约）",
+     "content": "load_desktop_wallpaper 目录档（config wallpapers_dir → env AUTO_DESKTOP_WALLPAPERS_DIR → stella 探测）使 #hex 在有壁纸目录机器被主题默认图覆盖——凡断言壁纸解析值的测试必须以存活至测试结束的空临时目录写 config.wallpapers_dir 隔离；断言逐字精确，禁止「预期色值或任意图片存在」宽松放行。登记债务 P759-D1：硬编码 D:\\Down\\stella-os\\wallpapers 探测挪 env 门控待独立裁定。",
+     "file": "docs/specs/auto-lang/ui/overview.md",
+     "related": [
+      "PLAN-759",
+      "PLAN-712"
      ],
      "status": "published",
      "created": "2026-10-11"
