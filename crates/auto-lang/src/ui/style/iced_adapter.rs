@@ -153,6 +153,9 @@ pub struct IcedStyle {
     /// truncate / whitespace-nowrap:单行渲染(iced Wrapping::None),
     /// renderer 侧配合 clip 容器实现 CSS truncate 语义。
     pub wrap_none: bool,
+    /// L0 fix(2026-10-11):truncate 与 whitespace-nowrap 分流标记——
+    /// 前者 fill+clip 独占截断语义，后者仅禁折行保自然宽。
+    pub truncate_flag: bool,
     /// line-through: 文本删除线
     pub line_through: bool,
     /// underline: 文本下划线
@@ -417,6 +420,7 @@ impl IcedStyle {
             font_family: None,
             text_align: None,
             wrap_none: false,
+            truncate_flag: false,
             line_through: false,
             underline: false,
             // L3
@@ -1347,10 +1351,18 @@ impl IcedStyle {
             }
 
             // ========== Text Control ==========
-            StyleClass::Truncate | StyleClass::WhitespaceNowrap => {
+            StyleClass::Truncate => {
                 // 2026-08-22(侧栏描述换行治理):CSS truncate/whitespace-nowrap →
                 // iced text Wrapping::None(renderer Text 臂消费 wrap_none,
                 // 并套 clip 容器裁掉横向溢出)。
+                self.wrap_none = true;
+                // L0 fix(2026-10-11):truncate 与 whitespace-nowrap 分流——
+                // 前者=fill+clip 语义(独占整行宽,截断溢出),后者=仅禁折行
+                // (自然宽,多段同行时不得抢 Fill)。此前合并臂致并排 diff
+                // 行内多段 shrink-0 文本齐抢 Fill 被裁成等宽三截。
+                self.truncate_flag = true;
+            }
+            StyleClass::WhitespaceNowrap => {
                 self.wrap_none = true;
             }
             StyleClass::BreakWords => {
