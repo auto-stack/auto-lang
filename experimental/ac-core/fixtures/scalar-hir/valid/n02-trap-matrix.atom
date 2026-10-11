@@ -1,0 +1,179 @@
+// V-03: the seven runtime-trap rows — MAX+1, MIN-1, neg MIN, MIN/-1,
+// MIN%-1, 1/0, 1%0 — each as its own zero-param entry, each preceded by a
+// mark_a call so the exact pre-trap stderr ("a", nothing else) is part of
+// the oracle. Requires the trace capability and the support library.
+hir(schema: "auto.hir.scalar.draft", revision: 1u32, profile: "scalar-i32-draft") {
+    requires: ["hir.test.trace.v1"]
+    module m_traps {
+        types {
+            type t_i32 i32 {}
+            type t_f function { params: []; result: "t_i32" }
+            type t_i function { params: []; result: "t_i32" }
+        }
+        declarations {
+            intrinsic i_mark_a t_i { symbol: "hir.test.mark_a"; effect: observable }
+            function d_t_maxadd t_f { name: "sf_t_maxadd"; body: "b_maxadd" }
+            function d_t_minsub t_f { name: "sf_t_minsub"; body: "b_minsub" }
+            function d_t_minneg t_f { name: "sf_t_minneg"; body: "b_minneg" }
+            function d_t_divm1 t_f { name: "sf_t_divm1"; body: "b_divm1" }
+            function d_t_remm1 t_f { name: "sf_t_remm1"; body: "b_remm1" }
+            function d_t_div0 t_f { name: "sf_t_div0"; body: "b_div0" }
+            function d_t_rem0 t_f { name: "sf_t_rem0"; body: "b_rem0" }
+        }
+        bodies {
+            body b_maxadd {
+                owner: "d_t_maxadd"
+                entry: "k0"
+                locals {
+                    local l0 t_i32 { name: "m"; role: binding }
+                    local l1 t_i32 { name: "t"; role: binding }
+                }
+                expressions {
+                    expr e0 call { type: t_i32; callee: i_mark_a; eval_args: []; bindings: [] }
+                    expr e1 constant { type: t_i32; value: 2147483647i32 }
+                    expr e2 constant { type: t_i32; value: 1i32 }
+                    expr e3 binary { type: t_i32; op: add_i32; overflow: trap; lhs: e1; rhs: e2 }
+                    expr e4 constant { type: t_i32; value: 0i32 }
+                }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e0)
+                        let(local: l1, value: e3)
+                        return(value: e4)
+                    }
+                }
+            }
+            body b_minsub {
+                owner: "d_t_minsub"
+                entry: "k0"
+                locals {
+                    local l0 t_i32 { name: "m"; role: binding }
+                    local l1 t_i32 { name: "t"; role: binding }
+                }
+                expressions {
+                    expr e0 call { type: t_i32; callee: i_mark_a; eval_args: []; bindings: [] }
+                    expr e1 constant { type: t_i32; value: -2147483648i32 }
+                    expr e2 constant { type: t_i32; value: 1i32 }
+                    expr e3 binary { type: t_i32; op: sub_i32; overflow: trap; lhs: e1; rhs: e2 }
+                    expr e4 constant { type: t_i32; value: 0i32 }
+                }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e0)
+                        let(local: l1, value: e3)
+                        return(value: e4)
+                    }
+                }
+            }
+            body b_minneg {
+                owner: "d_t_minneg"
+                entry: "k0"
+                locals {
+                    local l0 t_i32 { name: "m"; role: binding }
+                    local l1 t_i32 { name: "t"; role: binding }
+                }
+                expressions {
+                    expr e0 call { type: t_i32; callee: i_mark_a; eval_args: []; bindings: [] }
+                    expr e1 constant { type: t_i32; value: -2147483648i32 }
+                    expr e2 unary { type: t_i32; op: neg_i32; operand: e1 }
+                    expr e3 constant { type: t_i32; value: 0i32 }
+                }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e0)
+                        let(local: l1, value: e2)
+                        return(value: e3)
+                    }
+                }
+            }
+            body b_divm1 {
+                owner: "d_t_divm1"
+                entry: "k0"
+                locals {
+                    local l0 t_i32 { name: "m"; role: binding }
+                    local l1 t_i32 { name: "t"; role: binding }
+                }
+                expressions {
+                    expr e0 call { type: t_i32; callee: i_mark_a; eval_args: []; bindings: [] }
+                    expr e1 constant { type: t_i32; value: -2147483648i32 }
+                    expr e2 constant { type: t_i32; value: -1i32 }
+                    expr e3 binary { type: t_i32; op: div_i32; lhs: e1; rhs: e2 }
+                    expr e4 constant { type: t_i32; value: 0i32 }
+                }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e0)
+                        let(local: l1, value: e3)
+                        return(value: e4)
+                    }
+                }
+            }
+            body b_remm1 {
+                owner: "d_t_remm1"
+                entry: "k0"
+                locals {
+                    local l0 t_i32 { name: "m"; role: binding }
+                    local l1 t_i32 { name: "t"; role: binding }
+                }
+                expressions {
+                    expr e0 call { type: t_i32; callee: i_mark_a; eval_args: []; bindings: [] }
+                    expr e1 constant { type: t_i32; value: -2147483648i32 }
+                    expr e2 constant { type: t_i32; value: -1i32 }
+                    expr e3 binary { type: t_i32; op: rem_i32; lhs: e1; rhs: e2 }
+                    expr e4 constant { type: t_i32; value: 0i32 }
+                }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e0)
+                        let(local: l1, value: e3)
+                        return(value: e4)
+                    }
+                }
+            }
+            body b_div0 {
+                owner: "d_t_div0"
+                entry: "k0"
+                locals {
+                    local l0 t_i32 { name: "m"; role: binding }
+                    local l1 t_i32 { name: "t"; role: binding }
+                }
+                expressions {
+                    expr e0 call { type: t_i32; callee: i_mark_a; eval_args: []; bindings: [] }
+                    expr e1 constant { type: t_i32; value: 1i32 }
+                    expr e2 constant { type: t_i32; value: 0i32 }
+                    expr e3 binary { type: t_i32; op: div_i32; lhs: e1; rhs: e2 }
+                    expr e4 constant { type: t_i32; value: 0i32 }
+                }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e0)
+                        let(local: l1, value: e3)
+                        return(value: e4)
+                    }
+                }
+            }
+            body b_rem0 {
+                owner: "d_t_rem0"
+                entry: "k0"
+                locals {
+                    local l0 t_i32 { name: "m"; role: binding }
+                    local l1 t_i32 { name: "t"; role: binding }
+                }
+                expressions {
+                    expr e0 call { type: t_i32; callee: i_mark_a; eval_args: []; bindings: [] }
+                    expr e1 constant { type: t_i32; value: 1i32 }
+                    expr e2 constant { type: t_i32; value: 0i32 }
+                    expr e3 binary { type: t_i32; op: rem_i32; lhs: e1; rhs: e2 }
+                    expr e4 constant { type: t_i32; value: 0i32 }
+                }
+                blocks {
+                    block k0 {
+                        let(local: l0, value: e0)
+                        let(local: l1, value: e3)
+                        return(value: e4)
+                    }
+                }
+            }
+        }
+    }
+}

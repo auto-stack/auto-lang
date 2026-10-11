@@ -1,13 +1,17 @@
 //! auto-ac-prototype — PLAN-741 CLI over the AC prototype pipeline, extended
 //! by PLAN-745 T-04 with the explicit source profile
-//! `auto.source.core-i32.draft` ("ac-probe" is this binary's historical
-//! documentation name; invoke it via
-//! `cargo run --manifest-path experimental/ac-core/Cargo.toml -- <command>`).
+//! `auto.source.core-i32.draft` and by PLAN-767 with the scalar profiles
+//! (`auto.source.scalar-i32.draft` source, `auto.hir.scalar.draft` HIR)
+//! ("ac-probe" is this binary's historical documentation name; invoke it
+//! via `cargo run --manifest-path experimental/ac-core/Cargo.toml -- <command>`).
 //!
 //! Usage:
 //!   auto-ac-prototype check <file>
-//!       Bind + verify a Schema-bound HIR document; print structured
-//!       diagnostics. Exit 0 on success, non-zero otherwise.
+//!       Bind + verify a Schema-bound HIR document — the descriptor is
+//!       selected by the document's own schema/revision/profile header
+//!       (registered triples only; unknown identities are controlled bind
+//!       diagnostics). Print structured diagnostics. Exit 0 on success,
+//!       non-zero otherwise.
 //!
 //!   auto-ac-prototype build <file> --entry <DefId> --output <exe> [--capability <name>]...
 //!       check -> capability gate -> native lowering -> rust-lld link.
@@ -15,26 +19,32 @@
 //!       Artifacts are published as a transaction with rollback: a failed
 //!       build never overwrites previously successful artifacts.
 //!
-//!   auto-ac-prototype check-source <file> --source-profile auto.source.core-i32.draft
+//!   auto-ac-prototype check-source <file>
+//!       --source-profile auto.source.core-i32.draft|auto.source.scalar-i32.draft
 //!       [--capability <name>]...
-//!       Parse + resolve + typecheck the source subset, then bind + verify
-//!       the generated Atom through the same pipeline as `check`. The mode
-//!       is selected only by the explicit profile flag, never inferred from
+//!       Parse + resolve + typecheck the source subset of the selected
+//!       profile, then bind + verify the generated Atom through the same
+//!       pipeline as `check` (the scalar profile binds under the scalar
+//!       descriptor and verifies through the scalar entry). The mode is
+//!       selected only by the explicit profile flag, never inferred from
 //!       the file extension.
 //!
 //!   auto-ac-prototype build-source <file>
-//!       --source-profile auto.source.core-i32.draft --entry <fn-name>
-//!       --output <exe> [--capability <name>]... [--support-lib <lib>]...
+//!       --source-profile auto.source.core-i32.draft|auto.source.scalar-i32.draft
+//!       --entry <fn-name> --output <exe> [--capability <name>]...
+//!       [--support-lib <lib>]...
 //!       Same checked-module build path as `build`; the entry is a source
 //!       function NAME (zero-parameter, int/i32 result) instead of a DefId.
-//!       Source profile and input hash are written into the .ac-link.txt
-//!       receipt within the same publish transaction.
+//!       Source profile, HIR identity triple and input hash are written
+//!       into the .ac-link.txt receipt within the same publish transaction.
 //!
 //! A missing or unknown --source-profile value is a usage error (exit 2).
 //! Pipeline rejections exit 1; success 0; usage errors 2. All diagnostics
 //! are printed as `file:line:col: error[stage/code]: message`.
 
-use auto_ac_prototype::source::{compile_source, SOURCE_PROFILE};
+use auto_ac_prototype::source::{
+    compile_scalar_source, compile_source, SourceProfile, SCALAR_SOURCE_PROFILE, SOURCE_PROFILE,
+};
 use auto_ac_prototype::{link, native, verify};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -56,18 +66,24 @@ fn check(file: &Path) -> Result<String, (u8, Vec<auto_ac_prototype::atom_text::D
             return Err((EXIT_USAGE, vec![]));
         }
     };
-    let bundle = match auto_ac_prototype::bind_source(&src) {
+    let bundle = match auto_ac_prototype::bind_document(&src) {
         Ok(b) => b,
         Err(diags) => return Err((EXIT_PIPELINE, diags)),
     };
-    match verify::verify(bundle) {
-        Ok(checked) => Ok(format!(
-            "OK {} module(s), capabilities required: {:?}",
-            checked.bundle().modules.len(),
-            checked.required_capabilities()
-        )),
-        Err(diags) => Err((EXIT_PIPELINE, diags)),
-    }
+    // verify through the entry of the document's own domain
+    let checked = match match bundle.domain {
+        auto_ac_prototype::hir::HirDomain::Core => verify::verify(bundle),
+        auto_ac_prototype::hir::HirDomain::Scalar => verify::verify_scalar(bundle),
+    } {
+        Ok(c) => c,
+        Err(diags) => return Err((EXIT_PIPELINE, diags)),
+    };
+    Ok(format!(
+        "OK {} module(s), hir-profile {}, capabilities required: {:?}",
+        checked.bundle().modules.len(),
+        checked.domain().as_str(),
+        checked.required_capabilities()
+    ))
 }
 
 struct BuildArgs {
@@ -80,6 +96,7 @@ struct BuildArgs {
 
 struct SourceArgs {
     file: PathBuf,
+    profile: SourceProfile,
     entry: Option<String>,
     output: Option<PathBuf>,
     capabilities: Vec<String>,
@@ -133,12 +150,12 @@ fn parse_source_args(args: &[String], need_build: bool) -> Result<SourceArgs, St
         i += 1;
     }
     let profile = profile.ok_or("missing --source-profile <name>")?;
-    if profile != SOURCE_PROFILE {
-        return Err(format!(
-            "unknown source profile `{}` (this build accepts `{}`)",
-            profile, SOURCE_PROFILE
-        ));
-    }
+    let profile = SourceProfile::of(&profile).ok_or_else(|| {
+        format!(
+            "unknown source profile `{}` (this build accepts `{}` or `{}`)",
+            profile, SOURCE_PROFILE, SCALAR_SOURCE_PROFILE
+        )
+    })?;
     let file = file.ok_or("missing input file")?;
     if need_build {
         if entry.is_none() {
@@ -150,6 +167,7 @@ fn parse_source_args(args: &[String], need_build: bool) -> Result<SourceArgs, St
     }
     Ok(SourceArgs {
         file,
+        profile,
         entry,
         output,
         capabilities,
@@ -172,7 +190,11 @@ fn check_source(
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "source.at".to_string());
-    match compile_source(&src, &module_path, &args.capabilities) {
+    let compile = match args.profile {
+        SourceProfile::Core => compile_source(&src, &module_path, &args.capabilities),
+        SourceProfile::Scalar => compile_scalar_source(&src, &module_path, &args.capabilities),
+    };
+    match compile {
         Ok(c) => Ok(format!(
             "OK source profile={}, input-hash={}, module(s)=1, capabilities required: {:?}",
             c.profile,
@@ -200,10 +222,14 @@ fn build_source(
         .unwrap_or_else(|| "source.at".to_string());
     let fail = |diags: Vec<auto_ac_prototype::atom_text::Diagnostic>| Err((EXIT_PIPELINE, diags));
 
-    let compiled = match compile_source(&src, &module_path, &args.capabilities) {
+    let compiled = match match args.profile {
+        SourceProfile::Core => compile_source(&src, &module_path, &args.capabilities),
+        SourceProfile::Scalar => compile_scalar_source(&src, &module_path, &args.capabilities),
+    } {
         Ok(c) => c,
         Err(diags) => return fail(diags),
     };
+    let domain = compiled.checked.domain();
     let checked = compiled.checked;
     if let Err(diags) = native::capabilities_check(&checked, &args.capabilities) {
         return fail(diags);
@@ -233,19 +259,28 @@ fn build_source(
     };
 
     // Source metadata travels with the receipt inside the same publish
-    // transaction (no side-channel receipt writes), and the shared
-    // post-Checked build tail does the rest.
+    // transaction (no side-channel receipt writes): the source profile, the
+    // HIR identity triple of the checked module and the input hash; the
+    // shared post-Checked build tail does the rest.
     let output = args
         .output
         .clone()
         .unwrap_or_else(|| PathBuf::from("a.exe"));
     let receipt_extra = format!(
-        "source-profile: {}\nsource-input-hash: {}\n",
-        compiled.profile, compiled.input_hash
+        "source-profile: {}\nhir-schema: {}\nhir-revision: {}u32\nhir-profile: {}\nsource-input-hash: {}\n",
+        compiled.profile,
+        domain.schema(),
+        domain.revision(),
+        domain.as_str(),
+        compiled.input_hash
     );
     let success_extra = format!(
-        "source-profile: {}\n  source-input-hash: {}",
-        compiled.profile, compiled.input_hash
+        "source-profile: {}\n  hir-identity: {}/{}/{}\n  source-input-hash: {}",
+        compiled.profile,
+        domain.schema(),
+        domain.revision(),
+        domain.as_str(),
+        compiled.input_hash
     );
     finish_build(
         &checked,
@@ -315,11 +350,14 @@ fn build(args: &BuildArgs) -> Result<String, (u8, Vec<auto_ac_prototype::atom_te
     };
     let fail = |diags: Vec<auto_ac_prototype::atom_text::Diagnostic>| Err((EXIT_PIPELINE, diags));
 
-    let bundle = match auto_ac_prototype::bind_source(&src) {
+    let bundle = match auto_ac_prototype::bind_document(&src) {
         Ok(b) => b,
         Err(diags) => return fail(diags),
     };
-    let checked = match verify::verify(bundle) {
+    let checked = match match bundle.domain {
+        auto_ac_prototype::hir::HirDomain::Core => verify::verify(bundle),
+        auto_ac_prototype::hir::HirDomain::Scalar => verify::verify_scalar(bundle),
+    } {
         Ok(c) => c,
         Err(diags) => return fail(diags),
     };
@@ -472,8 +510,8 @@ fn main() -> ExitCode {
                 Ok(a) => a,
                 Err(e) => {
                     eprintln!(
-                        "usage: auto-ac-prototype check-source <file> --source-profile {} [--capability <name>]...",
-                        SOURCE_PROFILE
+                        "usage: auto-ac-prototype check-source <file> --source-profile {}|{} [--capability <name>]...",
+                        SOURCE_PROFILE, SCALAR_SOURCE_PROFILE
                     );
                     eprintln!("error: {}", e);
                     return ExitCode::from(EXIT_USAGE);
@@ -487,8 +525,8 @@ fn main() -> ExitCode {
                 Ok(a) => a,
                 Err(e) => {
                     eprintln!(
-                        "usage: auto-ac-prototype build-source <file> --source-profile {} --entry <fn-name> --output <exe> [--capability <name>]... [--support-lib <lib>]...",
-                        SOURCE_PROFILE
+                        "usage: auto-ac-prototype build-source <file> --source-profile {}|{} --entry <fn-name> --output <exe> [--capability <name>]... [--support-lib <lib>]...",
+                        SOURCE_PROFILE, SCALAR_SOURCE_PROFILE
                     );
                     eprintln!("error: {}", e);
                     return ExitCode::from(EXIT_USAGE);

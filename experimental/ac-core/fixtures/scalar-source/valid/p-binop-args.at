@@ -6,8 +6,8 @@ fn add(a int, b int) int {
 
 fn main() int {
     if add(1 - 2, 3 * 4) != 11 { return 1 }
-    if add(b: 10 / 2, a: 7 % 4) != 5 { return 2 }
-    if add(add(1, 2), add(3 % 2, 4 - 1)) != 6 { return 3 }
+    if add(b: 10 / 2, a: 7 % 4) != 8 { return 2 }
+    if add(add(1, 2), add(3 % 2, 4 - 1)) != 7 { return 3 }
     if add(
         1 +
         2,
