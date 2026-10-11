@@ -267,5 +267,5 @@ os-ai-introduction.ts=82a30a079252edd0a14a1b77570e5b52e570ac75bea0392913190262f1
 
 - ledger_refreshed（补完成）：经 README §5 手工回退路径（754/755 先例；同期 758 r2 收据证 store writer 仍拒达）upsert designs P753-1（ecosystem-readme.md 新契约目标，账本原无该文件条目）/ reviews P753-2 / reports P753-3；python 解析读回校验 ID 在册；原账本 sections 结构与无关条目保全。
 - archived：git mv → docs/plans/archive/753-ecosystem-readme-refresh.md，status: archived，T-05 勾选，current_step 5/5。
-- cleaned：wt-guard clean（auto-lang + auto-down 双仓）→ worktree 移除 → plan-753-dev 删除 → 组目录清理（详见下方回填行）。
+- cleaned：wt-guard clean（auto-lang + auto-down 双仓）→ worktree 移除 + prune → plan-753-dev 删除（was ba9ff44e8，已全量并入）→ auto-down 兄弟移除 → 组目录 `.wt/lang-753/` rmdir；批量回归判定：收据覆盖至 755（2026-10-11），753<755 且非 5 倍数，不到期。
 - P753-D1 更新：两计划投影阻塞已经回退路径清偿；store 本体加载失败（缺 document metadata）与写入器不可达仍开放为独立债务。

@@ -380,6 +380,8 @@ fastfail 崩溃且审计无行时，优先按栈溢出排查（重建符号 + RU
 
 | id | 级别 | 领域 | 内容 | 锚点 |
 |---|---|---|---|---|
+**P753-D1 注记（2026-10-11）**：753/756 的投影阻塞已经 README §5 手工回退路径清偿（P753-1/2/3、P756-1/2/3 入账，两计划归档/清理完成，收据见各计划 recovery receipt）；债务剩余部分收窄为——store 本体无法加载现有 `.autoos/specs.json`（缺 document metadata，GET /api/specs 500）且无注册写入器可达（758 r2 同期收据复证 blocked by policy）。后续计划投影可继续走回退路径，store 修复为独立事项，本条保留至 store 恢复或裁定退役。
+
 | P753-D1 | medium | runtime Specs store 兼容性 | 既有 `.autoos/specs.json` 无法由当前 AutoMusk store 加载；任务自有 loopback 服务 `GET /api/specs` 返回 500，已停止。原账本 hash 保持不变；不通过手改 JSON 或删除重建修复。README/语言文档可独立复验，但 store-mediated 投影及随后的计划归档/清理必须等待受支持的恢复路径。未将此项视为已完成。 | [验证报告](reports/753-readme-verification.md)；PLAN-753 §9；auto-musk backend/crates/musk/src/specs.rs |
 
 ### PLAN-754（2026-10-11，reviewed；低危外观瑕疵）

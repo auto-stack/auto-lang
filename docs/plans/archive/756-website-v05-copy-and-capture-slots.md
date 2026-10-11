@@ -88,4 +88,4 @@ Before landing guard: wt-guard clean (zero reparse point); worktree Git clean. C
 
 - ledger_refreshed（补完成）：经 README §5 手工回退路径（754/755 先例；store writer 仍拒达，见本计划 §11 blocked 收据）upsert designs P756-1（ui-presentation.md 待拍槽契约，与 P715-1/P720-2 并列）/ P756-2（application-introductions.md 四主应用统一，与 P722-1 并列）/ reviews P756-3；python 解析读回校验；原 sections 结构与无关条目保全。
 - archived：git mv → docs/plans/archive/756-website-v05-copy-and-capture-slots.md，status: archived。
-- cleaned：wt-guard clean → worktree/分支/组目录清理（详见下方回填行）。
+- cleaned：wt-guard clean → worktree 移除 + plan-756-dev 删除（was 0cc62c923，已全量并入）→ 组目录 `.wt/lang-756/` rmdir；批量回归判定：同 753，不到期。
