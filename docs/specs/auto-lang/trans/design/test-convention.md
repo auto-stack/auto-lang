@@ -12,9 +12,9 @@
 
 | 声明文件 | FFI | 扫描目录 |
 |----------|-----|----------|
-| `tests/a2c_tests.at` | `Test.run_a2c_dir(path)` | `crates/auto-lang/test/a2c` |
-| `tests/a2r_tests.at` | `Test.run_a2r_dir(path)` | `crates/auto-lang/test/a2r` + `test/cookbook` |
-| `tests/a2ts_tests.at` | `Test.run_a2ts_dir(path)` | `crates/auto-lang/test/a2ts` |
+| `test/runners/a2c_tests.at` | `Test.run_a2c_dir(path)` | `crates/auto-lang/test/a2c` |
+| `test/runners/a2r_tests.at` | `Test.run_a2r_dir(path)` | `crates/auto-lang/test/a2r` + `test/cookbook` |
+| `test/runners/a2ts_tests.at` | `Test.run_a2ts_dir(path)` | `crates/auto-lang/test/a2ts` |
 
 由 `auto test` 统一执行（与 VM 测试同一机制）。
 
@@ -35,4 +35,4 @@
 - a2p/a2j/a2gd 目前主要靠后端文件内 inline `#[test]`（cargo test -p auto-lang），
   尚未全部迁入 `tests/*.at` 声明式。
 
-> 来源: docs/plans/archive/263-transpiler-tests.md；tests/a2c_tests.at、a2r_tests.at、a2ts_tests.at；docs/plans/archive/240-rust-cookbook-a2r-tests.md；docs/python-transpiler.md §Test Case Template
+> 来源: docs/plans/archive/263-transpiler-tests.md；test/runners/a2c_tests.at、a2r_tests.at、a2ts_tests.at；docs/plans/archive/240-rust-cookbook-a2r-tests.md；docs/python-transpiler.md §Test Case Template

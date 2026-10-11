@@ -42,5 +42,5 @@ auto service --server rust --dir . --http-config service.json
 
 ## 真实代理验收
 
-见 [deploy/http-service/README.md](../../../deploy/http-service/README.md) 与
+见 [scripts/deploy/http-service/README.md](../../../scripts/deploy/http-service/README.md) 与
 `run_proxy_fixture.py`（nginx 1.31.6 + OpenSSL 3.2.3 冻结环境，测试 CA 不入库）。

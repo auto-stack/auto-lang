@@ -15874,7 +15874,7 @@ impl<'a> Parser<'a> {
 
     /// Parse the nodes inside `view { ... }` up to the closing brace.
     ///
-    /// Plan 015 (auto-down 批次, DEBTS.md 015 🟡): the view block used to
+    /// Plan 015 (auto-down 批次, docs/plans/DEBTS.md 015 🟡): the view block used to
     /// parse a SINGLE root node and then expect `}` — two bare top-level
     /// siblings (`div { onclick: .A(1) } div { onclick: .B(2) }`) cascaded
     /// into "Expected term, got RBrace" while the same shape inside a
@@ -20524,7 +20524,7 @@ widget Counter {
 
     #[test]
     fn test_view_top_level_bare_siblings_with_param_events() {
-        // Plan 015 (auto-down 批次, DEBTS.md 015 🟡): bare top-level sibling
+        // Plan 015 (auto-down 批次, docs/plans/DEBTS.md 015 🟡): bare top-level sibling
         // elements with parameterized events used to fail with
         // "Expected term, got RBrace" (the view block parsed a single root
         // node only); the same shape inside `col { }` worked. Now multiple

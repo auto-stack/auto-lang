@@ -7,7 +7,7 @@
 // - SSE（~Stream<str> 分帧）
 //
 // 责任边界：TLS/Host/访问策略/鉴权在反向代理（edge，见
-// deploy/http-service/README.md）；guard 受保护上传语义由
+// scripts/deploy/http-service/README.md）；guard 受保护上传语义由
 // examples/http_server/uploads + plan730 契约测试承载，本示例不重复。
 
 pub type Ping = { ok: bool, service: str }

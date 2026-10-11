@@ -99,7 +99,7 @@ Python（a2p）、JavaScript（a2j）、GDScript（a2gd）及 Godot 场景（tsc
 | tscn | `tscn.rs` | 688 | Godot 场景文件生成（`SceneDecl` → .tscn） |
 | 逃逸分析 | `escape/` | — | 为 a2r 提供借用/clone/Rc 分层决策（plan-310） |
 
-测试采用约定式发现（plan-263）：`tests/a2c_tests.at`、`a2r_tests.at`、`a2ts_tests.at`
+测试采用约定式发现（plan-263）：`test/runners/a2c_tests.at`、`a2r_tests.at`、`a2ts_tests.at`
 通过 FFI `Test.run_*_dir` 扫描 `crates/auto-lang/test/a2{ c,r,ts,p,j,gd}/` 下的
 `.at` → `.expected.*` 对。当前规模（2026-09-10 快照，复现
 `find crates/auto-lang/test/<dir> -name "*.at" | wc -l`）：a2c 126、a2p 99、
@@ -180,7 +180,7 @@ auto test                                    # 跑 tests/a2*_tests.at 声明的�
 - `RustTrans`/`CTrans` 处于 Universe → Database 混合期（`db: Option<...>`，plan-066），两套类型信息来源并存。
 - a2j 文档（`docs/javascript-transpiler.md`）与实现脱节：文中 `JavaScriptTrans.scope` 字段已不存在，
   行数估计（~660）也过时（实际 814）；以代码为准。
-- a2r 测试分两套：`test/a2r/`（23 目录）+ `test/cookbook/`（163 文件，plan-240），由 `tests/a2r_tests.at` 两个 `#[test]` 分别驱动。
+- a2r 测试分两套：`test/a2r/`（23 目录）+ `test/cookbook/`（163 文件，plan-240），由 `test/runners/a2r_tests.at` 两个 `#[test]` 分别驱动。
 - plans/ 下存在两个 355 号 plan（详见 plans.md 备注），引用 355 时须带 slug。
 
 ## 蒸馏来源（Phase 1）
@@ -190,7 +190,7 @@ auto test                                    # 跑 tests/a2*_tests.at 声明的�
 - `docs/javascript-transpiler.md`、`docs/python-transpiler.md`
 - `docs/plan-indices/06-transpilers.md` 及各 plan 文件（见 plans.md）
 - `crates/auto-lang/src/trans.rs`、`trans/`、`crates/auto-lang/src/lib.rs`、`crates/auto/src/main.rs`
-- `tests/a2c_tests.at`、`a2r_tests.at`、`a2ts_tests.at`
+- `test/runners/a2c_tests.at`、`a2r_tests.at`、`a2ts_tests.at`
 - a2r 文件传输发射（PLAN-727）：`http.transfer_*` submit/observe 面在 sync/async 上下文同形发射（非阻塞提交/观察无 async 变体），仅 `transfer_wait` 分叉（sync 桥接面 / `transfer_wait_async(&t).await`）；builder `.multipart_file/.multipart_text` 方法直发（路径描述到发送）；发射契约见 [http-client-lowering](design/http-client-lowering.md) 文件传输节，运行契约见 stdlib [http-file-transfer](../../stdlib/design/http-file-transfer.md)
 
 - a2r 服务端文件响应发射（PLAN-729）：`http.file_response(root, rel, options)` 直发

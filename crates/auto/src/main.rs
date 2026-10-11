@@ -1689,8 +1689,8 @@ fn real_main(cli: Cli) -> Result<()> {
                 );
             }
 
-            // File-based tests (VM, A2R, A2C, A2TS) now discovered via tests/*.at files
-            // Plan 263 Phase 2-3: tests/a2r_tests.at, tests/vm_tests.at, tests/a2c_tests.at, tests/a2ts_tests.at
+            // File-based suites (VM, A2R, A2C, A2TS) have entrypoints in test/runners/*.at.
+            // Plan 263 Phase 2-3: test/runners/a2r_tests.at, test/runners/vm_tests.at, test/runners/a2c_tests.at, test/runners/a2ts_tests.at
 
             if all_results.has_failures() {
                 std::process::exit(1);

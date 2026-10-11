@@ -32,10 +32,10 @@ fn fixture_bin() -> std::path::PathBuf {
     BIN.get_or_init(|| {
         let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let workspace_root = manifest_dir.join("../..");
-        let manifest = workspace_root.join("tools/native-fixture/Cargo.toml");
+        let manifest = workspace_root.join("scripts/tools/native-fixture/Cargo.toml");
         let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
         let bin = workspace_root
-            .join("tools/native-fixture/target")
+            .join("scripts/tools/native-fixture/target")
             .join(profile)
             .join("native-fixture.exe");
         if !bin.exists() {

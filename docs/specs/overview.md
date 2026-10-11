@@ -55,8 +55,8 @@
 | [auto-cosmic](auto-cosmic/project.md) | COSMIC 桌面复刻实验（4 子 crate，Linux 向）+ **Smithay 合成宿主线**（509 起：host-smithay crate，smithay 0.7.0 路线 B——桌面协议宿主消费帧，宿主无 iced；骨架+shell 首帧已落地） | active（509 线内） |
 | examples/ | 51 项示例（ui 应用轨道 0xx 系列/godot/http/charts gallery…） | active |
 | schema/ | `aura.at`——AURA 内置组件唯一声明源（Plan 435） | active |
-| test/ tests/ | 特性 fixture 与语言级 e2e .at 套件 | active |
-| tools/ deploy/ | fstr 转换、shadcn 快照；playground 部署配置 | 辅助 |
+| test/ | 特性 fixture、fixtures/plan446 历史语料、auto 语言单测与 runners/*.at 总入口（PLAN-761 归并） | active |
+| scripts/tools/ scripts/deploy/ | fstr/Tailwind/截图差分/shadcn 工具及 native-fixture；HTTP/Playground 部署模板（PLAN-761 归并） | 辅助 |
 
 ### 孤儿与废弃（勿新增依赖，待处置）
 
@@ -104,4 +104,5 @@
 - 计划状态审计：[docs/plans/archive/plans-status-audit-2026-08-20.md](../plans/archive/plans-status-audit-2026-08-20.md)（2026-09-01 起接任审计 = [Plan 513](../plans/archive/513-repo-integration-cleanup.md) 需求分析总表）
 - 设计文档：[docs/design/00-intro.md](../design/00-intro.md)
 - 知识库生命周期：[Design 27](../design/27-knowledge-base-lifecycle.md)
+- 仓库布局与临时资产规则：[repository-layout](design/repository-layout.md)（PLAN-761）
 - 开发范式：[docs/specs/README.md](README.md)（v2.1 兼容期）+ [Design 26](../design/autoplan-spec-ledger.md)

@@ -7,7 +7,7 @@
 > 本方案的协议层远期锚点）、[08-ui-systems.md](08-ui-systems.md)（UI 域现状章）、
 > auto-os `docs/design/01-stage-b-desktop-migration.md`（Stage B 迁移手法先例）
 > 实施方式：L2 架构级任务——本文档评审通过后分解为 6–10 个独立 Plan 顺序执行
-> 债册登记：DEBTS.md `拆仓-候选` 条目（下一版规划实施）
+> 债册登记：docs/plans/DEBTS.md `拆仓-候选` 条目（下一版规划实施）
 
 ---
 

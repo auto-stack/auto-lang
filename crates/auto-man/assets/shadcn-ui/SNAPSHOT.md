@@ -39,7 +39,7 @@
 ## 重放抓取
 
 ```bash
-tools/shadcn-snapshot/snapshot.sh <scratch-dir>
+scripts/tools/shadcn-snapshot/snapshot.sh <scratch-dir>
 # 把 <scratch-dir>/src/components/ui/* 拷回本目录即可
 ```
 

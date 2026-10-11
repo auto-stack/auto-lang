@@ -1,6 +1,6 @@
 //! Plan 473 T8：native dock fixture E2E（真第三方进程路径）。
 //!
-//! 拉起 `tools/native-fixture` 独立进程，经 `native_dock::win32` 公开层驱动
+//! 拉起 `scripts/tools/native-fixture` 独立进程，经 `native_dock::win32` 公开层驱动
 //! dock 全流程原语，覆盖 B1（pid 发现 + 几何落槽）/ B2（undock 恢复 pre-dock
 //! bounds）/ B3（relayout 跟随）/ C3（min-size 探测）/ C4（倔强窗口复位 →
 //! 拖走判定）/ C5（最大化先 restore）/ B7（self-close → WinEventHook DESTROY）。
@@ -31,12 +31,12 @@ fn fixture_bin() -> std::path::PathBuf {
     BIN.get_or_init(|| {
         let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let workspace_root = manifest_dir.join("../..");
-        let manifest = workspace_root.join("tools/native-fixture/Cargo.toml");
+        let manifest = workspace_root.join("scripts/tools/native-fixture/Cargo.toml");
         let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
         // fixture 是独立 workspace，产物落它自己的 target（与外层 cargo test
         // 的 target 锁互不相干——测试内对共享 target 构建 = flock 死锁，实测）。
         let bin = workspace_root
-            .join("tools/native-fixture/target")
+            .join("scripts/tools/native-fixture/target")
             .join(profile)
             .join("native-fixture.exe");
         if !bin.exists() {

@@ -2,16 +2,16 @@
 //! shell on current master — root `Sidebar { }` child-widget reference comes
 //! out as the literal fallback text `<Sidebar />` instead of expanding.
 //!
-//! `#[ignore]` — needs the b3check corpus (in-repo tmp-corpus/, rebuilt from
+//! `#[ignore]` — needs the b3check corpus (in-repo test/fixtures/plan446/, rebuilt from
 //! os-config b955004 via git archive). Run:
 //!   cargo test -p auto-lang --features ui-iced plan446_j1 -- --ignored --nocapture
 
 #[cfg(test)]
 mod plan446_j1_repro {
     fn locate_b3_app() -> Option<std::path::PathBuf> {
-        // 语料入库本仓 tmp-corpus/(b955004 git archive 重建,PLAN-446 L 节):
+        // 语料入库本仓 test/fixtures/plan446/(b955004 git archive 重建,PLAN-446 L 节):
         // crates/auto-lang → 3 级上溯 = worktree 根。
-        let rel = "../../tmp-corpus/b3check/auto/src/front/app.at";
+        let rel = "../../test/fixtures/plan446/b3check/auto/src/front/app.at";
         let cand = std::env::var("CARGO_MANIFEST_DIR")
             .ok()
             .map(|d| std::path::PathBuf::from(d).join(rel));
@@ -20,7 +20,7 @@ mod plan446_j1_repro {
 
     #[cfg(feature = "ui-interpreter")]
     #[test]
-    #[ignore = "requires local b3check corpus (os-config 008 worktree)"]
+    #[ignore = "historical UI repro; run explicitly against the tracked Plan 446 fixture"]
     fn b3_child_widget_expansion() {
         let app = match locate_b3_app() {
             Some(p) => p,

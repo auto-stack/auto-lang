@@ -1,7 +1,7 @@
 //! Win32 适配层（Plan 473）：发现 / 几何 / 样式 / 层级 / 显示态。
 //! （WinEventHook 事件层见本文件 `events` 段。）
 //!
-//! `windows` crate 调用只允许出现在本文件与 `tools/native-fixture/`；
+//! `windows` crate 调用只允许出现在本文件与 `scripts/tools/native-fixture/`；
 //! 其余模块一律经由 `native_dock`（mod.rs）的纯逻辑层与本层的薄封装。
 //! 非 Windows / 未启用 `native-dock` feature 时，`win32_noop.rs` 提供同名
 //! no-op API，宿主层无需 cfg 包裹。

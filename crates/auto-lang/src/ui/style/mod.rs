@@ -7,7 +7,7 @@
 // Plan 527 覆盖契约(VM 轨 Tailwind 全量覆盖)
 // ═══════════════════════════════════════════════════════════════════════════
 // 覆盖基线 = Tailwind v3.4 core 清单(tests/fixtures/tailwind-v34-utilities.txt,
-// 8861 类×15 families,tools/gen_tailwind_manifest.py 可再生)。契约三支柱:
+// 8861 类×15 families,scripts/tools/gen_tailwind_manifest.py 可再生)。契约三支柱:
 //
 // 1. 零静默丢弃 —— `Style::parse_reported` 报告未映射类原文名;常驻审计
 //    `tests/style_parity.rs`(cargo t 档)断言白名单外零 missing。

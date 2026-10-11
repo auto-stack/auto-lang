@@ -103,7 +103,7 @@ exit 0 = 通过；`--runs N` 兼作首启竞态频率计（T-04）。脚本只�
 左缩进」三类差异变成可复跑的机器判定（违规退出码 1）：
 
 ```bash
-python tools/parity_shot_diff.py <vue.png> <vm.png> --scale 2
+python scripts/tools/parity_shot_diff.py <vue.png> <vm.png> --scale 2
 # 仅看数字不判预算：追加 --no-budget
 ```
 
@@ -116,7 +116,7 @@ python tools/parity_shot_diff.py <vue.png> <vm.png> --scale 2
 | 左缩进（搜索行左边界 / 分组标签 / 便签标题） | ≤1px | 容器 `mx-*`/`px-*` 与契约类合并两端同效 |
 
 探针采样点是 015-notes 专用（1280x800 视口坐标）；换布局需同步
-`tools/parity_shot_diff.py` 的 `DEFAULTS`，并在该示例的 acceptance 里登记 T 条目。
+`scripts/tools/parity_shot_diff.py` 的 `DEFAULTS`，并在该示例的 acceptance 里登记 T 条目。
 **预算违规 = 回归**，不得以「已知差异」名义放行（AGENTS.md §2 门禁纪律）。
 
 ### 步骤 4：分级门禁与合入规范 (Change-Scoped Gating)
@@ -170,7 +170,7 @@ python tools/parity_shot_diff.py <vue.png> <vm.png> --scale 2
    - [ ] **删除线与下划线 (Line-Through & Underline)**: 已完成待办项、已核销金额等带 `line-through` 的文本是否正确绘制水平穿透线？带 `underline` 的超链接/强调文本是否正确绘制底线？
    - [ ] **可点击文本组件的修饰继承**: 当 `text` 绑定了 `onclick`（在 AST/AURA 中转为 `Button`）时，其内部文本标签是否依然完整继承并渲染了 `line-through`、字号和颜色？
 9. **数值对拍优先于目视（PLAN-619 常驻）**:
-   - [ ] 双端截图先过 `tools/parity_shot_diff.py`（见 §3 步骤 3.5）；违规即回归。
+   - [ ] 双端截图先过 `scripts/tools/parity_shot_diff.py`（见 §3 步骤 3.5）；违规即回归。
    - [ ] 语义面色两端同值（同 token 同色）；**图标尺寸以 `.at` 的 `size:` 为权威**，
          VM/Vue 同盒（生成器注入的 `w-5 h-5` 只是缺省，显式 size 时让位）。
    - [ ] 容器左缩进两端一致：`mx-*`/`my-*`/`m-*` 与 per-axis padding 在 VM 端

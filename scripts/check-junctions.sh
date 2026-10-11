@@ -3,13 +3,13 @@
 #
 # 用途：在 D:/autostack/ 下执行任何删除/清空/镜像操作前，先运行本脚本
 # 确认目标不含或未被 junction 指向。如果输出任何 junction/symlink，
-# 停止你的操作，改用安全方案（见 SAFETY.md）。
+# 停止你的操作，改用安全方案（见 docs/guides/filesystem-safety.md）。
 #
 # 用法：bash check-junctions.sh <目标目录>
 #   退出码 0 = 未发现 junction（相对安全）
 #   退出码 1 = 发现 junction（危险，停止破坏性操作）
 #
-# 详见 D:/autostack/auto-ai/SAFETY.md
+# 详见本仓 docs/guides/filesystem-safety.md
 
 set -euo pipefail
 
@@ -101,7 +101,7 @@ fi
 echo
 if [ "$FOUND" = "1" ]; then
     echo "❌ 发现 junction/symlink — 停止任何删除/镜像/清空操作！"
-    echo "   参见 SAFETY.md §2（永久禁令）和 §4（worktree 安全清理）"
+    echo "   参见 docs/guides/filesystem-safety.md §2（永久禁令）和 §4（worktree 安全清理）"
     exit 1
 else
     echo "✅ 未发现 junction/symlink（相对安全）"

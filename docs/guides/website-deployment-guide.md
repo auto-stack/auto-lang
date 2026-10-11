@@ -73,10 +73,10 @@ mkdir -p /home/visus/auto-website
 
 ### 方式一：使用 deploy-website.ps1（推荐）
 
-项目根目录已提供 `deploy-website.ps1`，它会自动完成构建、打包、上传和解压。
+项目的 scripts 目录提供 `scripts/deploy-website.ps1`，它会自动完成构建、打包、上传和解压。
 
 ```powershell
-.\deploy-website.ps1
+.\scripts\deploy-website.ps1
 ```
 
 脚本流程：

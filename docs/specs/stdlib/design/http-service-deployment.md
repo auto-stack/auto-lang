@@ -15,7 +15,7 @@ canonical；本文只定**服务如何被装配、约束、观测和关闭**。
 
 - **已认证**：本机参考服务，受**单层**可信反向代理保护（TLS 终止 + edge 鉴权在
   代理）；IO 型 API（JSON/SSE/文件/上传）。两轨（VM 进程内 / 生成 Rust 子进程）
-  均经真实 nginx 1.31.6 + 测试 CA 实测（`deploy/http-service/nginx.conf.example`
+  均经真实 nginx 1.31.6 + 测试 CA 实测（`scripts/deploy/http-service/nginx.conf.example`
   + `examples/http_server/deployment/` fixture，runner 现场生成测试证书不入库）。
 - **不在等级内（明示）**：直接公网、内置 TLS（Auto 不是 HTTPS 实现）、HTTP/2/3、
   完整 WebSocket（简化 echo 在 service profile 默认关闭）、多层代理、跨 OS 生产
@@ -146,7 +146,7 @@ header_buf=64KiB/≤100 头  header_read=10s  body=10MiB/10s
 
 ## 8. 部署模板与代理边界
 
-- `deploy/http-service/nginx.conf.example`（基线 nginx 1.31.6）：TLS 终止、明确
+- `scripts/deploy/http-service/nginx.conf.example`（基线 nginx 1.31.6）：TLS 终止、明确
   Host/CORS/auth 责任、access 规则、HTTP/1.1 upstream；JSON/SSE/upload 路径分组——
   SSE `proxy_buffering off`，upload `proxy_request_buffering off` 并对齐 wire/idle/
   total 边界；关闭非幂等自动重试防重复上传。`proxy_read_timeout` 是读取间隔期限
