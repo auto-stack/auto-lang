@@ -1387,6 +1387,23 @@
           ],
           "status": "published",
           "created": "2026-10-11"
+        },
+        {
+          "id": "PLAN-761-deposit",
+          "title": "PLAN-761 根目录整理沉淀",
+          "file": "docs/specs/design/repository-layout.md",
+          "content": "Root cleanup: tests/tmp-corpus/tools/deploy consolidated; accidental temporary scripts/output removed; local settings remain local. Plan600 screenshot and legacy DEBTS preserved; README and Cargo/Node entrypoints retained. docs/specs/overview.md, design/repository-layout.md and plans.md are canonical; delivery/recovery receipts are in docs/plans/archive/761-root-directory-cleanup.md. Repository legacy compatible upsert used without schema conversion because the isolated modern store returned HTTP500 on this existing schema.",
+          "related": [
+            "PLAN-761"
+          ],
+          "status": "active",
+          "created": "2026-10-11",
+          "last_modified": "2026-10-11",
+          "tags": [
+            "PLAN-761:r2",
+            "source-sha256:de55aabb45e0294b197902db59341f82be7fbf6378ce594b513632e170716a19",
+            "commit:35f77e41c4c8d9f1054233c8929fe2faf8bde595"
+          ]
         }
       ]
     },
@@ -5730,6 +5747,23 @@
           ],
           "status": "published",
           "created": "2026-10-11"
+        },
+        {
+          "id": "repo-layout",
+          "title": "仓库根目录与资产归位",
+          "file": "docs/specs/design/repository-layout.md",
+          "content": "Current-state: root Git tree has 30 entries (18 directories/12 files). Test entrypoints and historical exports live under test; tools, repros and deployment templates live under scripts. Local configs are untracked, evidence is preserved. Canonical rules are in the linked Spec; PLAN-761 r2 delivered this layout.",
+          "related": [
+            "PLAN-761"
+          ],
+          "status": "active",
+          "created": "2026-10-11",
+          "last_modified": "2026-10-11",
+          "tags": [
+            "PLAN-761:r2",
+            "source-sha256:de55aabb45e0294b197902db59341f82be7fbf6378ce594b513632e170716a19",
+            "commit:35f77e41c4c8d9f1054233c8929fe2faf8bde595"
+          ]
         }
       ]
     },
@@ -6834,6 +6868,23 @@
             "plan-749",
             "vm",
             "test-matrix"
+          ]
+        },
+        {
+          "id": "repo-layout-verification",
+          "title": "根目录搬迁验证",
+          "file": "docs/plans/reports/761-root-directory-review.md",
+          "content": "PLAN-761 r2: 64 assets preserved (44 identical/20 explained edits), 30-root tree, current references and input resolution checked. Daily 5243 tests: one recorded Plan484 flake, two isolated retries passed; corpus 162/162; Auto field tests 7/7. Historical Plan446 runtime ambiguity reproduced from the original export; it did not SKIP. See review evidence and P761-D1/D2; filtered CLI summaries are not suite-pass evidence.",
+          "related": [
+            "PLAN-761"
+          ],
+          "status": "active",
+          "created": "2026-10-11",
+          "last_modified": "2026-10-11",
+          "tags": [
+            "PLAN-761:r2",
+            "source-sha256:c10c302d05bc9ef591a47d2196236abefd3553862e908ae2bf3fe4ea1023de96",
+            "commit:35f77e41c4c8d9f1054233c8929fe2faf8bde595"
           ]
         }
       ]
@@ -9121,6 +9172,23 @@
           ],
           "status": "published",
           "created": "2026-10-11"
+        },
+        {
+          "id": "PLAN-761-review",
+          "title": "PLAN-761 r2 复审通过",
+          "file": "docs/plans/reports/761-root-directory-review.md",
+          "content": "Artifact-based review passed the migration and SD-01..04. Same session, independent reconstruction from Git objects and committed code; limitation stated in the report. Reviewed 62eb5435ecf3e2c5675cb9dd47557a419b621232; rebase-equivalent 02fb7e4c1; Spec-delta SHA256 55B3531451AC18FF7655A53B8FB4639840A7707812C9F50F43F18F28F2D1FC4A. Archive provenance: docs/plans/archive/761-root-directory-cleanup.md.",
+          "related": [
+            "PLAN-761"
+          ],
+          "status": "active",
+          "created": "2026-10-11",
+          "last_modified": "2026-10-11",
+          "tags": [
+            "PLAN-761:r2",
+            "source-sha256:c10c302d05bc9ef591a47d2196236abefd3553862e908ae2bf3fe4ea1023de96",
+            "commit:35f77e41c4c8d9f1054233c8929fe2faf8bde595"
+          ]
         }
       ]
     }
