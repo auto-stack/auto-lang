@@ -381,3 +381,9 @@ fastfail 崩溃且审计无行时，优先按栈溢出排查（重建符号 + RU
 | id | 级别 | 领域 | 内容 | 锚点 |
 |---|---|---|---|---|
 | P753-D1 | medium | runtime Specs store 兼容性 | 既有 `.autoos/specs.json` 无法由当前 AutoMusk store 加载；任务自有 loopback 服务 `GET /api/specs` 返回 500，已停止。原账本 hash 保持不变；不通过手改 JSON 或删除重建修复。README/语言文档可独立复验，但 store-mediated 投影及随后的计划归档/清理必须等待受支持的恢复路径。未将此项视为已完成。 | [验证报告](reports/753-readme-verification.md)；PLAN-753 §9；auto-musk backend/crates/musk/src/specs.rs |
+
+### PLAN-754（2026-10-11，reviewed；低危外观瑕疵）
+
+| id | 级别 | 领域 | 内容 | 锚点 |
+|---|---|---|---|---|
+| P754-R1-01 | low | playground-vue 深链 | 无效 `?note=<id>`（manifest 中不存在）时参数残留在 URL——`deeplinkTried` 仅在命中或无参时置位，`history.replaceState` 只在命中时执行。欢迎态不崩已由 e2e ③ 覆盖；后续顺手修：未命中分支同样置位+清参。 | PLAN-754 §9 复审记录；packages/auto-playground-vue/src/components/PlaygroundIDEApp.vue |

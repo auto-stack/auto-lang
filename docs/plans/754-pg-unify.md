@@ -1,15 +1,15 @@
 ---
 plan_id: PLAN-754
-status: execution_done       # drafting → executing → execution_done → reviewed → archived
+status: reviewed           # drafting → executing → execution_done → reviewed → archived
 feature_name: pg-unify
 author: [agent]
 created_at: 2026-10-10
 updated_at: 2026-10-11
 plan_revision: 2
 
-supersedes_spec_components: []
+supersedes_spec_components: [docs/specs/playground-vue/project.md, docs/specs/website/project.md]
 new_spec_components: []
-touched_goals: []
+touched_goals: [GOAL-014]
 
 affects: [playground-vue, auto-playground, website]
 current_step: 6
@@ -172,6 +172,33 @@ website VitePress 页 props 接线；验证＝vue-tsc + dist 构建 + e2e（stan
 
 ## 9. 复审记录
 
+- 2026-10-11 `stage: review | PLAN-754 | plan_revision: 2 | outcome: pass`
+  `reviewed_commit: 52587c295（plan-754-dev，worktree D:/autostack/.wt/lang-754/auto-lang，clean）`
+  `base_commit: 9f87a3c33 | dependency_revisions: 无（零 Rust/后端改动，diff 仅
+  .vue/.ts/.md/.json/.lock 12 文件）`
+  `spec_inputs: SD-01（playground-vue/project.md 模块清单+PLAN-754 备注块）、
+  SD-02/03（website/project.md PLAN-754 备注块）——均已在 52587c295 预埋，逐条与
+  代码对勘属实（props 默认 '/api'//playground-data/notes.json'、深链 watch(byId)
+  异步 manifest 处理、prepend 组判定、JSON 探针+2500ms 超时+同源→3030 fallback、
+  dedupe 入册 vs package.json/lockfile）。`
+  `acceptance_results: AC-01 pass（T-04 报告 preview 截图@8e55088c5——website 代码
+  其后未变，52587c295 仅 docs/specs 不入构建，复用理由在案）；AC-02 pass（本复审
+  独立复跑 unify.spec.ts 3/3 绿 2.3s——含 prepend_lib=true 请求体断言；website 侧
+  依据 T-04 双端实录）；AC-03 pass（探针代码对勘+T-04 探测日志；deploy/nginx-
+  auto-playground.conf 实证生产=同源反代 /api/→127.0.0.1:3030，Q-1 就此定谳：
+  探测顺序与部署形态一致，无需构建期注入）；AC-04 pass（T-04 e2e 29 绿+@lezer/
+  highlight 入册 diff 实证；cargo t 红集对拍 12 恒等、Δ2 归因=plan730 环境族隔离
+  复跑绿+plan707 为 merge-base 预存红且 master 已由 PLAN-755 3cefa2c8e 修复——
+  合并后消失）；AC-05 pass（vue-tsc 两包 exit=0、红集对拍、spec 预埋 52587c295）。`
+  `findings: P754-R1-01（low，非阻塞）无效深链 id 时 ?note= 残留在 URL（deeplinkTried
+  仅命中置位）——外观瑕疵，欢迎态不崩已由 e2e ③ 覆盖，登记 KNOWN-DEBT 候选。
+  遗漏/延后/workaround 扫描：零（r2 非目标全部恪守——Explorer/Card 保留导出、
+  零 Rust、无 VitePress 外结构改动；无调试残留、无未说明的让步）。`
+  `evidence: docs/plans/reports/754-unify-report.md（T-04 报告冻结副本，自 worktree
+  scratch/ 迁入以耐久）；本记录内嵌命令/结果摘录。独立性限制：T-05 与本复审同会话
+  完成（T-0..T-04 属前会话），已按工件重建结论——代码 diff 逐文件对勘、e2e 独立
+  复跑、基线红集双跑对拍，不依赖执行者摘要。`
+  `next: merge`
 - 2026-10-11 `stage: work | PLAN-754 | r2 | outcome: pass | code plan-754-dev @ 52587c295
   | tasks T-05 完成（T-0..T-04 前回执在案，本次证据复核）| evidence：vue-tsc -b 两包
   exit=0（auto-playground-vue + frontend）；cargo t --no-fail-fast 红集对拍——worktree
