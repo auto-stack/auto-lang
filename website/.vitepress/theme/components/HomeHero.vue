@@ -72,7 +72,7 @@
         </div>
         <pre class="code-body"><code><span class="keyword">fn</span> <span class="function">main</span>() {
     <span class="keyword">let</span> msg = <span class="string">"Hello, Auto!"</span>
-    <span class="function">println</span>(msg)
+    <span class="function">print</span>(msg)
 }</code></pre>
       </div>
     </div>
