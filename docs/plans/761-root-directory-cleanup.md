@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-761
-status: execution_done
+status: reviewed
 feature_name: root-directory-cleanup
 author: [Codex]
 created_at: 2026-10-11
@@ -97,3 +97,9 @@ Git worktree、Python/PowerShell 路径与资产核查、Rust check/nextest、Au
 - stage: work | PLAN-761:r2 | outcome: pass | code_commit: a48cd5b5336d7bcc4f33c7e4f08328c558acf88c | T-01/02/03 complete | next: review。
 - 最终日常档：5243 run，5242pass/1known flake/1541skipped，107.061s；Plan484 isolated两次1/1pass。tv 162/162pass，2.135s。Plan446 explicit ignored跑出Init歧义（非SKIP）；原b25729导出的22文件重放同错误，证实历史语料兼容问题；7用例Auto字段测试通过。
 - 额外CLI runner尝试暴露filter只过滤报告，不能作为通过证据；VM整族30s超时停止，未改变其runner/语料语义。P761-D1/D2在worktree的KNOWN-DEBT追加；没有将这些非目标问题改成计划验收门槛。
+
+### review（r2）
+
+- stage: review | outcome: pass | reviewed_commit: 62eb5435ecf3e2c5675cb9dd47557a419b621232 | base: ef778ae31 | auto-down:895f8d0f9355c9f5ec3ce8fca268bdb768395846 | spec_delta_sha256:55B3531451AC18FF7655A53B8FB4639840A7707812C9F50F43F18F28F2D1FC4A | next: merge。
+- 同会话独立复核角色，直接重算Git对象与路径引用，限制明示。AC01/03和SD01..04 pass；AC02主检出本机副本恢复、AC04发布/归档后置项由merge复核。无阻断发现；P761-D1/D2在KNOWN-DEBT登记。持久证据：docs/plans/reports/761-root-directory-review.md。
+- canonical delta与代码一致，44/20对象比对及两组guard clean。56fa096c2为仅添加复审报告的descendant，未改变代码/规范内容。
