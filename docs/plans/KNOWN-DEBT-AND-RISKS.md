@@ -419,3 +419,12 @@ schema 三围栏（REG-4 四表清偿）/ ash_stream_leak_probe（门禁分层�
 |---|---|---|---|---|
 | P759-D1 | low | iced 渲染配置 | **硬编码机器壁纸目录探测**——`wallpapers_dir_or_default`（renderer.rs）解析链末端探测 `D:\Down\stella-os\wallpapers`（PLAN-526 T19 机器便利默认），dev 便利进库代码路径：①机器相关行为（测试须显式隔离，规约已入 ui/overview.md PLAN-759 注记）；②他人机器不生效。清偿=挪 env/配置显式开启；涉及产品行为须用户裁定 | crates/auto-lang/src/ui/iced/renderer.rs `wallpapers_dir_or_default`（~:17019）；docs/specs/auto-lang/ui/overview.md PLAN-759 注记 |
 | P759-D2 | low | schema 漂移围栏 | **schema_drift 的 rs 扫描器仅认单行 `elements.insert("`**——schema.rs 现存 209 个多行 insert 形态不可见（仅 15 单行被扫到），四表对账长期靠千行级 baseline 白名单吸收。PLAN-759 刷新 baseline 时实证（+249/-301）。清偿=扫描器多行化+随后全维度 baseline 重审裁剪（牵动数百条目，独立计划） | crates/auto-lang/tests/schema_drift.rs:62 `scan_insert_tags`；crates/auto-lang/tests/fixtures/schema_drift_baseline.txt（1075+ 行） |
+
+### PLAN-759 落地后独立核查候选（2026-10-11）
+
+以下候选未清偿，不改变759归档终态；完整证据见 [落地后审核](reports/759-post-landing-review-20261011.md)。
+
+| 编号 | 优先级 | 域 | 描述 | 锚点 |
+|---|---|---|---|---|
+| P759-D3 / F-759-R1 | medium | 生产渲染诊断 | 新增command/carousel统一fallback详情与实际Input/Button/Row转换不符；placeholder/value/style被错误报忽略，MCP render check把Fallback计ERROR；canonical与kebab alias详情不一致。生产库探针已复现，需逐子件校准并锁定别名一致性 | ui/render_support.rs:310-319；ui/aura_view_builder.rs:2922；报告F-759-R1 |
+| P759-D4 / F-759-R2 | medium | 测试环境隔离 | photo stub直接设置AUTO_HTTP_BASE、仅正常尾部恢复，没有panic-safe守卫或共享互斥；与stdlib的http_base_url_resolution并行可互相覆盖。nextest隔离下绿；本次裸libtest8轮未撞竞争，不作为隔离完成证据 | tests/plan606_gallery_tests.rs:163-165/308-312；vm/ffi/stdlib.rs:11864-11882；报告F-759-R2 |
