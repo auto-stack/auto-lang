@@ -25228,7 +25228,13 @@ fn run_session(
                 // 测量回执消费脏标后订阅自动回落（稳态零成本）。MCP 开关
                 // 不管控此路（fit 是窗口语义而非验收通道）。
                 let fit_remeasure_tick = !state.is_desktop() && state.has_fit_remeasure_pending();
+                // PLAN-760: standalone（`auto run -r vm`）含 remote-frame 时
+                // 也要 ServiceTick——注册表泵（连接收编/帧槽/重连）与帧推进
+                // 都挂在 400ms 拍；url 退场租约清空 → 订阅自动回落。
+                let remote_frame_tick =
+                    !state.is_desktop() && crate::ui::iced::remote_frame_registry::has_live_urls();
                 if fit_remeasure_tick
+                    || remote_frame_tick
                     || (state.is_desktop()
                         && std::env::var("AUTOUI_MCP_DISABLE").map_or(true, |v| v != "1"))
                 {

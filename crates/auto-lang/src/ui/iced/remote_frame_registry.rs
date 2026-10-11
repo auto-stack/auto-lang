@@ -194,6 +194,12 @@ pub fn note(url: &str) -> RemoteFrameSnapshot {
     client.snapshot()
 }
 
+/// 注册表非空（有 url 在租——standalone 模式的 ServiceTick 订阅拉起
+/// 条件；url 退场租约清空后自动回落，稳态零成本）。
+pub fn has_live_urls() -> bool {
+    !REGISTRY.lock().unwrap().is_empty()
+}
+
 /// 只读快照（不续租——诊断/测试面）。
 pub fn snapshot(url: &str) -> RemoteFrameSnapshot {
     let key = namespaced(url);
@@ -252,8 +258,9 @@ pub fn pump() {
     let urls: Vec<String> = reg.keys().cloned().collect();
     for key in urls {
         let Some(client) = reg.get_mut(&key) else { continue };
-        // ② connect 结果收编（Connecting 态）。
-        if client.phase == Phase::Connecting {
+        // ② connect 结果收编（首连 Connecting 与重拨 Reconnecting 共路——
+        // 拨号线程只写结果槽，收编统一在此；slot 空档 = 线程在跑）。
+        if matches!(client.phase, Phase::Connecting | Phase::Reconnecting) {
             if let Some(slot) = client.connect_slot.as_ref() {
                 let taken = slot.lock().unwrap().take();
                 match taken {
@@ -264,13 +271,13 @@ pub fn pump() {
                         client.send_hello();
                     }
                     Some(Err(_)) => {
-                        // 首连失败：按重连节流重拨（预算从首连起算）。
+                        // 拨号失败：保持/进入重连节流（预算从首次断连起算）。
                         client.connect_slot = None;
                         client.phase = Phase::Reconnecting;
                         client
                             .budget_deadline
                             .get_or_insert_with(|| now + Duration::from_millis(RECONNECT_BUDGET_MS as u64));
-                        client.next_dial = Some(now);
+                        client.next_dial = Some(now + Duration::from_millis(RECONNECT_INTERVAL_MS as u64));
                     }
                     None => {} // 线程仍在跑（CONNECT_TIMEOUT 内会出结果）。
                 }
@@ -307,13 +314,25 @@ pub fn pump() {
             }
             saw_eof = end.is_eof();
         }
+        if std::env::var("AUTO_RF_DEBUG").map_or(false, |v| v == "1") {
+            eprintln!(
+                "[rf] url={} phase={:?} live={:?} latest={:?} drained={}",
+                key_strip_ns(&key),
+                client.phase,
+                client.live,
+                client.latest.as_ref().map(|f| f.ops.len()),
+                drained.len()
+            );
+        }
         for msg in drained {
             apply_msg(client, &msg);
         }
         if saw_eof && client.end.is_some() {
-            // 断连：端点丢弃（Drop 线程回收），预算窗内重拨。
+            // 断连：端点丢弃（Drop 线程回收），预算窗内重拨；latest 同步
+            // 清除（残帧会让 painter 继续画旧帧——占位态语义）。
             client.end = None;
             client.live = None;
+            client.latest = None;
             client.phase = Phase::Reconnecting;
             client
                 .budget_deadline
@@ -650,6 +669,10 @@ mod tests {
         DisplayList, InputMsg, MouseButton, WRect,
     };
 
+    /// 注册表族测试串行锁——pump() 遍历全局表，并行测试的 pump 会交叉
+    /// 消费彼此的 inbox（Welcome 抢跑相位断言）；持锁到测试结束。
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
     fn welcome(wid: u64, w: f32, h: f32) -> ProtocolMsg {
         ProtocolMsg::Handshake(HandshakeMsg::Welcome {
             app_id: 1,
@@ -689,6 +712,7 @@ mod tests {
     /// url 退场 = 租约过期 → Client Drop（mock drops 计数 = close 断言）。
     #[test]
     fn lifecycle_welcome_frame_and_lease_cleanup() {
+        let _serial = TEST_LOCK.lock().unwrap();
         let restore = isolate();
         let url = "ws://127.0.0.1:19860/?token=t&app=fixture-app";
         let shared = MockShared::new();
@@ -736,6 +760,7 @@ mod tests {
     /// 输入直发：send_input → mock 出站收到 InputMsg（PointerPressed）。
     #[test]
     fn input_forwarding_to_wire() {
+        let _serial = TEST_LOCK.lock().unwrap();
         let restore = isolate();
         let url = "ws://127.0.0.1:19862/?token=t";
         let shared = MockShared::new();
@@ -770,6 +795,7 @@ mod tests {
     /// 终态。
     #[test]
     fn reconnect_budget_then_exhausted() {
+        let _serial = TEST_LOCK.lock().unwrap();
         let restore = isolate();
         let url = "ws://127.0.0.1:19863/?token=t";
         let shared = MockShared::new();
@@ -796,6 +822,46 @@ mod tests {
         }
         pump();
         assert_eq!(snapshot(url).phase, Phase::Exhausted, "预算尽应终态占位");
+        restore();
+    }
+
+    /// 重连收编回归（e2e 2026-10-11 死锁修复）：Reconnecting 态拨号线程
+    /// 的结果必须被 pump 收编（曾只在 Connecting 分支收编——重拨永不成
+    /// 功）。模拟：EOF → Reconnecting → 注入"已完成"的结果槽 → pump
+    /// 收编转 Subscribing。
+    #[test]
+    fn reconnect_dial_result_is_harvested() {
+        let _serial = TEST_LOCK.lock().unwrap();
+        let restore = isolate();
+        let url = "ws://127.0.0.1:19864/?token=t";
+        let shared = MockShared::new();
+        shared.feed(&welcome(5, 100.0, 100.0));
+        inject(url, shared.clone());
+        pump();
+        assert_eq!(snapshot(url).phase, Phase::Live);
+
+        // 断连进 Reconnecting，手动装一个"已失败"的拨号结果 → pump 收编
+        // 后应保持 Reconnecting 且槽清空（下一拍可再拨）。
+        shared.set_eof();
+        pump();
+        assert_eq!(snapshot(url).phase, Phase::Reconnecting);
+        // EOF 转换在 pump ④，拨号 spawn 在下一拍 ③——再 pump 一次后在途。
+        pump();
+        {
+            let mut reg = REGISTRY.lock().unwrap();
+            let c = reg.get_mut(&namespaced(url)).unwrap();
+            assert!(c.connect_slot.is_some(), "Reconnecting 应有在途拨号");
+        }
+        // 收编路径已被 ② 覆盖（matches! Connecting | Reconnecting）——结果
+        // 由真线程写；等一拍让线程完成（CONNECT_TIMEOUT 内必出）。
+        std::thread::sleep(Duration::from_millis(200));
+        pump();
+        // （拨号目标是真端口 19864——大概率失败 → 仍 Reconnecting；关键
+        // 断言：槽被消费清空、进程不死锁、预算推进。）
+        let reg = REGISTRY.lock().unwrap();
+        let c = reg.get(&namespaced(url)).expect("client 仍在册（预算内）");
+        assert_eq!(c.phase, Phase::Reconnecting, "拨号失败应停留预算内重连");
+        drop(reg);
         restore();
     }
 

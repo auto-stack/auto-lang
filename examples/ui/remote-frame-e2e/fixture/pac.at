@@ -1,0 +1,6 @@
+name: "rf-e2e-fixture"
+version: "0.1.0"
+scene: "ui"
+render: "vue"
+title: "RfFixture"
+theme: "dark"

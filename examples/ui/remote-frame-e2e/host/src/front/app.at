@@ -1,0 +1,38 @@
+// app.at — PLAN-760 T-05 e2e 宿主 demo：remote-frame 消费面。
+// __RF_PORT__ 由驱动脚本（scripts/remote_frame_e2e.py）生成临时目录时替换
+// （入库模板不落真端口——e2e 端口动态分配）。
+// 顶部本地按钮条 = OS 注入通道的对照臂（SendInput 点 VM 按钮位 → autoui_state
+// 的 local 字段 +1 证明注入/分发链通）；remote-frame 占余下全窗。
+// 跑法：auto run -r vm（AUTOUI_MCP_PORT 指定宿主 MCP；AUTO_VM_WINDOW=480x680
+// 与夹具逻辑域一致 → canvas fit 1:1，SendInput 坐标直映射）。
+
+widget App {
+    msg { LocalInc }
+
+    model {
+        var local int = 0
+    }
+
+    view {
+        col {
+            style: "w-full h-full"
+            row {
+                style: "h-8 shrink-0 border-b border-border"
+                button `local ${.local}` {
+                    onclick: .LocalInc
+                    style: "h-8 px-4"
+                }
+                text "RF HOST"
+            }
+            remote-frame (url: "ws://127.0.0.1:__RF_PORT__/?token=rf-e2e&app=RfFixture") {
+                class: "flex-1 min-h-0"
+            }
+        }
+    }
+
+    on {
+        LocalInc -> {
+            .local = .local + 1
+        }
+    }
+}
