@@ -5,12 +5,12 @@ feature_name: automusk-website-real-captures
 author: [Codex]
 created_at: 2026-10-12
 updated_at: 2026-10-12
-plan_revision: 1
+plan_revision: 2
 supersedes_spec_components: [docs/specs/website/design/application-introductions.md, docs/specs/website/project.md]
 new_spec_components: []
 touched_goals: []
 affects: [website]
-current_step: 0
+current_step: 2
 total_steps: 3
 ---
 
@@ -52,12 +52,18 @@ total_steps: 3
 - AC-03：来源目录如实记录提供时间、文件/hash、未知运行身份；计划页面不标已完成复审，SHOT-06 待拍；build/相关回归通过，静态部署可验证并有回滚备份。
 
 ## 8. 执行步骤
-- [ ] T-01：专用 lang-766 工作树新增两图与来源目录，更新 capture-slots.ts / AppsOverview.vue / 双语专题 / capture-guide；关联 AC-01/02/03。
-- [ ] T-02（依赖 T-01）：更新既有两套测试并构建、定向回归；准备 SD-01/02 与冻结规范增量、证据报告；关联全部 AC。
-- [ ] T-03（依赖 T-02）：独立证据复核、提交、合入/规范索引/归档，按既有 deploy-website.ps1 部署策略备份切换并线上验证；关联 AC-03。
+- [x] T-01：专用 lang-766 工作树新增两图与来源目录，更新 capture-slots.ts / AppsOverview.vue / 双语专题 / capture-guide；关联 AC-01/02/03。
+- [x] T-02（依赖 T-01）：更新既有两套测试并构建、定向回归；准备 SD-01/02 与冻结规范增量、证据报告；关联全部 AC。
+- [ ] T-03（依赖 T-02）：按既有 deploy-website.ps1 部署策略备份切换并线上验证；交付后独立复审与合入归档单独记录；关联 AC-03。
+
+T-01 证据：lang-766 工作树新增两原图，源/目标字节相等，PNG 2560×1600；SHOT-04 主图共享与 SHOT-05 场景改写完成。
+
+T-02 证据：npm run build 152.67s EXIT0；apps-introduction + v05-copy 23/23（双语/五宽度/双主题），8 项截图 landing/overflow=0；提交 38ef90ade0ba145e4ca03d221d39c9484ec00977，base c7fc18d56。durable report=docs/reports/p766-website-verification.json；冻结 SD=docs/reports/p766-spec-delta.json。
 
 ## 9. 复审记录
 stage: new | PLAN-766 r1 | outcome: pass | next: work。现有用户授权覆盖完整 scope，无新增待决事项。
+
+r2：T-03 明确为部署验证，复审/合入归档是其后生命周期操作，避免在复审前要求先合入的循环；目标/验收/授权范围不变。
 
 ## 10. 待澄清事项
 无；截图不提供运行身份，以 unknown 保留。
