@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-762
-status: reviewed
+status: archived
 feature_name: chart-init-batch-flake
 author: [Codex]
 created_at: 2026-10-11
@@ -79,8 +79,23 @@ stage: work | PLAN-762:r1 | outcome: pass | code_commit: plan-762-dev@f5bc037a1�
 
 stage: review | PLAN-762:r1 | outcome: pass | reviewed_commit: f5bc037a1c8e3ffe05c49aa1537db78e08b302a6 | base_commit: 11031c5566dfbfbaf7659dad03eeb6253f8af962 | dependency_revisions: auto-down detached@895f8d0（组内兄弟）；auto-os 0532b8fbc（gallery 解析终位，app.at blob c111cb60228b） | spec_inputs: docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md（11031c556 版为基，f5bc037a1 版为审后稿）；docs/specs/goals.md（touched_goals 核验） | acceptance_results: AC-01 pass（归因报告在库@f5bc037a1：钉版+构造排除+负载负证据如实+机制主张对提交工件复核——dynamic.rs:1556-1578 progressed 无 slices_run 属实）；AC-02 pass（diff 审计：全 diff 唯一删除行=四路由单次驱动调用，marker 数组零改动；drive_to_completion 终态谓词=!(pending_init∪cpu_cont∪parked_io)+30s 截止+四元诊断；机制钉子确定性复现早退并验证收敛）；AC-03 pass（check ✓ / 复审 fresh cargo t 静默窗口 5244/5244 ✓ 96.98s / tv 162/162 ✓ / tt 5615/5615 ✓ 复用同 commit 同配置证据；tf 未在 worktree 运行合规；零新增 skip/ignore（扫描空）/零生产代码与预算改动（diff stat=1 测试文件+2 文档）/rustfmt --check ✓/plan437 零新增告警） | findings: F-762-R1（元数据，已当场修正）touched_goals [GOAL-009]→[GOAL-007,GOAL-016]——goals.md 中 GOAL-009=虚拟桌面/桌面 Shell 与本计划无涉，GOAL-007=AutoUI 双端语义（PLAN-708 同规范源流先例）、GOAL-016=门禁收敛/测试基建；F-762-R2（非阻塞观察）本 worktree cargo t 在机器负载窗口两见瞬态红（其一定名 state_file::tests::lock_serializes_critical_sections，0.583s 红后隔离 6/6 绿含该测 0.377s），与 plan437 diff 零代码关联、非预存红族登记项——转批量档观测，若再现建议独立分诊（镜像 761 情形）；F-762-R3（计划内留置，登记合规）D-762-1 helper 判据修复按约定未越权，KNOWN-DEBT 在册 | evidence: 归因报告+机制钉子+规范增量均提交于 f5bc037a1（耐久工件）；门禁数字摘录于本记录（/tmp 日志非耐久不引用）；独立性限制：复审与实施同会话，裁定自工件重建（diff 审计/提交源码复核/门禁重跑），未采信执行者自述 | next: merge（/auto-plan:merge；规范增量与账本随合并发布，D-762-1 保持挂账）
 
+stage: merge | PLAN-762:r1 | outcome: pass | 2026-10-11 | checkpoints:
+- prepared: 交付基=f5bc037a1（review 绑定）+ 沉淀后代提交（账本 upsert P708-1 追加/P762-1 复审收据/P762-2 归因报告 + ui/plans.md 762 行 + INDEX 再生零漂移；docs/projection-only，实现与依赖零变更）
+- landed: rebase master（master 期间落地 PLAN-763 账本重写 4b19d1bf5，specs.json 冲突按"master 规范化版为基幂等重放三 upsert"解决，序列化对齐 indent=1 后 diff 收敛 31 行）；映射 f5bc037a1→fd5a1754d（range-diff `=` patch 全等，复审证据携带）、932a5e9e8→d9ebd1812（冲突解决重写，非 review 绑定件）；`git merge --ff-only plan-762-dev`，master tip=d9ebd181231ad44f1f1276f8bd9976cfd003114d，无合并提交；落地后主检出验证：spec §1.5 契约在库、账本三件在库、报告在库、scoped 冒烟 cargo t plan437 3/3 绿
+- ledger_refreshed: .autoos/specs.json（本仓 Git 跟踪形态，经 worktree+git 落地）：designs/P708-1 追加 762 契约+tags；reviews/P762-1；reports/P762-2（related PLAN-762/761，status published）；JSON 回读校验通过
+- archived: docs/plans/archive/762-chart-init-batch-flake.md（git mv），status: archived，completion_kind: delivered
+- cleaned: 见下方回填
+| production_artifacts: 纯测试文件+文档 diff（零非测试 Rust 代码）——release 二进制/web bundle 零影响，无需重建（主检出 auto.exe 语义不变） | batch_regression_due: 否——收据 last_covered_plan_id=761（2026-10-11T07:41Z <48h），其后落地 762/763 均非 5 倍数计划，整五触发未达 | blockers: 无 | next: cleaned 回填后终态
+
 ## 10. 待澄清事项
 
 新增修复范围需用户另行授权；真实原因由 T-01 确认，当前不预设环境 flake 或生产缺陷。
 
 （2026-10-11 更新）修复执行授权已落地（"实施修复"），本计划面内的测试修复已交付；**仍待澄清**：生产 helper `drive_scheduler_to_quiescence` 判据修复（D-762-1，16 调用点共享暴露面）是否另立计划授权——按本计划 §8 T-02 约定"如需改生产 helper 先修订确认"，未越权实施。
+
+## 11. spec-sync 回写记录（merge，2026-10-11）
+
+- canonical：`docs/specs/auto-lang/ui/design/vm-loading-responsiveness.md` §1.5 追加"测试载体完成态驱动契约（PLAN-762）"条目（SD-01，随交付提交 fd5a1754d 落 master）。
+- 账本投影：`.autoos/specs.json`——designs/P708-1 追加 762 契约（tags +PLAN-762）、reviews/P762-1 复审收据、reports/P762-2 归因报告（related PLAN-762/761）。
+- module 回写：`docs/specs/auto-lang/ui/plans.md` 追加 762 行；INDEX 再生零漂移。overview/goals 无结构性变化未动（知识归属 design 文档，不复制）。
+- 留置：KNOWN-DEBT D-762-1（helper 判据修复，须另行授权）；F-762-R2 state_file 瞬态红转批量档观测。
