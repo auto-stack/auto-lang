@@ -414,18 +414,22 @@ impl<M> RemoteFramePainter<M> {
 
     /// bounds 局部像素 → 远端逻辑域（等比换算——canvas_embed_web.ts
     /// toLogical 同一算式语义；draw 的 fit 缩放因子互逆）。
+    /// 输入换算与 draw 同律（等比 contain + 居中偏移逆映射）——修复
+    /// F-RF-1：原拉伸映射在宽高比不等时与渲染错位（760 e2e 的 480x680
+    /// 1:1 窗口掩盖；musk 1280x800 宿主实测点击错行，PLAN-102 P-embed
+    /// 定罪）。local 在内容盒外（letterbox）→ 负/超界坐标原样下发，由
+    /// 远端按盒外语义处理（与 draw 不裁形口径一致）。
     fn to_remote(local: (f32, f32), bounds: &Rectangle, live: &LiveInfo) -> (f32, f32) {
-        let sx = if bounds.width > 0.0 {
-            live.w / bounds.width
-        } else {
-            1.0
-        };
-        let sy = if bounds.height > 0.0 {
-            live.h / bounds.height
-        } else {
-            1.0
-        };
-        (local.0 * sx, local.1 * sy)
+        let lw = bounds.width.max(1.0);
+        let lh = bounds.height.max(1.0);
+        let (fw, fh) = (live.w.max(1.0), live.h.max(1.0));
+        let scale = (lw / fw).min(lh / fh);
+        if scale <= 0.0 {
+            return local;
+        }
+        let dx = (lw - fw * scale) * 0.5;
+        let dy = (lh - fh * scale) * 0.5;
+        ((local.0 - dx) / scale, (local.1 - dy) / scale)
     }
 }
 
@@ -704,6 +708,24 @@ mod tests {
     /// 注册表族测试串行锁——pump() 遍历全局表，并行测试的 pump 会交叉
     /// 消费彼此的 inbox（Welcome 抢跑相位断言）；持锁到测试结束。
     static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    /// F-RF-1：输入换算与 draw 同律（contain + 居中逆映射）——拉伸映射在
+    /// 宽高比不等时错位（760 e2e 1:1 窗口掩盖；musk 1280x800 定罪）。
+    #[test]
+    fn to_remote_mirrors_draw_contain_fit() {
+        // 宿主盒 397x735（musk 实测形态），远端 480x680 → scale=0.821、
+        // dy=(735-558)/2=88.4。点 (41.5, 131.5) → 远端 (50.5, 54.7)
+        //（拉伸映射得 (50.2, 121.6)——错位复现锚）。
+        let bounds = Rectangle::new(iced::Point::ORIGIN, iced::Size::new(397.0, 735.0));
+        let live = LiveInfo { wid: 2, w: 480.0, h: 680.0 };
+        let (rx, ry) = RemoteFramePainter::<()>::to_remote((41.5, 131.5), &bounds, &live);
+        assert!((rx - 50.2).abs() < 0.2, "x={rx}");
+        assert!((ry - 54.7).abs() < 0.2, "y={ry}（拉伸映射得 121.6——错位）");
+        // 1:1 恒等（760 e2e 形态）不变。
+        let sq = Rectangle::new(iced::Point::ORIGIN, iced::Size::new(480.0, 680.0));
+        let (ix, iy) = RemoteFramePainter::<()>::to_remote((240.0, 340.0), &sq, &live);
+        assert!((ix - 240.0).abs() < 0.01 && (iy - 340.0).abs() < 0.01, "1:1 恒等破坏");
+    }
 
     fn welcome(wid: u64, w: f32, h: f32) -> ProtocolMsg {
         ProtocolMsg::Handshake(HandshakeMsg::Welcome {
