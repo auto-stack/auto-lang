@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-758
-status: executing
+status: execution_done
 feature_name: AutoJade 改名与用户提供深色宣传图
 author: [Codex]
 created_at: 2026-10-10
 updated_at: 2026-10-11
 plan_revision: 3
-current_step: 2
+current_step: 5
 total_steps: 5
 supersedes_spec_components: [docs/specs/website/project.md, docs/specs/website/design/application-introductions.md, docs/specs/website/design/ecosystem-readme.md, docs/specs/website/design/ui-presentation.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/architecture.md, docs/specs/auto-lang/ui/design/autodown-wikilink.md, docs/specs/auto-lang/ui/plans.md, docs/specs/website/design/os-ai-introduction.md]
 new_spec_components: []
@@ -64,16 +64,16 @@ VitePress/Vue、完整 PNG、Playwright；Rust 只改注释、不改执行语义
   [✅ 9490d7e67；余名审计 docs/reports/p758-reference-audit.json（worktree 未提交残留→已随 r2 证据链入库核验）]
 - [x] T-02：核验原图、接入主图与功能画廊、指南/规范与来源清单（AC-03）。
   [✅ 9490d7e67 + ee65db613 证据冻结；六图 hash 对照在 p758-autojade-verification.md]
-- [ ] T-03：v0.5 历程前置、构建、网站与 Rust 注释触面验证、余名审计（AC-01..05）。
+- [x] T-03：v0.5 历程前置、构建、网站与 Rust 注释触面验证、余名审计（AC-01..05）。
   [✅ 9490d7e67/24ddb99e1/3685a86b4；构建 151.40s+原生版 144.04s；63 网站场景通过记录；
   cargo check 过、t 5212/5231（19 红全基线对照）、tu 858 过+1 既有金样红；
   九文件非行注释行与 master 一致；余名审计 p758-reference-audit.json]
-- [ ] T-04：提交实现与验证材料，准备复审/线性合入所需收据、store-mediated 知识投影及阻塞描述（AC-04）。正式复审、线性合入、投影、归档/清理是后续生命周期操作，逐项记入 §9，不以本勾选声称已完成。
+- [x] T-04：提交实现与验证材料，准备复审/线性合入所需收据、store-mediated 知识投影及阻塞描述（AC-04）。正式复审、线性合入、投影、归档/清理是后续生命周期操作，逐项记入 §9，不以本勾选声称已完成。
   [✅ 证据全提交（ee65db613/9024f1f95）；Review r2 needs_fix（P758-F4）已修复
   （5188b7822 恢复原生链接）并独立复验（206acb729：四定位场景+section-nav 5/5，
   9.8s）；store 投影阻塞 P758-D1 在案，pending 清单 ledger-projection-pending.json]
 
-- [ ] T-05：开篇宣传句、双组数字摘要、后部规模与日期来源统一更新，中英文同源结构；按用户确认补桌面/平台枚举及同步 AutoOS 专题旧平台描述（AC-06）。
+- [x] T-05：开篇宣传句、双组数字摘要、后部规模与日期来源统一更新，中英文同源结构；按用户确认补桌面/平台枚举及同步 AutoOS 专题旧平台描述（AC-06）。
 
 ## 9. 复审记录
 stage: new | revision: 1 | outcome: pass | next: work。既有明确改名/素材授权覆盖本合同；无另需确认的执行项。
@@ -139,3 +139,10 @@ stage: new | plan_id: PLAN-758 | plan_revision: 3 | outcome: pass | next: work�
 
 ## 10. 待澄清事项
 无必需决策；深色 PNG 没有自己的完整工具链 manifest，只标用户提供准备态，不伪造对应 promo 旧批身份。store 可用性按先前 P753-D1 记录核查，若仍失败停止 ledger 写入，继续可落地内容。
+
+### Work r3 — ready for review（2026-10-11）
+
+stage: work | plan_id: PLAN-758 | plan_revision: 3 | outcome: ready_for_review
+implementation_commit: 8f73dd56b59af4ab54f6f9d9ef4fcdc23defe470；证据提交 a7db58631（完整 SHA 由复审绑定）。T-03/04/05 完成；开篇宣传、四投入/五成果、平台定义、双语 AutoOS 专题、当前后部旧数字均已同步。来源标注作者 2026-10-11 生态累计口径。
+verification: 最终干净网站目录 build 145.37s 成功；现有 20 个触面场景全部通过（47.4s，18 网站/UI + 2 AutoOS 专题）。初期手机定位失败与构建期间移动旧输出导致的失败均保留原日志，未放宽断言。八份手机/桌面开篇与历程图、17 工件 hash、三当前规范冻结差异及九目标投影草案在 docs/reports/p758-release-summary-r3/verification.md。源码不触及 crates/test/auto，Category A 未运行 cargo t/docs_gen/tf；spec-index 再生内容无差异。六 AutoJade 图与作者源再次逐字节相同。
+next: review；P758-D1 仍为 store writer 不可用的 publication-only 收尾阻塞，无新的页面交付遗漏。
