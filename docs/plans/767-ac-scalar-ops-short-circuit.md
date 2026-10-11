@@ -1,5 +1,5 @@
 ---
-plan_id: PLAN-746
+plan_id: PLAN-767
 status: drafting
 feature_name: AC 标量计算扩面：精确整数运算与布尔短路
 plan_revision: 1
@@ -19,7 +19,7 @@ touched_goals: []
 affects: [auto-ac, auto-hir, auto-acc]
 ---
 
-# [PLAN-746] AC 标量计算扩面：精确整数运算与布尔短路
+# [PLAN-767] AC 标量计算扩面：精确整数运算与布尔短路
 
 ## 0. 变更摘要
 
@@ -103,7 +103,7 @@ str/char/List 和整数/布尔运算，适合拆成独立实施合同，不能�
 [str/char 语义冲突](../reports/745-source-core-i32/numeric-boundary.md)依然存在：
 VM builtin 的 char_at 返回 str、auto-lib 的表面返回 int、Value 保存 Unicode char。
 本计划不借补比较操作裁定这些冲突；完整 int 宽度也保持 unknown。
-取证固定于 [inputs.json](attachments/746/inputs.json) 的完整 SHA256 与主检出 HEAD；
+取证固定于 [inputs.json](attachments/767/inputs.json) 的完整 SHA256 与主检出 HEAD；
 执行开始复核漂移，必要时记录差异，而不是直接沿用旧 hash 宣称新鲜。
 
 ### 4.3 战略对应及后续队列
@@ -113,10 +113,10 @@ VM builtin 的 char_at 返回 str、auto-lib 的表面返回 int、Value 保存 
 [自举合同](../design/strategy/auto-acc-bootstrap-contract.md)和
 [HIR 求值顺序](../design/strategy/auto-hir-design.md)。v0.6 继续使用 Cranelift。
 
-| 工作包（除746外均未取号、未执行） | 独立成果 | 前置/归属 |
+| 工作包（除767外均未取号、未执行） | 独立成果 | 前置/归属 |
 |---|---|---|
-| 本计划746：标量扩面 | 精确 i32 运算、全序比较、bool 短路及版本化可信门 | 741/743/745已满足 |
-| 文本运行时首批（下一优先） | str/char/literal、len/char_at/slice/concat/compare；字符索引、所有权/释放及失败语义先有界裁定 | 消费746；运行时线认领 MD-406/407/408 与 probe-str-ml/probe-rt-own |
+| 本计划767：标量扩面 | 精确 i32 运算、全序比较、bool 短路及版本化可信门 | 741/743/745已满足 |
+| 文本运行时首批（下一优先） | str/char/literal、len/char_at/slice/concat/compare；字符索引、所有权/释放及失败语义先有界裁定 | 消费767；运行时线认领 MD-406/407/408 与 probe-str-ml/probe-rt-own |
 | 容器/聚合首批 | 内建 List 的 push/get/遍历及所需 record/TokenKind/is 能力，按可验收成果继续拆分 | 文本/资源合同；分别认领 MD-405 与 A9 聚合线 |
 | 首个真实 ACC 词法组件 | token/lexer 适配源码经 AC 编译后运行，词元序列对照 A4/corpus_m1 | 上述能力；标明适配改写与未迁移部分 |
 | 后续主体/桥/代际 | resolver/typeck/HIR/lowering/driver 迁移，Gen1→Gen2→Gen3 | 743 主体清单与代际合同，另行计划 |
@@ -259,7 +259,7 @@ cargo test --manifest-path experimental/ac-core/Cargo.toml --locked --test scala
 
 三个scalar测试目标是新增（T-02/03/04/05负责物化）；不存在时不能将命令失败称门禁通过。
 交review前一次完整ac-core `cargo test --manifest-path experimental/ac-core/Cargo.toml --locked`，
-再执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-scalar-746.ps1`（新增，
+再执行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-ac-scalar-767.ps1`（新增，
 T-06），以及已有 `scripts/verify-ac-741.ps1` / `scripts/verify-ac-source-745.ps1`。
 旧脚本若包含root档，提供保持原型case集不缩水的显式跳过root模式，记录脚本diff与case身份。
 盘点只跑 `python scripts/acc_inventory.py --check --require-decisions`，有漂移先审计。
@@ -292,19 +292,19 @@ T-06），以及已有 `scripts/verify-ac-741.ps1` / `scripts/verify-ac-source-7
 ## 8. 执行步骤
 
 计划簿记在默认检出；唯一实施树意向为
-`D:/autostack/.wt/lang-746/auto-lang`，分支`plan-746-dev`。
-这是未来路径，本轮未创建。work先确认745恢复ref及实际落点，复用适合的已登记746树，
+`D:/autostack/.wt/lang-767/auto-lang`，分支`plan-767-dev`。
+这是未来路径，本轮未创建。work先确认745恢复ref及实际落点，复用适合的已登记767树，
 不存在时按AGENTS在当前整合落点v0.6-dev建立。全生命周期一树，禁止junction/symlink。
 
 | 状态 | Task | owner_stage | 依赖 | 路径/操作、独立成果与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 用户批准r1；741/743/745落地 | 确认同一树/branch/base/inputs、零生产diff；新增docs/reports/746-scalar-i32/design.md：节点字段、profile随行API/注册选择、旧verify兼容、writer身份冲突和诊断码及case清单。静态preflight逐项§5/矩阵，禁止改可观察规则；HEAD/hash记录 | 01..07 |
+| [ ] | T-01 | work | 用户批准r1；741/743/745落地 | 确认同一树/branch/base/inputs、零生产diff；新增docs/reports/767-scalar-i32/design.md：节点字段、profile随行API/注册选择、旧verify兼容、writer身份冲突和诊断码及case清单。静态preflight逐项§5/矩阵，禁止改可观察规则；HEAD/hash记录 | 01..07 |
 | [ ] | T-02 | work | T-01 | src/hir.rs、descriptor.rs、verify.rs、lib.rs及新增schema/scalar-i32.atom、tests/scalar_hir.rs、fixtures/scalar-hir/：双profile+新op/节点+真verify，roundtrip与V01/07/类型正反例；locked all-targets与scalar_hir通过 | 01,04,05 |
 | [ ] | T-03 | work | T-02 | src/source/{lexer,ast,parser,resolve,typecheck,adapter,mod}.rs：显式profile、运算/优先级、迭代帧和span投影；新增tests/scalar_source.rs、fixtures/scalar-source/。V06/08/09通过；所有新源码仍经Atom bind/verify | 01,02,04..06 |
 | [ ] | T-04 | work | T-02 | src/native.rs：eager算术/比较/unary、div/rem护栏、lazy CFG与规范bool；新增tests/scalar_native.rs的真实HIR PE及trace。V02..05/07正反控制通过，不复用宿主算术作被测执行 | 02,03,05,06 |
 | [ ] | T-05 | work | T-03/04 | src/main.rs、source/adapter.rs与既有source_cli/source_native/common：双profile分派、shared finish_build和身份收据，V01/05/08/10/11真实源码PE，事务SENTINEL与全表达式上下文trace通过 | 01..06 |
-| [ ] | T-06 | work | T-05 | 新增scripts/verify-ac-scalar-746.ps1及case manifest、docs/reports/746-scalar-i32/verification.md；复用既有受控runner并串行运行新旧profile/永久反例；完整原型test/fmt/check，按§6隔离root档、盘点严格门与证据包 | 01..07 |
-| [ ] | T-07 | work | T-06 | experimental/ac-core/README.md更新；新增docs/reports/746-scalar-i32/proposed-spec-delta.md冻结SD01..05、profile边界和下一工作包；不发布canonical/ledger。inputs/case/二进制/收据hash绑定；SD与AC覆盖核查 | 07 |
+| [ ] | T-06 | work | T-05 | 新增scripts/verify-ac-scalar-767.ps1及case manifest、docs/reports/767-scalar-i32/verification.md；复用既有受控runner并串行运行新旧profile/永久反例；完整原型test/fmt/check，按§6隔离root档、盘点严格门与证据包 | 01..07 |
+| [ ] | T-07 | work | T-06 | experimental/ac-core/README.md更新；新增docs/reports/767-scalar-i32/proposed-spec-delta.md冻结SD01..05、profile边界和下一工作包；不发布canonical/ledger。inputs/case/二进制/收据hash绑定；SD与AC覆盖核查 | 07 |
 | [ ] | T-08 | review | T-01..07完成，writes暂停 | /auto-plan:review：同一树独立上下文逐条验收，真实HIR变异/短路副作用/除法护栏/新旧隔离反例；审遗漏/债务/SD与baseline稳定性。pass才reviewed；失败回同树work | 08 |
 | [ ] | T-09 | merge | T-08 pass及合入授权 | /auto-plan:merge：真实落地、SD/导航/人工层审计、ledger/index、批回归到期判定、实际archive链接/身份/计数；fresh wt-guard clean后清原树/branch/空组，保留恢复ref/证据 | 09 |
 
@@ -313,7 +313,7 @@ closeout实际完成后archived 9/9。不得预勾复审/清理或把T-01设计�
 
 ## 9. 复审记录
 
-2026-10-12，stage: new，PLAN-746 revision1，合同preflight完成。
+2026-10-12，stage: new，PLAN-767 revision1，合同preflight完成。
 
 - outcome: pass（草案可供审阅；不是实施或独立验收pass）。
 - authorization: 仅规划已授权，新合同执行待用户确认，来源为AGENTS §1 L1。
@@ -323,6 +323,8 @@ closeout实际完成后archived 9/9。不得预勾复审/清理或把T-01设计�
   条件发射/深输入与事务均明示。节点与API承载的实施细节由T-01有界设计收据确定。
 - facts: 三份归档frontmatter与最终745 merge收据已读；旧战略/盘点状态快照与canonical
   不同之处已在§4标历史；未将根历史红或“全绿”当本计划前置实现事实。
+
+2026-10-12，用户要求因v0.5分支计划号已推进至766，将本草案由746改号为767；文档、附件及未来worktree/branch/script/report引用同步迁移，取号器至少推进至768。仅身份簿记调整，合同内容与plan_revision=1保持。
 
 ## 10. 待澄清事项
 
