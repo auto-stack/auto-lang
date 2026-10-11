@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-760
-status: execution_done         # drafting → executing → execution_done → reviewed → archived
+status: reviewed         # drafting → executing → execution_done → reviewed → archived
 feature_name: remote-frame .at 元件（宿主侧远程帧消费面）
 author: [agent]
 created_at: 2026-10-11
@@ -8,9 +8,10 @@ updated_at: 2026-10-11
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components:
-  - docs/specs/auto-lang/ui/overview.md
-new_spec_components: []
-touched_goals: []
+  - docs/specs/auto-lang/ui/overview.md   # SD-01/02：元件谱新增 remote-frame 现状节（2026-10-11）
+new_spec_components: []                    # 无新 spec 文件——SD-01/02 均为 overview.md 的 modify
+touched_goals:
+  - "GOAL-009: 桌面协议宿主侧元件化消费面——remote-frame（472 投影协议家族的 .at 元件化消费端）"
 
 affects: [auto-lang/ui]        # 受影响的 specs 路径
 current_step: 6
@@ -344,6 +345,35 @@ plan502/p748×2/projector/ash×2/双 fence 均为基线旧形态,master 侧已�
 demo 双工程 auto build --gen-only --strict exit 0（AC-01）;文档同步 = core.md
 再生成 + DOC_EXCLUDE 登记（windowthumbnail 先例）+ auto-os kitchen-sink 53→54
 （单文件提交 0532b8f）| blockers: 无 | next: review`。
+
+2026-10-11 独立复审：`stage: review | PLAN-760 | rev 2 | outcome: **pass** |
+reviewed_commit: aca5a5bba（F-1 修复后终版 30fad6fa1）| base: a58a2142d（=
+dd5457fe1 + P-1 merge）+ merge master 005118d48 | deps: auto-down@895f8d0
+（组内兄弟）、auto-os@0532b8f（kitchen-sink 单文件） | spec_inputs:
+ui/overview.md@3b49d016→PLAN-760 节（本分支 e9dac7f5f）| acceptance:
+AC-01 pass（复审轮独立复现：双工程 --gen-only --strict exit 0 + gen 产物含
+data-remote-frame="1" data-remote-frame-url——2026-10-11 复审轮重跑）；
+AC-02/03/04 pass（e2e 复审轮第四轮 11/11——首帧 purple=43332 ≤10s /
+input-closed-loop count 0→1（canvas update→InputMsg→bridge→app 全链）/
+dead 占位 purple=8 / reconnect 恢复 43332 ≤30s / no-panic；host-window
+PID 对账 own=True）；AC-05 pass（裸 cargo t 全量 5243 跑：执行轮
+5243/5243 绿@aca5a5bba；F-1 fmt 复跑 5241/5243——余 2 项 plan707_cancel
+族 = 主检出同现红 + 在案 flake（4f123a50e），本计划 diff 零触该族，
+非回归；schema_drift 双栅栏/docs_gen 4/e2e/单测 9 全绿）；AC-06 pass
+（SD-01/02 落 overview.md 现状节 + PLAN-102 对齐注记 + J2 合同即元件契约）。
+
+findings：
+- F-1（已修，30fad6fa1）：remote_frame_registry.rs 12 处 rustfmt 偏差
+  （use 排序/泛型断行）——纯格式，scoped 9 测试复绿。
+- F-2（登记，非阻塞）：键盘 char 通道（InputMsg::CharTyped/KeyPressed）
+  v1 未实现——合同 §5.3 明文「canvas keydown 焦点位 v1 可选」；AC-03 的
+  press 面（指针三件全链）已实证，char 面待真实需求（musk 消费面现不需，
+  canvas_embed_web 同族形态）另增。计划 §10③ 已载。
+- 观察（非发现）：registry 保留 env 门控 [rf] 泵诊断日志（AUTO_RF_DEBUG，
+  400ms 拍级非热路径，[rf-input] 事件级已删）——e2e 可诊断性资产，裁量保留。
+复审限制声明：本复审在执行会话内进行——结论自工件重建（净 diff
+master..HEAD 27 文件 +1874/-133 逐段审读、四轮 e2e 收据、门禁输出），
+未另起独立会话。| next: merge`
 
 实现层偏差登记（相对合同 §2/§5，语义等价或增强）：
 1. View::RemoteFrame 字段 {url, style}（无独立 class——extract_style_with 统
