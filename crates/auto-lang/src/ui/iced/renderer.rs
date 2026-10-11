@@ -7224,23 +7224,37 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 }
             }
 
-            // PLAN-760: 宿主侧远程帧消费 leaf 渲染。T-02 阶段 = 灰底
-            // 占位（无帧形态的稳定中间态）；T-03 接 remote_frame_registry
-            // 最新 DisplayList → displaylist_element + mouse_area 输入包装。
-            AbstractView::RemoteFrame { url: _, style: _ } => {
-                iced::widget::container(
-                    iced::widget::text("connecting…").size(12),
-                )
-                .width(iced::Length::Fill)
-                .height(iced::Length::Fill)
-                .center(iced::Length::Fill)
-                .style(|_theme| iced::widget::container::Style {
-                    background: Some(iced::Background::Color(iced::Color::from_rgb(
-                        0.12, 0.12, 0.14,
-                    ))),
-                    ..Default::default()
-                })
-                .into()
+            // PLAN-760: 宿主侧远程帧消费 leaf 渲染——canvas RemoteFramePainter
+            //（draw = 注册表最新 DisplayList 等比 fit 直绘 / 相位占位；
+            // update = 指针事件 → InputMsg 注册表直发）。note(url) 续租
+            // （url 退场 = 租约到期断连，remote_frame_registry 生命周期）。
+            // style chrome（边框/圆角/宽高）走容器包装（window_thumbnail
+            // 同款纪律）。
+            AbstractView::RemoteFrame { url, style } => {
+                use crate::ui::iced::remote_frame_registry::RemoteFramePainter;
+                let _ = crate::ui::iced::remote_frame_registry::note(&url);
+                let canvas_el: iced::Element<'static, M> =
+                    iced::widget::canvas(RemoteFramePainter::<M>::new(url.clone()))
+                        .width(iced::Length::Fill)
+                        .height(iced::Length::Fill)
+                        .into();
+                let is = style.as_ref().map(|s| IcedStyle::from_style(s));
+                let mut surface = iced::widget::container(canvas_el);
+                if let Some(ref is) = is {
+                    let background = is.background_color.map(iced::Background::Color);
+                    let border_color = is.border_color.unwrap_or(iced::Color::TRANSPARENT);
+                    let border_width = is.border_width.unwrap_or(0.0);
+                    let border_radius = is.border_radius.unwrap_or(0.0);
+                    surface = surface.style(move |_theme| iced::widget::container::Style {
+                        background,
+                        border: iced::Border::default()
+                            .rounded(border_radius.min(9999.0))
+                            .width(border_width)
+                            .color(border_color),
+                        ..Default::default()
+                    });
+                }
+                surface.into()
             }
             // PLAN-012 W3：整桌面等比预览渲染臂——宿主合成（SD-02）。
             // 分层 = 壁纸基色底（#hex 直铺 / None → 主色占位）→ 该分区
@@ -23129,6 +23143,11 @@ fn run_session(
                             state.attach_pending_remotes();
                         }
                         state.pump_remote_mirrors();
+                        // PLAN-760: remote-frame 宿主客户端泵（url 租约清理 /
+                        // connect 收编 / Welcome/FrameReadyV2 帧槽 / EOF 重连
+                        // ——空注册表零成本；帧推进节拍 = 本 400ms ServiceTick
+                        // + presentation_keepalive_tick 重绘拍）。
+                        crate::ui::iced::remote_frame_registry::pump();
                         if !drain_tasks.is_empty() {
                             return iced::Task::batch(drain_tasks);
                         }

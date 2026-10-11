@@ -60,6 +60,9 @@ pub mod broker_surface;
 pub mod virtual_window;
 // PLAN-012 W3: 整桌面等比预览（workspace_preview 布局件宿主数据面）。
 pub mod workspace_preview;
+
+// PLAN-760: remote-frame 宿主客户端注册表 + canvas 画师（元件 iced 臂）。
+pub mod remote_frame_registry;
 // Plan 481: SelectableText 的选区纯逻辑（归一/词界/扩展/清空，全平台单测）。
 pub mod selection;
 // Plan 481: 可选文本 widget（text 的选择/复制变体，advanced Widget）。

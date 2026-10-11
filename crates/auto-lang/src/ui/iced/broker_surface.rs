@@ -16,7 +16,7 @@ use crate::ui::desktop_protocol::message::{DrawList, DrawOp, Rgba8};
 use crate::ui::desktop_protocol::stage3::PixelsSurface;
 use crate::ui::session::{DesktopMessage, DesktopSession, Wid};
 
-fn to_color(c: Rgba8) -> iced::Color {
+pub(crate) fn to_color(c: Rgba8) -> iced::Color {
     iced::Color::from_rgba8(c.r, c.g, c.b, c.a as f32 / 255.0)
 }
 
