@@ -5484,8 +5484,8 @@
         },
         {
           "id": "P722-1",
-          "title": "四主应用介绍契约：AutoEdit/AutoShell/AutoMusk/JadeEdit 双语专题与系统应用分组（PLAN-722）",
-          "content": "PLAN-722 交付落账（canonical 唯源=docs/specs/website/design/application-introductions.md；landing 939497ead，patch 等价映射自 3fd4562da；页面结构 723:r2 后以 /apps 概览并轨为准）。四主应用用途分工直达专题，专题依据当前源码/规范介绍操作、能力、运行条件与边界；AutoShell 实跑保留为独立 guide（713 证据迁入）；旧 AutoDown/AutoUI 资料不删除；系统应用两组归类并与 28 候选 Demo 展示（application-demos.md）互链。",
+          "title": "四主应用介绍契约：AutoEdit/AutoShell/AutoMusk/AutoJade 双语专题与系统应用分组（PLAN-722）",
+          "content": "PLAN-722 交付落账（canonical 唯源=docs/specs/website/design/application-introductions.md；landing 939497ead，patch 等价映射自 3fd4562da；页面结构 723:r2 后以 /apps 概览并轨为准）。四主应用用途分工直达专题，专题依据当前源码/规范介绍操作、能力、运行条件与边界；AutoShell 实跑保留为独立 guide（713 证据迁入）；旧 AutoDown/AutoUI 资料不删除；系统应用两组归类并与 28 候选 Demo 展示（application-demos.md）互链。（2026-10-11 PLAN-758 全仓更名：JadeEdit→AutoJade，规范路径 /apps/auto-jade/，旧路由同语言跳转。）",
           "tags": [
             "plan-722",
             "website",
@@ -5764,6 +5764,31 @@
             "source-sha256:de55aabb45e0294b197902db59341f82be7fbf6378ce594b513632e170716a19",
             "commit:35f77e41c4c8d9f1054233c8929fe2faf8bde595"
           ]
+        },
+        {
+          "id": "P758-1",
+          "title": "AutoJade 更名与深色准备态实拍契约（PLAN-758 SD-01/02）",
+          "content": "契约=docs/specs/website/design/application-introductions.md（PLAN-758 节）：全仓产品名统一 AutoJade/auto-jade——规范专题 /apps/auto-jade/（zh 镜像），旧 jadeedit URL 同语言跳转；物理仓未改名，真实仓地址保留不改写；冻结证据（hash 绑定快照/补丁/manifest）保留原字节并逐项登记例外。六张用户 2026-10-10 提供深色准备态原图入 website/public/apps/auto-jade/（SHA-256 在 p758-autojade 证据包；无深色专属工具链 manifest，标注用户提供准备态不冒充 RC 验收）；P4（文件名 tags 实为回收站/查找面板）不入标签展示；SHOT-09 恢复留空。auto-lang/ui 消费方规范同步更名（overview/architecture/autodown-wikilink）。",
+          "file": "docs/specs/website/design/application-introductions.md",
+          "related": [
+            "PLAN-758",
+            "PLAN-722",
+            "PLAN-756"
+          ],
+          "status": "published",
+          "created": "2026-10-11"
+        },
+        {
+          "id": "P758-2",
+          "title": "v0.5 开篇版本进展前置契约（PLAN-758 SD-03 + r3 成果摘要）",
+          "content": "契约=docs/specs/website/design/ui-presentation.md（PLAN-758 节）：v0.5 双语页 hero 简介后先讲版本进展（三大步：v0.5 AutoUI 双端/AutoOS 虚拟桌面与应用生态，再 v0.3/v0.4/v0.5 时间线），继以三项亮点与四投入/五成果数字概要（用户批准文本，2026-10-11 L0 校正\"六个月，三大步\"、2026-04—10），然后才展开桌面/应用大图与规模统计；大图与规模数字不得先于版本成果说明；原理念详情与数据来源注记保全后部；章节导航与目录顺序一致。",
+          "file": "docs/specs/website/design/ui-presentation.md",
+          "related": [
+            "PLAN-758",
+            "PLAN-756"
+          ],
+          "status": "published",
+          "created": "2026-10-11"
         }
       ]
     },
@@ -9189,6 +9214,18 @@
             "source-sha256:c10c302d05bc9ef591a47d2196236abefd3553862e908ae2bf3fe4ea1023de96",
             "commit:35f77e41c4c8d9f1054233c8929fe2faf8bde595"
           ]
+        },
+        {
+          "id": "P758-3",
+          "title": "PLAN-758 审计收据（r1→r2 F4 修复→r3 摘要→L0 六个月校正→投影回填）",
+          "content": "r2 交付 cf33ace79（F4 原生链接修复 + 63 网站场景 + Rust 注释性 9 文件零可执行改动）；r3 成果摘要交付 b3a91b93b（build 145.37s + 20/20，range-diff 全等映射在案）；L0 后继\"六个月\"校正 8625746cf（build 201s + 4/4，收据 docs/reports/v05-six-months-correction.md）；merge 收据 blocked 于投影（store writer 不可达，pending 映射 ledger-projection-pending.json）——2026-10-11 经 README §5 手工回退路径回填（P722-1 更名 + P758-1/2/3 入账）并归档/清理。findings：P758-F1..F4 均已处置；P758-D1 store 阻塞、OBS1/2/3 在 KNOWN-DEBT。",
+          "file": "docs/plans/archive/758-autojade-rename-and-promo.md",
+          "related": [
+            "PLAN-758",
+            "PLAN-757"
+          ],
+          "status": "published",
+          "created": "2026-10-11"
         }
       ]
     }
