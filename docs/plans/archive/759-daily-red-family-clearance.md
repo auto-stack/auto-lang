@@ -426,7 +426,7 @@ CPU-slice Parked(CpuRunnable)，片预算耗尽，测试驱动轮次内未续完
 - **landed**：master 并行推进（757/758/PLAN-102）→ worktree `git rebase master` 干净，`git range-diff` 8/8 全等（旧→新映射：986cc9392→c279a6490 / aa85ffe66→a78e0d46b / 753733205→fa49911c0 / f939d1a98→cf1448dfb / 5448cbfd1→5820d35f3 / aea4ac5f9→fe04a3fac / d5a507db3→fd87fa528 / 6b33d1377→e905607ff）；重基后全档 5231/5232+1 在案 flake（plan484_024 streaming，755 T-06 登记，scoped 复跑绿）+12 目标族全绿；主检出 `git merge --ff-only plan-759-dev` → **master=e905607ff**；F-R1 序置=auto-os main 先行 FF 至 b5a2333，主检出三围栏烟测 3/3 绿（kitchen_sink 随之转绿）
 - **ledger_refreshed**：README §5 手工回退路径（753/756/757 先例）——.autoos/specs.json upsert P759-1（designs·merged #[api] 三分支契约）/P759-2（designs·壁纸测试态隔离规约）/P759-3（reports·清偿收据）+vm/ui plans.md 759 行+INDEX 再生（26 projects）；提交 3a54a3561
 - **archived**：git mv → docs/plans/archive/759-daily-red-family-clearance.md，status: archived（本提交）
-- **cleaned**：见下方 cleaned 回填行
+- **cleaned**：wt-guard×4 clean → 移除 .wt/lang-759/{auto-lang,auto-os,auto-term(含构建产物,--force),auto-down} + 双仓 plan-759-dev 分支删除（lang=e905607ff=master 落地态/os=b5a2333=main 落地态）+ 组目录 rmdir；GROUP_CLEANED 验证
 - 批量回归到期检查：759%5=4 非到期号；收据 last_covered_plan_id=755@2026-10-11T02:44Z（<48h，当日多次合并在窗口内不计龄）——**未到期**，下次到期判定随后续 merge 收尾例行
 - 生产工件观察项（merge skill 第 5 条）：本计划为测试/schema 数据面清偿（零产品逻辑变更；aura.at 别名/级别与 render 臂属数据追平）——现存 release 二进制/auto.exe 不含本轮数据追平，**无需重建**（无正在修复的生产缺陷；carousel/command 的 iced 降级呈现语义与现役二进制实际行为一致）
 
