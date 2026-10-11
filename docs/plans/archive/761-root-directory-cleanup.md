@@ -122,3 +122,5 @@ Git worktree、Python/PowerShell 路径与资产核查、Rust check/nextest、Au
 - cleaned: 2026-10-11，归档commit=d42992167；验证branch全祖先已落地，两worktree各自fresh wt-guard clean后移除；plan-761-dev已删除，lang-761空组已删除；git worktree list / show-ref / 文件系统三重回读确认无残留。
 - 生产产物观察：release auto.exe修改时间为2026-10-10T18:44:06.418489+08:00；本计划未改变运行时逻辑，现有release不需为资产搬迁重启。debug门禁在共享target复编；未触auto-down代码、前端生成器/发布bundle。本次未执行部署或远程push。
 - 批量回归：上一收据覆盖755；760整五计划此后落地，故DUE。按auto-plan-regress主检出单实例tf/tt/tb，结果与最终收据另记；当前无cargo/nextest重型进程。
+
+- 批量回归已完成：tf6263/6265、tt5610/5614、tb5296/5298；registry双红=REG-3，back_provision=738已登记观测，新增chart tt失败独立分诊PLAN-762（tf/tb绿，归因待证）。结果并非全绿；三腿收据docs/plans/.last-batch-regression.json及reports/761-batch-regression.md已落盘。目录整理delivery/ledger/archive/cleanup保持完成。

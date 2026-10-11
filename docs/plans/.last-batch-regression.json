@@ -1,33 +1,68 @@
 {
- "last_covered_plan_id": 755,
- "timestamp": "2026-10-11T02:44:18Z",
- "covered_commit": "2aff077ac110162bee7d47b52da8b5deab282a17",
- "legs": [
-  "tf",
-  "tt",
-  "tb"
- ],
- "leg_timings": {
-  "tf": "82.3s (6252 run/14 failed)",
-  "tt": "148.9s (5602 run/10 failed)",
-  "tb": "137.8s (5286 run/8 failed)"
- },
- "taa_skipped_reason": "窗口 3c2f3c347..HEAD aavm 触发面命中（bade1845c：crates/auto-lang/src/tests/{aavm2_a2r,aavm2_corpus_runner}.rs，PLAN-738 R2 测试基建两文件），但用户 2026-10-11 裁定「aavm 不用验证」——沿 AGENTS.md 2026-10-02 aavm/aa2r 拟退役豁免裁定，本腿跳过",
- "new_reds": [],
- "new_red_notes": "零新增（三腿全对在册基线）",
- "flakes_seen": [
-  "plan502_diagram_tests::plan502_m3_layout_geometry_e2e (tf/tt/tb，P733-R1 load-flake 族，本轮 scoped 2/2 绿)",
-  "plan484_chart_component_tests::plan484_smoke::plan484_024_charts_streaming_recompute (tf/tt，755 T-06 在案隔离绿 flake，本轮 scoped 2/2 绿)"
- ],
- "known_reds_seen": [
-  "musk_vm_track_p053_4_merged_api_warning (tf/tt/tb，P733-R2③ 在册)",
-  "plan606_gallery test_029_photo_gallery_thumbnails (tf/tt/tb，在册预存)",
-  "projector_counter_layout_and_hits (tf/tt/tb，基线同红)",
-  "desktop_bus_inbox_drains_through_real_arms + desktop_surface_merge_dedupe_and_injection (tf/tt/tb，iced 基线)",
-  "plan748_breakpoint_probes p748_t00_handler static+dynamic (tf/tt/tb，基线同红)",
-  "vm::ffi::term_engine::ash_stream_leak_probe (tf/tt/tb，735 回执登记预存)",
-  "schema_drift::schema_drift_fence + queue_coverage_drift_fence + docs_gen::kitchen_sink_page_in_sync (tf，REG-4 跨仓金样脱同步)",
-  "ui_gen::vue::test_a2vue_desktop_surface_asset (tf，4f123a50e 在案四红之一)"
- ],
- "window_note": "覆盖 3c2f3c347(Plan 740 收据)..2aff077ac：落地计划 746/747/748/749/750/751/752/755 + L0 fix（如 dc677eeb4 icon size）+ PLAN-755 审计闭合簿记（5fce09eb6）。并行会话 mid-run 三提交（be51414da iced load_image_bytes 修复/7d51954d4 a2r-std 流终结矩阵/2aff077ac 758 簿记）：tf 在 5fce09eb6 态执行，tt 跨 10:41:40 修复落地，tb 在修复后态——三腿均零新增红，跨态一致。触发链：PLAN-755 整五计划落地（merge 收尾 DUE 检查移交，与 R4 next 一致）；画廊围栏暖缓存（tf 82.3s 无 ~800s 冷态长尾）。"
+  "last_covered_plan_id": 761,
+  "timestamp": "2026-10-11T07:41:00.136011Z",
+  "covered_commit": "5314cf0f18774acc7628237fabbca13cf868362c",
+  "legs": [
+    "tf",
+    "tt",
+    "tb"
+  ],
+  "leg_results": {
+    "tf": {
+      "seconds": 132.405,
+      "run": 6265,
+      "passed": 6263,
+      "failed": 2,
+      "skipped": 519,
+      "failures": [
+        "ui::app_registry::tests::launch_three_real_apps_via_registry_resolver",
+        "ui::app_registry::tests::scan_examples_ui_curation_set"
+      ],
+      "log_sha256": "6bb9461cbc5132b47407ec3f5548db2f51b5c8f911a85260b48f28824e5f4057",
+      "source_commit": "5314cf0f18774acc7628237fabbca13cf868362c"
+    },
+    "tt": {
+      "seconds": 150.944,
+      "run": 5614,
+      "passed": 5610,
+      "failed": 4,
+      "skipped": 1789,
+      "failures": [
+        "tests::plan437_child_init_tests::plan437_child_init::gallery_chart_components_render_geometry",
+        "ui::app_registry::tests::launch_three_real_apps_via_registry_resolver",
+        "ui::app_registry::tests::scan_examples_ui_curation_set",
+        "ui::back_provision::tests::launch_provision_lifecycle_via_resolver"
+      ],
+      "log_sha256": "04850645b195c9b2648cf3711a1614c1ad02ef0c69f318ffe9649f645cbfdc5d",
+      "source_commit": "5314cf0f18774acc7628237fabbca13cf868362c"
+    },
+    "tb": {
+      "seconds": 104.214,
+      "run": 5298,
+      "passed": 5296,
+      "failed": 2,
+      "skipped": 1541,
+      "failures": [
+        "ui::app_registry::tests::launch_three_real_apps_via_registry_resolver",
+        "ui::app_registry::tests::scan_examples_ui_curation_set"
+      ],
+      "log_sha256": "7af8751426b2a69bd8421ec7e6cb9c08bd3c45dd0659f0904b5121a660b782ea",
+      "source_commit": "5314cf0f18774acc7628237fabbca13cf868362c"
+    }
+  },
+  "new_reds": [
+    "tests::plan437_child_init_tests::plan437_child_init::gallery_chart_components_render_geometry"
+  ],
+  "new_red_notes": "新观察仅tt失败，tf/tb通过；未证明由合并窗口引入，也不以偶发绿销案。已按流程独立分诊PLAN-762:r1 drafting，未执行修复。",
+  "triage_plan": "docs/plans/762-chart-init-batch-flake.md",
+  "verdict": "new-observation-triaged",
+  "known_reds_seen": [
+    "ui::app_registry::tests::scan_examples_ui_curation_set",
+    "ui::app_registry::tests::launch_three_real_apps_via_registry_resolver",
+    "ui::back_provision::tests::launch_provision_lifecycle_via_resolver"
+  ],
+  "known_red_notes": "registry双红与KNOWN-DEBT REG-3共享target同名exe签名一致；back_provision是738复审已登记间歇观测，本次OS10013 PermissionDenied，tf/tb通过。",
+  "taa_skipped_reason": "2aff077ac..5314cf0f1无aavm触发面，lib.rs无变更；未运行taa/t3。",
+  "window_note": "上一收据755后Plan760整五落地触发。覆盖最高已交付761；762仅分诊草案，不算落地。主检出只有已记录759共享文档WIP，六本机配置忽略。启动各腿前检查无其他gate；tf/tt过程中他会话后来启动fix-bp-root-env-lock局部检查，tb过程中该会话开始日常档，记录此并发观测限制，不据此断言根因。三腿代码同5314cf0f1；tb中仅新建762草案文档，未改代码。",
+  "report": "docs/plans/reports/761-batch-regression.md"
 }
