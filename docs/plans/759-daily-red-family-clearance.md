@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-759
-status: executing              # drafting → executing → execution_done → reviewed → archived
+status: execution_done         # drafting → executing → execution_done → reviewed → archived
 feature_name: daily-red-family-clearance
 plan_revision: 2               # r2: 按 2026-10-11 草案审核 F-01~F-08 修订
 author: []
@@ -13,8 +13,8 @@ new_spec_components: []
 touched_goals: []             # goals.md 无逐红族治理条目，本计划不映射 GOAL-NNN（理由见规范增量节）
 
 affects: [auto-lang/ui, auto-lang/vm]   # schema/aura.at 经 include_str! 编入产品且被 ui_gen 消费；p053_4 边界在 vm fn-call 语义 spec
-current_step: 0
-total_steps: 9
+current_step: 10
+total_steps: 10
 ---
 
 # [PLAN-759] 日常档 12 红族清偿（r2）
@@ -307,45 +307,55 @@ CPU-slice Parked(CpuRunnable)，片预算耗尽，测试驱动轮次内未续完
 ## 执行步骤
 （原子任务：精确文件路径 + 确切操作 + 验证命令；每步完成后追加 [✅ 已完成] 一行证据）
 
-- [ ] **T-00** 跨仓 worktree 布置（F-02 前置）
+- [x] **T-00** 跨仓 worktree 布置（F-02 前置）
+  [✅ 已完成] 组目录 .wt/lang-759/{auto-lang@plan-759-dev=00d785e40, auto-os@plan-759-dev=ab6b266（与审核依赖基线一致）, auto-term@detached=7a0d0e8, auto-down@detached=895f8d0（PLAN-726 组内解析必需，首建缺它 cargo 报错实证）}；auto-os 主检出有他 session WIP（demos/.gitignore，未触碰、未建其上）。
   `git worktree add D:/autostack/.wt/lang-759/auto-lang -b plan-759-dev`（基 master）；
   auto-os 兄弟 worktree 入同组目录（`.wt/lang-759/auto-os`，基其 master，记录
   base/commit/dirty）；auto-term 同组 worktree（仅构建用）。三仓红线：组内禁
   junction/symlink；移除前跑 `wt-guard.sh`。
   验证：`git worktree list` + 三仓状态记录。
-- [ ] **T-01** R7 四维度清偿（别名再生/覆盖登记/跨仓金样）
+- [x] **T-01** R7 四维度清偿（别名/登记/跨仓金样）
+  [✅ 已完成] auto-lang 986cc9392：①朴素 SCHEMA_DRIFT_GENERATE_AT 再生**弃用**（实测抹掉 209 条目策展元数据——canonical 改名/category→unknown/props→TBD 占位，F-01 预警坐实）；改手工补 12 别名（Calendar Pascal+carousel/command kebab 挂既有 canonical）。②render_support 补 carousel/command fallback 臂（拼写对齐 vb 下划线）+aura.at 13 条 iced partial→fallback 诚实翻转（P6-3/P3 双向自洽——**执行中发现维度⑤**：717 误标 partial 且未同步 render 表）。③element_coverage 补 carousel 五项 NotConsumed（D4 退役族真实理由）。④P0 baseline 刷新（+249/-301=P1 红遮蔽窗 10-01..10-11 累积漂移+carousel rs 退役态有意漂移，理由入提交信息；rs 扫描器仅认单行 insert 的多行化=P759-D2 新债）。⑤金样：AUTO_OS_ROOT 锚定 .wt/lang-759/auto-os（写入前核验落点、主检出未动）KITCHEN_SINK_UPDATE 再生（故意 panic=生成信号不算绿）→auto-os b5a2333（plan-759-dev 分支，待合流）。验证：三围栏绿+`cargo tu` 858/859（唯一红=在案预存 a2vue 金样 4f123a50e，非本计划面）。
   文件：`schema/aura.at`、`crates/auto-lang/src/aura/element_coverage.rs`、auto-os
   kitchen-sink.at + auto-lang 金样（AUTO_OS_ROOT 锚定 worktree）。
   验证：`cargo t --no-fail-fast schema_drift_fence queue_coverage_drift_fence kitchen_sink`
   （清 env 后）+ `cargo tu`。
-- [ ] **T-02** p748_t00 整链 deadline + 泵
+- [x] **T-02** p748_t00 整链 deadline + join 后泵
+  [✅ 已完成] aa85ffe66：server 有界化（accept 非阻塞轮询 10s+read/write 5s 超时）+整链 15s deadline（派发前建立，覆盖 派发→server→join→泵）+join 后 drive 泵循环+noawait 臂不启 server+TempDir 返回值作用域持有。验证：p748_t00 全族 **8/8 绿**（含生而红 static/dynamic 双臂）。
   文件：`crates/auto-lang/src/tests/plan748_breakpoint_probes.rs`（spawn_server 有界化/
   全链 deadline/join 后泵/noawait 臂不启 server/TempDir 作用域化）。
   验证：`cargo t --no-fail-fast p748_t00`。
-- [ ] **T-03** p053_4 双臂重锁
+- [x] **T-03** p053_4 双臂重锁
+  [✅ 已完成] 753733205：臂A=host 桥显式隔离+exports 在场+不发 3142 桩+派发 Fetch 后 store 读回 "OK:impl"（真实落账）；臂B=低层 Codegen fixture（api_funcs 注册+import_scope 跨模块限定——synthesize 路径表达不出该状态）+双模块 Linker 装载执行命中 3142=带 AUTO_VM_MERGE/AUTO_BACKEND 指引 RuntimeError（单模块实测 LinkError 定谳「缺实现=实现体在另一模块」的生产形态）。验证：p053_4 **2/2 绿**。
   文件：`crates/auto-lang/src/tests/musk_vm_track_tests.rs:700-742`（臂 A 重锁）+ 新增
   低层 codegen fixture 臂 B。
   验证：`cargo t --no-fail-fast musk_vm_track_p053_4` + 新臂过滤串。
-- [ ] **T-04** projector 双形态
+- [x] **T-04** projector 双形态
+  [✅ 已完成] f939d1a98：variant:"default" 源保 5 面（rounded-md 底盒→QuadR，计数扩两形态+四描边 Quad）+PLAN-678 同款 proj_autocenter_off 保 MARGIN 几何（variant 档内宽收缩触发居中的实测修正）；新增裸按钮 1 面锁 projector_bare_button_chromeless_single_quad。验证：**2/2 绿**。
   文件：`crates/auto-lang/src/ui/desktop_protocol/client_runtime.rs:1000-1070`
   （variant:"default" 5-Quad + 裸按钮 1-Quad 锁）。
   验证：`cargo t --no-fail-fast projector_counter`。
-- [ ] **T-05** 壁纸双测隔离
+- [x] **T-05** 壁纸双测隔离
+  [✅ 已完成] 5448cbfd1：两测试各建存活至结束的空 TempDir 写 config.wallpapers_dir（挡 env/stella 两级探测）；断言 #101014/bg-[#243b55] 逐字精确，零宽松放行；R5-② 登记独立债务 P759-D1。验证：**2/2 绿**。
   文件：`crates/auto-lang/src/ui/iced/renderer.rs` 两测试构造点+断言（空 TempDir 存活至
   测试结束；删宽松放行）。
   验证：`cargo t --no-fail-fast desktop_bus_inbox_drains desktop_surface_merge_dedupe`。
-- [ ] **T-06** plan606 photo stub
+- [x] **T-06** plan606 photo stub
+  [✅ 已完成] aea4ac5f9：std TcpListener stub（OS 端口/accept 轮询+read 超时有界/请求计数）；**AUTO_HTTP_BASE 须在 build_example_component 之前**（fire_init 同步派发即提交 job 读 env，晚置=相对 URL 立败——实测定谳）；精确 URL 映射断言（24 thumb 逐字相等+id 恰一次）+stub 侧 scan 收到≥1+OpenPhoto(str) 全图同 id 精确一致+Cover/Contain。验证：**0.18s 绿**（原 10.2s 红）；F-03 skip 备选未采用。
   文件：`crates/auto-lang/src/tests/plan606_gallery_tests.rs`（stub+精确断言+env 隔离）。
   验证：`cargo t --no-fail-fast plan606_gallery`（时长应降至秒级；无 skip 路径）。
-- [ ] **T-07** ash 门禁分层 + auto-term worktree 构建
+- [x] **T-07** ash 门禁分层 + auto-term worktree 构建
+  [✅ 已完成] d5a507db3：撤主检出硬编码 set_var（F-02）→env AUTOTERM_ENGINE_DLL 定位+静态 #[ignore] 可见分层（集成命令写入注记，显式跑缺 DLL=红 force-check）；.wt/lang-759/auto-term（独立 target）cargo build -p autoterm-core 产 DLL 1.6MB→集成门禁 `--run-ignored only` **真跑 23.7s 绿**（20000 键入循环全跑）；日常档显示 ignored 非静默 pass。
   文件：`crates/auto-lang/src/vm/ffi/term_engine.rs:1214-1233`（env 定位+#[ignore] 分层）；
   动作：`.wt/lang-759/auto-term` 构建 DLL → 集成门禁真跑。
   验证：日常档显示 ignored + `AUTOTERM_ENGINE_DLL=… <集成命令>` 真跑绿。
-- [ ] **T-08** plan502 完成态驱动
+- [x] **T-08** plan502 完成态驱动
+  [✅ 已完成] d5a507db3：run_dir 单轮 drive 改带 10s 截止时间的完成态循环（Init demand/CPU 续体/I-O parked 收敛即出，超时带现场）；几何断言原值不放宽。验证：plan502 族 **8/8 绿**+m3 scoped 两轮绿+全档双轮（T-09）。
   文件：`crates/auto-lang/src/tests/plan502_diagram_tests.rs`（截止时间任务完成态驱动，
   原断言不变）。
   验证：scoped ×2 + 全档 ×2 无该红。
-- [ ] **T-09** 收口销账
+- [x] **T-09** 收口销账
+  [✅ 已完成] 全档 `cargo t --no-fail-fast` 轮1 **5232/5232 绿 0 failed**（109s，ash=可见 ignored 计入 skipped）；轮2 见复审记录；KNOWN-DEBT：P733-R1/P733-R2③/REG-4 销案（保留原文+清偿注记）、新增 P759-D1/P759-D2 两债；跨仓收据=auto-os b5a2333（待合流）+auto-term worktree 构建+集成真跑；规范增量预备 worktree 6b33d1377。
   文件：`docs/plans/KNOWN-DEBT-AND-RISKS.md`、本文件复审记录。
   验证：`cargo t --no-fail-fast` 全档 0 failed 终证据 + 跨仓收据齐。
 
@@ -383,6 +393,17 @@ CPU-slice Parked(CpuRunnable)，片预算耗尽，测试驱动轮次内未续完
 - F-08：补 plan_revision/affects/规范增量节（vm-fn-call-semantics 边界③+ui overview
   候选）/touched_goals 留空理由；销账口径改「只销已验证成员」。
 - 用户裁定（2026-10-11）：保留补泵/photo stub/壁纸隔离主案；T-04 双形态并做。
+
+
+### 2026-10-11 work 收口记录（T-00～T-09 全数落地）
+
+- stage: work | plan_id: PLAN-759 | plan_revision: 2 | outcome: pass
+- code_commit: plan-759-dev 分支链（base master 00d785e40）——986cc9392（T-01 schema 四维度）/ aa85ffe66（T-02）/ 753733205（T-03）/ f939d1a98（T-04）/ 5448cbfd1（T-05）/ aea4ac5f9（T-06）/ d5a507db3（T-07+T-08）/ 6b33d1377（规范增量预备）
+- dependency_revisions: auto-os worktree @ab6b266→分支提交 b5a2333（金样再生，**待合流 main**）；auto-term worktree @7a0d0e8 detached（DLL 构建 1.6MB，无提交物）；auto-down @895f8d0 detached（只读解析依赖）
+- task_ids: T-00～T-09 全 [x]
+- evidence: 全档轮1 5232/5232 绿 0 failed（109s）+轮2 5232/5232 绿 0 failed（104.6s，前台复跑）——AC-01 双轮达成；逐族 scoped 绿见各任务行；`cargo tu` 858/859（唯一红=在案预存 a2vue 金样）；ash 集成门禁真跑 23.7s 绿
+- blockers: 无阻断。移交两项（非阻断）：①auto-os plan-759-dev（b5a2333）合流 main 后主检出/CI 的 kitchen_sink 围栏方绿（worktree 侧兄弟解析已绿）——归属=待澄清#1 默认移交用户；②P759-D1（壁纸硬编码目录）/P759-D2（rs 扫描器单行化）两债在册待独立裁定
+- next: review（/auto-plan:review）
 
 ## 待澄清事项
 
