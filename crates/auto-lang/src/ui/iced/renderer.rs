@@ -3039,7 +3039,12 @@ fn build_scrollable<M: Clone + Debug + 'static>(
         // 截图实证）；重发是结构性重建/极端序列下的防御，同值去抖使其在
         // 常规路径零开销。
         let snap = crate::ui::scroll::controller::controller_snapshot(c.key());
-        if snap.viewport_w > 0.0 {
+        // L0 fix(2026-10-11)：回显仅限写臂投影值（offset_from_measure=false——
+        // 结构性重建后 scroll_to 未落盘的防御补发，terminal/015 先例语义）。
+        // 读臂实测值（用户滚轮/拖拽落点）注册表已是真源，回显只会把滚动
+        // 期间的滞后快照强行写回——auto-edit diff 视图大幅滚轮后滚动条
+        // 抖动格斗源。实测值永不回显。
+        if snap.viewport_w > 0.0 && !snap.offset_from_measure {
             note_scroll_offset(id, (snap.offset_x as f32, snap.offset_y as f32));
         }
     }
