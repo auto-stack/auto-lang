@@ -233,6 +233,7 @@ test.describe('v05 release page', () => {
         await page.goto(url)
         const heading = page.locator('#journey h2')
         await expect(heading).toHaveText(url.startsWith('/zh') ? '五个月，三大步' : 'Five Months, Three Major Steps')
+        await page.screenshot({ path: testInfo.outputPath('release-summary.png') })
         const box = await heading.boundingBox()
         expect(box, 'version progress heading').toBeTruthy()
         expect(box!.y, 'version progress early in page').toBeLessThan(1.5 * vp.height)
