@@ -903,6 +903,15 @@ inproc VM App（ui_desktop 宿主 `launch_app`）拉起零宿主退出是桌面�
   落笔后 CONTINUE_SEARCH 保 WER)。**外部击杀指纹 = 审计册零行 + 退出码
   1**(Windows 强杀恒 1)。musk soak 仪器的"VM 必退 code=1"定谳为收尾
   taskkill 假象;斜率报值实为 MB/hour(单位 bug,musk 侧修)。
+- **r2 增补（瞬态尖峰退出面归因）**:musk bigpage 矩阵呈报的"burst/大快照
+  触发原生 exit(1)"定谳为**仪器 finally-taskkill 假象**(try/finally 无
+  catch:工具调用 isError 抛错→收尾击杀,"VM EXITED code=1" 先于错误栈打印
+  被误读;判别台四臂全存活)。**外部击杀假象高发警示**:驱动方仪器收尾
+  kill 与进程自退的区分是判读前提——判真死亡须击杀标记与错误分离或采样
+  时间线。观测缺口闭合:F-10 **exitproc_trace**(env `P765_EXIT_TRACE=1`,
+  IAT 槽替换)——依赖直调 ExitProcess 的零痕盲区(原"零行+码 1"指纹的
+  例外),落调用栈偏移后确定性自终止(规避 LdrShutdownProcess detach
+  竞态,退出码精确保持)。
 
 ## 桌面端点跨仓配对契约（PLAN-698 SD-04）
 

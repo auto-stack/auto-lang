@@ -1461,6 +1461,18 @@
      "status": "published",
      "created": "2026-10-12",
      "last_modified": "2026-10-12"
+    },
+    {
+     "id": "P765-5",
+     "title": "PLAN-765 r2 归因纪要（瞬态尖峰退出面=矩阵仪器 finally-taskkill 假象）",
+     "content": "musk T-03 四轮 bigpage 矩阵呈报的\"r1 修复面之外的瞬态尖峰退出面\"定谳为仪器假象:①三通道零痕(默认审计册四轮时段零条目——musk 未检查过该默认路径;WER 零记录,00:36 WER 簇=10-11 BSOD 延迟重报;vm.log 干净截断);②五臂判别台(snap 只快照 180s/click 捕获错误续观察 185s/burst 合成入 VM 生命期 5s+列表轮询叠加 181s/nosnap/心跳关闭对照)两形态载荷 VM 全程存活零进程内 exit;③机制=try/finally 无 catch:click isError(本构建要求 value:\"x,y\" 已知怪癖)→finally killTree(taskkill /F 恰码 1)→\"VM EXITED code=1\" 先于错误栈打印(node ESM finally-先于-rejection 微实验钉死);[POLL] idle=51(500ms/拍)与 click 时刻精确吻合。与 r1 soak 假象/musk K14 三例同族——零例真实退出。附带真发现:依赖直调 ExitProcess 零痕观测缺口→F-10 IAT 追踪钩(cdb 实证转调真 ExitProcess 撞 LdrShutdownProcess detach 竞态间歇 0xC0000005,基线 30/0;自终止版 50/50 压测零异常)。musk T-03 解阻交接:click 补 value+收尾击杀 cleaningUp 标记(其侧已落地)。",
+     "file": "docs/reports/765-t01-attribution-memos.md",
+     "related": [
+      "PLAN-765",
+      "PLAN-104"
+     ],
+     "status": "published",
+     "created": "2026-10-12"
     }
    ]
   },
@@ -5853,7 +5865,7 @@
     {
      "id": "P765-1",
      "title": "VM 宿主活跃会话稳定域契约（消息桥生命周期/回填门控/退出审计四分法）",
-     "content": "Http.get_msg 轮询消费方契约:①共享连接池 Client(禁每请求新建,hyper 池用后即弃=空闲期私有内存棘轮主源);②read_body_capped 按 Content-Length 预留;③载荷单缓冲预编码 {handler}\u001fs\u001f{json} 入队侧产出、渲染层泵零拷贝直投(原链 292KB 级响应 5-6 份全文拷贝);④DesktopMessage::HttpBackfill 专用通道 seq 门控派发——handler 零状态写不置脏(F1 fire_timer 延伸,普通事件语义不动,逃生门 AUTOUI_MSG_BACKFILL_DIRTY);⑤derive_event_name 的 :: 截断只作用首个 \u001f 前事件名段(载荷 body 含 std::process 等文本不再截坏 handler 名=musk K10 空渲染族);⑥退出审计四分法:三挂点+main_err(_ai_mode)/mem_guard_f12_escape/native_crash 钩(SetUnhandledExceptionFilter,CONTINUE_SEARCH 保 WER),外部击杀指纹=审计册零行+退出码 1;⑦测量口径:±1MB 堆锯齿在 45s 窗最小二乘虚高一个量级,判 idle 泄漏用绝对增量+≥300s 窗;仪器 finally taskkill 产生的 code=1 是清理假象(判真死亡看 vm_died 与采样时间线)。",
+     "content": "Http.get_msg 轮询消费方契约:①共享连接池 Client(禁每请求新建,hyper 池用后即弃=空闲期私有内存棘轮主源);②read_body_capped 按 Content-Length 预留;③载荷单缓冲预编码 {handler}\u001fs\u001f{json} 入队侧产出、渲染层泵零拷贝直投(原链 292KB 级响应 5-6 份全文拷贝);④DesktopMessage::HttpBackfill 专用通道 seq 门控派发——handler 零状态写不置脏(F1 fire_timer 延伸,普通事件语义不动,逃生门 AUTOUI_MSG_BACKFILL_DIRTY);⑤derive_event_name 的 :: 截断只作用首个 \u001f 前事件名段(载荷 body 含 std::process 等文本不再截坏 handler 名=musk K10 空渲染族);⑥退出审计四分法:三挂点+main_err(_ai_mode)/mem_guard_f12_escape/native_crash 钩(SetUnhandledExceptionFilter,CONTINUE_SEARCH 保 WER),外部击杀指纹=审计册零行+退出码 1;⑦测量口径:±1MB 堆锯齿在 45s 窗最小二乘虚高一个量级,判 idle 泄漏用绝对增量+≥300s 窗;仪器 finally taskkill 产生的 code=1 是清理假象(判真死亡看 vm_died 与采样时间线)。⑧r2 F-10 exitproc_trace(env P765_EXIT_TRACE=1,IAT 槽替换 ExitProcess/TerminateProcess):依赖直调 ExitProcess 的零痕盲区闭合——原\"零行+码1\"外部击杀指纹的例外;ExitProcess 臂落调用栈偏移(模块基址相对,release 配 line-tables 可符号化)后确定性自终止(TerminateProcess(自身),规避 LdrShutdownProcess detach 竞态=工作线程退出堆 free 竞态,退出码精确保持);TerminateProcess 臂转调原函数;外部 taskkill 不经本进程 IAT 不在覆盖面;⑨外部击杀假象高发警示:r2 定谳 bigpage 矩阵\"瞬态尖峰退出面\"=仪器 try/finally 无 catch 的收尾 taskkill 假象(click isError 抛错→finally killTree→\"VM EXITED code=1\" 先于错误栈打印,node ESM 顺序)——与 soak 假象/musk K14 三例同族,本机\"负载相关静默必退\"呈报至今零例进程内真实退出;判真死亡须击杀标记与错误分离或采样时间线。",
      "file": "docs/specs/auto-lang/ui/design/vm-host-stability.md",
      "related": [
       "PLAN-765",
@@ -9407,6 +9419,18 @@
      "status": "published",
      "created": "2026-10-12",
      "last_modified": "2026-10-12"
+    },
+    {
+     "id": "P765-4",
+     "title": "PLAN-765 复审收据（r2 pass，工件重构）",
+     "content": "r2 pass @99f6997eb(中间版 5c3a9b5f0→1b79873ae[fmt]→99f6997eb[文档表述修正],末两步零语义差),基 b58bf1835,依赖 auto-down@895f8d0。AC-1/2 pass(r1 判沿承,r2 diff 不触 F-1~F-9 语义);AC-3 pass(全量 5257/5258[t05,唯一红 ffi_dual_019 双证环境项:t05 stash 基线复现红+规范目录绿]+tv 162/162+定向 113/113);AC-4 pass(两形态零退出:判别台 snap 180s/burst 181s/click 185s 全存活审计零行;归因通道完备含 F-10;\"根因防护\"经定谳修正=仪器假象非产品缺陷,investigation-first 预期路径);AC-5 pass(本仓门禁+解阻交接齐,musk 已并行落地仪器修复)。findings:F-765-R4 musk 正式复跑待其收口(external);F-765-R5 僵尸镜像锁规范 target 目录=会话卫生(t05 替代出证)。独立性限制:同会话,裁定自工件重建。",
+     "file": "docs/plans/765-vm-host-active-session-stability.md",
+     "related": [
+      "PLAN-765",
+      "PLAN-104"
+     ],
+     "status": "published",
+     "created": "2026-10-12"
     }
    ]
   }
