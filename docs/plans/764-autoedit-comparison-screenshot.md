@@ -71,3 +71,14 @@ AC-03 pass：来源单独登记、双语 caption 日期准确、指南旧待拍�
 遗漏/延后/workaround 扫描：无新增；既存 P757 产品问题不据新截图宣称关闭。零 Rust 触面；diff --check 通过，无新 debug。新旧原图/历史诊断边界明确。touched_goals=[] 的素材-only 理由保留。
 独立性限制：同实施会话复核，无授权外委；从已提交 diff、原始文件、frozen manifest、durable e2e 日志和页面图片重建结论。
 next: merge。
+
+### Merge r1 — landed / publication blocked
+stage: merge | PLAN-764:r1 | outcome: blocked | delivery_commit: 6977dc0b3361cf1fb2f956fb602e2ff8a2855ef3。
+- prepared：reviewed 5fa9caefef5933c2a3e8950dd831be1486a0ca5e；三 canonical target 已提交；frozen SD hash 5152881f0d6d9b0fd49752fce8084493968d2b25410477294baa5f95fd5b15fa。
+- landed：main --ff-only，tip=6977dc0b3361cf1fb2f956fb602e2ff8a2855ef3；本次 rebase 纯 Plan 簿记，range-diff 2/2 全等：89071f738→5287130a4、5fa9caefe→6977dc0b3。原图主检出 hash 与来源一致。无网站代码/依赖漂移，已构建产物和 8/8 gate 继续有效。
+- ledger_refreshed：blocked。当前无 registered spec writer tools；已检查本机没有 musk server 进程及相关监听。ledger 属 legacy 兼容投影（非当前 store schema），不直接手改或销毁；按当前 auto-plan:merge store-only 要求待有效 writer/受支持迁移后读回验证。既有其他 Plan 的手工回退收据保留，不冒充本轮 store 成功。
+- archived / cleaned：pending，保持 reviewed active，保留工作树及分支用于账本发布恢复。guard 已报 clean，无 junction/symlink；未删除任何其他任务。
+- artifacts：本地 website build 230.63s；预览会话 65325 位于该工作树、端口 4218；新图 dist hash 与原图一致。截图与 e2e.log.gz 在主检出 durable reports。打开中文介绍的 Codex 面板请求 queued（当前聊天未显示），不声称已前台打开。
+- remote deployment：本任务未授权远端发布；另会话 deploy-website-20261011 在构建过程中可见，未干预或停止其进程。本任务只接入本仓和本地预览。
+- batch due：最新收据 last_covered_plan_id=761、2026-10-11；764 非整五触发，未超过48h；本任务 Category A 不运行 Cargo。
+next：可用 store writer 恢复后仅刷新受影响 derived items，验证后归档和 guarded cleanup；图片接入任务已完成。
