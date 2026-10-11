@@ -10444,6 +10444,9 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
 
             // Special
             "div" => "div".to_string(),
+            // PLAN-760: remote-frame 宿主占位 div（shadcn 模式经 carried_vue
+            // component "div" 同路;此 fallback 保非 shadcn 形态）。
+            "remote-frame" | "remote_frame" | "remoteframe" => "div".to_string(),
             "+" => {
                 if self_closing {
                     "span".to_string()
@@ -16550,6 +16553,32 @@ onMounted(() => {{ nextTick(__canvasRedraw_{i}) }})
             }
 
             // === Menubar ===
+            // PLAN-760: remote-frame 宿主占位——宿主前端（canvas_embed_web
+            // 同族）querySelector `[data-remote-frame]` 接管;url 经
+            // data-remote-frame-url 携带（字面量直发;动态绑定走
+            // :data-remote-frame-url）。本仓 web 臂不做 JS 渲染器。
+            "remote-frame" | "remote_frame" | "remoteframe" => {
+                attrs.push("data-remote-frame=\"1\"".to_string());
+                if let Some(value) = props.get("url") {
+                    match value {
+                        AuraPropValue::Expr(crate::ast::Expr::Str(s)) => {
+                            attrs.push(format!("data-remote-frame-url=\"{s}\""));
+                        }
+                        AuraPropValue::Expr(expr) => {
+                            let bound = self.bound_value_or_warn(
+                                expr,
+                                "component prop `url`",
+                                "''",
+                            );
+                            attrs.push(format!(":data-remote-frame-url=\"{bound}\""));
+                        }
+                        AuraPropValue::StyleBinding(_) => {}
+                    }
+                }
+                // class
+                self.push_style_class(&mut attrs, props);
+            }
+
             "menubar" => {
                 // class
                 self.push_style_class(&mut attrs, props);
@@ -32160,6 +32189,14 @@ widget NullProbe {
     #[test]
     fn test_a2vue_window_thumbnail() {
         test_a2vue_shadcn("window_thumbnail").expect("a2vue window_thumbnail golden mismatch");
+    }
+
+    /// PLAN-760 T-04: remote-frame leaf golden — div passthrough with
+    /// data-remote-frame marker + url via data-remote-frame-url + class on
+    /// the leaf (host frontend adopts; this repo ships no JS renderer).
+    #[test]
+    fn test_a2vue_remote_frame() {
+        test_a2vue_shadcn("remote_frame").expect("a2vue remote-frame golden mismatch");
     }
 
     #[test]
