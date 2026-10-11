@@ -199,7 +199,12 @@ fn t03_corpus_references_generate_and_palette_zero_drift() {
     // palette 零漂移（全包扫描——参数化修整不得引入词表外 widget）
     use crate::ui_gen::bp::BlueprintRegistry;
     use crate::ui_gen::widget::WidgetRegistry;
-    let reg = BlueprintRegistry::with_defaults();
+    // with_defaults() 读 AUTO_BLUEPRINTS_ROOT,须与 root_resolution 的 setter
+    // 窗口互斥(bare cargo test 单进程面)。
+    let reg = {
+        let _bp_ser = crate::ui_gen::bp::registry::lock_blueprints_root_for_test();
+        BlueprintRegistry::with_defaults()
+    };
     let widgets = WidgetRegistry::with_defaults();
     let drift = reg.palette_drift(&widgets);
     assert!(drift.is_empty(), "palette drift after PLAN-657: {drift:?}");

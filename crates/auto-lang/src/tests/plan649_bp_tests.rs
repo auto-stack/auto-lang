@@ -143,6 +143,9 @@ fn t06_filetree_palette_restored_zero_drift() {
     use crate::ui_gen::bp::BlueprintRegistry;
     use crate::ui_gen::widget::WidgetRegistry;
 
+    // with_defaults() 读 AUTO_BLUEPRINTS_ROOT,须与 root_resolution 的 setter
+    // 窗口互斥(bare cargo test 单进程面)。
+    let _bp_ser = crate::ui_gen::bp::registry::lock_blueprints_root_for_test();
     let reg = BlueprintRegistry::with_defaults();
     let widgets = WidgetRegistry::with_defaults();
 
