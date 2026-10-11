@@ -182,5 +182,5 @@ cleaned: fresh Git for Windows wt-guard clean 后移除 fix 工作树/分支，�
 
 - ledger_refreshed（补完成，r2/r3 两轮 blocked 的收尾）：经 README §5 手工回退路径（753/754/755/756/757 先例）——P722-1 标题/内容更名（JadeEdit→AutoJade，含出处行）；新增 P758-1（更名与深色准备态实拍契约）/P758-2（v0.5 开篇前置契约）/P758-3（审计收据）；website + auto-lang/ui 双模块 plans.md 758 行；INDEX 再生。账本格式对齐属主会话的 indent=2（首轮误写 indent=1 产生 18K 行噪音 diff，amend 修正后净 diff 41+/2-）。读回校验：831 条目、P758-1/2/3 + 更名后 P722-1 全部在册。P758-D1 的 store 本体修复仍开放（见 KNOWN-DEBT 注记）。
 - archived：git mv → docs/plans/archive/758-autojade-rename-and-promo.md，status: archived，completion_kind: delivered。
-- cleaned：见下方回填。
+- cleaned（补完成）：wt-guard 双仓 clean → auto-lang worktree 移除 + prune → plan-758-dev 删除（was 389f549e7，全量并入）→ auto-down 兄弟经属主仓移除 + prune → 组目录 `.wt/lang-758/`（含全部 cargo/website 会话日志、test-results-p758-* 七批、website-dist-before-six-months 旧 dist 快照、fix-v05-six-months-retained 保留件——耐久证据已入 docs/reports/p758-autojade/ 与 p758-release-summary-r3/ 及 v05-six-months-correction.md，原始批量输出按惯例随 worktree 退役）rm -rf 移除；worktree inventory lang-758 零条目。批量回归判定：收据覆盖至 761（2026-10-11T07:41Z），758 归档非新落地、无 5 倍数计划落地于其后，不到期。
 - 附注：交付 preview :4218 已于 757 清理会话中终止（当时按持有目录误判为 757 遗留进程；757 真实持有者为 :4199）。预览可由 lang-758 dist 一条命令重启，不影响任何入库内容；本回收据如实记录。
