@@ -359,6 +359,8 @@ const t = computed(() => zh.value ? {
 .summary-source { max-width: 960px; margin: 0.8rem auto 1.25rem; font-size: 0.75rem; line-height: 1.6; color: hsl(var(--muted-foreground)); }
 @media (max-width: 640px) {
   .rel-hero { padding: 2rem 1.25rem 1.5rem; }
+  .release-summary { margin-top: 1.2rem; gap: 0.8rem; }
+  .summary-source { margin-bottom: 0.6rem; }
   .summary-group ul { gap: 0.8rem 1.2rem; }
   .summary-group li { flex: 1 1 40%; }
   .summary-group span { font-size: 0.75rem; }

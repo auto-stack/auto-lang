@@ -104,7 +104,7 @@ const en = {
     primaryLink: '/docs/releases/v0.5',
     secondaryText: 'See the desktop ↓',
     secondaryLink: '#desktop',
-    status: 'This page introduces the v0.5 milestone. Release artifacts and download links await candidate freeze; dated captures remain historical evidence.',
+    status: 'v0.5 milestone preview. Release artifacts and downloads await candidate freeze; captures retain their dated evidence status.',
     heroShot: {
       src: '/desktop-showcase/02-desktop-dark.png',
       label: 'Desktop',
