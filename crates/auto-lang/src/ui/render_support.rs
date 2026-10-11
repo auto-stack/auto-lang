@@ -75,18 +75,22 @@ impl TagSupport {
 /// 围栏测试保证静态表与 schema 级别一致(schema 即从本表提取,再生成闭环),
 /// 以及反向:schema 有 iced 级别的元素必须在静态表有臂(P6-3/D3)。
 pub fn get_support(tag: &str) -> TagSupport {
-    let mut support = get_support_details(tag);
-    if let Some(schema) = crate::aura::default_schema_cached() {
-        if let Some((canonical, _)) = schema.resolve_tag(tag) {
-            if let Some(meta) = schema.meta.get(canonical) {
-                if let Some(level) = SupportLevel::parse_name(&meta.backends.iced) {
-                    support.level = level;
-                    // Plan 435 P6-3(D3):overlay 生效时,静态兜底臂的
-                    // "unknown tag" note 与覆盖后的级别自相矛盾
-                    // (Full + unknown),清空。
-                    if support.note.starts_with("unknown tag") {
-                        support.note = "";
-                    }
+    // F-759-R1（PLAN-759 落地后审核）:详情查询先折叠到 schema canonical——
+    // 别名/kebab 形态此前直落 unknown 臂,与 canonical 详情不一致
+    // （command-input 返回空 note vs command_input 返回错误详情）。
+    // schema 缺失(solo/解析失败)时保留原词查询。
+    let schema = crate::aura::default_schema_cached();
+    let canonical = schema.and_then(|s| s.resolve_tag(tag).map(|(c, _)| c));
+    let mut support = get_support_details(canonical.unwrap_or(tag));
+    if let (Some(schema), Some(canonical)) = (schema, canonical) {
+        if let Some(meta) = schema.meta.get(canonical) {
+            if let Some(level) = SupportLevel::parse_name(&meta.backends.iced) {
+                support.level = level;
+                // Plan 435 P6-3(D3):overlay 生效时,静态兜底臂的
+                // "unknown tag" note 与覆盖后的级别自相矛盾
+                // (Full + unknown),清空。
+                if support.note.starts_with("unknown tag") {
+                    support.note = "";
                 }
             }
         }
@@ -302,22 +306,56 @@ fn get_support_details(tag: &str) -> TagSupport {
             &["open", "style", "placement"],
             "modal/dialog not implemented — renders as Column",
         ),
-        // PLAN-759 T-01: carousel/command 族由 Plan 717 入 vb/aura.at（彼时
-        // 误标 iced:partial 且未同步本表——P6-3 围栏红）。iced 轨当前无真实
-        // 渲染面（web_component 降级呈现），诚实级别=fallback；拼写对齐
-        // view_builder 派发表（下划线 canonical）。
-        "carousel" | "carousel_content" | "carousel_item" | "carousel_next"
-        | "carousel_previous" => TagSupport::fallback(
-            &["style", "align", "orientation"],
-            "carousel not implemented — renders as Column",
+        // F-759-R1（PLAN-759 落地后审核校准）:carousel/command 族不再统一
+        // fallback——aura_view_builder 对各子件有真实转换臂（command_input
+        // →convert_input、command_item→convert_button、carousel_previous/
+        // next→Button、carousel_content→Row 等）,级别/ignored/文案按逐
+        // 子件实际消费面登记;仅真正缺渲染面的子件（command_empty 恒渲染
+        // Empty）保留降级。缺高阶交互（palette 过滤/键盘导航/autoplay）不
+        // 等于子件的 input/button/样式属性不被消费。
+        // carousel 根:静态 VM 布局(Column),align/loop/orientation 全忽略。
+        "carousel" => TagSupport::partial(
+            &["align", "loop", "orientation"],
+            "static VM layout — renders as Column of slides; no autoplay/loop/swipe; orientation has no effect (root is always a Column)",
         ),
-        "command" | "command_empty" | "command_group" | "command_input"
-        | "command_item" | "command_list" | "command_separator" | "command_shortcut" => {
-            TagSupport::fallback(
-                &["style", "placeholder", "value", "text", "label"],
-                "command palette not implemented — renders as Column",
-            )
-        }
+        // carousel_content:真 Row,但无滚动/吸附轨道语义。
+        "carousel_content" => TagSupport::partial(
+            &[],
+            "renders as plain Row (slide track); no scroll/snap behavior",
+        ),
+        "carousel_item" => TagSupport::full(),
+        "carousel_previous" | "carousel_next" => TagSupport::full(),
+        // command 根:真 Column(class/style 消费);palette 状态属 app/VM 逻辑。
+        "command" => TagSupport::partial(
+            &["query", "placeholder"],
+            "renders as styled Column; palette state (query binding) is app logic — root query/placeholder props ignored (place them on command_input)",
+        ),
+        // command_empty:唯一真降级——恒渲染 Empty,空态文案/子树不呈现。
+        "command_empty" => TagSupport::fallback(
+            &[],
+            "renders as Empty — empty-state text/children are not displayed on the iced track (visibility filtering is app logic)",
+        ),
+        "command_group" => TagSupport::full(),
+        // command_input:与 input 臂同口径(placeholder/text/value/class/style
+        // /width/password/onchange/onenter 消费;type 仅 password 义 honored)。
+        "command_input" => TagSupport::partial(
+            &["type", "maxlength", "min", "max", "step", "pattern"],
+            "renders as native text input (placeholder/value/style consumed, same as input); palette filtering & keyboard navigation are app logic, not widget behavior",
+        ),
+        // command_item:真 ghost Button;convert_button 不读 value。
+        "command_item" => TagSupport::partial(
+            &["value"],
+            "renders as ghost Button (children/text, style, onclick consumed); no palette selection highlight — selection state is app logic",
+        ),
+        "command_list" => TagSupport::partial(
+            &[],
+            "renders as plain Column; no built-in scrolling or scroll-to-selected",
+        ),
+        "command_separator" => TagSupport::partial(
+            &["style", "class"],
+            "hardcoded 1px divider; custom style/class props ignored",
+        ),
+        "command_shortcut" => TagSupport::full(),
         "navigation" | "breadcrumb" => TagSupport::fallback(
             &["style", "items"],
             "navigation component not implemented — renders as Column",
@@ -374,4 +412,133 @@ pub fn is_full(tag: &str) -> bool {
 /// Check if a tag has any level of issue (not Full).
 pub fn has_issue(tag: &str) -> bool {
     get_support(tag).level != SupportLevel::Full
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// F-759-R1:kebab 别名与 canonical 必须返回同一份详情
+    /// （级别/ignored/note 三围一致;get_support 经 schema 折叠归一）。
+    #[test]
+    fn command_carousel_alias_forms_share_details() {
+        let pairs = [
+            ("command_input", "command-input"),
+            ("command_item", "command-item"),
+            ("command_empty", "command-empty"),
+            ("command_group", "command-group"),
+            ("command_list", "command-list"),
+            ("command_separator", "command-separator"),
+            ("command_shortcut", "command-shortcut"),
+            ("carousel_content", "carousel-content"),
+            ("carousel_item", "carousel-item"),
+            ("carousel_previous", "carousel-previous"),
+            ("carousel_next", "carousel-next"),
+        ];
+        for (canon, alias) in pairs {
+            let a = get_support(canon);
+            let b = get_support(alias);
+            assert_eq!(a.level, b.level, "{canon} vs {alias}: level");
+            assert_eq!(a.ignored_props, b.ignored_props, "{canon} vs {alias}: ignored");
+            assert_eq!(a.note, b.note, "{canon} vs {alias}: note");
+        }
+    }
+
+    /// F-759-R1:诊断的 ignored_props 不得包含实际被消费的 props。
+    /// command_input 真转原生 Input、command_item 真转 Button——
+    /// placeholder/value/style 被消费,列入 ignored 即误报。
+    #[test]
+    fn command_family_ignores_do_not_overclaim() {
+        let si = get_support("command_input");
+        for consumed in ["placeholder", "value", "style", "text", "class"] {
+            assert!(
+                !si.ignored_props.contains(&consumed),
+                "command_input 实际消费 {consumed},不得列入 ignored(当前 {:?})",
+                si.ignored_props
+            );
+        }
+        let item = get_support("command_item");
+        for consumed in ["text", "label", "style", "onclick", "class"] {
+            assert!(
+                !item.ignored_props.contains(&consumed),
+                "command_item 实际消费 {consumed},不得列入 ignored(当前 {:?})",
+                item.ignored_props
+            );
+        }
+        // 逐子件校准:不再统一 fallback;唯一真降级是 command_empty
+        // （恒渲染 Empty,空态文案不呈现）。
+        for tag in [
+            "command_input",
+            "command_item",
+            "command",
+            "command_list",
+            "command_separator",
+            "carousel",
+            "carousel_content",
+        ] {
+            assert_ne!(
+                get_support(tag).level,
+                SupportLevel::Fallback,
+                "{tag} 有真实转换臂,不得标 fallback"
+            );
+        }
+        assert_eq!(get_support("command_empty").level, SupportLevel::Fallback);
+        // 有真实转换臂且声明 props 全消费的子件应为 Full。
+        for tag in [
+            "command_group",
+            "command_shortcut",
+            "carousel_item",
+            "carousel_previous",
+            "carousel_next",
+        ] {
+            assert_eq!(get_support(tag).level, SupportLevel::Full);
+        }
+    }
+
+    /// F-759-R1:诊断与实际 View 对照——生产构建管线真实转出原生 Input,
+    /// placeholder/value/style 全落位（759 落地后审核 render_probe 的仓内化;
+    /// 修复前该形态被诊断为"忽略这些属性、渲染为 Column"）。
+    #[test]
+    fn command_input_builds_native_input_matching_diagnostics() {
+        use crate::ui::interpreter::DynamicMessage;
+        use crate::ui::view::View;
+
+        fn find_inputs<'a>(
+            view: &'a View<DynamicMessage>,
+            out: &mut Vec<(&'a str, &'a str, bool)>,
+        ) {
+            match view {
+                View::Input {
+                    placeholder,
+                    value,
+                    style,
+                    ..
+                } => out.push((placeholder, value, style.is_some())),
+                View::Column { children, .. } | View::Row { children, .. } => {
+                    for c in children {
+                        find_inputs(c, out);
+                    }
+                }
+                View::Container { child, .. } => find_inputs(child, out),
+                _ => {}
+            }
+        }
+
+        let source = r#"widget App {
+            model { var query str = "hello" }
+            view { col { command-input (placeholder: "Search", value: .query) {} } }
+        }"#;
+        let component = crate::build_dynamic_component(source, None)
+            .expect("build command-input fixture");
+        let (view, _, _) = component.view_with_debug_gated(false);
+        let mut inputs = Vec::new();
+        find_inputs(&view, &mut inputs);
+        assert!(
+            inputs.iter().any(|(p, v, styled)| *p == "Search"
+                && *v == "hello"
+                && *styled),
+            "command-input 须转出原生 Input(placeholder/value/style 落位),实际: {:?}",
+            inputs
+        );
+    }
 }

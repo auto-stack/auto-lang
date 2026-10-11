@@ -3761,7 +3761,7 @@ element carousel {
     tag: "carousel"
     category: "display"
     tier: "web_component"
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "Carousel", import: "@/components/ui/carousel" }
     props: [
         { name: "align", type: "string", default: "center", description: "Slide alignment" }
@@ -3779,7 +3779,7 @@ element carousel_content {
     category: "display"
     tier: "web_component"
     aliases: ["carousel-content"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "CarouselContent", import: "@/components/ui/carousel" }
     props: [ { name: "class", type: "union:string,class_binding", description: "CSS class(es)" } ]
     allows_children: true
@@ -3791,7 +3791,7 @@ element carousel_item {
     category: "display"
     tier: "web_component"
     aliases: ["carousel-item"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "CarouselItem", import: "@/components/ui/carousel" }
     props: [ { name: "class", type: "union:string,class_binding", description: "CSS class(es)" } ]
     allows_children: true
@@ -3803,7 +3803,7 @@ element carousel_previous {
     category: "display"
     tier: "web_component"
     aliases: ["carousel-previous"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "CarouselPrevious", import: "@/components/ui/carousel" }
     props: [ { name: "class", type: "union:string,class_binding", description: "CSS class(es)" } ]
     allows_children: false
@@ -3815,7 +3815,7 @@ element carousel_next {
     category: "display"
     tier: "web_component"
     aliases: ["carousel-next"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "CarouselNext", import: "@/components/ui/carousel" }
     props: [ { name: "class", type: "union:string,class_binding", description: "CSS class(es)" } ]
     allows_children: false
@@ -3826,7 +3826,7 @@ element command {
     tag: "command"
     category: "overlay"
     tier: "web_component"
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "Command", import: "@/components/ui/command" }
     props: [
         { name: "query", type: "state_ref", description: "Search query binding" }
@@ -3856,7 +3856,7 @@ element command_group {
     category: "overlay"
     tier: "web_component"
     aliases: ["command-group"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "CommandGroup", import: "@/components/ui/command" }
     props: [
         { name: "heading", type: "string", description: "Group heading" }
@@ -3871,7 +3871,7 @@ element command_input {
     category: "overlay"
     tier: "web_component"
     aliases: ["command-input"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "CommandInput", import: "@/components/ui/command" }
     props: [
         { name: "placeholder", type: "string", default: "Type a command...", description: "Input placeholder" }
@@ -3886,7 +3886,7 @@ element command_item {
     category: "overlay"
     tier: "web_component"
     aliases: ["command-item"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "CommandItem", import: "@/components/ui/command" }
     props: [
         { name: "value", type: "string", description: "Item value" }
@@ -3903,7 +3903,7 @@ element command_list {
     category: "overlay"
     tier: "web_component"
     aliases: ["command-list"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "CommandList", import: "@/components/ui/command" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3917,7 +3917,7 @@ element command_separator {
     category: "overlay"
     tier: "web_component"
     aliases: ["command-separator"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "partial", gpui: "unknown" }
     vue: { component: "CommandSeparator", import: "@/components/ui/command" }
     props: [
         { name: "class", type: "union:string,class_binding", description: "CSS class(es)" }
@@ -3931,7 +3931,7 @@ element command_shortcut {
     category: "overlay"
     tier: "web_component"
     aliases: ["command-shortcut"]
-    backends: { web: "component", iced: "fallback", gpui: "unknown" }
+    backends: { web: "component", iced: "full", gpui: "unknown" }
     vue: { component: "CommandShortcut", import: "@/components/ui/command" }
     props: [
         { name: "text", type: "string", description: "Shortcut text (e.g., ⌘K)" }

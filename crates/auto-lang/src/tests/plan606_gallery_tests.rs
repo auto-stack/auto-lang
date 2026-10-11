@@ -158,21 +158,18 @@ mod plan606_gallery_tests {
         // 须在 build_example_component **之前**：fire_init 同步派发 Init，
         // Http.get_json 首调即提交 job 并读 env——晚置 env 时请求带未解析
         // 相对 URL 立败（load_error 形态，PLAN-759 T-06 实测定谳）。
-        // 隔离形态：日常档 nextest 一测一进程（天然隔离）；裸 libtest 并行
-        // 形态下本测试独占该 env 的窗口=build→断言完，结束即恢复原值。
+        // 隔离形态（F-759-R2）：锁=与 stdlib http_base_url_resolution 共用的
+        // 串行锁（裸 libtest 并行不再互踩）；守卫=HttpBaseEnvGuard panic-safe
+        // 恢复（中途 build/驱动/断言失败不再污染进程 env）。
+        let _ser = crate::vm::ffi::stdlib::lock_http_base_for_test();
         let stub = PhotoStub::start();
-        let prev_base = std::env::var("AUTO_HTTP_BASE").ok();
-        std::env::set_var("AUTO_HTTP_BASE", stub.base());
+        let _env = crate::vm::ffi::stdlib::HttpBaseEnvGuard::set(&stub.base());
 
         let mut dc = match crate::plan370_test_support::build_example_component("029-photo-gallery")
         {
             Some(dc) => dc,
             None => {
                 eprintln!("[SKIP] 029-photo-gallery app.at not located");
-                match prev_base {
-                    Some(v) => std::env::set_var("AUTO_HTTP_BASE", v),
-                    None => std::env::remove_var("AUTO_HTTP_BASE"),
-                }
                 return;
             }
         };
@@ -305,11 +302,8 @@ mod plan606_gallery_tests {
             "Full image should have StyleClass::ObjectFit(Contain) from fit: 'contain'"
         );
 
-        // env 恢复（裸 libtest 并行形态的窗口收缩）。
-        match prev_base {
-            Some(v) => std::env::set_var("AUTO_HTTP_BASE", v),
-            None => std::env::remove_var("AUTO_HTTP_BASE"),
-        }
+        // env 恢复由 _env Drop 完成（正常/panic/early-return 全覆盖，
+        // F-759-R2）。
         drop(stub);
     }
 }

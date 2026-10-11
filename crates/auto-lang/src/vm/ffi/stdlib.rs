@@ -11795,6 +11795,49 @@ pub(crate) fn lock_storage_for_test() -> std::sync::MutexGuard<'static, ()> {
     }
 }
 
+// F-759-R2（PLAN-759 落地后审核）:AUTO_HTTP_BASE 的进程内修改者
+// （plan606 photo stub 锚定 + 本模块 http_base_url_resolution）共用同一
+// env，裸 libtest 并行线程互踩。凡触碰此 env 的测试先取此锁串行化，
+// 并用 [`HttpBaseEnvGuard`] 做 panic-safe 恢复。
+#[cfg(test)]
+static HTTP_BASE_TEST_SERIALIZER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// 取 AUTO_HTTP_BASE 测试串行锁（持有至返回的 guard 亡）。
+#[cfg(test)]
+pub(crate) fn lock_http_base_for_test() -> std::sync::MutexGuard<'static, ()> {
+    match HTTP_BASE_TEST_SERIALIZER.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+/// AUTO_HTTP_BASE 的 panic-safe 窗口守卫（F-759-R2）：set 即捕获原值，
+/// Drop 恢复（含"原本未设"形态）；窗口内 panic/early-return 均恢复，
+/// 不再依赖测试尾部手工还原。
+#[cfg(test)]
+pub(crate) struct HttpBaseEnvGuard {
+    prev: Option<String>,
+}
+
+#[cfg(test)]
+impl HttpBaseEnvGuard {
+    pub(crate) fn set(base: &str) -> Self {
+        let prev = std::env::var("AUTO_HTTP_BASE").ok();
+        std::env::set_var("AUTO_HTTP_BASE", base);
+        HttpBaseEnvGuard { prev }
+    }
+}
+
+#[cfg(test)]
+impl Drop for HttpBaseEnvGuard {
+    fn drop(&mut self) {
+        match self.prev.take() {
+            Some(v) => std::env::set_var("AUTO_HTTP_BASE", v),
+            None => std::env::remove_var("AUTO_HTTP_BASE"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -11858,10 +11901,13 @@ mod tests {
 
     /// PLAN-617 T-10: 相对 URL（`/` 开头）按 `AUTO_HTTP_BASE` 展开为绝对地址；
     /// 绝对 URL 与未设 env 时原样透传（幂等：展开后的绝对 URL 再过一遍不变）。
+    /// F-759-R2:与 plan606 photo stub 测试共用串行锁 + panic-safe 守卫
+    /// （裸 libtest 并行形态下两测试曾可互相覆盖 env）。
     #[test]
     fn http_base_url_resolution() {
+        let _ser = lock_http_base_for_test();
+        let _env = HttpBaseEnvGuard::set("http://127.0.0.1:8330");
         // 绝对 URL 永不改动（env 设不设都一样）。
-        std::env::set_var("AUTO_HTTP_BASE", "http://127.0.0.1:8330");
         assert_eq!(
             resolve_http_base_url("http://example.com/api/x"),
             "http://example.com/api/x"
@@ -11881,6 +11927,34 @@ mod tests {
         assert_eq!(resolve_http_base_url("/api/x"), "/api/x");
         std::env::remove_var("AUTO_HTTP_BASE");
         assert_eq!(resolve_http_base_url("/api/x"), "/api/x");
+        // 尾部无需手工恢复：_env Drop 回窗口前原值（含 panic 路径）。
+    }
+
+    /// F-759-R2:守卫的 panic-safe 恢复——窗口内 panic 后 Drop 仍回窗口前
+    /// 原值；串行锁 poisoned 后 lock_http_base_for_test 可接管（into_inner）。
+    #[test]
+    fn http_base_env_guard_restores_after_panic() {
+        let _ser = lock_http_base_for_test();
+        let prev = std::env::var("AUTO_HTTP_BASE").ok();
+        std::env::set_var("AUTO_HTTP_BASE", "http://pre-window");
+        let h = std::thread::spawn(|| {
+            let _g = HttpBaseEnvGuard::set("http://in-window");
+            assert_eq!(
+                std::env::var("AUTO_HTTP_BASE").unwrap(),
+                "http://in-window"
+            );
+            panic!("window 内 panic");
+        });
+        let _ = h.join();
+        assert_eq!(
+            std::env::var("AUTO_HTTP_BASE").unwrap(),
+            "http://pre-window",
+            "panic 后守卫必须恢复窗口前原值"
+        );
+        match prev {
+            Some(v) => std::env::set_var("AUTO_HTTP_BASE", v),
+            None => std::env::remove_var("AUTO_HTTP_BASE"),
+        }
     }
 
     /// PLAN-027 缺陷 C:Err 条目必须**可解析地终结**——take 已在
