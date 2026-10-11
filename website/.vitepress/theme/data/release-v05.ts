@@ -314,8 +314,8 @@ const en = {
     navLabel: 'Ideas',
     title: 'The Ideas Behind v0.5',
     desc: 'Each philosophy in one line above; the full arguments are expandable below — no claim was trimmed in this reorganization.',
-    journeyTitle: 'Five Months, Three Major Steps',
-    journeyDesc: 'v0.5 brings three advances together: AutoUI for Web and desktop, a usable AutoOS virtual desktop, and a growing application ecosystem. Here is the path from v0.3 to v0.5 (April — September 2026).',
+    journeyTitle: 'Six Months, Three Major Steps',
+    journeyDesc: 'v0.5 brings three advances together: AutoUI for Web and desktop, a usable AutoOS virtual desktop, and a growing application ecosystem. Here is the path from v0.3 to v0.5 (April — October 2026).',
     leads: [
       'v0.3 answered "is it a language?"; v0.4 answered "can it run real things?". With v0.5, the question is the hardest one yet: "can it become something you open every day?"',
       'Auto has grown from a language kernel, runtime, and transpilers into interfaces, a desktop, and real applications. First, the three release steps; then, the v0.5 experience.',
@@ -574,8 +574,8 @@ const zh = {
     navLabel: '理念',
     title: 'v0.5 背后的理念',
     desc: '了解动态开发、层层解耦与 LaOS 的实现思路，并区分当前能力和长期方向。',
-    journeyTitle: '五个月，三大步',
-    journeyDesc: 'v0.5 的进展集中在三件事：AutoUI 的 Web 与桌面双端、可用的 AutoOS 虚拟桌面，以及逐步成形的应用生态。这是从 v0.3 到 v0.5（2026 年 4 月 — 9 月）走过的三大步。',
+    journeyTitle: '六个月，三大步',
+    journeyDesc: 'v0.5 的进展集中在三件事：AutoUI 的 Web 与桌面双端、可用的 AutoOS 虚拟桌面，以及逐步成形的应用生态。这是从 v0.3 到 v0.5（2026 年 4 月 — 10 月）走过的三大步。',
     leads: [
       'v0.3 回答了"它是一门语言吗？"；v0.4 回答了"它能跑真东西吗？"。到了 v0.5，问题变成了最难的一个："它能成为你每天打开的东西吗？"',
       'Auto 从语言内核、运行时与转译器，走向界面、桌面和真实应用。下面先看三个版本的变化，再展开 v0.5 的实际体验。',
