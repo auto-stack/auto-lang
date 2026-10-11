@@ -4,7 +4,7 @@ status: executing
 feature_name: AutoEdit 自仓工作区实拍
 author: [Codex]
 created_at: 2026-10-10
-updated_at: 2026-10-10
+updated_at: 2026-10-11
 
 # /auto-plan:review 结束时填写：
 supersedes_spec_components: [docs/specs/website/design/application-introductions.md, docs/specs/website/design/ui-presentation.md]
@@ -12,7 +12,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: [website]
-plan_revision: 2
+plan_revision: 3
 current_step: 2
 total_steps: 4
 ---
@@ -21,6 +21,8 @@ total_steps: 4
 
 ## 0. 变更摘要
 从定型 AutoEdit 源码启动 VM/Iced 深色程序，以其自身仓库为 workspace，拍摄工作台、跨文件搜索、双文件比较，替换 PLAN-756 的 SHOT-01..03。
+
+**r3（2026-10-11 用户裁定）**：第三张（双文件比较）因 VM 比较视图布局缺陷（P757-D1：空白编辑区挤压差异正文）**留空合入**——SHOT-03 维持 PLAN-756 待拍槽并在拍摄合同中记录缺陷与重拍条件；比较布局缺陷按用户指示登记为待修产品债务。两张合格实拍（工作台/跨文件搜索）正常交付。AC-02/AC-03 相应收窄，其余范围、SD-01/02 与授权不变。
 
 ## 1. 目标
 交付三张真实原图、构建/动作记录、网站双语引用和更新后的逐图拍摄指南。其他九个空位保留。不修改 AutoEdit 产品代码、不部署网站、不承诺整套 v0.5 候选验收。
@@ -52,8 +54,8 @@ Category A 不运行 Cargo tests/docs_gen；编译是用户要求的步骤。检
 
 ## 7. 验收标准
 - AC-01：从定型源码通过 VM 官方入口以深色启动，记录 CLI 构建 commit/完整 hash、应用源码版本与命令；Rust 画面不入库。
-- AC-02：三图来自真实 AutoEdit VM 深色自仓 workspace 与源码；搜索来自实际文件；比较显示真实两个版本及差异，保存动作证据。
-- AC-03：发布完整原始 PNG；双语首页/v0.5/应用总览/专题引用与实际后端/日期一致；其他九槽存在。
+- AC-02（r3）：工作台与搜索两图来自真实 AutoEdit VM 深色自仓 workspace 与源码（搜索来自实际文件、结果逐一点击核对）；比较图（原第三张）因 P757-D1 布局缺陷留空——功能已核查（真实差异 +16/-1、保存重比 +17/-1 在案），缺陷在 KNOWN-DEBT 登记，修复后按拍摄合同重拍。
+- AC-03（r3）：发布两张完整原始 PNG；双语首页/v0.5/应用总览/专题引用与实际后端/日期一致；SHOT-03 维持带缺陷说明的待拍槽；其他九槽存在。
 - AC-04：更新指南与规范，网站构建/资源/放大/移动主题通过，复审记录遗漏及债务。
 
 ## 8. 执行步骤
