@@ -40,7 +40,7 @@ fn real_main() -> Result<i32, String> {
 }
 
 #[cfg(feature = "test-cases")]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "test-cases")]
 use auto_test_case::admission::Limits;
@@ -51,6 +51,7 @@ use auto_test_case::report::{RunReport, Status};
 #[cfg(feature = "test-cases")]
 use auto_test_case::suite::apply_defaults;
 
+#[cfg(feature = "test-cases")]
 fn flag(args: &[String], name: &str) -> Option<String> {
     args.iter()
         .position(|a| a == name)
@@ -58,6 +59,7 @@ fn flag(args: &[String], name: &str) -> Option<String> {
         .cloned()
 }
 
+#[cfg(feature = "test-cases")]
 fn require<'a>(args: &'a [String], name: &str) -> Result<&'a str, String> {
     match args
         .iter()
@@ -69,6 +71,7 @@ fn require<'a>(args: &'a [String], name: &str) -> Result<&'a str, String> {
     }
 }
 
+#[cfg(feature = "test-cases")]
 fn run(args: &[String]) -> Result<i32, String> {
     let cmd = args.first().ok_or_else(|| usage())?;
     let suite = PathBuf::from(require(args, "--suite")?);
@@ -82,10 +85,12 @@ fn run(args: &[String]) -> Result<i32, String> {
     }
 }
 
+#[cfg(feature = "test-cases")]
 fn usage() -> String {
     "usage: auto-case <lint|list|inspect|run|proposal> --suite <path> [flags]".to_string()
 }
 
+#[cfg(feature = "test-cases")]
 fn lint(suite: &std::path::Path) -> Result<i32, String> {
     let loaded = load_suite(suite, &Limits::defaults()).map_err(|e| e.to_string())?;
     let total: usize = loaded.cases.iter().map(|c| c.specs.len()).sum();
@@ -104,6 +109,7 @@ fn lint(suite: &std::path::Path) -> Result<i32, String> {
     }
 }
 
+#[cfg(feature = "test-cases")]
 fn list(suite: &std::path::Path, format: Option<&str>) -> Result<i32, String> {
     let loaded = load_suite(suite, &Limits::defaults()).map_err(|e| e.to_string())?;
     let json = matches!(format, Some("json"));
@@ -164,6 +170,7 @@ fn list(suite: &std::path::Path, format: Option<&str>) -> Result<i32, String> {
     }
 }
 
+#[cfg(feature = "test-cases")]
 fn inspect(suite: &std::path::Path, case_id: &str) -> Result<i32, String> {
     let loaded = load_suite(suite, &Limits::defaults()).map_err(|e| e.to_string())?;
     for file in &loaded.cases {
@@ -208,6 +215,7 @@ fn inspect(suite: &std::path::Path, case_id: &str) -> Result<i32, String> {
     Err(format!("case {:?} not found in suite", case_id))
 }
 
+#[cfg(feature = "test-cases")]
 fn fmt_entry(spec: &auto_test_case::contract::CaseSpec) -> String {
     use auto_test_case::contract::EntryMode;
     match spec.entry {
@@ -218,6 +226,7 @@ fn fmt_entry(spec: &auto_test_case::contract::CaseSpec) -> String {
     }
 }
 
+#[cfg(feature = "test-cases")]
 fn fmt_source(spec: &auto_test_case::contract::CaseSpec) -> String {
     use auto_test_case::contract::PayloadSpec;
     match &spec.source.payload {
@@ -227,6 +236,7 @@ fn fmt_source(spec: &auto_test_case::contract::CaseSpec) -> String {
     }
 }
 
+#[cfg(feature = "test-cases")]
 fn fmt_completion(c: &auto_test_case::contract::Completion) -> String {
     match c {
         auto_test_case::contract::Completion::Success => "success".to_string(),
@@ -249,6 +259,7 @@ fn fmt_completion(c: &auto_test_case::contract::Completion) -> String {
     }
 }
 
+#[cfg(feature = "test-cases")]
 fn run_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String> {
     let out = PathBuf::from(require(args, "--out")?);
     let format = flag(args, "--format");
@@ -287,12 +298,22 @@ fn run_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String> {
     if let Some(file) = flag(args, "--json-out") {
         std::fs::write(&file, report.to_json()).map_err(|e| format!("json-out: {}", e))?;
     }
-    // Persist the canonical report next to the run scratch.
-    let _ = std::fs::write(out.join("report.console.txt"), report.to_console());
-    let _ = std::fs::write(out.join("report.json"), report.to_json());
+    // Persist the canonical report next to the run scratch. Failure to save
+    // either format is an infrastructure error, never a green run.
+    persist_reports(&out, &report.to_console(), &report.to_json())?;
     Ok(report.exit_code())
 }
 
+#[cfg(feature = "test-cases")]
+fn persist_reports(out: &Path, console: &str, json: &str) -> Result<(), String> {
+    std::fs::write(out.join("report.console.txt"), console)
+        .map_err(|e| format!("write report.console.txt: {}", e))?;
+    std::fs::write(out.join("report.json"), json)
+        .map_err(|e| format!("write report.json: {}", e))?;
+    Ok(())
+}
+
+#[cfg(feature = "test-cases")]
 fn mark_unselected(
     report: &mut RunReport,
     keep: impl Fn(&auto_test_case::report::CheckOutcome) -> bool,
@@ -307,6 +328,7 @@ fn mark_unselected(
     }
 }
 
+#[cfg(feature = "test-cases")]
 fn proposal_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String> {
     let out = PathBuf::from(require(args, "--out")?);
     let proposal_dir = flag(args, "--proposal-dir")
@@ -327,6 +349,7 @@ fn proposal_cmd(suite: &std::path::Path, args: &[String]) -> Result<i32, String>
     Ok(report.exit_code())
 }
 
+#[cfg(feature = "test-cases")]
 fn jstr(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -343,4 +366,31 @@ fn jstr(s: &str) -> String {
     }
     out.push('"');
     out
+}
+
+#[cfg(all(test, feature = "test-cases"))]
+mod tests {
+    use super::persist_reports;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn report_write_failure_is_reported() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let out = std::env::temp_dir().join(format!(
+            "auto-case-report-write-{}-{}",
+            std::process::id(),
+            nonce
+        ));
+        assert!(!out.exists());
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::create_dir(out.join("report.console.txt")).unwrap();
+
+        let error = persist_reports(&out, "console", "json").unwrap_err();
+        assert!(error.contains("report.console.txt"), "{error}");
+
+        std::fs::remove_dir_all(out).unwrap();
+    }
 }
